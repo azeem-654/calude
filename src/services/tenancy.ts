@@ -11,48 +11,42 @@
  *
  * installTenantStorage() MUST run before any module reads storage (see main.tsx).
  */
+import { PLAN_DEFS, featureLines } from '../../worker/src/lib/allowances';
 
-export type PlanId = 'starter' | 'pro' | 'agency' | 'custom';
+export type PlanId = 'starter' | 'growth' | 'pro' | 'agency' | 'custom';
 export type AccountStatus = 'active' | 'trial' | 'paused' | 'cancelled';
 
 export interface Plan {
   id: PlanId;
   name: string;
-  price: number;          // monthly, what the agency charges the client
+  price: number;          // monthly, in dollars
+  /** Billed yearly, in dollars — ten months' price. */
+  annualPrice: number;
   color: string;
   features: string[];
   /** -1 = unlimited. `resell` is how many sub-accounts this plan may create. */
-  limits: { contacts: number; users: number; resell: number };
+  limits: { resell: number };
 }
 
 /*
- * The three plans, and what each one lets a workspace resell.
+ * The plans, drawn from the one package table (worker/src/lib/allowances.ts)
+ * that the server charges and enforces from. They used to be written out here
+ * a second time, with contact and user limits nothing enforced.
  *
  * `resell` is the number of sub-accounts the holder of the plan may create
- * underneath itself: 2, 12, or no limit. It is what makes the hierarchy more
- * than one level deep — a sub-account on Studio is itself an agency to the two
- * workspaces it opens, sets their price, and puts its own name on them.
- *
- * -1 means no limit throughout, matching how `contacts` and `users` already
- * read here.
+ * underneath itself. It is what makes the hierarchy more than one level deep —
+ * a sub-account is itself an agency to the workspaces it opens, sets their
+ * price, and puts its own name on them.
  */
-export const PLANS: Plan[] = [
-  {
-    id: 'starter', name: 'Studio', price: 49, color: '#3e63dd',
-    features: ['CRM & Pipelines', 'Conversations inbox', 'Resell to 2 sub-accounts', 'White-label your own name', 'Up to 2,500 contacts'],
-    limits: { contacts: 2500, users: 2, resell: 2 },
-  },
-  {
-    id: 'pro', name: 'Agency', price: 97, color: '#8b5cf6',
-    features: ['Everything in Studio', 'Marketing & Funnels', 'AI auto-replies', 'Resell to 12 sub-accounts', 'Up to 25,000 contacts'],
-    limits: { contacts: 25000, users: 10, resell: 12 },
-  },
-  {
-    id: 'agency', name: 'Network', price: 149, color: '#17191c',
-    features: ['Everything in Agency', 'AI Shorts & Social Creator', 'Unlimited sub-accounts', 'Unlimited contacts', 'Priority support'],
-    limits: { contacts: -1, users: -1, resell: -1 },
-  },
-];
+export const PLANS: Plan[] = PLAN_DEFS.map(p => ({
+  id: p.id,
+  name: p.name,
+  price: p.monthlyCents / 100,
+  annualPrice: p.annualCents / 100,
+  color: p.color,
+  features: featureLines(p),
+  limits: { resell: p.limits.sub_accounts },
+}));
 export function planById(id: PlanId): Plan { return PLANS.find(p => p.id === id) ?? PLANS[0]; }
 
 export interface Branding {

@@ -83,14 +83,14 @@ export function updateBilling(accountId: string, patch: Partial<BillingRecord>) 
  * now, and the caller does not have to know who the processor is.
  */
 export async function createCheckout(opts: {
-  accountId: string; planId: string; productName: string; customerEmail: string; priceId?: string;
+  accountId: string; planId: string; productName: string; customerEmail: string; priceId?: string; interval?: 'month' | 'year';
 }): Promise<{ ok: boolean; url?: string; error?: string }> {
   return startSubscription({ ...opts, token: sessionToken() });
 }
 
 /** Client self-service checkout. Same path, authorised by their own session. */
 export async function createClientCheckout(opts: {
-  accountId: string; token: string; planId: string; productName: string; customerEmail: string; priceId?: string;
+  accountId: string; token: string; planId: string; productName: string; customerEmail: string; priceId?: string; interval?: 'month' | 'year';
 }): Promise<{ ok: boolean; url?: string; error?: string }> {
   return startSubscription(opts);
 }
@@ -104,7 +104,7 @@ export async function createClientCheckout(opts: {
  * money.
  */
 async function startSubscription(opts: {
-  accountId: string; token: string; planId: string; productName: string; customerEmail: string; priceId?: string;
+  accountId: string; token: string; planId: string; productName: string; customerEmail: string; priceId?: string; interval?: 'month' | 'year';
 }): Promise<{ ok: boolean; url?: string; error?: string }> {
   const base = window.location.origin + (import.meta.env.BASE_URL || '/');
   try {
@@ -112,7 +112,7 @@ async function startSubscription(opts: {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         token: opts.token, action: 'checkout',
-        priceId: opts.priceId || '', planId: opts.planId, currency: 'USD',
+        priceId: opts.priceId || '', planId: opts.planId, currency: 'USD', interval: opts.interval === 'year' ? 'year' : 'month',
         planName: opts.productName, customerEmail: opts.customerEmail,
         successUrl: `${base}?billing=success`, cancelUrl: `${base}?billing=cancel`,
         accountId: opts.accountId,

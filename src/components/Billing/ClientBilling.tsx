@@ -22,7 +22,9 @@ import { canBuyPlans } from '../../services/nativeApp';
 import { useState, useEffect } from 'react';
 import { CreditCard, CheckCircle2, AlertTriangle, Loader, ExternalLink, ShieldCheck, Clock, Lock } from 'lucide-react';
 import { getSession } from '../../services/auth';
-import { activeAccount, PLANS } from '../../services/tenancy';
+import { activeAccount } from '../../services/tenancy';
+import { DEFAULT_TABLE, annualSaving, dollars, featureLines, fetchPlans, type PlanTable } from '../../services/allowances';
+import UsageCard from './UsageCard';
 import { billingFor, openBillingPortal, createClientCheckout } from '../../services/billing';
 import { fetchOperatorBilling } from '../../services/operatorBilling';
 import { myAccount, onMyAccount, type MyAccount } from '../../services/customers';
@@ -43,6 +45,10 @@ export default function ClientBilling() {
   const [payments, setPayments] = useState<boolean | null>(null);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  /* The packages as the server holds them — the numbers it enforces. */
+  const [table, setTable] = useState<PlanTable>(DEFAULT_TABLE);
+  const [yearly, setYearly] = useState(false);
+  useEffect(() => { void fetchPlans().then(t => { if (t) setTable(t); }); }, []);
 
   useEffect(() => {
     let alive = true;
@@ -73,8 +79,9 @@ export default function ClientBilling() {
     setBusy(planId); setError('');
     const res = await createClientCheckout({
       accountId, token: session.token, planId,
-      productName: `${planName} plan${account?.name ? ` — ${account.name}` : ''}`,
+      productName: `${planName} plan${yearly ? ' (yearly)' : ''}${account?.name ? ` — ${account.name}` : ''}`,
       customerEmail: account?.contactEmail || session.user.email,
+      interval: yearly ? 'year' : 'month',
     });
     setBusy('');
     if (res.ok && res.url) window.location.href = res.url;
@@ -135,6 +142,8 @@ export default function ClientBilling() {
         )}
       </div>
 
+      <UsageCard />
+
       {/* In the phone apps plans are not sold (services/nativeApp.ts — the stores' billing rules). */}
       {!canBuyPlans() && !owner && (
         <p style={{ color: MUTED, fontSize: 13.5, lineHeight: 1.55, margin: '0 0 18px' }}>
@@ -143,32 +152,52 @@ export default function ClientBilling() {
       )}
       {!paid && !owner && acct !== undefined && canBuyPlans() && (
         <>
-          <div style={{ fontSize: 15, fontWeight: 800, color: INK, margin: '4px 0 12px' }}>Choose a plan</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', margin: '4px 0 12px' }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: INK }}>Choose a plan</div>
+            <div role="radiogroup" aria-label="Billing period" style={{ display: 'inline-flex', background: '#eceef1', borderRadius: 999, padding: 3, gap: 2 }}>
+              {([['month', 'Monthly'], ['year', 'Yearly · 2 months free']] as const).map(([k, label]) => {
+                const on = (k === 'year') === yearly;
+                return (
+                  <button key={k} type="button" role="radio" aria-checked={on} onClick={() => setYearly(k === 'year')}
+                    style={{ border: 'none', borderRadius: 999, padding: '6px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: on ? '#fff' : 'transparent', color: on ? INK : MUTED, boxShadow: on ? '0 1px 3px rgba(0,0,0,0.12)' : 'none' }}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           {payments === false && (
             <div role="status" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: '#fef3c7', color: '#92400e', padding: '12px 14px', borderRadius: 12, fontSize: 13.5, lineHeight: 1.5, marginBottom: 14 }}>
               <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
               <span>Subscriptions cannot be started yet — payments have not been switched on for this app. Nothing is lost while you wait: everything you make stays in your workspace.</span>
             </div>
           )}
-          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-            {PLANS.map((p, i) => (
-              <div key={p.id} style={{ background: '#fff', border: i === 1 ? `2px solid ${INK}` : '1px solid #e3e6ea', borderRadius: 16, padding: 18, display: 'grid', gap: 10, alignContent: 'start' }}>
+          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(min(195px, 100%), 1fr))' }}>
+            {table.plans.map(p => (
+              <div key={p.id} data-plan={p.id} style={{ background: '#fff', border: p.featured ? `2px solid ${INK}` : '1px solid #e3e6ea', borderRadius: 16, padding: 18, display: 'grid', gap: 10, alignContent: 'start' }}>
                 <div style={{ fontWeight: 800, color: INK }}>{p.name}</div>
-                <div style={{ fontSize: 26, fontWeight: 800, color: INK }}>${p.price}<small style={{ fontSize: 13, color: MUTED, fontWeight: 600 }}>/month</small></div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: INK }}>
+                  ${dollars(yearly ? p.annualCents : p.monthlyCents)}<small style={{ fontSize: 13, color: MUTED, fontWeight: 600 }}>/{yearly ? 'year' : 'month'}</small>
+                </div>
+                {yearly && <div style={{ fontSize: 12, color: '#047857', fontWeight: 700, marginTop: -6 }}>Saves ${dollars(annualSaving(p))} a year</div>}
+                <div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.45 }}>{p.tagline}</div>
                 <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 6, fontSize: 13, color: '#3f4247' }}>
-                  {p.features.map(f => (
+                  {featureLines(p).map(f => (
                     <li key={f} style={{ display: 'flex', gap: 7 }}><CheckCircle2 size={14} color="#047857" style={{ flexShrink: 0, marginTop: 2 }} /> {f}</li>
                   ))}
                 </ul>
                 <button type="button" disabled={!!busy || payments === false} onClick={() => void subscribe(p.id, p.name)}
                   style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4, padding: '11px 14px', borderRadius: 12, fontSize: 14, fontWeight: 700,
-                    border: `1px solid ${INK}`, background: i === 1 ? INK : '#fff', color: i === 1 ? '#c8f24d' : INK,
+                    border: `1px solid ${INK}`, background: p.featured ? INK : '#fff', color: p.featured ? '#c8f24d' : INK,
                     cursor: busy || payments === false ? 'default' : 'pointer', opacity: payments === false ? 0.45 : 1 }}>
                   {busy === p.id ? <Loader size={15} className="spin" /> : <>Choose {p.name}</>}
                 </button>
               </div>
             ))}
           </div>
+          <p style={{ color: MUTED, fontSize: 12.5, lineHeight: 1.6, margin: '12px 0 0' }}>
+            <strong style={{ color: INK }}>Every plan includes:</strong> {table.included.join(' · ')}.
+          </p>
         </>
       )}
 

@@ -35,7 +35,6 @@ import {
 import { LogoMark } from '../shared/Logo';
 import { appHref, isCrossOrigin } from '../../services/hosts';
 import { featureReady } from '../../services/features';
-import { PLANS } from '../../services/tenancy';
 import { TEMPLATES } from '../Autopilot/workflowTemplates';
 import { useReveal, useRevealGroup } from './useReveal';
 import Starfield from './Starfield';
@@ -51,6 +50,7 @@ import CloudSection from './CloudSection';
 import { useFilmStep } from './useFilmStep';
 import SolutionsSection, { type FindRequest } from './SolutionsSection';
 import FaqSection from './FaqSection';
+import PricingSection from './PricingSection';
 import { track } from '../../services/funnel';
 import { motionReduced } from '../../services/motion';
 import './site.css';
@@ -409,7 +409,6 @@ export default function SiteHome() {
   const chain = useRevealGroup<HTMLDivElement>('.dc-chain-node');
   const wall = useRevealGroup<HTMLDivElement>('.dc-wall-card');
   const own = useRevealGroup<HTMLDivElement>('.dc-own-card');
-  const price = useRevealGroup<HTMLDivElement>('.dc-plan');
   const band = useReveal<HTMLDivElement>();
   const tabs = useRevealGroup<HTMLDivElement>('button');
   const foot = useRevealGroup<HTMLDivElement>(':scope > div');
@@ -703,36 +702,7 @@ export default function SiteHome() {
       </section>
 
       {/* ── Pricing ── */}
-      <section className="dc-pricing" id="pricing">
-        <div className="dc-chapter-head">
-          <span className="dc-eyebrow">Resell it at your price</span>
-          <h2>One subscription. <em>As many clients as your plan allows.</em></h2>
-          <p>
-            Every plan starts with 7 days free, and no card is asked for until you choose one. You are
-            billed once. What you charge your own clients is entirely yours to set, and the sub-account
-            allowance is enforced on the server rather than in the browser.
-          </p>
-        </div>
-        <div className="dc-plans stagger" ref={price}>
-          {PLANS.map((p, i) => (
-            <div key={p.id} className={`dc-plan${i === 1 ? ' featured' : ''}`}>
-              {i === 1 && <span className="dc-plan-flag">Most agencies</span>}
-              <h3>{p.name}</h3>
-              <div className="dc-plan-price"><span>$</span>{p.price}<small>/month</small></div>
-              <p className="dc-plan-sub">
-                {p.limits.resell < 0
-                  ? 'Unlimited sub-accounts'
-                  : `${p.limits.resell} sub-account${p.limits.resell === 1 ? '' : 's'}`}
-              </p>
-              <ul>{p.features.map(f => <li key={f}><Check size={12} /> {f}</li>)}</ul>
-              <a className={`dc-btn ${i === 1 ? 'dc-btn-primary' : 'dc-btn-outline'}`} href={appHref('/signup')} {...cross(appHref('/signup'))} onClick={() => track('trial_cta_clicked')}>
-                Start free <ArrowRight size={14} />
-              </a>
-              <small className="dc-plan-note">7 days free · No card required</small>
-            </div>
-          ))}
-        </div>
-      </section>
+      <PricingSection />
 
       {/* ── Questions ── */}
       <FaqSection />

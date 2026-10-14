@@ -31,6 +31,7 @@ import { canAccess, userFromToken, type Env } from '../lib/db';
 import { aiBase, loadAiKey, modelsFor, trialRefusal } from '../lib/ai';
 import { rateLimit } from '../lib/rateLimit';
 import { withFailover } from '../lib/aiPool';
+import { check as allowance, record, refusalBody } from '../lib/allowanceStore';
 
 interface AiReq {
   token?: string;
@@ -71,6 +72,11 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
   const ended = await trialRefusal(env, accountId);
   if (ended) return fail(ended, 402, { code: 'trial_ended' });
 
+  /* The plan's monthly AI requests. Asked here, counted below only once the
+     AI has answered — a request Google refused was not a request served. */
+  const room = await allowance(env, accountId, 'ai_requests', 1, {});
+  if (!room.ok) return fail(room.message, 402, refusalBody(room));
+
   const key = await loadAiKey(env, accountId);
   if (!key) return fail('The AI is not available on this install right now.', 200, { code: 'no_ai' });
 
@@ -99,7 +105,11 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
         lastError = e instanceof Error ? e.message : String(e);
         continue;
       }
-      if (res.ok) return { ok: true, value: json({ success: true, response: await res.json() }) };
+      if (res.ok) {
+        const answer = await res.json();
+        await record(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`, 1, room.standing);
+        return { ok: true, value: json({ success: true, response: answer }) };
+      }
       lastStatus = res.status;
       lastError = await res.text().catch(() => '');
       /* The next model on a retired id or a busy one; anything else is the

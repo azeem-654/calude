@@ -37,6 +37,7 @@
 import { loadFinder, stepFinder } from '../prospectFinderTick';
 import { dataGet, dataPut, nowIso, type Env } from './db';
 import { loadAiKey, researchWeb } from './ai';
+import { record, roomFor } from './allowanceStore';
 import { readSite, urlProblem } from './readSite';
 import { drawSocial, paletteOf } from './designLayouts';
 import { logoAddress } from './brandLogo';
@@ -453,6 +454,19 @@ async function runAgentNode(
     return { outcome: 'skipped', detail: 'This step runs when a recording is uploaded to the project in AI Video Studio — upload one there or from the Assets tab.' };
   }
 
+  /* The plan's monthly allowance for what this step makes, asked before a
+     source is read or the AI is: a month that is used up is a skipped step
+     with the reason on it, not a failure and not a silent nothing. A step
+     that makes several makes what still fits (lib/allowanceStore.ts). */
+  const making = c('produces') || 'social';
+  const meter = making === 'social' ? 'social_posts' as const : making === 'blog' ? 'blog_articles' as const : making === 'email_campaign' ? 'ai_emails' as const : null;
+  let room = Infinity;
+  if (meter) {
+    const r = await roomFor(env, accountId, meter);
+    if (r.refused) return { outcome: 'skipped', detail: `Nothing was written. ${r.refused.message}` };
+    room = r.left;
+  }
+
   const apiKey = await loadAiKey(env, accountId);
   /* The workspace's key, the operator's, then the deployment's. None of the
      three is an operator problem, not something the customer can fix, so it is
@@ -551,7 +565,8 @@ async function runAgentNode(
   const produces = c('produces') || 'social';
 
   if (produces === 'social') {
-    const count = Math.min(Math.max(Number(c('count')) || 1, 1), 6);
+    const asked = Math.min(Math.max(Number(c('count')) || 1, 1), 6);
+    const count = Math.min(asked, room);
     const layout = c('layout');
     const r = await writeImagePosts(apiKey, brand, {
       count, platform: c('platform') || 'instagram', items, style: c('style'),
@@ -572,10 +587,12 @@ async function runAgentNode(
         id, brandColor, company: brand.companyName, source, now, ready: c('handoff') === 'ready',
         design: cfg as Record<string, string>, logoSrc,
       }));
+      await record(env, accountId, 'social_posts', id);
     }
+    const made = Math.min(posts.length, count);
     return {
       outcome: 'ok',
-      detail: `Made ${posts.length} post${posts.length === 1 ? '' : 's'}${items.length ? ` from ${items.length} new item${items.length === 1 ? '' : 's'}` : ''}. Every one is a draft — nothing is scheduled until you say so.`,
+      detail: `Made ${made} post${made === 1 ? '' : 's'}${items.length ? ` from ${items.length} new item${items.length === 1 ? '' : 's'}` : ''}. Every one is a draft — nothing is scheduled until you say so.${count < asked ? ` ${asked} were asked for; this month’s allowance had room for ${count}.` : ''}`,
       link: { kind: 'social-post', id: first, label: posts[0].headline.slice(0, 60), route: '/social-creator' },
       hash,
     };
@@ -591,6 +608,7 @@ async function runAgentNode(
       id, title: v.title, slug: v.slug, excerpt: v.excerpt, body: v.body,
       keywords: v.keywords ?? [], status: 'draft', source, createdAt: now,
     });
+    await record(env, accountId, 'blog_articles', id);
     return {
       outcome: 'ok',
       detail: `Drafted "${v.title}". Read it before it goes anywhere.`,
@@ -600,7 +618,11 @@ async function runAgentNode(
   }
 
   if (produces === 'email_campaign') {
-    const total = Math.min(Math.max(Number(c('campaignSteps')) || 7, 2), 52);
+    const asked = Math.min(Math.max(Number(c('campaignSteps')) || 7, 2), 52);
+    /* What the month's allowance still has room for. A campaign is at least
+       two emails; with room for fewer it is skipped, by name. */
+    const total = Math.min(asked, room);
+    if (total < 2) return { outcome: 'skipped', detail: `Nothing was written: a campaign needs at least two emails and this month’s allowance of emails written by AI Autopilot has room for ${total}. It starts again on the 1st, or a larger plan raises it.` };
     const everyDays = Math.min(Math.max(Number(c('everyDays')) || 7, 1), 30);
     const theme = c('topic') || (items.length ? items[0].title : '');
 
@@ -622,6 +644,8 @@ async function runAgentNode(
       }
     }
     if (!steps.length) return { outcome: 'failed', detail: stopped || 'Nothing usable came back from the writer.' };
+    /* A batch can come back longer than asked; what is kept is what is counted. */
+    steps.splice(total);
 
     const id = `seq-${crypto.randomUUID()}`;
     await push(env, accountId, SEQ_KEY, {
@@ -644,11 +668,13 @@ async function runAgentNode(
         channel: 'email',
       })),
     });
+    await record(env, accountId, 'ai_emails', id, steps.length);
     return {
       outcome: 'ok',
-      detail: steps.length < total
+      detail: (steps.length < total
         ? `Wrote ${steps.length} of the ${total} emails${stopped ? ` — it stopped because ${stopped}` : ''}. The ones it did write are there and readable; run it again to finish the rest.`
-        : `Wrote all ${steps.length} emails, one every ${everyDays} days. Nobody is enrolled — read them first.`,
+        : `Wrote all ${steps.length} emails, one every ${everyDays} days. Nobody is enrolled — read them first.`)
+        + (total < asked ? ` ${asked} were asked for; this month’s allowance of emails written by AI Autopilot had room for ${total}.` : ''),
       link: { kind: 'sequence', id, label: (name || 'Campaign').slice(0, 60), route: '/marketing?tab=sequences' },
       hash,
     };
@@ -853,37 +879,52 @@ export async function repurposeRecording(
   const links: RunLink[] = [];
   const notes: string[] = [];
 
-  if (want.posts > 0) {
-    const r = await writeImagePosts(apiKey, brand, { count: Math.min(6, want.posts), platform: want.platform || 'instagram', items });
-    const posts = (r.value?.posts ?? []).filter(p => (p.headline ?? '').trim());
+  /* Each kind of draft draws on the plan's monthly allowance for it, and is
+     written only while there is room (lib/allowanceStore.ts). */
+  const postRoom = want.posts > 0 ? await roomFor(env, accountId, 'social_posts') : null;
+  if (postRoom?.refused) notes.push(`Posts: ${postRoom.refused.message}`);
+  else if (want.posts > 0) {
+    const n = Math.min(6, want.posts, postRoom?.left ?? Infinity);
+    const r = await writeImagePosts(apiKey, brand, { count: n, platform: want.platform || 'instagram', items });
+    const posts = (r.value?.posts ?? []).filter(p => (p.headline ?? '').trim()).slice(0, n);
     if (posts.length) {
       let first = '';
-      for (const p of posts.slice(0, want.posts)) {
+      for (const p of posts) {
         const id = `sp-${crypto.randomUUID()}`;
         if (!first) first = id;
         await push(env, accountId, SOCIAL_KEY, designFromPost(p, { id, brandColor: '#5b46e5', company: brand.companyName, source, now, ready: false, design: {}, logoSrc: '' }));
+        await record(env, accountId, 'social_posts', id);
       }
       links.push({ kind: 'social-post', id: first, label: `${posts.length} post${posts.length === 1 ? '' : 's'} from “${rec.title.slice(0, 40)}”`, route: '/social-creator' });
+      if (n < want.posts) notes.push(`Posts: ${want.posts} were asked for; this month’s allowance had room for ${n}.`);
     } else notes.push(`Posts: ${r.error || 'nothing usable came back from the writer'}.`);
   }
-  if (want.blog) {
+  const blogRoom = want.blog ? await roomFor(env, accountId, 'blog_articles') : null;
+  if (blogRoom?.refused) notes.push(`Blog: ${blogRoom.refused.message}`);
+  else if (want.blog) {
     const r = await writeBlogPost(apiKey, brand, `${rec.title}. ${rec.text.slice(0, 2500)}`, '');
     if (r.ok && r.value?.title) {
       const v = r.value;
       const id = `bp-${crypto.randomUUID()}`;
       await push(env, accountId, BLOG_KEY, { id, title: v.title, slug: v.slug, excerpt: v.excerpt, body: v.body, keywords: v.keywords ?? [], status: 'draft', source, createdAt: now });
+      await record(env, accountId, 'blog_articles', id);
       links.push({ kind: 'blog-post', id, label: v.title.slice(0, 60), route: '/blog-automation' });
     } else notes.push(`Blog: ${r.error || 'nothing usable came back from the writer'}.`);
   }
-  if (want.email) {
-    const r = await writeSequenceBatch(apiKey, brand, { from: 0, count: 3, total: 3, everyDays: 3, theme: rec.title, items });
-    const steps = (r.value?.steps ?? []).filter(st => String(st.subject ?? '').trim() && String(st.body ?? '').trim());
+  const mailRoom = want.email ? await roomFor(env, accountId, 'ai_emails') : null;
+  if (mailRoom && !mailRoom.refused && mailRoom.left < 2) notes.push('Emails: a campaign needs at least two emails and this month’s allowance has room for fewer.');
+  else if (mailRoom?.refused) notes.push(`Emails: ${mailRoom.refused.message}`);
+  else if (want.email) {
+    const n = Math.min(3, mailRoom?.left ?? Infinity);
+    const r = await writeSequenceBatch(apiKey, brand, { from: 0, count: n, total: n, everyDays: 3, theme: rec.title, items });
+    const steps = (r.value?.steps ?? []).filter(st => String(st.subject ?? '').trim() && String(st.body ?? '').trim()).slice(0, n);
     if (steps.length) {
       const id = `seq-${crypto.randomUUID()}`;
       await push(env, accountId, SEQ_KEY, {
         id, name: (r.value?.name || `Emails from “${rec.title}”`).slice(0, 90), status: 'draft', source, createdAt: now,
         steps: steps.map((st, i) => ({ id: `st-${crypto.randomUUID()}`, day: i * 3, waitUnit: 'days', subject: String(st.subject).slice(0, 200), body: String(st.body).slice(0, 8000), channel: 'email' })),
       });
+      await record(env, accountId, 'ai_emails', id, steps.length);
       links.push({ kind: 'sequence', id, label: (r.value?.name || 'Emails').slice(0, 60), route: '/marketing?tab=sequences' });
     } else notes.push(`Emails: ${r.error || 'nothing usable came back from the writer'}.`);
   }

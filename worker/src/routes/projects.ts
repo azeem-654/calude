@@ -27,6 +27,7 @@ import { logoFromPage, fetchImage } from '../lib/brandLogo';
 import { rateLimit } from '../lib/rateLimit';
 import { ensureProjectPipeline } from '../lib/projectPipeline';
 import { sanitiseBrief } from '../lib/projectBrief';
+import { check as allowance, refusalBody } from '../lib/allowanceStore';
 
 interface Req {
   token?: string;
@@ -494,6 +495,14 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     if (d.id && await foreignId(env, 'crm_projects', id, accountId)) return fail('That project is not in this workspace.', 403);
     const existing = await env.DB.prepare('SELECT created_at, guardrails, status, launch_steps AS launchSteps, brief FROM crm_projects WHERE id = ? AND account_id = ?')
       .bind(id, accountId).first<{ created_at: string; guardrails: string; status: string; launchSteps: string; brief: string }>();
+
+    /* A new project takes a place in the plan's allowance; an edit does not.
+       Checked before anything is written, so a refusal leaves nothing behind
+       (lib/allowanceStore.ts). */
+    if (!existing) {
+      const room = await allowance(env, accountId, 'autopilot_projects');
+      if (!room.ok) return fail(room.message, 402, refusalBody(room));
+    }
 
     /* Guardrails survive an edit. Somebody who opened sending up once should
        not be asked again because they reworded the objective. */

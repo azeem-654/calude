@@ -48,6 +48,7 @@ public/api/data/*
 # Screenshots written by the e2e tests
 test-results/
 # The fresh D1 that test:prospecting makes and wipes on every run.
+.wrangler-allowances/
 .wrangler-audit/
 .wrangler-autoprospects/
 .wrangler-leaddir/

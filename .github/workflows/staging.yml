@@ -181,6 +181,11 @@ jobs:
       - name: Test Video Studio's rules
         run: npm run test:video
 
+      # Plan allowances: the packages, the counting (once per thing made),
+      # the refusals, and that the site's price cards are the server's table.
+      - name: Test plan allowances
+        run: npm run test:allowances
+
       - name: Build
         run: npm run build
         env:

@@ -24,6 +24,7 @@ import {
   publishTargetStatus, savePublishTarget,
 } from '../lib/publishTarget';
 import { runAgentOnce } from '../lib/projectAgents';
+import { check as allowance, refusalBody } from '../lib/allowanceStore';
 
 /** Kept in step with AIGuardrails in src/types/aiSalesAgent.ts. */
 const DEFAULT_GUARDRAILS = {
@@ -610,6 +611,9 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
         JSON.stringify(nodes).slice(0, 200_000), now, id, accountId,
       ).run();
     } else {
+      /* A new workflow takes a place in the project's allowance. */
+      const room = await allowance(env, accountId, 'workflows_per_project', 1, { projectId });
+      if (!room.ok) return fail(room.message, 402, refusalBody(room));
       const next = await env.DB.prepare(
         'SELECT COALESCE(MAX(position), -1) + 1 AS n FROM crm_project_workflows WHERE account_id = ? AND project_id = ?',
       ).bind(accountId, projectId).first<{ n: number }>();
@@ -704,6 +708,11 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
       'SELECT id, name, portfolio_id AS portfolioId FROM crm_projects WHERE id = ? AND account_id = ?',
     ).bind(projectId, accountId).first<{ id: string; name: string; portfolioId: string }>();
     if (!project) return fail('That project could not be found.', 404);
+
+    /* Asked before the model is: a workflow that could not be kept is a
+       model call the operator paid for and nobody can use. */
+    const room = await allowance(env, accountId, 'workflows_per_project', 1, { projectId });
+    if (!room.ok) return fail(room.message, 402, refusalBody(room));
 
     /* The same rolling-day allowance a typed instruction uses. Both are a model
        call the operator pays for, and metering one and not the other would

@@ -226,6 +226,18 @@ check("B cannot overwrite A's project by id", !hijackProject.ok && stillA?.name 
   const reorderA = await api('projects.php', { action: 'reorder_projects', token: B.token, accountId: A.acct, ids: [pj.data.id] });
   check("B cannot reorder A's workspace", !reorderA.ok, JSON.stringify(reorderA.data));
 }
+{
+  /* Plan allowances (routes/allowances.ts): a project id is checked against
+     the workspace named, a workspace against the session, and only the
+     install owner changes what a plan allows. */
+  const peek = await api('allowances.php', { action: 'check', token: B.token, accountId: B.acct, meter: 'workflows_per_project', projectId: pj.data.id });
+  check("B cannot ask about A's project by id", !peek.ok && peek.data.code === 'not_found', JSON.stringify(peek.data));
+  const usage = await api('allowances.php', { action: 'status', token: B.token, accountId: A.acct });
+  check("B cannot read A's usage", !usage.ok && usage.status === 403, JSON.stringify(usage.data));
+  const raise = await api('allowances.php', { action: 'set_limits', token: B.token, planId: 'trial', limits: { autopilot_projects: -1 } });
+  const raised = d1rows("SELECT COUNT(*) AS n FROM crm_plan_limits WHERE plan_id = 'trial' AND meter = 'autopilot_projects' AND value = -1")[0];
+  check('A customer cannot change what a plan allows', !raise.ok && raise.data.code === 'not_owner' && Number(raised?.n) === 0, JSON.stringify([raise.data, raised]));
+}
 if (productId) {
   const hijackProduct = await api('commerce.php', { action: 'save_product', token: B.token, accountId: B.acct, id: productId, name: 'defaced', priceCents: 1, status: 'active' });
   const p = d1rows(`SELECT name, price_cents AS price FROM crm_products WHERE id = '${productId}'`)[0];

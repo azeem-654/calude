@@ -62,6 +62,7 @@ import { handleFinders } from './routes/finders';
 import { handlePush } from './routes/push';
 import { handleSmsOptin } from './routes/smsOptin';
 import { handlePlatform } from './routes/platform';
+import { handleAllowances } from './routes/allowances';
 import { handleCloud } from './routes/cloud';
 import { handleAffiliate } from './routes/affiliate';
 import { handleResell, handleResellWebhook } from './routes/resell';
@@ -103,6 +104,7 @@ const ROUTES: Record<string, Handler> = {
   '/api/system-mail.php': handleSystemMail,
   /* The owner's keys for everybody, in one read. Owner only. */
   '/api/platform.php': handlePlatform,
+  '/api/allowances.php': handleAllowances,
   '/api/cloud.php': handleCloud,
   '/api/aikeys.php': handleAiKeys,
   '/api/geoapify.php': handleGeoapify,
