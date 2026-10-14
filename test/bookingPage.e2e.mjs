@@ -12,8 +12,12 @@
  * as the founder, an unlabelled preview picture, a YouTube link) read with no
  * AI on the install — the readable parts filled, the AI said not to have been
  * used — by the action itself and by the editor opening on an empty page;
- * points with icons, topics and the colour published; the page as the
- * visitor gets it, with no platform name, trial offer or testimonial on it.
+ * points with icons, topics and the colour published; themes — a new page in
+ * Midnight lime, an older one still Light, a theme picked and published, the
+ * owner's accent over it; the logo measured at upload; a testimonial only
+ * once typed (with its photo) and "Need help?" only with an address; the page
+ * as the visitor gets it, with no platform name or trial offer, nothing
+ * reaching past its card, at 1280 and 390.
  *
  *   VITE_BASE=/ npm run build
  *   npx wrangler d1 migrations apply crmpro --local --persist-to <dir>
@@ -127,7 +131,7 @@ console.log('\nPublishing and the address');
 const publishA = await api('booking.php', { action: 'publish', token: A.token, accountId: A.acct, public: {
   slug: slugA, title: 'Strategy call', hostName: 'Dr Amira Lee', businessName: 'Lee Clinic', description: 'Thirty minutes on what to do next.\nNo slides.',
   bullets: ['A plan for the next 90 days', '  ', 'Answers about pricing'], hostRole: 'Founder', tagline: 'Family clinic, Brooklyn',
-  tags: ['Health', 'Nutrition', '', 'Sleep', 'Stress', 'Fifth'], discuss: ['Your goals', 'Your diet'], accent: 'red; background:url(x)', duration: 30, location: 'Video call', timezone: 'America/New_York', weekly,
+  tags: ['Health', 'Nutrition', '', 'Sleep', 'Stress', 'Fifth'], discuss: ['Your goals', 'Your diet'], accent: 'red; background:url(x)', theme: 'neon-bogus', help: 'javascript:alert(1)', testimonial: { quote: 'Lovely', name: '' }, duration: 30, location: 'Video call', timezone: 'America/New_York', weekly,
   bufferBefore: 0, bufferAfter: 0, dailyLimit: 20, minNoticeMin: 0, windowDays: 60, photoUrl: photo.data.url, logoUrl: logo.data.url,
   videoFileUrl: vid.data.url ?? '', videoUrl: 'https://youtu.be/dQw4w9WgXcQ', imageUrl: 'javascript:alert(1)',
 } });
@@ -136,6 +140,7 @@ const cfgA = (await api('booking.php', { action: 'config', slug: slugA })).data.
 ok('the page keeps its own uploads and drops blank points', cfgA.photoUrl === photo.data.url && cfgA.logoUrl === logo.data.url && cfgA.bullets?.length === 2, cfgA);
 ok('plain lines from an older editor become points with ticks', cfgA.points?.length === 2 && cfgA.points.every(pt => pt.icon === 'check') && cfgA.points[0].title === 'A plan for the next 90 days', cfgA.points);
 ok('topics are four at most, blanks gone; a colour that is not a hex is dropped', cfgA.tags?.length === 4 && !cfgA.tags.includes('') && cfgA.accent === '' && cfgA.hostRole === 'Founder', cfgA);
+ok('an unknown theme, a help link that is not an address or https page, and a quote with no name are all dropped', cfgA.theme === '' && cfgA.help === '' && cfgA.testimonial === null, [cfgA.theme, cfgA.help, cfgA.testimonial]);
 ok('a javascript: picture address is dropped', cfgA.imageUrl === '', cfgA.imageUrl);
 const taken = await api('booking.php', { action: 'slug_check', token: B.token, accountId: B.acct, slug: slugA });
 ok("B is told A's address is taken", taken.ok && taken.data.available === false && /Another workspace/.test(taken.data.reason), taken.data);
@@ -189,6 +194,20 @@ async function newContext(opts) {
   return ctx;
 }
 const mondayDay = String(Number(monday.slice(8, 10)));
+/* The page clips its glow (overflow: clip), so the document never scrolls
+   sideways even when something inside a card does not fit — measured instead:
+   how far anything reaches past its own card. */
+const spill = p => p.evaluate(() => {
+  let worst = 0;
+  for (const panel of document.querySelectorAll('.bkp-panel')) {
+    const box = panel.getBoundingClientRect();
+    for (const e of panel.querySelectorAll('*')) {
+      const r = e.getBoundingClientRect();
+      if (r.width && r.height) worst = Math.max(worst, r.right - box.right, box.left - r.left);
+    }
+  }
+  return Math.round(worst);
+});
 /* The page opens on the first day with a time — today, on a weekday — so the
    Monday the test is about is picked, a month on when it falls in the next. */
 async function openMonday(p) {
@@ -229,9 +248,15 @@ for (const [w, h] of [[390, 844], [1280, 900]]) {
   await p.locator('.bkp-day[data-on]').waitFor({ timeout: 10000 });
   const over = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   ok(`${w}px · no horizontal overflow on the calendar`, over <= 0, `${over}px`);
+  const out = await spill(p);
+  ok(`${w}px · nothing reaches past its card`, out <= 0, `${out}px`);
   const info = await p.locator('.bkp-info').innerText();
-  ok(`${w}px · the left side says who, what, the points and the zone`, /Dr Amira Lee/.test(info) && /Strategy call/.test(info) && /90 days/.test(info) && /Bangkok time \(GMT\+7\)/.test(info), info);
-  ok(`${w}px · the band, the role, the topics and what to discuss are there`, /Lee Clinic/.test(info) && /Family clinic, Brooklyn/.test(info) && /Founder/.test(info) && /Nutrition/.test(info) && /Your diet/.test(info) && /One-to-one with Dr Amira Lee/.test(info), info);
+  ok(`${w}px · the left side says who, what, the points and the zone`, /Dr Amira Lee/.test(info) && /Strategy call/.test(info) && /90 days/.test(info) && /Asia\/Bangkok \(GMT\+7\)/.test(info) && /Your local time/.test(info), info);
+  ok(`${w}px · the band, the role, the topics and what to discuss are there`, /Lee Clinic/.test(info) && /Family clinic, Brooklyn/.test(info) && /Founder/.test(info) && /Nutrition/.test(info) && /Your diet/.test(info) && /One-to-one/.test(info) && /With Dr Amira Lee/.test(info), info);
+  ok(`${w}px · a page published before themes keeps the light look; no testimonial or help link that nobody typed`, await p.locator('.bkp[data-bk-theme="light"]').count() === 1
+    && await p.locator('[data-testid="booking-testimonial"]').count() === 0 && await p.locator('.bkp-help').count() === 0);
+  ok(`${w}px · with no mailbox the page promises no email and no Meet link`, /see the meeting details straight away/.test(await p.locator('.bkp-after').innerText()));
+  if (SHOTS && w === 1280) await p.screenshot({ path: `${SHOTS}/page-light-theme-1280.png`, fullPage: true });
   ok(`${w}px · the photo and logo are on the page`, await p.locator('.bkp-avatar[src*="booking-media"]').count() === 1 && await p.locator('.bkp-logo').count() === 1);
   ok(`${w}px · the zone picker starts on the visitor's zone`, (await p.locator('#bkp-zone').inputValue()) === 'Asia/Bangkok');
   if (w === 1280) {
@@ -362,18 +387,51 @@ console.log('\nThe editor fills itself in from the website, once, on an empty pa
   await p.getByRole('button', { name: 'Your brand colour #7c3aed' }).click();
   const card = await prev.locator('.bkp-info').innerText();
   ok('the preview follows: the point, its detail, the topic, what to discuss', /Win more local jobs/.test(card) && /From search and maps/.test(card) && /Local SEO/.test(card) && /Your Google profile/.test(card), card.slice(0, 600));
-  ok('the band is in the brand colour picked', /rgb\(124, 58, 237\)/.test(await prev.locator('.bkp-band').evaluate(e => getComputedStyle(e).backgroundImage)));
+  const dayColour = await prev.locator('.bkp-day[data-on]').first().evaluate(async e => {
+    for (let i = 0; i < 20 && getComputedStyle(e).backgroundColor !== 'rgb(124, 58, 237)'; i++) await new Promise(r => setTimeout(r, 100));
+    return getComputedStyle(e).backgroundColor;
+  });
+  ok('the chosen day is in the brand colour picked', dayColour === 'rgb(124, 58, 237)', dayColour);
+  ok('a new page starts in the Midnight lime theme', await prev.locator('.bkp[data-bk-theme="midnight-lime"][data-bk-dark]').count() === 1);
+  ok('the website fill wrote no testimonial', await prev.locator('[data-testid="booking-testimonial"]').count() === 0);
+  ok('the measured logo: its own ground (no plate), a wordmark', await prev.locator('.bkp-logo-tile[data-wide="1"]:not([data-plate])').count() === 1);
   await p.locator('[data-field="booking.slug"]').first().fill(`bright-${run}`);
   await p.locator('.bks .bks-good').first().waitFor({ timeout: 8000 });
   /* The Scheduling screen publishes every change itself. */
-  let cfgC = {};
-  for (let i = 0; i < 20 && !(cfgC.points?.[0]?.icon === 'rocket' && cfgC.accent); i++) {
-    await p.waitForTimeout(500);
-    cfgC = (await api('booking.php', { action: 'config', slug: `bright-${run}` })).data.config ?? {};
-  }
+  const published = async (until) => {
+    let c = {};
+    for (let i = 0; i < 24 && !until(c); i++) {
+      await p.waitForTimeout(500);
+      c = (await api('booking.php', { action: 'config', slug: `bright-${run}` })).data.config ?? {};
+    }
+    return c;
+  };
+  let cfgC = await published(c => c.points?.[0]?.icon === 'rocket' && c.accent === '#7c3aed');
   ok('published: the point with its icon, the topic, the colour, the media', cfgC.points?.[0]?.icon === 'rocket' && cfgC.points?.[0]?.detail === 'From search and maps'
     && cfgC.tags?.[0] === 'Local SEO' && cfgC.discuss?.[0] === 'Your Google profile' && cfgC.accent === '#7c3aed' && /booking-media/.test(cfgC.logoUrl ?? '') && /booking-media/.test(cfgC.photoUrl ?? '')
-    && cfgC.videoUrl === 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', cfgC);
+    && cfgC.videoUrl === 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' && cfgC.theme === 'midnight-lime', cfgC);
+  ok('the logo was measured as it was uploaded: its own ground, three times as wide as tall', cfgC.logoTone === 'opaque' && cfgC.logoRatio === 3, [cfgC.logoTone, cfgC.logoRatio]);
+
+  /* Themes: picked, published, picked back; the theme's own colour again. */
+  await p.getByRole('button', { name: 'Midnight blue theme' }).click();
+  ok('the preview follows the theme picked', await prev.locator('.bkp[data-bk-theme="midnight-blue"]').count() === 1);
+  cfgC = await published(c => c.theme === 'midnight-blue');
+  ok('the theme is published', cfgC.theme === 'midnight-blue', cfgC.theme);
+  await p.getByRole('button', { name: 'Midnight lime theme' }).click();
+  await p.getByRole('button', { name: /^The theme's own colour/ }).click();
+
+  /* A testimonial only when typed, and "Need help?" only with somewhere to go. */
+  await p.locator('[data-field="booking.testimonialQuote"]').fill('They filled our diary in a month and never once sent anything we had not approved.');
+  ok('a quote with no name is not shown yet', await prev.locator('[data-testid="booking-testimonial"]').count() === 0);
+  await p.locator('[data-field="booking.testimonialName"]').fill('Dana Kerr');
+  await p.locator('[data-field="booking.testimonialRole"]').fill('Owner, Kerr Plumbing');
+  await p.locator('input[aria-label="Upload their photo"]').setInputFiles({ name: 'dana.png', mimeType: 'image/png', buffer: solidPng(200, 200, [180, 120, 90]) });
+  await prev.locator('[data-testid="booking-testimonial"] img.bkp-quote-photo[src*="booking-media"]').waitFor({ timeout: 10000 });
+  ok('the testimonial shows as typed, with its photo', /never once sent anything/.test(await prev.locator('[data-testid="booking-testimonial"]').innerText()));
+  await p.locator('[data-field="booking.help"]').fill('hello@brightco.test');
+  cfgC = await published(c => c.theme === 'midnight-lime' && !c.accent && c.testimonial?.photoUrl && c.help);
+  ok('published: back to Midnight lime in its own colour, the testimonial with its photo, the help address',
+    cfgC.theme === 'midnight-lime' && cfgC.accent === '' && cfgC.testimonial?.name === 'Dana Kerr' && /booking-media/.test(cfgC.testimonial?.photoUrl ?? '') && cfgC.help === 'hello@brightco.test', cfgC);
   if (SHOTS) await p.screenshot({ path: `${SHOTS}/editor-1280.png`, fullPage: true });
   await p.getByRole('group', { name: 'Preview width' }).getByRole('button', { name: 'Phone' }).click();
   await p.waitForTimeout(300);
@@ -408,12 +466,19 @@ console.log('\nThe editor fills itself in from the website, once, on an empty pa
     await vp.goto(`${BASE}/book/bright-${run}`, { waitUntil: 'networkidle' });
     await vp.locator('.bkp-day[data-on]').waitFor({ timeout: 10000 });
     const body = await vp.locator('body').innerText();
-    ok(`${w}px ${scheme} · no platform name, trial offer or testimonial on the page`, !/Protected Central|free 7-day trial|7 days free|testimonial/i.test(body), body.slice(0, 300));
+    ok(`${w}px ${scheme} · no platform name or trial offer on the page`, !/Protected Central|free 7-day trial|7 days free/i.test(body), body.slice(0, 300));
+    ok(`${w}px ${scheme} · the Midnight lime theme whatever the visitor's system says`, await vp.locator('.bkp[data-bk-theme="midnight-lime"][data-bk-dark]').count() === 1
+      && (await vp.locator('.bkp').evaluate(e => getComputedStyle(e).getPropertyValue('--bk-accent').trim())) === '#b6f35c');
+    ok(`${w}px ${scheme} · the owner's testimonial, and Need Help? to their address`, /Dana Kerr/.test(body) && await vp.locator('.bkp-help[href="mailto:hello@brightco.test"]').count() === 1);
+    ok(`${w}px ${scheme} · "Meet with", the host's ring and the four items`, /meet with/i.test(body) && await vp.locator('.bkp-avatar-ring .bkp-avatar').count() === 1 && await vp.locator('.bkp-chips li').count() === 4);
+    ok(`${w}px ${scheme} · headings in a serif`, /Georgia/.test(await vp.locator('.bkp-title').evaluate(e => getComputedStyle(e).fontFamily)));
     ok(`${w}px ${scheme} · the point is drawn with its icon`, await vp.locator('.bkp-points li .bkp-point-icon svg').count() === 1);
     ok(`${w}px ${scheme} · the header says Select a Date & Time, with the zone picker in it`, await vp.locator('.bkp-pick-head #bkp-zone').count() === 1);
     ok(`${w}px ${scheme} · the first time is highlighted`, await vp.locator('.bkp-slot[data-first]').count() === 1);
     const o = await vp.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     ok(`${w}px ${scheme} · no horizontal overflow`, o <= 0, `${o}px`);
+    const out = await spill(vp);
+    ok(`${w}px ${scheme} · nothing reaches past its card`, out <= 0, `${out}px`);
     if (w === 1280 && scheme === 'light') {
       ok('1280px · the two cards sit side by side', await vp.evaluate(() => {
         const [a, b] = [...document.querySelectorAll('.bkp-panel')].map(e => e.getBoundingClientRect());

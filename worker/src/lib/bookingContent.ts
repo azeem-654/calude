@@ -100,7 +100,7 @@ export function cleanLines(v: unknown, max: number, len: number): string[] {
 
 /* ── The page's colour ─────────────────────────────────────────────────── */
 
-/** The colour the page starts in: a deep green. The owner picks their own in the editor. */
+/** The legacy look's colour, a deep green; every theme has its own (BOOKING_THEMES). */
 export const DEFAULT_ACCENT = '#0f6b4c';
 /** Swatches the editor offers beside the brand colour and a free pick. */
 export const ACCENT_SWATCHES = ['#0f6b4c', '#1d4ed8', '#6d28d9', '#be123c', '#c2410c', '#0f766e', '#334155', '#111827'];
@@ -120,6 +120,187 @@ export function inkOn(hex: string): '#ffffff' | '#0f172a' {
   const L = 0.2126 * lin(1) + 0.7152 * lin(3) + 0.0722 * lin(5);
   /* Contrast against white vs against #0f172a (L ≈ 0.0089). */
   return (1.05 / (L + 0.05)) >= ((L + 0.05) / 0.0589) ? '#ffffff' : '#0f172a';
+}
+
+/* ── Colour themes ─────────────────────────────────────────────────────── */
+
+/**
+ * A page's whole look: the ground, the cards, the lines, the words, the
+ * colour and the heading face. The owner picks one in the editor
+ * (`theme`); the accent they pick, if any, overrides the theme's own.
+ *
+ * Kept as colours here rather than as CSS so the page, the editor's swatch
+ * cards and the computed ink on the accent all read one table. Fonts are the
+ * system's (a serif stack like the shop themes'): the page loads nothing it
+ * did not already load.
+ *
+ * `light` is the look pages had before themes, and the one a page with no
+ * `theme` keeps — an owner who never opens the editor again sees no change.
+ * It alone follows the visitor's light/dark preference (bookingPage.css);
+ * every other theme is the colours its owner chose, whatever the visitor's
+ * system says.
+ */
+export interface BookingTheme {
+  id: string;
+  label: string;
+  hint: string;
+  dark: boolean;
+  /** The ground, the cards, an inset panel (the month), chips. */
+  bg: string; card: string; inset: string; chip: string;
+  line: string; text: string; soft: string; mute: string;
+  accent: string;
+  /** The soft shapes in the corners; '' for none. */
+  glow: string;
+  /** Headings (and, where `serifBody`, the description) in a serif. */
+  serif: boolean;
+  serifBody: boolean;
+  /** The header band: a solid block of the accent, or the card itself. */
+  band: 'solid' | 'plain';
+}
+
+export const SERIF_STACK = 'Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", Times, serif';
+export const SANS_STACK = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+
+export const BOOKING_THEMES: BookingTheme[] = [
+  {
+    id: 'midnight-lime', label: 'Midnight lime', hint: 'Near-black, lime glow, serif headings', dark: true,
+    bg: '#0a0d0b', card: '#121714', inset: '#0c100e', chip: '#161d19', line: '#26302a', text: '#f1f5f2', soft: '#b7c2bb', mute: '#7f8b84',
+    accent: '#b6f35c', glow: '#9be33f', serif: true, serifBody: true, band: 'plain',
+  },
+  {
+    id: 'light', label: 'Light', hint: 'White cards, a band in your colour', dark: false,
+    bg: '#f3f5f4', card: '#ffffff', inset: '#f7f9f8', chip: '#f3f6f5', line: '#e5e9e7', text: '#0f1a16', soft: '#4a5752', mute: '#84908b',
+    accent: '#0f6b4c', glow: '', serif: false, serifBody: false, band: 'solid',
+  },
+  {
+    id: 'midnight-blue', label: 'Midnight blue', hint: 'Deep navy, sky-blue light', dark: true,
+    bg: '#070b16', card: '#0f1626', inset: '#0a101d', chip: '#131c30', line: '#22304a', text: '#eef3fb', soft: '#aebbd3', mute: '#7686a3',
+    accent: '#5cb8ff', glow: '#3b82f6', serif: false, serifBody: false, band: 'plain',
+  },
+  {
+    id: 'royal-purple', label: 'Royal purple', hint: 'Plum night, violet glow, serif', dark: true,
+    bg: '#0e0a17', card: '#171124', inset: '#110c1c', chip: '#1d1530', line: '#32264a', text: '#f4f0fb', soft: '#c2b6d9', mute: '#8b7ea6',
+    accent: '#c084fc', glow: '#a855f7', serif: true, serifBody: false, band: 'plain',
+  },
+  {
+    id: 'warm-sand', label: 'Warm sand', hint: 'Cream and terracotta, serif', dark: false,
+    bg: '#f4ede2', card: '#fffaf2', inset: '#f7efe3', chip: '#f6ecdd', line: '#e6d8c3', text: '#2b2118', soft: '#5f4f40', mute: '#968470',
+    accent: '#b4532a', glow: '#e9b98f', serif: true, serifBody: true, band: 'plain',
+  },
+  {
+    id: 'mono', label: 'Clean white & black', hint: 'White, black, nothing else', dark: false,
+    bg: '#ffffff', card: '#ffffff', inset: '#f6f6f6', chip: '#f4f4f4', line: '#e4e4e4', text: '#0a0a0a', soft: '#3f3f3f', mute: '#8a8a8a',
+    accent: '#0a0a0a', glow: '', serif: false, serifBody: false, band: 'plain',
+  },
+];
+/** What a new page starts in — the owner's reference. */
+export const DEFAULT_THEME = 'midnight-lime';
+/** What a page published before themes keeps. */
+export const LEGACY_THEME = 'light';
+
+/** A theme id the page knows, or '' (which reads as the legacy look). */
+export function cleanTheme(v: unknown): string {
+  const s = String(v ?? '').trim();
+  return BOOKING_THEMES.some(t => t.id === s) ? s : '';
+}
+export function themeOf(v: unknown): BookingTheme {
+  const id = cleanTheme(v) || LEGACY_THEME;
+  return BOOKING_THEMES.find(t => t.id === id)!;
+}
+
+/**
+ * Every colour the page draws with, as custom properties: the theme's, with
+ * the owner's accent over it and the ink on the accent computed. `light`
+ * leaves its surfaces to the stylesheet, which also gives it a dark version
+ * for a visitor who asks for one.
+ */
+export function themeVars(cfg: { theme?: unknown; accent?: unknown }): Record<string, string> {
+  const t = themeOf(cfg.theme);
+  const accent = cleanHex(cfg.accent) || t.accent;
+  const v: Record<string, string> = {
+    '--bk-accent': accent,
+    '--bk-accent-ink': inkOn(accent),
+    '--bk-head': t.serif ? SERIF_STACK : SANS_STACK,
+    '--bk-desc-font': t.serifBody ? SERIF_STACK : SANS_STACK,
+  };
+  if (t.id === LEGACY_THEME) return v;
+  return {
+    ...v,
+    '--bk-bg': t.bg, '--bk-card': t.card, '--bk-inset': t.inset, '--bk-chip': t.chip, '--bk-line': t.line,
+    '--bk-text': t.text, '--bk-soft': t.soft, '--bk-mute': t.mute,
+    '--bk-glow': t.glow || 'transparent',
+    '--bk-mix': t.card, '--bk-ink-mix': t.dark ? '#ffffff' : '#000000',
+    '--bk-good': t.dark ? '#4ade80' : '#0f7b3d', '--bk-bad': t.dark ? '#f87171' : '#b42318',
+    '--bk-shadow': t.dark ? '0 1px 2px rgba(0,0,0,.4), 0 30px 70px -30px rgba(0,0,0,.85)' : '0 1px 2px rgba(15,23,42,.04), 0 18px 48px -22px rgba(15,23,42,.18)',
+  };
+}
+
+/* ── The logo on the page ──────────────────────────────────────────────── */
+
+/**
+ * What a logo is like, measured from its pixels when it is uploaded: how
+ * light its visible ink is, whether it has see-through parts, and its shape.
+ * A dark mark with a transparent ground vanishes on a dark page and a white
+ * one on a light page — those, and only those, get a plate behind them.
+ */
+export type LogoTone = 'dark' | 'light' | 'opaque';
+export function logoToneOf(px: { lum: number; transparent: boolean }): LogoTone {
+  if (!px.transparent) return 'opaque';
+  return px.lum < 0.45 ? 'dark' : 'light';
+}
+export function cleanLogoTone(v: unknown): LogoTone | '' {
+  return v === 'dark' || v === 'light' || v === 'opaque' ? v : '';
+}
+/** A logo's width over its height, kept to something drawable. */
+export function cleanRatio(v: unknown): number {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.round(Math.min(8, Math.max(0.25, n)) * 100) / 100 : 0;
+}
+/**
+ * Whether the logo needs a plate on this theme. An unmeasured logo (uploaded
+ * before this was measured) gets one on a dark page, where most logos —
+ * drawn for white paper — would otherwise disappear.
+ */
+export function logoPlate(tone: LogoTone | '', dark: boolean): boolean {
+  if (tone === 'opaque') return false;
+  if (!tone) return dark;
+  return dark ? tone === 'dark' : tone === 'light';
+}
+/** A logo wide enough to be the name itself (a wordmark): the name is then not repeated beside it. */
+export const isWordmark = (ratio: number): boolean => ratio >= 2.2;
+
+/* ── A testimonial, only as the owner typed it ─────────────────────────── */
+
+export interface BookingTestimonial { quote: string; name: string; role: string; photoUrl: string }
+
+/**
+ * The owner's own customer's words, or nothing. No default, never written by
+ * the AI or read off a website: a quote with no name behind it is dropped.
+ */
+export function cleanTestimonial(v: unknown): BookingTestimonial | null {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  const quote = clipText(String(o.quote ?? '').replace(/^["“”']+|["“”']+$/g, ''), 400);
+  const name = clipText(o.name, 80);
+  if (!quote || !name) return null;
+  return { quote, name, role: clipText(o.role, 80), photoUrl: String(o.photoUrl ?? '') };
+}
+
+/* ── "Need help?" ──────────────────────────────────────────────────────── */
+
+/**
+ * Where "Need help?" goes: an email address (a mailto link) or an https page,
+ * or nowhere — the link is not drawn without one.
+ */
+export function helpLink(v: unknown): { href: string; label: string } | null {
+  const s = String(v ?? '').trim();
+  if (!s || s.length > 300) return null;
+  if (/^[^\s@<>()"',;:]+@[^\s@<>()"',;:]+\.[a-z]{2,}$/i.test(s)) return { href: `mailto:${s}`, label: s };
+  try {
+    const u = new URL(/^https?:\/\//i.test(s) ? s : `https://${s}`);
+    if (u.protocol !== 'https:' || u.username || u.password || !u.hostname.includes('.')) return null;
+    return { href: u.toString(), label: u.hostname.replace(/^www\./, '') };
+  } catch { return null; }
 }
 
 /* ── What a website states, read without AI ─────────────────────────────── */

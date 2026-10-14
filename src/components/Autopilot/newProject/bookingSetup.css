@@ -120,3 +120,17 @@
 .bks-preview-bar .bks-tabs button { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; font-size: 12px; }
 .bks-frame { position: relative; overflow: hidden; border-radius: 16px; border: 1px solid #e6e9f0; background: #f3f5f4; min-height: 200px; }
 .bks-frame > .bkp { position: absolute; top: 0; left: 0; }
+
+/* ── The colour themes, each a small picture of the page ── */
+.bks-themes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.bks-theme { display: grid; gap: 6px; padding: 6px; border-radius: 12px; border: 1.5px solid #e6e9f0; background: #fff; cursor: pointer; text-align: left; font: inherit; min-width: 0; }
+.bks-theme[aria-pressed="true"] { border-color: #5b46e5; box-shadow: 0 0 0 2px #e4defe; }
+.bks-theme-pic { position: relative; display: grid; grid-template-columns: 1.15fr 1fr; gap: 4px; padding: 7px; border-radius: 8px; height: 64px; overflow: hidden; }
+.bks-theme-pic > span { display: grid; align-content: start; gap: 4px; padding: 5px; border-radius: 5px; border: 1px solid; min-width: 0; }
+.bks-theme-pic i { display: block; height: 12px; border-radius: 3px; font: italic 700 9px/12px Georgia, serif; color: transparent; }
+.bks-theme-pic b { display: block; width: 12px; height: 12px; border-radius: 50%; }
+.bks-theme-pic em { display: block; height: 4px; border-radius: 2px; }
+.bks-theme-words { display: grid; gap: 1px; padding: 0 2px 2px; min-width: 0; }
+.bks-theme-words b { font-size: 12.5px; color: #17191c; }
+.bks-theme-words small { font-size: 11px; color: #6b7280; line-height: 1.35; }
+.bks-swatch-theme { box-shadow: 0 0 0 1px #d8dbe4, inset 0 0 0 2px rgba(255, 255, 255, .35); }

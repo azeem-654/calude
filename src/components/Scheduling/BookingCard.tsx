@@ -6,15 +6,24 @@
  *
  * ── The look ──
  *
- * The owner's reference, Calendly-style, as two cards. Left: a band in the
- * page's colour with the business's logo, name and tagline; the host's photo,
- * name and role, topic pills; the title and description; four chips (how
- * long, where, the visitor's own zone, one-to-one with whom); a video beside
- * "What we can discuss"; and the points, each with its icon, as a grid of
- * small cards. Right: "Select a Date & Time" with the zone picker in its
- * header, the month, and the day's times as a list of pills. No platform
- * name, no trial offer, no testimonial, no "verified" tick — nothing on it
- * belongs to anybody but the owner, and nothing claims what was not checked.
+ * The owner's reference, as two cards. Left: the business (logo mark, name in
+ * the theme's heading face, tagline); "Meet with" the host — a large round
+ * photo in a glowing ring, name, role, topic pills; the title and
+ * description; four items (how long, where, the visitor's own zone,
+ * one-to-one with whom), each with an outlined icon; the video as a still
+ * beside "What we can discuss"; the points as icon cards; and, only when the
+ * owner typed one, their own customer's testimonial. Right: "Select a Date &
+ * Time" with the zone picker, the month in an inset panel, the day's times as
+ * pills, and what happens after booking with "Need help?" when there is
+ * somewhere for it to go.
+ *
+ * Colours, the heading face and the ground come from the page's theme
+ * (`themeVars` in services/bookingContent.ts); the owner's accent, when set,
+ * overrides the theme's. No platform name, no trial offer, no "verified"
+ * tick, no invented testimonial — nothing on it belongs to anybody but the
+ * owner, and nothing claims what was not checked: a clip's length only from
+ * the file, a Google Meet link only when the server says a calendar is
+ * connected, a confirmation email only when the workspace can send one.
  *
  * ── Times ──
  *
@@ -25,21 +34,21 @@
  * booking with the same code that drew the slot). A slot carries both — the
  * visitor picks "8:00 pm Tuesday" and the booking is filed as the owner's
  * "09:00 Monday".
- *
- * Nothing here is decoration pretending to be data: no ratings, no "booked 40
- * times this week", no availability that is not the schedule's, and a video's
- * length only when the file itself says it.
  */
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import {
-  ArrowLeft, CalendarCheck, CalendarDays, Check, ChevronLeft, ChevronRight, Clock, Globe, Loader, MapPin, Phone, Play, UserRound, Video,
+  ArrowLeft, CalendarCheck, CalendarDays, Check, ChevronLeft, ChevronRight, Clock, Globe, HelpCircle, Loader, MapPin, Phone, Play,
+  Quote, UserRound, Users, Video,
 } from 'lucide-react';
 import type { EventType, ScheduleAvailability } from '../../types';
 import {
   addDays, allZones, browserZone, clockLabel, dayWords, isZone, offsetLabel, ownerDatesFor, slotsForVisitorDay, utcToWall,
   videoEmbedOf, weekdayOf, zoneCity, type Busy, type Slot, type SlotRules,
 } from '../../services/bookingTime';
-import { cleanHex, DEFAULT_ACCENT, DISCUSS_TITLE, inkOn, pointsOf, POINTS_TITLE } from '../../services/bookingContent';
+import {
+  cleanTestimonial, DISCUSS_TITLE, helpLink, isWordmark, logoPlate, pointsOf, POINTS_TITLE, themeOf, themeVars,
+} from '../../services/bookingContent';
+import type { BookingDelivery } from '../../services/booking';
 import { PointIcon } from './bookingIcons';
 import './bookingPage.css';
 
@@ -66,23 +75,35 @@ export function rulesFor(cfg: PageConfig, eventType?: EventType | null): SlotRul
   };
 }
 
-/**
- * The page's colour as custom properties, for the card and the ground behind
- * it. The text on it is computed from the colour, never chosen separately.
- */
-export function accentStyle(cfg: { accent?: string }): CSSProperties {
-  const accent = cleanHex(cfg.accent) || DEFAULT_ACCENT;
-  return { '--bk-accent': accent, '--bk-accent-ink': inkOn(accent) } as CSSProperties;
+/** The page's colours as custom properties, for the card. */
+export function accentStyle(cfg: { accent?: string; theme?: string }): CSSProperties {
+  return themeVars(cfg) as CSSProperties;
 }
 
-function PlaceIcon({ where, size = 16 }: { where: string; size?: number }) {
+/**
+ * What the page's root carries: the theme's colours, its id (the stylesheet
+ * draws the ground and its glow from it) and whether it is dark.
+ */
+export function themeRoot(cfg: { accent?: string; theme?: string }): { style: CSSProperties; 'data-bk-theme': string; 'data-bk-dark'?: '' } {
+  const t = themeOf(cfg.theme);
+  return { style: accentStyle(cfg), 'data-bk-theme': t.id, ...(t.dark ? { 'data-bk-dark': '' as const } : {}) };
+}
+
+function PlaceIcon({ where, size = 18 }: { where: string; size?: number }) {
   const w = where.toLowerCase();
   if (/phone|call me|ring/.test(w) && !/video/.test(w)) return <Phone size={size} />;
   if (/video|zoom|meet|teams|online|whereby/.test(w)) return <Video size={size} />;
   return <MapPin size={size} />;
 }
+const isVideoPlace = (where: string) => /video|meet|online/i.test(where) && !/zoom|teams|whereby/i.test(where);
 
 const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+
+/** "Jane Bright" → "JB": what the photo's circle shows until there is a photo. */
+export function initialsOf(name: string): string {
+  const words = name.replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+  return ((words[0]?.[0] ?? '') + (words.length > 1 ? words[words.length - 1][0] : '')).toUpperCase() || '?';
+}
 
 /**
  * The video: a still with a play button until pressed, then the player. A
@@ -97,6 +118,7 @@ function BookingVideo({ fileUrl, link }: { fileUrl?: string; link?: string }) {
   const embed = fileUrl ? null : videoEmbedOf(link);
   useEffect(() => { setPlaying(false); setLength(0); }, [fileUrl, link]);
   if (!fileUrl && !embed) return null;
+  const caption = <span className="bkp-play-caption">Watch a quick intro before booking</span>;
   if (fileUrl) {
     return (
       <div className="bkp-video" data-playing={playing ? '1' : undefined}>
@@ -105,6 +127,7 @@ function BookingVideo({ fileUrl, link }: { fileUrl?: string; link?: string }) {
         {!playing && (
           <button type="button" className="bkp-play" onClick={() => setPlaying(true)} aria-label="Play the video">
             <span className="bkp-play-btn"><Play size={22} fill="currentColor" /></span>
+            {caption}
             {length > 0 && <small>{mmss(length)}</small>}
           </button>
         )}
@@ -129,6 +152,7 @@ function BookingVideo({ fileUrl, link }: { fileUrl?: string; link?: string }) {
               onError={ev => { ev.currentTarget.style.display = 'none'; }} />
           )}
           <span className="bkp-play-btn"><Play size={22} fill="currentColor" /></span>
+          {caption}
           <small>{host}</small>
         </button>
       )}
@@ -136,11 +160,27 @@ function BookingVideo({ fileUrl, link }: { fileUrl?: string; link?: string }) {
   );
 }
 
+/**
+ * The logo, never stretched or cut: contained in its box, a wordmark given
+ * the width it needs, and a plate behind it only when its ink would vanish
+ * on this theme's ground (measured at upload — `logoTone`).
+ */
+function LogoMark({ cfg, brand, dark }: { cfg: PageConfig; brand: string; dark: boolean }) {
+  const ratio = Number(cfg.logoRatio) || 1;
+  if (!cfg.logoUrl) return <span className="bkp-logo-tile bkp-logo-letter" aria-hidden="true">{initialsOf(brand).slice(0, 1)}</span>;
+  return (
+    <span className="bkp-logo-tile" data-plate={logoPlate(cfg.logoTone ?? '', dark) ? '1' : undefined} data-wide={isWordmark(ratio) ? '1' : ratio > 1.3 ? 'some' : undefined}>
+      <img className="bkp-logo" src={cfg.logoUrl} alt={brand ? `${brand} logo` : 'Logo'} />
+    </span>
+  );
+}
+
 /** The left side: the business, the person, the meeting, and why to book it. */
-export function BookingInfo({ cfg, businessName, eventType, slot, visitorTz, h24, hideMedia, onBack, backLabel, rescheduleOf }: {
+export function BookingInfo({ cfg, businessName, eventType, slot, visitorTz, h24, hideMedia, onBack, backLabel, rescheduleOf, delivery }: {
   cfg: PageConfig; businessName: string; eventType?: EventType | null; slot?: Slot | null; visitorTz: string; h24: boolean;
-  hideMedia?: boolean; onBack?: () => void; backLabel?: string; rescheduleOf?: string;
+  hideMedia?: boolean; onBack?: () => void; backLabel?: string; rescheduleOf?: string; delivery?: BookingDelivery;
 }) {
+  const theme = themeOf(cfg.theme);
   const title = eventType?.name || cfg.title || 'Meeting';
   const description = eventType?.description || cfg.description || '';
   const where = eventType?.location || cfg.location || '';
@@ -156,15 +196,16 @@ export function BookingInfo({ cfg, businessName, eventType, slot, visitorTz, h24
   const hasVideo = !!cfg.videoFileUrl || !!videoEmbedOf(cfg.videoUrl);
   const endsAt = slot ? utcToWall(slot.utc + duration * 60000, visitorTz).time : '';
   const pointsTitle = (cfg.pointsTitle || '').trim() || POINTS_TITLE;
+  const quote = cleanTestimonial(cfg.testimonial);
+  const wordmark = !!cfg.logoUrl && isWordmark(Number(cfg.logoRatio) || 1);
+  const meet = !!delivery?.meet && isVideoPlace(where);
 
   return (
     <aside className="bkp-info bkp-panel">
-      <header className="bkp-band">
-        {cfg.logoUrl
-          ? <span className="bkp-logo-tile"><img className="bkp-logo" src={cfg.logoUrl} alt={businessName ? `${businessName} logo` : 'Logo'} /></span>
-          : <span className="bkp-logo-tile bkp-logo-letter" aria-hidden="true">{brand.charAt(0).toUpperCase()}</span>}
+      <header className="bkp-band" data-band={theme.band}>
+        <LogoMark cfg={cfg} brand={brand} dark={theme.band === 'solid' ? false : theme.dark} />
         <span className="bkp-band-words">
-          <b>{brand}</b>
+          <b className={wordmark ? 'bkp-sr' : 'bkp-brand'}>{brand}</b>
           {tagline && <span>{tagline}</span>}
         </span>
       </header>
@@ -173,27 +214,30 @@ export function BookingInfo({ cfg, businessName, eventType, slot, visitorTz, h24
         {onBack && <button type="button" className="bkp-back" onClick={onBack}><ArrowLeft size={14} /> {backLabel ?? 'Back'}</button>}
         {(host || cfg.photoUrl) && (
           <div className="bkp-host">
-            {cfg.photoUrl
-              ? <img className="bkp-avatar" src={cfg.photoUrl} alt="" />
-              : <span className="bkp-avatar bkp-avatar-letter" aria-hidden="true">{(host || '?').charAt(0).toUpperCase()}</span>}
+            <span className="bkp-avatar-ring">
+              {cfg.photoUrl
+                ? <img className="bkp-avatar" src={cfg.photoUrl} alt={host ? `${host}` : ''} />
+                : <span className="bkp-avatar bkp-avatar-letter" aria-hidden="true">{initialsOf(host || brand)}</span>}
+            </span>
             <span className="bkp-host-words">
+              <small className="bkp-meet">Meet with</small>
               {host && <b className="bkp-host-name">{host}</b>}
               {role && <span className="bkp-host-role">{role}</span>}
+              {tags.length > 0 && <ul className="bkp-tags" aria-label="Topics">{tags.map((t, i) => <li key={i}>{t}</li>)}</ul>}
             </span>
           </div>
         )}
-        {tags.length > 0 && <ul className="bkp-tags" aria-label="Topics">{tags.map((t, i) => <li key={i}>{t}</li>)}</ul>}
 
         <h1 className="bkp-title">{rescheduleOf ? `Reschedule: ${rescheduleOf}` : title}</h1>
         {description && <p className="bkp-desc">{description}</p>}
 
         <ul className="bkp-chips">
-          <li><Clock size={16} /> <span>{duration} min</span></li>
-          {where && <li><PlaceIcon where={where} /> <span>{where}</span></li>}
-          <li><Globe size={16} /> <span>{zoneCity(visitorTz)} time ({offsetLabel(slot?.utc ?? Date.now(), visitorTz)})</span></li>
-          {host && <li><UserRound size={16} /> <span>One-to-one with {host}</span></li>}
+          <li><span className="bkp-chip-icon"><Clock size={18} /></span><span><b>{duration} minutes</b><small>Length of the call</small></span></li>
+          {where && <li><span className="bkp-chip-icon"><PlaceIcon where={where} /></span><span><b>{where}</b><small>{meet ? 'Google Meet' : 'How you will meet'}</small></span></li>}
+          <li><span className="bkp-chip-icon"><Globe size={18} /></span><span><b>{visitorTz.replace(/_/g, ' ')} ({offsetLabel(slot?.utc ?? Date.now(), visitorTz)})</b><small>Your local time</small></span></li>
+          {host && <li><span className="bkp-chip-icon"><Users size={18} /></span><span><b>One-to-one</b><small>With {host}</small></span></li>}
           {slot && (
-            <li data-on="1"><CalendarCheck size={16} /> <span>{clockLabel(slot.visitorTime, h24)} – {clockLabel(endsAt, h24)}, {dayWords(slot.utc, visitorTz)}</span></li>
+            <li data-on="1"><span className="bkp-chip-icon"><CalendarCheck size={18} /></span><span><b>{clockLabel(slot.visitorTime, h24)} – {clockLabel(endsAt, h24)}</b><small>{dayWords(slot.utc, visitorTz)}</small></span></li>
           )}
         </ul>
 
@@ -202,8 +246,8 @@ export function BookingInfo({ cfg, businessName, eventType, slot, visitorTz, h24
             {hasVideo && <BookingVideo fileUrl={cfg.videoFileUrl} link={cfg.videoUrl} />}
             {discuss.length > 0 && (
               <div className="bkp-discuss">
-                <h3>{DISCUSS_TITLE}</h3>
-                <ul>{discuss.map((d, i) => <li key={i}><Check size={14} strokeWidth={3} /> <span>{d}</span></li>)}</ul>
+                <h3>{DISCUSS_TITLE}:</h3>
+                <ul>{discuss.map((d, i) => <li key={i}><span className="bkp-tick-dot"><Check size={12} strokeWidth={3.5} /></span> <span>{d}</span></li>)}</ul>
               </div>
             )}
           </div>
@@ -222,8 +266,44 @@ export function BookingInfo({ cfg, businessName, eventType, slot, visitorTz, h24
             </ul>
           </section>
         )}
+
+        {!hideMedia && quote && (
+          <figure className="bkp-quote" data-testid="booking-testimonial">
+            <Quote size={26} className="bkp-quote-mark" aria-hidden="true" />
+            <blockquote>{quote.quote}</blockquote>
+            <figcaption>
+              <span><b>{quote.name}</b>{quote.role && <small>{quote.role}</small>}</span>
+              {quote.photoUrl
+                ? <img className="bkp-quote-photo" src={quote.photoUrl} alt="" />
+                : <span className="bkp-quote-photo bkp-avatar-letter" aria-hidden="true">{initialsOf(quote.name)}</span>}
+            </figcaption>
+          </figure>
+        )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * The line under the times: what happens after booking, worded from what the
+ * server says this workspace will do, and "Need help?" only with somewhere to go.
+ */
+function AfterBooking({ cfg, delivery }: { cfg: PageConfig; delivery?: BookingDelivery }) {
+  const where = cfg.location || '';
+  const help = helpLink(cfg.help);
+  const line = delivery?.confirms
+    ? `After you book, you'll receive a confirmation email with the meeting details${delivery.meet && isVideoPlace(where) ? ' and a Google Meet link' : ''}.`
+    : 'After you book, you will see the meeting details straight away and can add them to your calendar.';
+  return (
+    <div className="bkp-after">
+      <span className="bkp-after-icon"><CalendarCheck size={18} /></span>
+      <p>{line}</p>
+      {help && (
+        <a className="bkp-help" href={help.href} target={help.href.startsWith('mailto:') ? undefined : '_blank'} rel="noopener noreferrer" title={help.label}>
+          <HelpCircle size={16} /> Need Help?
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -246,6 +326,8 @@ export interface BookingCardProps {
   /** Fixed in tests and the preview; the real clock otherwise. */
   nowMs?: number;
   initialZone?: string;
+  /** What the server says happens after booking (a confirmation email, a Meet link); unknown in the editor's preview. */
+  delivery?: BookingDelivery;
 }
 
 export default function BookingCard(p: BookingCardProps) {
@@ -340,7 +422,7 @@ export default function BookingCard(p: BookingCardProps) {
     <main className="bkp-card" style={accentStyle(cfg)}>
       <BookingInfo
         cfg={cfg} businessName={p.businessName} eventType={eventType} slot={step === 'form' ? slot : null}
-        visitorTz={visitorTz} h24={h24} hideMedia={step === 'form'} rescheduleOf={p.rescheduleOf}
+        visitorTz={visitorTz} h24={h24} hideMedia={step === 'form'} rescheduleOf={p.rescheduleOf} delivery={p.delivery}
         onBack={step === 'form' ? () => setStep('pick') : p.onBackToTypes}
         backLabel={step === 'form' ? 'Back to times' : 'All meeting types'}
       />
@@ -348,8 +430,11 @@ export default function BookingCard(p: BookingCardProps) {
       {step === 'form' && slot ? (
         <section className="bkp-pick bkp-panel" aria-label="Your details">
           <div className="bkp-pick-head">
-            <span className="bkp-pick-icon"><UserRound size={18} /></span>
-            <h2 className="bkp-h2">Enter your details</h2>
+            <span className="bkp-pick-icon"><UserRound size={20} /></span>
+            <span className="bkp-pick-words">
+              <h2 className="bkp-h2">Enter your details</h2>
+              <small>{clockLabel(slot.visitorTime, h24)}, {dayWords(slot.utc, visitorTz, { weekday: 'long', day: 'numeric', month: 'long' })}</small>
+            </span>
           </div>
           {!sameZone && (
             <p className="bkp-ownertime">That is {clockLabel(slot.ownerTime, h24)} on {dayWords(slot.utc, rules.timezone, { weekday: 'long', day: 'numeric', month: 'long' })} for {hostWord} in {zoneCity(rules.timezone)}.</p>
@@ -381,14 +466,18 @@ export default function BookingCard(p: BookingCardProps) {
               ? <p className="bkp-note">Preview — bookings are taken on the live page.</p>
               : <p className="bkp-note">You can reschedule or cancel from the confirmation.</p>}
           </form>
+          <AfterBooking cfg={cfg} delivery={p.delivery} />
         </section>
       ) : (
         <section className="bkp-pick bkp-panel" aria-label="Pick a time">
           <div className="bkp-pick-head">
-            <span className="bkp-pick-icon"><CalendarDays size={18} /></span>
-            <h2 className="bkp-h2">Select a Date &amp; Time</h2>
+            <span className="bkp-pick-icon"><CalendarDays size={20} /></span>
+            <span className="bkp-pick-words">
+              <h2 className="bkp-h2">Select a Date &amp; Time</h2>
+              <small>Choose a convenient time from the available slots.</small>
+            </span>
             <label className="bkp-zone" title="Time zone">
-              <Globe size={14} aria-hidden="true" />
+              <Globe size={15} aria-hidden="true" />
               <span className="bkp-sr">Time zone</span>
               <select id="bkp-zone" className="bkp-select" data-field="booking.visitorZone" value={visitorTz}
                 onChange={e => { setVisitorTz(e.target.value); setSlot(null); setDay(null); }}>
@@ -426,7 +515,7 @@ export default function BookingCard(p: BookingCardProps) {
 
             {day && (
               <div className="bkp-times" key={`${day}|${visitorTz}`}>
-                <h3>{dayWords(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), 12), 'UTC')}</h3>
+                <h3>{dayWords(Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10), 12), 'UTC', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</h3>
                 {daySlots.length === 0 ? <p className="bkp-empty">No times on this day.</p> : (
                   <div className="bkp-slots">
                     {daySlots.map(s => {
@@ -461,6 +550,7 @@ export default function BookingCard(p: BookingCardProps) {
               <button type="button" aria-pressed={h24} onClick={() => setH24(true)}>24h</button>
             </span>
           </div>
+          <AfterBooking cfg={cfg} delivery={p.delivery} />
         </section>
       )}
     </main>

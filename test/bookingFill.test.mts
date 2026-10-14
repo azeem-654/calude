@@ -9,6 +9,7 @@
  *   npm run test:bookingfill
  */
 import {
+  BOOKING_THEMES, cleanLogoTone, cleanRatio, cleanTestimonial, cleanTheme, helpLink, isWordmark, logoPlate, logoToneOf, themeOf, themeVars,
   BOOKING_ICONS, cleanAutofill, cleanHex, cleanLines, copyText, inkOn, pageFacts, plainFill, pointsOf, videoLinkOf, autofillPrompt,
 } from '../worker/src/lib/bookingContent';
 
@@ -30,6 +31,34 @@ console.log('\nColour');
 ok('a hex is kept, short hex widened', cleanHex('#0F6B4C') === '#0f6b4c' && cleanHex('#abc') === '#aabbcc');
 ok('anything else is refused', cleanHex('red') === '' && cleanHex('#12345g') === '' && cleanHex('url(x)') === '' && cleanHex('#0f6b4c; background:url(x)') === '');
 ok('white ink on deep green, dark ink on yellow', inkOn('#0f6b4c') === '#ffffff' && inkOn('#facc15') === '#0f172a' && inkOn('#ffffff') === '#0f172a');
+
+console.log('\nThemes');
+ok('the six themes are there, the reference first', BOOKING_THEMES.length >= 6 && BOOKING_THEMES[0].id === 'midnight-lime'
+  && ['light', 'midnight-blue', 'royal-purple', 'warm-sand', 'mono'].every(id => BOOKING_THEMES.some(t => t.id === id)));
+ok('a page with no theme keeps the light look; an unknown one is dropped', themeOf(undefined).id === 'light' && cleanTheme('neon') === '' && themeOf('neon').id === 'light');
+const lime = themeVars({ theme: 'midnight-lime' });
+ok('Midnight lime: dark ground, lime accent with dark ink, serif headings', lime['--bk-bg'] === '#0a0d0b' && lime['--bk-accent'] === '#b6f35c' && lime['--bk-accent-ink'] === '#0f172a' && /Georgia/.test(lime['--bk-head']));
+ok("the owner's accent overrides the theme's, ink recomputed", themeVars({ theme: 'midnight-lime', accent: '#1d4ed8' })['--bk-accent'] === '#1d4ed8' && themeVars({ theme: 'midnight-lime', accent: '#1d4ed8' })['--bk-accent-ink'] === '#ffffff');
+ok('a junk accent falls back to the theme', themeVars({ theme: 'royal-purple', accent: 'red;x' })['--bk-accent'] === '#c084fc');
+ok('light leaves its surfaces to the stylesheet (it follows the visitor\'s dark mode)', !('--bk-bg' in themeVars({ theme: 'light' })) && '--bk-bg' in themeVars({ theme: 'mono' }));
+ok('every theme reads: ink on its accent and text on its card contrast', BOOKING_THEMES.every(t => {
+  const L = (h: string) => { const c = [1, 3, 5].map(i => { const v = parseInt(h.slice(i, i + 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const ratio = (a: string, b: string) => { const [x, y] = [L(a), L(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+  return ratio(t.text, t.card) >= 7 && ratio(t.soft, t.card) >= 4.5 && ratio(themeVars({ theme: t.id })['--bk-accent-ink'], t.accent) >= 4.5;
+}));
+
+console.log('\nThe logo, the testimonial, Need help?');
+ok('a logo with its own ground never gets a plate', !logoPlate('opaque', true) && !logoPlate('opaque', false));
+ok('a dark mark on a see-through ground gets a plate on a dark page only, a white one on a light page only', logoPlate('dark', true) && !logoPlate('dark', false) && logoPlate('light', false) && !logoPlate('light', true));
+ok('an unmeasured logo gets a plate on a dark page', logoPlate('', true) && !logoPlate('', false));
+ok('tone from pixels', logoToneOf({ lum: 0.1, transparent: true }) === 'dark' && logoToneOf({ lum: 0.9, transparent: true }) === 'light' && logoToneOf({ lum: 0.1, transparent: false }) === 'opaque');
+ok('tone and ratio cleaned', cleanLogoTone('purple') === '' && cleanRatio('abc') === 0 && cleanRatio(40) === 8 && cleanRatio(3.14159) === 3.14);
+ok('a wordmark is wide, a mark is not', isWordmark(3) && !isWordmark(1.2));
+ok('a testimonial needs a quote and a name; quotes trimmed', cleanTestimonial({ quote: 'Great', name: '' }) === null && cleanTestimonial(null) === null
+  && cleanTestimonial({ quote: '“Superb work.”', name: 'Dana Kerr', role: 'Owner' })?.quote === 'Superb work.');
+ok('Need help? goes to an address or an https page, nowhere else', helpLink('hello@brightco.test')?.href === 'mailto:hello@brightco.test'
+  && helpLink('brightco.test/contact')?.href === 'https://brightco.test/contact' && helpLink('http://brightco.test') === null
+  && helpLink('javascript:alert(1)') === null && helpLink('') === null && helpLink('localhost') === null);
 
 console.log('\nWhat a site states, read without AI');
 const html = `<!doctype html><html><head>
@@ -89,6 +118,7 @@ const partial = cleanAutofill({ hostName: 'Jane' }, 'Janet runs it.');
 ok('a name must be whole words on the site (Jane is not Janet)', partial.hostName === '', partial);
 const junk = cleanAutofill('not an object', siteText);
 ok('an answer that is not an object gives empty fields', junk.title === '' && junk.points.length === 0 && junk.tags.length === 0, junk);
+ok('the website fill never proposes a testimonial', !('testimonial' in cleanAutofill({ testimonial: { quote: 'x', name: 'y' } }, 'x y')));
 ok('copyText leaves ordinary words alone', copyText('Plan, launch & grow — in 90 days!', 80) === 'Plan, launch & grow — in 90 days!');
 
 console.log('\nThe prompt');

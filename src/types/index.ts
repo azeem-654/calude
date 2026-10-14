@@ -232,8 +232,18 @@ export interface ScheduleAvailability {
   tagline?: string;
   /** The host's role beside their name ("Founder"). */
   hostRole?: string;
-  /** The page's colour, `#rrggbb`; a deep green when empty. */
+  /** The page's colour, `#rrggbb`, over the theme's own; the theme's when empty. */
   accent?: string;
+  /** The page's colour theme (BOOKING_THEMES); empty is the look pages had before themes ('light'). */
+  theme?: string;
+  /** Measured from the logo at upload: whether its ink is dark or light on a see-through ground, or it has its own. */
+  logoTone?: 'dark' | 'light' | 'opaque' | '';
+  /** The logo's width over its height. */
+  logoRatio?: number;
+  /** The owner's own customer's words — only ever typed by the owner; never filled in for them. */
+  testimonial?: { quote: string; name: string; role: string; photoUrl: string } | null;
+  /** Where "Need help?" goes: an email address or an https page. Not drawn when empty. */
+  help?: string;
   /** Bookable meeting types; when present visitors pick one first. */
   eventTypes?: EventType[];
   automations?: SchedulingAutomations;

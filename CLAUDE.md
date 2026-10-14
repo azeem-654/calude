@@ -320,35 +320,55 @@ migration 0057 (`crm_review_sources`, `crm_gbp_connections`, `crm_reviews`,
 
 `/book/<slug>` (`Scheduling/BookingPage.tsx`) draws `Scheduling/BookingCard.tsx`
 — the owner's reference, as **two cards** side by side from 1060px of box
-(stacked below), laid out by container queries, its own light/dark like AI
-Prospecting. Left: a band in the page's colour (logo tile, business name,
-`tagline`), the host's round photo with name and `hostRole`, topic pills
-(`tags`, ≤ 4), title, description, four chips (length, place, the visitor's
-own zone, "One-to-one with …"), the video as a still with a play button
-beside **What we can discuss** (`discuss`, ticked), and the points as icon
-cards under `pointsTitle` ("This call is for you if you want to:"). Right:
-**Select a Date & Time** with the zone picker in its header, the month
-(open days tinted with a dot, the chosen one filled), the day's times as
-pills, the first highlighted. **No platform name, no trial offer, no
-testimonial, no "verified" tick** — the page is the owner's alone and claims
-nothing that was not checked; a clip's length is shown only from the file.
-The colour is `accent` (`#rrggbb`, deep green by default; the editor offers
-the workspace's brand colour, swatches and a free pick), applied as
-`--bk-accent` by `accentStyle`, with the ink on it computed (`inkOn`).
+(stacked below), laid out by container queries. Left: the business (logo
+mark, name in the heading face, `tagline`); **Meet with** the host — a large
+round photo in a glowing ring (`object-position` near the top for faces,
+uploaded at 640px; initials on a gradient until there is one), name,
+`hostRole`, topic pills (`tags`, ≤ 4); title, description; four items with
+outlined icons (length, place, the visitor's own zone, one-to-one with whom);
+the video as a still ("Watch a quick intro before booking") beside **What we
+can discuss** (`discuss`); the points as icon cards under `pointsTitle`; and a
+**testimonial only when the owner typed one** (`testimonial`: quote + name,
+role, optional photo — upload kind `testimonial`; no default, never filled by
+the website fill, dropped without a name). Right: **Select a Date & Time**
+with the zone pill, the month in an inset panel, the day's times as pills
+(the first lit), and the after-booking line with **Need Help?** — the line
+promises a confirmation email only when `config` answers `delivery.confirms`
+(the workspace can send and has not switched it off) and a Google Meet link
+only with `delivery.meet` (a connected calendar) and a video place; the help
+link only when `help` (an email → mailto, or an https page, `helpLink`) is
+set. **No platform name, no trial offer, no invented testimonial, no
+"verified" tick**; a clip's length only from the file.
+
+**Themes** (`BOOKING_THEMES` in `worker/src/lib/bookingContent.ts`, picked
+as swatch cards in the editor, published as `theme`): Midnight lime (the
+reference — near-black, lime glow rings drawn in CSS, serif headings; the
+default for a **new** page), Light (the look before themes — what a page
+with no `theme` keeps, and the only one that follows the visitor's
+light/dark preference), Midnight blue, Royal purple, Warm sand, Clean white &
+black. `themeVars` turns one into custom properties (`themeRoot` puts them
+and `data-bk-theme`/`data-bk-dark` on the page's root); fonts are the
+system's (a Georgia serif stack, like the shop themes) — nothing is loaded.
+`accent` (`#rrggbb`) overrides the theme's colour ("The theme's own colour"
+clears it); the ink on it is computed (`inkOn`). **The logo** is measured in
+the browser at upload (`measureLogo`: `logoTone` dark/light/opaque from its
+visible pixels and transparency, `logoRatio`): contained, never cropped; a
+plate behind it only when its ink would vanish on this ground (`logoPlate`);
+a wordmark (`isWordmark`, ≥ 2.2:1) stands in for the name.
 Points are `{ icon, title, detail }` with the icon from a **fixed list**
-(`BOOKING_ICONS` in `worker/src/lib/bookingContent.ts`, drawn by
-`Scheduling/bookingIcons.tsx`); a page from before icons kept plain `bullets`,
-which `pointsOf` reads as ticks — publish writes both. The editor
-`Autopilot/newProject/BookingSetup.tsx` shows the **same card** as its
-preview (Desktop: laid out at 1180px and scaled to the pane; Phone: 390px),
-in the AI Autopilot wizard and on Scheduling → **Booking page**
-(`autoPublish={false}` there — that screen already publishes). Editable: the
-address (`slug_check` as typed; slugs are install-wide, a taken one is refused
-on `booking.slug`), title, host name and role, tagline, description, topics,
-points with icons (≤ 8), what to discuss, colour, photo, logo,
-a clip or a YouTube/Vimeo/Loom link (`videoEmbedOf` builds the player address;
-nothing pasted is framed as typed), length, place, days, hours, the owner's
-zone (`booking.timezone`, refused if Intl does not know it).
+(`BOOKING_ICONS`, drawn by `Scheduling/bookingIcons.tsx`); a page from before
+icons kept plain `bullets`, which `pointsOf` reads as ticks — publish writes
+both. The editor `Autopilot/newProject/BookingSetup.tsx` shows the **same
+card** as its preview (Desktop: laid out at 1180px and scaled to the pane;
+Phone: 390px), in the AI Autopilot wizard and on Scheduling → **Booking
+page** (`autoPublish={false}` there — that screen already publishes).
+Editable: the address (`slug_check` as typed; slugs are install-wide, a taken
+one is refused on `booking.slug`), title, host name and role, tagline,
+description, topics, points with icons (≤ 8), what to discuss, theme, accent,
+testimonial, help link, photo, logo, a clip or a YouTube/Vimeo/Loom link
+(`videoEmbedOf` builds the player address; nothing pasted is framed as
+typed), length, place, days, hours, the owner's zone (`booking.timezone`,
+refused if Intl does not know it).
 
 - **Filled in from the website.** **Fill it in from my website**
   (`booking.website`; `website` prop, else the workspace profile's) asks
@@ -395,11 +415,13 @@ zone (`booking.timezone`, refused if Intl does not know it).
 - `npm run test:bookingpage` (needs a `VITE_BASE=/` build and a running
   `wrangler dev --var SITE_TEST_ORIGIN:http://127.0.0.1:8982` with no AI key;
   `BASE`, `PERSIST`, `SITE_PORT`, `SHOTS`): the website fill with no AI,
-  the editor filling itself in, icons/topics/colour published, the page with
-  no platform name at 390/1280 and dark; an owner in New York and a visitor in
+  the editor filling itself in, icons/topics/colour/theme/testimonial/help
+  published, a new page in Midnight lime and an older one still Light, the
+  measured logo, nothing reaching past its card (the page clips its glow, so
+  the document's own overflow cannot show it) at 390/1280; an owner in New York and a visitor in
   Bangkok — 11 hours apart in the slots, the booking at the right UTC instant,
   off-grid times refused, uploads, the address across workspaces, the editor,
-  390/1280. `test:security` covers the media route and the website read across tenants (and its fence).
+  390/1280. `test:security` covers the media route (testimonial photos too) and the website read across tenants (and its fence). Local `wrangler dev`'s proxy can exit when a browser closes mid-request — run it in a restart loop.
 
 ## Platform services — the owner's keys for everybody, in one place
 
