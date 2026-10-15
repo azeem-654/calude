@@ -15,6 +15,7 @@
  * which is not a generous shop, it is a shop losing money quietly on exactly
  * the orders that cost the most to send.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useState } from 'react';
 import { Check, Globe, Loader, Plus, Trash2, Truck, X, AlertTriangle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -54,7 +55,7 @@ export default function ShippingPanel({
   };
 
   const remove = async (r: ShippingRate) => {
-    if (!window.confirm(`Delete "${r.name}"? Orders going there will fall to whichever rate covers them next.`)) return;
+    if (!await askConfirm({ title: `Delete “${r.name}”?`, message: 'Orders going there will fall to whichever rate covers them next.', confirmLabel: 'Delete rate', danger: true })) return;
     setBusy(r.id);
     const res = await deleteShipping(r.id);
     setBusy('');

@@ -15,6 +15,7 @@
  * reseller discovering the scope by opening it themselves and hoping — is how
  * somebody ends up not using it at all.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useEffect, useState } from 'react';
 import { Link2, Copy, Eye, EyeOff, Loader, Plus, ExternalLink, ShieldCheck } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -57,7 +58,7 @@ export default function ClientLinks({ portfolios }: { portfolios: Portfolio[] })
   };
 
   const toggle = async (token: string, on: boolean) => {
-    if (!on && !window.confirm('Revoke this link? Anybody holding it will stop being able to open the report.')) return;
+    if (!on && !await askConfirm({ title: 'Revoke this link?', message: 'Anybody holding it will stop being able to open the report.', confirmLabel: 'Revoke link', danger: true })) return;
     setBusy(token);
     const r = await setPortalEnabled(token, on);
     setBusy('');

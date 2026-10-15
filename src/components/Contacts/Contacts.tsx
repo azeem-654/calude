@@ -1,3 +1,4 @@
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useState, useMemo } from 'react';
 import AICampaignBadge from '../shared/AICampaignBadge';
 import {
@@ -292,14 +293,14 @@ export default function Contacts() {
     addNotification(`Exported ${sel.length} contacts`);
   };
 
-  const bulkDelete = () => {
+  const bulkDelete = async () => {
     const picked = contacts.filter(c => selected.has(c.id));
     const blocked = picked.filter(c => !can('delete', actor, c));
     if (blocked.length) {
       addNotification(denyReason('delete', actor, blocked[0]), 'error');
       return;
     }
-    if (!window.confirm(`Delete ${selected.size} contacts?`)) return;
+    if (!await askConfirm({ title: `Delete ${selected.size} contact${selected.size === 1 ? '' : 's'}?`, message: 'They are removed from Contacts and from every list.', confirmLabel: 'Delete contacts', danger: true })) return;
     selected.forEach(id => { deleteContact(id); purgeContactFromLists(id); });
     setLists(loadLists());
     setSelected(new Set());
@@ -384,16 +385,18 @@ export default function Contacts() {
   };
 
   /** Remove every address that verification found unusable. */
-  const oneClickClean = () => {
+  const oneClickClean = async () => {
     const bad = contacts.filter(c => !c.email || emailHealth.get(c.id) === 'invalid' || isSuppressed(c.email));
     if (!bad.length) { addNotification('Nothing to clean — no invalid addresses.', 'info'); return; }
     const blocked = bad.filter(c => !can('delete', actor, c));
     if (blocked.length) { addNotification(denyReason('delete', actor, blocked[0]), 'error'); return; }
-    if (!window.confirm(
-      `Delete ${bad.length} contact${bad.length === 1 ? '' : 's'} whose email cannot be delivered to?\n\n` +
-      'These are addresses that bounced, are suppressed, are disposable, or have no mail server. ' +
-      'Sending to them damages your sender reputation. This cannot be undone.',
-    )) return;
+    if (!await askConfirm({
+      title: `Delete ${bad.length} undeliverable contact${bad.length === 1 ? '' : 's'}?`,
+      message: 'These are addresses that bounced, are suppressed, are disposable, or have no mail server. ' +
+        'Sending to them damages your sender reputation. This cannot be undone.',
+      confirmLabel: 'Delete contacts',
+      danger: true,
+    })) return;
     bad.forEach(c => { deleteContact(c.id); purgeContactFromLists(c.id); });
     setLists(loadLists());
     setHealthVersion(v => v + 1);

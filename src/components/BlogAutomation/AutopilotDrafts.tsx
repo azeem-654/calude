@@ -11,6 +11,7 @@
  * and inventing an empty one behind every draft would make the Blog screen look
  * busy and mean nothing. These are loose drafts and are shown as loose drafts.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useMemo, useState } from 'react';
 import { Bot, ChevronDown, ChevronRight, Copy, Trash2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -42,8 +43,8 @@ export default function AutopilotDrafts({ onChanged }: { onChanged?: () => void 
       .catch(() => addNotification('The browser would not let the page copy that. Select the text instead.', 'error'));
   }
 
-  function remove(p: AutopilotPost) {
-    if (!window.confirm(`Delete the draft "${p.title}"?`)) return;
+  async function remove(p: AutopilotPost) {
+    if (!await askConfirm({ title: 'Delete this draft?', message: `“${p.title}” is deleted.`, confirmLabel: 'Delete draft', danger: true })) return;
     if (!deleteAutopilotPost(p.id)) {
       addNotification('The browser refused to save that. Check that storage is not blocked for this site.', 'error');
       return;

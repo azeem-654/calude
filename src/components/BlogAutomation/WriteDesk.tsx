@@ -1,3 +1,4 @@
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, Check, Code2, Eye, FileText, Image as ImageIcon, Loader2, Pencil,
@@ -149,9 +150,12 @@ export default function WriteDesk({ project }: Props) {
   /* ── One post ── */
 
   async function writeOne(post: PlannedPost) {
-    if (post.article?.edited && !window.confirm(
-      `"${post.title}" has been edited by hand. Rewriting replaces those edits. Continue?`,
-    )) return;
+    if (post.article?.edited && !await askConfirm({
+      title: 'Rewrite this post?',
+      message: `“${post.title}” has been edited by hand. Rewriting replaces those edits.`,
+      confirmLabel: 'Rewrite',
+      danger: true,
+    })) return;
 
     setBusyPost(post.id);
     try {
