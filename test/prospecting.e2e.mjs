@@ -20,6 +20,12 @@
  *    shortcut, with the strangers warning) and as an Autopilot project's
  *    audience — and the project built from it stores the list on its brief;
  *  - the list and its contacts come back in a fresh browser (server sync);
+ *  - AI Prospecting is prompt first: one sentence box above the fold at
+ *    1280×720 and 390×720, no trade/place boxes and no source tabs; the
+ *    sentence alone decides the trade, the place and the source, a sentence
+ *    missing its place is asked about rather than searched, and a refusal
+ *    naming the trade lands under the sentence box (never a dead end);
+ *  - no Lead Directory beside a search;
  *  - no sideways scroll and no page errors at 1280 or 390.
  */
 import http from 'node:http';
@@ -155,8 +161,8 @@ ok('a customer signs up with a workspace', !!ACCT, JSON.stringify(reg).slice(0, 
 br = await pw.chromium.launch();
 const errs = [];
 fs.mkdirSync('test-results', { recursive: true });
-const signIn = async (width) => {
-  const ctx = await br.newContext({ viewport: { width, height: 900 } });
+const signIn = async (width, height = 900) => {
+  const ctx = await br.newContext({ viewport: { width, height } });
   const page = await ctx.newPage();
   page.on('pageerror', e => errs.push(`${width}: ${e}`));
   await page.goto(`${B}/login`, { waitUntil: 'networkidle' });
@@ -207,18 +213,38 @@ let listId = '';
     && /Every lead is freshly baked — searched live from the internet the moment you ask/.test(empty) && /every result carries the time it was found/.test(empty)
     && /1\. Find/.test(empty) && /2\. Enrich/.test(empty) && /3\. Verify/.test(empty) && /Live business data/.test(empty), empty.slice(0, 1200));
   ok('…in bold', await page.locator('.aip-live-promise strong').count() === 2);
+  ok('one sentence box: no kind-of-business or town box, no source tabs',
+    await page.locator('[data-field~="prospects.trade"]').count() === 1 && await page.locator('textarea[data-field~="prospects.place"]').count() === 1
+    && await page.getByRole('group', { name: 'Where to search' }).count() === 0 && !/Registered companies|With ratings & reviews/.test(await page.locator('.aip-start').innerText()),
+    await page.locator('[data-field~="prospects.trade"]').evaluateAll(els => els.map(e => e.tagName).join(',')));
   await page.getByRole('button', { name: 'How it works' }).click();
   ok('"How it works" explains the steps, the sources and what it will not do', /It searches live/.test(await page.getByRole('dialog', { name: 'How AI Prospecting works' }).innerText()) && /Never LinkedIn/.test(await page.getByRole('dialog', { name: 'How AI Prospecting works' }).innerText()));
   await page.getByRole('dialog', { name: 'How AI Prospecting works' }).getByRole('button', { name: 'Close' }).click();
   await page.getByRole('button', { name: /Need ideas\?/ }).click();
   await page.getByRole('dialog', { name: 'Search ideas' }).getByRole('button', { name: /restaurants/ }).first().click();
   ok('"Need ideas?" fills the box with the trade, ready for a place', /^restaurants in $/.test(await page.getByLabel('Who to look for').inputValue()), await page.getByLabel('Who to look for').inputValue());
-  await page.getByLabel('Who to look for').fill('');
-  await page.locator('[data-field="prospects.trade"]').fill('');
 
-  /* A free search. */
-  await page.locator('[data-field="prospects.trade"]').fill('dentists');
-  await page.locator('[data-field="prospects.place"]').fill('Leeds');
+  /* A sentence with no place is asked about, under the box — not searched. */
+  const searches = [];
+  const countSearch = req => { if (/prospects\.php/.test(req.url()) && req.postDataJSON()?.action === 'search') searches.push(1); };
+  page.on('request', countSearch);
+  await page.getByLabel('Who to look for').fill('dentists');
+  await page.keyboard.press('Enter');
+  await page.locator('.aip-ask-error').waitFor({ timeout: 3000 }).catch(() => {});
+  ok('a sentence with no place asks where, under the box, and searches nothing',
+    /Where should I look for dentists\?/.test(await page.locator('.aip-ask-error').innerText().catch(() => '')) && !searches.length
+    && /Who do you want to sell to\?/.test(await page.innerText('body')), await page.locator('.aip-ask-error').innerText().catch(() => ''));
+  page.off('request', countSearch);
+
+  /* What was understood is shown under the words before searching. */
+  await page.getByLabel('Who to look for').fill('Find dentists in Leeds with a website');
+  const chips = page.getByLabel('What was understood');
+  ok('what was understood shows as chips: trade, place, narrowing, where it searches',
+    /Dentists/.test(await chips.innerText()) && /Leeds/.test(await chips.innerText()) && /with a website/.test(await chips.innerText()) && /All businesses/.test(await chips.innerText()),
+    await chips.innerText());
+  await page.getByLabel('Who to look for').fill('dentists in Leeds');
+
+  /* A free search, from the sentence alone. */
   await page.getByRole('button', { name: /^Search$/ }).click();
   await page.locator('table').getByText('Leeds Dental 1', { exact: true }).waitFor({ timeout: 15_000 });
   let body = await page.innerText('body');
@@ -455,7 +481,12 @@ console.log('\nAI Prospecting');
   ok('a typed sentence is understood and run — the question kept, the plan shown',
     (await page.locator('.aip-top h2').getAttribute('title')) === 'Find dentists in Leeds with a website' && /Searched for dentists in Leeds/.test(body), body.slice(0, 900));
   ok('…and searched live: the directory was asked again, not served from storage', placesHits > before, `${before} → ${placesHits}`);
-  ok('…the boxes show how it was understood', await page.locator('[data-field="prospects.trade"]').inputValue() === 'dentists' && await page.locator('[data-field="prospects.place"]').inputValue() === 'Leeds');
+  ok('…the sentence stays in the box, read as dentists · Leeds, searched across all businesses',
+    await page.getByLabel('Who to look for').inputValue() === 'Find dentists in Leeds with a website'
+    && /Dentists[\s\S]*Leeds/.test(await page.getByLabel('What was understood').innerText()) && /All businesses/.test(await page.locator('.aip-src-label').innerText()),
+    await page.getByLabel('What was understood').innerText().catch(() => ''));
+  ok('…with no source tabs on the results either', await page.getByRole('group', { name: 'Where to search' }).count() === 0);
+  ok('…and no Lead Directory beside the search', await page.getByTestId('directory-matches').count() === 0 && await page.locator('a[href*="lead-directory"], button:has-text("See them all")').count() === 0);
   ok('…and "with a website" narrows what is shown', (await page.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'With website' }).getAttribute('aria-pressed')) === 'true');
 
   /* Mailbox checks, on the owner's Hunter. */
@@ -539,9 +570,16 @@ console.log('\nAI Prospecting');
   await page.evaluate(() => localStorage.setItem('crm_theme', 'light'));
   await ctx.close();
 
-  const m = await signIn(390);
+  const m = await signIn(390, 720);
   await m.page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
   ok('@390: the empty page fits', (await overflow(m.page)) <= 0, String(await overflow(m.page)));
+  const fold = await m.page.evaluate(() => {
+    const r = document.querySelector('.aip-ask-card').getBoundingClientRect();
+    const go = document.querySelector('.aip-ask .aip-go').getBoundingClientRect();
+    return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, go: go.height, vh: innerHeight, vw: innerWidth };
+  });
+  ok('@390×720: the sentence box is above the fold, 16px from each edge, its button 44px or more',
+    fold.bottom <= fold.vh && Math.round(fold.left) === 16 && Math.round(fold.vw - fold.right) === 16 && fold.go >= 44, JSON.stringify(fold));
   await m.page.screenshot({ path: 'test-results/ai-prospecting-390.png', fullPage: true });
   await m.page.goto(`${B}/`, { waitUntil: 'networkidle' });
   ok('@390: the dashboard section fits', (await overflow(m.page)) <= 0 && await m.page.getByTestId('prospecting-panel').isVisible(), String(await overflow(m.page)));
@@ -566,12 +604,15 @@ console.log('\nAI Prospecting — sources, bulk emails, Add to…');
   const ch = await api('companies-house.php', { token: T, action: 'save', apiKey: CHKEY });
   ok('the owner connects the company register; it is proved with Basic auth', ch.success && ch.tested?.ok === true, JSON.stringify(ch));
 
-  const { ctx, page } = await signIn(1280);
+  const { ctx, page } = await signIn(1280, 720);
   await page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
-  const where = page.getByRole('group', { name: 'Where to search' });
-  const names = (await where.getByRole('button').allInnerTexts()).map(x => x.trim());
-  ok('three sources, named for what they are — none called "free"',
-    names.join('|') === 'All businesses|Registered companies|With ratings & reviews' && !/free/i.test(names.join(' ')), names.join('|'));
+  const card = await page.locator('.aip-ask-card').boundingBox();
+  ok('@1280×720: the sentence box is above the fold', !!card && card.y + card.height <= 720, JSON.stringify(card));
+  await page.getByText(/registered companies/).first().waitFor({ timeout: 5000 }).catch(() => {});
+  ok('no source tabs: the page teaches only the words that work here — the register (on), not ratings (off)',
+    await page.getByRole('group', { name: 'Where to search' }).count() === 0
+    && /registered companies.*for the company register/.test(await page.locator('.aip-ask-tip').innerText().catch(() => '')) && !/with reviews/.test(await page.locator('.aip-ask-tip').innerText().catch(() => '')),
+    await page.locator('.aip-ask-tip').innerText().catch(() => ''));
 
   /* Business directories: everything read, every address shown. */
   await askFor(page, 'dentists in Leeds');
@@ -636,18 +677,33 @@ console.log('\nAI Prospecting — sources, bulk emails, Add to…');
 
   /* Start a new search clears it all. */
   await page.getByRole('button', { name: 'Start a new search' }).first().click();
-  ok('"Start a new search" empties the page and the boxes', /Who do you want to sell to\?/.test(await page.innerText('body'))
-    && await page.locator('[data-field="prospects.trade"]').inputValue() === '' && await page.locator('table[aria-label="Businesses found"]').count() === 0);
+  ok('"Start a new search" empties the page and the box', /Who do you want to sell to\?/.test(await page.innerText('body'))
+    && await page.getByLabel('Who to look for').inputValue() === '' && await page.locator('table[aria-label="Businesses found"]').count() === 0);
 
-  /* Registered companies (the verified register). */
-  await where.getByRole('button', { name: 'Registered companies' }).click();
-  await askFor(page, 'unicorn groomers in Leeds');
+  /* Ratings, asked for while Google is not switched on: all businesses, and said so. */
+  await page.getByLabel('Who to look for').fill('dentists in Leeds with reviews');
+  ok('asking for reviews with Google off says, before searching, that it searches all businesses instead',
+    /Ratings and reviews are not switched on for this app yet, so this searches all businesses instead/.test(await page.locator('.aip-ask-note').innerText().catch(() => ''))
+    && /All businesses/.test(await page.getByLabel('What was understood').innerText()), await page.locator('.aip-ask').innerText().catch(() => ''));
+  await page.keyboard.press('Enter');
+  await page.locator('table').getByText('Leeds Dental 1', { exact: true }).waitFor({ timeout: 30_000 }).catch(() => {});
+  ok('…and does: the directory answers, the label says all businesses, the note stays with the results',
+    /60 found/.test(await page.innerText('body')) && /All businesses/.test(await page.locator('.aip-src-label').innerText())
+    && /all businesses instead/.test(await page.locator('.aip-src-note').innerText().catch(() => '')), (await page.innerText('body')).slice(0, 600));
+  await page.getByText(/Checked \d+ contact/).waitFor({ timeout: 60_000 }).catch(() => {});
+
+  /* Registered companies — said in the sentence, no tab. */
+  await askFor(page, 'unicorn groomers in Leeds from Companies House');
   await page.waitForTimeout(1500);
   const dead = await page.evaluate(() => (window.__deadEnds ?? []).length);
-  ok('a trade the register has no type for is refused on the trade box, not a dead end', dead === 0 && /has no type for "unicorn groomers"/.test(await page.innerText('body')), String(dead));
-  await askFor(page, 'accountants in Leeds');
+  const said = await page.locator('.aip-ask-error').innerText().catch(() => '');
+  ok('a trade the register has no type for is refused under the sentence box, not a dead end',
+    dead === 0 && /has no type for "unicorn groomers"/.test(said) && /Say the kind of business in the sentence/.test(said)
+    && (await page.getByLabel('Who to look for').getAttribute('aria-invalid')) === 'true', `${dead} ${said}`);
+  await askFor(page, 'registered companies: accountants in Leeds');
   await page.getByText('Park Row Accountants LTD', { exact: true }).waitFor({ timeout: 20_000 });
   const body = await page.innerText('body');
+  ok('"registered companies" in the sentence searches the register, and the label says so', /Registered companies/.test(await page.locator('.aip-src-label').innerText()));
   ok('the register answers with active companies, their directors, and why there are no emails',
     /Searched for accountants in Leeds/.test(body) && /Priya Shah \(Director\)/.test(body) && !/Gone Old/.test(body)
     && /Registered companies come with no websites or email addresses/.test(body) && /Registered company/.test(body), body.slice(0, 1500));
@@ -665,10 +721,16 @@ console.log('\nAI Prospecting — sources, bulk emails, Add to…');
   await page.screenshot({ path: 'test-results/ai-prospecting-register.png' });
   await ctx.close();
 
-  const m = await signIn(390);
+  const m = await signIn(390, 720);
   await m.page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
   await askFor(m.page, 'dentists in Leeds');
   await m.page.getByText(/Checked \d+ contact/).waitFor({ timeout: 60_000 });
+  const phoneBar = await m.page.evaluate(() => {
+    const r = document.querySelector('.aip-ask[data-variant="bar"] .aip-ask-card').getBoundingClientRect();
+    const go = document.querySelector('.aip-ask[data-variant="bar"] .aip-go').getBoundingClientRect();
+    return { left: r.left, right: r.right, vw: innerWidth, go: go.height };
+  });
+  ok('@390: the results\' sentence box fits the phone, its button 44px or more', phoneBar.left >= 8 && phoneBar.vw - phoneBar.right >= 8 && phoneBar.go >= 44 && (await overflow(m.page)) <= 0, JSON.stringify(phoneBar));
   await m.page.getByRole('checkbox', { name: 'Tick Leeds Dental 1', exact: true }).check();
   ok('@390: the ticked-actions bar is on screen and nothing scrolls sideways',
     await m.page.getByRole('toolbar', { name: 'With the ticked businesses' }).isVisible() && (await overflow(m.page)) <= 0, String(await overflow(m.page)));

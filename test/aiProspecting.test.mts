@@ -8,7 +8,7 @@
  * decides what is imported — an address a check already said would bounce
  * must never be the one used.
  */
-import { addressesOf, bestAddress, leadScore, parseAsk, splitTradePlace, toCsv } from '../src/services/aiProspecting.ts';
+import { addressesOf, askProblem, askSentence, bestAddress, chooseSource, leadScore, parseAsk, splitTradePlace, toCsv } from '../src/services/aiProspecting.ts';
 import { extractKnown } from '../src/services/projectIntake.ts';
 import type { Prospect, Verdict } from '../src/services/prospects.ts';
 import { emailTag } from '../src/services/prospectImport.ts';
@@ -35,6 +35,57 @@ eq('"local" is not part of the trade', ask('find local plumbers in Leeds'), ['pl
 }
 ok('no place → null, so the page asks for one', parseAsk('find dentists') === null);
 ok('empty → null', parseAsk('   ') === null);
+ok('no kind of business → null', parseAsk('in Leeds') === null);
+
+/* ── What is missing, asked for rather than searched blind ── */
+{
+  const a = askProblem('dentists');
+  ok('a trade with no place asks where, naming the trade', a?.field === 'place' && /Where should I look for dentists\?/.test(a.message) && a.trade === 'dentists', JSON.stringify(a));
+  const b = askProblem('in Leeds');
+  ok('a place with no trade asks what kind, naming the place', b?.field === 'trade' && /What kind of business in Leeds\?/.test(b.message) && b.place === 'Leeds', JSON.stringify(b));
+  ok('nothing typed asks who', askProblem('  ')?.field === 'trade');
+  ok('"registered companies in Leeds" still needs a kind of business — the register searches by trade', askProblem('registered companies in Leeds')?.field === 'trade', JSON.stringify(askProblem('registered companies in Leeds')));
+  ok('a whole sentence has no problem', askProblem('Find dentists in Leeds with a website') === null);
+}
+
+/* ── Which source the sentence asks for ── */
+const src = (t: string) => { const a = parseAsk(t); return a ? [a.trade, a.place, a.source] : null; };
+eq('plain is all businesses', src('dentists in Leeds'), ['dentists', 'Leeds', 'free']);
+eq('"registered companies" prefix', src('registered companies: accountants in Leeds'), ['accountants', 'Leeds', 'register']);
+eq('"limited companies" after the trade', src('accountants limited companies in Leeds'), ['accountants', 'Leeds', 'register']);
+eq('"registered dental companies" keeps the trade between', src('Find registered dental companies in Leeds'), ['dental', 'Leeds', 'register']);
+eq('"from Companies House" is not part of the place', src('accountants in Leeds from Companies House'), ['accountants', 'Leeds', 'register']);
+eq('"on the company register"', src('accountants in Leeds on the company register'), ['accountants', 'Leeds', 'register']);
+eq('"with their directors"', src('accountants in Leeds with their directors'), ['accountants', 'Leeds', 'register']);
+eq('"with reviews" is Google, not part of the place', src('dentists in Leeds with reviews'), ['dentists', 'Leeds', 'google']);
+eq('"with ratings and reviews"', src('cafés near Bristol with ratings and reviews'), ['cafés', 'Bristol', 'google']);
+eq('"on Google Maps"', src('plumbers in Manchester on Google Maps'), ['plumbers', 'Manchester', 'google']);
+eq('"top-rated"', src('top-rated hair salons in York'), ['hair salons', 'York', 'google']);
+{
+  const a = parseAsk('dentists in Leeds with a website and reviews');
+  ok('"with a website and reviews": both read, neither in the place', a?.place === 'Leeds' && a.want.website && a.source === 'google', JSON.stringify(a));
+  const b = parseAsk('dentists in Leeds with reviews and an email');
+  ok('"with reviews and an email"', b?.place === 'Leeds' && b.want.email && b.source === 'google', JSON.stringify(b));
+}
+ok('the same sentence twice reads the same (no regex state carried over)', JSON.stringify(parseAsk('accountants in Leeds from Companies House')) === JSON.stringify(parseAsk('accountants in Leeds from Companies House')));
+eq('"registered nurses" is not the register when no company is named', src('registered nurses agencies in Leeds')?.[2], 'free');
+
+/* ── What is asked, given what is switched on ── */
+{
+  const allOn = { available: true, register: { available: true } };
+  const allOff = { available: false, code: 'no_key', register: { available: false, code: 'no_key' } };
+  eq('all businesses whatever is on', chooseSource('free', allOff), { source: 'free', note: '' });
+  eq('the register when its key is set', chooseSource('register', allOn), { source: 'register', note: '' });
+  eq('ratings when Google is on', chooseSource('google', allOn), { source: 'google', note: '' });
+  const r = chooseSource('register', allOff);
+  ok('the register when its key is not set → all businesses, and said', r.source === 'free' && /Registered companies .* not switched on .* all businesses instead/.test(r.note), JSON.stringify(r));
+  const g = chooseSource('google', allOff);
+  ok('ratings when Google is off → all businesses, and said, no supplier named', g.source === 'free' && /Ratings and reviews are not switched on/.test(g.note) && !/Google/.test(g.note), JSON.stringify(g));
+  const t = chooseSource('google', { available: false, code: 'trial_ended', register: { available: true } });
+  ok('an ended trial says so', t.source === 'free' && /trial ended/.test(t.note), JSON.stringify(t));
+  eq('not known yet → what was asked, for the server to answer', chooseSource('register', null), { source: 'register', note: '' });
+}
+eq('a search reads back as a sentence with its source', ['free', 'register', 'google'].map(x => parseAsk(askSentence('accountants', 'Leeds', x as 'free'))?.source), ['free', 'register', 'google']);
 
 /* ── Which address ── */
 const p = (o: Partial<Prospect>): Prospect => ({ ref: 'r', name: 'Biz', phone: '', website: 'https://biz.example', email: '', address: '', category: '', lat: 0, lon: 0, ...o });

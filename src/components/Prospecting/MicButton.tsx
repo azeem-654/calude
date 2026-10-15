@@ -1,12 +1,12 @@
 /**
- * The microphone on the results bar — one round button.
+ * The microphone inside AI Prospecting's sentence box — one round button.
  *
  * The same engine as Autopilot's voice prompts (`useVoiceInput`: the browser's
  * recogniser for a live preview, the server's transcriber for the text), in
  * the customer's remembered language. Autopilot's `VoiceControl` draws a
  * language menu and a sentence of help beside itself, which is right in a
  * wizard and wrong in a search bar; this draws only the state. The words it
- * hears go into the boxes for checking, never straight into a search.
+ * hears go into the box for checking, never straight into a search.
  */
 import { Loader, Mic, Square } from 'lucide-react';
 import { defaultLocale, useVoiceInput, type VoiceResult } from '../Autopilot/voice/useVoiceInput';

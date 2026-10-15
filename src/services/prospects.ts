@@ -153,6 +153,8 @@ export interface SearchResult {
   error: string;
   /** The server's name for the refusal — `no_key`, `trial_ended`, `places_budget`, … */
   code: string;
+  /** The box a refusal is about (`prospects.trade`, `prospects.place`), or empty. */
+  field: string;
   /** What the server changed about the question, in its words — a whole state searched at its largest town. */
   note?: string;
 }
@@ -172,6 +174,7 @@ export async function searchProspects(
     nextPageToken: String(d.nextPageToken ?? ''),
     error: d.success === true ? '' : String(d.error ?? 'Search failed.'),
     code: String(d.code ?? ''),
+    field: String(d.field ?? ''),
     note: String(d.note ?? ''),
   };
 }
