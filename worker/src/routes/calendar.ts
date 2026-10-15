@@ -192,13 +192,17 @@ export async function meetingForBooking(
   let data: Record<string, string> = {};
   try { data = JSON.parse(booking.data || '{}') as Record<string, string>; } catch { data = {}; }
 
-  const timezone = data.timezone || 'UTC';
+  /* The owner's zone: the slot is their wall clock. `timezone` alone is the
+     guest's (what the booking page showed them), and handing Google the
+     owner's 09:00 labelled Asia/Bangkok put the meeting eleven hours early.
+     Bookings older than `ownerTimezone` fall back to it as before. */
+  const timezone = data.ownerTimezone || data.timezone || 'UTC';
   /* The stored slot is a local wall-clock time in the workspace's own zone, and
      Google is given the zone alongside it rather than an offset — so a booking
      made before a daylight-saving change still happens at the time the customer
      picked, which an offset computed today would not. */
   const startIso = `${booking.slotDate}T${booking.slotTime}:00`;
-  const endMinutes = Number(data.durationMinutes) || 30;
+  const endMinutes = Number(data.durationMinutes) || Number(data.duration) || 30;
   const [h, m] = booking.slotTime.split(':').map(Number);
   const end = new Date(Date.UTC(2000, 0, 1, h, m + endMinutes));
   const endIso = `${booking.slotDate}T${String(end.getUTCHours()).padStart(2, '0')}:${String(end.getUTCMinutes()).padStart(2, '0')}:00`;

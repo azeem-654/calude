@@ -109,7 +109,7 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
     }
     services.push({
       id: 'ai', name: 'AI (Google Gemini)',
-      powers: 'Autopilot writing, replies, the New Project wizard, the microphone, review reply drafts',
+      powers: 'AI Autopilot writing, replies, the New Project wizard, the microphone, review reply drafts',
       ...s,
       where: { label: 'Below, on this tab — Main AI key' },
     });
@@ -285,8 +285,8 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
     });
     const managed = ['registrar', 'dns', 'mailbox'].map(k => row(k)).filter((x): x is ProviderRow => !!x?.connected);
     services.push({
-      id: 'managed', name: 'Managed buying for Autopilot (Porkbun, Migadu)', optional: true,
-      powers: 'Autopilot buying sending domains and mailboxes for a customer and adding them to their bill',
+      id: 'managed', name: 'Managed buying for AI Autopilot (Porkbun, Migadu)', optional: true,
+      powers: 'AI Autopilot buying sending domains and mailboxes for a customer and adding them to their bill',
       state: managed.length === 0 ? 'off' : managed.some(m => stateOf(m) === 'error') ? 'error' : managed.every(m => stateOf(m) === 'ok') ? 'ok' : 'unchecked',
       detail: managed.length
         ? `Connected: ${managed.map(m => `${m.kind} (${m.provider})`).join(', ')}.`

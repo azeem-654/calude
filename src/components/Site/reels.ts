@@ -76,8 +76,8 @@ export const REELS: Record<string, ReelShot[]> = {
     },
     {
       file: 'hero-dashboard',
-      caption: 'The day at a glance — pipeline, revenue won, replies and what Autopilot did overnight.',
-      alt: 'The dashboard with the week\'s figures and Autopilot activity',
+      caption: 'The day at a glance — pipeline, revenue won, replies and what AI Autopilot did overnight.',
+      alt: 'The dashboard with the week\'s figures and AI Autopilot activity',
     },
     {
       file: 'hero-pipeline',
@@ -192,7 +192,7 @@ export const REELS: Record<string, ReelShot[]> = {
     { file: 'analytics', caption: 'Revenue, leads and where they came from, read live from the modules.', alt: 'The reports screen' },
   ],
   dashboard: [
-    { file: 'dashboard', caption: 'The day at a glance: what Autopilot did, and what to do next.', alt: 'The dashboard' },
+    { file: 'dashboard', caption: 'The day at a glance: what AI Autopilot did, and what to do next.', alt: 'The dashboard' },
     { file: 'ap-board', caption: 'AI Autopilot running your projects on the server, every five minutes.', alt: 'The AI Autopilot board' },
     { file: 'ap-diagram', caption: 'Every workflow drawn as it runs, with each branch joined up.', alt: 'A branching workflow' },
     { file: 'pipe-board', caption: 'Every deal on one board.', alt: 'The pipeline board' },
@@ -215,8 +215,8 @@ const NOTES: Record<string, string[]> = {
   'pr-lawyers': ['Firms found with the address each one publishes', 'Whether that address takes mail, checked as it goes', 'Tick the ones you want and add them to a workflow'],
   'pr-every-day': ['Connect a search you tested to an AI Autopilot project', 'Pick the schedule and how many verified leads a run', 'Duplicates and opt-outs are turned away automatically'],
   'pr-daily-chart': ['Thirty days of prospects added, day by day', 'The rotation of searches the project works through', 'Every new prospect listed with its check'],
-  'dashboard': ['Your day at a glance', 'What Autopilot did while you were away', 'The next best actions, ready to press'],
-  'ap-describe': ['Say what you want in one sentence — or speak it', 'Autopilot reads your website and files for the rest', 'It builds the workflows, the content and the schedule'],
+  'dashboard': ['Your day at a glance', 'What AI Autopilot did while you were away', 'The next best actions, ready to press'],
+  'ap-describe': ['Say what you want in one sentence — or speak it', 'AI Autopilot reads your website and files for the rest', 'It builds the workflows, the content and the schedule'],
   'ap-diagram': ['Every step drawn as it runs', 'Each fork labelled: replied, booked, opted in', 'Change any step in place with the pen'],
   'ap-step': ['Open just the step you want to change', 'Pick from your real forms, tags and stages', 'Test it before it goes live'],
   'ap-gallery': ['Ready-made workflows, filed by the problem they solve', 'Preview the whole flow before you use it', 'One press adds it to a project'],

@@ -73,6 +73,8 @@ export interface SubscriptionRequest {
   /** A price already set up in the processor's dashboard, when there is one.
    *  Preferred over an amount: it is the operator's own configured plan. */
   priceId?: string;
+  /** How often `amountCents` is charged. Monthly when absent. */
+  interval?: 'month' | 'year';
 }
 
 export interface CheckoutResult extends Outcome {

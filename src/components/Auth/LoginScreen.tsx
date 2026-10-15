@@ -361,7 +361,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
           <p className="au-visual-head">
             {mode === 'login'
               ? 'Your projects kept running while you were away — posts written, leads followed up, replies caught.'
-              : 'Describe your business once. Autopilot builds the workflows, writes the posts and follows up every lead.'}
+              : 'Describe your business once. AI Autopilot builds the workflows, writes the posts and follows up every lead.'}
           </p>
           <div className="au-visual-gap" />
           <div className="au-visual-foot"><WorksWith compact /></div>

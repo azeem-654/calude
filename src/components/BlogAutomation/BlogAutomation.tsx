@@ -1,3 +1,4 @@
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useMemo, useState } from 'react';
 import {
   ArrowRight, ArrowUpRight, Globe, Plus, Search, Sparkles, Target, Trash2,
@@ -73,8 +74,8 @@ export default function BlogAutomation() {
     }
   }
 
-  function remove(p: BlogProject) {
-    if (!window.confirm(`Delete "${p.name}" and everything in it?`)) return;
+  async function remove(p: BlogProject) {
+    if (!await askConfirm({ title: `Delete “${p.name}”?`, message: 'The project and everything in it are deleted.', confirmLabel: 'Delete project', danger: true })) return;
     if (!deleteProject(p.id)) {
       addNotification(takeSaveError() || 'That could not be deleted.', 'error');
       return;

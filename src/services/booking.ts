@@ -7,7 +7,9 @@
 import type { Booking, ScheduleAvailability } from '../types';
 import { API_BASE } from './apiBase';
 import { customerBusinessName, getActiveAccountId } from './tenancy';
+import { getSession } from './auth';
 import { withoutTwilio } from './legacyTwilio';
+import { cleanHex, cleanTestimonial, pointsOf, type AutofillText } from './bookingContent';
 
 
 async function call(body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
@@ -36,7 +38,7 @@ export function bookingSlugFor(s: ScheduleAvailability, name = ''): string {
  * comes back with it, because "taken by another workspace" is something the
  * owner can act on and "could not publish" is not.
  */
-export async function publishBookingConfig(token: string, schedule: ScheduleAvailability): Promise<{ ok: boolean; error?: string }> {
+export async function publishBookingConfig(token: string, schedule: ScheduleAvailability): Promise<{ ok: boolean; error?: string; field?: string }> {
   const a = withoutTwilio(schedule).automations;
   const res = await call({
     action: 'publish',
@@ -60,6 +62,27 @@ export async function publishBookingConfig(token: string, schedule: ScheduleAvai
          publish forgets is one the visitor never sees, which reads as the
          setting not working. */
       imageUrl: schedule.imageUrl ?? '',
+      photoUrl: schedule.photoUrl ?? '',
+      logoUrl: schedule.logoUrl ?? '',
+      videoFileUrl: schedule.videoFileUrl ?? '',
+      hostName: schedule.hostName ?? '',
+      /* Said on the page beside the photo when no host name is set. */
+      businessName: customerBusinessName(),
+      /* Points with their icons; `bullets` (plain lines) is what pages
+         published before icons kept, and is still read as ticks. */
+      points: pointsOf(schedule.points, schedule.bullets),
+      pointsTitle: schedule.pointsTitle ?? '',
+      discuss: (schedule.discuss ?? []).map(b => b.trim()).filter(Boolean),
+      tags: (schedule.tags ?? []).map(b => b.trim()).filter(Boolean),
+      tagline: schedule.tagline ?? '',
+      hostRole: schedule.hostRole ?? '',
+      accent: cleanHex(schedule.accent),
+      theme: schedule.theme ?? '',
+      logoTone: schedule.logoTone ?? '',
+      logoRatio: schedule.logoRatio ?? 0,
+      help: schedule.help ?? '',
+      /* Only a whole one, as typed; the server checks it again. */
+      testimonial: cleanTestimonial(schedule.testimonial),
       eventTypes: schedule.eventTypes ?? [],
     },
     private: {
@@ -75,7 +98,76 @@ export async function publishBookingConfig(token: string, schedule: ScheduleAvai
     },
   });
   if (!res) return { ok: false, error: 'The server could not be reached.' };
-  return res.success ? { ok: true } : { ok: false, error: String(res.error ?? res.message ?? 'The booking page could not be published.') };
+  return res.success ? { ok: true } : {
+    ok: false, error: String(res.error ?? res.message ?? 'The booking page could not be published.'),
+    field: typeof res.field === 'string' ? res.field : undefined,
+  };
+}
+
+/**
+ * Owner: is this address free? Asked as they type, so "taken" is said on the
+ * box rather than discovered when a save is refused. `null` when the server
+ * could not be asked — which the box says, rather than calling it free.
+ */
+export async function checkBookingSlug(token: string, slug: string): Promise<{ available: boolean; reason?: string; yours?: boolean } | null> {
+  const res = await call({ action: 'slug_check', token, accountId: getActiveAccountId() ?? '', slug });
+  if (!res || !res.success) return null;
+  return { available: res.available === true, reason: res.reason as string | undefined, yours: res.yours === true };
+}
+
+/** What reading the business's website proposed for the page. Nothing is saved by asking. */
+export interface BookingAutofill {
+  from: string;
+  ai: { used: boolean; why: string };
+  fill: Partial<AutofillText> & { videoUrl?: string };
+  logo: { dataUrl: string; from: string } | null;
+  photo: { dataUrl: string; from: string; what: string } | null;
+  notes: string[];
+}
+
+/**
+ * Owner: read their website for the booking page (worker/src/routes/booking.ts
+ * `autofill`). The refusal comes back with the box it is about.
+ */
+export async function autofillBookingPage(url: string, business: string): Promise<{ ok: true; result: BookingAutofill } | { ok: false; error: string; field?: string }> {
+  const res = await call({ action: 'autofill', token: getSession()?.token || 'cookie', accountId: getActiveAccountId() ?? '', url, business });
+  if (!res) return { ok: false, error: 'The server could not be reached, so the website was not read.' };
+  if (!res.success) return { ok: false, error: String(res.error ?? 'The website could not be read.'), field: typeof res.field === 'string' ? res.field : undefined };
+  return { ok: true, result: res as unknown as BookingAutofill };
+}
+
+export type BookingMediaKind = 'photo' | 'logo' | 'video' | 'testimonial';
+
+/**
+ * Owner: upload the page's photo, logo or clip as its raw bytes. The server
+ * decides what it is from those bytes (routes/bookingMedia.ts); the session
+ * travels as the cookie, named by the `Bearer cookie` placeholder.
+ */
+export async function uploadBookingMedia(kind: BookingMediaKind, file: Blob): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  try {
+    const q = new URLSearchParams({ action: 'upload', kind, accountId: getActiveAccountId() ?? '' });
+    const r = await fetch(`${API_BASE}/api/booking-media.php?${q}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', Authorization: `Bearer ${getSession()?.token || 'cookie'}` },
+      body: file,
+    });
+    const j = await r.json().catch(() => null) as Record<string, unknown> | null;
+    if (j?.success && typeof j.url === 'string') return { ok: true, url: j.url };
+    return { ok: false, error: String(j?.error ?? (r.status === 413 ? 'That file is too large.' : 'The upload did not go through.')) };
+  } catch {
+    return { ok: false, error: 'The server could not be reached, so nothing was uploaded.' };
+  }
+}
+
+export async function clearBookingMedia(kind: BookingMediaKind): Promise<boolean> {
+  try {
+    const r = await fetch(`${API_BASE}/api/booking-media.php`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'clear', token: getSession()?.token || 'cookie', accountId: getActiveAccountId() ?? '', kind }),
+    });
+    const j = await r.json().catch(() => null) as { success?: boolean } | null;
+    return !!j?.success;
+  } catch { return false; }
 }
 
 /**
@@ -87,8 +179,9 @@ export async function publishBookingConfig(token: string, schedule: ScheduleAvai
  * business entirely. Returns `notFound` so the page can say so rather than
  * showing somebody else's availability.
  */
+export interface BookingDelivery { confirms: boolean; meet: boolean }
 export async function fetchPublicConfig(slug?: string, accountId?: string): Promise<
-  { config: Partial<ScheduleAvailability> & { weekly?: ScheduleAvailability['weekly'] }; accountId?: string } | { notFound: true } | null
+  { config: Partial<ScheduleAvailability> & { weekly?: ScheduleAvailability['weekly'] }; accountId?: string; delivery?: BookingDelivery } | { notFound: true } | null
 > {
   /* By workspace only for a guest's manage link, which names its booking and
      so its workspace; a visitor arriving cold is found by slug. */
@@ -99,6 +192,7 @@ export async function fetchPublicConfig(slug?: string, accountId?: string): Prom
   return {
     config: res.config as Partial<ScheduleAvailability> & { weekly?: ScheduleAvailability['weekly'] },
     accountId: res.accountId as string | undefined,
+    delivery: res.delivery && typeof res.delivery === 'object' ? res.delivery as BookingDelivery : undefined,
   };
 }
 
@@ -109,13 +203,20 @@ export async function fetchBookedSlots(accountId: string, date: string): Promise
   return (res.booked as { time: string; duration: number }[]) ?? [];
 }
 
+/** Visitor: everything booked across a range of the owner's dates (at most two months). */
+export async function fetchBookedRange(accountId: string, from: string, to: string): Promise<{ date: string; time: string; duration: number }[] | null> {
+  const res = await call({ action: 'slots', accountId, from, to });
+  if (!res || !res.success) return null;
+  return (res.booked as { date: string; time: string; duration: number }[]) ?? [];
+}
+
 export async function createRemoteBooking(payload: {
   accountId: string; eventTypeId?: string; slotDate: string; slotTime: string;
   guestName: string; guestEmail: string; guestPhone?: string; notes?: string; timezone?: string;
-}): Promise<{ ok: boolean; id?: string; key?: string; error?: string; emailed?: boolean }> {
+}): Promise<{ ok: boolean; id?: string; key?: string; error?: string; emailed?: boolean; startsAt?: string }> {
   const res = await call({ action: 'create', ...payload });
   if (!res) return { ok: false, error: 'unreachable' };
-  if (res.success) return { ok: true, id: res.id as string, key: res.key as string, emailed: res.emailed === true };
+  if (res.success) return { ok: true, id: res.id as string, key: res.key as string, emailed: res.emailed === true, startsAt: res.startsAt as string | undefined };
   return { ok: false, error: (res.error as string) || 'Booking failed.' };
 }
 
@@ -151,20 +252,34 @@ export async function setRemoteBookingStatus(token: string, id: string, status: 
 
 /* ── Calendar helpers (confirmation screen) ── */
 
-/** Build an .ics file for a booking and return it as a data blob. */
-export function buildIcs(opts: { title: string; description?: string; location?: string; date: string; time: string; durationMin: number }): Blob {
+/*
+ * Both calendar helpers take the meeting's real instant when there is one
+ * (`startUtc`) and write it in UTC with a Z. They used to build a floating
+ * local time from the owner's date and hour, so a guest in Bangkok adding a
+ * 09:00 New York meeting got it at 09:00 Bangkok — eleven hours early.
+ */
+type CalOpts = { title: string; description?: string; location?: string; date: string; time: string; durationMin: number; startUtc?: number };
+const zStamp = (dt: Date) => dt.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+const startOf = (opts: CalOpts): Date => {
+  if (typeof opts.startUtc === 'number' && Number.isFinite(opts.startUtc)) return new Date(opts.startUtc);
   const [y, mo, da] = opts.date.split('-').map(Number);
   const [h, mi] = opts.time.split(':').map(Number);
-  const start = new Date(y, mo - 1, da, h, mi);
+  return new Date(y, mo - 1, da, h, mi);
+};
+
+/** Build an .ics file for a booking and return it as a data blob. */
+export function buildIcs(opts: CalOpts): Blob {
+  const start = startOf(opts);
   const end = new Date(start.getTime() + opts.durationMin * 60000);
-  const stamp = (dt: Date) =>
+  const local = (dt: Date) =>
     `${dt.getFullYear()}${String(dt.getMonth() + 1).padStart(2, '0')}${String(dt.getDate()).padStart(2, '0')}T${String(dt.getHours()).padStart(2, '0')}${String(dt.getMinutes()).padStart(2, '0')}00`;
+  const stamp = (dt: Date) => (opts.startUtc !== undefined ? zStamp(dt) : local(dt));
   const esc = (s: string) => s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
   const ics = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Protected Central//Booking//EN',
     'BEGIN:VEVENT',
     `UID:${Date.now()}@crmpro-booking`,
-    `DTSTAMP:${stamp(new Date())}`,
+    `DTSTAMP:${zStamp(new Date())}`,
     `DTSTART:${stamp(start)}`,
     `DTEND:${stamp(end)}`,
     `SUMMARY:${esc(opts.title)}`,
@@ -176,13 +291,11 @@ export function buildIcs(opts: { title: string; description?: string; location?:
 }
 
 /** Google Calendar "add event" URL. */
-export function googleCalendarUrl(opts: { title: string; description?: string; location?: string; date: string; time: string; durationMin: number }): string {
-  const [y, mo, da] = opts.date.split('-').map(Number);
-  const [h, mi] = opts.time.split(':').map(Number);
-  const start = new Date(y, mo - 1, da, h, mi);
+export function googleCalendarUrl(opts: CalOpts): string {
+  const start = startOf(opts);
   const end = new Date(start.getTime() + opts.durationMin * 60000);
-  const s = (dt: Date) =>
-    `${dt.getFullYear()}${String(dt.getMonth() + 1).padStart(2, '0')}${String(dt.getDate()).padStart(2, '0')}T${String(dt.getHours()).padStart(2, '0')}${String(dt.getMinutes()).padStart(2, '0')}00`;
+  const s = (dt: Date) => (opts.startUtc !== undefined ? zStamp(dt)
+    : `${dt.getFullYear()}${String(dt.getMonth() + 1).padStart(2, '0')}${String(dt.getDate()).padStart(2, '0')}T${String(dt.getHours()).padStart(2, '0')}${String(dt.getMinutes()).padStart(2, '0')}00`);
   const p = new URLSearchParams({
     action: 'TEMPLATE',
     text: opts.title,

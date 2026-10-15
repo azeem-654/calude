@@ -64,7 +64,7 @@ export const ORIGIN_LABEL: Record<ContentOrigin, string> = {
   'ai-sales-agent': 'AI Sales Agent',
   'business-flow': 'Business flow',
   'marketing-campaign': 'Marketing campaign',
-  autopilot: 'Autopilot',
+  autopilot: 'AI Autopilot',
 };
 
 /** "Video campaign · Five mistakes that kill your first hire" */

@@ -60,6 +60,8 @@ export interface Contactable {
   live?: boolean;
   /** When the site was read. */
   checkedAt?: string;
+  /** What the business says it does, in its own words (its page description) — read on a fresh visit only. */
+  about?: string;
 }
 
 /** One address Hunter found published on a page — never one it inferred. */

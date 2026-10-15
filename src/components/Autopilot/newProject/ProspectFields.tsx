@@ -49,8 +49,10 @@ function ChipBox({ values, onChange, placeholder, field, icon }: {
   );
 }
 
-export function TradesField({ value, onChange, onPlace }: {
+export function TradesField({ value, onChange, onPlace, placeholder }: {
   value: string; onChange: (v: string) => void;
+  /** An example for this business, from the suggestions. */
+  placeholder?: string;
   /** A place typed into the trade box ("… in Virginia") goes to the place box rather than being searched as part of the trade. */
   onPlace?: (place: string) => void;
 }) {
@@ -69,7 +71,7 @@ export function TradesField({ value, onChange, onPlace }: {
   const ideas = [...new Set(trades.flatMap(relatedTrades))].filter(x => !trades.includes(x)).slice(0, 6);
   return (
     <div style={{ display: 'grid', gap: 8 }}>
-      <ChipBox values={trades} onChange={put} placeholder="Add a kind of business" field="project.prospectTrades" icon={<Search size={13} />} />
+      <ChipBox values={trades} onChange={put} placeholder={placeholder || 'Add a kind of business'} field="project.prospectTrades" icon={<Search size={13} />} />
       {ideas.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
           <span style={{ fontSize: 12, color: '#6b7280' }}>Widen it:</span>
@@ -82,7 +84,11 @@ export function TradesField({ value, onChange, onPlace }: {
   );
 }
 
-export function PlacesField({ value, onChange, trades }: { value: string; onChange: (v: string) => void; trades: string[] }) {
+export function PlacesField({ value, onChange, trades, sample = true }: {
+  value: string; onChange: (v: string) => void; trades: string[];
+  /** The live sample under the boxes. Off in the questions, which stop on FirstLeads instead. */
+  sample?: boolean;
+}) {
   const places = placesOf(value);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
@@ -114,7 +120,7 @@ export function PlacesField({ value, onChange, trades }: { value: string; onChan
         )}
         {note && <span style={{ fontSize: 12, color: '#6b7280' }}>{note}</span>}
       </div>
-      {trades.length > 0 && places.length > 0 && <LiveSample trade={trades[0]} place={places[0]} />}
+      {sample && trades.length > 0 && places.length > 0 && <LiveSample trade={trades[0]} place={places[0]} />}
     </div>
   );
 }

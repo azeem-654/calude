@@ -1,4 +1,5 @@
 import type { ContentSource } from './provenance';
+import type { BookingPoint } from '../../worker/src/lib/bookingContent';
 
 export interface Contact {
   id: string;
@@ -195,7 +196,7 @@ export interface ScheduleAvailability {
   minNoticeMin?: number;
   /** Rolling booking window (days into the future). */
   windowDays?: number;
-  /** Optional short YouTube intro video shown on the booking page. */
+  /** A short intro video on the booking page: a YouTube, Vimeo or Loom link (videoEmbedOf). */
   videoUrl?: string;
   /**
    * A picture across the top of the booking page — a photo of the person, the
@@ -206,6 +207,43 @@ export interface ScheduleAvailability {
    * an embed takes to appear.
    */
   imageUrl?: string;
+  /** The host's own photo, round, beside their name — an upload (/api/booking-media.php). */
+  photoUrl?: string;
+  /** The business's logo at the top of the page — an upload. */
+  logoUrl?: string;
+  /** A short clip uploaded to the page (needs the VIDEO bucket); shown in place of `videoUrl` when both are set. */
+  videoFileUrl?: string;
+  /** Whose diary this is, as the page says it ("Dr Amira Lee"); the business name when empty. */
+  hostName?: string;
+  /**
+   * What the visitor gets from the meeting, one line each — the page before
+   * points had icons. Read as ticks (`pointsOf`); the editor now writes `points`.
+   */
+  bullets?: string[];
+  /** The page's points: an icon from a fixed list, a bold line and a small line (at most eight). */
+  points?: BookingPoint[];
+  /** The heading over the points; "This call is for you if you want to:" when empty. */
+  pointsTitle?: string;
+  /** "What we can discuss" — short topics, ticked (at most eight). */
+  discuss?: string[];
+  /** Topic pills under the host (at most four). */
+  tags?: string[];
+  /** One line under the business's name in the header band. */
+  tagline?: string;
+  /** The host's role beside their name ("Founder"). */
+  hostRole?: string;
+  /** The page's colour, `#rrggbb`, over the theme's own; the theme's when empty. */
+  accent?: string;
+  /** The page's colour theme (BOOKING_THEMES); empty is the look pages had before themes ('light'). */
+  theme?: string;
+  /** Measured from the logo at upload: whether its ink is dark or light on a see-through ground, or it has its own. */
+  logoTone?: 'dark' | 'light' | 'opaque' | '';
+  /** The logo's width over its height. */
+  logoRatio?: number;
+  /** The owner's own customer's words — only ever typed by the owner; never filled in for them. */
+  testimonial?: { quote: string; name: string; role: string; photoUrl: string } | null;
+  /** Where "Need help?" goes: an email address or an https page. Not drawn when empty. */
+  help?: string;
   /** Bookable meeting types; when present visitors pick one first. */
   eventTypes?: EventType[];
   automations?: SchedulingAutomations;

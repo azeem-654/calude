@@ -128,9 +128,9 @@ fs.mkdirSync('test-results', { recursive: true });
   await card.getByTestId('lead-preview-go').waitFor({ timeout: 15000 });
   ok('the preview names the columns it matched', /matched a field/.test(await card.getByTestId('lead-preview').innerText()));
   await card.getByTestId('lead-preview-go').click();
-  await card.getByText(/^Finished\./).waitFor({ timeout: 90_000 }).catch(() => {});
+  await card.getByText(/^Finished/).waitFor({ timeout: 90_000 }).catch(() => {});
   const text = await card.innerText();
-  ok('the card says the load finished', /Finished\./.test(text), text.slice(0, 800));
+  ok('the card says the load finished', /Finished/.test(text), text.slice(0, 800));
   ok(`…with ${UNIQUE.toLocaleString('en-US')} people in the directory (the 200 in both files once)`, text.includes(UNIQUE.toLocaleString('en-US')), text.slice(0, 600));
   ok('…and lists the load with its label', /Test file — Florida and Texas/.test(text) && /done/.test(text));
   await page.screenshot({ path: 'test-results/leaddir-admin.png', fullPage: true });
@@ -218,6 +218,49 @@ for (let k = 0; k < 10; k++) { u = await dir(T, 'import_undo', { importId: s3.im
 const a2 = await dir(T, 'admin');
 ok('undoing a load takes its people back out', u.done && a2.total === UNIQUE + 30 - 1, a2.total);
 ok('…and the load says so', a2.imports.find(i => i.id === s3.import.id)?.status === 'undone');
+
+/* ── The owner loads a whole folder: sub-folders, a ZIP inside, a file that is not leads ── */
+{
+  const root = path.resolve('test-results/lead-folder');
+  fs.rmSync(root, { recursive: true, force: true });
+  const put = (rel, body) => { const f = path.join(root, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, body); };
+  const ohio = (from, n) => 'name,email,industry,state,country\n' + Array.from({ length: n }, (_, i) => `Dee Ohio ${from + i},dee${from + i}@dental${(from + i) % 7}.example,Dentistry,Ohio,United States`).join('\n') + '\n';
+  put('Leads/2025/ohio-a.csv', ohio(0, 40));
+  put('Leads/2026/q1/ohio-b.csv', ohio(40, 30));
+  put('Leads/2026/archive.zip', zip([{ name: 'deep/ohio-c.csv', data: ohio(70, 25) }, { name: 'deep/again.csv', data: ohio(0, 5) }]));
+  put('Leads/2026/notes.txt', 'just some notes\nnothing here\n');
+  put('Leads/photo.jpg', 'not a picture');
+  const before = (await dir(T, 'admin')).total;
+  const { page, done } = await signIn(OWNER, OPW, 1280);
+  await page.goto(`${B}/settings?tab=platform`, { waitUntil: 'networkidle' });
+  const card = page.getByTestId('lead-directory-admin');
+  await card.waitFor({ timeout: 15_000 });
+  await card.locator('[data-field="leaddir.label"]').fill('Folder test');
+  await card.locator('[data-field="leaddir.folder"]').setInputFiles(path.join(root, 'Leads'));
+  await card.getByTestId('lead-preview-go').waitFor({ timeout: 15000 });
+  const pv = await card.getByTestId('lead-preview').innerText();
+  ok('a chosen folder lists its lead files, sub-folders included', /4 lead files/.test(pv), pv.slice(0, 300));
+  ok('…and names what it left out', /Left out, not lead files: Leads\/photo\.jpg/.test(pv), pv.slice(0, 400));
+  await card.getByTestId('lead-preview-go').click();
+  await card.getByText(/^Finished/).waitFor({ timeout: 90_000 }).catch(() => {});
+  let t = await card.innerText();
+  ok('every file of the folder goes in, and the one with nobody in it is passed over by name', /3 files loaded/.test(t) && /1 passed over/.test(t) && /notes\.txt[\s\S]{0,40}passed over/.test(t), t.slice(0, 900));
+  const after = (await dir(T, 'admin')).total;
+  ok('…the people in all of them, the ZIP inside included, each once', after - before === 95, [before, after]);
+  ok('…each file is its own load', ['Leads/2025/ohio-a.csv', 'Leads/2026/q1/ohio-b.csv', 'Leads/2026/archive.zip'].every(n => t.includes(n)), t.slice(0, 900));
+  await page.screenshot({ path: 'test-results/leaddir-folder.png', fullPage: true });
+  /* The same folder again: what is in already is not read twice. */
+  await card.locator('[data-field="leaddir.folder"]').setInputFiles(path.join(root, 'Leads'));
+  await card.getByTestId('lead-preview-go').waitFor({ timeout: 15000 });
+  await card.getByTestId('lead-preview-go').click();
+  await card.getByText(/^Finished/).waitFor({ timeout: 60_000 }).catch(() => {});
+  t = await card.innerText();
+  ok('choosing the folder again skips the files already in', /4 already in from before/.test(t) && (await dir(T, 'admin')).total === after, t.slice(0, 600));
+  await done();
+  /* Out again, so the rest of the run counts what it always did. */
+  const loads = (await dir(T, 'admin')).imports.filter(i => i.label === 'Folder test' && i.rows_added > 0);
+  for (const l of loads) for (let k = 0; k < 20; k++) { const u = await dir(T, 'import_undo', { importId: l.id }); if (u.done) break; }
+}
 
 /* ── A customer's screen ── */
 for (const width of [1280, 390]) {

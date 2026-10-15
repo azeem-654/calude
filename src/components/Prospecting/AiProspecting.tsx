@@ -72,7 +72,7 @@ function ListShortcuts({ list, go }: { list: ContactList; go: (to: string) => vo
   return (
     <div className="aip-shortcuts">
       <button type="button" className="aip-chip" onClick={() => go(`/marketing?new=campaign&list=${id}`)}><Send size={12} /> Send a campaign to this list</button>
-      <button type="button" className="aip-chip" onClick={() => go(`/autopilot?new=1&list=${id}`)}><Bot size={12} /> Use this list in a new Autopilot project</button>
+      <button type="button" className="aip-chip" onClick={() => go(`/autopilot?new=1&list=${id}`)}><Bot size={12} /> Use this list in a new AI Autopilot project</button>
       <button type="button" className="aip-chip" onClick={() => go(`/contacts?list=${id}`)}><Users size={12} /> Open in Contacts</button>
     </div>
   );
@@ -454,14 +454,14 @@ export default function AiProspecting() {
                 </button>
                 <span className="aip-hist-age">{ago(h.at)}</span>
                 {(defFor(h.source, h.trade, h.place)?.connections.length ?? 0) > 0 && (
-                  <span className="aip-hist-conn" title="Connected to AI Autopilot"><Workflow size={10} /> Autopilot</span>
+                  <span className="aip-hist-conn" title="Connected to AI Autopilot"><Workflow size={10} /> AI Autopilot</span>
                 )}
                 <Kebab label={`More for ${h.trade} in ${h.place}`} items={[
                   { label: 'Run again', onClick: () => void go(askSentence(h.trade, h.place, h.source), h.source) },
                   { label: 'Find more prospects', onClick: () => { open(h); window.setTimeout(() => { if (s.nextPage) void s.loadMore(); else void go(askSentence(h.trade, h.place, h.source), h.source); }, 60); } },
                   { label: 'Save to list', onClick: () => { open(h); window.setTimeout(() => { s.pickAll(true); setSaving(true); scrollTo(); }, 80); } },
                   {
-                    label: (defFor(h.source, h.trade, h.place)?.connections.length ?? 0) > 0 ? 'Connected to Autopilot — connect another project' : 'Connect to AI Autopilot',
+                    label: (defFor(h.source, h.trade, h.place)?.connections.length ?? 0) > 0 ? 'Connected to AI Autopilot — connect another project' : 'Connect to AI Autopilot',
                     onClick: () => setConnectFor({ trade: h.trade, place: h.place, source: h.source }),
                   },
                   { label: h.saved ? 'Unpin' : 'Pin to the top', onClick: () => s.saveSearch(h) },
@@ -476,7 +476,7 @@ export default function AiProspecting() {
             {shownLists.length > 4 && <button type="button" className="aip-see" onClick={() => setMoreLists(v => !v)}>{moreLists ? 'Fewer' : 'See all'}</button>}
           </div>
           {!shownLists.length && (
-            <span className="aip-side-empty">{q ? 'No list matches.' : 'None yet. Tick the businesses that fit and save them as a list — it appears here, in Contacts, and as an audience for campaigns and Autopilot.'}</span>
+            <span className="aip-side-empty">{q ? 'No list matches.' : 'None yet. Tick the businesses that fit and save them as a list — it appears here, in Contacts, and as an audience for campaigns and AI Autopilot.'}</span>
           )}
           {listsToShow.map(l => {
             const m = members(l, contacts);
@@ -492,7 +492,7 @@ export default function AiProspecting() {
                 </span>
                 <Kebab label={`More for ${l.name}`} items={[
                   { label: 'Send a campaign to this list', onClick: () => navigate(`/marketing?new=campaign&list=${id}`) },
-                  { label: 'Use this list in a new Autopilot project', onClick: () => navigate(`/autopilot?new=1&list=${id}`) },
+                  { label: 'Use this list in a new AI Autopilot project', onClick: () => navigate(`/autopilot?new=1&list=${id}`) },
                   { label: 'Open in Contacts', onClick: () => navigate(`/contacts?list=${id}`) },
                 ]} />
               </div>
@@ -700,9 +700,9 @@ export default function AiProspecting() {
                   if (!d?.connections.length) return null;
                   const differs = d.filters.website !== s.want.website || d.filters.phone !== s.want.phone;
                   return (
-                    <section className="aip-card aip-conn" aria-label="Autopilot connections" data-testid="autopilot-connected">
+                    <section className="aip-card aip-conn" aria-label="AI Autopilot connections" data-testid="autopilot-connected">
                       <button type="button" className="aip-conn-head" aria-expanded={connOpen} onClick={() => setConnOpen(o => !o)}>
-                        <Workflow size={14} /> <b>Autopilot connected</b>
+                        <Workflow size={14} /> <b>AI Autopilot connected</b>
                         <span className="aip-pill">{d.connections.length} workflow{d.connections.length === 1 ? '' : 's'}</span>
                         <span style={{ flex: 1 }} />
                         <small className="aip-muted">{connOpen ? 'Hide' : 'Show'}</small>
@@ -727,7 +727,7 @@ export default function AiProspecting() {
                       {differs && criteriaAsk !== 'done' && (
                         <div className="aip-note" role="status" data-testid="criteria-differ">
                           This search is connected with {d.filters.website ? 'a website required' : 'a website optional'} and {d.filters.phone ? 'a phone required' : 'a phone optional'};
-                          the one on screen asks for {s.want.website ? 'a website' : 'no website'}{s.want.phone ? ' and a phone' : ''}. Update the connected Autopilot workflow{d.connections.length === 1 ? '' : 's'} with these search changes?
+                          the one on screen asks for {s.want.website ? 'a website' : 'no website'}{s.want.phone ? ' and a phone' : ''}. Update the connected AI Autopilot workflow{d.connections.length === 1 ? '' : 's'} with these search changes?
                           <span className="aip-shortcuts" style={{ marginTop: 8 }}>
                             <button type="button" className="aip-chip" data-accent="true" onClick={async () => {
                               const r = await updateSearch(d.id, { filters: { website: s.want.website, phone: s.want.phone } });

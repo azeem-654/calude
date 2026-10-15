@@ -12,8 +12,9 @@
  * overrule the match here rather than discovering at the blueprint that it
  * built the wrong kind of thing.
  */
-import { CheckCircle2, Circle, Loader, AlertTriangle, Info } from 'lucide-react';
-import { SOLUTIONS, solutionByKey, QUESTIONS } from '../../../services/projectSolutions';
+import { useState } from 'react';
+import { CheckCircle2, Circle, Loader, AlertTriangle, Info, Sparkles, Send, ChevronDown, Wand2 } from 'lucide-react';
+import { SOLUTIONS, solutionByKey, QUESTIONS, GROUP_TITLE, GROUP_ORDER } from '../../../services/projectSolutions';
 import { describeAnswer, type IntakeState } from '../../../services/projectIntake';
 
 export type StageState = 'todo' | 'now' | 'done' | 'warn';
@@ -24,7 +25,27 @@ const SOURCE_NOTE: Record<string, string> = {
   link: 'from your link', ai: 'understood by the AI', you: 'you said', default: 'chosen for you',
 };
 
-export default function Understanding({ stages, state, finished, questionCount, onChangeSolution, portfolios, lists = [] }: {
+/* A question's prompt is a question ("Where are they?"); a fact needs a name.
+   The commonest ones get a short noun, the rest keep their prompt. */
+const FACT_NAME: Record<string, string> = {
+  location: 'Where', audience: 'Who it is for', offer: 'Your offer', business: 'Your business', website: 'Website',
+  contactSource: 'Contacts', prospectTrades: 'Businesses to find', prospectPlaces: 'Where to look', prospectPerDay: 'Prospects a day',
+  prospectSms: 'Texts', emailGoal: 'Goal', apptChannels: 'Channels', apptFocus: 'Focus', calendar: 'Calendar', booking: 'Booking',
+  platforms: 'Platforms', frequency: 'How often', blogFrequency: 'How often', sequenceLength: 'Emails in the sequence',
+  contactCount: 'How many people', productCount: 'Products', socialOutputs: 'Each post', approval: 'Approval',
+};
+
+/* What a project can do as well, one press each — each is a ready-made
+   solution whose own questions are then asked. */
+const ADDONS: { key: string; label: string; hint: string }[] = [
+  { key: 'social-growth', label: 'Daily social media posts', hint: 'Image posts in your brand for Instagram, Facebook and LinkedIn, ready to publish' },
+  { key: 'video-content', label: 'AI Shorts from your videos', hint: 'Upload a recording — get cleaned video, Shorts, captions and thumbnails' },
+  { key: 'blog-seo', label: 'SEO blog articles', hint: 'An article every week, written for what your buyers search for' },
+];
+
+export default function Understanding({ stages, state, finished, questionCount, onChangeSolution, onToggleAddon, onCorrect, correcting = false, correction, portfolios, lists = [], openGroups = [] }: {
+  /** Add or take away one of the extras (a whole ready-made solution) beside the main one. */
+  onToggleAddon?: (key: string) => void;
   portfolios: { id: string; name: string }[];
   /** The workspace's contact lists, so a chosen one is named rather than shown as an id. */
   lists?: { id: string; name: string }[];
@@ -33,79 +54,144 @@ export default function Understanding({ stages, state, finished, questionCount, 
   finished: boolean;
   questionCount: number;
   onChangeSolution: (keys: string[]) => void;
+  /** A correction in the customer's words — "it's a med spa, and I want reminders too". */
+  onCorrect: (text: string) => void;
+  correcting?: boolean;
+  /** What the last correction did, in a sentence. */
+  correction?: { ok: boolean; text: string } | null;
+  /** The topics the questions still to come are about, in order. */
+  openGroups?: string[];
 }) {
   const known = state ? Object.entries(state.known) : [];
   const names = (state?.solutionKeys ?? []).map(k => solutionByKey(k)?.label ?? k);
+  const [fix, setFix] = useState('');
+  const [browse, setBrowse] = useState(false);
+  const [how, setHow] = useState(false);
+  const send = () => { const t = fix.trim(); if (t.length < 3 || correcting) return; onCorrect(t); setFix(''); };
+  const facts = known.map(([id, k]) => {
+    const q = QUESTIONS[id] ?? state?.extraQuestions.find(x => x.id === id);
+    if (!q) return null;
+    const text = describeAnswer(q, k.value, portfolios, lists);
+    if (!text) return null;
+    return { id, name: FACT_NAME[id] ?? q.prompt.replace(/\?$/, ''), text, from: k.note ?? SOURCE_NOTE[k.source] };
+  }).filter((x): x is { id: string; name: string; text: string; from: string } => !!x);
+  const topics = GROUP_ORDER.filter(g => openGroups.includes(g)).map(g => GROUP_TITLE[g]);
+
+  /* While it works, the steps are the screen. Once it has finished they are
+     folded away: the customer came for the answer, and five ticked lines
+     above it pushed "is this right?" below the fold. */
+  const steps = (
+    <ol className="np-stages" aria-live="polite">
+      {stages.map(s => (
+        <li key={s.key} className="np-stage np-rise" data-state={s.state}>
+          <span className="np-stage-icon">
+            {s.state === 'done' ? <CheckCircle2 size={17} color="#16a34a" />
+              : s.state === 'now' ? <Loader size={17} color="#5b46e5" className="spin" />
+                : s.state === 'warn' ? <AlertTriangle size={17} color="#b45309" />
+                  : <Circle size={17} color="#cbd5e1" />}
+          </span>
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: 'block', fontWeight: s.state === 'now' ? 700 : 500 }}>{s.label}</span>
+            {s.detail && <span style={{ display: 'block', fontSize: 12.5, color: s.state === 'warn' ? '#92400e' : '#6b7280', marginTop: 2, lineHeight: 1.5 }}>{s.detail}</span>}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+  const warned = stages.filter(s => s.state === 'warn');
 
   return (
-    <div style={{ display: 'grid', gap: 22 }}>
+    <div style={{ display: 'grid', gap: 20 }}>
       <div>
         <h2 className="wz-title">{finished ? <>Here&rsquo;s what I <span className="wz-accent">understood</span></> : <>Understanding <span className="wz-accent">your request</span></>}</h2>
-        {!finished && (
-          <p style={{ margin: '9px 0 0', fontSize: 14.5, color: '#6b7280', lineHeight: 1.55 }}>
-            Working out what you want before asking you anything. This usually takes a few seconds.
-          </p>
-        )}
+        <p style={{ margin: '9px 0 0', fontSize: 14.5, color: '#6b7280', lineHeight: 1.55 }}>
+          {finished ? 'Check it reads right. If anything is off, tell me below in your own words — I’ll fix it before asking you anything.'
+            : 'Working out what you want before asking you anything. This usually takes a few seconds.'}
+        </p>
       </div>
 
-      <ol className="np-stages" aria-live="polite">
-        {stages.map(s => (
-          <li key={s.key} className="np-stage np-rise" data-state={s.state}>
-            <span className="np-stage-icon">
-              {s.state === 'done' ? <CheckCircle2 size={17} color="#16a34a" />
-                : s.state === 'now' ? <Loader size={17} color="#5b46e5" className="spin" />
-                  : s.state === 'warn' ? <AlertTriangle size={17} color="#b45309" />
-                    : <Circle size={17} color="#cbd5e1" />}
-            </span>
-            <span style={{ minWidth: 0 }}>
-              <span style={{ display: 'block', fontWeight: s.state === 'now' ? 700 : 500 }}>{s.label}</span>
-              {s.detail && <span style={{ display: 'block', fontSize: 12.5, color: s.state === 'warn' ? '#92400e' : '#6b7280', marginTop: 2, lineHeight: 1.5 }}>{s.detail}</span>}
-            </span>
-          </li>
-        ))}
-      </ol>
+      {!finished && steps}
 
       {finished && state && (
-        <div className="np-rise" style={{ display: 'grid', gap: 14 }}>
-          <div style={{ padding: '15px 17px', borderRadius: 16, background: '#f6f4ff', border: '1px solid #e2ddff' }}>
-            <p style={{ margin: 0, fontSize: 15.5, color: '#17191c', lineHeight: 1.55, fontWeight: 600 }}>{state.summary}</p>
-            <p style={{ margin: '8px 0 0', fontSize: 13, color: '#4c39d1', lineHeight: 1.5 }}>
-              {state.strength === 'strong' ? `Starting from a ready-made solution: ${names[0]}, personalised for you.`
-                : state.strength === 'partial' ? `Combining ${names.join(' and ')}, with anything missing built for you.`
-                  : 'No ready-made solution fits exactly, so this will be built from scratch around what you described.'}
-            </p>
+        <div className="np-rise" style={{ display: 'grid', gap: 16 }}>
+          <section className="np-understood" aria-label="Your project">
+            <span className="np-eyebrow"><Sparkles size={13} /> YOUR PROJECT</span>
+            <p className="np-understood-summary">{state.summary}</p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: 12.5, color: '#6b7280' }}>
+                {state.strength === 'custom' ? 'Built from scratch around what you described' : state.strength === 'partial' ? 'Combines' : 'Starts from the ready-made'}
+              </span>
+              {state.strength !== 'custom' && names.map(n => <span key={n} className="np-pill">{n}</span>)}
+              {state.strength !== 'custom' && <span style={{ fontSize: 12.5, color: '#6b7280' }}>solution, personalised for you.</span>}
+            </div>
             {state.understoodBy === 'keywords' && (
-              <p style={{ margin: '8px 0 0', display: 'flex', gap: 6, fontSize: 12.5, color: '#6b7280', lineHeight: 1.5 }}>
+              <p style={{ margin: 0, display: 'flex', gap: 6, fontSize: 12.5, color: '#6b7280', lineHeight: 1.5 }}>
                 <Info size={13} style={{ flexShrink: 0, marginTop: 2 }} />
-                The AI could not be reached, so I matched your words to our solutions instead of reading them properly. Check this is the right one.
+                The AI could not be reached, so I matched your words to our solutions instead of reading them properly. Check this is right.
               </p>
             )}
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, fontSize: 12.5, color: '#475569', flexWrap: 'wrap' }}>
-              Not right?
-              <select className="np-input" style={{ width: 'auto', padding: '7px 10px', fontSize: 13 }}
-                value={state.solutionKeys[0] ?? 'custom'}
-                onChange={e => onChangeSolution([e.target.value])}
-                aria-label="Choose a different solution">
-                {SOLUTIONS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
-              </select>
-            </label>
-          </div>
 
-          {known.length > 0 && (
-            <div className="np-known">
-              <span style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: '0.05em', color: '#6b7280' }}>WHAT I ALREADY KNOW — NOT ASKING AGAIN</span>
-              {known.map(([id, k]) => {
-                const q = QUESTIONS[id] ?? state.extraQuestions.find(x => x.id === id);
-                if (!q) return null;
-                const text = describeAnswer(q, k.value, portfolios, lists);
-                if (!text) return null;
-                return (
-                  <div key={id} className="np-known-row">
-                    <span>{q.prompt.replace(/\?$/, '')}:</span> <b>{text}</b> <em>{k.note ?? SOURCE_NOTE[k.source]}</em>
-                  </div>
-                );
-              })}
+            {/* The correction box — in the customer's words, not a dropdown of
+                solution names they would have to know already. */}
+            <div className="np-fix">
+              <label htmlFor="np-fix" className="np-fix-label"><Wand2 size={14} /> Not quite right? Tell me what to change</label>
+              <div className="np-fix-row">
+                <input id="np-fix" className="np-input" value={fix} disabled={correcting} data-field="intake.correction"
+                  placeholder="e.g. “It’s for a med spa in Miami — also remind people the day before”"
+                  onChange={e => setFix(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); send(); } }} />
+                <button type="button" className="np-fix-send" onClick={send} disabled={correcting || fix.trim().length < 3} aria-label="Fix it">
+                  {correcting ? <Loader size={15} className="spin" /> : <Send size={15} />} <span>{correcting ? 'Fixing…' : 'Fix it'}</span>
+                </button>
+              </div>
+              {correction && (
+                <span style={{ fontSize: 12.5, color: correction.ok ? '#0f7b3d' : '#9a3412', lineHeight: 1.5 }}>{correction.text}</span>
+              )}
+              <button type="button" className="np-skip" style={{ justifySelf: 'start', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setBrowse(b => !b)} aria-expanded={browse}>
+                {browse ? 'Hide the ready-made solutions' : 'Or start from a different ready-made solution'} <ChevronDown size={12} style={{ transform: browse ? 'rotate(180deg)' : undefined }} />
+              </button>
+              {browse && (
+                <div className="np-opts" role="radiogroup" aria-label="Ready-made solutions">
+                  {SOLUTIONS.map(s => (
+                    <button key={s.key} type="button" role="radio" className="np-opt np-opt-sm" aria-checked={state.solutionKeys[0] === s.key}
+                      aria-pressed={state.solutionKeys[0] === s.key} onClick={() => onChangeSolution([s.key])}>{s.label}</button>
+                  ))}
+                </div>
+              )}
             </div>
+          </section>
+
+          {onToggleAddon && (
+            <section className="np-addons" aria-label="Add more to this project">
+              <span className="np-eyebrow"><Sparkles size={13} /> ALSO HAVE AI AUTOPILOT DO THIS — OPTIONAL</span>
+              <div className="np-addon-row">
+                {ADDONS.filter(a => a.key !== state.solutionKeys[0]).map(a => {
+                  const on = state.solutionKeys.includes(a.key);
+                  return (
+                    <button key={a.key} type="button" className="np-addon" aria-pressed={on} onClick={() => onToggleAddon(a.key)}>
+                      <span className="np-addon-check">{on ? <CheckCircle2 size={16} /> : <Circle size={16} />}</span>
+                      <span style={{ minWidth: 0 }}>
+                        <b>{a.label}</b>
+                        <small>{a.hint}</small>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {facts.length > 0 && (
+            <section className="np-known" aria-label="What I already know">
+              <span className="np-eyebrow"><CheckCircle2 size={13} color="#16a34a" /> ALREADY KNOWN — I WON’T ASK AGAIN</span>
+              <dl className="np-facts">
+                {facts.map(f => (
+                  <div key={f.id} className="np-fact">
+                    <dt>{f.name}</dt>
+                    <dd><b>{f.text}</b> <em>{f.from}</em></dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
           )}
 
           {state.unsupported.length > 0 && (
@@ -114,10 +200,19 @@ export default function Understanding({ stages, state, finished, questionCount, 
             </div>
           )}
 
-          <p style={{ margin: 0, fontSize: 14, color: '#334155' }}>
-            {questionCount === 0 ? 'I have everything I need to draw up the plan.'
-              : `${questionCount} quick question${questionCount === 1 ? '' : 's'} left — only the ones this project needs.`}
-          </p>
+          <section className="np-next" aria-label="What happens next">
+            <b>{questionCount === 0 ? 'Next: the plan' : `Next: ${questionCount} quick question${questionCount === 1 ? '' : 's'}`}</b>
+            <span>
+              {questionCount === 0 ? 'I have everything I need to draw up the plan.'
+                : topics.length ? `About ${topics.join(', ').toLowerCase()} — each with suggestions and “Let AI decide”.`
+                  : 'Only the ones this project needs, each with suggestions and “Let AI decide”.'}
+            </span>
+          </section>
+
+          <button type="button" className="np-skip" style={{ justifySelf: 'start', display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => setHow(h => !h)} aria-expanded={how}>
+            {how ? 'Hide' : 'Show'} how I worked this out{warned.length ? ` (${warned.length} note${warned.length === 1 ? '' : 's'})` : ''} <ChevronDown size={12} style={{ transform: how ? 'rotate(180deg)' : undefined }} />
+          </button>
+          {how && steps}
         </div>
       )}
     </div>

@@ -13,6 +13,7 @@
  * list says what each one is, whether it last worked and what Google said
  * when it did not.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, ExternalLink, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { addAiKey, aiKeysStatus, moveAiKey, removeAiKey, testAiKey, type AiPoolEntry, type AiKeysRes } from '../../services/aiKeys';
@@ -119,7 +120,7 @@ export default function AiKeysPanel() {
                 {k.id && <>
                   <button style={icon} disabled={!!busy || bi <= 0} aria-label="Try earlier" title="Try earlier" onClick={async () => apply(await moveAiKey(k.id!, 'up'))}><ArrowUp size={13} /></button>
                   <button style={icon} disabled={!!busy || bi < 0 || bi >= backups.length - 1} aria-label="Try later" title="Try later" onClick={async () => apply(await moveAiKey(k.id!, 'down'))}><ArrowDown size={13} /></button>
-                  <button style={{ ...icon, color: '#b42318' }} disabled={!!busy} aria-label="Remove this key" title="Remove" onClick={async () => { if (confirm(`Remove "${k.label}"?`)) apply(await removeAiKey(k.id!), 'Removed.'); }}><Trash2 size={13} /></button>
+                  <button style={{ ...icon, color: '#b42318' }} disabled={!!busy} aria-label="Remove this key" title="Remove" onClick={async () => { if (await askConfirm({ title: `Remove “${k.label}”?`, message: 'This backup key is deleted and no longer tried when another key fails.', confirmLabel: 'Remove key', danger: true })) apply(await removeAiKey(k.id!), 'Removed.'); }}><Trash2 size={13} /></button>
                 </>}
                 {k.source === 'engine' && <span style={{ fontSize: 11.5, color: MUTED, alignSelf: 'center' }}>Change it in “Main AI key” above</span>}
               </div>

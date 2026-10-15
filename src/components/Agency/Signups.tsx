@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import SiteFunnel from './SiteFunnel';
+import PlanLimits from './PlanLimits';
 import { isInstallOwner } from '../../services/moderation';
 import {
   loadSignups, messageCustomers, saveCustomerSettings, sendDigestNow, type CustomerSettings, type Signup,
@@ -48,7 +49,7 @@ const TEMPLATES = (kickoff: string) => [
   {
     id: 'kickoff', label: 'Kickoff call invite',
     title: 'Can I help you set up your first project?',
-    body: 'Thanks for starting your trial. Book a free 20-minute kickoff call and I will set up your first Autopilot project with you, on your screen — you leave with something already running.',
+    body: 'Thanks for starting your trial. Book a free 20-minute kickoff call and I will set up your first AI Autopilot project with you, on your screen — you leave with something already running.',
     link: kickoff, linkLabel: 'Book my kickoff call',
   },
   {
@@ -60,7 +61,7 @@ const TEMPLATES = (kickoff: string) => [
   {
     id: 'ending', label: 'Trial ending soon',
     title: 'Your free trial ends soon',
-    body: 'Your 7-day trial ends in a couple of days. Everything you have built stays where it is — choose a plan under Plan & billing to keep Autopilot running. If you are not sure which plan fits, book a quick call and we will work it out together.',
+    body: 'Your 7-day trial ends in a couple of days. Everything you have built stays where it is — choose a plan under Plan & billing to keep AI Autopilot running. If you are not sure which plan fits, book a quick call and we will work it out together.',
     link: kickoff, linkLabel: 'Talk it through',
   },
 ];
@@ -232,6 +233,9 @@ export default function Signups() {
 
       {/* Where these people came from: the public site's funnel, step by step. */}
       <SiteFunnel />
+
+      {/* What each package allows — the numbers the site's price cards and every refusal read. */}
+      <PlanLimits />
 
       {/* ── Compose ── */}
       {composeOpen && (

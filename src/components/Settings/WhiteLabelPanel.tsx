@@ -18,6 +18,7 @@
  *
  * Nothing here ever says "live" before a browser could actually open it.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Globe, Plus, Loader, Check, Copy, Trash2, AlertCircle, RefreshCw, Clock, ExternalLink,
@@ -123,7 +124,7 @@ export default function WhiteLabelPanel() {
   };
 
   const drop = async (h: string) => {
-    if (!window.confirm(`Stop serving ${h}? Anybody using that address will no longer be able to sign in there.`)) return;
+    if (!await askConfirm({ title: `Stop serving ${h}?`, message: 'Anybody using that address will no longer be able to sign in there.', confirmLabel: 'Stop serving it', danger: true })) return;
     setBusy(h);
     const r = await removeDomain(h);
     setBusy('');

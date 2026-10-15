@@ -24,6 +24,7 @@ import {
   publishTargetStatus, savePublishTarget,
 } from '../lib/publishTarget';
 import { runAgentOnce } from '../lib/projectAgents';
+import { check as allowance, refusalBody } from '../lib/allowanceStore';
 
 /** Kept in step with AIGuardrails in src/types/aiSalesAgent.ts. */
 const DEFAULT_GUARDRAILS = {
@@ -404,10 +405,10 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
         id, accountId, projectId,
         `You asked: "${instruction.slice(0, 90)}"`,
         v.because || 'Read, and not something this can carry out.',
-        v.cannot || 'That is not one of the things Autopilot can do on its own.',
+        v.cannot || 'That is not one of the things AI Autopilot can do on its own.',
         nowIso(), nowIso(),
       ).run();
-      return json({ success: true, understood: false, message: v.cannot || 'That is not something Autopilot can do on its own.', id });
+      return json({ success: true, understood: false, message: v.cannot || 'That is not something AI Autopilot can do on its own.', id });
     }
 
     const id = `ac-${crypto.randomUUID()}`;
@@ -610,6 +611,9 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
         JSON.stringify(nodes).slice(0, 200_000), now, id, accountId,
       ).run();
     } else {
+      /* A new workflow takes a place in the project's allowance. */
+      const room = await allowance(env, accountId, 'workflows_per_project', 1, { projectId });
+      if (!room.ok) return fail(room.message, 402, refusalBody(room));
       const next = await env.DB.prepare(
         'SELECT COALESCE(MAX(position), -1) + 1 AS n FROM crm_project_workflows WHERE account_id = ? AND project_id = ?',
       ).bind(accountId, projectId).first<{ n: number }>();
@@ -704,6 +708,11 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
       'SELECT id, name, portfolio_id AS portfolioId FROM crm_projects WHERE id = ? AND account_id = ?',
     ).bind(projectId, accountId).first<{ id: string; name: string; portfolioId: string }>();
     if (!project) return fail('That project could not be found.', 404);
+
+    /* Asked before the model is: a workflow that could not be kept is a
+       model call the operator paid for and nobody can use. */
+    const room = await allowance(env, accountId, 'workflows_per_project', 1, { projectId });
+    if (!room.ok) return fail(room.message, 402, refusalBody(room));
 
     /* The same rolling-day allowance a typed instruction uses. Both are a model
        call the operator pays for, and metering one and not the other would
@@ -850,7 +859,7 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
     await notePublishResult(env, accountId, originOk, detail);
     return json({
       success: true, ok: originOk,
-      message: originOk ? 'Connected — Autopilot can publish there.' : `Not working: ${detail}`,
+      message: originOk ? 'Connected — AI Autopilot can publish there.' : `Not working: ${detail}`,
       target: await publishTargetStatus(env, accountId),
     });
   }
@@ -864,7 +873,7 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
   if (act === 'start') {
     const objective = String(d.objective ?? '').trim();
     if (objective.length < 8) {
-      return fail('Say what you want Autopilot to achieve — a sentence is enough, in your own words.');
+      return fail('Say what you want AI Autopilot to achieve — a sentence is enough, in your own words.');
     }
     const now = nowIso();
     const existing = await getRun();
@@ -889,16 +898,16 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
      difference matters because resuming from pause must not re-do work. */
   if (act === 'set_status') {
     const status = String(d.status ?? '') as Status;
-    if (!STATUSES.has(status)) return fail(`"${d.status}" is not a state Autopilot can be in.`);
+    if (!STATUSES.has(status)) return fail(`"${d.status}" is not a state AI Autopilot can be in.`);
     const res = await env.DB.prepare('UPDATE crm_autopilot SET status = ?, updated_at = ? WHERE account_id = ?')
       .bind(status, nowIso(), accountId).run();
-    if (!res.meta.changes) return fail('Autopilot has not been set up for this workspace yet.');
+    if (!res.meta.changes) return fail('AI Autopilot has not been set up for this workspace yet.');
     return json({ success: true, autopilot: shapeRun(await getRun() ?? null) });
   }
 
   if (act === 'set_guardrails') {
     const run = await getRun();
-    if (!run) return fail('Autopilot has not been set up for this workspace yet.');
+    if (!run) return fail('AI Autopilot has not been set up for this workspace yet.');
     const merged = { ...parse(run.guardrails, DEFAULT_GUARDRAILS), ...(d.guardrails ?? {}) };
     await env.DB.prepare('UPDATE crm_autopilot SET guardrails = ?, updated_at = ? WHERE account_id = ?')
       .bind(JSON.stringify(merged), nowIso(), accountId).run();

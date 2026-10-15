@@ -43,6 +43,7 @@ import { dispatch, engineCancel, engineMode, engineStatus, type EngineJob } from
 import { transcribePiece, transcriberMode } from './transcribe';
 import { deletePrefix, fileUrl, pokeUrl, projectPrefix, uploadPrefixUrl } from './store';
 import { meter, PRICE, refusal } from './usage';
+import { counted as countedAllowance, record as recordAllowance, roomFor } from '../allowanceStore';
 import { brandOf, type VideoBrand } from './brand';
 
 /* ── Rows ─────────────────────────────────────────────────────────────────── */
@@ -568,7 +569,7 @@ export function renderSpec(doc: VideoDoc, src: Source, out: Pick<OutputRow, 'kin
  * first pass) write the metadata. Each render's key includes the edit's
  * hash, so asking twice for the same edit is one render.
  */
-export async function queueAfterEdit(env: Env, _origin: string, p: ProjectRow, opts: { metadata?: boolean; only?: string[] } = {}): Promise<{ queued: number; refused: string }> {
+export async function queueAfterEdit(env: Env, _origin: string, p: ProjectRow, opts: { metadata?: boolean; only?: string[] } = {}): Promise<{ queued: number; refused: string; note?: string }> {
   const doc = parse<VideoDoc>(p.doc, null as unknown as VideoDoc);
   const src = parse<Source>(p.source, {});
   const tr = await readTranscript(env, p);
@@ -581,6 +582,30 @@ export async function queueAfterEdit(env: Env, _origin: string, p: ProjectRow, o
     if (!spec || spec.hash === o.edit_hash) continue;
     pending.push({ o, spec });
   }
+  /*
+   * AI Shorts are a monthly allowance (lib/allowances.ts), counted the first
+   * time each Short is sent to render — a re-render after an edit is free.
+   * Shorts beyond what the month has room for are left unrendered, by name;
+   * the long video and the Shorts already counted carry on.
+   */
+  let note = '';
+  const firstTime: string[] = [];
+  for (const x of pending) {
+    if (x.o.kind === 'short' && !(await countedAllowance(env, p.account_id, 'ai_shorts', `short:${x.o.id}`))) firstTime.push(x.o.id);
+  }
+  if (firstTime.length) {
+    const room = await roomFor(env, p.account_id, 'ai_shorts');
+    const fits = Math.min(firstTime.length, room.left);
+    const left = new Set(firstTime.slice(fits));
+    if (left.size) {
+      for (let i = pending.length - 1; i >= 0; i--) if (left.has(pending[i].o.id)) pending.splice(i, 1);
+      note = room.refused
+        ? `${left.size} Short${left.size === 1 ? ' was' : 's were'} not rendered. ${room.refused.message}`
+        : `${left.size} Short${left.size === 1 ? ' was' : 's were'} not rendered: this month’s AI Shorts allowance had room for ${fits}. They render when it starts again, or on a larger plan.`;
+      await setProject(env, p.id, { stage_note: note });
+      if (!pending.length) return { queued: 0, refused: note };
+    }
+  }
   const minutes = pending.reduce((n, x) => n + keptLength(x.spec.keeps) / x.spec.motion.speed / 60, 0);
   const no = minutes ? await refusal(env, p.account_id, { renderMin: minutes }) : null;
   if (no) {
@@ -590,13 +615,14 @@ export async function queueAfterEdit(env: Env, _origin: string, p: ProjectRow, o
   for (const { o, spec } of pending) {
     const r = await enqueue(env, { accountId: p.account_id, projectId: p.id, kind: 'render', target: o.id, idem: `render:${o.id}:${spec.hash}`, input: { hash: spec.hash }, revive: true });
     if (r.created) { queued++; await env.DB.prepare(`UPDATE crm_video_outputs SET status = 'processing', error = '', updated_at = ? WHERE id = ?`).bind(nowIso(), o.id).run(); }
+    if (o.kind === 'short') await recordAllowance(env, p.account_id, 'ai_shorts', `short:${o.id}`);
   }
   if (opts.metadata) {
     const ids = outs.filter(o => o.meta === '{}' || !o.meta).map(o => o.id);
     if (ids.length) await enqueue(env, { accountId: p.account_id, projectId: p.id, kind: 'metadata', idem: `meta:${p.id}:${p.doc_version}:${hashOf(ids)}`, input: { ids } });
   }
   if (queued) await setProject(env, p.id, { status: 'processing', stage: 'rendering' });
-  return { queued, refused: '' };
+  return { queued, refused: '', ...(note ? { note } : {}) };
 }
 
 /* ── Metadata ─────────────────────────────────────────────────────────────── */

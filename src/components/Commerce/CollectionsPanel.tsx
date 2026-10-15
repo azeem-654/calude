@@ -17,6 +17,7 @@
  * of ticks — and it is saved whole, because moving one product changes the
  * position of every product after it.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useState } from 'react';
 import {
   ArrowDown, ArrowUp, Check, Layers, Loader, Plus, Trash2, X,
@@ -72,7 +73,7 @@ export default function CollectionsPanel({
   };
 
   const remove = async (c: Collection) => {
-    if (!window.confirm(`Delete "${c.name}"? The products in it stay in your catalogue — only the grouping goes.`)) return;
+    if (!await askConfirm({ title: `Delete “${c.name}”?`, message: 'The products in it stay in your catalogue — only the grouping goes.', confirmLabel: 'Delete collection', danger: true })) return;
     setBusy(c.id);
     const res = await deleteCollection(c.id);
     setBusy('');

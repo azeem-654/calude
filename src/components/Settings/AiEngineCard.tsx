@@ -95,14 +95,14 @@ export default function AiEngineCard() {
 
     if (stored.success) {
       void readServer();
-      setResult({ ok: true, msg: 'Key verified and saved. Autopilot can now answer replies even when you are signed out.' });
+      setResult({ ok: true, msg: 'Key verified and saved. AI Autopilot can now answer replies even when you are signed out.' });
       addNotification('Gemini key verified and stored on the server.', 'success');
     } else {
       setResult({
         ok: true,
-        msg: `Saved in this browser, but not on the server — Autopilot will not be able to write replies while you are signed out. ${stored.error ?? ''}`,
+        msg: `Saved in this browser, but not on the server — AI Autopilot will not be able to write replies while you are signed out. ${stored.error ?? ''}`,
       });
-      addNotification('Saved locally only. Autopilot cannot reply while you are signed out.', 'error');
+      addNotification('Saved locally only. AI Autopilot cannot reply while you are signed out.', 'error');
     }
   };
 
@@ -158,22 +158,22 @@ export default function AiEngineCard() {
               it fails, and the screen would be saying it is fine. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '10px 14px', borderRadius: 10, backgroundColor: !askedServer ? '#f8fafc' : serverWorks ? '#ecfdf5' : '#fff7ed', border: `1px solid ${!askedServer ? '#e2e8f0' : serverWorks ? '#a7f3d0' : '#fed7aa'}` }}>
             {!askedServer
-              ? <><Loader size={15} color="#94a3b8" className="spin" /><span style={{ fontSize: 13, fontWeight: 600, color: '#64748b' }}>Checking what Autopilot has…</span></>
+              ? <><Loader size={15} color="#94a3b8" className="spin" /><span style={{ fontSize: 13, fontWeight: 600, color: '#64748b' }}>Checking what AI Autopilot has…</span></>
               : serverWorks
                 ? <>
                     <CheckCircle size={15} color="#059669" />
                     <span style={{ fontSize: 13, fontWeight: 600, color: '#065f46', flex: 1, minWidth: 180 }}>
-                      Autopilot has a working key{server?.verifiedAt ? ` — Google accepted it on ${new Date(server.verifiedAt).toLocaleString()}` : ''}
+                      AI Autopilot has a working key{server?.verifiedAt ? ` — Google accepted it on ${new Date(server.verifiedAt).toLocaleString()}` : ''}
                     </span>
                   </>
                 : <>
                     <XCircle size={15} color="#c2410c" />
                     <span style={{ fontSize: 13, fontWeight: 600, color: '#9a3412', flex: 1, minWidth: 180 }}>
                       {!server?.hasKey
-                        ? 'Autopilot has no key — it cannot write campaigns or answer replies while you are signed out'
+                        ? 'AI Autopilot has no key — it cannot write campaigns or answer replies while you are signed out'
                         : server.lastError
-                          ? 'Autopilot has a key that Google refused — campaigns and replies will fail until it is replaced'
-                          : 'Autopilot has a key, not yet checked against Google — press Check now to find out before a customer does'}
+                          ? 'AI Autopilot has a key that Google refused — campaigns and replies will fail until it is replaced'
+                          : 'AI Autopilot has a key, not yet checked against Google — press Check now to find out before a customer does'}
                     </span>
                   </>}
             {askedServer && server?.hasKey && (
@@ -238,7 +238,7 @@ export default function AiEngineCard() {
           </ol>
           <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '10px 0 0', lineHeight: 1.5 }}>
             Verify &amp; Save keeps two copies: one in this browser, which talks to Google directly so a
-            video never passes through us, and one encrypted on the server, which is what lets Autopilot
+            video never passes through us, and one encrypted on the server, which is what lets AI Autopilot
             write and reply on a schedule with nobody signed in. Neither is ever shown back to a browser.
           </p>
         </div>

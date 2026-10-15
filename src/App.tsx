@@ -53,6 +53,7 @@ import GoogleCallback from './components/Auth/GoogleCallback';
 import ReviewQueue from './components/Moderation/ReviewQueue';
 import PolicyPage from './components/Site/PolicyPage';
 import TrustCenter from './components/Site/TrustCenter';
+import PricingPage from './components/Site/PricingPage';
 import LegalPage from './components/Site/LegalPage';
 import StandingBanner from './components/shared/StandingBanner';
 import StagingBanner from './components/shared/StagingBanner';
@@ -120,9 +121,10 @@ function AppLayout({ isClient }: { isClient: boolean }) {
   const isEditor = location.pathname.startsWith('/social-creator/editor');
 
   /* The Trust Center is public on every host, signed in or not. */
-  if (['/security', '/privacy', '/terms-of-service', '/affiliate-terms'].includes(location.pathname)) {
+  if (['/security', '/privacy', '/terms-of-service', '/affiliate-terms', '/pricing'].includes(location.pathname)) {
     return (
       <Routes>
+        <Route path="/pricing" element={<PricingPage />} />
         <Route path="/security" element={<TrustCenter />} />
         <Route path="/privacy" element={<LegalPage doc="privacy" />} />
         <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
@@ -503,6 +505,7 @@ export default function App() {
           <Route path="/privacy" element={<LegalPage doc="privacy" />} />
           <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
           <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
+          <Route path="/pricing" element={<PricingPage />} />
           <Route path="*" element={<SiteHome />} />
         </Routes>
       </BrowserRouter>
@@ -532,6 +535,7 @@ export default function App() {
           <Route path="/privacy" element={<LegalPage doc="privacy" />} />
           <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
           <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
+          <Route path="/pricing" element={<PricingPage />} />
           <Route path="/login" element={<LoginScreen onAuthed={signedIn} intent="signin" />} />
           <Route path="/signup" element={<LoginScreen onAuthed={signedIn} intent="signup" />} />
           <Route path="*" element={isAppHost() ? <LoginScreen onAuthed={signedIn} /> : <SiteHome />} />

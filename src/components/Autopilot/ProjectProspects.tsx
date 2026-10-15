@@ -258,7 +258,7 @@ export default function ProjectProspects({ project, folded = false }: { project:
           <div style={card}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 750, color: T.ink }}><Target size={17} color={T.accent} /> Find new prospects every day</span>
             <span style={{ fontSize: 13, color: T.muted, lineHeight: 1.6 }}>
-              Autopilot searches business directories live, reads each business's own website for the address it publishes, checks
+              AI Autopilot searches business directories live, reads each business's own website for the address it publishes, checks
               it, and adds the new ones to this project's audience — a few at a time through the day, until today's number is in.
               It never emails anybody itself.
             </span>

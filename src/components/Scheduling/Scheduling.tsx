@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Calendar, Clock, Link, Settings, Check, Copy, Trash2,
-  Globe, Plus, Zap, Layers, CloudUpload, Mail, MessageSquare, Upload,
+  Globe, Plus, Zap, Layers, CloudUpload, Mail, MessageSquare, Upload, LayoutTemplate,
 } from 'lucide-react';
+import BookingSetup from '../Autopilot/newProject/BookingSetup';
+import { allZones, offsetLabel } from '../../services/bookingTime';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import type { DayAvailability, EventType, SchedulingAutomations, Booking } from '../../types';
@@ -64,7 +66,7 @@ const LABEL: React.CSSProperties = {
 
 export default function Scheduling() {
   const { schedule, updateSchedule, bookings, updateBooking, deleteBooking, addNotification } = useApp();
-  const [tab, setTab] = useState<'bookings' | 'types' | 'availability' | 'automations' | 'settings'>('bookings');
+  const [tab, setTab] = useState<'bookings' | 'page' | 'types' | 'availability' | 'automations' | 'settings'>('bookings');
   const [copiedLink, setCopiedLink] = useState(false);
   const [bookingFilter, setBookingFilter] = useState<'all' | 'confirmed' | 'cancelled' | 'completed'>('all');
   const [remoteBookings, setRemoteBookings] = useState<Booking[]>([]);
@@ -230,8 +232,8 @@ export default function Scheduling() {
                deployment for every refusal, neither of which the owner could fix. */
             : pubState === 'refused' ? <>
                 <span>Not published, so the link above does not work yet: {pubError}</span>
-                {tab !== 'settings' && (
-                  <button onClick={() => setTab('settings')} style={{ border: 'none', background: 'none', padding: 0, color: '#17191c', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontSize: 12.5 }}>
+                {tab !== 'page' && (
+                  <button onClick={() => setTab('page')} style={{ border: 'none', background: 'none', padding: 0, color: '#17191c', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer', fontSize: 12.5 }}>
                     Change the link
                   </button>
                 )}
@@ -241,13 +243,19 @@ export default function Scheduling() {
 
         {/* Tabs */}
         <div style={{ display: 'flex', flexWrap: 'wrap', backgroundColor: '#f1f5f9', borderRadius: 10, padding: 4, gap: 2, marginBottom: 20 }}>
-          {([['bookings', 'Bookings', <Calendar size={14} />], ['types', 'Event Types', <Layers size={14} />], ['availability', 'Availability', <Clock size={14} />], ['automations', 'Automations', <Zap size={14} />], ['settings', 'Settings', <Settings size={14} />]] as const).map(([id, label, icon]) => (
+          {([['bookings', 'Bookings', <Calendar size={14} />], ['page', 'Booking page', <LayoutTemplate size={14} />], ['types', 'Event Types', <Layers size={14} />], ['availability', 'Availability', <Clock size={14} />], ['automations', 'Automations', <Zap size={14} />], ['settings', 'Settings', <Settings size={14} />]] as const).map(([id, label, icon]) => (
             <button key={id} onClick={() => setTab(id)}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', border: 'none', borderRadius: 8, backgroundColor: tab === id ? 'white' : 'transparent', color: tab === id ? '#17191c' : '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: tab === id ? '0 1px 3px rgba(16,24,40,0.08)' : 'none', transition: 'all 0.15s' }}>
               {icon} {label}
             </button>
           ))}
         </div>
+
+        {/* ── Booking page: the same editor the AI Autopilot wizard shows ──
+            Its own publishing is off here: this screen already publishes
+            every change to the schedule (the effect above), and two
+            publishers racing each other would only double the requests. */}
+        {tab === 'page' && <BookingSetup autoPublish={false} />}
 
         {/* ── Bookings Tab ── */}
         {tab === 'bookings' && (
@@ -515,7 +523,11 @@ export default function Scheduling() {
               <Globe size={16} color="#17191c" style={{ flexShrink: 0, marginTop: 1 }} />
               <div>
                 <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, marginBottom: 3 }}>Timezone</div>
-                <div style={{ fontSize: 13, color: '#475569' }}>{schedule.timezone} — visitors see times in their local timezone automatically.</div>
+                <select data-field="booking.timezone" value={schedule.timezone} onChange={e => updateSchedule({ timezone: e.target.value })}
+                  style={{ marginTop: 4, padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 9, fontSize: 13, color: '#0f172a', background: '#fff', maxWidth: '100%' }}>
+                  {allZones(schedule.timezone).map(z => <option key={z} value={z}>{z.replace(/_/g, ' ')} ({offsetLabel(Date.now(), z)})</option>)}
+                </select>
+                <div style={{ fontSize: 13, color: '#475569', marginTop: 6 }}>Your hours above are in this zone. Visitors anywhere see them converted to their own time.</div>
               </div>
             </div>
           </div>
@@ -538,6 +550,7 @@ export default function Scheduling() {
                 <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #e2e8f0', borderRadius: 9, overflow: 'hidden', backgroundColor: 'white' }}>
                   <span style={{ padding: '9px 10px', backgroundColor: '#f8fafc', fontSize: 12, color: '#94a3b8', borderRight: '1px solid #e2e8f0', whiteSpace: 'nowrap', fontWeight: 500 }}>/book/</span>
                   <input
+                    data-field="booking.slug"
                     value={schedule.slug}
                     /* Only what a URL can carry, and only while typing — the
                        tidy-up happens on blur so a hyphen you are halfway
@@ -763,7 +776,7 @@ function SmsSenderCard() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>SMS sender</div>
           <div style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.5 }}>
-            The reminder above is not texted. When Autopilot is running for this workspace, it reminds a guest
+            The reminder above is not texted. When AI Autopilot is running for this workspace, it reminds a guest
             who left a phone number the day before, by text from this sender — the same one as Settings → Email &amp; SMS.
           </div>
           <div data-testid="sms-sender-status" style={{ fontSize: 12.5, fontWeight: 600, color: tone, marginTop: 8 }}>{status}</div>

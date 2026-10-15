@@ -29,6 +29,7 @@ import { engineHealth, engineMode } from '../lib/video/engine';
 import { transcriberMode } from '../lib/video/transcribe';
 import { fileUrl, projectPrefix, workspacePrefix, sign, deletePrefix } from '../lib/video/store';
 import { allowance, refusal } from '../lib/video/usage';
+import { check as allowanceCheck, counted as countedAllowance, record as recordAllowance, refusalBody } from '../lib/allowanceStore';
 import { searchMusic, trackById, storeTrack, musicQuery, looksLikeAudio } from '../lib/video/music';
 import { brandOf, kitOf, saveKit } from '../lib/video/brand';
 import {
@@ -209,7 +210,7 @@ async function afterEdit(env: Env, origin: string, p: ProjectRow, doc: VideoDoc,
   const again = outs.filter(o => rerender.includes('*') || rerender.includes(o.clip_id) || rerender.includes(o.id)).map(o => o.id);
   if (!fresh.length && !again.length) return '';
   const r = await queueAfterEdit(env, origin, p, { metadata: true, only: [...fresh, ...again] });
-  return r.refused;
+  return r.refused || r.note || '';
 }
 
 /* ── Music: a licensed track fetched by the server, then set on the edit ─── */
@@ -288,6 +289,10 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
     if (!rl.allowed) return fail('That is a lot of new video projects in an hour — try again shortly.', 429);
     const no = await refusal(env, accountId, {});
     if (no) return fail(no, 402, { code: 'trial_ended' });
+    /* A project is for one recording, and recordings processed are a monthly
+       allowance: said now, before anybody waits for an upload. */
+    const room = await allowanceCheck(env, accountId, 'long_videos');
+    if (!room.ok) return fail(room.message, 402, refusalBody(room));
     let autopilot: string | null = null, workflow: string | null = null;
     let defaults: Partial<VideoRequest> = {};
     if (d.autopilotProjectId) {
@@ -434,6 +439,12 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       if (src.key) return fail('This project already has its video. Start a new project for another recording.', 200, { code: 'has_source' });
       const no = await refusal(env, accountId, { bytes: size });
       if (no) return fail(no, 402, { code: 'allowance' });
+      /* Asked again here (it is counted when the upload completes): a draft
+         made earlier in the month may be uploaded after the month filled. */
+      if (!await countedAllowance(env, accountId, 'long_videos', `long:${p.id}`)) {
+        const room = await allowanceCheck(env, accountId, 'long_videos');
+        if (!room.ok) return fail(room.message, 402, refusalBody(room));
+      }
       const fileKey = s(d.fileKey, 300);
       /* The same file chosen again picks up where it stopped. */
       const open = await env.DB.prepare(`SELECT * FROM crm_video_uploads WHERE project_id = ? AND account_id = ? AND state = 'open' AND file_key = ? AND bytes = ?`)
@@ -468,6 +479,9 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
         env.DB.prepare(`UPDATE crm_video_uploads SET state = 'done', updated_at = ? WHERE id = ?`).bind(nowIso(), row.id),
         env.DB.prepare(`UPDATE crm_video_projects SET source = ?, status = 'processing', stage = 'prepare', error = '', updated_at = ? WHERE id = ?`).bind(JSON.stringify(src), nowIso(), p.id),
       ]);
+      /* One recording processed, counted once per project however often the
+         upload is resumed or the preparing retried. */
+      await recordAllowance(env, accountId, 'long_videos', `long:${p.id}`);
       await enqueue(env, { accountId, projectId: p.id, kind: 'prepare', idem: `prepare:${p.id}:${row.r2_key}` });
       kick(p.id);
       return json({ success: true });
@@ -632,7 +646,7 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       const r = await queueAfterEdit(env, origin, p, { only: ids });
       if (r.refused) return fail(r.refused, 402, { code: 'allowance' });
       kick(p.id);
-      return json({ success: true, queued: r.queued });
+      return json({ success: true, queued: r.queued, ...(r.note ? { note: r.note } : {}) });
     }
 
     case 'thumbnails': {

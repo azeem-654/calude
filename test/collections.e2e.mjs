@@ -90,8 +90,8 @@ for (const width of [390, 1280]) {
   await p.waitForTimeout(1300);
   ok('it saves and comes back', /Test group/.test((await p.textContent('body')) ?? ''));
 
-  p.once('dialog', dlg => void dlg.accept());
   await panel.getByRole('button', { name: 'Delete Test group' }).first().click();
+  await p.locator('[data-testid="confirm-go"]').click();
   await p.waitForTimeout(1300);
   const after = await p.textContent('body');
   ok('and can be deleted', !/Test group/.test(after ?? ''));

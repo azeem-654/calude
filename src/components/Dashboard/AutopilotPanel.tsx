@@ -289,7 +289,7 @@ export default function AutopilotPanel() {
       <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '13px 14px', borderRadius: 14, background: '#fff7ed', border: '1px solid #fed7aa' }}>
         <CircleAlert size={16} color="#c2410c" style={{ flexShrink: 0, marginTop: 1 }} />
         <p style={{ margin: 0, fontSize: 13, color: '#7c2d12', lineHeight: 1.6 }}>
-          The board did not answer, so there is nothing reliable to show here. Autopilot may still be
+          The board did not answer, so there is nothing reliable to show here. AI Autopilot may still be
           running — open it to see.
         </p>
       </div>,
@@ -301,7 +301,7 @@ export default function AutopilotPanel() {
       <>
         <DoesStrip />
         <button type="button" onClick={() => navigate('/autopilot')} className="ap-cta press">
-          <Zap size={15} /> Put one thing on Autopilot
+          <Zap size={15} /> Put one thing on AI Autopilot
         </button>
         <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.6, textAlign: 'center' }}>
           One project per client and per push. You say what you want to happen; it works out what to
