@@ -16,6 +16,7 @@
  * read before they publish it, so every part of it is a field rather than an
  * advanced panel three clicks down.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useState } from 'react';
 import { Check, Loader, Percent, Plus, Tag, Trash2, X } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -57,7 +58,7 @@ export default function DiscountsPanel({
   };
 
   const remove = async (d: Discount) => {
-    if (!window.confirm(`Delete ${d.code}? Anyone typing it at the checkout will be told it is not recognised.`)) return;
+    if (!await askConfirm({ title: `Delete ${d.code}?`, message: 'Anyone typing it at the checkout will be told it is not recognised.', confirmLabel: 'Delete code', danger: true })) return;
     setBusy(d.id);
     const r = await deleteDiscount(d.id);
     setBusy('');

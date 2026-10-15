@@ -1,3 +1,4 @@
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -528,8 +529,8 @@ export default function SocialCreator() {
     addSocialPost(dup);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('Delete this design?')) deleteSocialPost(id);
+  const handleDelete = async (id: string) => {
+    if (await askConfirm({ title: 'Delete this design?', message: 'The design is deleted.', confirmLabel: 'Delete design', danger: true })) deleteSocialPost(id);
   };
 
   return (

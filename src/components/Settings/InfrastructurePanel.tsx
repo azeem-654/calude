@@ -12,6 +12,7 @@
  * call to the provider and shows what the provider said, so "Connected" on this
  * screen means somebody's API answered, not that a form validated.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useEffect, useState } from 'react';
 import {
   Globe, Server, Mail, Check, X, Loader, RefreshCw, Search, ShieldCheck,
@@ -103,7 +104,7 @@ function KindSection({ kind, specs, connected, onChanged }: {
   };
 
   const drop = async () => {
-    if (!window.confirm(`Disconnect ${connected?.name}? The stored credentials are deleted.`)) return;
+    if (!await askConfirm({ title: `Disconnect ${connected?.name}?`, message: 'The stored credentials are deleted.', confirmLabel: 'Disconnect', danger: true })) return;
     await disconnectProvider(kind);
     addNotification('Disconnected.');
     onChanged();
@@ -220,7 +221,7 @@ function DomainSearch({ connected }: { connected: ConnectedProvider | null }) {
     const ask = price != null
       ? `Register ${domain} for ${price.toFixed(2)}? This charges your registrar account.`
       : `Register ${domain}? This charges your registrar account.`;
-    if (!window.confirm(ask)) return;
+    if (!await askConfirm({ title: `Register ${domain}?`, message: ask, confirmLabel: 'Register domain' })) return;
     setBuying(domain);
     const r = await registerDomain(domain, 1, true);
     setBuying('');

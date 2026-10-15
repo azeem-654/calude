@@ -2,6 +2,7 @@
  * ListsPanel.tsx — saved segments across the top of the contact list, plus the
  * rule builder for smart lists.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useMemo, useState } from 'react';
 import { Bookmark, Plus, Trash2, Pencil, Check, X, Sparkles, Users } from 'lucide-react';
 import type { Appointment, Contact, Pipeline } from '../../types';
@@ -89,9 +90,9 @@ export default function ListsPanel({
               <Pencil size={12} />
             </button>
             <button title="Delete this list"
-              onClick={() => {
+              onClick={async () => {
                 const l = lists.find(x => x.id === activeId);
-                if (!l || !window.confirm(`Delete the list "${l.name}"? The contacts in it are not affected.`)) return;
+                if (!l || !await askConfirm({ title: `Delete the list “${l.name}”?`, message: 'The contacts in it are not affected.', confirmLabel: 'Delete list', danger: true })) return;
                 onChange(deleteList(activeId));
                 onActivate(null);
                 onNotify(`List "${l.name}" deleted`, 'info');

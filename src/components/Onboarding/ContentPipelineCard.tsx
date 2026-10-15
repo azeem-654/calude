@@ -6,6 +6,7 @@
  * Review / Published), quick stats, and an expandable detail panel per month
  * with the theme, focus, holidays, ideas and audit trail.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Sparkles, CalendarRange, ChevronDown, ChevronUp, ArrowRight, History, Loader, Mail, MessageSquare, Wand2, CheckCheck, X, Share2, Clapperboard, Copy, Layers, Zap, Undo2, ScrollText } from 'lucide-react';
@@ -460,8 +461,8 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
                     <CheckCheck size={13} /> Live: {[`${open.counts.emails}-email sequence`, open.counts.sms ? `${open.counts.sms}-message SMS flow` : '', open.counts.social ? `${open.counts.social} social designs` : '', open.counts.videos ? `${open.counts.videos} video scripts` : ''].filter(Boolean).join(' + ')}.
                   </p>
                   <button
-                    onClick={() => {
-                      if (!window.confirm(`Roll back ${open.label}? The published sequence, SMS flow and social designs are removed and the month returns to review (its content is kept for editing).`)) return;
+                    onClick={async () => {
+                      if (!await askConfirm({ title: `Roll back ${open.label}?`, message: 'The published sequence, SMS flow and social designs are removed and the month returns to review. Its content is kept for editing.', confirmLabel: 'Roll back', danger: true })) return;
                       if (rollbackMonth(open.index, { deleteSequence, deleteCampaign, deleteSocialPosts }, actor)) {
                         addNotification(`${open.label} rolled back — content is back in review, published records removed`, 'info');
                         setBump(b => b + 1);

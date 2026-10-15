@@ -1,3 +1,4 @@
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle, Check, Download, ExternalLink, Globe, Link2, Loader2, Plug,
@@ -167,7 +168,7 @@ export default function PublishDesk({ project }: Props) {
   }
 
   async function unlink(t: PublishTarget) {
-    if (!window.confirm(`Disconnect ${t.siteUrl}? Posts already published stay on the site.`)) return;
+    if (!await askConfirm({ title: `Disconnect ${t.siteUrl}?`, message: 'Posts already published stay on the site.', confirmLabel: 'Disconnect', danger: true })) return;
     await disconnect(t);
     upsertTarget({ ...t, hasCredential: false, verifiedAt: undefined });
     setStatus(s => ({ ...s, [t.id]: 'Not connected' }));
@@ -175,8 +176,8 @@ export default function PublishDesk({ project }: Props) {
     addNotification('Disconnected. The stored password has been deleted from the server.');
   }
 
-  function removeTarget(t: PublishTarget) {
-    if (!window.confirm(`Remove "${t.name}"? Published posts stay where they are; only this connection goes.`)) return;
+  async function removeTarget(t: PublishTarget) {
+    if (!await askConfirm({ title: `Remove “${t.name}”?`, message: 'Published posts stay where they are; only this connection goes.', confirmLabel: 'Remove', danger: true })) return;
     void disconnect(t);
     deleteTarget(t.id);
     if (openId === t.id) setOpenId('');
@@ -216,7 +217,7 @@ export default function PublishDesk({ project }: Props) {
     }
   }
 
-  function publish(mode: PublishJob['mode']) {
+  async function publish(mode: PublishJob['mode']) {
     if (!plan || !target) return;
     if (fatal.length) {
       addNotification(`Cannot publish: ${fatal[0].reason}`, 'error');
@@ -235,9 +236,9 @@ export default function PublishDesk({ project }: Props) {
       addNotification('Everything on this plan is already up to date on that site.', 'info');
       return;
     }
-    if (!window.confirm(
-      `${mode === 'now' ? 'Publish' : 'Schedule'} ${next.queue.length} post${next.queue.length === 1 ? '' : 's'} to ${target.siteUrl}?`,
-    )) return;
+    const verb = mode === 'now' ? 'Publish' : 'Schedule';
+    const n = `${next.queue.length} post${next.queue.length === 1 ? '' : 's'}`;
+    if (!await askConfirm({ title: `${verb} ${n}?`, message: `${verb} ${n} to ${target.siteUrl}?`, confirmLabel: verb })) return;
     void drive(next);
   }
 
@@ -251,7 +252,7 @@ export default function PublishDesk({ project }: Props) {
 
   async function takeDown(post: PlannedPost) {
     if (!plan || !target) return;
-    if (!window.confirm(`Take "${post.title}" off ${target.siteUrl}? It becomes a draft there — nothing is deleted.`)) return;
+    if (!await askConfirm({ title: `Take “${post.title}” down?`, message: `It comes off ${target.siteUrl} and becomes a draft there — nothing is deleted.`, confirmLabel: 'Take down' })) return;
     setBusy(`withdraw-${post.id}`);
     try {
       const r = await withdraw(plan, post, target);

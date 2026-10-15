@@ -1,3 +1,4 @@
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useState, useMemo } from 'react';
 import {
   X, Mail, Phone, Building2, Briefcase, Link2, MessageCircle, Globe, MapPin,
@@ -538,7 +539,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
 
         {/* Footer actions */}
         <div style={{ padding: '12px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', flexShrink: 0 }}>
-          <button onClick={() => { if (window.confirm(`Delete ${contact.name}?`)) { deleteContact(contact.id); onClose(); } }}
+          <button onClick={async () => { if (await askConfirm({ title: `Delete ${contact.name}?`, message: 'The contact is deleted.', confirmLabel: 'Delete contact', danger: true })) { deleteContact(contact.id); onClose(); } }}
             style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', border: '1px solid #fecaca', borderRadius: 8, backgroundColor: '#fef2f2', color: '#dc2626', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             <Trash2 size={13} /> Delete Contact
           </button>

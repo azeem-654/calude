@@ -12,6 +12,7 @@
  *
  * What differs is the fields, so that is the only thing `SPECS` holds.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Copy, Loader, Plus, Trash2, X, AlertTriangle, Upload } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -182,7 +183,7 @@ export default function EngageBuilder({ kind, onChange }: { kind: Kind; onChange
 
   const remove = async (item: Record<string, unknown>) => {
     const label = String(item[spec.nameKey] ?? 'this');
-    if (!window.confirm(`Delete "${label}"? Anything it has already captured is kept.`)) return;
+    if (!await askConfirm({ title: `Delete “${label}”?`, message: 'Anything it has already captured is kept.', confirmLabel: 'Delete', danger: true })) return;
     setBusy(String(item.id));
     const r = await deleteOf(kind, String(item.id));
     setBusy('');
