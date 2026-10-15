@@ -640,7 +640,14 @@ searches people the install owner loaded from their own files;
   bound to the live directory.
 - **Loading is done by the owner's browser** (`services/leadImport.ts`): a
   CSV, `.csv.gz` or ZIP (read from its central directory, ZIP64 included,
-  Deflate via `DecompressionStream`) of any size is streamed from disk,
+  Deflate via `DecompressionStream`) of any size is streamed from disk —
+  or **a whole folder** (chosen with `webkitdirectory`, or dropped and walked
+  by `pickedFromDrop`, any depth), or several files; a ZIP may hold folders,
+  `.gz` files and ZIPs (three deep, `sourcesOf`). Each lead file is its own
+  load (`importMany`, 1–4 at once, keyed by its path in the folder); choosing
+  the folder again skips files already in (`import_start` `skipDone`) and a
+  file with no name/email column is "passed over", by name. The real ceiling
+  is the D1 database's size (10 GB on Workers Paid), which a load names. Files are
   parsed, mapped by column name (`ALIASES` — Leads.cm, Apollo, ZoomInfo,
   Seamless, Lusha and CRM headers; accents, punctuation and spacing ignored)
   and sent 500 rows a request (`import_rows`). **Before a load the owner sees

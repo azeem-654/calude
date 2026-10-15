@@ -7,7 +7,7 @@
 import { API_BASE } from './apiBase';
 import { sessionToken } from './auth';
 import { getActiveAccountId } from './tenancy';
-import { fileKey, readLeads, sourcesOf, type LeadRow, type ReadProgress } from './leadImport';
+import { fileKey, readLeads, sourcesOf, type LeadRow, type PickedFile, type ReadProgress } from './leadImport';
 
 export interface DirPerson {
   id: number; name: string; title: string; level: string; department: string; company: string; website: string; domain: string;
@@ -74,16 +74,20 @@ export async function importFile(
   file: File, label: string,
   on: { start?: (r: ImportRun) => void; tick?: (t: ImportTick) => void; skipPart?: (name: string, why: string) => void },
   signal: AbortSignal,
-): Promise<{ ok: boolean; error: string; code: string; importId: string }> {
-  const sources = await sourcesOf(file);
-  const st = await dirCall('import_start', { fileKey: fileKey(file), name: file.name, size: file.size, label });
+  opts: { path?: string; skipDone?: boolean } = {},
+): Promise<{ ok: boolean; error: string; code: string; importId: string; already?: boolean; rows?: number }> {
+  let sources;
+  try { sources = await sourcesOf(file); } catch (e) { return { ok: false, error: String((e as Error)?.message ?? e), code: 'unreadable', importId: '' }; }
+  const st = await dirCall('import_start', { fileKey: fileKey(file, opts.path), name: opts.path || file.name, size: file.size, label, skipDone: opts.skipDone === true });
   if (!st.success) return { ok: false, error: String(st.error ?? 'Could not start.'), code: String(st.code ?? ''), importId: '' };
+  /* A folder chosen again: the files that went in whole are not read twice. */
+  if (st.done === true) return { ok: true, error: '', code: '', importId: String((st.import as { id?: string })?.id ?? ''), already: true };
   const imp = st.import as { id: string; rows_seen: number };
   const skip = Number(imp.rows_seen) || 0;
   on.start?.({ importId: imp.id, resumed: st.resumed === true, skipped: skip });
   let added = 0, duplicates = 0, bad = 0, sent = 0;
   try {
-    await readLeads(sources, {
+    const read = await readLeads(sources, {
       skip, batch: 500, signal,
       onSkipPart: on.skipPart,
       onProgress: p => on.tick?.({ ...p, added, duplicates, bad, sent, retrying: '' }),
@@ -104,7 +108,7 @@ export async function importFile(
       }
     });
     await dirCall('import_finish', { importId: imp.id, bytesDone: file.size });
-    return { ok: true, error: '', code: '', importId: imp.id };
+    return { ok: true, error: '', code: '', importId: imp.id, rows: read.rows };
   } catch (e) {
     if ((e as DOMException)?.name === 'AbortError') {
       await dirCall('import_finish', { importId: imp.id, name: 'paused' });
@@ -112,4 +116,54 @@ export async function importFile(
     }
     return { ok: false, error: String((e as Error)?.message ?? e), code: String((e as { code?: string })?.code ?? ''), importId: imp.id };
   }
+}
+
+/* ── A folder (or several files) at once ───────────────────────────────── */
+
+export type FileStatus = 'waiting' | 'loading' | 'done' | 'already' | 'skipped' | 'failed' | 'paused';
+export interface FileState { path: string; size: number; status: FileStatus; tick: ImportTick | null; error: string; note: string }
+
+/**
+ * Load every file of a folder (and its sub-folders), `parallel` at a time.
+ * Each file is its own load — its own row on the Loads list, its own undo,
+ * and its own resume — so choosing the same folder again after a pause skips
+ * the files already in and carries each unfinished one on from its row.
+ * A file that fails is reported on its line and the rest go on; only a full
+ * database stops everything, because every later file would fail the same way.
+ */
+export async function importMany(
+  files: PickedFile[], label: string,
+  on: { change: (i: number, s: Partial<FileState>) => void },
+  signal: AbortSignal,
+  parallel = 2,
+): Promise<{ done: number; already: number; skipped: number; failed: number; paused: boolean; full: string }> {
+  let next = 0;
+  let done = 0, already = 0, skipped = 0, failed = 0;
+  let full = '';
+  const worker = async () => {
+    for (;;) {
+      if (signal.aborted || full) return;
+      const i = next++;
+      if (i >= files.length) return;
+      const { file, path } = files[i];
+      on.change(i, { status: 'loading', error: '', note: '' });
+      const r = await importFile(file, label, {
+        start: s => { if (s.resumed) on.change(i, { note: `carrying on from row ${(s.skipped + 1).toLocaleString('en-US')}` }); },
+        tick: t => on.change(i, { tick: t }),
+        skipPart: (n, why) => on.change(i, { note: `skipped ${n}: ${why}` }),
+      }, signal, { path, skipDone: true });
+      if (r.ok && r.already) { already++; on.change(i, { status: 'already' }); }
+      /* A file with no column for a person (notes, a price list) is read and passed over — said so, not counted as loaded. */
+      else if (r.ok && r.rows === 0) { skipped++; on.change(i, { status: 'skipped' }); }
+      else if (r.ok) { done++; on.change(i, { status: 'done' }); }
+      else if (r.code === 'paused') { on.change(i, { status: 'paused' }); return; }
+      else {
+        failed++;
+        on.change(i, { status: 'failed', error: r.error });
+        if (r.code === 'full') full = r.error;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(parallel, files.length)) }, worker));
+  return { done, already, skipped, failed, paused: signal.aborted, full };
 }

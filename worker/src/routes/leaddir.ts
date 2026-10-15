@@ -40,6 +40,8 @@ interface Req {
   bytesDone?: number;
   seen?: number;
   bad?: number;
+  /** A folder chosen again: answer `done` for a file already loaded whole, rather than loading it twice. */
+  skipDone?: boolean;
   /* settings */
   shared?: boolean;
   attest?: boolean;
@@ -152,6 +154,10 @@ export async function handleLeadDir(req: Request, env: Env): Promise<Response> {
     if (open) {
       await db.prepare("UPDATE ld_imports SET status = 'running', error = NULL, updated_at = ? WHERE id = ?").bind(nowIso(), open.id).run();
       return json({ success: true, resumed: true, import: { ...open, status: 'running' } });
+    }
+    if (d.skipDone === true) {
+      const whole = await db.prepare("SELECT * FROM ld_imports WHERE file_key = ? AND status = 'done' ORDER BY started_at DESC LIMIT 1").bind(fileKey).first<Row>();
+      if (whole) return json({ success: true, done: true, import: whole });
     }
     const id = `imp-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
     const at = nowIso();
