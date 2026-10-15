@@ -1,27 +1,47 @@
 /**
- * The first screen of AI Prospecting — "Who do you want to sell to?"
+ * The first screen of AI Prospecting — "Who do you want to sell to?" — and
+ * the composer it opens on.
+ *
+ * ── Prompt first ──
+ *
+ * The sentence box is the first thing on the screen, above the fold on a
+ * laptop and on a phone, because typing who to look for is the only thing
+ * this screen is for. It once sat under a promise, examples and three
+ * illustrated steps, and people scrolled to find it. Those are below it now.
+ *
+ * ── One sentence, no boxes, no tabs ──
+ *
+ * There is no "kind of business" box, no "town" box and no row of source
+ * tabs. The sentence is read (`readAsk` in services/aiProspecting.ts) for the
+ * trade, the place, what to narrow to ("with a website") and where to look
+ * ("registered companies", "with reviews"), and `chooseSource` decides what
+ * is actually asked given what the owner has switched on. What was understood
+ * is shown under the words as chips, and a sentence missing its place or its
+ * trade is asked about there rather than searched blind.
+ *
+ * A refusal from the server can still name `prospects.trade` or
+ * `prospects.place`; the sentence box carries both names in its `data-field`
+ * (fieldGuard.ts matches one of several), so the refusal is never a dead end,
+ * and the words go under the box with how to say it in the sentence.
  *
  * ── The promise in bold, and why it is true ──
  *
- * "Freshly searched, live" is the headline because it is the difference a
+ * "Freshly searched, live" is the promise because it is the difference a
  * customer can feel: a bought list is a database of businesses somebody
  * scraped years ago, half of them closed. This page asks its sources at the
  * moment of the search (`live` in useProspectSearch — every cache skipped),
  * reads each website then, checks each address then, and stamps every row
  * with that moment. The words are only allowed because the code does that.
- *
- * The composer here is the same search as the results screen's bar: one
- * sentence, or the two boxes (`prospects.trade` / `prospects.place`, the
- * fields a refusal can name).
  */
-import { useState } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import {
   ArrowUp, BadgeCheck, Building2, Calculator, Coffee, Database, Globe, Hammer, HeartPulse, Loader, MailCheck, MapPin,
-  PlayCircle, Scissors, Search, ShieldCheck, Sparkles, Stethoscope, Users, Wrench, X, Zap, Car, Utensils, Dumbbell,
+  Phone, PlayCircle, Scissors, Search, ShieldCheck, Sparkles, Star, Stethoscope, Users, Wrench, X, Zap, Car, Utensils, Dumbbell,
   Home, Scale, Camera, PawPrint,
 } from 'lucide-react';
 import type { ProspectSearch } from './useProspectSearch';
-import type { ProspectSource } from '../../services/prospects';
+import MicButton from './MicButton';
+import { SOURCE_LABEL, askProblem, chooseSource, readAsk, type AskSource } from '../../services/aiProspecting';
 
 /** An icon for a trade, for the chips and the recent searches. A guess at a picture, never at data. */
 export function tradeIcon(trade: string): typeof Building2 {
@@ -60,118 +80,195 @@ export const IDEAS: { sell: string; trades: string[] }[] = [
   { sell: 'Photography or video', trades: ['restaurants', 'hotels', 'wedding planners', 'estate agents'] },
 ];
 
-const TRADES = ['dentists', 'accountants', 'plumbers', 'electricians', 'builders', 'roofers', 'cafés', 'restaurants', 'hair salons',
-  'barbers', 'gyms', 'estate agents', 'solicitors', 'physiotherapists', 'vets', 'hotels', 'florists', 'bakeries', 'garages', 'photographers'];
+/* Offered when a sentence names a place but no kind of business. */
+const COMMON_TRADES = ['dentists', 'accountants', 'cafés', 'plumbers'];
 
-export function Composer({ s, text, setText, onGo, error, sources }: {
-  s: ProspectSearch; text: string; setText: (t: string) => void; onGo: () => void; error: string;
-  sources: { id: ProspectSource; label: string; tip: string; Icon: typeof MapPin; off: boolean }[];
+export const SOURCE_ICON: Record<AskSource | 'osm', typeof MapPin> = { free: MapPin, osm: MapPin, register: BadgeCheck, google: Star };
+
+const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
+const enough = (x: string) => x.replace(/[^\p{L}\p{N}]/gu, '').length >= 2;
+
+/**
+ * The sentence box — the same one on the first screen (`hero`) and on the
+ * results screen's search card (`bar`). Enter searches, Shift+Enter is a new
+ * line; the box grows with what is typed. The microphone puts what it heard
+ * in the box for checking — never straight into a search.
+ */
+export function Composer({ s, text, setText, onGo, error, variant = 'hero', searchedSource }: {
+  s: ProspectSearch; text: string; setText: (t: string) => void; onGo: () => void; error: string; variant?: 'hero' | 'bar';
+  /** On the results screen, the source already searched — labelled above the box, so the chip is drawn only when the words would change it. */
+  searchedSource?: string;
 }) {
-  const places = [...new Set(s.history.map(h => h.place))].slice(0, 12);
+  const box = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+  }, [text, variant]);
+
+  const a = useMemo(() => (text.trim() ? readAsk(text) : null), [text]);
+  const choice = a ? chooseSource(a.source, s.google) : null;
+  const sameSource = !!choice && !choice.note && (choice.source === searchedSource || (choice.source === 'free' && searchedSource === 'osm'));
+  const problem = error ? askProblem(text) : null;
+  const places = [...new Set(s.history.map(h => h.place))].slice(0, 4);
+
+  /* A chip is the words it came from: pressing it selects them in the box, ready to retype. */
+  const select = (part: string) => {
+    const el = box.current;
+    if (!el) return;
+    el.focus();
+    const at = part ? el.value.toLowerCase().indexOf(part.toLowerCase()) : -1;
+    if (at >= 0) el.setSelectionRange(at, at + part.length);
+    else el.setSelectionRange(0, 0);
+  };
+  const setAndFocus = (next: string) => {
+    setText(next);
+    window.setTimeout(() => { const el = box.current; if (el) { el.focus(); el.setSelectionRange(next.length, next.length); } }, 20);
+  };
+  const addPlace = (p: string) => setAndFocus(`${text.trim().replace(/\s+(?:in|near|around)$/i, '')} in ${p}`);
+  const addTrade = (t: string) => setAndFocus(`${t} in ${problem?.place ?? ''}`);
+
+  const SrcIcon = choice ? SOURCE_ICON[choice.source] : MapPin;
+  const Trade = tradeIcon(a?.trade ?? '');
+  const hintId = `aip-ask-hint-${variant}`;
+
   return (
-    <form className="aip-composer aip-composer-start" onSubmit={e => { e.preventDefault(); onGo(); }}>
-      <div className="aip-composer-strip">
-        <span className="aip-strip-label"><Sparkles size={12} /> Search</span>
-        <div role="group" aria-label="Where to search" className="aip-sources">
-          {sources.map(t => (
-            <button key={t.id} type="button" aria-pressed={s.source === t.id} onClick={() => s.setSource(t.id)} title={t.tip} data-off={t.off || undefined}>
-              <t.Icon size={11} /> {t.label}
-            </button>
-          ))}
-        </div>
-        <span style={{ flex: 1 }} />
-        <span className="aip-strip-tools" aria-label="Also used">
-          <span title="Each business's own website is read, live, for the address it publishes"><Globe size={11} /> Websites</span>
-          <span title="Every address is checked for format, domain and mail server"><MailCheck size={11} /> Address checks</span>
-        </span>
-      </div>
-      <div className="aip-composer-box">
-        <label className="aip-ask-line">
-          <Search size={17} />
-          <input id="aip-ask" value={text} onChange={e => setText(e.target.value)} aria-label="Who to look for"
-            placeholder="Find dentists in Leeds with a website…" autoComplete="off" />
-        </label>
-        <div className="aip-composer-row">
-          <label className="aip-pick">
-            <Building2 size={14} />
-            <input value={s.trade} onChange={e => s.setTrade(e.target.value)} data-field="prospects.trade" aria-label="What kind of business"
-              placeholder="Kind of business" list="aip-trades" autoComplete="off" />
-          </label>
-          <label className="aip-pick">
-            <MapPin size={14} />
-            <input value={s.place} onChange={e => s.setPlace(e.target.value)} data-field="prospects.place" aria-label="Where"
-              placeholder="Town or city" list="aip-places" autoComplete="off" />
-          </label>
-          <datalist id="aip-trades">{TRADES.map(t => <option key={t} value={t} />)}</datalist>
-          <datalist id="aip-places">{places.map(p => <option key={p} value={p} />)}</datalist>
+    <form className="aip-ask" data-variant={variant} onSubmit={e => { e.preventDefault(); onGo(); }}>
+      <div className="aip-ask-card" data-busy={s.busy || undefined}>
+        <textarea
+          ref={box}
+          id={variant === 'hero' ? 'aip-ask' : 'aip-ask-bar'}
+          className="aip-ask-input"
+          rows={1}
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); onGo(); }
+          }}
+          aria-label="Who to look for"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? hintId : undefined}
+          data-field="prospects.ask prospects.trade prospects.place"
+          placeholder={variant === 'hero' ? 'Find dentists in Leeds with a website…' : 'Search again — e.g. cafés near Bristol'}
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <div className="aip-ask-foot">
+          <div className="aip-understood" aria-label="What was understood">
+            {a && (enough(a.trade)
+              ? <button type="button" className="aip-uchip" onClick={() => select(a.trade)} title="Press to change the kind of business"><Trade size={12} /> {cap(a.trade)}</button>
+              : <button type="button" className="aip-uchip" data-missing onClick={() => select('')}>Kind of business?</button>)}
+            {a && (enough(a.place)
+              ? <button type="button" className="aip-uchip" onClick={() => select(a.place)} title="Press to change the place"><MapPin size={12} /> {cap(a.place)}</button>
+              : <button type="button" className="aip-uchip" data-missing onClick={() => setAndFocus(`${text.trim()} in `)}>Where?</button>)}
+            {a?.want.website && <span className="aip-uchip" data-want><Globe size={12} /> with a website</span>}
+            {a?.want.email && <span className="aip-uchip" data-want><MailCheck size={12} /> with an email</span>}
+            {a?.want.phone && <span className="aip-uchip" data-want><Phone size={12} /> with a phone</span>}
+            {choice && !sameSource && (
+              <span className="aip-uchip" data-src={choice.source}
+                title={choice.note || 'Where this searches — say "registered companies" or "with reviews" in the sentence to change it'}>
+                <SrcIcon size={12} /> {SOURCE_LABEL[choice.source]}
+              </span>
+            )}
+            {!a && variant === 'hero' && (
+              <span className="aip-ask-kbd"><kbd>Enter</kbd> to search · <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line</span>
+            )}
+          </div>
+          <MicButton onResult={r => setAndFocus(r.text)} />
           <button type="submit" className="aip-go" aria-label="Search" disabled={s.busy}>
-            {s.busy ? <Loader size={16} className="spin" /> : <ArrowUp size={17} />} <span>Search</span>
+            {s.busy ? <Loader size={16} className="spin" /> : variant === 'hero' ? <ArrowUp size={17} /> : <Sparkles size={15} />} <span>Search</span>
           </button>
         </div>
       </div>
-      {error && <div className="aip-ask-error" role="alert">{error}</div>}
+      {error && (
+        <div className="aip-ask-error" id={hintId} role="alert">
+          <span>{error}</span>
+          {problem?.field === 'place' && places.length > 0 && (
+            <span className="aip-fixes">{places.map(p => <button key={p} type="button" className="aip-fix" onClick={() => addPlace(p)}>in {p}</button>)}</span>
+          )}
+          {problem?.field === 'trade' && problem.place && (
+            <span className="aip-fixes">{COMMON_TRADES.map(t => <button key={t} type="button" className="aip-fix" onClick={() => addTrade(t)}>{t}</button>)}</span>
+          )}
+        </div>
+      )}
+      {!error && choice?.note && <div className="aip-ask-note" role="status">{choice.note}</div>}
     </form>
   );
 }
 
-export function StartScreen({ s, text, setText, onGo, error, sources, onExample, verifierReady }: {
+export function StartScreen({ s, text, setText, onGo, error, onExample, verifierReady }: {
   s: ProspectSearch; text: string; setText: (t: string) => void; onGo: () => void; error: string;
-  sources: { id: ProspectSource; label: string; tip: string; Icon: typeof MapPin; off: boolean }[];
   onExample: (x: string) => void; verifierReady: boolean;
 }) {
+  /* Only the ways of asking that work here are taught — "registered companies"
+     where the register is on, "with reviews" where Google is. */
+  const canRegister = !!s.google?.register.available;
+  const canRatings = !!s.google?.available;
   return (
     <div className="aip-start">
       <span className="aip-blob aip-blob-a" aria-hidden="true" />
       <span className="aip-blob aip-blob-b" aria-hidden="true" />
-      <span className="aip-eyebrow"><Sparkles size={13} /> AI Prospecting</span>
       <h3 className="aip-hero">Who do you want to sell to?</h3>
       <p className="aip-hero-sub">
-        Say it in a sentence. AI Prospecting finds the businesses, searches each one's own website for the
-        address it publishes, and checks every address before you send to it.
+        Say it in a sentence. AI Prospecting finds the businesses live, reads each one's website for the address it
+        publishes, and checks every address.
       </p>
-      <div className="aip-live-promise" role="note">
-        <span className="aip-live-dot" aria-hidden="true" />
-        <span>
-          <strong>Every lead is freshly baked — searched live from the internet the moment you ask.</strong>{' '}
-          Not pulled from a database of leads that has sat for years with nobody knowing who is still trading: each website is
-          read and each address checked right then, and <strong>every result carries the time it was found.</strong>
-        </span>
-      </div>
-      <div className="aip-examples">
+      <Composer s={s} text={text} setText={setText} onGo={onGo} error={error} variant="hero" />
+      <div className="aip-examples" aria-label="Try one">
         {EXAMPLES.map(x => {
           const Icon = tradeIcon(x);
           return (
             <button key={x} type="button" className="aip-example" onClick={() => onExample(x)}>
-              <span className="aip-ex-icon" data-tone={tradeTone(x)}><Icon size={14} /></span> {x}
+              <span className="aip-ex-icon" data-tone={tradeTone(x)}><Icon size={13} /></span> {x}
             </button>
           );
         })}
       </div>
-      <div className="aip-steps3">
-        <div className="aip-step3" data-tone="violet">
-          <span className="aip-step3-icon"><Search size={18} /></span>
-          <b>1. Find</b>
-          <span>Businesses by trade and town, searched live.</span>
-          <span className="aip-illu aip-illu-find" aria-hidden="true"><i /><i /><i /><MapPin size={14} /><MapPin size={11} /></span>
+      {(canRegister || canRatings) && (
+        <p className="aip-ask-tip">
+          <Sparkles size={12} />
+          <span>
+            Add {canRegister && <><q>registered companies</q> for the company register with directors</>}
+            {canRegister && canRatings && ', or '}{canRatings && <><q>with reviews</q> for ratings</>} — otherwise it searches all businesses.
+          </span>
+        </p>
+      )}
+
+      <div className="aip-start-more">
+        <div className="aip-live-promise" role="note">
+          <span className="aip-live-dot" aria-hidden="true" />
+          <span>
+            <strong>Every lead is freshly baked — searched live from the internet the moment you ask.</strong>{' '}
+            Not pulled from a database of leads that has sat for years with nobody knowing who is still trading: each website is
+            read and each address checked right then, and <strong>every result carries the time it was found.</strong>
+          </span>
         </div>
-        <div className="aip-step3" data-tone="orange">
-          <span className="aip-step3-icon"><Database size={18} /></span>
-          <b>2. Enrich</b>
-          <span>The address, website and phone each business publishes, read from its own site at the time of the search.</span>
-          <span className="aip-illu aip-illu-enrich" aria-hidden="true"><Building2 size={15} /><i /><i /><Globe size={13} /><MailCheck size={13} /></span>
+        <div className="aip-steps3">
+          <div className="aip-step3" data-tone="violet">
+            <span className="aip-step3-icon"><Search size={16} /></span>
+            <b>1. Find</b>
+            <span>Businesses by trade and town, searched live.</span>
+            <span className="aip-illu aip-illu-find" aria-hidden="true"><i /><i /><i /><MapPin size={13} /><MapPin size={10} /></span>
+          </div>
+          <div className="aip-step3" data-tone="orange">
+            <span className="aip-step3-icon"><Database size={16} /></span>
+            <b>2. Enrich</b>
+            <span>The address, website and phone each business publishes, read from its own site at the time of the search.</span>
+            <span className="aip-illu aip-illu-enrich" aria-hidden="true"><Building2 size={14} /><i /><i /><Globe size={12} /><MailCheck size={12} /></span>
+          </div>
+          <div className="aip-step3" data-tone="green">
+            <span className="aip-step3-icon"><ShieldCheck size={16} /></span>
+            <b>3. Verify</b>
+            <span>Every address checked for format, domain and mail server{verifierReady ? ', and the mailbox itself,' : ''} — risky and dead ones flagged before you send.</span>
+            <span className="aip-illu aip-illu-verify" aria-hidden="true"><MailCheck size={20} /><BadgeCheck size={14} /></span>
+          </div>
         </div>
-        <div className="aip-step3" data-tone="green">
-          <span className="aip-step3-icon"><ShieldCheck size={18} /></span>
-          <b>3. Verify</b>
-          <span>Every address checked for format, domain and mail server{verifierReady ? ', and the mailbox itself,' : ''} — risky and dead ones flagged before you send.</span>
-          <span className="aip-illu aip-illu-verify" aria-hidden="true"><MailCheck size={22} /><BadgeCheck size={16} /></span>
+        <div className="aip-trust">
+          <span><Zap size={16} /><b>Live business data</b><small>Searched when you ask, time-stamped</small></span>
+          <span><ShieldCheck size={16} /><b>Checked email addresses</b><small>Fewer bounces, a safer domain</small></span>
+          <span><Users size={16} /><b>Ready to outreach</b><small>Lists, workflows, AI projects, campaigns</small></span>
         </div>
-      </div>
-      <Composer s={s} text={text} setText={setText} onGo={onGo} error={error} sources={sources} />
-      <div className="aip-trust">
-        <span><Zap size={16} /><b>Live business data</b><small>Searched when you ask, time-stamped</small></span>
-        <span><ShieldCheck size={16} /><b>Checked email addresses</b><small>Fewer bounces, a safer domain</small></span>
-        <span><Users size={16} /><b>Ready to outreach</b><small>Lists, workflows, AI projects, campaigns</small></span>
       </div>
     </div>
   );
@@ -188,8 +285,8 @@ export function HowItWorks({ onClose }: { onClose: () => void }) {
           <button type="button" className="aip-icon-btn" aria-label="Close" onClick={onClose}><X size={14} /></button>
         </div>
         <ol className="aip-how-list">
-          <li><b>You say who.</b> "Dentists in Leeds with a website" — or the two boxes. "With a website / an email / a phone" narrows what is shown.</li>
-          <li><b>It searches live.</b> All businesses, registered companies with their directors, or businesses with ratings and reviews — asked at that moment, never a stored list.</li>
+          <li><b>You say who, in one sentence.</b> "Dentists in Leeds with a website" — the kind of business, the place, and anything to narrow it to ("with a website / an email / a phone"). What it understood is shown under your words before it searches.</li>
+          <li><b>It searches live.</b> All businesses by default; say "registered companies" for the company register with directors, or "with reviews" for businesses with ratings — where those are switched on. Asked at that moment, never a stored list.</li>
           <li><b>It reads their websites.</b> The address each business chose to publish, from its own pages, right then. Never a guessed firstname@ address.</li>
           <li><b>It checks every address.</b> Format, domain and mail server; with a verifier connected, whether the mailbox exists. Each result is tagged with the day it was checked — Contact verified (the mailbox answered), Contact checked (domain and mail server), Risky, Invalid.</li>
           <li><b>You choose where they go.</b> Tick them and save to a contact list, or add them to a workflow, an AI project or an email campaign. Nobody is emailed until you start something that emails.</li>
@@ -226,7 +323,7 @@ export function Ideas({ onPick, onClose }: { onPick: (trade: string) => void; on
             </div>
           ))}
         </div>
-        <p className="aip-fine" style={{ padding: '0 18px 16px' }}>Pick one, then say where — it fills the box for you.</p>
+        <p className="aip-fine" style={{ padding: '0 18px 16px' }}>Pick one, then say where — it starts the sentence for you.</p>
       </div>
     </div>
   );

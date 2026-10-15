@@ -4,12 +4,14 @@
  *
  * ── Two screens ──
  *
- * **New search** (AiStart.tsx): who do you want to sell to, the promise that
- * every lead is searched live, examples, the three steps, the composer. The
- * side panel shows recent searches and lead lists.
+ * **New search** (AiStart.tsx): prompt first — who do you want to sell to,
+ * the sentence box, examples; then the promise that every lead is searched
+ * live, the three steps and the trust row below it. The side panel shows
+ * recent searches and lead lists (under the page on a phone).
  *
  * **Results** (AiResults.tsx, AiParts.tsx): as soon as a search starts — the
- * assistant, the source tabs and search bar, the progress card (a ring, the
+ * assistant, the same sentence box with what it searched (a read-only source
+ * label, never tabs), the progress card (a ring, the
  * four stages, the sources it is using), five counted figures, the table, and
  * a rail with where they are, what was scanned, what it means and what kinds of
  * business came back. The side panel becomes a drawer, because three columns
@@ -38,8 +40,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  AlertTriangle, BadgeCheck, Bookmark, Bot, CalendarClock, CheckCircle2, Columns3, Copy, Download, Eye, EyeOff, Filter, Folder, GitBranch,
-  Globe, Lightbulb, Loader, Mail, MailCheck, MapPin, MoreHorizontal, PanelLeft, Pin, PlayCircle, Plus, RotateCcw, Search, Send,
+  AlertTriangle, Bookmark, Bot, CheckCircle2, Columns3, Copy, Download, Eye, EyeOff, Filter, Folder, GitBranch,
+  Globe, Lightbulb, Loader, Mail, MailCheck, MoreHorizontal, PanelLeft, Pin, PlayCircle, Plus, RotateCcw, Search, Send,
   ShieldCheck, Sparkles, Target, Users, X, Workflow,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -48,15 +50,13 @@ import { Attribution, ImportPanel, Notice, SearchProblems } from './ProspectPart
 import { COLUMNS, LeadTable, PlanSteps, ProgressBar, SkeletonRows, Thinking, VerifyTool, useLeadRows, type ColumnId, type LeadFilter } from './AiParts';
 import AddTo, { type AddMode } from './AddTo';
 import ConnectAutopilot, { type SearchSeed } from './ConnectAutopilot';
-import DirectoryMatches from './DirectoryMatches';
 import { listSearches, searchKey, setSourceStatus, applySearch, updateSearch, type ConnectionSummary, type SearchDef } from '../../services/prospectSources';
-import { HowItWorks, Ideas, StartScreen, tradeIcon, tradeTone } from './AiStart';
+import { Composer, HowItWorks, Ideas, SOURCE_ICON, StartScreen, tradeIcon, tradeTone } from './AiStart';
 import { InsightsRail, KpiRow, ProgressCard, Robot, clock, type Insight } from './AiResults';
-import MicButton from './MicButton';
 import type { ProspectSource } from '../../services/prospects';
 import { suggestListName, type SavedSearch } from '../../services/prospectImport';
 import { listKindOf, loadLists, type ContactList } from '../../services/contactLists';
-import { addressesOf, ago, askTitle, parseAsk, relatedTrades, toCsv } from '../../services/aiProspecting';
+import { SOURCE_LABEL, addressesOf, ago, askProblem, askSentence, askTitle, parseAsk, relatedTrades, toCsv } from '../../services/aiProspecting';
 import type { Contact } from '../../types';
 import './prospecting.css';
 import './aiProspecting.css';
@@ -94,12 +94,6 @@ function Kebab({ label, items }: { label: string; items: { label: string; onClic
 }
 
 
-/* The search choices, named for what they give. `SOURCE_NAME` (who supplies
-   it) is still what an imported contact's provenance stamp says. */
-const TAB_NAME: Record<ProspectSource, string> = {
-  free: 'All businesses', osm: 'All businesses', register: 'Registered companies', google: 'With ratings & reviews',
-};
-
 /*
  * While the search itself is out, the line under the robot walks through what
  * that search is doing — each line true of the source chosen: the directory
@@ -132,6 +126,8 @@ export default function AiProspecting() {
   const s = useProspectSearch({ live: true });
   const [text, setText] = useState('');
   const [askError, setAskError] = useState('');
+  /* Typing answers the question asked under the box; it goes as soon as the words change. */
+  const typed = (t: string) => { setText(t); setAskError(''); };
   const [filter, setFilter] = useState<LeadFilter>('all');
   const [view, setView] = useState<'leads' | 'verify'>('leads');
   const [saving, setSaving] = useState(false);
@@ -189,15 +185,17 @@ export default function AiProspecting() {
     window.setTimeout(() => document.getElementById('aip-ask')?.focus(), 30);
   };
 
+  const focusAsk = () => window.setTimeout(() => (document.getElementById('aip-ask') ?? document.getElementById('aip-ask-bar'))?.focus(), 30);
   const go = async (sentence?: string, from?: SavedSearch['source']) => {
+    const line = (sentence ?? text).trim();
+    if (sentence !== undefined) setText(line);
+    /* A sentence with no place or no kind of business is asked about under
+       the box — searching blind would spend a search on nothing. */
+    const problem = askProblem(line);
+    if (problem) { setAskError(problem.message); focusAsk(); return; }
     setAskError(''); setDone(null); setSaving(false); setAddMode(null); setSaid(null); setView('leads'); setFilter('all'); setDrawer(false);
-    const typed = (sentence ?? text).trim();
-    /* The results bar has only the two boxes; a whole sentence typed into the
-       first ("dentists in Leeds with a website") is taken as a sentence. */
-    const boxSentence = parseAsk(s.trade) ? s.trade.trim() : '';
-    const line = typed || boxSentence || (s.trade.trim() && s.place.trim() ? `${s.trade.trim()} in ${s.place.trim()}` : '');
-    if (!line) { setAskError('Say who to look for — "dentists in Leeds", "cafés near Bristol".'); return; }
-    if (typed) setText('');
+    /* The sentence stays in the box: the results screen's bar is the same
+       box, and changing "Leeds" to "York" is the commonest next search. */
     const r = await s.ask(line, from);
     if (r.error) setAskError(r.error);
     /* "…with an email" narrows what is shown; the search itself is the same. */
@@ -209,8 +207,12 @@ export default function AiProspecting() {
      kept (a Google one, or one from before results were kept) runs again. */
   const open = (h: SavedSearch) => {
     const snap = s.restore(h);
-    if (!snap) { void go(`${h.trade} in ${h.place}`, h.source); return; }
+    if (!snap) { void go(askSentence(h.trade, h.place, h.source), h.source); return; }
     setAskError(''); setDone(null); setSaving(false); setAddMode(null); setSaid(null); setView('leads'); setDrawer(false); setShowAll(false);
+    /* The box shows the sentence it was asked as — when that still reads back
+       as the same search; otherwise one that does, source included. */
+    const back = snap.asked ? parseAsk(snap.asked) : null;
+    setText(back && (back.source === snap.source || (back.source === 'free' && snap.source === 'osm')) ? snap.asked : askSentence(snap.trade, snap.place, snap.source));
     const w = snap.want;
     setFilter(w?.email ? 'email' : w?.phone ? 'phone' : w?.website ? 'website' : 'all');
   };
@@ -357,13 +359,20 @@ export default function AiProspecting() {
   };
 
   const working = s.busy || s.enriching || s.verifying || s.finding || s.steps.some(x => x.state === 'running');
-  /* Three ways to search, named for what they give rather than who supplies
-     it — the results screen names no supplier. Each says why when it is off. */
-  const sources: { id: ProspectSource; label: string; tip: string; Icon: typeof MapPin; off: boolean }[] = [
-    { id: 'free', label: TAB_NAME.free, tip: 'Local businesses with phone and website — searched live, yours to keep', Icon: MapPin, off: false },
-    { id: 'register', label: TAB_NAME.register, tip: s.google?.register.available ? 'Active registered companies (UK), with their directors' : (s.google?.register.error ?? ''), Icon: BadgeCheck, off: !!s.google && !s.google.register.available },
-    { id: 'google', label: TAB_NAME.google, tip: s.google?.available ? 'The widest coverage, with star ratings and review counts' : (s.google?.error ?? ''), Icon: Globe, off: !!s.google && !s.google.available },
-  ];
+  /* A refusal about the trade or the place has no box of its own to sit
+     under here; it goes under the sentence, with how to say it there. */
+  const fieldMsg = !s.error ? ''
+    : s.errorField === 'prospects.trade' ? `${s.error.replace(/\.?\s*$/, '.')} Say the kind of business in the sentence — "dentists in Leeds".`
+      : s.errorField === 'prospects.place' ? `${s.error.replace(/\.?\s*$/, '.')} Say the town or city in the sentence — "dentists in Leeds".` : '';
+  /* What was searched, as a label — the sentence chose it; nothing here switches it. */
+  const shownSource = (s.searched?.source ?? s.source) as ProspectSource;
+  const ShownIcon = SOURCE_ICON[shownSource] ?? SOURCE_ICON.free;
+  const sourceTip: Record<ProspectSource, string> = {
+    free: 'Local businesses with phone and website — searched live, yours to keep',
+    osm: 'Local businesses with phone and website — searched live, yours to keep',
+    register: 'Active registered companies (UK), with their directors',
+    google: 'The widest coverage, with star ratings and review counts',
+  };
   const running = s.steps.find(x => x.state === 'running');
   const stage = useStage(s.busy, s.source, s.startedAt);
   const thinking = s.busy ? `${stage} for ${s.trade || 'businesses'} in ${s.place || 'that place'}` : running?.label ?? '';
@@ -448,8 +457,8 @@ export default function AiProspecting() {
                   <span className="aip-hist-conn" title="Connected to AI Autopilot"><Workflow size={10} /> AI Autopilot</span>
                 )}
                 <Kebab label={`More for ${h.trade} in ${h.place}`} items={[
-                  { label: 'Run again', onClick: () => void go(`${h.trade} in ${h.place}`, h.source) },
-                  { label: 'Find more prospects', onClick: () => { open(h); window.setTimeout(() => { if (s.nextPage) void s.loadMore(); else void go(`${h.trade} in ${h.place}`, h.source); }, 60); } },
+                  { label: 'Run again', onClick: () => void go(askSentence(h.trade, h.place, h.source), h.source) },
+                  { label: 'Find more prospects', onClick: () => { open(h); window.setTimeout(() => { if (s.nextPage) void s.loadMore(); else void go(askSentence(h.trade, h.place, h.source), h.source); }, 60); } },
                   { label: 'Save to list', onClick: () => { open(h); window.setTimeout(() => { s.pickAll(true); setSaving(true); scrollTo(); }, 80); } },
                   {
                     label: (defFor(h.source, h.trade, h.place)?.connections.length ?? 0) > 0 ? 'Connected to AI Autopilot — connect another project' : 'Connect to AI Autopilot',
@@ -514,7 +523,7 @@ export default function AiProspecting() {
           {screen !== 'start' && (
             <button type="button" className="aip-icon-btn" aria-label="Your searches and lists" title="Your searches and lists" onClick={() => setDrawer(true)}><PanelLeft size={15} /></button>
           )}
-          <span className="aip-top-brand" aria-hidden="true"><span className="aip-mark"><Sparkles size={13} /></span> AI Prospecting ·</span>
+          <span className="aip-top-brand" aria-hidden="true"><span className="aip-mark"><Sparkles size={13} /></span> AI Prospecting<span className="aip-top-sep"> ·</span></span>
           <h2 title={s.asked || undefined}>{title}</h2>
           <span style={{ flex: 1 }} />
           {screen === 'start' && <button type="button" className="aip-btn aip-how" onClick={() => setHow(true)}><PlayCircle size={14} /> How it works</button>}
@@ -529,7 +538,7 @@ export default function AiProspecting() {
 
         <div className="aip-scroll">
           {screen === 'start' && (
-            <StartScreen s={s} text={text} setText={setText} onGo={() => void go()} error={askError} sources={sources}
+            <StartScreen s={s} text={text} setText={typed} onGo={() => void go()} error={askError || fieldMsg}
               verifierReady={deepReady} onExample={x => void go(x)} />
           )}
 
@@ -555,49 +564,29 @@ export default function AiProspecting() {
                   </span>
                 </section>
 
-                {/* Where to search, and the search itself. */}
-                <section className="aip-card aip-searchcard">
-                  <div className="aip-tabs">
-                    <div role="group" aria-label="Where to search" className="aip-tabs-group">
-                      {sources.map(t => (
-                        <button key={t.id} type="button" aria-pressed={s.source === t.id} onClick={() => s.setSource(t.id)} title={t.tip} data-off={t.off || undefined}>
-                          <t.Icon size={13} /> {t.label}
-                        </button>
-                      ))}
-                    </div>
+                {/* The search itself: the same sentence box, and what it searched. */}
+                <section className="aip-card aip-searchcard" aria-label="Search">
+                  <div className="aip-searchcard-head">
+                    <span className="aip-src-label" title={sourceTip[shownSource]} data-src={shownSource}>
+                      <ShownIcon size={12} /> {SOURCE_LABEL[shownSource]}
+                    </span>
+                    {s.sourceNote && <span className="aip-src-note" role="status">{s.sourceNote}</span>}
+                    <span style={{ flex: 1 }} />
                     <button type="button" className="aip-tab-tool" onClick={() => setView('verify')}><MailCheck size={13} /> Address checks</button>
                   </div>
-                  <form className="aip-searchrow" onSubmit={e => { e.preventDefault(); void go(''); }}>
-                    <label className="aip-sfield">
-                      <Search size={16} />
-                      <input value={s.trade} onChange={e => s.setTrade(e.target.value)} data-field="prospects.trade" aria-label="What kind of business" placeholder="dentists, cafés, accountants…" />
-                    </label>
-                    <span className="aip-in">in</span>
-                    <label className="aip-sfield">
-                      <MapPin size={16} />
-                      <input value={s.place} onChange={e => s.setPlace(e.target.value)} data-field="prospects.place" aria-label="Where" placeholder="Town or city" />
-                      {s.place && <button type="button" className="aip-clear" aria-label="Clear the place" onClick={() => s.setPlace('')}><X size={13} /></button>}
-                    </label>
-                    <MicButton onResult={r => {
-                      const a = parseAsk(r.text);
-                      if (a) { s.setTrade(a.trade); s.setPlace(a.place); } else s.setTrade(r.text);
-                    }} />
-                    <button type="submit" className="aip-go" disabled={s.busy}>{s.busy ? <Loader size={15} className="spin" /> : <Sparkles size={15} />} <span>Search with AI</span></button>
-                  </form>
-                  {askError && <div className="aip-ask-error" role="alert" style={{ padding: '0 16px' }}>{askError}</div>}
+                  <Composer s={s} text={text} setText={typed} onGo={() => void go()} error={askError || fieldMsg} variant="bar"
+                    searchedSource={s.searched?.source} />
                   {related.length > 0 && !s.busy && (
                     <div className="aip-types" aria-label="Try also">
                       <span className="aip-type" data-on="true"><TradeIcon size={12} /> {s.searched?.trade}</span>
                       {related.map(t => {
                         const I = tradeIcon(t);
-                        return <button key={t} type="button" className="aip-type" onClick={() => void go(`${t} in ${s.searched?.place ?? s.place}`)}><I size={12} /> {t}</button>;
+                        return <button key={t} type="button" className="aip-type" onClick={() => void go(askSentence(t, s.searched?.place ?? s.place, s.searched?.source))}><I size={12} /> {t}</button>;
                       })}
                     </div>
                   )}
                 </section>
 
-                {/* Asked, even when the business search itself failed — that is when the directory matters most. */}
-                {(s.searched || (s.error && s.trade && s.place)) && <DirectoryMatches trade={s.searched?.trade ?? s.trade} place={s.searched?.place ?? s.place} />}
                 <ProgressCard s={s} sources={sourceChips} />
                 {thinking && <Thinking text={`${thinking}…`} />}
                 {s.progress && <ProgressBar {...s.progress} />}
@@ -607,7 +596,7 @@ export default function AiProspecting() {
                     <PlanSteps steps={s.steps} />
                   </details>
                 )}
-                <SearchProblems s={s} />
+                {!fieldMsg && <SearchProblems s={s} />}
 
                 {results.length > 0 && <KpiRow s={s} rows={rows} />}
                 {s.busy && <SkeletonRows />}
@@ -622,7 +611,7 @@ export default function AiProspecting() {
                           : <><span className="aip-live-dot" aria-hidden="true" /> found live {clock(s.fetchedAt)}</>}</span>
                       </span>
                       {s.restoredAt && s.searched && (
-                        <button type="button" className="aip-chip" disabled={working} onClick={() => void go(`${s.searched!.trade} in ${s.searched!.place}`, s.searched!.source)}
+                        <button type="button" className="aip-chip" disabled={working} onClick={() => void go(askSentence(s.searched!.trade, s.searched!.place, s.searched!.source), s.searched!.source)}
                           title="Runs this search again now, live, and reads every website and address again">
                           <Search size={12} /> Search again, live
                         </button>
@@ -812,7 +801,7 @@ export default function AiProspecting() {
           onDone={c => { reloadDefs(); setSaid({ ok: true, text: `"${c.searchName}" now feeds "${c.projectName}" — ${c.scheduleText.toLowerCase()}, ${c.target} verified leads a run.` }); }} />
       )}
       {how && <HowItWorks onClose={() => setHow(false)} />}
-      {ideas && <Ideas onClose={() => setIdeas(false)} onPick={t => { setIdeas(false); if (screen !== 'start') startNew(); setView('leads'); setText(`${t} in `); s.setTrade(t); window.setTimeout(() => document.getElementById('aip-ask')?.focus(), 40); }} />}
+      {ideas && <Ideas onClose={() => setIdeas(false)} onPick={t => { setIdeas(false); if (screen !== 'start') startNew(); setView('leads'); setAskError(''); setText(`${t} in `); window.setTimeout(() => document.getElementById('aip-ask')?.focus(), 40); }} />}
     </div>
   );
 }

@@ -15,7 +15,8 @@
  * A refusal that is about a particular box says which: the server answers
  * `{ success: false, field: 'smtp.host' }` with the header
  * `X-Refused-Field: smtp.host`, and the form marks that input
- * `data-field="smtp.host"`. After any refused `/api/*.php` call, this checks
+ * `data-field="smtp.host"` (or lists it among several, space-separated, when
+ * one input answers for more than one name). After any refused `/api/*.php` call, this checks
  * the named box is actually on screen. If it is not, that is a dead end:
  * it is logged to the console, kept on `window.__deadEnds` for the browser
  * tests (test/formContract.e2e.mjs), and reported once per session to
@@ -59,9 +60,13 @@ function check(field: string, message: string, api: string) {
   /* A moment for the screen to render the answer — a form may reveal the box
      it is being told about. */
   setTimeout(() => {
-    let el: Element | null = null;
-    try { el = document.querySelector(`[data-field="${CSS.escape(field)}"]`); } catch { /* odd name */ }
-    if (visible(el)) return;
+    /* `~=`: one input may answer for several names — AI Prospecting's sentence
+       box is `data-field="prospects.ask prospects.trade prospects.place"`,
+       because the sentence is where the trade and the place are said. A
+       single name still matches exactly as before. Any visible one will do. */
+    let els: Element[] = [];
+    try { els = [...document.querySelectorAll(`[data-field~="${CSS.escape(field)}"]`)]; } catch { /* odd name */ }
+    if (els.some(visible)) return;
 
     const rec: DeadEnd = { field, message: message.slice(0, 300), path: location.pathname, api, at: new Date().toISOString() };
     signalTrouble('dead_end');

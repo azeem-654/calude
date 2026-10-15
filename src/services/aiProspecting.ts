@@ -19,18 +19,36 @@
  * published, with the pages it saw them on.
  *
  * The Lead Directory (/lead-directory, routes/leaddir.ts) is separate on
- * purpose: it is the owner's own lead files, which the owner states they may
- * share, and it never feeds this page's searches.
+ * purpose: it is the owner's own lead files. It never feeds this page's
+ * searches and is not shown beside them either — the owner decided customers
+ * must not see a searchable directory of people: the platform finds
+ * businesses live, it is not a data broker.
  */
 import type { Contactable, FoundPerson, Prospect, Verdict, CheckStatus } from './prospects';
 
 /* ── The sentence ─────────────────────────────────────────────────────── */
+
+/**
+ * Where a search can look. The page has no tabs for these any more: the
+ * sentence says which ("registered companies", "with reviews"), and
+ * `chooseSource` decides what is actually asked, given what is switched on.
+ */
+export type AskSource = 'free' | 'register' | 'google';
+
+/* Named for what they give, never for who supplies them — the results name
+   no supplier. `SOURCE_NAME` (services/prospects) is still the provenance
+   stamp an imported contact carries. */
+export const SOURCE_LABEL: Record<AskSource | 'osm', string> = {
+  free: 'All businesses', osm: 'All businesses', register: 'Registered companies', google: 'With ratings & reviews',
+};
 
 export interface Ask {
   trade: string;
   place: string;
   /** Narrowing the sentence asked for, applied to the results — never sent as a search term. */
   want: { email: boolean; website: boolean; phone: boolean };
+  /** Which source the sentence asked for — before anything is known about what is switched on. */
+  source: AskSource;
 }
 
 const LEAD_IN = /^(?:please\s+)?(?:can you\s+|could you\s+)?(?:find|search(?:\s+for)?|look(?:\s+for)?|get|show(?:\s+me)?|list|give me|i\s+(?:want|need)|pull|build(?:\s+(?:me\s+)?a\s+list\s+of)?)\s+(?:me\s+)?(?:some\s+|all\s+(?:the\s+)?|the\s+|a\s+list\s+of\s+|\d+\s+)?/i;
@@ -40,27 +58,128 @@ const QUALIFIERS: { re: RegExp; key: keyof Ask['want'] }[] = [
   { re: /\b(?:with|that have|who have|having|and)\s+(?:an?\s+)?(?:phone|telephone)(?:\s+numbers?)?\b/i, key: 'phone' },
 ];
 
+/*
+ * The words that pick a source, and are then taken out of the sentence —
+ * "accountants in Leeds from Companies House" searches for accountants in
+ * Leeds, not in "Leeds from Companies House". The company register is the
+ * only source with directors, and Google the only one with ratings, so asking
+ * for either is asking for that source.
+ */
+const REGISTER_WORDS: RegExp[] = [
+  /\b(?:on|from|via|using|in|at)\s+(?:the\s+)?companies\s+house\b/gi,
+  /\bcompanies\s+house\b/gi,
+  /\b(?:on|from|via|using|in)\s+the\s+(?:company|companies)\s+register\b/gi,
+  /\b(?:company|companies)\s+register\b/gi,
+  /\b(?:with|and|including)\s+(?:their\s+|the\s+)?directors?(?:'?\s*names)?\b/gi,
+];
+/* "registered companies", "limited companies", "registered dental companies" — the words between are the trade. */
+const REGISTERED = /\b(?:registered|limited|ltd\.?)\s+((?:[\p{L}&'-]+\s+){0,3}?)(?:companies|company|firms|businesses)\b/giu;
+const GOOGLE_WORDS: RegExp[] = [
+  /\b(?:with|and|having|that have|who have)\s+(?:good\s+|great\s+|high\s+|star\s+|google\s+)?(?:ratings?|reviews?)(?:\s+(?:and|&)\s+(?:ratings?|reviews?))?\b/gi,
+  /\b(?:on|from|via|using|in)\s+google(?:\s+maps)?\b/gi,
+  /\bgoogle(?:\s+maps)?\b/gi,
+  /\b(?:top|highly|well|best)[\s-]rated\b/gi,
+];
+
+const squash = (t: string) => t.replace(/\(\s*\)/g, ' ').replace(/\s+/g, ' ').trim();
+
+/**
+ * The sentence read into its parts, any of which may be missing — `parseAsk`
+ * is this with both parts required, `askProblem` says which one is not there.
+ */
+export function readAsk(text: string): Ask {
+  let t = String(text ?? '').replace(/\s+/g, ' ').trim().replace(/[.?!]+$/, '');
+  const want = { email: false, website: false, phone: false };
+  let source: AskSource = 'free';
+  /* Ratings first: "with a website and reviews" leaves "with a website" for the qualifier. */
+  /* Replaced and compared, never `.test()`ed: a global pattern's test()
+     remembers where it stopped, and the next sentence would start there. */
+  const take = (re: RegExp, as: AskSource, by: string | ((...m: string[]) => string) = ' ') => {
+    const next = t.replace(re, by as string);
+    if (next !== t) { source = as; t = squash(next); }
+  };
+  for (const re of GOOGLE_WORDS) take(re, 'google');
+  take(REGISTERED, 'register', (_m: string, mid?: string) => ` ${mid ?? ''} `);
+  for (const re of REGISTER_WORDS) take(re, 'register');
+  for (const q of QUALIFIERS) {
+    if (q.re.test(t)) { want[q.key] = true; t = squash(t.replace(q.re, ' ')); }
+  }
+  t = t.replace(LEAD_IN, '').replace(/^[\s:;,\-–—()]+/, '')
+    .replace(/^(?:(?:businesses|companies|firms)\s+)?(?:(?:that|which|who)\s+(?:are|is)\s+)?/i, '').trim();
+  const clean = (x: string) => x.replace(/^[\s:;,\-–—()]+|[\s:;,\-–—()]+$/g, '').trim();
+  let trade = '';
+  let place = '';
+  const only = /^(?:in|near|around|across|within)\s+(.+)$/i.exec(t);
+  const m = /^(.+)\s+(?:in|near|around|across|within)\s+(.+?)$/i.exec(t);
+  if (only) place = only[1];
+  else if (m) { trade = m[1]; place = m[2]; } else trade = t;
+  trade = clean(trade.replace(/\b(?:local|nearby)\b/gi, '').replace(/\s+/g, ' '));
+  place = clean(place.replace(/\b(?:area|region|city centre|city center)\b$/i, ''));
+  return { trade: trade.slice(0, 80), place: place.slice(0, 80), want, source };
+}
+
+const enough = (x: string) => x.replace(/[^\p{L}\p{N}]/gu, '').length >= 2;
+
 /**
  * "Find dentists in Leeds with a website" → dentists · Leeds, wanting a website.
  *
  * Split at the last " in ", " near " or " around " — "builders in Stoke-on-
  * Trent" and "bed and breakfasts in Bath" both have to come out whole.
- * `null` when there is no place: the directory searches inside a named place,
- * so a sentence without one cannot be run and the page asks for one.
+ * `null` when there is no place or no kind of business: the directory
+ * searches inside a named place for a named kind, so a sentence without both
+ * cannot be run, and the page asks for the missing one (`askProblem`).
  */
 export function parseAsk(text: string): Ask | null {
-  let t = String(text ?? '').replace(/\s+/g, ' ').trim().replace(/[.?!]+$/, '');
-  const want = { email: false, website: false, phone: false };
-  for (const q of QUALIFIERS) {
-    if (q.re.test(t)) { want[q.key] = true; t = t.replace(q.re, ' ').replace(/\s+/g, ' ').trim(); }
+  const a = readAsk(text);
+  return enough(a.trade) && enough(a.place) ? a : null;
+}
+
+/**
+ * What a sentence is missing, in words the page puts under the box — asked
+ * for, rather than searched blind. Null when it can be run.
+ */
+export function askProblem(text: string): { field: 'trade' | 'place'; message: string; trade: string; place: string } | null {
+  if (!String(text ?? '').trim()) return { field: 'trade', message: 'Say who to look for — "dentists in Leeds", "cafés near Bristol".', trade: '', place: '' };
+  const a = readAsk(text);
+  if (enough(a.trade) && enough(a.place)) return null;
+  if (!enough(a.trade)) {
+    return a.place
+      ? { field: 'trade', message: `What kind of business in ${a.place}? Say it in the sentence — "dentists in ${a.place}".`, trade: '', place: a.place }
+      : { field: 'trade', message: 'Say what kind of business — "dentists in Leeds", "cafés near Bristol".', trade: '', place: '' };
   }
-  t = t.replace(LEAD_IN, '').replace(/^(?:businesses|companies)\s+(?:that\s+are\s+|which\s+are\s+)?/i, '').trim();
-  const m = /^(.+)\s+(?:in|near|around|across|within)\s+(.+?)$/i.exec(t);
-  if (!m) return null;
-  const trade = m[1].replace(/\b(?:local|nearby)\b/gi, '').replace(/\s+/g, ' ').trim();
-  const place = m[2].replace(/\b(?:area|region|city centre|city center)\b$/i, '').trim();
-  if (trade.replace(/[^\p{L}\p{N}]/gu, '').length < 2 || place.replace(/[^\p{L}\p{N}]/gu, '').length < 2) return null;
-  return { trade: trade.slice(0, 80), place: place.slice(0, 80), want };
+  return { field: 'place', message: `Where should I look for ${a.trade}? Add a town or city to the sentence — "${a.trade} in Leeds".`, trade: a.trade, place: '' };
+}
+
+/** What the server says is on, in the shape `googleAvailability` answers. */
+export interface SourceAvailability {
+  available: boolean;
+  code?: string;
+  register: { available: boolean; code?: string };
+}
+
+/**
+ * Which source a search actually asks, and what to say when it is not the
+ * one the sentence asked for. The company register needs the owner's
+ * Companies House key and ratings need Google Maps on the owner's key; with
+ * either off, the search goes to the business directories and says so —
+ * never a refusal for a choice the customer could not see was off.
+ * `avail` null (not known yet) asks for what was asked; the server then
+ * refuses by name if it must.
+ */
+export function chooseSource(asked: AskSource, avail: SourceAvailability | null): { source: AskSource; note: string } {
+  if (asked === 'free' || !avail) return { source: asked, note: '' };
+  const on = asked === 'register' ? avail.register.available : avail.available;
+  if (on) return { source: asked, note: '' };
+  const code = asked === 'register' ? avail.register.code : avail.code;
+  const what = asked === 'register' ? 'Registered companies (the company register, with directors)' : 'Ratings and reviews';
+  const why = code === 'trial_ended' ? 'stopped when the trial ended' : 'are not switched on for this app yet';
+  return { source: 'free', note: `${what} ${why}, so this searches all businesses instead.` };
+}
+
+/** A sentence that reads back as this search, source included — for the box and for "Run again". */
+export function askSentence(trade: string, place: string, source: AskSource | 'osm' = 'free'): string {
+  const base = `${trade} in ${place}`;
+  return source === 'register' ? `${base} from the company register` : source === 'google' ? `${base} with reviews` : base;
 }
 
 /** The title a run is shown under: "Dentists · Leeds". */

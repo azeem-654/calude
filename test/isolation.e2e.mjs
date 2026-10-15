@@ -1,6 +1,6 @@
 /**
  * Somebody else's workspace never reaches a new account, the top bar never
- * tangles, and AI Prospecting shows the owner's Lead Directory.
+ * tangles, and AI Prospecting does not show the owner's Lead Directory.
  *
  *   VITE_BASE=/ npm run build
  *   npm run test:isolation      (self-contained: wrangler :8939, fresh D1 in .wrangler-isolation)
@@ -14,8 +14,9 @@
  *  - The top bar at 1280, 1440, 1655 and 1900px, as the owner (the widest bar):
  *    no pill runs under the icons on its right, and AI Prospecting has a lit
  *    pill of its own.
- *  - A search for "business owners in Australia" shows the owner's Lead
- *    Directory matches even when the map search itself fails.
+ *  - A search for "business owners in Australia" shows none of the owner's
+ *    Lead Directory beside it, even though the directory holds matches: the
+ *    owner decided customers do not get a searchable directory of people.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -191,7 +192,7 @@ for (const width of [1280, 1440, 1655, 1900]) {
   await page.goto('about:blank'); await ctx.close();
 }
 
-/* ── 5. The Lead Directory in AI Prospecting ── */
+/* ── 5. No Lead Directory in AI Prospecting ── */
 {
   const rows = Array.from({ length: 30 }, (_, i) => ({
     name: `Owner Person${i}`, title: i % 3 ? 'Owner' : 'Managing Director', level: i % 3 ? 'Owner' : 'Director', industry: 'Construction',
@@ -208,14 +209,15 @@ for (const width of [1280, 1440, 1655, 1900]) {
   page.on('pageerror', e => errs.push(`5: ${e}`));
   await signIn(page, ERIN);
   await page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
+  const asked = [];
+  page.on('request', req => { if (/leaddir\.php/.test(req.url())) asked.push(req.postDataJSON()?.action); });
   await page.getByLabel('Who to look for').fill('business owners in australia');
   await page.keyboard.press('Enter');
-  await page.getByTestId('directory-matches').waitFor({ timeout: 30_000 }).catch(() => {});
-  const card = await page.getByTestId('directory-matches').innerText().catch(() => '');
-  ok('AI Prospecting shows the directory\'s matches beside the search', /20 people match/.test(card) && /Owner Person/.test(card) && /•/.test(card), card.slice(0, 300));
-  await page.getByTestId('directory-matches').getByRole('button', { name: /See them all/ }).click();
-  await page.getByTestId('ld-count').waitFor({ timeout: 15_000 }).catch(() => {});
-  ok('"See them all" opens the Lead Directory on the same search', /\/lead-directory/.test(page.url()) && /20 people/.test(await page.getByTestId('ld-count').innerText().catch(() => '')), page.url());
+  await page.getByText(/Searched for business owners in australia/i).waitFor({ timeout: 30_000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+  const body = await page.innerText('body');
+  ok('AI Prospecting shows nobody from the Lead Directory beside a search, and never asks it',
+    await page.getByTestId('directory-matches').count() === 0 && !/Owner Person/.test(body) && !/See them all/.test(body) && !asked.includes('search'), `${asked.join(',')} ${body.slice(0, 300)}`);
   await page.screenshot({ path: 'test-results/isolation-directory.png' });
   await page.goto('about:blank'); await ctx.close();
 }
