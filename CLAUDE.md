@@ -529,7 +529,7 @@ the driver in `worker/src/prospectFinderTick.ts` (2 finders a tick, on the cron
 **before** `runAutopilot`, so a prospect added this tick can be enrolled on
 it), the API in `routes/finders.ts` (`/api/finders.php`: `save` — with `append`
 to merge a rotation —, `overview`, `set_status`, `run_step`, `expand_place`,
-`record`, `removed`, `sync`; every action workspace-checked and the project
+`record`, `removed`, `sync`, `prospects` — the paged lead list; every action workspace-checked and the project
 must be this workspace's). Tables in migration 0063 (`crm_prospect_finders`,
 `crm_project_prospects` — unique per project and `ref`, `crm_finder_runs`,
 `crm_sms_consents`). `npm run test:finder` (pure) and `npm run test:autoprospects`
@@ -552,11 +552,24 @@ must be this workspace's). Tables in migration 0063 (`crm_prospect_finders`,
   A contact the customer deletes (`pf-…` ids, `forgetFoundContacts`) is
   tombstoned `removed` and never re-added. `ProspectSync` pulls new ones into
   the browser on load and on return to the tab.
-- **Screens.** A project's **Prospects** tab: its connected sources first
-  (below), then, folded, the older finder (`ProjectProspects.tsx`): status,
-  KPIs, 30-day chart, the rotation, latest prospects, the step log, and the
-  set-up form (`finder.trades`, `finder.places`, `finder.perDay`,
-  `finder.list`). The wizard asks `prospectTrades` / `prospectPlaces`
+- **Screens.** A project's **Prospects** tab (`ProjectLeads.tsx`): first
+  **Where this project's leads come from** — every source as one compact card
+  (the daily search, `FinderCard` in `ProjectProspects.tsx`; each connected
+  search, `SourceCard` in `ProspectSources.tsx`) with its state in plain words
+  and its actions beside it ("All searches done for now" explains itself and
+  offers *Add places or kinds of business* — no Resume, which would find
+  nobody new), and one **Add another lead source** button; the two-way empty
+  state ("Set up a daily search" / "Connect a search") only when the project
+  has no source at all. Then tiles counted by the server, each opening its
+  group; **All leads** (`LeadsList.tsx`, `finders.php prospects`: every
+  business examined, any source, any outcome — added, still being checked, no
+  email, already in Contacts, turned away with the reason — 50 a page,
+  newest first, chips, search, CSV export, "Open contact" →
+  `/contacts?contact=<id>`; tiles and chips count by one `GROUP_SQL`, so they
+  cannot disagree; a table that becomes cards by container query); the
+  30-day chart; and, folded under **Details**, the rotation and the step log.
+  The set-up form keeps `finder.trades`, `finder.places`, `finder.perDay`,
+  `finder.list`. The wizard asks `prospectTrades` / `prospectPlaces`
   / `prospectPerDay` / `prospectSms` when contacts are to be found, reads them
   from the sentence when it can ("sell my products to real estate agents in
   Virginia" — the *selling-to* clause is the audience, not the business, so

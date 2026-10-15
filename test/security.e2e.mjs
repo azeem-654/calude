@@ -121,6 +121,10 @@ const revPj = await api('revenue.php', { action: 'summary', token: B.token, acco
 check("B cannot scope a report to A's project", !revPj.ok, JSON.stringify(revPj.data).slice(0, 120));
 const fOv = await api('finders.php', { action: 'overview', token: B.token, accountId: A.acct, projectId: pj.data.id });
 check("B cannot read A's daily prospecting", !fOv.ok, JSON.stringify(fOv.data).slice(0, 120));
+const fLeads = await api('finders.php', { action: 'prospects', token: B.token, accountId: B.acct, projectId: pj.data.id });
+check("B cannot list A's project's leads from B's workspace", !fLeads.ok && !fLeads.data?.rows, JSON.stringify(fLeads.data).slice(0, 120));
+const fLeadsA = await api('finders.php', { action: 'prospects', token: B.token, accountId: A.acct, projectId: pj.data.id, status: 'all' });
+check("B cannot list A's project's leads naming A's workspace", !fLeadsA.ok && fLeadsA.status === 403, JSON.stringify(fLeadsA.data).slice(0, 120));
 const fSave = await api('finders.php', { action: 'save', token: B.token, accountId: B.acct, projectId: pj.data.id, trades: ['dentists'], places: ['Leeds'], perDay: 10 });
 check("B cannot start a finder on A's project from B's workspace", !fSave.ok, JSON.stringify(fSave.data).slice(0, 120));
 const fRec = await api('finders.php', { action: 'record', token: B.token, accountId: B.acct, projectId: pj.data.id, rows: [{ ref: 'x', name: 'x' }] });

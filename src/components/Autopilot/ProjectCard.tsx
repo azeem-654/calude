@@ -56,8 +56,8 @@ import StepDrawer from './StepDrawer';
 import ProjectLogo from './ProjectLogo';
 import ProjectOverview from './ProjectOverview';
 import ProjectSchedule from './ProjectSchedule';
-import ProjectProspects from './ProjectProspects';
-import ProspectSources, { ProspectingToday, SourceFlow } from './ProspectSources';
+import ProjectLeads from './ProjectLeads';
+import { ProspectingToday, SourceFlow } from './ProspectSources';
 import ConnectAutopilot from '../Prospecting/ConnectAutopilot';
 import { TEMPLATES } from './workflowTemplates';
 import { AGENT_OUTPUTS, AGENT_SOURCES, CADENCES, lookFor } from './workflowNodes';
@@ -660,14 +660,7 @@ export default function ProjectCard({
 
           {tab === 'schedule' && <ProjectSchedule flows={flows} runs={runs} />}
 
-          {tab === 'prospects' && (
-            <div style={{ display: 'grid', gap: 14 }}>
-              <ProspectSources project={project} focus={sourceFocus} />
-              {/* The older way: kinds of business × places typed here, not a saved search —
-                  shown in full when this project has one, one line when it does not. */}
-              <ProjectProspects project={project} folded />
-            </div>
-          )}
+          {tab === 'prospects' && <ProjectLeads project={project} focus={sourceFocus} />}
 
           {/* ── Workflows ──
               "Create workflow" sits above both states, always. It used to live
