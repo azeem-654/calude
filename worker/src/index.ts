@@ -62,6 +62,7 @@ import { handleFinders } from './routes/finders';
 import { handlePush } from './routes/push';
 import { handleSmsOptin } from './routes/smsOptin';
 import { handlePlatform } from './routes/platform';
+import { handleAllowances } from './routes/allowances';
 import { handleCloud } from './routes/cloud';
 import { handleAffiliate } from './routes/affiliate';
 import { handleResell, handleResellWebhook } from './routes/resell';
@@ -73,6 +74,7 @@ import { handlePlacement } from './routes/placement';
 import { handleTrack } from './routes/track';
 import { handleUnsubscribe } from './routes/unsubscribe';
 import { handleBooking } from './routes/booking';
+import { handleBookingMedia } from './routes/bookingMedia';
 import { handleYtThumb, handleImgProxy } from './routes/proxies';
 import { handleStripeConfig, handleStripeCheckout, handleStripePortal, handleStripeWebhook } from './routes/stripe';
 import {
@@ -102,6 +104,7 @@ const ROUTES: Record<string, Handler> = {
   '/api/system-mail.php': handleSystemMail,
   /* The owner's keys for everybody, in one read. Owner only. */
   '/api/platform.php': handlePlatform,
+  '/api/allowances.php': handleAllowances,
   '/api/cloud.php': handleCloud,
   '/api/aikeys.php': handleAiKeys,
   '/api/geoapify.php': handleGeoapify,
@@ -201,6 +204,8 @@ const ROUTES: Record<string, Handler> = {
   '/api/track.php': handleTrack,
   '/api/unsubscribe.php': handleUnsubscribe,
   '/api/booking.php': handleBooking,
+  /* The booking page's photo, logo and short clip — public by random key. */
+  '/api/booking-media.php': handleBookingMedia,
   '/api/deliverability.php': handleDeliverability,
   '/api/placement.php': handlePlacement,
   '/api/blog-publish.php': handleBlogPublish,

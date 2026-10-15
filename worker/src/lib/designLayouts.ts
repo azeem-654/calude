@@ -17,7 +17,7 @@
 
 export const SOCIAL_LAYOUTS = ['bold', 'offer', 'split', 'diagonal', 'minimal', 'quote', 'framed'] as const;
 export const PAGE_LAYOUTS = ['hero-form', 'services', 'long-sales', 'minimal'] as const;
-export const EMAIL_LAYOUTS = ['plain', 'branded', 'newsletter', 'promo'] as const;
+export const EMAIL_LAYOUTS = ['plain', 'branded', 'newsletter', 'promo', 'photo', 'video', 'card'] as const;
 export const BLOG_FORMATS = ['guide', 'listicle', 'story', 'qa', 'news'] as const;
 export const FONTS = ['Inter', 'Georgia', 'Impact'] as const;
 
@@ -251,17 +251,37 @@ export function wrapEmail(
     ? `<tr><td style="padding:8px 32px 28px"><a href="${first[1]}" style="display:inline-block;background:${accent};color:${btnInk};font:700 15px Arial,Helvetica,sans-serif;text-decoration:none;padding:13px 26px;border-radius:8px">${first[2].replace(/<[^>]+>/g, '').slice(0, 60) || 'Find out more'}</a></td></tr>`
     : '';
 
-  const header = layout === 'branded'
+  /*
+   * The picture-led frames. A photo header needs an https picture (the stock
+   * photo for the trade the wizard chose, `emailImage`) — a data: URL is
+   * blocked by most mail clients. A video frame needs a YouTube link in the
+   * body: its thumbnail, with a play mark, links to it (no mail client plays
+   * video inline, so this is what "a video in an email" honestly is). Without
+   * either, the frame falls back to the branded letter rather than drawing an
+   * empty box.
+   */
+  const photo = /^https:\/\/[^\s"'<>]+$/.test(cfg('emailImage')) ? cfg('emailImage') : '';
+  const yt = bodyHtml.match(/https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})/i);
+  const banner = layout === 'video' && yt
+    ? `<tr><td style="padding:0"><a href="https://www.youtube.com/watch?v=${yt[1]}" style="display:block;position:relative;text-decoration:none"><img src="https://img.youtube.com/vi/${yt[1]}/hqdefault.jpg" alt="Watch the video" width="600" style="display:block;width:100%;height:auto;border:0"><span style="display:block;background:${accent};color:${btnInk};font:700 14px Arial,Helvetica,sans-serif;text-align:center;padding:10px">▶ Watch the video</span></a></td></tr>`
+    : (layout === 'photo' || layout === 'video') && photo
+      ? `<tr><td style="padding:0"><img src="${esc(photo)}" alt="" width="600" style="display:block;width:100%;height:auto;max-height:280px;object-fit:cover;border:0"></td></tr>`
+      : '';
+  const header = layout === 'branded' || ((layout === 'photo' || layout === 'video') && !banner)
     ? `<tr><td style="padding:24px 32px 8px;border-bottom:3px solid ${accent}">${mark}</td></tr>`
-    : layout === 'newsletter'
-      ? `<tr><td style="background:${band};padding:22px 32px">${mark}</td></tr>`
-      : `<tr><td style="background:${band};padding:30px 32px 26px">${mark}</td></tr>`;
+    : layout === 'photo' || layout === 'video'
+      ? `${banner}<tr><td style="padding:20px 32px 4px">${mark}</td></tr>`
+      : layout === 'card'
+        ? `<tr><td style="padding:22px 32px 6px;border-left:5px solid ${accent}">${mark}</td></tr>`
+        : layout === 'newsletter'
+          ? `<tr><td style="background:${band};padding:22px 32px">${mark}</td></tr>`
+          : `<tr><td style="background:${band};padding:30px 32px 26px">${mark}</td></tr>`;
 
   return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 0">
 <tr><td align="center">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:10px;overflow:hidden">
 ${header}
-<tr><td style="padding:${layout === 'newsletter' ? '28px 32px 8px' : '24px 32px 8px'};font:15px/1.6 Arial,Helvetica,sans-serif;color:#1f2937">${bodyHtml}</td></tr>
+<tr><td style="padding:${layout === 'newsletter' ? '28px 32px 8px' : '24px 32px 8px'};${layout === 'card' ? `border-left:5px solid ${accent};` : ''}font:15px/1.6 Arial,Helvetica,sans-serif;color:#1f2937">${bodyHtml}</td></tr>
 ${button}
 <tr><td style="padding:16px 32px 22px;border-top:1px solid #eef0f3;font:12px/1.5 Arial,Helvetica,sans-serif;color:#6b7280">${company}</td></tr>
 </table>

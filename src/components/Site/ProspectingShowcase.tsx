@@ -110,7 +110,7 @@ const CHIPS = [
   { icon: Search, title: '51 found live', sub: 'Realtors in Richmond, Virginia' },
   { icon: Globe, title: 'Websites read', sub: 'The address each one publishes' },
   { icon: ShieldCheck, title: '33 mailboxes verified', sub: 'Checked before you send' },
-  { icon: CalendarClock, title: '20 new every day', sub: 'Added to an Autopilot project' },
+  { icon: CalendarClock, title: '20 new every day', sub: 'Added to an AI Autopilot project' },
 ];
 
 export default function ProspectingShowcase() {

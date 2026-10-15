@@ -20,20 +20,28 @@
  *
  * ── What this does instead ──
  *
- * Two listeners at once, on one microphone stream:
+ * Two listeners at once:
  *
- *   - The browser's recogniser, for the live preview only: interim words in
- *     grey as somebody speaks, restarted across pauses, told the locale the
- *     customer actually speaks. Fast, free, and good enough to show that it is
- *     hearing them.
  *   - A plain recording (16 kHz WAV), sent when they press stop to the
  *     operator's Gemini key — the same key that writes everything else — for a
  *     transcript made from the whole recording, by a multilingual model told
  *     to expect any accent. That is the text that goes in the box.
+ *   - The browser's recogniser, told the locale the customer actually speaks
+ *     and restarted across pauses — kept only as the fallback text for when
+ *     the transcriber is not available, and the screen then says it is the
+ *     rougher of the two. Firefox has none; the recording works regardless.
  *
- * If the transcriber is not available, the browser's text is used and the
- * screen says it is the rougher of the two. If the browser has no recogniser
- * (Firefox), the recording still works and there is simply no live preview.
+ * ── Why the words are no longer shown while somebody speaks ──
+ *
+ * They used to be, in grey, from that recogniser. Chrome's sends the sound to
+ * Google's service and answers in bursts a second or more behind the voice,
+ * goes quiet while it restarts after every pause, and on Android is run one
+ * phrase at a time — so the preview trailed the speaker, and the owner, seeing
+ * it fall behind, took it for a recording that was not working, when the
+ * transcript that came back was right. Nothing cheap makes it keep up. So
+ * listening is shown by what is certain instead: bars that move with the
+ * microphone's own level (`meter`, read from the same stream the WAV is cut
+ * from — `VoiceBars.tsx`), a running clock and the word "Listening…".
  *
  * ── What it never does ──
  *
@@ -166,6 +174,32 @@ class PcTap extends AudioWorkletProcessor {
 registerProcessor('pc-tap', PcTap);
 `;
 
+/** How many bars the level history holds — about three seconds at the rate
+ *  the tick pushes them (every fourth frame). */
+export const METER_BARS = 48;
+
+/**
+ * The microphone's level, as the bars read it.
+ *
+ * A ref, not state: it changes fifteen times a second, and the bars write it
+ * straight onto their own elements rather than asking React to draw a screen
+ * that many times. `version` moves when anything changed, so a reader with
+ * nothing new does nothing.
+ */
+export interface VoiceMeter {
+  /** 0–1 per bar, oldest at `head`, newest just before it. */
+  bars: Float32Array;
+  head: number;
+  /** The latest level, 0–1. */
+  level: number;
+  version: number;
+}
+
+/* Speech sits roughly between −50 dB (quiet, far off) and −10 dB (close and
+   loud). On a straight RMS scale a normal voice barely lifts a bar, so the
+   bars are drawn on that decibel range instead. */
+const barOf = (rms: number) => Math.max(0, Math.min(1, (20 * Math.log10(rms + 1e-6) + 52) / 42));
+
 const MAX_SECONDS = 180;
 /** Long enough for somebody to think mid-sentence; short enough that a
  *  forgotten microphone does not record the office for three minutes. */
@@ -175,11 +209,11 @@ const SPEECH_LEVEL = 0.02;
 export function useVoiceInput(locale: string) {
   const [phase, setPhase] = useState<VoicePhase>('idle');
   const [finalText, setFinalText] = useState('');
-  const [interim, setInterim] = useState('');
   const [level, setLevel] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const [problem, setProblem] = useState('');
   const [livePreview, setLivePreview] = useState(true);
+  const meter = useRef<VoiceMeter>({ bars: new Float32Array(METER_BARS), head: 0, level: 0, version: 0 });
 
   const live = useRef(false);
   const stream = useRef<MediaStream | null>(null);
@@ -244,10 +278,10 @@ export function useVoiceInput(locale: string) {
           if (i >= e.resultIndex && alt.confidence > 0) confidences.current.push(alt.confidence);
         } else interimNow += alt.transcript;
       }
+      /* Refs only: nothing on screen shows these while listening (see the top
+         of this file), so setting state here would redraw for nobody. */
       const heardSoFar = `${committed.current} ${sessionFinal}`.replace(/\s+/g, ' ').trim();
       latest.current = `${heardSoFar} ${interimNow}`.replace(/\s+/g, ' ').trim();
-      setFinalText(heardSoFar);
-      setInterim(interimNow.trim());
     };
     r.onerror = e => {
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
@@ -262,7 +296,6 @@ export function useVoiceInput(locale: string) {
     r.onend = () => {
       committed.current = `${committed.current} ${sessionFinal}`.replace(/\s+/g, ' ').trim();
       sessionFinal = '';
-      setInterim('');
       /* Chrome ends a session on a pause. Somebody who is still recording has
          not finished talking — so start again, keeping what was heard. */
       if (live.current) window.setTimeout(() => { if (live.current) restart.current(); }, 120);
@@ -335,8 +368,11 @@ export function useVoiceInput(locale: string) {
     if (live.current) return null;
     setProblem('');
     setFinalText('');
-    setInterim('');
     setSeconds(0);
+    meter.current.bars.fill(0);
+    meter.current.head = 0;
+    meter.current.level = 0;
+    meter.current.version++;
     setLivePreview(true);
     committed.current = '';
     latest.current = '';
@@ -405,6 +441,7 @@ export function useVoiceInput(locale: string) {
 
     const buf = new Float32Array(analyser.fftSize);
     let frame = 0;
+    let peak = 0;
     const tick = () => {
       if (!live.current) return;
       analyser.getFloatTimeDomainData(buf);
@@ -412,8 +449,18 @@ export function useVoiceInput(locale: string) {
       for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
       const rms = Math.sqrt(sum / buf.length);
       if (rms > SPEECH_LEVEL) { heard.current = true; lastSound.current = Date.now(); }
+      /* The loudest of the frames since the last bar, so a short syllable
+         between two pushes still shows. */
+      peak = Math.max(peak, rms);
       /* Fifteen updates a second is smooth enough for a ring and cheap for React. */
       if (++frame % 4 === 0) {
+        const m = meter.current;
+        const bar = barOf(peak);
+        m.bars[m.head] = bar;
+        m.head = (m.head + 1) % m.bars.length;
+        m.level = bar;
+        m.version++;
+        peak = 0;
         setLevel(Math.min(1, rms * 8));
         const secs = (Date.now() - startedAt.current) / 1000;
         setSeconds(Math.floor(secs));
@@ -432,11 +479,10 @@ export function useVoiceInput(locale: string) {
     resolveDone.current?.(null);
     resolveDone.current = null;
     setPhase('idle');
-    setInterim('');
     setLevel(0);
   }, [teardown]);
 
-  const reset = useCallback(() => { setPhase('idle'); setProblem(''); setFinalText(''); setInterim(''); }, []);
+  const reset = useCallback(() => { setPhase('idle'); setProblem(''); setFinalText(''); }, []);
 
-  return { phase, finalText, interim, level, seconds, problem, livePreview: livePreview && hasPreview, supported, start, stop, cancel, reset };
+  return { phase, finalText, level, meter, seconds, problem, livePreview: livePreview && hasPreview, supported, start, stop, cancel, reset };
 }

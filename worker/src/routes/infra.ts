@@ -492,7 +492,7 @@ export async function handleInfra(req: Request, env: Env): Promise<Response> {
     }
     const res = await env.DB.prepare('UPDATE crm_autopilot SET purchase_mode = ?, updated_at = ? WHERE account_id = ?')
       .bind(mode, nowIso(), accountId).run();
-    if (!res.meta.changes) return fail('Turn Autopilot on first — the purchasing choice belongs to it.');
+    if (!res.meta.changes) return fail('Turn AI Autopilot on first — the purchasing choice belongs to it.');
     return json({ success: true, mode });
   }
 
@@ -501,7 +501,7 @@ export async function handleInfra(req: Request, env: Env): Promise<Response> {
     const per = Math.min(Math.max(Math.round(Number(d.mailboxesPerDomain) || 3), 1), 10);
     const res = await env.DB.prepare('UPDATE crm_autopilot SET pool_target = ?, updated_at = ? WHERE account_id = ?')
       .bind(JSON.stringify({ domains, mailboxesPerDomain: per }), nowIso(), accountId).run();
-    if (!res.meta.changes) return fail('Turn Autopilot on first.');
+    if (!res.meta.changes) return fail('Turn AI Autopilot on first.');
     return json({ success: true, poolTarget: { domains, mailboxesPerDomain: per } });
   }
 

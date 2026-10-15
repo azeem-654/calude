@@ -101,7 +101,7 @@ export async function handleRevenue(req: Request, env: Env): Promise<Response> {
   if (![30, 90, 365].includes(days)) return fail('A report covers 30, 90 or 365 days.');
 
   const { results: projectRows } = await env.DB.prepare(
-    'SELECT id, name, status FROM crm_projects WHERE account_id = ? ORDER BY created_at',
+    'SELECT id, name, status FROM crm_projects WHERE account_id = ? ORDER BY position, created_at, id',
   ).bind(accountId).all<{ id: string; name: string; status: string }>();
   const projects = projectRows ?? [];
 

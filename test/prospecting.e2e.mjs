@@ -331,7 +331,7 @@ let listId = '';
   await listMenu(page, LIST, 'Use this list in a new Autopilot project');
   const np = page.getByRole('dialog', { name: 'New project' });
   await np.waitFor({ timeout: 8000 });
-  const prompt = await np.getByLabel('What would you like Autopilot to do?').inputValue();
+  const prompt = await np.getByLabel('What would you like AI Autopilot to do?').inputValue();
   ok('the Autopilot shortcut opens New Project with a starting sentence naming the list', /Dentists — Leeds test/.test(prompt), prompt);
   const cta = np.locator('footer .wz-cta');
   await cta.click();
@@ -342,7 +342,7 @@ let listId = '';
   let sawPicker = false;
   for (let i = 0; i < 14; i++) {
     await page.waitForTimeout(300);
-    if (await np.getByText(/Here.s what Autopilot/).count()) break;
+    if (await np.getByText(/Here.s what (AI )?Autopilot/).count()) break;
     const picker = np.locator('[data-field="project.contactList"]');
     if (await picker.count()) {
       sawPicker = true;
@@ -378,8 +378,8 @@ let listId = '';
   await page.waitForTimeout(400);
   await cta.click(); // → review
   await page.waitForTimeout(300);
-  await np.getByRole('button', { name: /Build My Autopilot/ }).click();
-  await np.getByRole('heading', { name: /Your Autopilot is ready|The build stopped/ }).waitFor({ timeout: 60_000 });
+  await np.getByRole('button', { name: /Build My AI Autopilot/ }).click();
+  await np.getByRole('heading', { name: /Your AI Autopilot is ready|The build stopped/ }).waitFor({ timeout: 60_000 });
   const rows = sql("SELECT brief FROM crm_projects");
   const brief = rows.map(r => { try { return JSON.parse(r.brief); } catch { return {}; } }).find(b => b.audience);
   ok('the project built from it stores the list as its audience', brief?.audience?.listId === listId && brief.audience.listName === LIST, JSON.stringify(rows).slice(0, 400));

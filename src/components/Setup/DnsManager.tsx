@@ -18,6 +18,7 @@
  * whether a value is correct — the resolver decides that, and a green tick from
  * us would be a guess.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, Save, Loader, AlertCircle, RotateCcw, Globe } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -90,9 +91,9 @@ export default function DnsManager() {
      * irreversible in effect. A dialog on every save trains people to dismiss
      * dialogs, which is worse than having none.
      */
-    if (losesMx && !window.confirm(`${domain} will have no MX record, so it will stop receiving email. Save anyway?`)) return;
+    if (losesMx && !await askConfirm({ title: 'Stop receiving email?', message: `${domain} will have no MX record, so it will stop receiving email.`, confirmLabel: 'Save anyway', danger: true })) return;
     if (records.length < original.length - 2
-      && !window.confirm(`This removes ${original.length - records.length} records from ${domain}. Save anyway?`)) return;
+      && !await askConfirm({ title: `Remove ${original.length - records.length} records?`, message: `This removes ${original.length - records.length} records from ${domain}.`, confirmLabel: 'Save anyway', danger: true })) return;
 
     setSaving(true);
     const r = await saveDns(domain, records);

@@ -14,6 +14,7 @@
  * "estimate" every single time, because a number like that presented as a
  * forecast is how a person commits money they do not have.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -147,9 +148,11 @@ export default function Commerce() {
    */
   const doFulfil = async (o: Order) => {
     const confirming = !!o.supplierRef;
-    if (confirming && !window.confirm(
-      'Confirm this with Printful? They will charge your Printful account and start making it. This cannot be undone.',
-    )) return;
+    if (confirming && !await askConfirm({
+      title: 'Confirm this with Printful?',
+      message: 'They will charge your Printful account and start making it. This cannot be undone.',
+      confirmLabel: 'Confirm with Printful',
+    })) return;
     setBusy(true);
     const r = await fulfilOrder(o.id, confirming);
     setBusy(false);

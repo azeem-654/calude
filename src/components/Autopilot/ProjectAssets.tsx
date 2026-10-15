@@ -153,7 +153,7 @@ export default function ProjectAssets({ projectId, projectName, companyName, con
 
         {!has && !a.pending.length && (
           <p style={{ margin: '8px 0 10px', fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>
-            Nothing bought for this project yet. Autopilot still writes and plans everything — it just
+            Nothing bought for this project yet. AI Autopilot still writes and plans everything — it just
             sends from a mailbox you connect yourself, and has no site of its own.
           </p>
         )}

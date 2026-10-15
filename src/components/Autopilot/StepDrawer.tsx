@@ -30,6 +30,7 @@
  * refusing to save a subject line because of a feed address three steps away
  * would make the pen useless on exactly the workflows that most need fixing.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X, Check, Loader, ChevronLeft, ChevronRight, Plus, Trash2, AlertTriangle, Maximize2,
@@ -121,7 +122,7 @@ export default function StepDrawer({
   async function del() {
     if (!current || current.type === 'trigger') return;
     const name = current.label || lookFor(current.type).label;
-    if (!window.confirm(`Delete "${name}"? Whatever came before it will go straight to whatever came after.`)) return;
+    if (!await askConfirm({ title: `Delete “${name}”?`, message: 'Whatever came before it will go straight to whatever came after.', confirmLabel: 'Delete step', danger: true })) return;
     const next = removeStep(nodes, current.id);
     setNodes(next);
     if (await persist(next)) onClose();

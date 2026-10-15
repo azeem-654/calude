@@ -12,6 +12,7 @@
  * MillionVerifier only check. Owner-only on the server; the key is encrypted
  * and never shown again.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useEffect, useState } from 'react';
 import { ExternalLink, ShieldCheck } from 'lucide-react';
 import { removeVerifier, saveVerifier, testVerifier, verifierStatus, type VerifierState } from '../../services/emailVerifier';
@@ -123,7 +124,7 @@ export default function EmailVerifierPanel() {
         {st.set && (
           <button style={{ ...b, color: '#b42318' }} disabled={!!busy}
             onClick={async () => {
-              if (!window.confirm('Disconnect the email verifier? Customers keep the free checks.')) return;
+              if (!await askConfirm({ title: 'Disconnect the email verifier?', message: 'Customers keep the free checks.', confirmLabel: 'Disconnect', danger: true })) return;
               setBusy('remove'); setMsg(null); const r = await removeVerifier(); setBusy('');
               if (r.success) { setSt(r); setMsg({ ok: true, text: 'Disconnected. AI Prospecting runs the free checks only.' }); } else setMsg({ ok: false, text: r.error ?? 'That did not work.' });
             }}>

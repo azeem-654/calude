@@ -19,6 +19,7 @@ import { installSecret, type Env } from './db';
 import { fingerprint, installPool, remember, withFailover, type Attempt } from './aiPool';
 import { rateLimit } from './rateLimit';
 import { TRIAL_ENDED_MESSAGE, trialForWorkspace } from './trial';
+import { take as takeAllowance } from './allowanceStore';
 
 const GOOGLE = 'https://generativelanguage.googleapis.com';
 /* `GEMINI_BASE` points every call at a stand-in, for tests only — set from
@@ -486,6 +487,11 @@ export async function aiBudget(env: Env, accountId: string): Promise<string | nu
     const v = await rateLimit(env, { what, who: accountId, max, windowSeconds });
     if (!v.allowed) return `That is a lot of AI requests for one workspace — try again in ${Math.max(1, Math.ceil(v.retryAfter / 60))} minutes.`;
   }
+  /* The plan's monthly AI requests (lib/allowances.ts). Every server route
+     that spends the AI key asks here first, so this is where one is counted:
+     when it is asked for, because the caller makes the call straight after. */
+  const r = await takeAllowance(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`);
+  if (!r.ok) return r.message;
   return null;
 }
 

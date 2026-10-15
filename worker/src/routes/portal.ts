@@ -116,7 +116,7 @@ export async function handlePortal(req: Request, env: Env): Promise<Response> {
     const { results: projects } = await env.DB.prepare(
       `SELECT id, name, objective, status, created_at AS createdAt
        FROM crm_projects WHERE account_id = ? AND portfolio_id = ?
-       ORDER BY created_at`,
+       ORDER BY position, created_at, id`,
     ).bind(portal.accountId, portal.portfolioId).all<{
       id: string; name: string; objective: string; status: string; createdAt: string;
     }>();

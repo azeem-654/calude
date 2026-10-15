@@ -252,7 +252,11 @@ export function placeIn(text: string): string | null {
   }
   /* The sentence's own full stop is not part of the place ("in Dallas."),
      an abbreviation's is ("Washington D.C."). */
-  const p = m[1].replace(/\s+(?:And|With|To|For)$/, '').trim().replace(/(?<=\p{Ll})\.+$/u, '');
+  /* A full stop after a lower-case letter ends the sentence, so whatever
+     follows is the next sentence, not more of the place: "in Miami, Florida.
+     The clinic…" was read as "Miami, Florida. The". */
+  const p = m[1].split(/(?<=\p{Ll})\.\s/u)[0]
+    .replace(/(?:,\s*|\s+)(?:And|With|To|For|The|We|Our|My|I|It|They|This|That)$/, '').trim().replace(/(?<=\p{Ll})\.+$/u, '');
   return p.length >= 2 ? p : null;
 }
 

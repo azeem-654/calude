@@ -114,7 +114,7 @@ function TrialEnded({ kickoffUrl, onBilling, onExport }: { kickoffUrl: string; o
           Your 7-day free trial has ended
         </h2>
         <p style={{ margin: '8px 0 20px', color: '#5b6270', fontSize: 14.5, lineHeight: 1.6 }}>
-          Everything you built is still here.{canBuyPlans() ? ' Choose a plan to keep Autopilot, the AI writing and your workflows running.' : ' Plans are not available in the app.'}
+          Everything you built is still here.{canBuyPlans() ? ' Choose a plan to keep AI Autopilot, the AI writing and your workflows running.' : ' Plans are not available in the app.'}
           You can still download all of it, at any time, from Settings → Security &amp; Privacy.
         </p>
         <div style={{ display: canBuyPlans() ? 'grid' : 'none', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>

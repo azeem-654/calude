@@ -14,6 +14,7 @@
  * where cost, supplier reference and orders already are; a second place to
  * type a price is a second price to disagree with the first.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Store, Plus, Trash2, ExternalLink, Copy, Check, Loader, AlertCircle } from 'lucide-react';
@@ -75,7 +76,7 @@ export default function Shops() {
   };
 
   const remove = async (s: Shop) => {
-    if (!window.confirm(`Delete "${s.name}"? The address /shop/${s.slug} stops working immediately. Orders already placed are kept.`)) return;
+    if (!await askConfirm({ title: `Delete “${s.name}”?`, message: `The address /shop/${s.slug} stops working immediately. Orders already placed are kept.`, confirmLabel: 'Delete shop', danger: true })) return;
     const r = await deleteShop(s.id);
     if (!r.success) { addNotification(r.error ?? 'Could not delete it.', 'error'); return; }
     setShops(r.shops ?? []);

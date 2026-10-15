@@ -256,7 +256,7 @@ export default function ProspectSources({ project, focus }: { project: Project; 
 
       {conns && conns.length > 0 && (
         <div style={{ ...card, gap: 8 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Tell Autopilot</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Tell AI Autopilot</span>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {conns.length > 1 && (
               <select value={picked} onChange={e => setPicked(e.target.value)} aria-label="Which source"
@@ -266,7 +266,7 @@ export default function ProspectSources({ project, focus }: { project: Project; 
               </select>
             )}
             <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void tell(); }} data-field="source.command"
-              placeholder='"Change it to 25 per day", "Only accept leads above 90% confidence"' aria-label="Tell Autopilot"
+              placeholder='"Change it to 25 per day", "Only accept leads above 90% confidence"' aria-label="Tell AI Autopilot"
               style={{ flex: '1 1 260px', minWidth: 0, padding: '8px 10px', border: `1px solid ${T.line}`, borderRadius: 9, font: 'inherit', fontSize: 13, color: T.ink, background: T.panel }} />
             <button type="button" style={btn} disabled={busy === 'cmd' || !text.trim()} onClick={() => void tell()}>{busy === 'cmd' ? <Loader size={13} className="spin" /> : <Send size={13} />} Do it</button>
           </div>

@@ -3,6 +3,7 @@
  * fire the same automations as the pipeline board, an explainable win
  * probability, and inline editing of the fields that actually move a forecast.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useMemo, useState } from 'react';
 import {
   Briefcase, Plus, Trophy, XCircle, RotateCcw, Trash2, Check, X,
@@ -69,8 +70,8 @@ export default function DealsTab({ contact, pipelines, health, onPipelines, onAc
     apply(closeDeal(pipelines, deal.id, 'lost', reason));
   };
 
-  const remove = (deal: PlacedDeal) => {
-    if (!window.confirm(`Delete the deal "${deal.title}"? This cannot be undone.`)) return;
+  const remove = async (deal: PlacedDeal) => {
+    if (!await askConfirm({ title: `Delete the deal “${deal.title}”?`, message: 'This cannot be undone.', confirmLabel: 'Delete deal', danger: true })) return;
     apply(deleteDeal(pipelines, deal.id));
   };
 

@@ -21,6 +21,7 @@
  * by the rate or pay it out of your own margin — and both look completely
  * normal on the page. It is asked once, plainly, before any rate.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useState } from 'react';
 import { AlertTriangle, Check, Globe, Loader, Percent, Plus, Trash2, X } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -71,7 +72,7 @@ export default function TaxPanel({
   };
 
   const remove = async (r: TaxRate) => {
-    if (!window.confirm(`Delete "${r.name}"? Orders already placed keep the tax they were charged.`)) return;
+    if (!await askConfirm({ title: `Delete “${r.name}”?`, message: 'Orders already placed keep the tax they were charged.', confirmLabel: 'Delete rate', danger: true })) return;
     setBusy(r.id);
     const res = await deleteTax(r.id);
     setBusy('');

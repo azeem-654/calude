@@ -140,7 +140,7 @@ const NEVER = /mailbox|send from|who should the emails come from|which contact l
   const sub = await signUp(page, who);
   ok('1 · the sign-up screen says the plan is waiting', /is built for you straight away/.test(sub), sub.slice(0, 300));
   const built = await waitBuilt(page);
-  ok('7 · after sign-up the project builds by itself — no questions asked again', /Your Autopilot is ready|Open the project/.test(built) && !/Your plan from the website is here/.test(built), built.slice(0, 500));
+  ok('7 · after sign-up the project builds by itself — no questions asked again', /Your AI Autopilot is ready|Open the project/.test(built) && !/Your plan from the website is here/.test(built), built.slice(0, 500));
   const projects = await projectsOf(who);
   ok('1 · the project exists with its workflows', projects.length === 1 && /Pike Roofing/.test(projects[0].name), JSON.stringify(projects.map(p => p.name)));
   ok('1 · the plan is not kept once built', await page.evaluate(() => !localStorage.getItem('pc_site_plan')));

@@ -48,6 +48,7 @@ import { creditsToday, installGeoKey, searchGeoapify } from './lib/geoapify';
 import { installRegisterKey, searchRegister } from './lib/companiesHouse';
 import { checkEmails } from './lib/emailVerify';
 import { trialForWorkspace } from './lib/trial';
+import { record as recordAllowance, roomFor } from './lib/allowanceStore';
 import {
   DAY_LIMITS, READS_PER_TICK, afterSearch, forDay, isKnown, knownIndex, libraryRoom, nextJob, nextRunAt, type FinderState, type Job,
 } from './lib/finderPlan';
@@ -245,7 +246,9 @@ export async function reconcile(env: Env, accountId: string, projectId: string, 
 
 /** Move up to today's remaining allowance of ready prospects into the audience. */
 async function addReady(env: Env, f: FinderRow, s: FinderState, live?: Live): Promise<number> {
-  const room = s.perDay - s.dayAdded;
+  /* Today's share, and the month's allowance of prospects found (lib/allowances.ts). */
+  const month = await roomFor(env, f.account_id, 'prospects_found');
+  const room = Math.min(s.perDay - s.dayAdded, month.left);
   if (room <= 0) return 0;
   const ready = (await env.DB.prepare(`SELECT ${PP_COLS} FROM crm_project_prospects WHERE finder_id = ? AND status = 'ready' ORDER BY found_at LIMIT ?`)
     .bind(f.id, room).all<PPRow>()).results ?? [];
@@ -258,6 +261,7 @@ async function addReady(env: Env, f: FinderRow, s: FinderState, live?: Live): Pr
   const at = nowIso();
   for (const r of done) {
     await env.DB.prepare("UPDATE crm_project_prospects SET status = 'added', contact_id = ?, added_at = ? WHERE id = ?").bind(`pf-${r.id}`, at, r.id).run();
+    await recordAllowance(env, f.account_id, 'prospects_found', `pp:${r.id}`, 1, month.standing);
   }
   if (conn) await afterAdded(env, f, conn, done, live);
   return done.length;
@@ -607,6 +611,17 @@ export async function stepFinder(env: Env, f: FinderRow, now = new Date()): Prom
   if ((await trialForWorkspace(env, f.account_id).catch(() => null))?.kind === 'ended') {
     const why = 'The trial ended, so daily prospecting has stopped. Choosing a plan starts it again.';
     await saveState(env, f, stateOf(f), { status: 'paused', reason: why });
+    await log(env, f, 'paused', why);
+    return { ran: false, job: 'paused', detail: why, added: 0, found: 0 };
+  }
+
+  /* A month whose allowance of prospects is used: nothing is searched or
+     added (a search would find businesses nobody may add), and the finder
+     says why on its card. It stays switched on and carries on when the month
+     turns or the plan grows — the cron looks again tomorrow. */
+  const month = await roomFor(env, f.account_id, 'prospects_found');
+  if (month.refused) {
+    const why = `Daily prospecting is resting. ${month.refused.message}`;
     await log(env, f, 'paused', why);
     return { ran: false, job: 'paused', detail: why, added: 0, found: 0 };
   }

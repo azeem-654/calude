@@ -77,12 +77,11 @@ for (const width of [390, 1280]) {
     await after.getByRole('button', { name: /Already include tax/ }).getAttribute('aria-pressed') === 'true');
 
   /* Delete what this run created, so a second run is not testing against the
-     leftovers of the first. The confirm has to be accepted explicitly:
-     Playwright dismisses dialogs by default, so without this the button is
-     pressed, nothing happens, and the assertion below is measuring the
-     harness rather than the app. */
-  p.once('dialog', dlg => void dlg.accept());
+     leftovers of the first. The app asks first in its own dialog, so the
+     test has to press its go button — without that the delete never happens
+     and the assertion below is measuring the harness rather than the app. */
   await after.getByRole('button', { name: 'Delete Sales tax' }).first().click();
+  await p.locator('[data-testid="confirm-go"]').click();
   await p.waitForTimeout(1200);
   ok(`${width}px · and a rate can be deleted`,
     !/Sales tax/.test((await p.textContent('body')) ?? ''));

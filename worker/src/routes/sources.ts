@@ -31,6 +31,7 @@
 import { body, fail, json } from '../lib/http';
 import { dataGet, nowIso, userFromToken, workspaceAccess, type Env, type SessionUser } from '../lib/db';
 import { rateLimit } from '../lib/rateLimit';
+import { check as allowance, refusalBody } from '../lib/allowanceStore';
 import { regionTowns } from '../lib/regions';
 import {
   DEFAULT_FILTERS, DEFAULT_MIN_CONFIDENCE, DEFAULT_VERIFY, SOURCE_POLICY, TARGET_MAX, automatedSource, bestMatch, daysFor, describeSchedule,
@@ -278,6 +279,9 @@ export async function handleSources(req: Request, env: Env): Promise<Response> {
 
     const settings = await readSettings(env, accountId, project.id, d, null);
     if ('error' in settings) return fail(settings.error, 200, { field: settings.field });
+    /* The connection's workflow takes a place in the project's allowance. */
+    const room = await allowance(env, accountId, 'workflows_per_project', 1, { projectId: project.id });
+    if (!room.ok) return fail(room.message, 402, refusalBody(room));
     const name = s(d.name, 120) || `${def.name.replace(' — ', ' ')} Prospecting Automation`;
     const view = defView(def);
     const places = regionTowns(view.place) ?? [view.place];

@@ -303,21 +303,32 @@ export async function zipEntries(file: Blob): Promise<ZipEntry[]> {
   return out;
 }
 
-/** The files in an archive worth reading: CSV and TSV, not folders or macOS's shadow copies. */
-export const readableEntry = (e: ZipEntry) =>
-  /\.(csv|tsv|txt)$/i.test(e.name) && !/(^|\/)(__MACOSX|\.)/.test(e.name) && e.size > 0;
+/**
+ * Which files are lead files: CSV/TSV/TXT, and the archives that hold them
+ * (ZIP, .gz) — not folders, hidden files or macOS's shadow copies. A folder of
+ * folders and a ZIP of folders are both walked with this.
+ */
+const HIDDEN = /(^|\/)(__MACOSX|\.)/;
+export const isLeadFile = (path: string) => /\.(csv|tsv|txt|zip|gz)$/i.test(path) && !HIDDEN.test(path);
 
+/** The entries of an archive worth reading: lead files, including ZIPs and .gz files inside it. */
+export const readableEntry = (e: ZipEntry) => isLeadFile(e.name) && e.size > 0;
 /** Counts the bytes going past — progress is measured on the file as it sits on disk. */
 export function counted(s: ReadableStream<Uint8Array>, onBytes?: (n: number) => void): ReadableStream<Uint8Array> {
   if (!onBytes) return s;
   return s.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({ transform(c, ctl) { onBytes(c.byteLength); ctl.enqueue(c); } }));
 }
 
-/** One entry's bytes, decompressed as they are read. */
-export async function entryStream(file: Blob, e: ZipEntry, onBytes?: (n: number) => void): Promise<ReadableStream<Uint8Array>> {
+/** Where an entry's stored bytes start (after its local header). */
+async function entryStart(file: Blob, e: ZipEntry): Promise<number> {
   const h = await view(file.slice(e.offset, e.offset + 30));
   if (u32(h, 0) !== 0x04034b50) throw new Error(`${e.name}: the archive is damaged at this file.`);
-  const start = e.offset + 30 + u16(h, 26) + u16(h, 28);
+  return e.offset + 30 + u16(h, 26) + u16(h, 28);
+}
+
+/** One entry's bytes, decompressed as they are read. */
+export async function entryStream(file: Blob, e: ZipEntry, onBytes?: (n: number) => void): Promise<ReadableStream<Uint8Array>> {
+  const start = await entryStart(file, e);
   const raw = counted(file.slice(start, start + e.compSize).stream() as ReadableStream<Uint8Array>, onBytes);
   if (e.method === 0) return raw;
   if (e.method === 8) return raw.pipeThrough(new DecompressionStream('deflate-raw') as unknown as TransformStream<Uint8Array, Uint8Array>);
@@ -368,21 +379,105 @@ export async function decoded(stream: ReadableStream<Uint8Array>): Promise<Reada
 
 export interface Source { name: string; size: number; open: (onBytes?: (n: number) => void) => Promise<ReadableStream<Uint8Array>> }
 
-/** A CSV, a .csv.gz or a ZIP of CSVs → the parts to read, in a fixed order (resuming depends on it). */
-export async function sourcesOf(file: File): Promise<Source[]> {
+const gunzip = (s: ReadableStream<Uint8Array>) => s.pipeThrough(new DecompressionStream('gzip') as unknown as TransformStream<Uint8Array, Uint8Array>);
+
+/**
+ * A CSV, a .csv.gz or a ZIP → the parts to read, in a fixed order (resuming
+ * depends on it). A ZIP may hold folders, .gz files and further ZIPs (three
+ * deep): a ZIP stored inside a ZIP is read in place; a compressed one is
+ * unpacked first — into a Blob, which browsers keep on disk when it is large.
+ */
+export async function sourcesOf(file: Blob & { name: string }, depth = 0): Promise<Source[]> {
   if (/\.zip$/i.test(file.name)) {
     const entries = (await zipEntries(file)).filter(readableEntry);
-    if (!entries.length) throw new Error('There is no CSV file in this ZIP.');
-    return entries.map(e => ({ name: e.name, size: e.compSize, open: (cb) => entryStream(file, e, cb) }));
+    const out: Source[] = [];
+    for (const e of entries) {
+      const name = depth ? `${file.name}/${e.name}` : e.name;
+      if (/\.zip$/i.test(e.name)) {
+        if (depth >= 3) continue;
+        const inner = e.method === 0
+          ? await entryStart(file, e).then(st => file.slice(st, st + e.compSize))
+          : await new Response(await entryStream(file, e)).blob();
+        out.push(...await sourcesOf(Object.assign(inner, { name }), depth + 1));
+      } else if (/\.gz$/i.test(e.name)) {
+        out.push({ name, size: e.compSize, open: async (cb) => gunzip(await entryStream(file, e, cb)) });
+      } else {
+        out.push({ name, size: e.compSize, open: (cb) => entryStream(file, e, cb) });
+      }
+    }
+    if (!out.length && !depth) throw new Error('There is no CSV file in this ZIP.');
+    return out;
   }
   if (/\.gz$/i.test(file.name)) {
-    return [{ name: file.name, size: file.size, open: async (cb) => counted(file.stream() as ReadableStream<Uint8Array>, cb).pipeThrough(new DecompressionStream('gzip') as unknown as TransformStream<Uint8Array, Uint8Array>) }];
+    return [{ name: file.name, size: file.size, open: async (cb) => gunzip(counted(file.stream() as ReadableStream<Uint8Array>, cb)) }];
   }
   return [{ name: file.name, size: file.size, open: async (cb) => counted(file.stream() as ReadableStream<Uint8Array>, cb) }];
 }
 
-/** Same file, same key: what lets an import resume (`import_start`). */
-export const fileKey = (f: Pick<File, 'name' | 'size' | 'lastModified'>) => `${f.name}|${f.size}|${f.lastModified}`;
+/* ── A folder of folders ───────────────────────────────────────────────── */
+
+/** A file chosen for loading, with where it sat in the folder that was chosen. */
+export interface PickedFile { file: File; path: string }
+
+const byPath = (a: PickedFile, b: PickedFile) => a.path.localeCompare(b.path, 'en', { numeric: true });
+
+/**
+ * Files from a file input — several files, or a whole folder with
+ * `webkitdirectory`, where each carries its path inside the folder. Anything
+ * that is not a lead file is listed as ignored rather than silently dropped.
+ */
+export function pickedFromList(list: FileList | File[]): { files: PickedFile[]; ignored: string[] } {
+  const files: PickedFile[] = [];
+  const ignored: string[] = [];
+  for (const f of Array.from(list)) {
+    const path = (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name;
+    if (isLeadFile(path) && f.size > 0) files.push({ file: f, path }); else if (!HIDDEN.test(path)) ignored.push(path);
+  }
+  return { files: files.sort(byPath), ignored };
+}
+
+/**
+ * Files dropped on the page — a folder is walked to the bottom, however many
+ * folders deep. `readEntries` hands back at most 100 at a time, so it is
+ * called until it returns none.
+ */
+export async function pickedFromDrop(dt: DataTransfer): Promise<{ files: PickedFile[]; ignored: string[] }> {
+  const roots = Array.from(dt.items ?? [])
+    .map(i => i.webkitGetAsEntry?.() ?? null)
+    .filter((e): e is FileSystemEntry => !!e);
+  if (!roots.length) return pickedFromList(Array.from(dt.files ?? []));
+  const found: File[] = [];
+  const paths = new Map<File, string>();
+  const walk = async (e: FileSystemEntry): Promise<void> => {
+    if (e.isFile) {
+      const f = await new Promise<File>((ok, no) => (e as FileSystemFileEntry).file(ok, no));
+      found.push(f); paths.set(f, e.fullPath.replace(/^\//, ''));
+      return;
+    }
+    if (!e.isDirectory) return;
+    const reader = (e as FileSystemDirectoryEntry).createReader();
+    for (;;) {
+      const batch = await new Promise<FileSystemEntry[]>((ok, no) => reader.readEntries(ok, no));
+      if (!batch.length) break;
+      for (const c of batch) await walk(c);
+    }
+  };
+  for (const r of roots) await walk(r);
+  const files: PickedFile[] = [];
+  const ignored: string[] = [];
+  for (const f of found) {
+    const path = paths.get(f) || f.name;
+    if (isLeadFile(path) && f.size > 0) files.push({ file: f, path }); else if (!HIDDEN.test(path)) ignored.push(path);
+  }
+  return { files: files.sort(byPath), ignored };
+}
+
+/**
+ * Same file, same key: what lets an import resume (`import_start`). A file
+ * from a folder is keyed by its path in it, so two "leads.csv" in different
+ * sub-folders are two loads; a file chosen on its own keeps the key it had.
+ */
+export const fileKey = (f: Pick<File, 'name' | 'size' | 'lastModified'>, path?: string) => `${path || f.name}|${f.size}|${f.lastModified}`;
 
 export interface ReadProgress { source: string; sourceIndex: number; sources: number; bytes: number; totalBytes: number; rows: number }
 

@@ -6,15 +6,19 @@
  * The money figures are estimates at Cloudflare's and Google's list prices,
  * for the owner's eyes; customers see minutes, not cents.
  *
- * Allowances are per calendar month, by the workspace's standing: a trial is
- * small (it is for trying), a paying workspace generous, the install owner's
- * own effectively unlimited. An ended trial processes nothing new — the same
- * rule that stops the operator's AI key — and says so by name.
+ * Allowances are per calendar month and come from the subscriber's plan
+ * (lib/allowances.ts — `video_minutes`, `render_minutes`, `video_storage_gb`,
+ * shared with every other allowance, the site's price cards included): a
+ * trial is small (it is for trying), each plan larger, the install owner's
+ * effectively unlimited. Like every allowance they are the subscriber's,
+ * across all the workspaces they own. An ended trial processes nothing new —
+ * the same rule that stops the operator's AI key — and says so by name.
  */
 import type { Env } from '../db';
 import { nowIso } from '../db';
-import { trialForWorkspace, TRIAL_ENDED_MESSAGE } from '../trial';
-import { storedBytes } from './store';
+import { TRIAL_ENDED_MESSAGE } from '../trial';
+import { standingOf, usedOf, type Standing } from '../allowanceStore';
+import { isUnlimited } from '../allowances';
 
 /** Estimated list prices, in millionths of a dollar. */
 export const PRICE = {
@@ -29,11 +33,17 @@ export const PRICE = {
 };
 
 export interface Limits { sourceMin: number; renderMin: number; storageGb: number }
-export const LIMITS: Record<'trial' | 'paid' | 'owner', Limits> = {
-  trial: { sourceMin: 90, renderMin: 120, storageGb: 5 },
-  paid: { sourceMin: 600, renderMin: 1_200, storageGb: 100 },
-  owner: { sourceMin: 100_000, renderMin: 100_000, storageGb: 5_000 },
-};
+/** What an unlimited allowance is written as here, where the screens show a number. */
+export const OWNER_VIDEO: Limits = { sourceMin: 100_000, renderMin: 100_000, storageGb: 5_000 };
+
+export function videoLimits(st: Pick<Standing, 'limits'>): Limits {
+  const L = st.limits;
+  return {
+    sourceMin: isUnlimited(L.video_minutes) ? OWNER_VIDEO.sourceMin : L.video_minutes,
+    renderMin: isUnlimited(L.render_minutes) ? OWNER_VIDEO.renderMin : L.render_minutes,
+    storageGb: isUnlimited(L.video_storage_gb) ? OWNER_VIDEO.storageGb : L.video_storage_gb,
+  };
+}
 
 export const period = () => `m:${new Date().toISOString().slice(0, 7)}`;
 
@@ -51,22 +61,24 @@ export interface Allowance {
 }
 
 export async function allowance(env: Env, accountId: string, withStorage = true): Promise<Allowance> {
-  const t = await trialForWorkspace(env, accountId).catch(() => ({ kind: 'legacy' as const }));
-  const tier = t.kind === 'owner' ? 'owner' : t.kind === 'trial' ? 'trial' : t.kind === 'ended' ? 'ended' : 'paid';
+  const st = await standingOf(env, accountId);
+  const tier = st.kind === 'owner' ? 'owner' : st.kind === 'trial' ? 'trial' : st.kind === 'ended' ? 'ended' : 'paid';
+  /* Across every workspace the subscriber owns — the allowance is theirs. */
   const { results } = await env.DB.prepare(
-    'SELECT unit, SUM(units) AS n, SUM(cost_micros) AS c FROM crm_video_usage WHERE account_id = ? AND period = ? GROUP BY unit',
-  ).bind(accountId, period()).all<{ unit: string; n: number; c: number }>();
+    `SELECT unit, SUM(units) AS n, SUM(cost_micros) AS c FROM crm_video_usage
+      WHERE (account_id IN (SELECT account_id FROM crm_workspaces WHERE owner_email = ?1) OR account_id = ?2) AND period = ?3 GROUP BY unit`,
+  ).bind(st.email ?? '', accountId, period()).all<{ unit: string; n: number; c: number }>();
   const by = (u: string) => results.find(r => r.unit === u)?.n ?? 0;
-  const bytes = withStorage ? await storedBytes(env, accountId).catch(() => 0) : 0;
+  const storageGb = withStorage ? await usedOf(env, st, accountId, 'video_storage_gb').catch(() => 0) : 0;
   return {
     tier,
-    limits: LIMITS[tier === 'ended' ? 'trial' : tier],
+    limits: videoLimits(st),
     used: {
       sourceMin: Math.round(by('source_min') * 10) / 10,
       renderMin: Math.round(by('render_min') * 10) / 10,
       audioMin: Math.round(by('audio_min') * 10) / 10,
       aiCalls: by('ai_call'),
-      storageGb: Math.round((bytes / 1e9) * 100) / 100,
+      storageGb,
       costMicros: results.reduce((n, r) => n + (r.c ?? 0), 0),
     },
   };

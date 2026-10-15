@@ -10,7 +10,7 @@
  */
 import { deflateRawSync, gzipSync } from 'node:zlib';
 import {
-  CsvParser, describeMapping, encodingOf, mapHeader, readLeads, rowToLead, sniffDelimiter, sourcesOf, zipEntries, type LeadRow,
+  CsvParser, describeMapping, encodingOf, fileKey, isLeadFile, mapHeader, pickedFromList, readLeads, rowToLead, sniffDelimiter, sourcesOf, zipEntries, type LeadRow,
 } from '../src/services/leadImport';
 import { emailStatusOf, facetsOf, industriesLike, maskEmail, maskPhone, normalise, placeWhere, titleTerms } from '../worker/src/lib/leadDir';
 
@@ -136,6 +136,34 @@ ok('a .csv.gz is read', (await collect(gz)).got.length === people.length);
   const got: LeadRow[] = [];
   await readLeads(await sourcesOf(f), { skip: 0, batch: 10, onSkipPart: n => skipped.push(n) }, async rows => { got.push(...rows); });
   ok('a CSV with no name or email column is skipped by name', skipped[0] === 'a.csv' && got.length === 1, { skipped, got });
+}
+/* ── A folder of folders, and archives inside archives ── */
+{
+  /* A ZIP holding sub-folders, a .csv.gz, a ZIP stored in it and a ZIP compressed in it (which itself holds a folder). */
+  const inner = zip([{ name: 'deep/c.csv', data: Buffer.from('email\nc1@x.example\nc2@x.example\n'), deflate: true }]);
+  const outer = new File([zip([
+    { name: 'north/a.csv', data: Buffer.from('email\na1@x.example\n'), deflate: true },
+    { name: 'north/south/b.csv.gz', data: gzipSync(Buffer.from('email\nb1@x.example\nb2@x.example\nb3@x.example\n')), deflate: false },
+    { name: 'stored.zip', data: inner, deflate: false },
+    { name: 'packed.zip', data: inner, deflate: true },
+    { name: 'north/notes.docx', data: Buffer.from('nope'), deflate: true },
+  ])], 'all.zip');
+  const r = await collect(outer);
+  ok('a ZIP of folders reads every lead file in it, ZIPs and .gz inside included',
+    JSON.stringify(r.parts) === JSON.stringify(['north/a.csv', 'north/south/b.csv.gz', 'stored.zip/deep/c.csv', 'packed.zip/deep/c.csv']), r.parts);
+  ok('…and every person in them arrives once', r.got.length === 1 + 3 + 2 + 2, r.got.map(x => x.email));
+}
+{
+  const mk = (name: string, path: string, body = 'email\nx@y.example\n') => Object.assign(new File([body], name, { lastModified: 1 }), { webkitRelativePath: path });
+  const picked = pickedFromList([
+    mk('b.csv', 'Leads/2026/b.csv'), mk('a.csv', 'Leads/2025/a.csv'), mk('x.zip', 'Leads/x.zip', 'PK'),
+    mk('photo.jpg', 'Leads/photo.jpg'), mk('.DS_Store', 'Leads/.DS_Store'), mk('empty.csv', 'Leads/empty.csv', ''),
+  ]);
+  ok('a chosen folder keeps its lead files, in path order', JSON.stringify(picked.files.map(f => f.path)) === JSON.stringify(['Leads/2025/a.csv', 'Leads/2026/b.csv', 'Leads/x.zip']), picked.files.map(f => f.path));
+  ok('…and names what it left out (not hidden files)', JSON.stringify(picked.ignored) === JSON.stringify(['Leads/photo.jpg', 'Leads/empty.csv']), picked.ignored);
+  ok('two files of the same name in different folders are two loads', fileKey(picked.files[0].file, picked.files[0].path) !== fileKey(mk('a.csv', 'Leads/2026/a.csv'), 'Leads/2026/a.csv'));
+  ok('a file chosen on its own keeps the key it always had', fileKey(new File(['x'], 'one.csv', { lastModified: 5 })) === 'one.csv|1|5');
+  ok('lead files are told apart', isLeadFile('a/b.CSV') && isLeadFile('x.csv.gz') && isLeadFile('y.zip') && !isLeadFile('__MACOSX/a.csv') && !isLeadFile('a/.hidden.csv') && !isLeadFile('a.xlsx'));
 }
 ok('a file that is not a ZIP says so', await zipEntries(new File(['hello'], 'x.zip')).then(() => false, e => /not a ZIP/.test(String(e))));
 

@@ -22,6 +22,7 @@
  * says so rather than rendering a blank box. Nobody is being asked to weigh
  * that up, so nobody is shown it.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useCallback, useEffect, useState } from 'react';
 import {
   AlertTriangle, Check, Loader, MessageSquare, ShieldAlert, ShieldCheck, ShieldX, X,
@@ -116,10 +117,10 @@ export default function ReviewQueue() {
 
   const punish = async (email: string, state: 'ok' | 'warned' | 'suspended') => {
     if (state === 'ok') {
-      if (!window.confirm(`Clear the mark against ${email}? They will be able to send again.`)) return;
+      if (!await askConfirm({ title: `Clear the mark against ${email}?`, message: 'They will be able to send again.', confirmLabel: 'Clear the mark' })) return;
     } else {
       const verb = state === 'suspended' ? 'Suspend' : 'Warn';
-      if (!window.confirm(`${verb} ${email}? They will be shown the reason you type next.`)) return;
+      if (!await askConfirm({ title: `${verb} ${email}?`, message: 'They will be shown the reason you type next.', confirmLabel: verb, danger: state === 'suspended' })) return;
     }
     let reason = '';
     if (state !== 'ok') {

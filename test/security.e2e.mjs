@@ -231,6 +231,31 @@ const hijackProject = await api('projects.php', {
 });
 const stillA = d1rows(`SELECT name, account_id AS a FROM crm_projects WHERE id = '${pj.data.id}'`)[0];
 check("B cannot overwrite A's project by id", !hijackProject.ok && stillA?.name === 'A project' && stillA?.a === A.acct, JSON.stringify([hijackProject.data, stillA]));
+{
+  /* The board's order is a list of ids: one of A's in B's list is refused
+     whole, and A's project keeps its place. */
+  const posBefore = d1rows(`SELECT position FROM crm_projects WHERE id = '${pj.data.id}'`)[0]?.position;
+  const reorder = await api('projects.php', { action: 'reorder_projects', token: B.token, accountId: B.acct, ids: [pj.data.id] });
+  const posAfter = d1rows(`SELECT position, account_id AS a FROM crm_projects WHERE id = '${pj.data.id}'`)[0];
+  check("B cannot reorder A's project into its own list", !reorder.ok && reorder.status === 403 && posAfter?.position === posBefore && posAfter?.a === A.acct, JSON.stringify([reorder.data, posBefore, posAfter]));
+  const reorderA = await api('projects.php', { action: 'reorder_projects', token: B.token, accountId: A.acct, ids: [pj.data.id] });
+  check("B cannot reorder A's workspace", !reorderA.ok, JSON.stringify(reorderA.data));
+}
+{
+  /* Plan allowances (routes/allowances.ts): a project id is checked against
+     the workspace named, a workspace against the session, and only the
+     install owner changes what a plan allows. */
+  const peek = await api('allowances.php', { action: 'check', token: B.token, accountId: B.acct, meter: 'workflows_per_project', projectId: pj.data.id });
+  check("B cannot ask about A's project by id", !peek.ok && peek.data.code === 'not_found', JSON.stringify(peek.data));
+  const usage = await api('allowances.php', { action: 'status', token: B.token, accountId: A.acct });
+  check("B cannot read A's usage", !usage.ok && usage.status === 403, JSON.stringify(usage.data));
+  const raise = await api('allowances.php', { action: 'set_limits', token: B.token, planId: 'trial', limits: { autopilot_projects: -1 } });
+  const raised = d1rows("SELECT COUNT(*) AS n FROM crm_plan_limits WHERE plan_id = 'trial' AND meter = 'autopilot_projects' AND value = -1")[0];
+  const grantSelf = await api('allowances.php', { action: 'grant_plan', token: B.token, email: B.email ?? '', planId: 'custom' });
+  const reads = await api('allowances.php', { action: 'enquiries', token: B.token });
+  check('A customer cannot give themselves a plan or read enquiries', !grantSelf.ok && grantSelf.data.code === 'not_owner' && !reads.ok && reads.data.code === 'not_owner', JSON.stringify([grantSelf.data, reads.data]));
+  check('A customer cannot change what a plan allows', !raise.ok && raise.data.code === 'not_owner' && Number(raised?.n) === 0, JSON.stringify([raise.data, raised]));
+}
 if (productId) {
   const hijackProduct = await api('commerce.php', { action: 'save_product', token: B.token, accountId: B.acct, id: productId, name: 'defaced', priceCents: 1, status: 'active' });
   const p = d1rows(`SELECT name, price_cents AS price FROM crm_products WHERE id = '${productId}'`)[0];
@@ -239,8 +264,51 @@ if (productId) {
 const hijackPortfolio = await api('projects.php', { action: 'save_portfolio', token: B.token, accountId: B.acct, id: pf.data.id, name: 'pwned', profile: {} });
 check("B cannot overwrite A's portfolio by id", !hijackPortfolio.ok, JSON.stringify(hijackPortfolio.data));
 
+/* The booking page's photo, logo and clip (routes/bookingMedia.ts). */
+{
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+  const put = (tok, acct, kind, bytes) => fetch(`${BASE}/api/booking-media.php?action=upload&kind=${kind}&accountId=${acct}`, {
+    method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/octet-stream', Connection: 'close' }, body: bytes,
+  }).then(r => r.json().then(j => ({ status: r.status, data: j })));
+  const intoA = await put(B.token, A.acct, 'photo', PNG);
+  check("B cannot upload a picture into A's booking page", !intoA.data.success && intoA.status === 403, JSON.stringify(intoA.data));
+  const clearA = await api('booking-media.php', { action: 'clear', token: B.token, accountId: A.acct, kind: 'photo' });
+  check("B cannot remove A's booking picture", !clearA.ok && clearA.status === 403, JSON.stringify(clearA.data));
+  const slugA = await api('booking.php', { action: 'slug_check', token: B.token, accountId: A.acct, slug: 'anything-here' });
+  check("B cannot ask about addresses as A's workspace", !slugA.ok && slugA.status === 403, JSON.stringify(slugA.data));
+  const svg = await put(B.token, B.acct, 'logo', Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'));
+  check('An SVG cannot be uploaded as a booking logo', !svg.data.success, JSON.stringify(svg.data));
+  /* A's own upload, which B then names in B's own page: the address is dropped. */
+  const mine = await put(A.token, A.acct, 'photo', PNG);
+  const borrow = await api('booking.php', { action: 'publish', token: B.token, accountId: B.acct, public: { slug: `b-${run}`, title: 'B', photoUrl: mine.data.url } });
+  const bCfg = await api('booking.php', { action: 'config', slug: `b-${run}` });
+  check("B's page cannot show A's uploaded photo", mine.data.success && borrow.ok && !bCfg.data.config?.photoUrl, JSON.stringify([mine.data, bCfg.data.config?.photoUrl]));
+  if (mine.data.url) await api('booking-media.php', { action: 'clear', token: A.token, accountId: A.acct, kind: 'photo' });
+  /* Filling a page in from a website: a server-side read, so it is the workspace's and fenced. */
+  const fillA = await api('booking.php', { action: 'autofill', token: B.token, accountId: A.acct, url: 'https://example.com/' });
+  check("B cannot read a website into A's booking page", !fillA.ok && fillA.status === 403, JSON.stringify(fillA.data));
+  const anon = await api('booking.php', { action: 'autofill', accountId: B.acct, url: 'https://example.com/' });
+  check('Reading a website for a booking page needs a session', !anon.ok && anon.status === 401, JSON.stringify(anon.data));
+  for (const inside of ['http://127.0.0.1:8787/', 'http://169.254.169.254/latest/meta-data/', 'http://localhost/', 'file:///etc/passwd']) {
+    const r = await api('booking.php', { action: 'autofill', token: B.token, accountId: B.acct, url: inside });
+    check(`The booking page's website read refuses ${inside}`, !r.ok && r.data.field === 'booking.website', JSON.stringify(r.data));
+  }
+  /* What a page says is cleaned on publish: points' icons from the list, the colour a hex. */
+  await api('booking.php', { action: 'publish', token: B.token, accountId: B.acct, public: { slug: `b-${run}`, title: 'B', accent: 'red;background:url(//x)', points: [{ icon: '"><script>', title: '<b>x</b>' }] } });
+  const bClean = (await api('booking.php', { action: 'config', slug: `b-${run}` })).data.config ?? {};
+  check('A booking page keeps only a hex colour and a listed icon', bClean.accent === '' && bClean.points?.[0]?.icon === 'check', JSON.stringify([bClean.accent, bClean.points]));
+  /* A testimonial's photo is an upload like the others: B cannot put A's on B's page, nor upload into A's. */
+  const aQuote = await put(A.token, A.acct, 'testimonial', PNG);
+  const bQuote = await put(B.token, A.acct, 'testimonial', PNG);
+  check("B cannot upload a testimonial photo into A's booking page", !bQuote.data.success && bQuote.status === 403, JSON.stringify(bQuote.data));
+  await api('booking.php', { action: 'publish', token: B.token, accountId: B.acct, public: { slug: `b-${run}`, title: 'B', theme: '</style><script>', testimonial: { quote: 'Great work', name: 'Pat', photoUrl: aQuote.data.url } } });
+  const bQ = (await api('booking.php', { action: 'config', slug: `b-${run}` })).data.config ?? {};
+  check("B's page cannot show A's testimonial photo, and keeps only a known theme", aQuote.data.success && bQ.testimonial?.name === 'Pat' && bQ.testimonial?.photoUrl === '' && bQ.theme === '', JSON.stringify([bQ.testimonial, bQ.theme]));
+  if (aQuote.data.url) await api('booking-media.php', { action: 'clear', token: A.token, accountId: A.acct, kind: 'testimonial' });
+}
+
 console.log('\nPublic surfaces');
-const book = await api('booking.php', { action: 'create', accountId: A.acct, slotDate: '2031-01-02', slotTime: '10:00', guestEmail: 'v@example.test', guestName: 'Spam' });
+const book =await api('booking.php', { action: 'create', accountId: A.acct, slotDate: '2031-01-02', slotTime: '10:00', guestEmail: 'v@example.test', guestName: 'Spam' });
 check('Anyone cannot book into a workspace with no booking page', !book.ok, JSON.stringify(book.data));
 const co = await api('stripe-checkout.php', { token: B.token, accountId: B.acct, amount: 0.01 });
 check('Legacy checkout no longer takes a price from the request', !co.ok, JSON.stringify(co.data));

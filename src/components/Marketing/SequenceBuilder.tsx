@@ -1,3 +1,4 @@
+import { askConfirm } from '../shared/ConfirmDialog';
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   Zap, Plus, Play, Pause, Trash2, X, Settings, Mail, Phone,
@@ -764,7 +765,7 @@ export default function SequenceBuilder({ sequences: storedSequences, contacts =
                 style={{ padding: '7px 14px', border: 'none', borderRadius: 8, backgroundColor: selected.status === 'active' ? '#fef3c7' : '#6366f1', color: selected.status === 'active' ? '#d97706' : 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
                 {selected.status === 'active' ? <><Pause size={13} /> Pause</> : <><Play size={13} /> {selected.status === 'paused' ? 'Resume' : 'Activate'}</>}
               </button>
-              <button onClick={() => { if (window.confirm(`Delete "${selected.name}"?`)) { onDeleteSequence(selected.id); setSelected(null); setActiveStep(null); } }}
+              <button onClick={async () => { if (await askConfirm({ title: `Delete “${selected.name}”?`, message: 'The sequence and its steps are deleted.', confirmLabel: 'Delete sequence', danger: true })) { onDeleteSequence(selected.id); setSelected(null); setActiveStep(null); } }}
                 style={{ padding: '7px 10px', border: '1px solid #fecaca', borderRadius: 8, backgroundColor: 'white', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
                 <Trash2 size={13} />
               </button>
