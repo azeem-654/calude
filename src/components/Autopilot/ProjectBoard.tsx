@@ -42,6 +42,7 @@ import { motionReduced } from '../../services/motion';
 const INK = T.ink;
 const MUTED = T.muted;
 import { T } from './theme';
+import { askConfirm } from '../shared/ConfirmDialog';
 
 const LINE = T.line;
 const ACCENT = T.accent;
@@ -352,7 +353,11 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
   };
 
   const remove = async (p: Project) => {
-    if (!window.confirm(`Delete "${p.name}" and everything AI Autopilot recorded for it? The campaigns and posts it already made stay where they are.`)) return;
+    if (!await askConfirm({
+      title: `Delete “${p.name}”?`,
+      message: 'Everything AI Autopilot recorded for this project — its workflows, plan, activity and schedule — is deleted. The campaigns, posts and contacts it already made stay where they are.',
+      confirmLabel: 'Delete project', danger: true,
+    })) return;
     const r = await deleteProject(p.id);
     if (!r.success) { addNotification(r.error ?? 'Could not delete that.', 'error'); return; }
     setMenu(null);

@@ -519,10 +519,12 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
         purchase_mode, pool_target, revenue_target, volume_target, goals,
         launch_steps, brief, last_error, created_at, updated_at, position)
        VALUES (?,?,?,?,?,?,?,?, 'byo', '{}', ?,?,?, ?, ?, '', ?,?,
-               /* A new project goes in the last row. Not touched on an edit
-                  (the UPDATE below leaves it out), so rewording a project does
-                  not move it. */
-               (SELECT COALESCE(MAX(position), 0) + 1 FROM crm_projects WHERE account_id = ?))
+               /* A new project goes on top (the owner's call: the one just
+                  made is the one somebody wants to see), above the smallest
+                  position — which may go below 1 until the next reorder
+                  renumbers them. Not touched on an edit (the UPDATE below
+                  leaves it out), so rewording a project does not move it. */
+               (SELECT COALESCE(MIN(position), 1) - 1 FROM crm_projects WHERE account_id = ?))
        ON CONFLICT(id) DO UPDATE SET
          portfolio_id=excluded.portfolio_id, name=excluded.name,
          objective=excluded.objective, kind=excluded.kind, status=excluded.status,

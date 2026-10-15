@@ -106,7 +106,7 @@ why it can be tested without a database — keep it that way.
   question a customer can answer.
 - **Projects keep the order the customer set.** `crm_projects.position`
   (migration 0071; 1 is the top): `save_project` gives a new one the
-  workspace's highest + 1, so it lands in the last row, and an edit never moves
+  workspace's lowest − 1, so it lands **on top**, and an edit never moves
   it; `reorder_projects` takes the whole order and refuses any id not this
   workspace's. Every list of projects (`listProjects`, revenue, the client
   portal) reads `ORDER BY position, created_at, id`. The board's divider line
