@@ -1,3 +1,4 @@
+import { askConfirm } from '../shared/ConfirmDialog';
 import { Fragment, useState, useRef, useCallback, useEffect } from 'react';
 import { dueLabel, dueOf } from '../../services/dealTasks';
 import type { DragEvent } from 'react';
@@ -1475,7 +1476,7 @@ function PipelineManageModal({ pipelines, selectedId, onCreate, onRename, onDele
                     <Edit2 size={13} />
                   </button>
                   {pipelines.length > 1 && (
-                    <button onClick={() => { if (window.confirm(`Delete pipeline "${p.name}"?`)) onDelete(p.id); }}
+                    <button onClick={async () => { if (await askConfirm({ title: `Delete pipeline “${p.name}”?`, message: 'The pipeline and the deals in it are deleted.', confirmLabel: 'Delete pipeline', danger: true })) onDelete(p.id); }}
                       style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 5, borderRadius: 5, color: '#94a3b8', display: 'flex' }}>
                       <Trash2 size={13} />
                     </button>
@@ -2357,8 +2358,8 @@ export default function Pipelines() {
     setEditDealId(null);
   };
 
-  const deleteDeal = (deal: Deal) => {
-    if (!window.confirm(`Delete "${deal.title}"?`)) return;
+  const deleteDeal = async (deal: Deal) => {
+    if (!await askConfirm({ title: `Delete “${deal.title}”?`, message: 'The deal is removed from this pipeline.', confirmLabel: 'Delete deal', danger: true })) return;
     const newStages = selected.stages.map(s => ({ ...s, deals: s.deals.filter(d => d.id !== deal.id) }));
     updatePipeline(selected.id, { stages: newStages });
     if (detailDealId === deal.id) setDetailDealId(null);
@@ -2448,10 +2449,10 @@ export default function Pipelines() {
     updatePipeline(selected.id, { stages: selected.stages.map(s => s.id === stageId ? { ...s, color } : s) });
   };
 
-  const deleteStage = (stageId: string) => {
+  const deleteStage = async (stageId: string) => {
     const stage = selected.stages.find(s => s.id === stageId);
     if (!stage) return;
-    if (stage.deals.length > 0 && !window.confirm(`Stage "${stage.name}" has ${stage.deals.length} deal(s). Delete stage and all its deals?`)) return;
+    if (stage.deals.length > 0 && !await askConfirm({ title: `Delete stage “${stage.name}”?`, message: `It has ${stage.deals.length} deal${stage.deals.length === 1 ? '' : 's'}. The stage and all its deals are deleted.`, confirmLabel: 'Delete stage', danger: true })) return;
     updatePipeline(selected.id, { stages: selected.stages.filter(s => s.id !== stageId) });
     addNotification('Stage deleted', 'info');
   };

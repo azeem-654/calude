@@ -150,7 +150,7 @@ export default function AddTo({ s, mode, suggested, onClose, onDone, go }: {
           foundAt: c.customFields?.foundAt ?? '', query: s.searched ? `${s.searched.trade}|${s.searched.place}` : '',
         })));
         const reach = r.contacts.filter(mailable).length;
-        onDone(`${r.contacts.length} on “${p.name}”'s list “${r.list?.name}” — ${reach} can be emailed. Autopilot proposes them in batches of 20 and asks you before each one, because they never asked to hear from you.`);
+        onDone(`${r.contacts.length} on “${p.name}”'s list “${r.list?.name}” — ${reach} can be emailed. AI Autopilot proposes them in batches of 20 and asks you before each one, because they never asked to hear from you.`);
         return;
       }
 

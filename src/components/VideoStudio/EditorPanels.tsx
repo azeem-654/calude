@@ -11,6 +11,7 @@
  * separate words, because confusing them deletes something somebody meant
  * to keep.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Scissors, RotateCcw, Shield, Film, Type, Play, Search, Check, X, ChevronUp, ChevronDown, Wand2, Sparkles, Trash2, Clapperboard } from 'lucide-react';
 import {
@@ -321,7 +322,7 @@ export function ShortsPanel({ ctx, sentences }: { ctx: EditorCtx; sentences: Sen
               <button type="button" className="vs-btn ghost sm" aria-label="End earlier" onClick={() => void ctx.apply([{ op: 'clip.update', id: c.id, patch: { e: nudge(c.e, -1, 'end') } }], 'Short ends earlier')}><ChevronUp size={13} /></button>
               <button type="button" className="vs-btn ghost sm" aria-label="End later" onClick={() => void ctx.apply([{ op: 'clip.update', id: c.id, patch: { e: nudge(c.e, 1, 'end') } }], 'Short ends later')}><ChevronDown size={13} /></button>
               <span className="vs-spacer" />
-              <button type="button" className="vs-btn ghost sm danger" aria-label="Remove this Short" onClick={() => { if (window.confirm(`Remove “${c.title}”?`)) void ctx.apply([{ op: 'clip.remove', id: c.id }], 'Removed a Short'); }}><Trash2 size={13} /></button>
+              <button type="button" className="vs-btn ghost sm danger" aria-label="Remove this Short" onClick={async () => { if (await askConfirm({ title: `Remove “${c.title}”?`, message: 'This Short is taken out of the video’s Shorts.', confirmLabel: 'Remove Short', danger: true })) void ctx.apply([{ op: 'clip.remove', id: c.id }], 'Removed a Short'); }}><Trash2 size={13} /></button>
             </div>
             <div className="vs-row">
               <select className="vs-select" style={{ width: 'auto' }} value={c.aspect} aria-label="Shape" onChange={e => void ctx.apply([{ op: 'clip.update', id: c.id, patch: { aspect: e.target.value as typeof c.aspect } }], 'Changed a Short\'s shape')}>

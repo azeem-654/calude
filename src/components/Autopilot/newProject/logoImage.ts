@@ -56,3 +56,35 @@ export async function logoFromFile(file: File): Promise<{ ok: true; dataUrl: str
   const url = URL.createObjectURL(file);
   try { return await shrinkLogo(url); } finally { URL.revokeObjectURL(url); }
 }
+
+/**
+ * A background photograph somebody picked, as a JPEG at most 1600px wide.
+ *
+ * It travels inside the page it is built into (a website or funnel is one
+ * synced record), so a 6 MB phone photo is drawn onto a canvas and saved
+ * small — a hero is seen at screen width, never at the camera's.
+ */
+export async function photoFromFile(file: File): Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }> {
+  if (!/^image\/(png|jpe?g|webp)$/.test(file.type) && !/\.(png|jpe?g|webp)$/i.test(file.name)) {
+    return { ok: false, error: 'Choose a photo — JPG, PNG or WebP.' };
+  }
+  if (file.size > 15_000_000) return { ok: false, error: 'That photo is over 15 MB. Try a smaller copy of it.' };
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const w = Math.min(1600, img.naturalWidth || 1600);
+    const h = Math.round((img.naturalHeight || 900) * (w / (img.naturalWidth || 1600)));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const g = c.getContext('2d');
+    if (!g) return { ok: false, error: 'This browser could not prepare the photo.' };
+    g.drawImage(img, 0, 0, w, h);
+    let out = c.toDataURL('image/jpeg', 0.74);
+    if (out.length > 420_000) out = c.toDataURL('image/jpeg', 0.6);
+    return { ok: true, dataUrl: out };
+  } catch {
+    return { ok: false, error: 'That photo could not be read.' };
+  } finally { URL.revokeObjectURL(url); }
+}

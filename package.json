@@ -34,6 +34,7 @@
     "test:triggers": "npx --yes tsx worker/test/triggers.test.mts",
     "test:studio": "node test/projectStudio.e2e.mjs",
     "test:intake": "npx --yes tsx test/projectIntake.test.mts",
+    "test:emailstyle": "npx --yes tsx test/emailStyle.test.mts",
     "test:wizard": "node test/newProject.e2e.mjs",
     "test:security": "node test/security.e2e.mjs",
     "test:models": "npx --yes tsx worker/test/models.test.mts",
@@ -53,6 +54,9 @@
     "test:voicecall": "node test/voiceCall.e2e.mjs",
     "test:leaddir": "node test/leadDir.e2e.mjs",
     "test:sources": "npx --yes tsx test/prospectSources.test.mts",
+    "test:bookingtz": "npx --yes tsx test/bookingTime.test.mts",
+    "test:bookingpage": "node test/bookingPage.e2e.mjs",
+    "test:bookingfill": "npx --yes tsx test/bookingFill.test.mts",
     "test:sourcese2e": "node test/prospectSources.e2e.mjs",
     "test:isolation": "node test/isolation.e2e.mjs",
     "test:reeltour": "node test/reelTour.e2e.mjs",
@@ -71,6 +75,8 @@
     "test:siteplan": "npx --yes tsx test/sitePlan.test.mts",
     "test:sitefunnel": "node test/siteFunnel.e2e.mjs",
     "test:video": "npx --yes tsx test/videoStudio.test.mts",
+    "test:allowances": "npx --yes tsx test/allowances.test.mts",
+    "test:allowancese2e": "node test/allowances.e2e.mjs",
     "test:videoe2e": "node test/videoStudio.e2e.mjs"
   },
   "dependencies": {

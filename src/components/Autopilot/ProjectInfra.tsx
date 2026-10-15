@@ -72,8 +72,8 @@ export default function ProjectInfra({ project, onSaved }: {
     onSaved(r.projects ?? []);
     addNotification(
       n === 0
-        ? 'Autopilot will not buy or build anything for this project.'
-        : `Autopilot will build ${n} ${n === 1 ? 'domain' : 'domains'} with ${m} ${m === 1 ? 'mailbox' : 'mailboxes'} each. Each step waits for your approval before it spends anything.`,
+        ? 'AI Autopilot will not buy or build anything for this project.'
+        : `AI Autopilot will build ${n} ${n === 1 ? 'domain' : 'domains'} with ${m} ${m === 1 ? 'mailbox' : 'mailboxes'} each. Each step waits for your approval before it spends anything.`,
       'success',
     );
   };
@@ -90,7 +90,7 @@ export default function ProjectInfra({ project, onSaved }: {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13.5, fontWeight: 800, color: INK }}>Domains and mailboxes</div>
           <div style={{ fontSize: 11.5, color: MUTED, marginTop: 1 }}>
-            What Autopilot builds for this project before it sends anything
+            What AI Autopilot builds for this project before it sends anything
           </div>
         </div>
         <span style={{
@@ -115,7 +115,7 @@ export default function ProjectInfra({ project, onSaved }: {
           </div>
           <p style={{ margin: 0, flex: 1, minWidth: 180, fontSize: 11.5, color: MUTED, lineHeight: 1.55 }}>
             {n === 0
-              ? 'Zero means Autopilot buys and builds nothing. It will still write and send from a mailbox you connect yourself.'
+              ? 'Zero means AI Autopilot buys and builds nothing. It will still write and send from a mailbox you connect yourself.'
               : `${n * m} sending ${n * m === 1 ? 'address' : 'addresses'} in total. Two domains with three each suits a small business; more than that is renewals you pay for and volume you do not have.`}
           </p>
         </div>
@@ -126,7 +126,7 @@ export default function ProjectInfra({ project, onSaved }: {
               <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 6 }}>Who buys them?</label>
               <div style={{ display: 'grid', gap: 7 }}>
                 {([
-                  ['byo', 'I have my own registrar', 'Autopilot uses the accounts you connected under Settings → Infrastructure. You pay your provider directly and nothing goes through us.'],
+                  ['byo', 'I have my own registrar', 'AI Autopilot uses the accounts you connected under Settings → Infrastructure. You pay your provider directly and nothing goes through us.'],
                   ['managed', 'Buy them for me', 'We buy on your behalf and bill it on — after this workspace\'s subscription payment has cleared, never before. Only available when this installation has a registrar connected.'],
                 ] as const).map(([id, label, sub]) => (
                   <button key={id} onClick={() => setMode(id)} aria-pressed={mode === id}
@@ -174,7 +174,7 @@ export default function ProjectInfra({ project, onSaved }: {
             <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '11px 12px', borderRadius: 11, background: '#fffbeb', border: '1px solid #fde68a' }}>
               <AlertCircle size={15} color="#b45309" style={{ flexShrink: 0, marginTop: 1 }} />
               <p style={{ margin: 0, fontSize: 11.5, color: '#78350f', lineHeight: 1.6 }}>
-                Every step that costs money appears on the board and waits for you to approve it. Autopilot
+                Every step that costs money appears on the board and waits for you to approve it. AI Autopilot
                 never buys a domain on its own, whichever option you pick above.
                 {mode === 'managed' && ' A managed purchase also waits for this workspace to be paid up — it is bought on the order, not in advance.'}
               </p>

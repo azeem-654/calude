@@ -18,10 +18,11 @@ import type { Blueprint } from '../../../services/projectIntake';
 import type { Palette } from '../../../services/designOptions';
 import { FONT_FAMILY } from '../../../services/designOptions';
 import { TEMPLATE_CATALOG, buildTemplatePages } from '../../shared/pageTemplates';
-import { PagesStrip, ScaledPage } from '../../shared/BlockRender';
+import { PagesStrip } from '../../shared/BlockRender';
 import { LayoutPic } from './DesignFields';
+import { FullEmails, WidePagePreview, type EmailStep } from './BlueprintPreviews';
 
-interface Brand { name: string; tagline: string; heroTitle: string }
+interface Brand { name: string; tagline: string; heroTitle: string; heroImage?: string }
 
 function Post({ palette, logo, name, head, sub, variant }: { palette: Palette; logo: string; name: string; head: string; sub: string; variant: number }) {
   const font = FONT_FAMILY[palette.font] ?? 'system-ui, sans-serif';
@@ -52,7 +53,7 @@ function Section({ icon: Icon, title, children }: { icon: typeof Eye; title: str
   );
 }
 
-export default function ResultPreview({ bp, brand, palette, logo, templateId, pageLayout, audience }: {
+export default function ResultPreview({ bp, brand, palette, logo, templateId, pageLayout, audience, emailLayout = '', booking = false }: {
   bp: Blueprint;
   brand: Brand;
   palette: Palette;
@@ -60,17 +61,25 @@ export default function ResultPreview({ bp, brand, palette, logo, templateId, pa
   templateId: string;
   pageLayout: string;
   audience: string;
+  /** The email frame chosen, so the full email is drawn in it. */
+  emailLayout?: string;
+  /** Whether the project's own booking page is what {{bookingLink}} points to. */
+  booking?: boolean;
 }) {
   const name = brand.name || 'Your business';
   const nodes = bp.workflows.flatMap(w => w.nodes ?? []);
   const social = nodes.some(n => n.type === 'ai' && String(n.config?.produces ?? '') === 'social');
   const blog = nodes.some(n => n.type === 'ai' && String(n.config?.produces ?? '') === 'blog');
   const firstEmail = nodes.find(n => n.type === 'send_email');
+  const emails: EmailStep[] = bp.workflows.flatMap(w => (w.nodes ?? [])
+    .filter(n => n.type === 'send_email')
+    .map(n => ({ workflow: w.name, label: n.label, subject: String(n.config?.subject ?? ''), body: String(n.config?.body ?? n.config?.preview ?? '') })))
+    .slice(0, 12);
   const template = TEMPLATE_CATALOG.find(t => t.id === templateId);
   const page = !!template || templateId === 'ai';
   const pages = useMemo(
-    () => (template ? buildTemplatePages(template, { name, color: palette.accent, tagline: brand.tagline, heroTitle: brand.heroTitle }, { brand: true }) : []),
-    [template, name, palette.accent, brand.tagline, brand.heroTitle],
+    () => (template ? buildTemplatePages(template, { name, color: palette.accent, tagline: brand.tagline, heroTitle: brand.heroTitle, heroImage: brand.heroImage }, { brand: true }) : []),
+    [template, name, palette.accent, brand.tagline, brand.heroTitle, brand.heroImage],
   );
   if (!social && !blog && !firstEmail && !page) return null;
 
@@ -106,30 +115,24 @@ export default function ResultPreview({ bp, brand, palette, logo, templateId, pa
       {page && (
         <Section icon={LayoutTemplate} title={template ? `${template.kind === 'funnel' ? 'Funnel' : 'Website'} — ${template.name}` : 'Your page'}>
           {template ? (
-            <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid #e6e9f0' }}>
-              {template.kind === 'funnel' && pages.length > 1 ? <PagesStrip pages={pages} height={190} max={4} /> : <ScaledPage page={pages[0]} height={210} renderWidth={1100} />}
-            </div>
+            <>
+              {template.kind === 'funnel' && pages.length > 1 && (
+                <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid #e6e9f0' }}><PagesStrip pages={pages} height={130} max={4} /></div>
+              )}
+              <WidePagePreview pages={pages} kind={template.kind === 'funnel' ? 'funnel' : 'website'} />
+            </>
           ) : (
             <div style={{ maxWidth: 260 }}>
               <LayoutPic kind="page" layout={pageLayout} palette={palette} logo={logo} />
-              <span style={{ display: 'block', marginTop: 6, fontSize: 12, color: '#6b7280' }}>Autopilot writes the page in this layout, from your profile.</span>
+              <span style={{ display: 'block', marginTop: 6, fontSize: 12, color: '#6b7280' }}>AI Autopilot writes the page in this layout, from your profile.</span>
             </div>
           )}
         </Section>
       )}
 
       {firstEmail && (
-        <Section icon={Mail} title="The first email">
-          <div style={{ borderRadius: 12, border: '1px solid #e6e9f0', background: '#fff', overflow: 'hidden' }}>
-            <div style={{ padding: '8px 12px', borderBottom: '1px solid #eef0f4', fontSize: 12, color: '#6b7280' }}>
-              From <b style={{ color: '#17191c' }}>{name}</b> · to one of your contacts
-            </div>
-            <div style={{ padding: '10px 12px', fontSize: 13, color: '#334155', lineHeight: 1.6 }}>
-              Hello Alex,<br /><br />
-              I’m writing from {name}{brand.tagline ? <> — {brand.tagline.charAt(0).toLowerCase()}{brand.tagline.slice(1)}</> : ''}.
-              <span style={{ color: '#94a3b8' }}> … the rest is written for “{firstEmail.label}” when the project is built.</span>
-            </div>
-          </div>
+        <Section icon={Mail} title={emails.length > 1 ? `The emails — all ${emails.length}, in full` : 'The email, in full'}>
+          <FullEmails steps={emails} name={name} logo={logo} palette={palette} layout={emailLayout} booking={booking} />
         </Section>
       )}
 

@@ -25,6 +25,10 @@ eq('"search for" and "near"', ask('search for cafés near Bristol.'), ['cafés',
 eq('"show me all the"', ask('Show me all the hair salons in Manchester'), ['hair salons', 'Manchester']);
 eq('the last "in" is the place', ask('bed and breakfasts in Bath'), ['bed and breakfasts', 'Bath']);
 eq('a hyphenated town stays whole', ask('builders in Stoke-on-Trent'), ['builders', 'Stoke-on-Trent']);
+{
+  const k = extractKnown('Med spa in Miami, Florida. The clinic wants consultations booked.', ['lead-generation'], { portfolios: [], workspace: null }, [], []);
+  eq('a sentence after the place is not part of it', k.location?.value ?? null, 'Miami, Florida');
+}
 eq('a region with a comma', ask('Find accountants in Austin, Texas'), ['accountants', 'Austin, Texas']);
 eq('"local" is not part of the trade', ask('find local plumbers in Leeds'), ['plumbers', 'Leeds']);
 {

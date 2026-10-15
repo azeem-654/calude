@@ -316,7 +316,9 @@ export const creem: PaymentProvider = {
     let productId = (req.priceId ?? '').trim();
 
     if (!productId) {
-      const slot = `plan:${req.planName}:${req.amountCents}:${currency}`;
+      const yearly = req.interval === 'year';
+      /* Monthly slots keep the name they always had, so a product already made for one is found again. */
+      const slot = `plan:${req.planName}:${req.amountCents}:${currency}${yearly ? ':year' : ''}`;
       const remembered = readRefs(ctx.providerRef);
       productId = remembered[slot] ?? '';
 
@@ -329,11 +331,11 @@ export const creem: PaymentProvider = {
           method: 'POST',
           body: JSON.stringify({
             name: req.planName.slice(0, 100) || 'Subscription',
-            description: `${req.planName} — billed monthly.`.slice(0, 500),
+            description: `${req.planName} — billed ${yearly ? 'yearly' : 'monthly'}.`.slice(0, 500),
             price: Math.max(req.amountCents, 100),
             currency,
             billing_type: 'recurring',
-            billing_period: 'every-month',
+            billing_period: yearly ? 'every-year' : 'every-month',
           }),
         });
         if (!made.ok || !made.data?.id) {

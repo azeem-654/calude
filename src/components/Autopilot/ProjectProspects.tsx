@@ -341,7 +341,7 @@ export function RotationPanel({ f }: { f: FinderInfo }) {
 export function FinderIntro() {
   return (
     <span style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.6 }}>
-      Autopilot searches business directories live, reads each business's own website for the address it publishes, checks it, and adds
+      AI Autopilot searches business directories live, reads each business's own website for the address it publishes, checks it, and adds
       the new ones to this project's audience — a few at a time through the day, until the day's number is in. It never emails anybody itself.
     </span>
   );

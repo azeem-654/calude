@@ -178,7 +178,7 @@ export const stripe: PaymentProvider = {
       params.set('line_items[0][price_data][currency]', req.currency.toLowerCase());
       params.set('line_items[0][price_data][product_data][name]', req.planName.slice(0, 250) || 'Subscription');
       params.set('line_items[0][price_data][unit_amount]', String(req.amountCents));
-      params.set('line_items[0][price_data][recurring][interval]', 'month');
+      params.set('line_items[0][price_data][recurring][interval]', req.interval === 'year' ? 'year' : 'month');
     }
     if (req.email) params.set('customer_email', req.email);
     params.set('client_reference_id', req.reference);

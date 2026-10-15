@@ -34,6 +34,10 @@ export interface Project {
   lastActedAt: string | null;
   lastError: string;
   createdAt: string;
+  /** Where the board shows it, 1 at the top. A new project is given the last
+   *  place; `reorderProjects` changes it. The server sends projects in this
+   *  order, so every list of them agrees. */
+  position?: number;
   /** 'byo' — the customer's own registrar — or 'managed', bought for them. */
   purchaseMode: string;
   /** JSON: {domains, mailboxesPerDomain}. '{}' means build nothing. */
@@ -190,6 +194,12 @@ export const saveProject = (p: {
   /** The approved blueprint. Omitted on an edit, which keeps the stored one. */
   brief?: Record<string, unknown>;
 }) => call('save_project', p);
+/**
+ * The order of the workspace's projects, top first — every id, as the board
+ * shows them after the move. The server refuses an id that is not this
+ * workspace's and keeps any it was not sent after the ones it was.
+ */
+export const reorderProjects = (ids: string[]) => call('reorder_projects', { ids });
 export const setProjectStatus = (id: string, status: Project['status']) => call('set_status', { id, status });
 
 /**

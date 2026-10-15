@@ -1039,8 +1039,8 @@ export default function Settings() {
               </p>
               {[
                 {
-                  label: 'Autopilot’s morning email',
-                  desc: `Between 7 and 10 in the morning, to ${getSession()?.user.email ?? 'your address'}, from your own mailbox — on days when something is waiting for your approval, was done, or could not be done. Nothing on a quiet day. It needs a connected mailbox (Email & SMS); to stop it, pause Autopilot on its screen.`,
+                  label: 'AI Autopilot’s morning email',
+                  desc: `Between 7 and 10 in the morning, to ${getSession()?.user.email ?? 'your address'}, from your own mailbox — on days when something is waiting for your approval, was done, or could not be done. Nothing on a quiet day. It needs a connected mailbox (Email & SMS); to stop it, pause AI Autopilot on its screen.`,
                 },
                 { label: 'The bell at the top of every screen', desc: 'What happened while you were working in this browser — sends, imports, anything that failed.' },
                 { label: 'Messages from us', desc: 'Appear in the corner of the app when we have something to tell you about your account.' },

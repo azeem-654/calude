@@ -18,6 +18,7 @@
  * record of the check it is on (`live`), polled every few seconds while a run
  * is on and twice a minute otherwise — never an animation of work.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -252,7 +253,13 @@ export function SourceCard({ c, focused, busy, onAct, onReplace, onSaid }: {
             {c.status === 'active' ? <><Pause size={13} /> Pause</> : <><Play size={13} /> Resume</>}</button>
           <button type="button" style={btn} onClick={() => setEditing(!editing)}>Settings</button>
           <button type="button" style={{ ...btn, color: T.bad }} aria-label={`Disconnect ${c.searchName}`} disabled={!!busy}
-            onClick={() => { if (window.confirm(`Disconnect "${c.searchName}" from this project? Its workflow is removed; everybody it already added stays in Contacts and on the list.`)) void onAct(c.id, 'off', () => disconnectSource(c.id)); }}>
+            onClick={async () => {
+              if (await askConfirm({
+                title: `Disconnect “${c.searchName}” from this project?`,
+                message: 'Its workflow is removed; everybody it already added stays in Contacts and on the list.',
+                confirmLabel: 'Disconnect', danger: true,
+              })) void onAct(c.id, 'off', () => disconnectSource(c.id));
+            }}>
             <Trash2 size={13} /></button>
         </div>
       </div>
@@ -286,7 +293,7 @@ export function CommandBox({ project, conns, onReplace, onAct, onConnect, onSaid
   };
   return (
     <div style={{ display: 'grid', gap: 6 }}>
-      <span style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Tell Autopilot what to change about a connected search</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Tell AI Autopilot what to change about a connected search</span>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {conns.length > 1 && (
           <select value={picked} onChange={e => setPicked(e.target.value)} aria-label="Which source"
@@ -296,7 +303,7 @@ export function CommandBox({ project, conns, onReplace, onAct, onConnect, onSaid
           </select>
         )}
         <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void tell(); }} data-field="source.command"
-          placeholder='"Change it to 25 per day", "Only accept leads above 90% confidence"' aria-label="Tell Autopilot"
+          placeholder='"Change it to 25 per day", "Only accept leads above 90% confidence"' aria-label="Tell AI Autopilot"
           style={{ flex: '1 1 260px', minWidth: 0, padding: '8px 10px', border: `1px solid ${T.line}`, borderRadius: 9, font: 'inherit', fontSize: 13, color: T.ink, background: T.panel }} />
         <button type="button" style={btn} disabled={busy || !text.trim()} onClick={() => void tell()}>{busy ? <Loader size={13} className="spin" /> : <Send size={13} />} Do it</button>
       </div>

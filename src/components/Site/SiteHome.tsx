@@ -24,7 +24,7 @@
  * carry a wall of reviews, this one carries a wall of what the software
  * actually does, which is checkable.
  */
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowRight, ArrowUpRight, Check, Sparkles, Send, MousePointerClick, Users,
   BarChart3, Building2, Lock, Palette, ShieldCheck, Mail, MessageSquare,
@@ -35,7 +35,6 @@ import {
 import { LogoMark } from '../shared/Logo';
 import { appHref, isCrossOrigin } from '../../services/hosts';
 import { featureReady } from '../../services/features';
-import { PLANS } from '../../services/tenancy';
 import { TEMPLATES } from '../Autopilot/workflowTemplates';
 import { useReveal, useRevealGroup } from './useReveal';
 import Starfield from './Starfield';
@@ -49,12 +48,11 @@ import ProspectingShowcase from './ProspectingShowcase';
 import FeatureStage from './FeatureStage';
 import CloudSection from './CloudSection';
 import { useFilmStep } from './useFilmStep';
-import SolutionsSection from './SolutionsSection';
+import SolutionsSection, { type FindRequest } from './SolutionsSection';
 import FaqSection from './FaqSection';
+import PricingSection from './PricingSection';
 import { track } from '../../services/funnel';
-
-/* The wizard is a screen of its own, loaded when somebody opens it. */
-const SolutionWizard = lazy(() => import('./SolutionWizard'));
+import { motionReduced } from '../../services/motion';
 import './site.css';
 
 type Reel = keyof typeof REELS;
@@ -126,7 +124,7 @@ const CHAPTERS: Chapter[] = [
       {
         id: 'blog', title: 'Blog automation', tone: 'forest', span: 3, icon: FileText,
         body: 'A topic plan from your own portfolio, written to the search terms your buyers use — '
-          + 'or a post a week, written by an Autopilot agent and waiting for you to publish.',
+          + 'or a post a week, written by an AI Autopilot agent and waiting for you to publish.',
         reel: 'blog',
       },
     ],
@@ -250,7 +248,7 @@ const CAPABILITIES: { group: string; icon: typeof Send; items: string[] }[] = [
      "what it does" cannot list what it does not do yet. */
   ...(featureReady('prospects') ? [{
     group: 'Prospect', icon: Search,
-    items: ['AI Prospecting from one sentence', 'Business directories & Google Maps', 'The emails businesses publish', 'Email verification', 'Daily prospecting on Autopilot'],
+    items: ['AI Prospecting from one sentence', 'Business directories & Google Maps', 'The emails businesses publish', 'Email verification', 'Daily prospecting on AI Autopilot'],
   }] : []),
   { group: 'Convert', icon: MousePointerClick, items: ['Funnels', 'Websites', 'Forms & surveys', 'Booking pages', 'Online shop & checkout'] },
   { group: 'Manage', icon: Users, items: ['Contacts', 'Pipelines', 'Conversations', 'Calendar', 'Support tickets'] },
@@ -342,18 +340,35 @@ export default function SiteHome() {
   const [stuck, setStuck] = useState(false);
   const [tab, setTab] = useState(0);
 
-  /* Find my solution. `#find` (or `#find=<solution>`) opens it from a link. */
-  const [wizard, setWizard] = useState<{ pick: string } | null>(() => {
+  /* Find my solution lives open in the "What do you want to grow?" section
+     (SolutionsSection.tsx). Every button for it scrolls there; a pick
+     ("Build this", `#find=<solution>`) starts it again with that outcome
+     chosen. `#find` (or `#find=<solution>`) does the same from a link. */
+  const fromHash = (h: string): string | null => { const m = /^#find(?:=([a-z-]+))?$/.exec(h); return m ? m[1] ?? '' : null; };
+  const [find, setFind] = useState<FindRequest>(() => {
     try {
-      const m = /^#find(?:=([a-z-]+))?$/.exec(location.hash);
-      return m ? { pick: m[1] ?? '' } : null;
-    } catch { return null; }
+      const pick = fromHash(location.hash);
+      return pick === null ? { pick: '', n: 0, call: 0 } : { pick, n: pick ? 1 : 0, call: 1 };
+    } catch { return { pick: '', n: 0, call: 0 }; }
   });
+  const toWizard = useCallback((smooth: boolean) => {
+    document.getElementById('find')?.scrollIntoView({ block: 'start', behavior: smooth && !motionReduced() ? 'smooth' : 'auto' });
+  }, []);
   const openWizard = useCallback((pick = '', from = '') => {
     if (from === 'hero') track('hero_cta_clicked');
-    setWizard({ pick });
+    setFind(f => (pick ? { pick, n: f.n + 1, call: f.call + 1 } : { ...f, call: f.call + 1 }));
+    toWizard(true);
+  }, [toWizard]);
+  useEffect(() => {
+    track('homepage_view');
+    /* Arrived on a #find link: the browser looked for the anchor before the
+       page had drawn it. */
+    if (find.call) requestAnimationFrame(() => toWizard(false));
+    const onHash = () => { const pick = fromHash(location.hash); if (pick !== null) openWizard(pick); };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- on arrival only
   }, []);
-  useEffect(() => { track('homepage_view'); }, []);
 
   /* The nav is transparent over the hero and solid once you leave it, which is
      the only way a dark translucent bar stays legible over a light page. */
@@ -394,7 +409,6 @@ export default function SiteHome() {
   const chain = useRevealGroup<HTMLDivElement>('.dc-chain-node');
   const wall = useRevealGroup<HTMLDivElement>('.dc-wall-card');
   const own = useRevealGroup<HTMLDivElement>('.dc-own-card');
-  const price = useRevealGroup<HTMLDivElement>('.dc-plan');
   const band = useReveal<HTMLDivElement>();
   const tabs = useRevealGroup<HTMLDivElement>('button');
   const foot = useRevealGroup<HTMLDivElement>(':scope > div');
@@ -538,10 +552,10 @@ export default function SiteHome() {
       </div>
 
       {/* ── What do you want to grow? ──
-             The use cases, by outcome, each with "Build this" — straight
-             after the proof that the product is real, before the tour of how
-             it works. ── */}
-      <SolutionsSection onBuild={k => openWizard(k)} />
+             Find my solution, open on the page, and the ready-made recipes
+             under it, each with "Build this" — straight after the proof that
+             the product is real, before the tour of how it works. ── */}
+      <SolutionsSection find={find} onBuild={k => openWizard(k)} />
 
       {/* ── AI Autopilot ──
              First, because it is what the rest is now driven by, and because
@@ -552,7 +566,7 @@ export default function SiteHome() {
         eyebrow="AI Autopilot"
         title={<>Describe it once. <em>It builds and runs it.</em></>}
         body={<>Say what the business needs — more reviews, quotes that do not go quiet, a post every
-          morning — and Autopilot turns it into workflows you can read, then runs them on the
+          morning — and AI Autopilot turns it into workflows you can read, then runs them on the
           server every five minutes, whether or not anybody is logged in.</>}
         label="AI Autopilot"
         shots={REELS.autopilot}
@@ -574,7 +588,7 @@ export default function SiteHome() {
           <span className="dc-eyebrow">Agents that work while you do not</span>
           <h2>Your sources in. <em>Every channel out.</em></h2>
           <p>
-            An Autopilot agent reads what you point it at — your own portfolio, a page, a search of the
+            An AI Autopilot agent reads what you point it at — your own portfolio, a page, a search of the
             web, a news feed or a YouTube channel — and turns it into posts, articles and campaigns on
             the schedule you choose. Each one lands in the module it belongs to, ready to read.
           </p>
@@ -688,36 +702,7 @@ export default function SiteHome() {
       </section>
 
       {/* ── Pricing ── */}
-      <section className="dc-pricing" id="pricing">
-        <div className="dc-chapter-head">
-          <span className="dc-eyebrow">Resell it at your price</span>
-          <h2>One subscription. <em>As many clients as your plan allows.</em></h2>
-          <p>
-            Every plan starts with 7 days free, and no card is asked for until you choose one. You are
-            billed once. What you charge your own clients is entirely yours to set, and the sub-account
-            allowance is enforced on the server rather than in the browser.
-          </p>
-        </div>
-        <div className="dc-plans stagger" ref={price}>
-          {PLANS.map((p, i) => (
-            <div key={p.id} className={`dc-plan${i === 1 ? ' featured' : ''}`}>
-              {i === 1 && <span className="dc-plan-flag">Most agencies</span>}
-              <h3>{p.name}</h3>
-              <div className="dc-plan-price"><span>$</span>{p.price}<small>/month</small></div>
-              <p className="dc-plan-sub">
-                {p.limits.resell < 0
-                  ? 'Unlimited sub-accounts'
-                  : `${p.limits.resell} sub-account${p.limits.resell === 1 ? '' : 's'}`}
-              </p>
-              <ul>{p.features.map(f => <li key={f}><Check size={12} /> {f}</li>)}</ul>
-              <a className={`dc-btn ${i === 1 ? 'dc-btn-primary' : 'dc-btn-outline'}`} href={appHref('/signup')} {...cross(appHref('/signup'))} onClick={() => track('trial_cta_clicked')}>
-                Start free <ArrowRight size={14} />
-              </a>
-              <small className="dc-plan-note">7 days free · No card required</small>
-            </div>
-          ))}
-        </div>
-      </section>
+      <PricingSection />
 
       {/* ── Questions ── */}
       <FaqSection />
@@ -776,11 +761,6 @@ export default function SiteHome() {
           <span>Sends on your own mailbox. Your data stays in your workspace.</span>
         </div>
       </footer>
-      {wizard && (
-        <Suspense fallback={null}>
-          <SolutionWizard initialPick={wizard.pick} onClose={() => { setWizard(null); if (/^#find/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); }} />
-        </Suspense>
-      )}
     </div>
   );
 }

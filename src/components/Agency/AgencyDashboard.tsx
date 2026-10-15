@@ -1,3 +1,4 @@
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Building2, Plus, Search, ArrowRight, MoreVertical, Users, TrendingUp,
@@ -159,7 +160,7 @@ export default function AgencyDashboard() {
   };
   const setStatus = (id: string, status: AccountStatus) => { updateSubAccount(id, { status }); reload(); setMenuFor(null); };
   const remove = async (id: string) => {
-    if (!confirm('Delete this sub-account and ALL its data? This cannot be undone.')) return;
+    if (!await askConfirm({ title: 'Delete this sub-account?', message: 'The sub-account and all of its data are deleted. This cannot be undone.', confirmLabel: 'Delete sub-account', danger: true })) return;
     /* Everything it resold goes with it locally; the server is told separately
        because that is what gives the plan slot back — deleting only in the
        browser would leave the allowance permanently spent. */

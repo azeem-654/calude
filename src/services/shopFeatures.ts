@@ -78,7 +78,7 @@ export const SHOP_FEATURES: FeatureGroup[] = [
       { label: 'Paid, fulfilled, refunded', detail: 'Moved by the processor’s own webhook, and an order only ever moves forward.', state: 'yes', route: '/sell' },
       { label: 'Dropshipping', detail: 'Send an order straight to Printful and track what it said back.', state: 'yes', route: '/sell' },
       { label: 'Orders taken by phone', detail: 'Recorded by hand and counted the same as the rest.', state: 'yes', route: '/sell' },
-      { label: 'Chasing unpaid orders', detail: 'Autopilot follows up once per order, marked on the order so it cannot nag.', state: 'yes', route: '/autopilot' },
+      { label: 'Chasing unpaid orders', detail: 'AI Autopilot follows up once per order, marked on the order so it cannot nag.', state: 'yes', route: '/autopilot' },
       { label: 'Thanking buyers', detail: 'Once, after payment — not on every tick.', state: 'yes', route: '/autopilot' },
       { label: 'Order tracking for buyers', detail: 'A buyer looks their order up on your shop page with the reference and email from their receipt — no account to make. They see the status, what they bought and what they paid.', state: 'yes' },
       { label: 'Customer accounts', detail: 'No login and no saved history. Each order is looked up on its own; there is no page listing everything somebody has ever bought.', state: 'no' },
@@ -90,7 +90,7 @@ export const SHOP_FEATURES: FeatureGroup[] = [
     features: [
       { label: 'Product copy written for you', detail: 'Descriptions, pages and posts written from your own profile, shown to you before anything publishes.', state: 'yes', route: '/autopilot' },
       { label: 'Email campaigns', detail: 'Written, scheduled and sent from your own mailbox, so replies come back to you.', state: 'yes', route: '/marketing' },
-      { label: 'Abandoned basket follow-up', detail: 'The order exists the moment somebody starts paying, so a stall is something Autopilot can chase.', state: 'yes', route: '/autopilot' },
+      { label: 'Abandoned basket follow-up', detail: 'The order exists the moment somebody starts paying, so a stall is something AI Autopilot can chase.', state: 'yes', route: '/autopilot' },
       { label: 'Win-backs and post-purchase', detail: 'Part of the build order for a shop project, in that sequence.', state: 'yes', route: '/autopilot' },
       { label: 'Reviews', detail: 'Collected and answered, with the bad ones surfaced rather than buried.', state: 'yes', route: '/reputation' },
       { label: 'Subscriptions and repeat billing', detail: 'Not here. One-off orders only.', state: 'no' },

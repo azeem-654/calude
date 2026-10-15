@@ -8,6 +8,7 @@
  * This screen shows the matrix the server returned, so what you read here is
  * what the database will actually do — not a local guess.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useEffect, useState } from 'react';
 import {
   ShieldCheck, ShieldAlert, UserPlus, Trash2, KeyRound, RefreshCw,
@@ -220,7 +221,7 @@ export default function TeamPermissions() {
                   </button>
                   <button title={isMe ? 'You cannot remove your own login' : `Remove ${u.email}`} disabled={isMe}
                     onClick={async () => {
-                      if (!window.confirm(`Remove ${u.email}? They will not be able to sign in. Contacts they own are not deleted.`)) return;
+                      if (!await askConfirm({ title: `Remove ${u.email}?`, message: 'They will not be able to sign in. Contacts they own are not deleted.', confirmLabel: 'Remove user', danger: true })) return;
                       const res = await deleteUser(u.email);
                       addNotification(res.ok ? `${u.email} removed` : (res.error || 'Could not remove that user.'), res.ok ? 'success' : 'error');
                       void refresh();

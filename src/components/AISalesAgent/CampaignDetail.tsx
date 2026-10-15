@@ -9,6 +9,7 @@
  * The chosen tab lives in the URL so a campaign's Email tab can be linked to,
  * and so going back does what going back should.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useCallback, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Ban, Bot, Pause, Play, Trash2 } from 'lucide-react';
@@ -85,8 +86,8 @@ export default function CampaignDetail() {
     addNotification(summary);
   };
 
-  const remove = () => {
-    if (!window.confirm(`Delete ${id}?\n\nThe campaign record goes. Anything it created — sequences, contacts, appointments — stays in the module that owns it.`)) return;
+  const remove = async () => {
+    if (!await askConfirm({ title: `Delete ${id}?`, message: 'The campaign record goes. Anything it created — sequences, contacts, appointments — stays in the module that owns it.', confirmLabel: 'Delete campaign', danger: true })) return;
     deleteCampaign(id);
     purgeCampaign(id);
     purgeLeads(id);

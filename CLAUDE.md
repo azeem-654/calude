@@ -104,6 +104,14 @@ why it can be tested without a database — keep it that way.
   project must not hold a permission its owner never saw. `kind` is derived the
   same way rather than asked, because it is the server's contract, not a
   question a customer can answer.
+- **Projects keep the order the customer set.** `crm_projects.position`
+  (migration 0071; 1 is the top): `save_project` gives a new one the
+  workspace's lowest − 1, so it lands **on top**, and an edit never moves
+  it; `reorder_projects` takes the whole order and refuses any id not this
+  workspace's. Every list of projects (`listProjects`, revenue, the client
+  portal) reads `ORDER BY position, created_at, id`. The board's divider line
+  over each project carries Move up / Move down (optimistic, put back with the
+  reason on refusal, then `refreshPulse`).
 - **`autopilotPulse.ts` is the one reader of the board on the client.** The
   dashboard panel and the nav diagram both want it at once; without the shared
   cache each mounts its own fetch and the same question is asked four times a
@@ -158,6 +166,55 @@ Domains and mailboxes are offered managed *or* bring-your-own. Phone numbers and
 supplier orders are bring-your-own only: a number carries a licensing and
 porting obligation, and a supplier order makes the buyer of record liable for
 the chargeback and the customs declaration.
+
+## Plans and allowances — one table, counted on the server
+
+`worker/src/lib/allowances.ts` (pure, no imports; the browser re-exports it as
+`services/allowances.ts`) is **the** package table: three priced plans
+(`kind: 'self'` — Starter $49 / Growth $97 / Pro $197 a month, yearly at ten
+months), **Custom** (`kind: 'custom'`, no price, given by hand) and `agency`
+(`kind: 'legacy'`, never shown or sold, kept with what its subscribers bought),
+plus the trial's numbers, for fourteen meters (projects, workflows per
+project, sub-accounts, branded login addresses, AI requests, posts, articles,
+AI emails, prospects found, recordings, AI Shorts, video/render minutes,
+storage). Checkout (`PLAN_CENTS` from `SOLD_PLANS`, `interval: 'year'` on both
+processors), `PLAN_RESELL`, the site's cards (`Site/PricingParts.tsx`: lines
+from `featureLines`, **Show full details** and `/pricing`'s table from
+`comparison()`), Plan & billing and the trial bar all read it — never write a
+plan's number, price or feature tick anywhere else. `/pricing`
+(`Site/PricingPage.tsx`, routed on every host) has the comparison (sticky
+header; one plan at a time under 760px), white-label, billing answers and the
+Custom form (`enquire` → `crm_enquiries`, migration 0075, read and answered on
+Sign-ups & trials, where `grant_plan` gives a plan by hand).
+docs/PRICING.md has the market research, costs and what white-label means.
+
+- **The allowance is the subscriber's** (workspace owner's email), pooled over
+  every workspace they own. Install owner: unlimited, still counted. Trial (and
+  ended trial): `TRIAL_LIMITS`. Otherwise `crm_plans.plan_id`, Starter if none.
+- **`lib/allowanceStore.ts`**: `check` (refusal by name — `fail(r.message, 402,
+  refusalBody(r))`, `code: 'allowance'`, meter, used, limit, plan, upgrade),
+  `record` (idempotent on `(meter, '<workspace>:<ref>')` in `crm_usage`,
+  migration 0074 — key by the thing made, never by the request), `roomFor` for
+  steps that make several, `readAll` for the Usage card. Count meters are
+  counted from their tables; video minutes and storage from the Video Studio's
+  own (`lib/video/usage.ts` takes its limits from here).
+- **Any new thing that costs the operator per unit gets a meter**, checked
+  before the work and recorded after it succeeds. A cron path skips and says
+  why where the customer reads it; it never throws. Don't meter what the server
+  cannot see being made (contacts, sends — see docs/PRICING.md).
+- `/api/allowances.php`: `plans` (public), `status`/`check` (workspaceAccess),
+  `set_limits` (install owner; `crm_plan_limits`, edited on Sign-ups & trials →
+  Plans & allowances). Prices are not editable on a screen.
+- A renewal is matched to the plan the subscriber is on before the amount
+  (`soldAt`, `LEGACY_CENTS`): $97 was "Agency" (`pro`) and is now Growth;
+  $149/$297/$2,970 are `agency`. A feature on every plan is listed once
+  (`INCLUDED`), never as what a higher plan adds; white-label's countable part
+  (`login_addresses`) is refused at `whitelabel.php add`.
+- `npm run test:allowances` (pure, real SQLite with every migration via
+  `node:sqlite`); `npm run test:allowancese2e` (wrangler :8991, fresh D1 in
+  `.wrangler-allowances`, needs a `VITE_BASE=/` build). Seeded journeys that
+  make more than a trial allows (video e2e, site reels) raise the account's
+  allowance first.
 
 ## Sending email — one door
 
@@ -269,6 +326,113 @@ migration 0057 (`crm_review_sources`, `crm_gbp_connections`, `crm_reviews`,
   `GOOGLE_GBP_*_BASE`, `GOOGLE_TOKEN_URL`) so `npm run test:reputation` (self-
   contained: mock + SMTP sink on :8833, wrangler on :8822, fresh D1, needs a
   `VITE_BASE=/` build) proves the requests themselves.
+
+## The booking page — the owner's hours, in the visitor's time
+
+`/book/<slug>` (`Scheduling/BookingPage.tsx`) draws `Scheduling/BookingCard.tsx`
+— the owner's reference, as **two cards** side by side from 1060px of box
+(stacked below), laid out by container queries. Left: the business (logo
+mark, name in the heading face, `tagline`); **Meet with** the host — a large
+round photo in a glowing ring (`object-position` near the top for faces,
+uploaded at 640px; initials on a gradient until there is one), name,
+`hostRole`, topic pills (`tags`, ≤ 4); title, description; four items with
+outlined icons (length, place, the visitor's own zone, one-to-one with whom);
+the video as a still ("Watch a quick intro before booking") beside **What we
+can discuss** (`discuss`); the points as icon cards under `pointsTitle`; and a
+**testimonial only when the owner typed one** (`testimonial`: quote + name,
+role, optional photo — upload kind `testimonial`; no default, never filled by
+the website fill, dropped without a name). Right: **Select a Date & Time**
+with the zone pill, the month in an inset panel, the day's times as pills
+(the first lit), and the after-booking line with **Need Help?** — the line
+promises a confirmation email only when `config` answers `delivery.confirms`
+(the workspace can send and has not switched it off) and a Google Meet link
+only with `delivery.meet` (a connected calendar) and a video place; the help
+link only when `help` (an email → mailto, or an https page, `helpLink`) is
+set. **No platform name, no trial offer, no invented testimonial, no
+"verified" tick**; a clip's length only from the file.
+
+**Themes** (`BOOKING_THEMES` in `worker/src/lib/bookingContent.ts`, picked
+as swatch cards in the editor, published as `theme`): Midnight lime (the
+reference — near-black, lime glow rings drawn in CSS, serif headings; the
+default for a **new** page), Light (the look before themes — what a page
+with no `theme` keeps, and the only one that follows the visitor's
+light/dark preference), Midnight blue, Royal purple, Warm sand, Clean white &
+black. `themeVars` turns one into custom properties (`themeRoot` puts them
+and `data-bk-theme`/`data-bk-dark` on the page's root); fonts are the
+system's (a Georgia serif stack, like the shop themes) — nothing is loaded.
+`accent` (`#rrggbb`) overrides the theme's colour ("The theme's own colour"
+clears it); the ink on it is computed (`inkOn`). **The logo** is measured in
+the browser at upload (`measureLogo`: `logoTone` dark/light/opaque from its
+visible pixels and transparency, `logoRatio`): contained, never cropped; a
+plate behind it only when its ink would vanish on this ground (`logoPlate`);
+a wordmark (`isWordmark`, ≥ 2.2:1) stands in for the name.
+Points are `{ icon, title, detail }` with the icon from a **fixed list**
+(`BOOKING_ICONS`, drawn by `Scheduling/bookingIcons.tsx`); a page from before
+icons kept plain `bullets`, which `pointsOf` reads as ticks — publish writes
+both. The editor `Autopilot/newProject/BookingSetup.tsx` shows the **same
+card** as its preview (Desktop: laid out at 1180px and scaled to the pane;
+Phone: 390px), in the AI Autopilot wizard and on Scheduling → **Booking
+page** (`autoPublish={false}` there — that screen already publishes).
+Editable: the address (`slug_check` as typed; slugs are install-wide, a taken
+one is refused on `booking.slug`), title, host name and role, tagline,
+description, topics, points with icons (≤ 8), what to discuss, theme, accent,
+testimonial, help link, photo, logo, a clip or a YouTube/Vimeo/Loom link
+(`videoEmbedOf` builds the player address; nothing pasted is framed as
+typed), length, place, days, hours, the owner's zone (`booking.timezone`,
+refused if Intl does not know it).
+
+- **Filled in from the website.** **Fill it in from my website**
+  (`booking.website`; `website` prop, else the workspace profile's) asks
+  `booking.php` `autofill` (session + `canAccess`, 20/h): the site is read
+  through `fetchPage`'s fence; `pageFacts` (pure) takes what the site
+  *states* — title/description tags, YouTube/Vimeo/Loom links really on the
+  page, a photo the site itself labels as a person (alt "Jane Bright,
+  founder", or a schema.org Person) — and the logo comes from `logoFromPage`.
+  With the operator's AI (`aiBudget` first, `loadAiKey`, one
+  `askGeminiParts` call, site text fenced as content) it proposes title,
+  host and role, tagline, description, 3–6 points with icons, what to
+  discuss and tags; `cleanAutofill` clips them, strips links, addresses,
+  markup and merge fields, keeps only listed icons, and **drops a host name
+  not written on the site**. The link-preview picture (`og:image`) becomes
+  the photo only if the AI, shown it, says it is a person. No AI (no key,
+  budget, too few words, a failed call) → only the stated parts, and the
+  panel says "AI not used: <why>". Nothing is saved by asking; pictures come
+  back as data, are shrunk in the browser and uploaded through
+  `/api/booking-media.php` like a hand-picked one, so the page never
+  hotlinks another site (YouTube's own still excepted). It runs once by
+  itself on an empty page with a known website (`crm_booking_autofilled`),
+  filling only what is empty; pressed, it replaces what it found.
+  `SITE_TEST_ORIGIN` (tests only) fetches any `*.test` host from a local
+  mock (`wireUrl` in readSite.ts). `npm run test:bookingfill` (pure).
+- **Times.** A booking is stored as the owner's wall clock (`slot_date`,
+  `slot_time` in the schedule's `timezone`) — the reminder pass and the diary
+  read it so. `worker/src/lib/bookingTime.ts` (pure, no imports, imported by
+  the browser through `services/bookingTime.ts`) turns the owner's hours into
+  instants per date with Intl — never a fixed offset, so DST is right on both
+  sides — and back into the visitor's own day (`slotsForVisitorDay`). The
+  skipped spring hour is never offered; the repeated autumn hour is the
+  earlier. `create`/`reschedule` ask `slotProblem` with the same rules (open
+  day, on the grid, overlaps with buffers, notice, window, daily limit) and
+  store `startsAt` (UTC), `ownerTimezone`, the guest's `timezone` and
+  `duration`; the Google event uses `ownerTimezone`. Emails add the guest's
+  own time. `npm run test:bookingtz` (pure).
+- **Media** (`routes/bookingMedia.ts`, `/api/booking-media.php`, migration
+  0073 `crm_booking_media`): raw-body upload with `Bearer cookie`, one per
+  kind per workspace, served by random key with `nosniff` and a CSP that runs
+  nothing. Pictures are PNG/JPEG by their bytes (≤ 800 px, ≤ 400 KB, shrunk in
+  the browser first) in D1; a clip (MP4/MOV/WebM by its magic, ≤ 25 MB) needs
+  the `VIDEO` R2 bucket and is refused by name (`no_storage`) without it.
+  Publishing keeps a media address only if it is this workspace's own.
+- `npm run test:bookingpage` (needs a `VITE_BASE=/` build and a running
+  `wrangler dev --var SITE_TEST_ORIGIN:http://127.0.0.1:8982` with no AI key;
+  `BASE`, `PERSIST`, `SITE_PORT`, `SHOTS`): the website fill with no AI,
+  the editor filling itself in, icons/topics/colour/theme/testimonial/help
+  published, a new page in Midnight lime and an older one still Light, the
+  measured logo, nothing reaching past its card (the page clips its glow, so
+  the document's own overflow cannot show it) at 390/1280; an owner in New York and a visitor in
+  Bangkok — 11 hours apart in the slots, the booking at the right UTC instant,
+  off-grid times refused, uploads, the address across workspaces, the editor,
+  390/1280. `test:security` covers the media route (testimonial photos too) and the website read across tenants (and its fence). Local `wrangler dev`'s proxy can exit when a browser closes mid-request — run it in a restart loop.
 
 ## Platform services — the owner's keys for everybody, in one place
 
@@ -476,7 +640,14 @@ searches people the install owner loaded from their own files;
   bound to the live directory.
 - **Loading is done by the owner's browser** (`services/leadImport.ts`): a
   CSV, `.csv.gz` or ZIP (read from its central directory, ZIP64 included,
-  Deflate via `DecompressionStream`) of any size is streamed from disk,
+  Deflate via `DecompressionStream`) of any size is streamed from disk —
+  or **a whole folder** (chosen with `webkitdirectory`, or dropped and walked
+  by `pickedFromDrop`, any depth), or several files; a ZIP may hold folders,
+  `.gz` files and ZIPs (three deep, `sourcesOf`). Each lead file is its own
+  load (`importMany`, 1–4 at once, keyed by its path in the folder); choosing
+  the folder again skips files already in (`import_start` `skipDone`) and a
+  file with no name/email column is "passed over", by name. The real ceiling
+  is the D1 database's size (10 GB on Workers Paid), which a load names. Files are
   parsed, mapped by column name (`ALIASES` — Leads.cm, Apollo, ZoomInfo,
   Seamless, Lusha and CRM headers; accents, punctuation and spacing ignored)
   and sent 500 rows a request (`import_rows`). **Before a load the owner sees
@@ -585,10 +756,9 @@ must be this workspace's). Tables in migration 0063 (`crm_prospect_finders`,
   is not shown as the project failing.
 - **Booking page in the wizard.** Picking our booking page (question
   `booking` = `page`, and on the blueprint when `bookingPage` is required)
-  shows `BookingSetup.tsx`: title, length, where, days, hours, a line — beside
-  a preview drawn from the same `crm_schedule`, published as edited with
-  `publishBookingConfig` (and again by the build), because `{{bookingLink}}`
-  is only filled once a page is published.
+  shows `BookingSetup.tsx` (see **The booking page** below) beside the real
+  page, published as edited with `publishBookingConfig` (and again by the
+  build), because `{{bookingLink}}` is only filled once a page is published.
 - **Texts only after a yes.** A prospect is never texted on the strength of an
   email. `{{smsOptInLink}}` (a P.S. the wizard adds when texts were asked
   for, kept through email tailoring) is a per-contact HMAC link
@@ -862,11 +1032,20 @@ their own). The growth rate is the real one and may be negative.
 "Describe the outcome | AI builds the system", with one primary button
 everywhere — **Start free** (`StartFree` in SiteHome.tsx), "7 days free · No
 card required · Nothing sends until you approve it" beside it — and **Find my
-solution**, which opens `Site/SolutionWizard.tsx` (lazy, portalled to `<body>`
-because the site's transformed sections make `position: fixed` relative to
-themselves). `#find` or `#find=<solution>` opens it from a link; the use-case
-cards (`SolutionsSection.tsx`, "Build this") open it with a solution picked;
-`FaqSection.tsx` answers only what is true of the product.
+solution**. The wizard (`Site/SolutionWizard.tsx`) is **open on the page**:
+the "What do you want to grow?" section (`SolutionsSection.tsx`, `#solutions`,
+the wizard at `#find`) draws it `inline` at its first question, with the
+ready-made recipe cards under it. Every Find my solution button, and `#find` /
+`#find=<solution>`, scrolls there; a card's "Build this" restarts it with that
+solution picked (`FindRequest`: `n` remounts with the pick, `call` = somebody
+was sent here). Inline it has no scrim, scroll lock, Escape or autofocus, grows
+with its step, keeps its footer stuck to the window, and counts
+`wizard_started` on first touch or when sent to — never on page load. Its code
+loads lazily as the section nears the screen, behind a still copy of its first
+screen. The same component still renders as the modal (no `inline`, portalled
+to `<body>` because the site's transformed sections make `position: fixed`
+relative to themselves). `FaqSection.tsx` answers only what is true of the
+product.
 
 - **One judgement.** The wizard runs the app wizard's pure modules
   (`initialState`, `allQuestions`, `screensOf`, `buildBlueprint`), so the plan
@@ -1199,15 +1378,75 @@ planner's page. The blueprint shows `ResultPreview` — posts, the page, the
 first email's opening — drawn from what the wizard knows, no AI call, and
 labelled as a preview. T9 in `test:wizard` covers it.
 
+**Every question helps.** *Here's what I understood* (`Understanding.tsx`)
+has no solution dropdown: a correction box (`data-field="intake.correction"`)
+sends the customer's words to `refine` (which may now return a `summary`),
+and with no AI — or no change — the request is read again with the
+correction appended; the ready-made solutions are one fold away. Typed
+questions (audience, offer, kinds of business, places, topics, feel) show
+**suggestions** (`newProject/Suggest.tsx`): the trade's offline ideas at once
+(`services/answerIdeas.ts`, pure — a med spa is never offered "Amazon
+sellers"), replaced by the AI's for this business when `/api/intake.php`
+`suggest` answers (own allowance, 120/h); multi-select chips, free text, and
+**Let AI decide**, which says why. "Find new ones for me every day" is the
+lit, recommended contact source. Leaving the finder's last question stops on
+**`FirstLeads.tsx`**: a live directory search, websites read, addresses
+checked — the finder's own steps — with a box to correct who it looks for
+(`refine` limited to `prospectTrades`/`prospectPlaces`, else `parseAsk`).
+Nothing is saved there; the built finder starts with the same search.
+The logo found on a site is approved with **Use this logo** (on the business
+screen and the logo screen, preview 220×140). The colours screen adds a
+**background picture** for the page (projects with a page only): a stock
+photo for the trade (`stockPhotoFor`, Unsplash ids checked by eye), the
+customer's own (`photoFromFile`, ≤1600px JPEG), or none — laid under a tint
+in the first hero (`BrandContext.heroImage`, `withHeroImage`). The pages
+question is **"Do you want a website or a funnel?"**: a funnel is
+recommended (always when they already have a site), a website second, or
+`none`, which also drops the planner's `site` play. Ten newer themes; email
+layouts `photo` (the stock photo, `emailImage`), `video` (a YouTube link's
+thumbnail and play button) and `card`, drawn by `wrapEmail`.
+
+**Round two.** Choice questions with no fixed default get **Let AI decide**
+too (`isOpenChoice` in Suggest.tsx: the AI picks one of the question's own
+options through `suggest`, which now refuses anything else; offline, the option
+the request's words point to — filler words ignored — and never a contact list
+the workspace does not have). First leads carry what each business says it
+does (`about`, its page description or first real sentence, from
+`findContacts` — never model-written). The understood screen offers add-ons —
+daily social posts, AI Shorts, SEO blog — each adding its solution. The
+blueprint shows the page at full width (`BlueprintPreviews.tsx`: step tabs,
+scrollable, full screen) and every email whole with sample merge values. The
+plan's allowance is asked on the blueprint (a warning while a workflow can
+still be removed) and again before the build writes anything
+(`checkAllowance` for `autopilot_projects` and `workflows_per_project`).
+
+**Researched emails** (`emailStyle`, group "How each email is written",
+asked whenever a project sends email; default `researched`). The brief
+carries `emailStyle`; the planner's sequences (`withResearch`) and the
+wizard's follow-up workflow then open with `{{personalOpener}}` and
+`{{theirChallenge}}`, written at send time from the prospect's own website
+(`lib/prospectResearch.ts`: `readSite`, the operator's AI after `aiBudget`,
+`cleanResearch` strips links, merge fields and pretend relationships;
+`crm_email_research`, migration 0072, 30 days per address). Nothing specific
+found, no site, a webmail address or no AI → both empty, and `personalise`
+drops their lines, so the email reads as written. Social media is never read.
+Replies to an enquiry never carry it. `npm run test:emailstyle` (pure).
+
 The build (`newProject/buildRunner.ts`) performs real operations and the bar is
 their weighted share. Content-agent workflows (scheduled, only `ai` steps,
 nothing that sends) are switched on because the customer approved a blueprint
 saying they run; anything that emails or texts stays a draft.
 
-**Voice** is `components/Autopilot/voice/`: the browser recogniser for a live
-preview only (told the customer's real locale, restarted across pauses), and a
-16 kHz WAV of the whole take sent to `transcribe` for the text that goes in the
-box. The text is always put in the box for review — never submitted.
+**Voice** is `components/Autopilot/voice/`: a 16 kHz WAV of the whole take
+sent to `transcribe` for the text that goes in the box, and the browser
+recogniser (told the customer's real locale, restarted across pauses) kept
+only as the fallback text. **Its words are not shown while somebody speaks** —
+they trailed the voice by a second or more and read as a broken recording.
+Listening is shown by `VoiceBars.tsx` instead: bars drawn from the real level
+of the same stream (`meter`, a ref written by the hook's frame loop, never
+React state), a recording light and a clock; under reduced motion, one level
+meter with no transition. AI Prospecting's `MicButton` holds five of the bars.
+The text is always put in the box for review — never submitted.
 
 The launch plan is **sent** with `saveProject` rather than recomputed on the
 server, and becomes the checklist on the project's first card — so the board
@@ -1423,8 +1662,10 @@ Each picture is the **whole page** from where its recipe left it scrolled (up
 to 3,000 CSS px on a desktop, 2,160 on a phone; panes that scroll on their own
 are let out first; a screen with a dialog open is the window alone). **Wider
 than a phone, there is no zoom** (the owner's call): the slide showing takes
-the section's whole width (the strip as tall as the window allows, centred
-when the height caps its width), and each
+the strip's whole width — and every strip, not only the hero's, runs out to
+the hero's gutter, up to its 1760px cap (`--sec-pad` margins in site.css,
+never `100vw`); the height is 16:9 of that width or what the window allows,
+whichever is less, so a short window no longer narrows it — and each
 slide opens on the **whole page fitted in**, widens to the full width at the
 top, holds a beat, travels down to the bottom at a reading pace, and moves
 **straight on to the next slide** — nothing scrolls back up (the slide just

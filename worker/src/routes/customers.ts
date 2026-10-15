@@ -91,7 +91,7 @@ export const DEFAULT_NUDGES: Nudge[] = [
   {
     day: 3,
     subject: 'Stuck on anything?',
-    body: 'Hi {name},\n\nYou have {daysLeft} days left in your trial and no project yet, so I wanted to check nothing is in the way. The two things people usually get stuck on are connecting a mailbox and knowing what to ask Autopilot for.\n\nJust reply to this email with what you are trying to do, press the help button in the corner of any screen to share your screen with us, or book a call.',
+    body: 'Hi {name},\n\nYou have {daysLeft} days left in your trial and no project yet, so I wanted to check nothing is in the way. The two things people usually get stuck on are connecting a mailbox and knowing what to ask AI Autopilot for.\n\nJust reply to this email with what you are trying to do, press the help button in the corner of any screen to share your screen with us, or book a call.',
   },
   {
     day: 5,

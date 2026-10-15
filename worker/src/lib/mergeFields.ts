@@ -31,6 +31,9 @@ export interface Person {
   email?: string; phone?: string; company?: string; jobTitle?: string;
   /** Their own signed link to say yes to texts (lib/smsConsent.ts) — made by the sender only when the text asks for it. */
   smsOptInLink?: string;
+  /** The researched opening, written from their own website by the sender only when the email asks for it (lib/prospectResearch.ts). */
+  personalOpener?: string;
+  theirChallenge?: string;
 }
 
 export interface Business {
@@ -38,12 +41,14 @@ export interface Business {
   website: string;
   bookingLink: string;
   senderName: string;
+  /** What the business offers, from its profile — what a researched opening is written towards. */
+  offer?: string;
 }
 
 export const EMPTY_BUSINESS: Business = { myCompany: '', website: '', bookingLink: '', senderName: '' };
 
 /** The fields a customer may use, for the editor's buttons and the AI's rules. */
-export const MERGE_FIELDS = ['firstName', 'lastName', 'name', 'company', 'jobTitle', 'email', 'phone', 'myCompany', 'website', 'bookingLink', 'senderName', 'smsOptInLink'] as const;
+export const MERGE_FIELDS = ['firstName', 'lastName', 'name', 'company', 'jobTitle', 'email', 'phone', 'myCompany', 'website', 'bookingLink', 'senderName', 'smsOptInLink', 'personalOpener', 'theirChallenge'] as const;
 
 export function personalise(text: string, c: Person, biz: Business = EMPTY_BUSINESS): string {
   const full = (c.name ?? '').trim();
@@ -55,9 +60,11 @@ export function personalise(text: string, c: Person, biz: Business = EMPTY_BUSIN
     company: c.company ?? '', jobTitle: c.jobTitle ?? '',
     myCompany: biz.myCompany, website: biz.website, bookingLink: biz.bookingLink, senderName: biz.senderName,
     smsOptInLink: c.smsOptInLink ?? '',
+    personalOpener: c.personalOpener ?? '', theirChallenge: c.theirChallenge ?? '',
   };
   /* Fields a line is pointless without: "Say yes here: " with no link is dropped, not sent. */
-  const BUSINESS = new Set(['myCompany', 'website', 'bookingLink', 'senderName', 'smsOptInLink']);
+  /* The research lines too: nothing true found about them means no line, not a blank one. */
+  const BUSINESS = new Set(['myCompany', 'website', 'bookingLink', 'senderName', 'smsOptInLink', 'personalOpener', 'theirChallenge']);
   return text
     .split('\n')
     .filter(line => {
@@ -65,6 +72,8 @@ export function personalise(text: string, c: Person, biz: Business = EMPTY_BUSIN
       return !tokens.some(t => BUSINESS.has(t) && !map[t]);
     })
     .join('\n')
+    /* A dropped line leaves its blank neighbours behind; one paragraph break is enough. */
+    .replace(/\n{3,}/g, '\n\n')
     .replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k: string) => map[k] ?? '');
 }
 
@@ -94,7 +103,7 @@ export function textToHtml(body: string): string {
  * to one. Cached per call site by the caller: read once per tick, not per send.
  */
 export async function businessFor(env: Env, accountId: string, projectId?: string | null, senderName = ''): Promise<Business> {
-  let myCompany = ''; let website = '';
+  let myCompany = ''; let website = ''; let offer = '';
   try {
     const row = projectId
       ? await env.DB.prepare(
@@ -108,6 +117,7 @@ export async function businessFor(env: Env, accountId: string, projectId?: strin
       try { prof = JSON.parse(row.profile || '{}') as Record<string, string>; } catch { prof = {}; }
       myCompany = String(prof.companyName || row.name || '').trim();
       website = String(prof.website || '').trim();
+      offer = String(prof.offer || prof.services || '').trim().slice(0, 300);
     }
   } catch { /* no profile — the fields stay empty and their lines are dropped */ }
 
@@ -118,5 +128,5 @@ export async function businessFor(env: Env, accountId: string, projectId?: strin
     if (b?.slug && origin) bookingLink = `${origin}/book/${b.slug}`;
   } catch { /* no booking page */ }
 
-  return { myCompany, website, bookingLink, senderName };
+  return { myCompany, website, bookingLink, senderName, offer };
 }

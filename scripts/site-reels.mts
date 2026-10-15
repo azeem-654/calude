@@ -203,6 +203,11 @@ if (!signup.success) throw new Error(`could not sign up: ${JSON.stringify(signup
 const TOK: string = signup.token;
 const ACCT: string = signup.user.accountId;
 const as = (p: string, body: Record<string, unknown>) => post(p, { token: TOK, accountId: ACCT, ...body });
+/* A sample agency on the Agency plan, granted by hand: five clients' projects
+   are more than a trial's allowance (lib/allowances.ts), and the pictures
+   show a business that pays. */
+d1(`INSERT OR REPLACE INTO crm_plans (owner_email, plan_id, resell_limit, source, updated_at)
+    SELECT email, 'agency', -1, 'manual', '${new Date().toISOString()}' FROM crm_users WHERE account_id = '${ACCT}'`);
 
 /* ── The business, written where the app reads it ─────────────────────────── */
 

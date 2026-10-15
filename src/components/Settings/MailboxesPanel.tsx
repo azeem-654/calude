@@ -21,6 +21,7 @@
  * evidence is worse than none, because nobody can tell when it has guessed
  * wrong.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useEffect, useState } from 'react';
 import {
   Mail, Inbox, Plus, Trash2, Star, CheckCircle2, XCircle, Loader,
@@ -454,7 +455,7 @@ export default function MailboxesPanel() {
   };
 
   const remove = async (m: MailboxRecord) => {
-    if (!window.confirm(`Disconnect ${m.label || m.from.email || m.smtp.host}? Campaigns using it will stop sending.`)) return;
+    if (!await askConfirm({ title: `Disconnect ${m.label || m.from.email || m.smtp.host}?`, message: 'Campaigns using it will stop sending.', confirmLabel: 'Disconnect', danger: true })) return;
     const r = await deleteMailboxById(m.id);
     if (r.mailboxes) { setList(r.mailboxes); cacheMailboxes(r.mailboxes); }
   };

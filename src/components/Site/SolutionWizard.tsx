@@ -17,6 +17,22 @@
  * can carry on; nothing is sent anywhere until they press the button, apart
  * from their request to the understanding step — and the funnel counts, which
  * carry no words at all (services/funnel.ts).
+ *
+ * ── Two shells, one wizard ──
+ *
+ * The home page draws it `inline`, already open, in the "What do you want to
+ * grow?" section (SolutionsSection.tsx) — the owner wanted the wizard on the
+ * page rather than behind a button. Without `inline` it is the modal it used
+ * to be, portalled over the page. Everything between the shells is the same
+ * code; only these differ:
+ *
+ *   inline   no scrim, no close, no scroll lock, no Escape, no autofocus (the
+ *            page would jump to it on load); the card grows with its step
+ *            instead of scrolling inside itself, the footer sticks to the
+ *            bottom of the window, and a new step brings the card's top into
+ *            view. `wizard_started` is counted when somebody first touches it
+ *            or is sent to it (`call`), not because the page was opened.
+ *   modal    as before: counted on opening.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -71,7 +87,14 @@ const companyOf = (st: IntakeState): string => {
   return w && h ? h.split(/[-_]/).map(x => x.charAt(0).toUpperCase() + x.slice(1)).join(' ') : '';
 };
 
-export default function SolutionWizard({ onClose, initialPick = '' }: { onClose: () => void; initialPick?: string }) {
+export default function SolutionWizard({ onClose, initialPick = '', inline = false, call = 0 }: {
+  onClose?: () => void;
+  initialPick?: string;
+  /** Drawn in the page, already open, rather than over it. */
+  inline?: boolean;
+  /** Inline only: goes up each time somebody is sent to the wizard (a button, a `#find` link). */
+  call?: number;
+}) {
   /* ── Where we are ── */
   const [step, setStep] = useState<Step>('intent');
   const [prompt, setPrompt] = useState(() => (initialPick ? SITE_SHORTCUTS.find(s => s.key === initialPick)?.seed ?? '' : ''));
@@ -92,25 +115,61 @@ export default function SolutionWizard({ onClose, initialPick = '' }: { onClose:
   const [wfIdx, setWfIdx] = useState(0);
   const dialog = useRef<HTMLDivElement | null>(null);
 
+  /* Counted once per wizard: on opening the modal; inline, on the first touch
+     or the first time somebody is sent here. */
+  const begun = useRef(false);
+  const begin = () => {
+    if (begun.current) return;
+    begun.current = true;
+    track('wizard_started', { solution: initialPick || picked || undefined });
+  };
+
   useEffect(() => {
     setSiteIntake(true);
-    track('wizard_started', { solution: initialPick || undefined });
+    if (inline) return () => setSiteIntake(false);
+    begin();
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { setSiteIntake(false); document.body.style.overflow = prev; };
-  }, [initialPick]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per wizard; `begin` guards itself
+  }, [inline]);
+
+  /* Sent here from elsewhere on the page: counted, and the box ready to type
+     in — on a mouse. A finger that pressed "Build this" wants the button, not
+     a keyboard over half the screen. */
+  useEffect(() => {
+    if (!inline || !call) return;
+    begin();
+    if (step === 'intent' && window.matchMedia?.('(pointer: fine)').matches) {
+      dialog.current?.querySelector<HTMLTextAreaElement>('.sw-textarea')?.focus({ preventScroll: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reacts to being called only
+  }, [call, inline]);
 
   /* A resumable session is only worth offering if it got past the first box. */
   useEffect(() => { if (resume && (resume.step === 'intent' || !resume.plan)) setResume(null); }, [resume]);
 
   useEffect(() => {
+    if (inline || !onClose) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, inline]);
 
-  /* Each step starts at the top of the card, not wherever the last one was scrolled. */
-  useEffect(() => { dialog.current?.querySelector('.sw-body')?.scrollTo({ top: 0 }); }, [step, screenIdx]);
+  /* Each step starts at the top of the card, not wherever the last one was
+     scrolled. In the modal that is the card's own scroll; inline it is the
+     page's — and only when the card's top is out of sight (under the nav, or
+     well down the window), so answering near the top does not jolt. */
+  const firstStep = useRef(true);
+  useEffect(() => {
+    const el = dialog.current;
+    if (!inline) { el?.querySelector('.sw-body')?.scrollTo({ top: 0 }); return; }
+    if (firstStep.current) { firstStep.current = false; return; }
+    if (!el) return;
+    const top = el.getBoundingClientRect().top;
+    const under = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+    if (top < under || top > window.innerHeight * 0.5) el.scrollIntoView({ block: 'start' });
+  }, [step, screenIdx, inline]);
 
   const links: LinkRef[] = useMemo(() => (isUrl(normalUrl(website)) ? [{ url: normalUrl(website), role: 'website' }] : []), [website]);
 
@@ -254,16 +313,21 @@ export default function SolutionWizard({ onClose, initialPick = '' }: { onClose:
   const progress = step === 'intent' ? 0.08 : step === 'understand' ? 0.22
     : step === 'questions' ? 0.3 + 0.45 * ((screenIdx + 1) / Math.max(1, screens.length)) : step === 'business' ? 0.85 : 1;
 
-  /* Portalled to <body>: the site's sections carry transforms and filters,
-     and any of them makes `position: fixed` relative to itself — the card
-     then sat at the foot of the page instead of over it. */
-  return createPortal(
-    <div className="sw-scrim" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="sw-card" role="dialog" aria-modal="true" aria-label="Find my solution" ref={dialog} data-step={step}>
+  const card = (
+      <div
+        className={`sw-card ${inline ? 'sw-inline' : 'sw-modal'}`}
+        role={inline ? 'region' : 'dialog'}
+        aria-modal={inline ? undefined : true}
+        aria-label="Find my solution"
+        ref={dialog}
+        data-step={step}
+        onPointerDown={inline ? begin : undefined}
+        onFocus={inline ? begin : undefined}
+      >
         <header className="sw-head">
           <span className="sw-brand"><Sparkles size={15} /> Find my solution</span>
           <div className="sw-bar" aria-hidden="true"><i style={{ width: `${Math.round(progress * 100)}%` }} /></div>
-          <button type="button" className="sw-x" onClick={onClose} aria-label="Close"><X size={18} /></button>
+          {!inline && onClose && <button type="button" className="sw-x" onClick={onClose} aria-label="Close"><X size={18} /></button>}
         </header>
 
         <div className="sw-body">
@@ -282,7 +346,7 @@ export default function SolutionWizard({ onClose, initialPick = '' }: { onClose:
                 <h2 className="sw-title">What would you like your business to accomplish?</h2>
                 <p className="sw-sub">Say it the way you would to a person. Protected Central works out the rest and shows you the system it would build — before you sign up.</p>
                 <div className="sw-ask">
-                  <textarea className="sw-textarea" value={prompt} autoFocus rows={3} maxLength={1500}
+                  <textarea className="sw-textarea" value={prompt} autoFocus={!inline} rows={3} maxLength={1500}
                     placeholder={EXAMPLES[0]} aria-label="What would you like your business to accomplish?"
                     onChange={e => setPrompt(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) next(); }} />
@@ -390,7 +454,7 @@ export default function SolutionWizard({ onClose, initialPick = '' }: { onClose:
                 <div className="sw-sol-grid">
                   <section>
                     <h3><Bot size={15} /> AI agents</h3>
-                    <ul className="sw-list">{(bp.agents.length ? bp.agents : [{ name: 'Autopilot', role: 'Plans and runs the project', workflow: '' }]).slice(0, 5).map(a => <li key={`${a.name}-${a.workflow}`}><b>{a.name}</b> <span>{a.role}</span></li>)}</ul>
+                    <ul className="sw-list">{(bp.agents.length ? bp.agents : [{ name: 'AI Autopilot', role: 'Plans and runs the project', workflow: '' }]).slice(0, 5).map(a => <li key={`${a.name}-${a.workflow}`}><b>{a.name}</b> <span>{a.role}</span></li>)}</ul>
                   </section>
                   <section>
                     <h3><Sparkles size={15} /> What it produces</h3>
@@ -466,6 +530,15 @@ export default function SolutionWizard({ onClose, initialPick = '' }: { onClose:
           )}
         </footer>
       </div>
+  );
+
+  if (inline) return card;
+  /* Portalled to <body>: the site's sections carry transforms and filters,
+     and any of them makes `position: fixed` relative to itself — the card
+     then sat at the foot of the page instead of over it. */
+  return createPortal(
+    <div className="sw-scrim" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget) onClose?.(); }}>
+      {card}
     </div>,
     document.body,
   );

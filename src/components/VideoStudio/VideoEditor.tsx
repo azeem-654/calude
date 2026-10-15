@@ -14,6 +14,7 @@
  * screen polls while anything is processing and reports only what the
  * server's jobs say.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -375,8 +376,8 @@ export default function VideoEditor({ id }: { id: string }) {
             <Clapperboard size={14} /> Render {stale.length} change{stale.length === 1 ? '' : 's'}
           </button>
         )}
-        <button type="button" className="vs-btn ghost sm danger" aria-label="Delete project" onClick={() => {
-          if (window.confirm('Delete this project, its source video and everything made from it? This cannot be undone.')) void deleteVideoProject(id).then(() => navigate('/video-studio'));
+        <button type="button" className="vs-btn ghost sm danger" aria-label="Delete project" onClick={async () => {
+          if (await askConfirm({ title: 'Delete this project?', message: 'Its source video and everything made from it are deleted. This cannot be undone.', confirmLabel: 'Delete project', danger: true })) void deleteVideoProject(id).then(() => navigate('/video-studio'));
         }}><Trash2 size={14} /></button>
       </div>
 

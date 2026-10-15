@@ -26,6 +26,7 @@
  * implementations of wait, condition and send, and they would drift the first
  * time either was fixed.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import ProjectVideos from './ProjectVideos';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -304,7 +305,7 @@ export default function ProjectCard({
   }
 
   async function removeFlow(f: ProjectWorkflow) {
-    if (!window.confirm(`Delete "${f.name}"? Anybody part-way through it stops where they are.`)) return;
+    if (!await askConfirm({ title: `Delete “${f.name}”?`, message: 'Anybody part-way through it stops where they are.', confirmLabel: 'Delete workflow', danger: true })) return;
     setBusyId(f.id);
     await deleteWorkflow(f.id);
     setBusyId('');

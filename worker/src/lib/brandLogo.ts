@@ -33,7 +33,7 @@
  * already public.
  */
 import { installSecret, type Env } from './db';
-import { readCapped, urlProblem } from './readSite';
+import { readCapped, urlProblem, wireUrl } from './readSite';
 
 const IMAGE_CAP = 400_000;
 const TYPES = /^image\/(png|jpeg|jpg|gif|webp|svg\+xml|x-icon|vnd\.microsoft\.icon)$/i;
@@ -98,7 +98,7 @@ export interface FetchedLogo {
 }
 
 /** One image, fetched through the same fence as a page. */
-export async function fetchImage(raw: string): Promise<FetchedLogo> {
+export async function fetchImage(raw: string, cap = IMAGE_CAP): Promise<FetchedLogo> {
   const none = (error: string): FetchedLogo => ({ ok: false, dataUrl: '', url: raw, error });
   let url = raw;
   for (let hop = 0; hop <= 3; hop++) {
@@ -106,7 +106,7 @@ export async function fetchImage(raw: string): Promise<FetchedLogo> {
     if (problem) return none(problem);
     let res: Response;
     try {
-      res = await fetch(url, {
+      res = await fetch(wireUrl(url), {
         redirect: 'manual',
         headers: { 'User-Agent': 'ProtectedCentral-SiteReader/1.0 (+https://protectedcentral.com)', Accept: 'image/*' },
       });
@@ -123,10 +123,10 @@ export async function fetchImage(raw: string): Promise<FetchedLogo> {
     const type = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
     if (!TYPES.test(type)) return none(`That address is ${type || 'not an image'}.`);
     const declared = Number(res.headers.get('content-length') ?? 0);
-    if (declared > IMAGE_CAP) return none('That logo file is too large to use.');
-    const buf = await readCapped(res, IMAGE_CAP + 1);
+    if (declared > cap) return none('That image file is too large to use.');
+    const buf = await readCapped(res, cap + 1);
     if (!buf || !buf.length) return none('That image was empty.');
-    if (buf.length > IMAGE_CAP) return none('That logo file is too large to use.');
+    if (buf.length > cap) return none('That image file is too large to use.');
     if (type === 'image/svg+xml') {
       /* Refused rather than cleaned. It is only ever drawn through an <img>,
          where script does not run, but a file with script in it is not a logo

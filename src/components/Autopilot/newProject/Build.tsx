@@ -40,7 +40,7 @@ export default function Build({ steps, say, result, reach = [] }: {
         </span>
         <div style={{ minWidth: 0 }}>
           <h2 className="wz-title" style={{ fontSize: 'clamp(22px, 3.6vw, 30px)' }}>
-            {failed ? 'The build stopped' : done ? <>Your Autopilot is <span className="wz-accent">ready</span></> : <>Building <span className="wz-accent">your Autopilot</span></>}
+            {failed ? 'The build stopped' : done ? <>Your AI Autopilot is <span className="wz-accent">ready</span></> : <>Building <span className="wz-accent">your AI Autopilot</span></>}
           </h2>
           <p aria-live="polite" style={{ margin: '6px 0 0', fontSize: 14.5, color: '#4c39d1', fontWeight: 600, lineHeight: 1.5 }}>
             {failed ? result?.fatal : done ? 'Everything below is a real record, and it keeps running without this open.' : say}{!done && <> <span className="np-think" aria-hidden><i /><i /><i /></span></>}

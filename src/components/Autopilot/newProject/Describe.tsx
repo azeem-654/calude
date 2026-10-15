@@ -107,7 +107,7 @@ export default function Describe({ value, onChange, onError }: {
   return (
     <div style={{ display: 'grid', gap: 22 }}>
       <div>
-        <h2 className="wz-title">What would you like <span className="wz-accent">Autopilot</span> to do?</h2>
+        <h2 className="wz-title">What would you like <span className="wz-accent">AI Autopilot</span> to do?</h2>
         <p style={{ margin: '9px 0 0', fontSize: 15, color: '#6b7280', lineHeight: 1.55, maxWidth: '60ch' }}>
           Tell us the result you want. You don&rsquo;t need to know how to build it.
         </p>
@@ -122,7 +122,7 @@ export default function Describe({ value, onChange, onError }: {
       >
         <textarea
           ref={box}
-          aria-label="What would you like Autopilot to do?"
+          aria-label="What would you like AI Autopilot to do?"
           value={value.prompt}
           readOnly={listening}
           onChange={e => {
@@ -213,7 +213,7 @@ export default function Describe({ value, onChange, onError }: {
       <div style={{ display: 'grid', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#17191c' }}>Or start from a ready-made solution</h3>
-          <span style={{ fontSize: 12.5, color: '#6b7280' }}>Each one is a starting point — Autopilot still asks only what it needs.</span>
+          <span style={{ fontSize: 12.5, color: '#6b7280' }}>Each one is a starting point — AI Autopilot still asks only what it needs.</span>
         </div>
         <div className="np-cards">
           {SOLUTIONS.map(s => {

@@ -20,6 +20,36 @@ export interface BrandContext {
   heroTitle?: string;
   heroEyebrow?: string;
   heroCta?: string;
+  /**
+   * A photograph behind the first section — the client's own upload or a
+   * stock photo for their trade. Laid under a tint of the brand colour so
+   * the white headline stays readable whatever the picture.
+   */
+  heroImage?: string;
+}
+
+/** `#rrggbb` as `rgba(…, a)`; anything else falls back to near-black. */
+function tint(hex: string, a: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex ?? '').trim());
+  const n = m ? parseInt(m[1], 16) : 0x17191c;
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+/** The first hero of each page with the photograph behind it. */
+function withHeroImage(pages: FunnelStep[], ctx: BrandContext): FunnelStep[] {
+  if (!ctx.heroImage || !/^(https:\/\/|data:image\/)/.test(ctx.heroImage)) return pages;
+  const bg = `linear-gradient(135deg, ${tint(ctx.color, 0.82)} 0%, rgba(15, 17, 22, 0.62) 100%), url("${ctx.heroImage.replace(/"/g, '%22')}") center / cover no-repeat`;
+  return pages.map(p => {
+    let done = false;
+    return {
+      ...p,
+      blocks: p.blocks.map(b => {
+        if (done || b.type !== 'hero') return b;
+        done = true;
+        return { ...b, settings: { ...b.settings, bgGradient: bg, textColor: '#ffffff' } };
+      }),
+    };
+  });
 }
 
 let seq = 0;
@@ -1012,6 +1042,11 @@ export const TEMPLATE_CATEGORIES: TemplateCategory[] = [
 
 /** Build the real, populated pages for any catalog template. */
 export function buildTemplatePages(meta: TemplateMeta, ctx: BrandContext, opts: { brand?: boolean } = {}): FunnelStep[] {
+  const pages = buildTemplatePagesBare(meta, ctx, opts);
+  return opts.brand ? withHeroImage(pages, ctx) : pages;
+}
+
+function buildTemplatePagesBare(meta: TemplateMeta, ctx: BrandContext, opts: { brand?: boolean } = {}): FunnelStep[] {
   const copy = HERO_COPY[meta.id];
   const long = LONG_TEMPLATES.find(t => t.id === meta.id);
   /* In the gallery a template shows off in its own accent and showcase

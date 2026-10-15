@@ -36,6 +36,10 @@ const FAQ: { q: string; a: string }[] = [
     a: 'Yes. Each client gets their own workspace under your name and logo, and you set your own price. How many clients depends on your plan.',
   },
   {
+    q: 'What happens when I reach a plan’s allowance?',
+    a: 'That one thing waits — a new project, the month’s next Short or post — and the app says which allowance it is, how much is used and which plan raises it. Everything you made stays, nothing is charged extra, and monthly allowances start again on the 1st. Plan & billing shows what is left.',
+  },
+  {
     q: 'Is my business data safe?',
     a: 'Each workspace is separated from every other and every request is checked on the server. Passwords are hashed, the credentials you connect are encrypted and never shown back to a browser, and you can export or delete your data. The Security & Privacy page lists exactly what goes where.',
   },

@@ -32,8 +32,10 @@
  * gets paid for everybody.
  */
 import { addr, body, fail, json } from '../lib/http';
+import { LEGACY_CENTS, SOLD_PLANS, limitsFor, planByAmount, soldAt } from '../lib/allowances';
+import { loadOverrides } from '../lib/allowanceStore';
 import {
-  PLAN_RESELL, agencyBucketFor, canAccess, dataGet, dataPut, installSecret, nowIso, userFromToken, type Env, type SessionUser,
+  agencyBucketFor, canAccess, dataGet, dataPut, installSecret, nowIso, userFromToken, type Env, type SessionUser,
 } from '../lib/db';
 import { decryptSecret, encryptSecret } from '../lib/crypto';
 import { DEFAULT_PROVIDER, providerChoices, providerFor, type ProviderContext } from '../lib/payments';
@@ -61,6 +63,8 @@ interface Req {
   cancelUrl?: string;
   /** Which published plan. The price comes from the plan, never the request. */
   planId?: string;
+  /** 'month' (the default) or 'year'. */
+  interval?: string;
 }
 
 /** The install owner, and nobody else. */
@@ -75,15 +79,17 @@ const isOwner = (user: SessionUser) => user.accountId === null && user.role === 
  * strongest possible reason to lie about. A plan id is a choice; a price is
  * not, and the two must not travel together.
  *
- * Mirrors `PLANS` in `src/services/tenancy.ts`, which is what the screens
- * render. If the two ever disagree, this one wins and the customer is charged
- * what it says — so a stale client cannot overcharge either.
+ * Read from `PLAN_DEFS` in lib/allowances.ts — the same table the site's
+ * price cards, Plan & billing and the allowances are drawn from, so a card
+ * cannot show one price while checkout charges another. Prices are not the
+ * owner's to edit on a screen (allowances are): they are what customers are
+ * charged, and changing one is a release.
  */
-const PLAN_CENTS: Record<string, { name: string; cents: number }> = {
-  starter: { name: 'Studio', cents: 4900 },
-  pro: { name: 'Agency', cents: 9700 },
-  agency: { name: 'Network', cents: 14900 },
-};
+const PLAN_CENTS: Record<string, { name: string; cents: number; annualCents: number }> = Object.fromEntries(
+  /* The three priced plans only: Custom is agreed by hand and has no price,
+     and a legacy plan is renewed, never bought again. */
+  SOLD_PLANS().map(p => [p.id, { name: p.name, cents: p.monthlyCents, annualCents: p.annualCents }]),
+);
 
 async function loadRow(env: Env): Promise<Row | null> {
   return env.DB.prepare('SELECT provider, credentials, provider_ref, status, last_error FROM crm_install_providers WHERE kind = ?')
@@ -278,7 +284,10 @@ export async function handleBilling(req: Request, env: Env): Promise<Response> {
     if (!plan) {
       return fail('Choose one of the published plans. Prices are set by this app, not by the browser.');
     }
-    const amountCents = plan.cents;
+    /* Monthly unless yearly is asked for by name; the yearly price is the
+       plan's own, never a figure from the request. */
+    const interval = d.interval === 'year' ? 'year' as const : 'month' as const;
+    const amountCents = interval === 'year' ? plan.annualCents : plan.cents;
     const currency = (String(d.currency ?? 'USD') || 'USD').toUpperCase();
     if (provider.currencies.length && !provider.currencies.includes(currency)) {
       return fail(`${provider.label} cannot bill in ${currency} — it accepts ${provider.currencies.join(' and ')}.`);
@@ -300,6 +309,7 @@ export async function handleBilling(req: Request, env: Env): Promise<Response> {
          receipt. The figure beside it may not. */
       planName: String(d.planName ?? plan.name).slice(0, 200),
       amountCents,
+      interval,
       currency,
       email: addr(d.customerEmail) ?? '',
       successUrl: safe(d.successUrl, '/billing?checkout=success'),
@@ -317,7 +327,7 @@ export async function handleBilling(req: Request, env: Env): Promise<Response> {
        event names the workspace and the amount, and a discounted amount no
        longer names a plan (planFromEvent). */
     await dataPut(env.DB, await agencyBucketFor(env.DB, accountId), `crm_billing_intent_${accountId}`,
-      JSON.stringify({ planId, at: nowIso() })).catch(() => undefined);
+      JSON.stringify({ planId, interval, at: nowIso() })).catch(() => undefined);
     return json({ success: true, url: r.url, id: r.sessionId });
   }
 
@@ -329,13 +339,27 @@ async function readJson(env: Env, bucket: string, key: string): Promise<Record<s
 }
 
 /**
- * The plan a payment bought: by its amount when that is exactly one plan's
- * price, otherwise the plan the workspace last went to checkout for (a coupon
- * changes the amount, not the plan).
+ * The plan a payment bought, in this order:
+ *
+ *  1. the plan the subscriber is already on, when the amount is a price that
+ *     plan has ever had — a renewal. This is what keeps somebody who bought
+ *     "Agency" at $97 (plan `pro`, before the 2026-10 packages) on `pro`, now
+ *     that $97 is also Growth's price.
+ *  2. the plan whose current monthly or yearly price is exactly the amount;
+ *  3. a price only an old plan had (LEGACY_CENTS);
+ *  4. the plan the workspace last went to checkout for — a coupon changes the
+ *     amount, not the plan. Last, because an abandoned checkout for a larger
+ *     plan must not upgrade a renewal of a smaller one.
  */
-async function planFromEvent(env: Env, bucket: string, accountId: string, amountCents: number | undefined): Promise<string> {
-  const byAmount = Object.entries(PLAN_CENTS).find(([, p]) => p.cents === amountCents)?.[0];
-  if (byAmount) return byAmount;
+async function planFromEvent(env: Env, bucket: string, accountId: string, amountCents: number | undefined, ownerEmail = ''): Promise<string> {
+  if (ownerEmail && amountCents) {
+    const cur = await env.DB.prepare('SELECT plan_id FROM crm_plans WHERE owner_email = ?').bind(ownerEmail).first<{ plan_id: string }>().catch(() => null);
+    if (cur && soldAt(cur.plan_id, amountCents)) return cur.plan_id;
+  }
+  const byAmount = planByAmount(amountCents);
+  if (byAmount) return byAmount.id;
+  const legacy = Object.entries(LEGACY_CENTS).find(([, list]) => amountCents && list?.includes(amountCents))?.[0];
+  if (legacy) return legacy;
   const intent = await readJson(env, bucket, `crm_billing_intent_${accountId}`);
   return PLAN_CENTS[String(intent.planId ?? '')] ? String(intent.planId) : '';
 }
@@ -363,14 +387,18 @@ async function applyPlan(
     return;
   }
   if (status !== 'active') return;
-  const planId = await planFromEvent(env, bucket, accountId, event.amountCents);
+  const planId = await planFromEvent(env, bucket, accountId, event.amountCents, owner.owner_email);
   if (!planId) return;
+  /* The sub-accounts it allows, with the owner's change to the plan if any
+     (Plans & allowances). Stored on the row, so a later change to the plan
+     does not move a boundary somebody is already living inside. */
+  const sub = limitsFor('plan', planId, await loadOverrides(env)).sub_accounts;
   await env.DB.prepare(
     `INSERT INTO crm_plans (owner_email, plan_id, resell_limit, source, updated_at) VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(owner_email) DO UPDATE SET plan_id = excluded.plan_id, resell_limit = excluded.resell_limit,
        source = excluded.source, updated_at = excluded.updated_at
      WHERE crm_plans.source <> 'manual'`,
-  ).bind(owner.owner_email, planId, PLAN_RESELL[planId] ?? PLAN_RESELL.starter, processor, nowIso()).run();
+  ).bind(owner.owner_email, planId, sub, processor, nowIso()).run();
   const st = await readJson(env, bucket, `crm_billing_status_${accountId}`);
   await dataPut(env.DB, bucket, `crm_billing_status_${accountId}`, JSON.stringify({ ...st, planId }));
 }

@@ -152,3 +152,21 @@ export async function transcribe(audioBase64: string, mime: string, language: st
   const clarity = (['clear', 'partly', 'unclear'].includes(String(r.clarity)) ? r.clarity : 'partly') as 'clear' | 'partly' | 'unclear';
   return { ok: true, noAi: false, text: String(r.text ?? ''), clarity, error: '' };
 }
+
+/**
+ * Likely answers to a screen's typed questions, for this business
+ * (routes/intake.ts `suggest`). Keyed by question id; a question the AI said
+ * nothing useful about is simply absent, and the wizard keeps its own ideas
+ * (services/answerIdeas.ts) for it.
+ */
+export interface Suggestion { options: string[]; pick: string[]; why: string; placeholder: string }
+export async function suggestAnswers(p: {
+  prompt: string;
+  business: { companyName?: string; description?: string; website?: string };
+  questions: { id: string; prompt: string; help?: string; many?: boolean; options?: string[] }[];
+  answers: Record<string, unknown>;
+}): Promise<{ ok: boolean; noAi: boolean; suggestions: Record<string, Suggestion>; error: string }> {
+  const r = await call('suggest', p);
+  if (!r.success) return { ok: false, noAi: r.code === 'no_ai', suggestions: {}, error: r.error ?? 'No suggestions.' };
+  return { ok: true, noAi: false, suggestions: (r.suggestions as Record<string, Suggestion>) ?? {}, error: '' };
+}

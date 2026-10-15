@@ -19,9 +19,14 @@ import { readAttachment } from './attachments';
 import { MANUAL_FIELDS, PROFILE_FIELDS, profileSource, type ProfileCheck } from './questionRules';
 import { listChoices } from './contactFacts';
 import { PlacesField, TradesField, tradesOf } from './ProspectFields';
-import { LayoutField, ThemeField, ColourField, LogoField, type LogoFieldState } from './DesignFields';
+import { LayoutField, ThemeField, ColourField, LogoField, BackgroundField, type LogoFieldState, type BackgroundState } from './DesignFields';
 import { aiChoice } from '../../../services/projectIntake';
 import { DEFAULT_THEME, KIND_OF, resolveTheme } from '../../../services/designOptions';
+import { SuggestChips, useIdeas, isOpenChoice, type IdeaInputs } from './Suggest';
+import type { Ideas } from '../../../services/answerIdeas';
+
+/** The ideas for one screen, as Field reads them. */
+interface ScreenIdeas { ideas: Record<string, Ideas>; busy: boolean; byAi: boolean }
 
 /** What the design questions need beyond the answers: the logo and how to get one. */
 export interface DesignHooks {
@@ -29,9 +34,17 @@ export interface DesignHooks {
   onFind: (url: string) => void;
   onFile: (f: File) => void;
   /** The client's name and words, for the template previews (colour comes from the theme). */
-  brand: { name: string; tagline: string; heroTitle: string };
+  brand: { name: string; tagline: string; heroTitle: string; heroImage?: string };
   /** Which templates to show first. */
   prefer: 'website' | 'funnel';
+  /** Whether the business already has a website — then a second one is not recommended. */
+  hasSite: boolean;
+  /** The picture behind the first section of a page. */
+  background: BackgroundState;
+  onBackground: (mode: 'stock' | 'upload' | 'none') => void;
+  onBackgroundFile: (f: File) => void;
+  /** Whether the project builds a website or funnel — the background is only for one. */
+  hasPage: boolean;
 }
 
 export default function Questions({ screen, state, ws, files, answer, onFiles, onLink, index, total, profile, onProfile, onReadProfile, design, company }: {
@@ -61,6 +74,20 @@ export default function Questions({ screen, state, ws, files, answer, onFiles, o
    * made on this screen.
    */
   const open = screen.questions.filter(q => !state.known[q.id] && aiChoice(q) !== null && aiChoice(q) !== 'detect');
+  /* What the suggestions are for: the request, the business as read, and the
+     answers so far — so "who it is for" is offered patients of a med spa, not
+     Amazon sellers. */
+  const said = (id: string) => { const v = state.known[id]?.value; return Array.isArray(v) ? v.join('; ') : String(v ?? ''); };
+  const inputs: IdeaInputs = {
+    prompt: state.prompt,
+    business: {
+      companyName: company || String(profile.draft?.companyName ?? ''),
+      description: String(profile.draft?.description ?? '') || said('bizWhat') || ws.workspace?.description || '',
+      website: said('website') || String(profile.draft?.website ?? ''),
+    },
+    answers: Object.fromEntries(Object.keys(state.known).map(id => [id, said(id)])),
+  };
+  const ideas = useIdeas(screen.questions, inputs);
   return (
     <div style={{ display: 'grid', gap: 24 }}>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap' }}>
@@ -77,10 +104,33 @@ export default function Questions({ screen, state, ws, files, answer, onFiles, o
         )}
       </div>
       {screen.questions.map(q => (
-        <Field key={q.id} q={q} state={state} ws={ws} files={files} answer={answer} onFiles={onFiles} onLink={onLink} design={design} company={company} />
+        <Field key={q.id} q={q} state={state} ws={ws} files={files} answer={answer} onFiles={onFiles} onLink={onLink} design={design} company={company} ideas={ideas} />
       ))}
       {screen.questions.some(q => q.id === 'business') && (
         <ProfileFound state={state} files={files} profile={profile} onProfile={onProfile} onRead={onReadProfile} />
+      )}
+      {/* The logo the website gave, the moment it is found — approved here
+          rather than only on the logo screen several screens later. */}
+      {screen.questions.some(q => q.id === 'business') && design.logo.logo.dataUrl && design.logo.logo.from && (
+        <div className="np-q">
+          <div className="np-q-head">
+            <span style={{ fontSize: 17, fontWeight: 750, color: '#17191c' }}>Your logo</span>
+            <span className="np-need" data-need="optional">FOUND ON {design.logo.logo.from.toUpperCase()}</span>
+          </div>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="np-logo-well" data-big="1"><img src={design.logo.logo.dataUrl} alt="Logo found on the website" /></span>
+            <span style={{ display: 'grid', gap: 8, flex: '1 1 200px' }}>
+              <span style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.5 }}>Is this your logo? It goes on the posts, pages and emails this project makes.</span>
+              <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" className="np-use-logo" aria-pressed={state.known.logo?.source === 'you' && state.known.logo.value === 'site'}
+                  onClick={() => answer('logo', 'site', 'you')}>
+                  <Check size={15} /> {state.known.logo?.source === 'you' && state.known.logo.value === 'site' ? 'Using this logo' : 'Yes, use this logo'}
+                </button>
+                <button type="button" className="np-skip" onClick={() => answer('logo', null)}>Not this one — I’ll choose later</button>
+              </span>
+            </span>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -167,9 +217,9 @@ function ProfileFound({ state, files, profile, onProfile, onRead }: {
   );
 }
 
-function Field({ q, state, ws, files, answer, onFiles, onLink, design, company }: {
+function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, ideas }: {
   q: Question; state: IntakeState; ws: WorkspaceFacts; files: Attachment[];
-  design: DesignHooks; company?: string;
+  design: DesignHooks; company?: string; ideas: ScreenIdeas;
   answer: (id: string, value: string | string[] | null, source?: KnownSource) => void;
   onFiles: (atts: Attachment[]) => void;
   onLink: (url: string) => void;
@@ -199,9 +249,16 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company }
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Sparkles size={13} /> Let AI work it out</span>
     </button>
   ) : null;
+  const idea = ideas.ideas[q.id];
+  /* Suggested answers for a typed question; picking one is the customer's
+     answer, "Let AI decide" is the AI's — said as "chosen for you". */
+  const chips = (idea || (ideas.busy && q.type === 'text')) && !isOpenChoice(q) ? (
+    <SuggestChips id={q.id} value={Array.isArray(val) ? val.join('; ') : String(val ?? '')} ideas={idea} busy={ideas.busy} fromAi={ideas.byAi}
+      onChange={(v, decided) => answer(q.id, v.trim() ? v : null, decided ? 'default' : 'you')} />
+  ) : null;
   const skipped = known?.note === 'skipped';
   const skip = q.need !== 'optional' ? null : skipped ? (
-    <span style={{ fontSize: 12.5, color: '#6b7280' }}>Skipped{aiValue !== undefined ? ' — Autopilot will choose' : ''}.</span>
+    <span style={{ fontSize: 12.5, color: '#6b7280' }}>Skipped{aiValue !== undefined ? ' — AI Autopilot will choose' : ''}.</span>
   ) : !vals.length ? (
     <button type="button" className="np-skip" onClick={() => answer(q.id, q.type === 'multi' ? [] : '', 'you')}>Skip for now</button>
   ) : null;
@@ -211,7 +268,7 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company }
     const opts: { value: string; label: string; hint: string; icon: typeof Globe }[] = [
       ...ws.portfolios.map(p => ({ value: `existing:${p.id}`, label: p.name, hint: 'Already in Protected Central', icon: Building2 })),
       ...(ws.workspace?.companyName ? [{ value: 'workspace', label: `My ${ws.workspace.companyName} profile`, hint: 'From your account setup', icon: UserCircle2 }] : []),
-      { value: 'website', label: 'Read my website', hint: 'Autopilot reads it now', icon: Globe },
+      { value: 'website', label: 'Read my website', hint: 'AI Autopilot reads it now', icon: Globe },
       { value: 'upload', label: 'Upload a company profile', hint: 'A PDF, brochure or document', icon: Upload },
       { value: 'manual', label: 'Type it in', hint: 'Three short lines', icon: PenLine },
     ];
@@ -283,19 +340,26 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company }
     return (
       <div className="np-q">
         {head}{help}
-        <TemplatePicker value={vals[0] ?? ''} prefer={design.prefer}
-          brand={{ name: design.brand.name || 'Your business', color: palette.accent, tagline: design.brand.tagline, heroTitle: design.brand.heroTitle }}
+        <TemplatePicker value={vals[0] ?? ''} prefer={design.prefer} hasSite={design.hasSite} website={said('website')}
+          brand={{ name: design.brand.name || 'Your business', color: palette.accent, tagline: design.brand.tagline, heroTitle: design.brand.heroTitle, heroImage: design.brand.heroImage }}
           onPick={v => answer(q.id, v, v === 'ai' ? 'default' : 'you')} />
       </div>
     );
   }
   if (q.type === 'theme') {
     return (
+      <>
       <div className="np-q">
         {head}{help}
         <ThemeField value={vals[0] ?? ''} byAi={byAi} brandColor={said('brandColor')} words={said('designStyle')}
           onPick={v => answer(q.id, v, 'you')} onAi={() => answer(q.id, byAi ? null : aiValue ?? null, 'default')} />
       </div>
+      {/* Its own block: the picture is a separate choice from the colours, already made (a photo for the trade) until changed. */}
+      {design.hasPage && <div className="np-q">
+        <BackgroundField st={design.background} palette={palette} name={design.brand.name} headline={design.brand.heroTitle}
+          onMode={design.onBackground} onFile={design.onBackgroundFile} />
+      </div>}
+      </>
     );
   }
   if (q.type === 'logo') {
@@ -303,6 +367,8 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company }
       <div className="np-q">
         {head}{help}
         <LogoField value={vals[0] ?? ''} byAi={byAi} st={design.logo}
+          chosen={known?.source === 'you' && (vals[0] === 'site' || vals[0] === 'upload' || vals[0] === 'on')}
+          onUse={() => answer(q.id, design.logo.logo.from ? 'site' : 'upload', 'you')}
           onFind={url => { answer(q.id, 'site', 'you'); design.onFind(url); }}
           onFile={f => { answer(q.id, 'upload', 'you'); design.onFile(f); }}
           onNone={() => answer(q.id, 'none', 'you')}
@@ -367,8 +433,9 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company }
     return (
       <div className="np-q">
         {head}{help}
-        <TradesField value={vals[0] ?? ''} onChange={v => answer(q.id, v || null, 'you')}
+        <TradesField value={vals[0] ?? ''} onChange={v => answer(q.id, v || null, 'you')} placeholder={idea?.placeholder.replace(/^e\.g\.\s*/, 'Add a kind of business — e.g. ')}
           onPlace={p => { if (!String(state.known.prospectPlaces?.value ?? '').trim()) answer('prospectPlaces', p, 'you'); }} />
+        {chips}
       </div>
     );
   }
@@ -377,7 +444,8 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company }
     return (
       <div className="np-q">
         {head}{help}
-        <PlacesField value={vals[0] ?? ''} trades={trades} onChange={v => answer(q.id, v || null, 'you')} />
+        <PlacesField value={vals[0] ?? ''} trades={trades} sample={false} onChange={v => answer(q.id, v || null, 'you')} />
+        {chips}
       </div>
     );
   }
@@ -406,18 +474,38 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company }
         <div className="np-opts">
           {(q.options ?? []).map(o => {
             const on = vals.includes(o.value);
+            /* The daily finder is the one answer that makes the project find
+               its own customers; it is drawn as the lead option. */
+            const hero = q.id === 'contactSource' && o.value === 'find';
+            const suggested = !hero && !on && (Array.isArray(aiValue) ? aiValue.includes(o.value) : aiValue === o.value);
             return (
-              <button key={o.value} type="button" className="np-opt" aria-pressed={on} onClick={() => toggle(o.value)}>
+              <button key={o.value} type="button" className={hero ? 'np-opt np-opt-hero' : 'np-opt'} aria-pressed={on} onClick={() => toggle(o.value)}>
+                {hero && <span className="np-hero-badge"><Sparkles size={11} /> Total automation · Recommended</span>}
                 <span>{o.label}{byAi && on ? ' ✦' : ''}</span>
                 {o.hint && <small>{o.hint}</small>}
+                {suggested && <small className="np-suggested">✦ Suggested</small>}
               </button>
             );
           })}
-          {aiButton}
+          {aiButton ?? (idea && (
+            /* No fixed default for this one: the AI (or the request's own words) picks, and says why. */
+            <button type="button" className="np-opt" data-ai="1" aria-pressed={byAi}
+              onClick={() => {
+                if (byAi) { answer(q.id, null); return; }
+                let values = idea.pick.map(l => (q.options ?? []).find(o => o.label === l)?.value).filter((v): v is string => !!v);
+                /* Never a dead end: "a contact list I have" with no lists in the workspace becomes "already in Protected Central". */
+                if (q.id === 'contactSource' && values[0] === 'list' && !listChoices().lists.length) values = ['crm'];
+                if (values.length) answer(q.id, q.type === 'multi' ? values : values[0], 'default');
+              }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Sparkles size={13} /> Let AI decide</span>
+            </button>
+          ))}
         </div>
+        {byAi && idea && !aiButton && idea.why && <span className="np-suggest-why"><b>Why:</b> {idea.why}</span>}
         {byAi && <span style={{ fontSize: 12, color: '#5b46e5' }}>✦ chosen for you — press any option to change it</span>}
+        {q.id === 'emailStyle' && <EmailStyleExample style={String(vals[0] ?? aiValue ?? 'researched')} company={company} offer={said('offer')} />}
         {/* Our booking page, shown and set up the moment it is picked — not on another screen later. */}
-        {q.id === 'booking' && vals[0] === 'page' && <BookingSetup business={company} />}
+        {((q.id === 'booking' && vals[0] === 'page') || (q.id === 'calendar' && vals[0] === 'pc')) && <BookingSetup business={company} website={design.logo.website} />}
         {skip}
       </div>
     );
@@ -427,11 +515,12 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company }
   return (
     <div className="np-q">
       {head}{help}
-      <input className="np-input" inputMode={q.type === 'number' ? 'numeric' : undefined}
-        value={byAi ? '' : String(val ?? '')} placeholder={q.placeholder}
+      <input className="np-input" inputMode={q.type === 'number' ? 'numeric' : undefined} data-field={`project.${q.id}`}
+        value={byAi && !chips ? '' : String(val ?? '')} placeholder={idea?.placeholder || q.placeholder}
         onChange={e => answer(q.id, e.target.value, 'you')} aria-label={q.prompt} />
+      {chips}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        {aiButton && <div className="np-opts">{aiButton}</div>}
+        {aiButton && !chips && <div className="np-opts">{aiButton}</div>}
         {skip}
       </div>
     </div>
@@ -473,7 +562,7 @@ function ListPicker({ value, onPick }: { value: string; onPick: (id: string) => 
       </div>
       {picked?.cold && (
         <span style={{ fontSize: 12.5, color: '#92400e', lineHeight: 1.55 }}>
-          Nobody on “{picked.name}” asked to hear from you, so Autopilot treats them as cold: it starts them a
+          Nobody on “{picked.name}” asked to hear from you, so AI Autopilot treats them as cold: it starts them a
           few at a time, and every batch waits for you to approve it — whatever the project&rsquo;s other settings say.
         </span>
       )}
@@ -485,7 +574,44 @@ function ListPicker({ value, onPick }: { value: string; onPick: (id: string) => 
       )}
       {smart > 0 && (
         <span style={{ fontSize: 12, color: '#6b7280' }}>
-          {smart} smart list{smart === 1 ? ' is' : 's are'} not shown — {smart === 1 ? 'it is' : 'they are'} worked out in your browser, and Autopilot runs on the server.
+          {smart} smart list{smart === 1 ? ' is' : 's are'} not shown — {smart === 1 ? 'it is' : 'they are'} worked out in your browser, and AI Autopilot runs on the server.
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What an email in the chosen style looks like. The researched one is an
+ * illustration (a made-up dental practice) and is labelled so: the real
+ * opening is written for each business from its own website when the email
+ * is sent, and left out when the site says nothing specific.
+ */
+function EmailStyleExample({ style, company, offer }: { style: string; company?: string; offer: string }) {
+  const me = company || 'Your business';
+  const what = offer ? offer.charAt(0).toLowerCase() + offer.slice(1) : 'a free 20-minute review';
+  const parts = style === 'researched'
+    ? [
+      { tag: 'Their business', text: 'I saw on your site that Brightsmile opened a second practice in Hove this spring and now offers Invisalign — congratulations on the growth.' },
+      { tag: 'Their challenge', text: 'Practices that add a location often find the new chairs fill slower than the first ones did, especially for higher-value treatments.' },
+      { tag: 'Your offer', text: `That is exactly what ${me} helps with. Would ${what} be useful? You can pick a time here: {{bookingLink}}` },
+    ]
+    : style === 'value'
+      ? [
+        { tag: 'A useful tip', text: 'One thing that works for practices like yours: a short reminder two days before, with a one-tap reschedule link, cuts no-shows noticeably.' },
+        { tag: 'Your offer', text: `${me} sets this up for you. Would ${what} be useful? {{bookingLink}}` },
+      ]
+      : [{ tag: 'Same for everyone', text: `I’m writing from ${me}. We help businesses like {{company}} get more bookings. Would ${what} be useful? {{bookingLink}}` }];
+  return (
+    <div className="np-email-ex" aria-label="Example email">
+      <span className="np-email-ex-head">EXAMPLE{style === 'researched' ? ' — each one is written from that business’s own website when it is sent' : ''}</span>
+      <p style={{ margin: 0 }}>Hi Sarah,</p>
+      {parts.map(p => (
+        <p key={p.tag} style={{ margin: 0 }}><mark>{p.tag}</mark> {p.text}</p>
+      ))}
+      {style === 'researched' && (
+        <span style={{ fontSize: 11.5, color: '#6b7280', lineHeight: 1.5 }}>
+          Read from their website only — never social media, never guessed. When a site says nothing specific, those two lines are left out and the email reads as written.
         </span>
       )}
     </div>

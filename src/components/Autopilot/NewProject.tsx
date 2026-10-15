@@ -50,18 +50,22 @@ import DigitalSetupStep from '../Setup/DigitalSetupStep';
 import AutopilotBot from './AutopilotBot';
 import { readPortfolioFromUrl, readLogoFromUrl, type Portfolio } from '../../services/projects';
 import type { LogoChoice } from '../../services/designOptions';
-import { shrinkLogo, logoFromFile } from './newProject/logoImage';
+import { shrinkLogo, logoFromFile, photoFromFile } from './newProject/logoImage';
+import { stockPhotoFor } from '../../services/answerIdeas';
 import { checkReadiness, type Readiness } from '../../services/projectReadiness';
 import { understand, refine } from '../../services/intake';
 import { QUESTIONS, TEMPLATE_COUNT, solutionByKey, CUSTOM, type Question } from '../../services/projectSolutions';
 import {
   allQuestions, answersOf, applies, applyOps, buildBlueprint, extractKnown, initialState,
-  parseEdit, screensOf, urlsIn, validValue, withDefaults, describeAnswer, DESIGN_QUESTION_IDS, designQuestions,
+  parseEdit, screensOf, urlsIn, validValue, withDefaults, describeAnswer, DESIGN_QUESTION_IDS, designQuestions, designKindsOf,
   type Blueprint, type IntakeState, type KnownSource, type WorkspaceFacts, type Attachment,
 } from '../../services/projectIntake';
 import Describe, { type DescribeValue } from './newProject/Describe';
 import Understanding, { type Stage } from './newProject/Understanding';
 import Questions from './newProject/Questions';
+import FirstLeads from './newProject/FirstLeads';
+import { parseAsk } from '../../services/aiProspecting';
+import { tradesOf, placesOf } from './newProject/ProspectFields';
 import { screenBlocker, profileGap, profileSource, type ProfileCheck } from './newProject/questionRules';
 import BlueprintView, { EditPanel, type EditMessage } from './newProject/BlueprintView';
 import Requirements from './newProject/Requirements';
@@ -73,6 +77,7 @@ import { runBuild, planSteps, type BuildResult, type BuildStep } from './newProj
 import { listChoices } from './newProject/contactFacts';
 import { arrivalDefaults, clearPendingPlan, seedState, stillNeeded, type SitePlan } from '../../services/sitePlan';
 import { trackKnown } from '../../services/funnel';
+import { checkAllowance } from '../../services/allowances';
 import './newProject/newProject.css';
 
 type Phase = 'describe' | 'understand' | 'questions' | 'blueprint' | 'requirements' | 'review' | 'build' | 'domains';
@@ -163,6 +168,20 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
   const [logoError, setLogoError] = useState('');
   const logoLookedAt = useRef('');
 
+  /* ── The picture behind the first section of a page ──
+   *
+   * 'stock' (a photograph for the trade, the default), 'upload' (their own)
+   * or 'none'. Kept beside the answers like the logo: the picture is data,
+   * the answers are words the AI reads. */
+  const [background, setBackground] = useState<{ mode: 'stock' | 'upload' | 'none'; dataUrl: string; error: string }>({ mode: 'stock', dataUrl: '', error: '' });
+  const stockPhoto = useMemo(() => stockPhotoFor(`${describe.prompt} ${String(profile.draft?.description ?? '')}`), [describe.prompt, profile.draft?.description]);
+  const heroImage = background.mode === 'upload' ? background.dataUrl : background.mode === 'stock' ? stockPhoto : '';
+  const backgroundFile = useCallback(async (f: File) => {
+    const r = await photoFromFile(f);
+    if (!r.ok) { setBackground(b => ({ ...b, error: r.error })); return; }
+    setBackground({ mode: 'upload', dataUrl: r.dataUrl, error: '' });
+  }, []);
+
   /* ── Questions ── */
   const [asked, setAsked] = useState<Set<string>>(new Set());
   const [screenIdx, setScreenIdx] = useState(0);
@@ -189,6 +208,24 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
   }, [state, asked]);
   const screen = screens[Math.min(screenIdx, Math.max(0, screens.length - 1))];
 
+  /* ── The first leads, found on the spot ──
+   *
+   * Leaving the last screen of the finder's questions (who, where, how many)
+   * stops on FirstLeads, which runs the search in front of the customer,
+   * before any more questions. Once per who-and-where: going back and forward
+   * again without changing them does not search twice. */
+  const FINDER_IDS = ['prospectTrades', 'prospectPlaces', 'prospectPerDay'];
+  const [leadsOpen, setLeadsOpen] = useState(false);
+  const leadsSeen = useRef('');
+  const finderKey = state ? `${String(state.known.prospectTrades?.value ?? '')}|${String(state.known.prospectPlaces?.value ?? '')}` : '';
+  const leadsDue = (): boolean => {
+    if (!state || !screen || String(state.known.contactSource?.value ?? '') !== 'find') return false;
+    if (!tradesOf(String(state.known.prospectTrades?.value ?? '')).length || !placesOf(String(state.known.prospectPlaces?.value ?? '')).length) return false;
+    const here = screen.questions.some(q => FINDER_IDS.includes(q.id));
+    const later = screens.slice(screenIdx + 1).some(sc => sc.questions.some(q => FINDER_IDS.includes(q.id)));
+    return here && !later && leadsSeen.current !== finderKey;
+  };
+
   /* ── The business, as the blueprint needs to name it ── */
   const company = useMemo(() => {
     if (!state) return '';
@@ -212,9 +249,13 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     const known = (id: string) => String(state?.known[id]?.value ?? '');
     const what = profileDraft?.description || known('bizWhat') || ws.workspace?.description || '';
     const offer = profileDraft?.offer || known('offer');
-    return { name: company, tagline: first(what), heroTitle: first(offer) };
-  }, [company, profileDraft, state, ws]);
-  const prefersFunnel = !!state?.solutionKeys.some(k => /ecommerce|product|launch/.test(k));
+    return { name: company, tagline: first(what), heroTitle: first(offer), heroImage };
+  }, [company, profileDraft, state, ws, heroImage]);
+  /* A funnel is the usual recommendation — one focused page a campaign sends
+     people to. A website only leads when there is no site at all and the
+     project is about being found rather than about a campaign. */
+  const hasSite = !!(String(state?.known.website?.value ?? '') || String(profileDraft?.website ?? '') || ws.workspace?.website);
+  const prefersFunnel = hasSite || !state?.solutionKeys.some(k => /local-seo|blog|content/.test(k));
 
   const bp: Blueprint | null = useMemo(() => (state ? buildBlueprint(state, {
     companyName: company, website: String(state.known.website?.value ?? ''), files, links,
@@ -235,8 +276,8 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
   }, [preset]);
 
   /* ── Understand ── */
-  const runUnderstanding = useCallback(async () => {
-    const prompt = describe.prompt.trim();
+  const runUnderstanding = useCallback(async (override?: string) => {
+    const prompt = (override ?? describe.prompt).trim();
     const urls = [...new Set([...links.map(l => l.url), ...urlsIn(prompt)])];
     const base = initialState(prompt, describe.picked || undefined, ws, files, links);
     const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
@@ -366,6 +407,89 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     setState(st);
     setUnderstood(true);
   }, [describe, files, links, ws, withPreset]);
+
+  /* ── Correcting what was understood ──
+   *
+   * The screen used to offer a dropdown of solution names, which only helps
+   * somebody who already knows the catalogue. Now the customer says what is
+   * wrong. With the AI, the correction is an edit to the answers (the same
+   * `refine` the blueprint uses, which may also restate the summary); when it
+   * changes nothing, or there is no AI, the request is read again with the
+   * correction added to it — the keyword path then sees the corrected words. */
+  const [correcting, setCorrecting] = useState(false);
+  const [correction, setCorrection] = useState<{ ok: boolean; text: string } | null>(null);
+  const correct = useCallback(async (text: string) => {
+    if (!state) return;
+    setCorrecting(true); setCorrection(null);
+    if (!aiDown.current) {
+      const r = await refine({
+        instruction: text,
+        state: {
+          solutionKeys: state.solutionKeys, answers: answersOf(state.known), summary: state.summary,
+          name: state.name, objective: state.objective, request: state.prompt,
+        },
+      });
+      if (r.noAi) aiDown.current = true;
+      const ops = r.ops;
+      const changes = !!ops && (Object.keys(ops.set ?? {}).length || ops.addSolutions?.length || ops.removeSolutions?.length || ops.summary || ops.name || ops.objective);
+      if (r.ok && ops && changes) {
+        setState(s => (s ? withPreset(applyOps(s, ops)) : s));
+        setCorrection({ ok: true, text: r.reply || 'Done — updated.' });
+        setCorrecting(false);
+        return;
+      }
+    }
+    const combined = `${describe.prompt.trim()}\n\nCorrection: ${text}`;
+    setDescribe(d => ({ ...d, prompt: combined }));
+    await runUnderstanding(combined);
+    setCorrection({ ok: true, text: 'Read again with your correction.' });
+    setCorrecting(false);
+  }, [state, describe.prompt, runUnderstanding, withPreset]);
+
+  /* A correction to who the finder looks for, from the first-leads screen.
+     The AI edits only the two finder answers; without it, a sentence shaped
+     like a search ("orthodontists in Fort Lauderdale") is read as one. */
+  const correctLeads = useCallback(async (text: string): Promise<{ ok: boolean; said: string }> => {
+    if (!state) return { ok: false, said: '' };
+
+    /* A bare place ("virginia", "Fort Lauderdale") is where to look — no AI needed for that. */
+    const bare = text.trim().replace(/[.!]+$/, '');
+    if (/^[\p{L}][\p{L} .'-]{1,40}(,\s*[\p{L}][\p{L} .'-]{1,40})?$/u.test(bare) && bare.split(/\s+/).length <= 4
+      && !/\b(instead|only|also|more|less|bigger|smaller|find|look|search|not|no|with|without|and)\b/i.test(bare)) {
+      const place = bare.replace(/\b\p{Ll}/gu, c => c.toUpperCase());
+      setState(s => (s ? { ...s, known: { ...s.known, prospectPlaces: { value: place, source: 'you', note: 'you changed this' } } } : s));
+      return { ok: true, said: `Now searching in ${place}.` };
+    }
+    if (!aiDown.current) {
+      /* Never left spinning: an AI that has not answered in 20 seconds is treated as unavailable for this one. */
+      const r = await Promise.race([
+        refine({
+          instruction: `${text}\n(Only change prospectTrades — kinds of business, comma-separated — and prospectPlaces — towns, "; "-separated.)`,
+          state: { request: state.prompt, answers: { prospectTrades: state.known.prospectTrades?.value, prospectPlaces: state.known.prospectPlaces?.value } },
+        }),
+        new Promise<Awaited<ReturnType<typeof refine>>>(res => window.setTimeout(() => res({ ok: false, noAi: false, reply: '', error: 'timeout' }), 20_000)),
+      ]);
+      if (r.noAi) aiDown.current = true;
+      const set = Object.fromEntries(Object.entries(r.ops?.set ?? {}).filter(([id]) => id === 'prospectTrades' || id === 'prospectPlaces'));
+      if (r.ok && Object.keys(set).length) {
+        setState(s => (s ? applyOps(s, { set }) : s));
+        return { ok: true, said: r.reply || 'Changed — searching again.' };
+      }
+      if (r.ok && r.reply) return { ok: false, said: r.reply };
+    }
+    const ask = parseAsk(text);
+    if (ask && (ask.trade || ask.place)) {
+      setState(s => {
+        if (!s) return s;
+        const known = { ...s.known };
+        if (ask.trade) known.prospectTrades = { value: ask.trade, source: 'you', note: 'you changed this' };
+        if (ask.place) known.prospectPlaces = { value: ask.place, source: 'you', note: 'you changed this' };
+        return { ...s, known };
+      });
+      return { ok: true, said: `Now searching for ${ask.trade || 'the same businesses'}${ask.place ? ` in ${ask.place}` : ''}.` };
+    }
+    return { ok: false, said: 'I could not tell what to change. Try “dentists in Leeds” or “orthodontists instead”.' };
+  }, [state]);
 
   /* ── Answering ── */
   const answer = useCallback((id: string, value: string | string[] | null, source: KnownSource = 'you') => {
@@ -592,6 +716,30 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     return [...new Set(out)].slice(0, 5);
   }, [bp]);
 
+  /* ── The plan's allowance, said on the blueprint ──
+   *
+   * A project bigger than the plan allows is said here, while the customer
+   * can still take a workflow out, rather than at the build. Asked again when
+   * the number of workflows changes. */
+  const [planWarn, setPlanWarn] = useState('');
+  const wfCount = bp?.workflows.length ?? 0;
+  useEffect(() => {
+    if (phase !== 'blueprint' || !wfCount) return;
+    let alive = true;
+    void (async () => {
+      for (const [meter, need] of [['autopilot_projects', 1], ['workflows_per_project', wfCount]] as const) {
+        const a = await checkAllowance(meter, need);
+        if (!alive) return;
+        if (!a.ok) {
+          setPlanWarn(`${a.message}${a.upgrade ? ` ${a.upgrade.name} allows ${a.upgrade.limit < 0 ? 'unlimited' : a.upgrade.limit}.` : ''}`);
+          return;
+        }
+      }
+      setPlanWarn('');
+    })();
+    return () => { alive = false; };
+  }, [phase, wfCount]);
+
   /* ── Connections: asked when the step is reached, not before ── */
   useEffect(() => {
     if (phase !== 'requirements' || ready || !bp) return;
@@ -616,7 +764,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
       logo: { ...shownLogo, answer: String(full.known.logo?.value ?? '') }, logoSite,
       page: template ? {
         template,
-        brand: { name: brandWords.name || 'Your business', color: pal.accent, tagline: brandWords.tagline, heroTitle: brandWords.heroTitle },
+        brand: { name: brandWords.name || 'Your business', color: pal.accent, tagline: brandWords.tagline, heroTitle: brandWords.heroTitle, heroImage: brandWords.heroImage },
         addWebsite, addFunnel,
       } : undefined,
     };
@@ -656,16 +804,19 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
       if (describe.prompt.trim().length < 8 && !files.length) return describe.picked ? 'Say a little about what you want' : 'Describe what you want, or pick a solution';
       return '';
     }
-    if (phase === 'understand') return understood ? '' : 'Understanding…';
+    if (phase === 'understand') return correcting ? 'Fixing…' : understood ? '' : 'Understanding…';
+    if (phase === 'questions' && leadsOpen) return '';
     if (phase === 'questions' && screen && state) return screenBlocker(screen, state, files, profile);
     return '';
   })();
 
   const next = () => {
     if (blocker) return;
-    if (phase === 'describe') { setPhase('understand'); void runUnderstanding(); return; }
+    if (phase === 'describe') { setPhase('understand'); setCorrection(null); void runUnderstanding(); return; }
     if (phase === 'understand') { startQuestions(); return; }
     if (phase === 'questions') {
+      if (!leadsOpen && leadsDue()) { leadsSeen.current = finderKey; setLeadsOpen(true); return; }
+      setLeadsOpen(false);
       if (screenIdx + 1 < screens.length) setScreenIdx(i => i + 1);
       /* The site's visitor approved the blueprint there; these were only
          the last answers it needed. */
@@ -693,6 +844,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
 
   const back = () => {
     if (phase === 'understand') setPhase('describe');
+    else if (phase === 'questions' && leadsOpen) { setLeadsOpen(false); leadsSeen.current = ''; }
     else if (phase === 'questions') { if (screenIdx > 0) setScreenIdx(i => i - 1); else setPhase('understand'); }
     else if (phase === 'blueprint') { if (screens.length) { setScreenIdx(screens.length - 1); setPhase('questions'); } else setPhase('understand'); }
     else if (phase === 'requirements') setPhase('blueprint');
@@ -711,10 +863,12 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     if (blocker) return blocker;
     if (phase === 'describe') return 'Continue';
     if (phase === 'understand') return screens.length || (state && allQuestions(state).some(q => applies(q, state.known) && !state.known[q.id])) ? 'Answer a few questions' : 'See the blueprint';
+    if (phase === 'questions' && leadsOpen) return screenIdx + 1 < screens.length ? 'These look right — continue' : 'These look right — see the plan';
+    if (phase === 'questions' && leadsDue()) return 'Find my first leads';
     if (phase === 'questions') return screenIdx + 1 < screens.length ? 'Next' : seed ? 'Build my project' : 'See the blueprint';
     if (phase === 'blueprint') return 'Looks good — continue';
     if (phase === 'requirements') return 'Review';
-    if (phase === 'review') return gap ? `First: ${gap.replace(/…$/, '').toLowerCase()}` : 'Build My Autopilot';
+    if (phase === 'review') return gap ? `First: ${gap.replace(/…$/, '').toLowerCase()}` : 'Build My AI Autopilot';
     return 'Continue';
   })();
 
@@ -722,11 +876,11 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
 
   /* ── The companion pane ── */
   const side = (
-    <aside className="np-side" aria-label="Autopilot">
+    <aside className="np-side" aria-label="AI Autopilot">
       <div style={{ display: 'flex', gap: 11, alignItems: 'center' }}>
         <AutopilotBot size={46} awake busy={phase === 'understand' && !understood} />
         <span style={{ minWidth: 0 }}>
-          <b style={{ display: 'block', fontSize: 14, color: '#17191c' }}>Autopilot</b>
+          <b style={{ display: 'block', fontSize: 14, color: '#17191c' }}>AI Autopilot</b>
           <span style={{ display: 'block', fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>
             {phase === 'describe' ? 'Tell me the result. I’ll work out how.'
               : phase === 'understand' ? (understood ? 'Here’s what I took from that.' : 'Reading everything you gave me…')
@@ -807,13 +961,25 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
 
         <div className="np-body">
           <main className="np-main">
-            <div key={`${phase}-${screenIdx}`} className="np-rise">
+            <div key={`${phase}-${screenIdx}-${leadsOpen ? 'leads' : ''}`} className="np-rise">
               {phase === 'describe' && (
                 <Describe value={describe} onChange={setDescribe} onError={m => addNotification(m, 'error')} />
               )}
               {phase === 'understand' && (
                 <Understanding
                   stages={stages} state={state} finished={understood} portfolios={ws.portfolios} lists={lists}
+                  onCorrect={t => void correct(t)} correcting={correcting} correction={correction}
+                  onToggleAddon={key => setState(s => {
+                    if (!s) return s;
+                    const on = s.solutionKeys.includes(key);
+                    const keys = on ? s.solutionKeys.filter(k => k !== key) : [...s.solutionKeys.filter(k => k !== CUSTOM), key];
+                    if (!keys.length) return s;
+                    /* What the request already says about the added solution's questions is read again for it. */
+                    const fresh = on ? {} : extractKnown(s.prompt, keys, ws, files, links);
+                    const known = { ...fresh, ...s.known };
+                    return withPreset({ ...s, solutionKeys: keys, known, strength: keys.length > 1 ? 'partial' : s.strength });
+                  })}
+                  openGroups={state ? [...new Set(allQuestions(state).filter(q => applies(q, state.known) && !state.known[q.id]).map(q => q.group))] : []}
                   questionCount={state ? allQuestions(state).filter(q => applies(q, state.known) && !state.known[q.id]).length : 0}
                   onChangeSolution={keys => setState(s => {
                     if (!s) return s;
@@ -831,9 +997,30 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                   <b>Your plan from the website is here.</b> {screens.length === 1 ? 'One thing' : `${screens.length} things`} it could not ask before you had an account — then it builds.
                 </p>
               )}
-              {phase === 'questions' && state && screen && (
+              {phase === 'questions' && state && leadsOpen && (
+                <FirstLeads
+                  trades={tradesOf(String(state.known.prospectTrades?.value ?? ''))}
+                  places={placesOf(String(state.known.prospectPlaces?.value ?? ''))}
+                  perDay={String(withDefaults(state).known.prospectPerDay?.value ?? '20')}
+                  onCorrect={correctLeads}
+                  onAdd={(what, value) => setState(s => {
+                    if (!s) return s;
+                    const id = what === 'place' ? 'prospectPlaces' : 'prospectTrades';
+                    const sep = what === 'place' ? '; ' : ', ';
+                    const cur = String(s.known[id]?.value ?? '').split(sep.trim()).map(x => x.trim()).filter(Boolean);
+                    /* Appended, not swapped: the first search stays the one the finder starts with. */
+                    if (cur.some(x => x.toLowerCase() === value.toLowerCase())) return s;
+                    const known = { ...s.known, [id]: { value: [...cur, value].join(sep), source: 'you' as const, note: 'you added this' } };
+                    return { ...s, known };
+                  })} />
+              )}
+              {phase === 'questions' && state && screen && !leadsOpen && (
                 <Questions
-                  design={{ logo: { logo: shownLogo, website: logoSite, finding: logoFinding, error: logoError }, onFind: u => void findLogo(u), onFile: f => void logoFile(f), brand: brandWords, prefer: prefersFunnel ? 'funnel' : 'website' }}
+                  design={{
+                    logo: { logo: shownLogo, website: logoSite, finding: logoFinding, error: logoError }, onFind: u => void findLogo(u), onFile: f => void logoFile(f),
+                    brand: brandWords, prefer: prefersFunnel ? 'funnel' : 'website', hasSite, hasPage: designKindsOf(state).includes('page'),
+                    background: { ...background, stock: stockPhoto }, onBackground: mode => setBackground(b => ({ ...b, mode, error: '' })), onBackgroundFile: f => void backgroundFile(f),
+                  }}
                   screen={screen} state={state} ws={ws} files={files} answer={answer} company={company}
                   profile={profile} onProfile={editProfile} onReadProfile={() => { setProfile(p => ({ ...p, error: '' })); void readProfileNow(); }}
                   onFiles={(atts: Attachment[]) => setDescribe(d => ({ ...d, files: [...d.files, ...atts] }))}
@@ -843,6 +1030,12 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
               )}
               {phase === 'blueprint' && bp && (
                 <>
+                  {planWarn && (
+                    <div className="np-plan-warn" role="alert">
+                      <b>Your plan’s allowance:</b> {planWarn} <a href="/billing" target="_blank" rel="noopener noreferrer">See plans</a>
+                      <span style={{ display: 'block', marginTop: 4, color: '#92400e' }}>Take a workflow out by telling AI Autopilot on the right (“remove the blog”), or upgrade — nothing is built until it fits.</span>
+                    </div>
+                  )}
                   <BlueprintView bp={bp} onRename={name => setState(s => (s ? { ...s, name } : s))} />
                   {bp.workflows.some(w => w.key === 'finder') && (
                     <FinderReview trades={String(state?.known.prospectTrades?.value ?? '')} places={String(state?.known.prospectPlaces?.value ?? '')}
@@ -850,7 +1043,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                   )}
                   {/* The booking page the emails will link to, when this project uses ours — editable here as on the question. */}
                   {bp.requirements.includes('bookingPage') && (
-                    <div style={{ marginTop: 18 }}><BookingSetup business={company} /></div>
+                    <div style={{ marginTop: 18 }}><BookingSetup business={company} website={logoSite} /></div>
                   )}
                   {(() => {
                     const said = (id: string) => String(withDefaults(state!).known[id]?.value ?? '');
@@ -859,7 +1052,8 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                         <ResultPreview bp={bp} brand={brandWords}
                           palette={resolveTheme(said('theme') || DEFAULT_THEME, said('brandColor'), said('designStyle'))}
                           logo={said('logo') === 'none' ? '' : shownLogo.dataUrl}
-                          templateId={said('pageTemplate')} pageLayout={said('pageLayout')} audience={said('audience') || String(profileDraft?.audience ?? '')} />
+                          templateId={said('pageTemplate')} pageLayout={said('pageLayout')} audience={said('audience') || String(profileDraft?.audience ?? '')}
+                          emailLayout={said('emailLayout')} booking={bp.requirements.includes('bookingPage')} />
                       </div>
                     );
                   })()}

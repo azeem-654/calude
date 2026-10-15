@@ -68,6 +68,9 @@ export const LAYOUTS: Record<DesignKind, LayoutOption[]> = {
     { value: 'branded', label: 'Branded letter', hint: 'Your logo on top, a coloured button and a tidy footer.' },
     { value: 'newsletter', label: 'Newsletter', hint: 'A coloured header band and roomy sections, for updates to people who signed up.' },
     { value: 'promo', label: 'Promotion', hint: 'A bold banner and one big button, for offers to existing customers.' },
+    { value: 'photo', label: 'Photo header', hint: 'A photograph for your trade across the top, then the letter — for newsletters and announcements.' },
+    { value: 'video', label: 'Video', hint: 'A YouTube video’s picture with a play button that opens it. Put a YouTube link in the email.' },
+    { value: 'card', label: 'Modern card', hint: 'A clean white card with a coloured edge — light, current, still personal.' },
   ],
   blog: [
     { value: 'guide', label: 'How-to guide', hint: 'Numbered steps somebody can follow.' },
@@ -124,6 +127,19 @@ export const THEMES: Theme[] = [
   { value: 'corporate', label: 'Corporate blue', hint: 'Navy and bright blue', bg: '#0b2e6b', bg2: '#1d4ed8', accent: '#38bdf8', font: 'sans' },
   { value: 'fresh', label: 'Fresh and natural', hint: 'Deep greens with lime', bg: '#0f5132', bg2: '#2d8f5b', accent: '#c7f441', font: 'sans' },
   { value: 'warm', label: 'Warm and friendly', hint: 'Cream and orange', bg: '#fff4e5', bg2: '#ffd8a8', accent: '#e8590c', font: 'sans' },
+  /* The newer looks — what modern SaaS, wellness and DTC brands are using
+     now: deep gradients with one electric accent, soft "aurora" blends, an
+     earthy mocha, editorial monochrome. Ink is still computed per background. */
+  { value: 'aurora', label: 'Aurora', hint: 'Teal into violet, a soft glow', bg: '#0e7490', bg2: '#6d28d9', accent: '#fde047', font: 'sans' },
+  { value: 'midnight', label: 'Midnight neon', hint: 'Deep navy with electric cyan', bg: '#0a0f2c', bg2: '#1e1b4b', accent: '#22d3ee', font: 'sans' },
+  { value: 'sunset', label: 'Sunset', hint: 'Coral into peach', bg: '#f43f5e', bg2: '#fb923c', accent: '#1e1b4b', font: 'sans' },
+  { value: 'mocha', label: 'Mocha', hint: 'Warm browns and cream, a serif headline', bg: '#5b3a29', bg2: '#a47864', accent: '#f3e9dc', font: 'serif' },
+  { value: 'editorial', label: 'Editorial mono', hint: 'Off-white and ink, magazine style', bg: '#f5f5f4', bg2: '#e7e5e4', accent: '#18181b', font: 'serif' },
+  { value: 'lime', label: 'Cyber lime', hint: 'Near-black with acid lime', bg: '#09090b', bg2: '#1c1917', accent: '#a3e635', font: 'display' },
+  { value: 'ocean', label: 'Ocean', hint: 'Blues from deep to bright', bg: '#023e8a', bg2: '#0096c7', accent: '#caf0f8', font: 'sans' },
+  { value: 'blush', label: 'Rose gold', hint: 'Blush pink with rose gold', bg: '#fdf2f0', bg2: '#f8d7cf', accent: '#b76e79', font: 'serif' },
+  { value: 'lavender', label: 'Lavender mint', hint: 'Soft lilac into mint', bg: '#ede9fe', bg2: '#d1fae5', accent: '#7c3aed', font: 'sans' },
+  { value: 'forest', label: 'Forest and sand', hint: 'Deep green with warm sand', bg: '#1c2b22', bg2: '#3f5a45', accent: '#e9d8a6', font: 'serif' },
 ];
 
 export const DEFAULT_THEME = 'brand';
@@ -239,7 +255,10 @@ export function designConfig(kind: DesignKind, a: Record<string, string | string
     logo: one('logo') === 'none' ? 'off' : 'on',
   };
   if (one('designStyle')) out.style = one('designStyle').slice(0, 80);
-  if (kind === 'email') return { emailLayout: layout, emailAccent: p.accent, emailBg: p.bg, emailInk: p.ink, logo: out.logo };
+  if (kind === 'email') {
+    const img = one('emailImage');
+    return { emailLayout: layout, emailAccent: p.accent, emailBg: p.bg, emailInk: p.ink, logo: out.logo, ...(/^https:\/\//.test(img) ? { emailImage: img } : {}) };
+  }
   return out;
 }
 

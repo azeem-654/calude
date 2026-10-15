@@ -18,6 +18,7 @@
 import { body, fail, json } from '../lib/http';
 import { nowIso, userFromToken, workspaceAccess, type Env } from '../lib/db';
 import { rateLimit } from '../lib/rateLimit';
+import { check as allowance, refusalBody } from '../lib/allowanceStore';
 import { citiesIn, installGeoKey } from '../lib/geoapify';
 import { regionTowns } from '../lib/regions';
 import { DAY_LIMITS, PER_DAY_MAX, rotationState } from '../lib/finderPlan';
@@ -259,6 +260,9 @@ export async function handleFinders(req: Request, env: Env): Promise<Response> {
     if (wf) {
       await env.DB.prepare('UPDATE crm_project_workflows SET nodes = ?, updated_at = ? WHERE id = ? AND account_id = ?').bind(nodes, now, workflowId, accountId).run();
     } else {
+      /* Its workflow takes a place in the project's allowance (lib/allowanceStore.ts). */
+      const room = await allowance(env, accountId, 'workflows_per_project', 1, { projectId });
+      if (!room.ok) return fail(room.message, 402, refusalBody(room));
       workflowId = `pw-${crypto.randomUUID()}`;
       const pos = await env.DB.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS n FROM crm_project_workflows WHERE account_id = ? AND project_id = ?').bind(accountId, projectId).first<{ n: number }>();
       await env.DB.prepare(

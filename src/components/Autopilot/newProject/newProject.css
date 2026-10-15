@@ -244,7 +244,7 @@
 .np-chip button { border: 0; background: none; color: inherit; cursor: pointer; display: inline-flex; padding: 1px; }
 .np-chip-input { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 180px; color: #9aa3b2; min-width: 0; }
 .np-chip-input input { flex: 1; min-width: 0; border: 0; outline: none; font: inherit; font-size: 13.5px; color: #17191c; background: transparent; }
-.np-opt.np-opt-sm { padding: 5px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px; }
+.np-opt.np-opt-sm { padding: 5px 10px; font-size: 12px; display: inline-flex; flex-direction: row; align-items: center; gap: 5px; }
 .np-finder { display: grid; gap: 10px; margin-top: 18px; padding: 16px; border-radius: 18px; background: #fff; border: 1px solid #e6e8ef; min-width: 0; }
 .np-sample { display: grid; gap: 8px; padding: 12px 14px; border-radius: 14px; background: #f8f7ff; border: 1px solid #e0dcff; }
 .np-sample-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 6px; }
@@ -305,3 +305,126 @@
 @media (max-width: 760px) {
   .np-book { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ── Here's what I understood ── */
+.np-eyebrow { display: inline-flex; gap: 6px; align-items: center; font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; color: #6b7280; }
+.np-understood { display: grid; gap: 12px; padding: 18px 18px 16px; border-radius: 18px; background: linear-gradient(180deg, #f8f6ff, #f3f1ff); border: 1px solid #e2ddff; }
+.np-understood .np-eyebrow { color: #5b46e5; }
+.np-understood-summary { margin: 0; font-size: 17px; line-height: 1.5; font-weight: 650; color: #17191c; }
+.np-pill { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; background: #fff; border: 1px solid #d9d2ff; color: #3b2fb0; font-size: 12.5px; font-weight: 700; }
+.np-fix { display: grid; gap: 8px; padding: 12px; border-radius: 14px; background: #fff; border: 1px solid #e6e2ff; }
+.np-fix-label { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; font-weight: 750; color: #17191c; }
+.np-fix-row { display: flex; gap: 8px; }
+.np-fix-row .np-input { flex: 1; min-width: 0; }
+.np-fix-send { display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; border: 0; border-radius: 12px; cursor: pointer;
+  background: linear-gradient(135deg, #6d5ef0, #4a36d6); color: #fff; font: inherit; font-size: 13.5px; font-weight: 700; flex-shrink: 0; }
+.np-fix-send:disabled { opacity: 0.5; cursor: default; }
+@media (max-width: 520px) { .np-fix-send span { display: none; } .np-fix-send { padding: 0 13px; } }
+.np-facts { margin: 6px 0 0; display: grid; gap: 0; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); }
+.np-fact { padding: 8px 2px; border-top: 1px solid #eceff4; min-width: 0; }
+.np-fact dt { font-size: 11.5px; font-weight: 700; color: #6b7280; }
+.np-fact dd { margin: 2px 0 0; font-size: 13.5px; color: #17191c; overflow-wrap: anywhere; }
+.np-fact dd em { display: block; font-style: normal; color: #8b93a3; font-size: 11.5px; margin-top: 1px; }
+.np-next { display: grid; gap: 3px; padding: 12px 14px; border-radius: 14px; border: 1px dashed #d4d9e3; font-size: 13px; color: #475569; }
+.np-next b { color: #17191c; font-size: 14px; }
+
+/* ── Suggested answers ── */
+.np-suggest { display: grid; gap: 8px; padding: 10px 12px; border-radius: 14px; background: #faf9ff; border: 1px solid #ece8ff; }
+.np-suggest-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12.5px; font-weight: 650; color: #4c39d1; }
+.np-suggest-busy { display: inline-flex; gap: 5px; align-items: center; font-weight: 500; color: #8b93a3; }
+.np-suggest .np-opt-sm { display: inline-flex; gap: 5px; align-items: center; }
+.np-suggest-why { font-size: 12.5px; color: #3b2fa8; line-height: 1.5; }
+.np-suggested { color: #5b46e5 !important; font-weight: 700 !important; }
+
+/* The daily finder, the one answer that makes the project find its own customers. */
+.np-opt-hero {
+  position: relative; border: 1.5px solid transparent !important;
+  background: linear-gradient(#fff, #fff) padding-box, linear-gradient(120deg, #6d5ef0, #ec4899, #f59e0b) border-box !important;
+  box-shadow: 0 6px 22px -10px rgba(109, 94, 240, 0.55);
+}
+.np-opt-hero[aria-pressed='true'] { background: linear-gradient(#f6f4ff, #f6f4ff) padding-box, linear-gradient(120deg, #6d5ef0, #ec4899, #f59e0b) border-box !important; }
+.np-hero-badge { display: inline-flex; gap: 4px; align-items: center; justify-self: start; width: fit-content; margin-bottom: 2px;
+  padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.03em; color: #fff;
+  background: linear-gradient(120deg, #6d5ef0, #ec4899); }
+
+/* ── First leads ── */
+.np-leads { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.np-lead { display: grid; grid-template-columns: 26px minmax(0, 1fr) minmax(0, auto); gap: 10px; align-items: center;
+  padding: 10px 12px; border: 1px solid #e6e9f0; border-radius: 14px; background: #fff; }
+.np-lead-n { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; font-size: 11.5px; font-weight: 800; color: #5b46e5; background: #f1effe; }
+.np-lead-name { display: block; font-size: 14px; color: #17191c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-lead-meta { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: #6b7280; margin-top: 2px; }
+.np-lead-meta span { display: inline-flex; gap: 3px; align-items: center; min-width: 0; }
+.np-lead-contact { justify-self: end; text-align: right; min-width: 0; max-width: 100%; }
+.np-lead-email { display: inline-grid; gap: 1px; font-size: 12.5px; font-weight: 650; color: #17191c; overflow-wrap: anywhere; }
+.np-lead-email svg { display: inline; vertical-align: -2px; margin-right: 3px; }
+.np-lead-email small { font-size: 11px; font-weight: 600; color: #8b93a3; }
+.np-lead-email[data-ok='true'] small { color: #0f7b3d; }
+.np-lead-web { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: #8b93a3; }
+@media (max-width: 560px) {
+  .np-lead { grid-template-columns: 26px minmax(0, 1fr); }
+  .np-lead-contact { grid-column: 2; justify-self: start; text-align: left; }
+}
+
+/* A logo big enough to recognise — 76px was too small to tell whether it was the right one. */
+.np-logo-well[data-big='1'] { width: 220px; height: 140px; border-radius: 18px; }
+@media (max-width: 520px) { .np-logo-well[data-big='1'] { width: 100%; height: 150px; } }
+.np-use-logo { display: inline-flex; gap: 7px; align-items: center; justify-self: start; width: fit-content; padding: 10px 16px; border-radius: 12px;
+  border: 1.5px solid #5b46e5; background: #fff; color: #4c39d1; font: inherit; font-size: 14px; font-weight: 750; cursor: pointer; }
+.np-use-logo[aria-pressed='true'] { background: linear-gradient(135deg, #6d5ef0, #4a36d6); color: #fff; border-color: transparent; }
+
+/* ── Background picture ── */
+.np-bg { display: grid; gap: 10px; }
+.np-bg-preview { display: grid; gap: 6px; align-content: center; min-height: 170px; padding: 22px 24px; border-radius: 16px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.06); }
+
+/* ── Website or funnel ── */
+.np-kind-row { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); }
+.np-kind { display: grid; gap: 4px; justify-items: start; text-align: left; padding: 13px 14px; border-radius: 16px; border: 1.5px solid #e6e9f0; background: #fff; cursor: pointer; font: inherit; }
+.np-kind small { font-size: 12px; color: #6b7280; }
+.np-kind[data-on='1'] { border-color: #5b46e5; background: #f6f4ff; }
+.np-kind-rec { border-color: transparent; background: linear-gradient(#fff, #fff) padding-box, linear-gradient(120deg, #6d5ef0, #ec4899, #f59e0b) border-box; }
+.np-kind-rec[data-on='1'] { background: linear-gradient(#f6f4ff, #f6f4ff) padding-box, linear-gradient(120deg, #6d5ef0, #ec4899, #f59e0b) border-box; }
+.np-kind-why { margin: 0; display: flex; gap: 7px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: #faf9ff; border: 1px solid #ece8ff; font-size: 12.5px; color: #3b2fa8; line-height: 1.5; }
+.np-kind-why svg { flex-shrink: 0; margin-top: 2px; }
+
+/* ── Email style example ── */
+.np-email-ex { display: grid; gap: 9px; padding: 14px 16px; border-radius: 14px; background: #fff; border: 1px solid #e6e9f0; font-size: 13.5px; color: #1f2937; line-height: 1.55; }
+.np-email-ex-head { font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em; color: #8b93a3; }
+.np-email-ex mark { background: #f1effe; color: #4c39d1; font-size: 10.5px; font-weight: 800; padding: 1px 6px; border-radius: 6px; margin-right: 4px; white-space: nowrap; }
+.np-lead-about { display: block; margin-top: 4px; font-size: 12.5px; line-height: 1.45; color: #334155; }
+.np-lead-about[data-wait='1'] { color: #8b93a3; font-style: italic; }
+
+/* ── Blueprint: the page at full width, the emails whole ── */
+.np-browser { border: 1px solid #e2e6ee; border-radius: 14px; overflow: hidden; background: #fff; box-shadow: 0 10px 30px -18px rgba(15, 23, 42, 0.35); }
+.np-browser-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #f5f6f9; border-bottom: 1px solid #e6e9f0; }
+.np-browser-bar span { width: 9px; height: 9px; border-radius: 50%; background: #d7dbe3; }
+.np-browser-bar em { margin-left: 8px; font-style: normal; font-size: 11.5px; color: #6b7280; font-weight: 600; }
+.np-wide-view { overflow-y: auto; overflow-x: hidden; background: #fff; overscroll-behavior: contain; }
+.np-full-scrim { position: fixed; inset: 0; z-index: 2000; background: rgba(15, 17, 22, 0.62); display: grid; place-items: center; padding: 16px; }
+.np-full-card { width: min(1400px, 100%); background: #fff; border-radius: 16px; overflow: hidden; display: grid; }
+.np-full-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid #e6e9f0; }
+.np-mail { border: 1px solid #e2e6ee; border-radius: 14px; overflow: hidden; background: #fff; }
+.np-mail-head { display: grid; gap: 3px; padding: 12px 16px; border-bottom: 1px solid #eef0f4; font-size: 13px; color: #334155; background: #fafbfc; }
+.np-mail-head b { display: inline-block; width: 62px; color: #8b93a3; font-weight: 700; font-size: 12px; }
+.np-mail-head small { color: #8b93a3; font-size: 11.5px; }
+.np-mail-body { background: #fff; }
+.np-mail-body[data-framed='1'] { background: #f4f5f7; padding: 16px; }
+.np-mail-body[data-framed='1'] .np-mail-text { background: #fff; border-radius: 0 0 10px 10px; }
+.np-mail-band { padding: 14px 20px; border-radius: 10px 10px 0 0; }
+.np-mail-text { padding: 18px 20px; font-size: 14.5px; line-height: 1.65; color: #1f2937; max-width: 680px; }
+.np-mail-text p { margin: 0 0 12px; white-space: pre-wrap; }
+.np-merge { background: #eef2ff; color: #3730a3; border-radius: 4px; padding: 0 3px; }
+
+/* ── Add-ons on the understood screen ── */
+.np-addons { display: grid; gap: 10px; }
+.np-addon-row { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+.np-addon { display: flex; gap: 10px; align-items: flex-start; text-align: left; padding: 12px 13px; border-radius: 14px; border: 1.5px solid #e6e9f0; background: #fff; cursor: pointer; font: inherit; }
+.np-addon b { display: block; font-size: 13.5px; color: #17191c; }
+.np-addon small { display: block; font-size: 12px; color: #6b7280; margin-top: 2px; line-height: 1.4; }
+.np-addon-check { color: #c3c9d4; flex-shrink: 0; margin-top: 1px; }
+.np-addon[aria-pressed='true'] { border-color: #5b46e5; background: #f6f4ff; }
+.np-addon[aria-pressed='true'] .np-addon-check { color: #5b46e5; }
+.np-plan-warn { margin-bottom: 14px; padding: 12px 14px; border-radius: 14px; background: #fffbeb; border: 1px solid #fde68a; font-size: 13.5px; color: #78350f; line-height: 1.5; }
+.np-plan-warn a { color: #4c39d1; font-weight: 700; }
+.np-widened { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: #f6f4ff; border: 1px solid #e2ddff; font-size: 13px; color: #3b2fa8; line-height: 1.5; }
+.np-widened span { flex: 1 1 280px; }

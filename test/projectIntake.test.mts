@@ -232,6 +232,28 @@ const answerAll = (s: IntakeState): IntakeState => {
   ok('a YouTube channel is still the YouTube source', yt.known.videoSource?.value === 'youtube', JSON.stringify(yt.known.videoSource));
 }
 
+{
+  const { audienceIn } = await import('../src/services/projectIntake.ts');
+  const who = audienceIn('The clinic welcomes new leads by email, follows up until they book, and also find new local partner businesses every day to email.');
+  ok('a channel is never the audience', who === 'local partner businesses', String(who));
+}
+/* ── Suggested answers without the AI (services/answerIdeas.ts) ── */
+{
+  const { ideasFor } = await import('../src/services/answerIdeas.ts');
+  const medspa = { prompt: 'Automated consultation follow-up for new med spa leads in Miami, Florida, via email and SMS.' };
+  const a = ideasFor('audience', medspa);
+  ok('a med spa is offered med spa audiences', !!a && a.options.some(o => /botox|treatment|consultation|top-up/i.test(o)), JSON.stringify(a?.options));
+  ok('never Amazon sellers to a med spa', !!a && !a.options.some(o => /amazon/i.test(o)) && !/amazon/i.test(a.placeholder), a?.placeholder);
+  const o = ideasFor('offer', medspa);
+  ok('an offer a med spa could make', !!o && /consultation|skin|treatment/i.test(o.options.join(' ')), JSON.stringify(o?.options));
+  ok('"Let AI decide" picks one of its own options, with a reason', !!o && o.options.includes(o.pick[0]) && o.why.length > 10);
+  const t = ideasFor('prospectTrades', { prompt: 'Sell my roofing services to property managers' });
+  ok('trades are businesses a directory lists', !!t && t.options.includes('property managers'), JSON.stringify(t?.options));
+  ok('no ideas for a website address', ideasFor('website', medspa) === null);
+  const barber = ideasFor('offer', { prompt: 'Rebook clients for my barber shop' });
+  ok('a barber is a salon, not a bar', !!barber && /trim|loyalty|first-visit/i.test(barber.options.join(' ')), JSON.stringify(barber?.options));
+}
+
 console.log(out.join('\n'));
 const failed = out.filter(l => l.startsWith('FAIL')).length;
 console.log(`\n${out.length - failed} passed, ${failed} failed`);
