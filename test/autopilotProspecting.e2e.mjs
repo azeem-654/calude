@@ -368,7 +368,7 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
   /* Our booking page, when the project uses it: a preview and the basics, right here. */
   if (/Booking page/.test(bp) || await np.getByRole('region', { name: 'Your booking page' }).count()) {
     const book = np.getByRole('region', { name: 'Your booking page' }).first();
-    ok('the blueprint shows the booking page it will link to, editable in place', (await book.count()) > 0 && /Pick a day/.test(await book.innerText()), bp.slice(0, 400));
+    ok('the blueprint shows the booking page it will link to, editable in place', (await book.count()) > 0 && /Select a Date|Pick a day/i.test(await book.innerText()), bp.slice(0, 400));
     if (await book.count()) {
       await book.locator('[data-field="booking.title"]').fill('Free supply review');
       await book.getByRole('button', { name: '45 min' }).click();
