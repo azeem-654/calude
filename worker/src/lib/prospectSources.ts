@@ -46,6 +46,19 @@ export const SOURCE_POLICY: Record<SourceId, SourcePolicy> = {
     why: 'Google charges per search and its terms do not allow keeping what it returns, so a recurring search uses business directories instead.',
   },
 };
+/**
+ * The install owner's own lead library, when they have opened it to customers
+ * (lib/leadDir.ts). Not a source anybody searches — a project's daily finder
+ * may be given a few people from it — so it is not in SOURCE_POLICY. Named on
+ * the contact for what it is: data the operator licensed, not something read
+ * off the web. A cold emailer must be able to tell a recipient where their
+ * details came from (GDPR Art. 14), and "found on the web" would be untrue.
+ */
+export const LICENSED_SOURCE = {
+  label: 'Licensed business data',
+  licence: 'records licensed to the operator of this app, who confirmed they may share them with customers',
+} as const;
+
 /** The owner's switch per source: 'on' for everybody, 'owner' (kept internal), 'off'. */
 export type PolicySetting = 'on' | 'owner' | 'off';
 export const policyFor = (settings: Partial<Record<string, PolicySetting>> | null | undefined, source: string): PolicySetting =>

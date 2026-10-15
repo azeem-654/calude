@@ -13,6 +13,8 @@
  *   record       — prospects added to the project by hand from AI Prospecting
  *   expand_place — "Virginia" → its towns, for choosing where a finder works
  *   sync         — the finder's recent contacts, for a browser to put back any its copy lacks
+ *   folders      — which contact lists each project of the workspace fills, and how many it
+ *                  has added from where — the Lead lists page's folders (Prospecting/LeadLists.tsx)
  */
 import { body, fail, json } from '../lib/http';
 import { nowIso, userFromToken, workspaceAccess, type Env } from '../lib/db';
@@ -21,6 +23,7 @@ import { citiesIn, installGeoKey } from '../lib/geoapify';
 import { regionTowns } from '../lib/regions';
 import { DAY_LIMITS, PER_DAY_MAX, rotationState } from '../lib/finderPlan';
 import { contactOf, loadFinder, stateOf, stepFinder, type FinderRow } from '../prospectFinderTick';
+import { audienceOf } from '../lib/projectBrief';
 
 interface Req {
   token?: string; accountId?: string; action?: string;
@@ -106,6 +109,38 @@ export async function handleFinders(req: Request, env: Env): Promise<Response> {
     return json({
       success: true,
       contacts: rows.map(r => ({ contact: contactOf(r as never, r.project_id), listId: r.list_id ?? '' })),
+    });
+  }
+
+  if (act === 'folders') {
+    /*
+     * The lists are the browser's (crm_contact_lists); which of them belong to
+     * which project is only known here — the brief's audience, and the list
+     * every finder and connected search writes to. Names and order come from
+     * the projects the browser already has; this answers ids and counts only.
+     */
+    const projects = (await env.DB.prepare('SELECT id, brief FROM crm_projects WHERE account_id = ?').bind(accountId)
+      .all<{ id: string; brief: string | null }>()).results ?? [];
+    const finders = (await env.DB.prepare('SELECT project_id, list_id FROM crm_prospect_finders WHERE account_id = ?').bind(accountId)
+      .all<{ project_id: string; list_id: string }>()).results ?? [];
+    const added = (await env.DB.prepare(
+      "SELECT project_id, source, COUNT(*) AS n, MAX(added_at) AS last FROM crm_project_prospects WHERE account_id = ? AND status = 'added' GROUP BY project_id, source",
+    ).bind(accountId).all<{ project_id: string; source: string; n: number; last: string }>()).results ?? [];
+    return json({
+      success: true,
+      projects: projects.map(pr => {
+        const lists = new Set<string>();
+        const aud = audienceOf(pr.brief);
+        if (aud?.listId) lists.add(aud.listId);
+        for (const f of finders) if (f.project_id === pr.id && f.list_id) lists.add(f.list_id);
+        const mine = added.filter(a => a.project_id === pr.id);
+        return {
+          id: pr.id, listIds: [...lists],
+          added: mine.reduce((t, a) => t + Number(a.n), 0),
+          bySource: Object.fromEntries(mine.map(a => [a.source || 'manual', Number(a.n)])),
+          lastAddedAt: mine.reduce((t, a) => (a.last > t ? a.last : t), ''),
+        };
+      }),
     });
   }
 

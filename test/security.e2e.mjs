@@ -104,6 +104,21 @@ if (aNote) {
 const setg = await api('customers.php', { action: 'settings_save', token: B.token, settings: { kickoffUrl: 'https://evil.example' } });
 check("B cannot change the owner's kickoff link", !setg.ok, JSON.stringify(setg.data).slice(0, 120));
 
+console.log("\nThe owner's lead library — never a customer's to search");
+/* Searching and revealing people are the owner's alone, open or not, with or
+   without a database behind it (routes/leaddir.ts). B names its own workspace:
+   being allowed in the workspace is not being allowed into the library. */
+for (const action of ['facets', 'search', 'reveal']) {
+  const r = await api('leaddir.php', { action, token: B.token, accountId: B.acct, industry: 'real estate', place: 'Florida', ids: [1, 2, 3] });
+  check(`B cannot ${action} the lead library (403 not_owner)`, r.status === 403 && r.data.code === 'not_owner' && !r.data.people, JSON.stringify(r.data).slice(0, 160));
+}
+const ldStatus = await api('leaddir.php', { action: 'status', token: B.token, accountId: B.acct });
+check("B's status says nothing of what is in the library", ldStatus.data.total === undefined && ldStatus.data.industries === undefined && ldStatus.data.states === undefined, JSON.stringify(ldStatus.data).slice(0, 160));
+const ldOpen = await api('leaddir.php', { action: 'settings', token: B.token, shared: true, attest: true });
+check('B cannot open the library to everybody', ldOpen.status === 403 && ldOpen.data.code === 'not_owner', JSON.stringify(ldOpen.data).slice(0, 160));
+const ldFolders = await api('finders.php', { action: 'folders', token: B.token, accountId: A.acct });
+check("B cannot read which lists A's projects fill", !ldFolders.ok && ldFolders.status === 403, JSON.stringify(ldFolders.data).slice(0, 160));
+
 console.log("\nWorkspace data — B naming A's workspace");
 const all = await api('data.php', { action: 'get_all', token: B.token, accountId: A.acct });
 check("B cannot read A's workspace data", !all.ok, JSON.stringify(all.data).slice(0, 120));

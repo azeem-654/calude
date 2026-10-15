@@ -152,6 +152,23 @@ export function isKnown(k: Known, b: { name: string; email?: string; phone?: str
   const h = host(b.website); return !!h && k.nameHost.has(`${n}|${h}`);
 }
 
+/* ── The owner's licensed data, as a share of the day ──
+ *
+ * When the install owner has opened their lead library, a finder may take a
+ * few people from it each step (prospectFinderTick.ts `libraryStep`). Never
+ * more than half of a day's allowance: the rest is still searched for and
+ * read live, so a project is not quietly turned into a list it was sold. And
+ * never past what today still has room for, counting what is already ready
+ * to join — a pile of ready leads waiting is the day's quota spoken for.
+ */
+export const LIBRARY = { perStep: 5, share: 0.5 } as const;
+
+export function libraryRoom(s: Pick<FinderState, 'perDay' | 'dayAdded'>, readyWaiting: number, libraryToday: number): number {
+  const open = s.perDay - s.dayAdded - readyWaiting;
+  const share = Math.ceil(s.perDay * LIBRARY.share) - libraryToday;
+  return Math.max(0, Math.min(LIBRARY.perStep, open, share));
+}
+
 /** The next run: the next tick while there is work today; the start of tomorrow (UTC) otherwise. */
 export function nextRunAt(now: Date, job: Job): string {
   if (job.kind === 'rest' || job.kind === 'exhausted') {

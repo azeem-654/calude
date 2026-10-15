@@ -1,8 +1,19 @@
-# Your own lead directory — loading your leads, and Leads.cm
+# Your lead library — loading your leads, and Leads.cm
 
-Written 2026-10-07. Covers: the 30 MB upload limit, loading your 3.3 GB ZIP
-(about 6 GB of CSV), loading more later, what customers see, and what Leads.cm
-can and cannot do for you.
+Written 2026-10-07, revised 2026-10-15. Covers: the 30 MB upload limit, loading
+your 3.3 GB ZIP (about 6 GB of CSV), loading more later, what customers get
+(and what they no longer get), what Leads.cm can and cannot do for you, and a
+note on data-broker rules.
+
+**What changed on 2026-10-15.** Customers no longer search your leads. There
+is no "Lead Directory" under Customers any more: Protected Central finds leads
+live and is not a lead seller or a data broker, and a screen where any
+customer could look people up by industry and place is what one looks like.
+What you loaded is now your **Lead library** — searched by you alone — and,
+when you open it, a quiet extra source for your customers' projects' daily
+prospecting, labelled **"Licensed business data"** on every lead it supplies
+(section 4). Customers have **Customers → Lead lists** instead: their *own*
+leads, a folder per project.
 
 ---
 
@@ -87,20 +98,21 @@ then the company's; a work email first, then a personal one — and a blank or
 text" (UTF-16) or as an older Windows CSV are read correctly, and comma,
 semicolon, tab and pipe separators all work.
 
-**Nothing in the file is thrown away.** A column the directory has no field for
+**Nothing in the file is thrown away.** A column the library has no field for
 is kept with each person under its own header (up to 2,000 characters a
-person), shown to customers only after they reveal that person, and copied onto
-the contact when they add them. Long company descriptions are cut to their
+person), shown on your Lead library screen, and copied onto the contact when
+you add them to your own Contacts. Long company descriptions are cut to their
 first few hundred characters.
 
 **Emails are checked when they are used.** If your file says an email is
-verified, customers see **list: verified** beside it — that is the seller's
-word, not ours. When a customer adds people to Contacts, every address is
-checked again (format, domain, mail server — the same free check AI Prospecting
-uses), the result is written on the contact and tagged (*verified email*,
-*email domain ok*, *risky email*, *email bounces*), and the screen says how many
-of each. Addresses are not checked during a load: millions of lookups would
-take days and fill the main database.
+verified, your Lead library shows **list: verified** beside it — that is the
+seller's word, not ours. Whenever somebody from the library goes into Contacts
+— yours, or a customer's project — the address is checked again (format,
+domain, mail server — the same free check AI Prospecting uses), the result is
+written on the contact and tagged (*verified email*, *email domain ok*, *risky
+email*, *email bounces*), and one that would bounce is not added. Addresses are
+not checked during a load: millions of lookups would take days and fill the
+main database.
 
 A load done by mistake can be taken back out with **Undo this load**. Someone who
 asks to be removed: type their email under **Remove a person who asks**. They
@@ -108,28 +120,59 @@ are deleted and kept out of every later load.
 
 ---
 
-## 4. What your customers get
+## 4. Who sees what
 
-The directory stays **closed to customers** until you tick *"I hold the right to
-share these records with my customers, and I will remove anybody who asks"* and
-press **Open it to customers**. Section 6 explains why that box exists.
+**You: Workspace → Lead library** (`/lead-directory`, listed for you only).
+Search by industry, place (a state, "Tampa, FL", a country), job title ("CEO"
+also finds "Chief Executive Officer"), seniority, company size and "only with
+an email"; everybody is shown in full, nothing is counted. **Add to Contacts**
+puts people in your own Contacts on a list marked *cold*, named as **Licensed
+business data** with where they came from.
 
-Once open, customers have **Customers → Lead Directory**:
+**Your customers: nothing to search.** The menu item is gone, the old address
+takes them to their own Lead lists, and the server refuses them the search,
+the facets and the reveal (403 `not_owner`) — the API is closed, not just the
+button. A customer can only ask whether the library is open, never how big it
+is or what is in it.
 
-- **Search.** They search by industry, place (a state, "Tampa, FL", a country),
-  job title ("CEO" also finds "Chief Executive Officer"), seniority, company size
-  and "only with an email". Searching is free.
-- **What a result shows.** Name, title, company, website and town are shown.
-  The email is masked (`k•••••@trammellcrow.com`), and so are the phone (area
-  code only) and the profile link.
-- **Seeing someone in full** spends their allowance: **200 people a day, 2,000 a
-  month** per workspace. Seeing the same person again is free. A trial that has
-  ended stops it.
-  - The allowance stops one customer copying the whole directory. Change it in
-    `worker/src/lib/leadDir.ts` (`REVEAL_BUDGET`).
-- **Add to Contacts** puts them in Contacts on a list marked *cold*, so campaigns
-  and Autopilot treat them as strangers (slow sending, approval first). They are
-  tagged `lead directory` and keep their title, company and source.
+**What reaches a customer, when you open it.** The library stays **closed**
+until you tick *"I hold the right to share these records with my customers,
+and I will remove anybody who asks"* and open it (Settings → Platform services,
+the library card; section 6 explains the box). Open, a customer's AI Autopilot
+project that runs **daily prospecting** (a finder: kinds of business × places)
+may be given a few people from it each step:
+
+- only people whose **industry** matches one of the finder's kinds of business
+  ("real estate agents" → *Real estate*), in one of its **places**, with an
+  email address;
+- **at most 5 a step and half of the finder's daily number** — the rest is
+  still found live on the web, so a project is never quietly turned into a
+  bought list;
+- **never the same person twice** for a project (recorded in `ld_given` in the
+  library's database, and as `ld:<id>` in the project's prospects); never
+  anybody you removed; never anybody on that customer's suppression list or
+  unsubscribed; never somebody already in their Contacts;
+- every address **checked first**; one that would bounce is turned away;
+- each lead is labelled **"Licensed business data"** — on the contact's source,
+  its `provenance` (with the date) and a tag — never "found on the web".
+  That is what lets your customer answer "where did you get my details?",
+  which the law requires of a cold emailer in many places (GDPR Art. 14).
+
+It counts against the customer's monthly prospects allowance like any other
+lead their project finds. Connected searches (an AI Prospecting search a
+customer linked to a project) run their own checks and are not given library
+people. Closing the library stops all of it at the next step.
+
+**Removing somebody who asks** now also tells you which customers' workspaces
+their details were given to (`passedTo` in the answer), because you must pass
+the request on to them — their copy in those CRMs is theirs to delete.
+
+**Customers → Lead lists** (`/lead-lists`) is their own leads, folder by
+folder: one per AI Autopilot project (its audience list and the lists its
+finders fill), one for what they saved from AI Prospecting, and their other
+lists. They can search their own leads, open a list in Contacts, email it as a
+campaign and export it as CSV — with a "Where it came from" column. Nothing on
+that page reaches beyond what is already in their workspace.
 
 ---
 
@@ -185,8 +228,47 @@ If you outgrow 10 GB, the next step is one directory database per region
   with can make you a "data broker"** in several states. California's Delete Act
   requires data brokers to register every year and to process deletion requests
   from the state's central deletion platform. Texas, Oregon and Vermont have
-  their own registries. **Ask a lawyer before opening the directory to
-  customers.** Removing people on request is already built in.
+  their own registries. **Ask a lawyer before opening the library to
+  customers' projects.** Removing people on request is already built in.
 - **Outside the US.** If a file contains people in the UK or EU, GDPR applies,
   which is much stricter. Load only countries your licence and your lawyer are
   comfortable with.
+
+---
+
+## 7. Data broker note
+
+Hiding the directory from customers' screens changed what the product looks
+like and closed a route anybody could use to copy your data. **It does not, by
+itself, change the legal question.** If the library is open, personal details
+you licensed from a seller still leave your hands and land in your customers'
+CRMs — through their projects rather than through a search box. Whether that
+counts as *selling* or *sharing* personal data turns on what happens, not on
+which screen it happens behind.
+
+Things worth checking, plainly:
+
+- **Your vendor licence.** Most lead sellers license data for the buyer's own
+  outreach. Passing records to your customers — even a few a day, inside their
+  projects — is usually a different licence. Get the vendor's answer in
+  writing.
+- **US data-broker laws.** California's Delete Act (a business that sells or
+  shares personal data of people it has no direct relationship with registers
+  with the California Privacy Protection Agency each year and, from August
+  2026, processes deletion requests from its central platform, DROP); Vermont,
+  Texas and Oregon keep data-broker registries of their own. Whether you are a
+  "data broker" under each depends on its definitions and on whether you are
+  paid for the data — your subscription fee may or may not count.
+- **GDPR / UK GDPR**, if any record is a person in the EU or UK. You and your
+  customer would each be a controller with your own duties: a lawful basis to
+  disclose, telling people where their data came from (Art. 14 — the
+  "Licensed business data" label and the provenance on each contact help your
+  customer do this), and passing on erasure requests to the recipients
+  (Art. 19 — `passedTo` on a removal names them).
+
+None of this means you must stop; it means the answer depends on your licence
+and your jurisdictions. **Recommendation:** check your vendor licence, ask a
+privacy lawyer whether opening the library makes you a data broker where your
+customers' recipients live, and keep the library **closed** (its default) until
+you have both answers. Everything above keeps working with it closed — your
+customers' projects simply find all their leads live.

@@ -1,6 +1,6 @@
 /**
  * Somebody else's workspace never reaches a new account, the top bar never
- * tangles, and AI Prospecting shows the owner's Lead Directory.
+ * tangles, and the owner's lead library is the owner's alone.
  *
  *   VITE_BASE=/ npm run build
  *   npm run test:isolation      (self-contained: wrangler :8939, fresh D1 in .wrangler-isolation)
@@ -47,10 +47,11 @@ for (let i = 0; i < 90; i++) { try { const r = await fetch(`${B}/api/data.php`, 
 let ipN = 1;
 const api = (p, body) => fetch(`${B}/api/${p}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Connection: 'close', 'CF-Connecting-IP': `10.9.5.${ipN++ % 250}` }, body: JSON.stringify(body) }).then(r => r.json().catch(() => ({})));
 
-console.log('\nIsolation, the top bar, and the directory in AI Prospecting');
+console.log('\nIsolation, the top bar, and the owner\'s lead library');
 const OWNER = 'owner@isolation.test', OPW = 'Tq9!vX2#pLm7wZ-iso';
 await api('auth.php', { action: 'bootstrap', email: OWNER, password: OPW, name: 'Azeem Owner' });
-const T = (await api('auth.php', { action: 'login', email: OWNER, password: OPW })).token;
+const OL = await api('auth.php', { action: 'login', email: OWNER, password: OPW });
+const T = OL.token, OWNER_ACCT = OL.workspaces?.[0]?.accountId ?? OL.user?.accountId ?? 'acct-iso-owner-1';
 const DANA = { email: 'dana@isolation.test', pw: 'Another-horse-7-ferns', name: 'Dana Smith', biz: 'Dana Dental Supplies' };
 const ERIN = { email: 'erin@isolation.test', pw: 'Third-horse-8-quill', name: 'Erin Brown', biz: 'Erin Roofing' };
 const FAYE = { email: 'faye@isolation.test', pw: 'Fourth-horse-9-quill', name: 'Faye Green', biz: 'Faye Florists' };
@@ -191,7 +192,10 @@ for (const width of [1280, 1440, 1655, 1900]) {
   await page.goto('about:blank'); await ctx.close();
 }
 
-/* ── 5. The Lead Directory in AI Prospecting ── */
+/* ── 5. The owner's lead library is not a customer's to search ──
+   It used to be: AI Prospecting showed its matches and Customers → Lead
+   Directory searched it. Now only the owner searches it (routes/leaddir.ts);
+   a customer reaches it only through a project's daily prospecting. */
 {
   const rows = Array.from({ length: 30 }, (_, i) => ({
     name: `Owner Person${i}`, title: i % 3 ? 'Owner' : 'Managing Director', level: i % 3 ? 'Owner' : 'Director', industry: 'Construction',
@@ -201,22 +205,18 @@ for (const width of [1280, 1440, 1655, 1900]) {
   await api('leaddir.php', { token: T, action: 'import_rows', importId: st.import.id, rows });
   await api('leaddir.php', { token: T, action: 'import_finish', importId: st.import.id });
   await api('leaddir.php', { token: T, action: 'settings', shared: true, attest: true });
-  const s1 = await api('leaddir.php', { token: (await api('auth.php', { action: 'login', email: ERIN.email, password: ERIN.pw })).token, accountId: ERIN.acct, action: 'search', industry: 'business owners', place: 'australia' });
-  ok('"business owners" in "australia" finds the owners in the directory', s1.success && s1.total === 20, JSON.stringify(s1).slice(0, 300));
+  const ET = (await api('auth.php', { action: 'login', email: ERIN.email, password: ERIN.pw })).token;
+  const s1 = await api('leaddir.php', { token: ET, accountId: ERIN.acct, action: 'search', industry: 'business owners', place: 'australia' });
+  ok('a customer cannot search the owner\'s library, even opened', s1.success !== true && s1.code === 'not_owner', JSON.stringify(s1).slice(0, 300));
+  const own = await api('leaddir.php', { token: T, accountId: OWNER_ACCT, action: 'search', industry: 'business owners', place: 'australia' });
+  ok('…the owner can: "business owners" in "australia" finds the 20 owners', own.success && own.total === 20, JSON.stringify(own).slice(0, 300));
   const ctx = await br.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await ctx.newPage();
   page.on('pageerror', e => errs.push(`5: ${e}`));
   await signIn(page, ERIN);
-  await page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
-  await page.getByLabel('Who to look for').fill('business owners in australia');
-  await page.keyboard.press('Enter');
-  await page.getByTestId('directory-matches').waitFor({ timeout: 30_000 }).catch(() => {});
-  const card = await page.getByTestId('directory-matches').innerText().catch(() => '');
-  ok('AI Prospecting shows the directory\'s matches beside the search', /20 people match/.test(card) && /Owner Person/.test(card) && /•/.test(card), card.slice(0, 300));
-  await page.getByTestId('directory-matches').getByRole('button', { name: /See them all/ }).click();
-  await page.getByTestId('ld-count').waitFor({ timeout: 15_000 }).catch(() => {});
-  ok('"See them all" opens the Lead Directory on the same search', /\/lead-directory/.test(page.url()) && /20 people/.test(await page.getByTestId('ld-count').innerText().catch(() => '')), page.url());
-  await page.screenshot({ path: 'test-results/isolation-directory.png' });
+  await page.goto(`${B}/lead-directory?industry=construction&place=australia`, { waitUntil: 'networkidle' });
+  await page.getByTestId('lead-lists').waitFor({ timeout: 15_000 }).catch(() => {});
+  ok('the old address takes a customer to their own Lead lists', /\/lead-lists/.test(page.url()) && !(await page.getByText('Owner Person').count()), page.url());
   await page.goto('about:blank'); await ctx.close();
 }
 

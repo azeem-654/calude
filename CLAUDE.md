@@ -458,12 +458,55 @@ Contacts* and *Do not email* (suppression list). Every animation (orb, dots,
 shimmer on the cell being read or checked, scanning step, moving composer
 gradient) is tied to real work and stops under reduced motion.
 
-### The Lead Directory — the owner's own lead files
+### The Lead library — the owner's own lead files (never a customer's search)
 
-`/lead-directory` (Customers → Lead Directory, `Prospecting/LeadDirectory.tsx`)
-searches people the install owner loaded from their own files;
-`docs/LEAD-DIRECTORY.md` is the owner's guide (and the Leads.cm findings).
+**Protected Central is not a lead seller or a data broker, and no customer
+screen may look like one.** The people the install owner loads from their own
+files are the **Lead library**: searched by the owner alone on
+`/lead-directory` (Workspace → Lead library, `ownerOnly` in navModel,
+`Prospecting/LeadDirectory.tsx`; anybody else is redirected to `/lead-lists`).
+On the server `facets`, `search` and `reveal` answer 403 `not_owner` to
+everybody but the install owner — checked before the database is, so the
+answer is the same with no `LEADS` binding — and a customer's `status` says
+only `shared`. Customers meet the library only as **"Licensed business data"**
+on leads their projects' daily prospecting is given (below), and never see the
+word "directory". `docs/LEAD-DIRECTORY.md` is the owner's guide (Leads.cm
+findings, and a data-broker note: hiding the screen does not by itself change
+whether sharing licensed personal data is selling it).
 `routes/leaddir.ts` is the API; `lib/leadDir.ts` the rules (pure).
+
+- **It feeds projects' daily finders, labelled truthfully**, only while the
+  owner has opened it (`settings`: `shared` + `attested_at` — the same gate,
+  read as the switch). `libraryStep` in prospectFinderTick.ts, once a step for
+  a plain finder (not a connection), after today's ready leads are added:
+  `libraryWhere` (pure) maps the finder's trades to the library's industries
+  (`tradeIndustries`: the whole phrase, then dropping words from the end —
+  never down to filler, never read as a job title) and its places through
+  `placeWhere`, email required; `libraryRoom` (finderPlan.ts, pure) allows
+  ≤ 5 a step and ≤ half of `per_day`, less what is already ready. People
+  already given to the project (`ld_given` in the LEADS db, and `ld:<id>`
+  refs in `crm_project_prospects`), removed (`ld_removed`), on the
+  workspace's suppression list or unsubscribes, or already in its Contacts
+  are turned away and recorded so they never come back; every address gets
+  `checkEmails`' free check and one that would bounce is refused. Ready ones
+  join through `addReady` like any found lead (so the prospects allowance
+  counts them), with `source: 'library'`, and `contactOf` writes source
+  `AI Autopilot · licensed business data`, `customFields.dataSource` and a
+  dated `provenance` naming `LICENSED_SOURCE` (lib/prospectSources.ts) —
+  never "found on the web": a cold emailer must be able to say where a
+  recipient's data came from (GDPR Art. 14). No `LEADS` binding → skipped,
+  said once a day in the finder's log; closed → skipped silently. `remove`
+  answers `passedTo` (the workspaces given that person), for Art. 19.
+- **Customers → Lead lists** (`/lead-lists`, `Prospecting/LeadLists.tsx`,
+  `services/leadLists.ts` pure but its fetch) shows only what is already in
+  the workspace: a folder per AI Autopilot project (`finders.php` `folders`:
+  the brief's audience list and every finder's list, plus contacts with that
+  `customFields.projectId` on none of them), "Saved from AI Prospecting"
+  (`origin: 'prospecting'`) and "Other lists"; a list's leads with their
+  check, source (`sourceOf` — old `Lead directory` imports read "Licensed
+  business data") and date; search, CSV export with "Where it came from",
+  Open in Contacts, Email this list (`/marketing?new=campaign&list=`). Place
+  kept in `?folder=&list=`. Phones get cards, not a wide table.
 
 - **Its own D1 database, bound as `LEADS`** (`crmpro-leads`, staging
   `crmpro-staging-leads`): millions of rows must never fill the product's
@@ -484,7 +527,7 @@ searches people the install owner loaded from their own files;
   people as they will be kept, the encoding — UTF-8, UTF-16 or Windows-1252,
   sniffed — and the delimiter, `,` `;` tab or `|`). **No column is thrown
   away**: a header no alias claims is kept with the person in `extra` (JSON,
-  ≤ 2,000 chars, values masked until a reveal); street address, the file's
+  ≤ 2,000 chars); street address, the file's
   email status (read into valid/risky/invalid/unknown by `emailStatusOf`),
   company LinkedIn, social links, SIC/NAICS and technologies have columns of
   their own (`ADDED_COLUMNS`, added to an older table by `ensureSchema`). The
@@ -498,15 +541,14 @@ searches people the install owner loaded from their own files;
   over the table.
 - **"business owners", "CEOs"** typed where an industry goes are read as job
   titles and seniority (`roleTerms`) when no industry matches.
-- **Customers** see nothing until the owner opens it with a statement that they
-  may share the records (`settings`, `attested_at`) — vendors usually license
-  lists to the buyer alone. A search must name an industry or a place (a title
-  alone would scan the table); results are 50 a page by id, counted to 5,000;
-  email, phone and profile are masked until `reveal`, which spends
-  `REVEAL_BUDGET` (200/day, 2,000/month per workspace, `ld_reveals`, once per
-  person) and stops when a trial has ended. **Removed on request**
-  (`ld_removed`) stays out of later loads. Imports go to Contacts on a `cold`
-  list, tagged `lead directory`, **with every address checked first** — the
+- **Opening it** needs the owner's statement that they may share the records
+  (`settings`, `attested_at`) — vendors usually license lists to the buyer
+  alone. The owner's search must name an industry or a place (a title alone
+  would scan the table); results are 50 a page by id, counted to 5,000, shown
+  in full (`REVEAL_BUDGET`/`ld_reveals` are kept for the record but nothing
+  spends them now). **Removed on request** (`ld_removed`) stays out of later
+  loads. The owner's imports go to their Contacts on a `cold` list, source and
+  tag "Licensed business data", **with every address checked first** — the
   same free check as AI Prospecting (`verifyEmails`, 20 at a time), its
   verdict on the contact (`emailStatus`/`emailCheck`/`emailCheckedAt`) and as
   a tag (`emailTag`). The file's own "verified" is shown as **list: verified**
@@ -514,15 +556,22 @@ searches people the install owner loaded from their own files;
   seller's word. Every other field and kept column travels to the contact.
 - `npm run test:leadimport` (pure: parser, ZIP/ZIP64/gzip, mapping, resume,
   the server's rules) and `npm run test:leaddir` (self-contained: wrangler
-  :8938, fresh D1 in `.wrangler-leaddir`, needs a `VITE_BASE=/` build; the
-  owner loads a ZIP through the card, customers search, reveal to the limit,
-  add to Contacts at 1280 and 390). Never commit a real lead file.
+  :8938 + a Geoapify/DNS mock on :8978, fresh D1 in `.wrangler-leaddir`, needs
+  a `VITE_BASE=/` build; the owner loads a ZIP through the card and searches
+  it, customers are refused and redirected, a finder is given library people
+  — suppressed, known and repeat people turned away, half a day at most,
+  nothing while closed — and the customer's Lead lists at 1280 and 390).
+  `test:finder` holds `libraryRoom`/`libraryWhere` still; `test:security`
+  and `test:isolation` cover the closed customer actions. Never commit a
+  real lead file.
 
 ### Autopilot prospecting — a project finds its own prospects every day
 
 A project can run a **finder**: kinds of business × places, searched live on a
 rotation, websites read, addresses checked, and up to `per_day` new prospects
-added to the project's audience list every day. Pure plan in
+added to the project's audience list every day (up to half of them, when the
+owner has opened their Lead library, given from it as "Licensed business
+data" — see above). Pure plan in
 `worker/src/lib/finderPlan.ts` (`nextJob`: search → read → rest/exhausted;
 12 searches and 150 website reads a day, 6 reads a tick, `PER_DAY_MAX` 100),
 the driver in `worker/src/prospectFinderTick.ts` (2 finders a tick, on the cron

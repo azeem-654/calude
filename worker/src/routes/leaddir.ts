@@ -1,5 +1,5 @@
 /**
- * /api/leaddir.php — the owner's lead directory (lib/leadDir.ts,
+ * /api/leaddir.php — the owner's lead library (lib/leadDir.ts,
  * docs/LEAD-DIRECTORY.md).
  *
  * ── Who does what ──
@@ -8,21 +8,30 @@
  * from the owner's own disk and sends it here 500 rows at a time
  * (`import_start` / `import_rows` / `import_finish`), so no upload limit
  * applies and an interrupted load resumes where it stopped. The owner also
- * removes people on request, undoes a load, and decides whether customers
- * may search it (`settings`) — which needs the owner to state they hold the
- * right to share the records, because whoever sold them a list usually
- * licensed it to them alone.
+ * removes people on request, undoes a load, searches it (`facets`, `search`,
+ * `reveal` — the Lead library screen), and decides whether projects' daily
+ * prospecting may draw on it (`settings`) — which needs the owner to state
+ * they hold the right to share the records, because whoever sold them a list
+ * usually licensed it to them alone.
  *
- * Customers search it (`facets`, `search`) for free and see people with the
- * address and phone masked; `reveal` shows them in full and spends the
- * workspace's allowance (REVEAL_BUDGET), once per person. An ended trial
- * stops reveals — the directory is the owner's asset, like their keys.
+ * ── Customers do not search it ──
+ *
+ * This product is not a lead seller or a data broker, and a screen where any
+ * signed-up account can look people up by industry and place is exactly what
+ * one looks like. So searching and revealing are the owner's alone (403
+ * `not_owner` for everybody else, closed here and not only in the menu). What
+ * reaches a customer is what a project's daily finder is given
+ * (prospectFinderTick.ts `libraryStep`), labelled "Licensed business data" on
+ * every contact. A customer's `status` says only whether it is open — not how
+ * big it is or what is in it.
+ *
+ * REVEAL_BUDGET and `ld_reveals` stay: nothing spends them now, but a
+ * directory that was searched before this keeps the record of who saw whom.
  */
 import { body, fail, json } from '../lib/http';
 import { nowIso, userFromToken, workspaceAccess, type Env, type SessionUser } from '../lib/db';
-import { trialForWorkspace } from '../lib/trial';
 import {
-  REVEAL_BUDGET, ROWS_PER_BATCH, ensureSchema, facetsOf, industriesLike, insertArgs, insertSql, key, maskEmail, maskPhone,
+  REVEAL_BUDGET, ROWS_PER_BATCH, ensureSchema, facetsOf, industriesLike, insertArgs, insertSql, key,
   normalise, placeWhere, roleTerms, titleTerms, type LeadIn,
 } from '../lib/leadDir';
 
@@ -86,31 +95,9 @@ async function facetList(db: D1Database, kind: string, limit: number) {
   return r.results ?? [];
 }
 
-async function revealsUsed(db: D1Database, accountId: string) {
-  const day = new Date(Date.now() - 86_400_000).toISOString();
-  const month = new Date(Date.now() - 30 * 86_400_000).toISOString();
-  const r = await db.prepare('SELECT SUM(CASE WHEN at > ? THEN 1 ELSE 0 END) AS d, COUNT(*) AS m FROM ld_reveals WHERE account_id = ? AND at > ?')
-    .bind(day, accountId, month).first<{ d: number | null; m: number }>();
-  return { day: Number(r?.d ?? 0), month: Number(r?.m ?? 0) };
-}
-
-const hideValues = (extra: unknown): string => {
-  try { return extra ? JSON.stringify(Object.fromEntries(Object.keys(JSON.parse(String(extra)) as Record<string, string>).map(k => [k, 'hidden']))) : ''; }
-  catch { return ''; }
-};
-
-/** The person as a customer sees them before revealing: who and where, with the means of contact hidden. */
-function masked(r: Row, revealed: boolean): Row {
-  if (revealed) return { ...r, revealed: true };
-  return {
-    ...r, email: maskEmail(String(r.email ?? '')), phone: maskPhone(String(r.phone ?? '')),
-    linkedin: r.linkedin ? 'hidden' : '', address: r.address ? 'hidden' : '', social: r.social ? 'hidden' : '',
-    /* The file's other columns can hold a second address or a home phone:
-       which columns there are is shown, not what is in them. */
-    extra: hideValues(r.extra),
-    revealed: false,
-  };
-}
+/* Only the owner searches, and it is their own data: shown in full. (Customers
+   once saw these masked until they spent an allowance; they no longer search.) */
+const full = (r: Row): Row => ({ ...r, revealed: true });
 
 export async function handleLeadDir(req: Request, env: Env): Promise<Response> {
   const d = await body<Req>(req);
@@ -118,6 +105,12 @@ export async function handleLeadDir(req: Request, env: Env): Promise<Response> {
   if (!user) return fail('Sign in again — this needs a current session.', 401, { code: 'unauthorised' });
   const owner = isOwner(user);
   const act = String(d.action ?? 'status');
+
+  /* Before anything else, so the answer is the same whether or not the
+     library has a database: what is in it is never a customer's to ask. */
+  if (['facets', 'search', 'reveal'].includes(act) && !owner) {
+    return fail('Only the owner of this installation searches the lead library.', 403, { code: 'not_owner' });
+  }
 
   const db = env.LEADS;
   if (!db) {
@@ -254,6 +247,12 @@ export async function handleLeadDir(req: Request, env: Env): Promise<Response> {
     if (!email && !id) return fail('Type the email address to remove.', 200, { field: 'leaddir.remove' });
     const r = await db.prepare('SELECT id, dedupe, ind_k, industry, st_k, state, co_k, country, level, size FROM ld_people WHERE ' + (id ? 'id = ?' : 'dedupe = ?')).bind(id || email).all<Row>();
     const list = r.results ?? [];
+    /* The workspaces their details were passed to by a project's daily
+       prospecting — the owner must pass the request on (GDPR Art. 19); their
+       own copies in those CRMs are not this database's to delete. */
+    const passed = list.length
+      ? ((await db.prepare(`SELECT DISTINCT account_id FROM ld_given WHERE person_id IN (${list.map(() => '?').join(',')})`).bind(...list.map(p => p.id)).all<{ account_id: string }>()).results ?? []).map(x => x.account_id)
+      : [];
     const at = nowIso();
     const ops: D1PreparedStatement[] = [];
     if (email) ops.push(db.prepare('INSERT OR IGNORE INTO ld_removed (dedupe, at) VALUES (?, ?)').bind(email, at));
@@ -264,25 +263,23 @@ export async function handleLeadDir(req: Request, env: Env): Promise<Response> {
     }
     if (list.length) ops.push(db.prepare("UPDATE ld_meta SET v = MAX(0, CAST(v AS INTEGER) - ?) WHERE k = 'total'").bind(list.length));
     if (ops.length) await db.batch(ops);
-    return json({ success: true, removed: list.length });
+    return json({ success: true, removed: list.length, passedTo: passed });
   }
 
-  /* ── A customer's side (the owner may always look) ────────────────── */
+  /* ── Searching it: the owner's Lead library screen ────────────────── */
 
   const accountId = String(d.accountId ?? '').trim();
   if (!accountId) return fail('A valid workspace is required.');
   const access = await workspaceAccess(env.DB, user, accountId);
   if (!access.ok) return fail(access.message ?? 'That workspace is not yours.', 403, { code: access.code });
   const s = await settingsOf(db);
-  if (!owner && !s.shared) return fail('The lead directory is not open yet.', 200, { code: 'not_shared' });
+
+  /* A customer may know whether projects can draw on it — nothing about what is in it. */
+  if (act === 'status' && !owner) return json({ success: true, shared: s.shared });
 
   if (act === 'status' || act === 'facets') {
-    const used = owner ? null : await revealsUsed(db, accountId);
-    const trial = owner ? null : await trialForWorkspace(env, accountId).catch(() => null);
     return json({
-      success: true, label: s.label, total: s.total, shared: s.shared,
-      left: used ? { day: Math.max(0, REVEAL_BUDGET.day - used.day), month: Math.max(0, REVEAL_BUDGET.month - used.month) } : null,
-      trialEnded: trial?.kind === 'ended',
+      success: true, label: s.label, total: s.total, shared: s.shared, left: null, trialEnded: false,
       industries: await facetList(db, 'industry', 60), states: await facetList(db, 'state', 80),
       countries: await facetList(db, 'country', 30), levels: await facetList(db, 'level', 20), sizes: await facetList(db, 'size', 20),
     });
@@ -336,13 +333,8 @@ export async function handleLeadDir(req: Request, env: Env): Promise<Response> {
     const shown = list.slice(0, PAGE);
     /* Counted to 5,000 at most: past that the exact number costs a scan and says nothing more. */
     const total = after ? null : (await db.prepare(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM ld_people ${cond} LIMIT 5001)`).bind(...args).first<{ n: number }>())?.n ?? 0;
-    let seen = new Set<number>();
-    if (!owner && shown.length) {
-      const r = await db.prepare(`SELECT person_id FROM ld_reveals WHERE account_id = ? AND person_id IN (${shown.map(() => '?').join(',')})`).bind(accountId, ...shown.map(p => p.id)).all<{ person_id: number }>();
-      seen = new Set((r.results ?? []).map(x => x.person_id));
-    }
     return json({
-      success: true, people: shown.map(p => masked(p, owner || seen.has(Number(p.id)))), total, capped: total === 5001,
+      success: true, people: shown.map(p => full(p)), total, capped: total === 5001,
       more, after: shown.length ? Number(shown[shown.length - 1].id) : after, fetchedAt: nowIso(),
     });
   }
@@ -351,28 +343,8 @@ export async function handleLeadDir(req: Request, env: Env): Promise<Response> {
     const ids = [...new Set((Array.isArray(d.ids) ? d.ids : []).map(Number).filter(n => Number.isInteger(n) && n > 0))].slice(0, 50);
     if (!ids.length) return fail('Tick the people to show first.');
     const rows = await db.prepare(`SELECT ${SHOWN} FROM ld_people WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all<Row>();
-    const list = rows.results ?? [];
-    if (owner) return json({ success: true, people: list.map(p => masked(p, true)), spent: 0 });
-    if ((await trialForWorkspace(env, accountId).catch(() => null))?.kind === 'ended') {
-      return fail('Your 7-day free trial has ended, so the lead directory has stopped showing contact details. Choose a plan under Plan & billing to carry on.', 402, { code: 'trial_ended' });
-    }
-    const already = await db.prepare(`SELECT person_id FROM ld_reveals WHERE account_id = ? AND person_id IN (${ids.map(() => '?').join(',')})`).bind(accountId, ...ids).all<{ person_id: number }>();
-    const had = new Set((already.results ?? []).map(x => x.person_id));
-    const fresh = list.filter(p => !had.has(Number(p.id)));
-    const used = await revealsUsed(db, accountId);
-    const room = Math.min(REVEAL_BUDGET.day - used.day, REVEAL_BUDGET.month - used.month);
-    if (fresh.length > room) {
-      return fail(room > 0
-        ? `That is ${fresh.length} new people and your allowance has ${room} left today. Tick fewer, or come back tomorrow.`
-        : `You have used today's allowance of ${REVEAL_BUDGET.day} contacts from the directory (${REVEAL_BUDGET.month} a month). It refills tomorrow.`, 429, { code: 'reveal_budget', left: Math.max(0, room) });
-    }
-    const at = nowIso();
-    if (fresh.length) await db.batch(fresh.map(p => db.prepare('INSERT OR IGNORE INTO ld_reveals (account_id, person_id, at) VALUES (?, ?, ?)').bind(accountId, p.id, at)));
-    const after = await revealsUsed(db, accountId);
-    return json({
-      success: true, people: list.map(p => masked(p, true)), spent: fresh.length,
-      left: { day: Math.max(0, REVEAL_BUDGET.day - after.day), month: Math.max(0, REVEAL_BUDGET.month - after.month) },
-    });
+    /* The owner's own data: nothing to count. */
+    return json({ success: true, people: (rows.results ?? []).map(p => full(p)), spent: 0, left: null });
   }
 
   return fail('Unknown action.');

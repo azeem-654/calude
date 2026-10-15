@@ -21,6 +21,8 @@ import Dashboard from './components/Dashboard/Dashboard';
 import Contacts from './components/Contacts/Contacts';
 import AiProspecting from './components/Prospecting/AiProspecting';
 import LeadDirectory from './components/Prospecting/LeadDirectory';
+import LeadLists from './components/Prospecting/LeadLists';
+import { isInstallOwner } from './services/moderation';
 import Conversations from './components/Conversations/Conversations';
 import CalendarView from './components/Calendar/CalendarView';
 import Pipelines from './components/Pipelines/Pipelines';
@@ -210,7 +212,11 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/" element={<Dashboard />} />
           <Route path="/contacts" element={<Contacts />} />
           <Route path="/prospecting" element={<AiProspecting />} />
-          <Route path="/lead-directory" element={<LeadDirectory />} />
+          <Route path="/lead-lists" element={<LeadLists />} />
+          {/* The owner's Lead library. Anybody else asking for the old address
+              lands on their own lead lists — the server refuses them the
+              search either way (routes/leaddir.ts). */}
+          <Route path="/lead-directory" element={isInstallOwner() ? <LeadDirectory /> : <Navigate to="/lead-lists" replace />} />
           <Route path="/ai-prospecting" element={<Navigate to="/prospecting" replace />} />
           <Route path="/engagement" element={<Engagement />} />
           <Route path="/conversations" element={<Conversations />} />

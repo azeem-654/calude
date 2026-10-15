@@ -49,13 +49,14 @@ import { installRegisterKey, searchRegister } from './lib/companiesHouse';
 import { checkEmails } from './lib/emailVerify';
 import { trialForWorkspace } from './lib/trial';
 import {
-  DAY_LIMITS, READS_PER_TICK, afterSearch, forDay, isKnown, knownIndex, nextJob, nextRunAt, type FinderState, type Job,
+  DAY_LIMITS, READS_PER_TICK, afterSearch, forDay, isKnown, knownIndex, libraryRoom, nextJob, nextRunAt, type FinderState, type Job,
 } from './lib/finderPlan';
 import {
-  DEFAULT_DESTINATION, DEFAULT_FILTERS, DEFAULT_VERIFY, REJECT_LABEL, SOURCE_POLICY, nextRunStart, policyFor, qualify, runLimits, runNow,
+  DEFAULT_DESTINATION, DEFAULT_FILTERS, DEFAULT_VERIFY, LICENSED_SOURCE, REJECT_LABEL, SOURCE_POLICY, nextRunStart, policyFor, qualify, runLimits, runNow,
   type Check, type Destination, type Filters, type RejectReason, type RunPlan, type Schedule, type Verify,
 } from './lib/prospectSources';
 import { loadPolicy } from './lib/sourcePolicyStore';
+import { ensureSchema as ensureLibrary, libraryWhere } from './lib/leadDir';
 
 /** Leave Geoapify to people searching by hand once the install has used this much of the day. */
 const GEO_SHARE = 2_000;
@@ -153,9 +154,16 @@ export interface ContactExtras { tags?: string[]; owner?: string; searchName?: s
 export function contactOf(r: PPRow, projectId: string, now = nowIso(), x: ContactExtras = {}): Record<string, unknown> {
   const [trade, place] = r.query.split('|');
   const fields: Record<string, string> = { foundAt: r.found_at, projectId };
+  const licensed = r.source === 'library';
   /* Where it came from, said on the contact itself: the search, the source and
      its licence, the date — so a list can always be traced back. */
-  if (x.searchName) {
+  if (licensed) {
+    /* Not found on the web and not read off a website: given from data the
+       operator licensed. Saying so is what lets the customer answer "where
+       did you get my details?" truthfully. */
+    fields.dataSource = LICENSED_SOURCE.label;
+    fields.provenance = `${LICENSED_SOURCE.label} (${LICENSED_SOURCE.licence}), given to this project's daily prospecting on ${r.found_at.slice(0, 10)}`;
+  } else if (x.searchName) {
     const pol = SOURCE_POLICY[(r.source as keyof typeof SOURCE_POLICY)] ?? SOURCE_POLICY.free;
     fields.prospectSearch = x.searchName;
     fields.provenance = `Found by the AI Prospecting search "${x.searchName}" in ${pol.label} (${pol.licence}) on ${r.found_at.slice(0, 10)}`;
@@ -172,11 +180,11 @@ export function contactOf(r: PPRow, projectId: string, now = nowIso(), x: Contac
     /* Stable, so putting a prospect back after a stale browser save is the same contact, not a second one. */
     id: `pf-${r.id}`,
     name: r.name, email: r.email, phone: r.phone, status: 'prospect',
-    tags: [...new Set(['prospect search', 'autopilot', r.category, EMAIL_TAG[r.email_status] ?? '', ...(x.tags ?? [])].filter(Boolean))],
+    tags: [...new Set([licensed ? 'licensed business data' : 'prospect search', 'autopilot', r.category, EMAIL_TAG[r.email_status] ?? '', ...(x.tags ?? [])].filter(Boolean))],
     ...(x.owner ? { assignedTo: x.owner } : {}),
     source: r.source === 'manual'
       ? 'AI Prospecting · added to a project'
-      : 'AI Autopilot · daily prospecting',
+      : licensed ? `AI Autopilot · ${LICENSED_SOURCE.label.toLowerCase()}` : 'AI Autopilot · daily prospecting',
     /* A date, as every other writer of contacts stores it (the list prints
        it as it is, so a full timestamp showed as one). */
     createdAt: now, lastActivity: now.slice(0, 10), value: 0,
@@ -395,6 +403,98 @@ async function qualifyStep(env: Env, f: FinderRow, s: FinderState, conn: Connect
   };
 }
 
+/* ── The owner's licensed data ──
+ *
+ * When the install owner has opened their lead library (shared, with their
+ * statement that they may — routes/leaddir.ts `settings`), a plain finder may
+ * be given a few people from it each step: industry one of its trades', place
+ * one of its places, an email address on file. Never the same person twice
+ * for a project (`ld_given`, and the `ld:<id>` ref in crm_project_prospects),
+ * never anyone removed on request, nobody on this workspace's suppression or
+ * unsubscribe lists, nobody already in its Contacts — and every address gets
+ * the same free check as a found one before it may join. A connection is the
+ * customer's own tested search with its own checks, so it is left to that.
+ *
+ * Customers never search the library and never see it named; the contact
+ * says "Licensed business data" and the date.
+ */
+interface LibraryOutcome { detail: string; ready: number; quiet?: boolean }
+
+async function libraryStep(env: Env, f: FinderRow, s: FinderState, runDate: string): Promise<LibraryOutcome | null> {
+  if (isConnection(f)) return null;
+  const db = env.LEADS;
+  /* Said once a day, not every tick: the finder's log is the customer's to read. */
+  if (!db) return { detail: `${LICENSED_SOURCE.label} was not used: its database is not connected to this app.`, ready: 0, quiet: true };
+  await ensureLibrary(db);
+  const meta = (await db.prepare("SELECT k, v FROM ld_meta WHERE k IN ('shared', 'attested_at')").all<{ k: string; v: string }>()).results ?? [];
+  const m = Object.fromEntries(meta.map(x => [x.k, x.v]));
+  /* The owner's switch, exactly as the library's own: open, and stated. Closed is not news to anybody. */
+  if (m.shared !== '1' || !m.attested_at) return null;
+
+  const counts = await env.DB.prepare(
+    `SELECT SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END) AS r,
+            SUM(CASE WHEN source = 'library' AND found_at >= ? THEN 1 ELSE 0 END) AS l
+     FROM crm_project_prospects WHERE finder_id = ?`,
+  ).bind(runDate, f.id).first<{ r: number | null; l: number | null }>();
+  const room = libraryRoom(s, Number(counts?.r ?? 0), Number(counts?.l ?? 0));
+  if (room <= 0) return null;
+
+  const facets = (await db.prepare("SELECT kind, value, n FROM ld_facets WHERE kind IN ('industry', 'state', 'country') AND n > 0").all<{ kind: string; value: string; n: number }>()).results ?? [];
+  const states = new Set<string>(), countries = new Set<string>();
+  for (const r of facets) {
+    if (r.kind === 'state') states.add(r.value.split('|')[1] ?? r.value);
+    else if (r.kind === 'country') countries.add(r.value);
+  }
+  const w = libraryWhere(s.trades, s.places, facets.filter(r => r.kind === 'industry'), states, countries);
+  if (!w.sql) return null;
+
+  /* A few spare, for the ones the checks below turn away. */
+  const people = (await db.prepare(
+    `SELECT id, name, title, company, website, email, phone, industry, city, state, country FROM ld_people
+     WHERE ${w.sql}
+       AND NOT EXISTS (SELECT 1 FROM ld_given g WHERE g.project_id = ? AND g.person_id = ld_people.id)
+       AND NOT EXISTS (SELECT 1 FROM ld_removed x WHERE x.dedupe = ld_people.dedupe)
+     ORDER BY id LIMIT ?`,
+  ).bind(...w.args, f.project_id, room * 3).all<{ id: number; name: string; title: string; company: string; website: string; email: string; phone: string; industry: string; city: string; state: string; country: string }>()).results ?? [];
+  if (!people.length) return null;
+
+  const known = knownIndex(parse<{ name?: string; company?: string; email?: string; phone?: string; website?: string }[]>(await dataGet(env.DB, f.account_id, 'crm_contacts'), []));
+  const suppressed = await suppressedSet(env, f.account_id);
+  const v = await checkEmails(env, f.account_id, people.map(p => p.email), false, true);
+  const at = nowIso();
+  let ready = 0, away = 0;
+  const given: D1PreparedStatement[] = [];
+  for (const p of people) {
+    if (ready >= room) break;
+    const email = String(p.email ?? '').toLowerCase();
+    const business = p.company || p.name;
+    const verdict = v.verdicts[email];
+    const reason = suppressed.has(email) ? 'suppressed'
+      : isKnown(known, { name: business, email, phone: p.phone, website: p.website }) ? 'duplicate'
+        : !verdict ? 'no_email'
+          : verdict.status === 'invalid' ? 'invalid_email' : '';
+    const status = reason === 'duplicate' ? 'known' : reason ? 'rejected' : 'ready';
+    const r = await env.DB.prepare(
+      `INSERT OR IGNORE INTO crm_project_prospects
+         (id, account_id, project_id, finder_id, ref, name, email, phone, website, address, category, person_name, person_role,
+          company_number, email_status, query, source, status, found_at, reject_reason, search_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'',?,?,'library',?,?,?,'')`,
+    ).bind(
+      rid('pp'), f.account_id, f.project_id, f.id, `ld:${p.id}`, business.slice(0, 200), email.slice(0, 190), (p.phone || '').slice(0, 40),
+      (p.website || '').slice(0, 300), [p.city, p.state, p.country].filter(Boolean).join(', ').slice(0, 300), (p.industry || '').slice(0, 80),
+      p.company ? p.name.slice(0, 80) : '', (p.title || '').slice(0, 80), verdict?.status ?? '',
+      `${p.industry}|${[p.city, p.state].filter(Boolean).join(', ') || p.country}`.slice(0, 200), status, at, reason,
+    ).run().catch(() => null);
+    /* Recorded whatever the outcome: somebody turned away today is not offered to this project again tomorrow. */
+    given.push(db.prepare('INSERT OR IGNORE INTO ld_given (project_id, account_id, person_id, at) VALUES (?, ?, ?, ?)').bind(f.project_id, f.account_id, p.id, at));
+    if (!r?.meta?.changes) continue;
+    if (status === 'ready') ready++; else away++;
+  }
+  if (given.length) await db.batch(given);
+  if (!ready && !away) return null;
+  return { detail: `${LICENSED_SOURCE.label}: ${ready} matched and checked${away ? `, ${away} turned away (already in Contacts, unsubscribed, or an address that would bounce)` : ''}`, ready };
+}
+
 /* ── One step ── */
 
 async function searchStep(env: Env, f: FinderRow, s: FinderState, job: Extract<Job, { kind: 'search' }>, tallyRef?: RunTally): Promise<{ state: FinderState; detail: string; found: number }> {
@@ -546,6 +646,19 @@ export async function stepFinder(env: Env, f: FinderRow, now = new Date()): Prom
   let added = await addReady(env, f, s, conn ? live : undefined);
   s = { ...s, dayAdded: s.dayAdded + added };
   if (added) await log(env, f, 'add', `Added ${added} to the project's audience`, 0, added);
+
+  /* Then a few from the owner's licensed data, when they have opened it — a
+     failure there is the library's, never the reason today's search stops. */
+  const lib = await libraryStep(env, f, s, runDate).catch((e: unknown): LibraryOutcome => ({
+    detail: `${LICENSED_SOURCE.label} was not used this time: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300), ready: 0, quiet: true,
+  }));
+  if (lib && (!lib.quiet || newDay)) await log(env, f, 'library', lib.detail, lib.ready);
+  if (lib?.ready) {
+    const more = await addReady(env, f, s, conn ? live : undefined);
+    s = { ...s, dayAdded: s.dayAdded + more };
+    added += more;
+    if (more) await log(env, f, 'add', `Added ${more} to the project's audience`, 0, more);
+  }
 
   const counts = await env.DB.prepare(
     "SELECT SUM(CASE WHEN status = 'candidate' THEN 1 ELSE 0 END) AS c, SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END) AS r FROM crm_project_prospects WHERE finder_id = ?",

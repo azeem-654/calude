@@ -1,8 +1,10 @@
 /**
- * Customers → Lead Directory: searching the people the install owner has
- * loaded (routes/leaddir.ts). Searching is free and shows who and where, with
- * the email and phone masked; showing someone in full, or adding them to
- * Contacts, spends the workspace's allowance once per person.
+ * Workspace → Lead library: the install owner searching the people they
+ * loaded from their own lead files (routes/leaddir.ts). The owner's screen
+ * alone — App.tsx sends anybody else to their own Lead lists, and the server
+ * refuses them the search. Customers meet these records only as "Licensed
+ * business data" on what their projects' daily prospecting adds, when the
+ * owner has opened the library (Settings → Platform services).
  *
  * Imports land the way AI Prospecting's do (planImport — never a second copy
  * of somebody already in Contacts, only blanks filled) on a list marked
@@ -11,12 +13,12 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { BookUser, CheckCircle, ExternalLink, Eye, Loader, Search, UserPlus } from 'lucide-react';
+import { BookUser, CheckCircle, ExternalLink, Loader, Search, UserPlus } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { Contact } from '../../types';
 import { dirCall, type DirPerson, type DirStatus } from '../../services/leadDirectory';
 import { emailTag, planImport } from '../../services/prospectImport';
-import { verifyEmails, type Verdict } from '../../services/prospects';
+import { SOURCE_NAME, verifyEmails, type Verdict } from '../../services/prospects';
 import { addToStaticList, createList, loadLists } from '../../services/contactLists';
 import { currentActor } from '../../services/contactPermissions';
 
@@ -33,7 +35,7 @@ export default function LeadDirectory() {
   const [st, setSt] = useState<DirStatus | null>(null);
   const [stErr, setStErr] = useState<{ error: string; code: string } | null>(null);
   const [params] = useSearchParams();
-  /* AI Prospecting's "See them all" opens the same search here (?industry=&place=). */
+  /* ?industry=&place= opens with that search run. */
   const [q, setQ] = useState<Query>(() => ({ industry: params.get('industry') ?? '', place: params.get('place') ?? '', title: '', level: '', companySize: '', hasEmail: false }));
   const handed = useRef(!!(params.get('industry') || params.get('place')));
   const [asked, setAsked] = useState<Query | null>(null);
@@ -53,7 +55,7 @@ export default function LeadDirectory() {
 
   const loadStatus = useCallback(async () => {
     const d = await dirCall('status');
-    if (d.success) { setSt(d as unknown as DirStatus); setStErr(null); } else setStErr({ error: String(d.error ?? 'The lead directory could not be read.'), code: String(d.code ?? '') });
+    if (d.success) { setSt(d as unknown as DirStatus); setStErr(null); } else setStErr({ error: String(d.error ?? 'The lead library could not be read.'), code: String(d.code ?? '') });
   }, []);
   useEffect(() => { void loadStatus(); }, [loadStatus]);
   useEffect(() => {
@@ -75,20 +77,18 @@ export default function LeadDirectory() {
     if (!next) { setTotal(d.total == null ? null : Number(d.total)); setCapped(d.capped === true); setPicked(new Set()); }
     setMore(d.more === true); setAfter(Number(d.after) || 0);
     if (d.note) setNote(String(d.note));
-    if (!next) setListName([ask.title, ask.industry, ask.place].filter(Boolean).join(' · ').slice(0, 60) || 'Lead Directory');
+    if (!next) setListName([ask.title, ask.industry, ask.place].filter(Boolean).join(' · ').slice(0, 60) || 'Lead library');
   };
 
   const chosen = useMemo(() => people.filter(p => picked.has(p.id)), [people, picked]);
-  const unseen = chosen.filter(p => !p.revealed).length;
 
-  /** Shows the ticked people in full; spends the allowance on the ones not seen before. */
+  /** The ticked people in full (the owner's own data — nothing is counted). */
   const reveal = async (): Promise<DirPerson[] | null> => {
     if (!chosen.length) return null;
     const d = await dirCall('reveal', { ids: chosen.map(p => p.id) });
     if (!d.success) { setError(String(d.error ?? 'Could not show them.')); return null; }
     const shown = new Map(((d.people as DirPerson[]) ?? []).map(p => [p.id, p]));
     setPeople(ps => ps.map(p => shown.get(p.id) ?? p));
-    if (d.left && st) setSt({ ...st, left: d.left as DirStatus['left'] });
     return [...shown.values()];
   };
 
@@ -124,14 +124,16 @@ export default function LeadDirectory() {
         foundAt: at, directoryId: String(p.id), industry: p.industry, seniority: p.level, department: p.department,
         companySize: p.size, revenue: p.revenue, founded: p.founded, keywords: p.keywords, postalCode: p.postal ?? '',
         companyLinkedin: p.company_linkedin ?? '', social: p.social ?? '', sicNaics: p.codes ?? '', technologies: p.technologies ?? '',
-        listEmailStatus: p.email_status ?? '',
+        listEmailStatus: p.email_status ?? '', dataSource: SOURCE_NAME.library,
+        provenance: `${SOURCE_NAME.library} — the owner's lead library (${p.industry || 'no industry'}), added on ${at.slice(0, 10)}`,
         ...(v ? { emailStatus: v.status, emailCheck: v.level, emailCheckedAt: v.checkedAt } : {}),
       };
       /* The file's other columns travel too, under their own names, without overwriting ours. */
       const fromFile = Object.fromEntries(Object.entries(extra).filter(([k, val]) => val && val !== 'hidden' && !(k in known)).slice(0, 25));
       return {
-        name: p.name, email: p.email, phone: p.phone, status: 'prospect', source: 'Lead directory',
-        tags: ['lead directory', 'cold', ...(tag ? [tag] : [])], createdAt: at, lastActivity: at, value: 0,
+        /* Named as the data it is, the same words a project's daily prospecting uses. */
+        name: p.name, email: p.email, phone: p.phone, status: 'prospect', source: SOURCE_NAME.library,
+        tags: ['licensed business data', 'cold', ...(tag ? [tag] : [])], createdAt: at, lastActivity: at, value: 0,
         firstName, lastName: rest.join(' ') || undefined, company: p.company || undefined, jobTitle: p.title || undefined,
         website: p.website || undefined, linkedin: p.linkedin || undefined,
         address: [p.address, p.city, p.state, p.postal, p.country].filter(Boolean).join(', ') || undefined,
@@ -170,10 +172,8 @@ export default function LeadDirectory() {
       <div style={page}>
         <Head />
         <div role="status" style={{ ...card, color: '#334155', fontSize: 14, lineHeight: 1.6 }}>
-          {stErr.code === 'not_shared' || stErr.code === 'no_database'
-            ? 'The lead directory is not open yet. In the meantime AI Prospecting finds businesses and their published emails, live.'
-            : stErr.error}
-          <div style={{ marginTop: 10 }}><button style={btn} onClick={() => navigate('/prospecting')}><Search size={13} /> Open AI Prospecting</button></div>
+          {stErr.error}
+          <div style={{ marginTop: 10 }}><button style={btn} onClick={() => navigate('/settings?tab=platform')}><Search size={13} /> Open Platform services</button></div>
         </div>
       </div>
     );
@@ -181,11 +181,12 @@ export default function LeadDirectory() {
 
   return (
     <div style={page} data-testid="lead-directory">
-      <Head label={st?.label} total={st?.total} />
-      {st?.left && (
-        <div style={{ fontSize: 12.5, color: MUTED }}>
-          Searching is free. Showing someone's email, phone and profile uses your allowance — {fmtN(st.left.day)} left today, {fmtN(st.left.month)} this month. Seeing the same person again is free.
-          {st.trialEnded && <strong style={{ color: '#b42318' }}> Your trial has ended, so details cannot be shown until you choose a plan.</strong>}
+      <Head total={st?.total} />
+      {st && (
+        <div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>
+          Only you see this screen. {st.shared
+            ? 'It is open: projects\' daily prospecting may be given a few people from it who match their kinds of business and places, each checked first and labelled "Licensed business data" on the contact.'
+            : 'It is closed: no customer\'s project draws on it. Open it on Settings → Platform services once you are sure your licence lets you share these records.'}
         </div>
       )}
 
@@ -239,11 +240,8 @@ export default function LeadDirectory() {
           </div>
           {!!chosen.length && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '10px 14px', background: '#f5f3ff', borderBottom: `1px solid ${LINE}` }} data-testid="ld-actions">
-              <span style={{ fontSize: 13, color: INK, fontWeight: 700 }}>{chosen.length} ticked{unseen ? ` · ${unseen} not seen before (uses ${unseen} of your allowance)` : ''}</span>
+              <span style={{ fontSize: 13, color: INK, fontWeight: 700 }}>{chosen.length} ticked</span>
               <span style={{ flex: 1 }} />
-              <button style={btn} disabled={!!working} onClick={async () => { setWorking('reveal'); await reveal(); setWorking(''); }}>
-                {working === 'reveal' ? <Loader size={12} className="spin" /> : <Eye size={12} />} Show details
-              </button>
               <select value={listId} onChange={e => setListId(e.target.value)} style={{ ...input, width: 'auto', maxWidth: 220 }}>
                 <option value="">New list…</option>
                 {lists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
@@ -302,13 +300,13 @@ export default function LeadDirectory() {
   );
 }
 
-function Head({ label, total }: { label?: string; total?: number }) {
+function Head({ total }: { total?: number }) {
   return (
     <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
       <span style={{ width: 40, height: 40, borderRadius: 12, display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg,#6366f1,#ec4899)', color: '#fff' }}><BookUser size={20} /></span>
       <div style={{ flex: 1, minWidth: 200 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: INK, margin: 0 }}>{label && label !== 'Lead directory' ? label : 'Lead Directory'}</h1>
-        <div style={{ fontSize: 13, color: MUTED }}>People at businesses, by industry, place and job title{total ? ` — ${fmtN(total)} in the directory` : ''}.</div>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: INK, margin: 0 }}>Lead library</h1>
+        <div style={{ fontSize: 13, color: MUTED }}>Your own lead files, by industry, place and job title{total ? ` — ${fmtN(total)} people` : ''}.</div>
       </div>
     </div>
   );

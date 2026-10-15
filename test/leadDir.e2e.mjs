@@ -1,32 +1,46 @@
 /**
- * The owner's lead directory, end to end (routes/leaddir.ts, lib/leadDir.ts,
- * services/leadImport.ts, Settings → Platform services → Lead directory,
- * Customers → Lead Directory).
+ * The owner's lead library, end to end (routes/leaddir.ts, lib/leadDir.ts,
+ * services/leadImport.ts, Settings → Platform services → the library card,
+ * Workspace → Lead library), what it gives a project's daily prospecting
+ * (prospectFinderTick.ts `libraryStep`), and Customers → Lead lists.
  *
  *   VITE_BASE=/ npm run build
- *   npm run test:leaddir         (starts its own wrangler on :8938, fresh D1 in .wrangler-leaddir)
+ *   npm run test:leaddir         (self-contained: Geoapify + DNS mock on :8978,
+ *                                 wrangler on :8938, fresh D1 in .wrangler-leaddir)
  *
  * Everybody in the files is made up here and lives on `.example`.
  *  - the owner drops a ZIP of two CSVs on the card; it is read in the
  *    browser and loaded, duplicates once;
  *  - a load cut off part-way carries on from the row after the last one sent;
- *  - customers cannot load, cannot change settings, and see nothing until the
- *    owner opens it — which needs the owner's statement that they may;
- *  - a search masks addresses; showing someone spends the allowance once,
- *    stops at the day's limit, and never for another workspace;
+ *  - customers cannot load, cannot change settings, and never search it or
+ *    see a person in it — opened or not (403 `not_owner`); a customer's
+ *    status says only whether it is open; the old address sends them to
+ *    their own Lead lists;
+ *  - opening it needs the owner's statement that they may share it;
+ *  - the owner searches it, in full, on the Lead library screen and adds
+ *    people to their own Contacts as "Licensed business data";
+ *  - opened, it feeds a project's daily finder: a few a step, half the day at
+ *    most, each address checked, never somebody suppressed or already in
+ *    Contacts, never the same person twice, labelled "Licensed business data"
+ *    with the date on every contact — and the owner's removal says which
+ *    workspaces were given that person;
+ *  - closed, the finder takes nobody from it;
  *  - a person removed on request stays out when the same file is loaded again;
  *  - a load can be undone;
- *  - a customer finds people and adds them to Contacts on a cold list, at
- *    1280px and 390px, with no page errors and no sideways scroll.
+ *  - the customer's Lead lists show the project's folder, its list and its
+ *    leads with their source, search them and export them, at 1280px and
+ *    390px, with no page errors, no sideways scroll and no "directory".
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import http from 'node:http';
 import { deflateRawSync } from 'node:zlib';
 import { spawn } from 'node:child_process';
 import pw from '/opt/node22/lib/node_modules/playwright/index.js';
 
-const PORT = Number(process.env.PORT ?? 8938), INSPECT = Number(process.env.INSPECT_PORT ?? 9338);
+const PORT = Number(process.env.PORT ?? 8938), INSPECT = Number(process.env.INSPECT_PORT ?? 9338), MOCK = Number(process.env.MOCK_PORT ?? 8978);
 const B = `http://localhost:${PORT}`;
+const G = `http://127.0.0.1:${MOCK}`;
 let pass = 0, fail = 0;
 const ok = (n, c, d = '') => { if (c) pass++; else fail++; console.log(`${c ? '  ✓' : '  ✗'} ${n}${c ? '' : ` — ${String(d).slice(0, 600)}`}`); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -60,16 +74,36 @@ function zip(files) {
 const ZIP = zip([{ name: 'leads/florida-texas-1.csv', data: csv(A) }, { name: 'leads/florida-texas-2.csv', data: csv(Bp) }]);
 const UNIQUE = 1400 - 200;
 
+/* ── The mock: Geoapify finding nothing (so the finder's live search is a
+   quiet no), and DNS saying every realty*.example takes mail ── */
+const GEOKEY = 'd4'.repeat(16);
+const send = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
+const mock = http.createServer((req, res) => {
+  const u = new URL(req.url, G);
+  if (u.pathname === '/dns-query') {
+    const name = u.searchParams.get('name') ?? '';
+    if (/^realty\d+\.example$/.test(name) && u.searchParams.get('type') === 'MX') return send(res, 200, { Status: 0, Answer: [{ type: 15, data: `10 mx.${name}.` }] });
+    return send(res, 200, { Status: 0, Answer: [] });
+  }
+  if (u.searchParams.get('apiKey') !== GEOKEY) return send(res, 401, { message: 'Invalid apiKey' });
+  if (u.pathname === '/v1/geocode/search') return send(res, 200, { results: [{ place_id: 'p-any', lon: -82.46, lat: 27.95, result_type: 'city' }] });
+  if (u.pathname === '/v2/places') return send(res, 200, { features: [] });
+  send(res, 404, { message: 'no such path in the mock' });
+});
+await new Promise(r => mock.listen(MOCK, '127.0.0.1', r));
+
 /* ── A fresh database and the real Worker ── */
 const persist = path.resolve('.wrangler-leaddir');
 fs.rmSync(persist, { recursive: true, force: true });
 const { execSync } = await import('node:child_process');
 execSync(`npx wrangler d1 migrations apply crmpro --local --persist-to ${persist}`, { stdio: 'ignore', env: { ...process.env, CI: '1' } });
-const wr = spawn('npx', ['wrangler', 'dev', '--local', '--port', String(PORT), '--inspector-port', String(INSPECT), '--persist-to', persist, '--var', `APP_ORIGIN:${B}`], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+const sql = q => JSON.parse(execSync(`npx wrangler d1 execute crmpro --local --persist-to ${persist} --json --command ${JSON.stringify(q)}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }))[0].results;
+const vars = [`APP_ORIGIN:${B}`, `GEOAPIFY_BASE:${G}`, `DOH_BASE:${G}/dns-query`];
+const wr = spawn('npx', ['wrangler', 'dev', '--local', '--port', String(PORT), '--inspector-port', String(INSPECT), '--persist-to', persist, ...vars.flatMap(v => ['--var', v])], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
 let wlog = '';
 wr.stdout.on('data', c => { wlog += c; }); wr.stderr.on('data', c => { wlog += c; });
 let br = null;
-const stop = () => { try { process.kill(-wr.pid, 'SIGTERM'); } catch { /* gone */ } };
+const stop = () => { try { process.kill(-wr.pid, 'SIGTERM'); } catch { /* gone */ } mock.close(); };
 process.on('exit', stop);
 process.on('uncaughtException', async e => { console.log(e); console.log(wlog.replace(/.*workerd@.*\n/g, '').slice(-2500)); try { await br?.close(); } catch { /* */ } stop(); process.exit(1); });
 for (let i = 0; i < 90; i++) { try { const r = await fetch(`${B}/api/data.php`, { method: 'POST', headers: { Connection: 'close' }, body: '{"action":"ping"}' }); if (r.ok) break; } catch { /* starting */ } await sleep(1000); }
@@ -78,11 +112,12 @@ let ipN = 1;
 const api = (p, body) => fetch(`${B}/api/${p}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Connection: 'close', 'CF-Connecting-IP': `10.9.8.${ipN++ % 250}` }, body: JSON.stringify(body) }).then(r => r.json().catch(() => ({ status: r.status })));
 const dir = (token, action, extra = {}) => api('leaddir.php', { token, action, ...extra });
 
-console.log('\nLead directory');
+console.log('\nLead library');
 const OWNER = 'owner@leaddir.test', OPW = 'Tq9!vX2#pLm7wZ-ld';
 await api('auth.php', { action: 'bootstrap', email: OWNER, password: OPW, name: 'Owner' });
 const OL = await api('auth.php', { action: 'login', email: OWNER, password: OPW });
-const T = OL.token, OACCT = OL.user?.accountId;
+const T = OL.token, OACCT = OL.workspaces?.[0]?.accountId ?? OL.user?.accountId ?? 'acct-ld-owner-1';
+await api('geoapify.php', { token: T, action: 'save', apiKey: GEOKEY });
 const CE = 'dana@leaddir.test', CPW = 'Another-horse-7-ferns';
 const ACCT = (await api('auth.php', { action: 'register', email: CE, password: CPW, name: 'Dana', businessName: 'Bright Supplies' })).user?.accountId;
 const CT = (await api('auth.php', { action: 'login', email: CE, password: CPW })).token;
@@ -97,7 +132,7 @@ ok('the owner sees an empty directory', a0.success && a0.total === 0, JSON.strin
 ok('a customer cannot read the owner\'s side', (await dir(CT, 'admin')).code === 'not_owner');
 ok('a customer cannot load rows', (await dir(CT, 'import_start', { fileKey: 'x' })).code === 'not_owner');
 ok('a customer cannot open the directory', (await dir(CT, 'settings', { shared: true, attest: true })).code === 'not_owner');
-ok('customers see nothing until the owner opens it', (await dir(CT, 'search', { accountId: ACCT, industry: 'real estate' })).code === 'not_shared');
+ok('a customer cannot search it', (await dir(CT, 'search', { accountId: ACCT, industry: 'real estate' })).code === 'not_owner');
 
 /* ── The owner loads the ZIP through the card, in a real browser ── */
 br = await pw.chromium.launch();
@@ -156,100 +191,185 @@ ok('the load counted every row it read', firstLoad.rows_seen === 1400 && firstLo
   ok('more than 500 rows in one request is refused', big.success === false);
 }
 
-/* ── Opening it to customers ── */
+/* ── Opening it ── */
 const noAttest = await dir(T, 'settings', { shared: true });
 ok('opening it needs the owner\'s statement, asked on its box', noAttest.success === false && noAttest.field === 'leaddir.attest', JSON.stringify(noAttest));
 const opened = await dir(T, 'settings', { shared: true, attest: true });
-ok('…and with it, customers can search', opened.success && opened.shared === true && !!opened.attestedAt, JSON.stringify(opened));
+ok('…and with it, it is open', opened.success && opened.shared === true && !!opened.attestedAt, JSON.stringify(opened));
 
-/* ── Searching ── */
+/* ── Opened or not, a customer never searches it ── */
 const st = await dir(CT, 'status', { accountId: ACCT });
-ok('a customer sees the size and the allowance', st.success && st.total === UNIQUE + 30 && st.left.day === 200 && st.left.month === 2000, JSON.stringify(st).slice(0, 300));
+ok('a customer\'s status says only that it is open — not its size, not what is in it', st.success && st.shared === true && st.total === undefined && st.industries === undefined && st.label === undefined, JSON.stringify(st).slice(0, 300));
 ok('another workspace\'s id is refused', (await dir(CT, 'status', { accountId: XACCT })).success === false);
-ok('a search with no industry or place is refused on its box', (await dir(CT, 'search', { accountId: ACCT, title: 'CEO' })).field === 'leaddir.industry');
-const fl = await dir(CT, 'search', { accountId: ACCT, industry: 'real estate', place: 'Florida' });
+for (const action of ['facets', 'search', 'reveal']) {
+  const r = await dir(CT, action, { accountId: ACCT, industry: 'real estate', place: 'Florida', ids: [1, 2, 3] });
+  ok(`a customer's "${action}" is refused: not_owner`, r.success !== true && r.code === 'not_owner' && !r.people && !r.industries, JSON.stringify(r).slice(0, 200));
+}
+
+/* ── The owner searches it, in full ── */
+ok('a search with no industry or place is refused on its box', (await dir(T, 'search', { accountId: OACCT, title: 'CEO' })).field === 'leaddir.industry');
+const fl = await dir(T, 'search', { accountId: OACCT, industry: 'real estate', place: 'Florida' });
 const flCount = Array.from({ length: 1200 }, (_, i) => i).filter(i => i % 3).length;
 ok(`"real estate" in Florida finds the ${flCount} there (commercial included)`, fl.success && fl.total === flCount, JSON.stringify({ total: fl.total, err: fl.error }));
 ok('…50 to a page, with the next page offered', fl.people.length === 50 && fl.more === true);
-ok('…with addresses and phones masked, and the profile hidden', fl.people.every(p => !p.email || /•/.test(p.email)) && fl.people.every(p => /•/.test(p.phone)) && fl.people.every(p => p.linkedin === 'hidden' || p.linkedin === '') && fl.people.every(p => p.revealed === false), JSON.stringify(fl.people[0]));
-const fl2 = await dir(CT, 'search', { accountId: ACCT, industry: 'real estate', place: 'Florida', after: fl.after });
+ok('…shown in full to the owner', fl.people.every(p => !/•/.test(p.email) && !/•/.test(p.phone) && p.revealed === true), JSON.stringify(fl.people[0]));
+const fl2 = await dir(T, 'search', { accountId: OACCT, industry: 'real estate', place: 'Florida', after: fl.after });
 ok('the next page follows on with nobody repeated', fl2.people.length === 50 && !fl2.people.some(p => fl.people.some(x => x.id === p.id)));
-const tx = await dir(CT, 'search', { accountId: ACCT, industry: 'real estate', place: 'Austin, TX' });
+const tx = await dir(T, 'search', { accountId: OACCT, industry: 'real estate', place: 'Austin, TX' });
 ok('"Austin, TX" is a town in a state written as its code', tx.total === 400, tx.total);
-const ceo = await dir(CT, 'search', { accountId: ACCT, industry: 'real estate', place: 'Texas', title: 'CEO' });
+const ceo = await dir(T, 'search', { accountId: OACCT, industry: 'real estate', place: 'Texas', title: 'CEO' });
 ok('"CEO" finds Chief Executive Officers', ceo.total === 200 && ceo.people.every(p => /Chief Executive/.test(p.title)), JSON.stringify(ceo.people?.[0]));
-const em = await dir(CT, 'search', { accountId: ACCT, industry: 'real estate', place: 'Florida', hasEmail: true });
+const em = await dir(T, 'search', { accountId: OACCT, industry: 'real estate', place: 'Florida', hasEmail: true });
 ok('"only with an email" leaves out those without', em.total > 0 && em.total < flCount && em.people.every(p => p.email));
-const none = await dir(CT, 'search', { accountId: ACCT, industry: 'dentists' });
+const none = await dir(T, 'search', { accountId: OACCT, industry: 'dentists' });
 ok('an industry nobody is filed under says so', none.success && none.total === 0 && /industry like/.test(none.note ?? ''), JSON.stringify(none));
+const rv = await dir(T, 'reveal', { accountId: OACCT, ids: fl.people.slice(0, 3).map(p => p.id) });
+ok('the owner\'s own data costs nothing to show', rv.success && rv.people.length === 3 && rv.spent === 0, JSON.stringify(rv).slice(0, 200));
 
-/* ── Showing people spends the allowance, once each ── */
-const three = fl.people.slice(0, 3).map(p => p.id);
-const r1 = await dir(CT, 'reveal', { accountId: ACCT, ids: three });
-ok('showing three people shows them in full', r1.success && r1.people.length === 3 && r1.people.every(p => !/•/.test(p.phone) && p.revealed && /linkedin\.com/.test(p.linkedin)), JSON.stringify(r1).slice(0, 300));
-ok('…and spends three', r1.spent === 3 && r1.left.day === 197, JSON.stringify(r1.left));
-const r2 = await dir(CT, 'reveal', { accountId: ACCT, ids: three });
-ok('showing them again is free', r2.spent === 0 && r2.left.day === 197);
-const again = await dir(CT, 'search', { accountId: ACCT, industry: 'real estate', place: 'Florida' });
-ok('a later search shows the ones already seen in full', again.people.slice(0, 3).every(p => p.revealed) && !again.people[3].revealed);
-ok('another workspace cannot spend this one\'s allowance', (await dir(XT, 'reveal', { accountId: ACCT, ids: three })).success === false);
-ok('…and its own search sees them masked', (await dir(XT, 'search', { accountId: XACCT, industry: 'real estate', place: 'Florida' })).people.slice(0, 3).every(p => !p.revealed));
-/* Spend the rest of the day. */
-let after = again.after, pages = [];
-while (pages.flat().length < 260) { const p = await dir(CT, 'search', { accountId: ACCT, industry: 'real estate', place: 'Florida', after }); pages.push(p.people.map(x => x.id)); after = p.after; }
-const ids = pages.flat();
-for (let k = 0; k < 197; k += 50) await dir(CT, 'reveal', { accountId: ACCT, ids: ids.slice(k, Math.min(k + 50, 197)) });
-const over = await dir(CT, 'reveal', { accountId: ACCT, ids: ids.slice(197, 200) });
-ok('past the day\'s allowance it stops, and says when it refills', over.success === false && over.code === 'reveal_budget' && /tomorrow/.test(over.error), JSON.stringify(over));
+/* ── What it gives a project's daily prospecting ── */
+const pf = await api('projects.php', { token: CT, accountId: ACCT, action: 'save_portfolio', name: 'Bright Supplies', profile: { description: 'Office supplies for estate agents' } });
+const pj = await api('projects.php', { token: CT, accountId: ACCT, action: 'save_project', name: 'Tampa realtors', objective: 'Sell office supplies to real estate agents in Tampa', portfolioId: pf.id, kind: 'leadgen' });
+const PID = pj.id;
+const LIST = 'list-leaddir-tampa';
+const now = new Date().toISOString();
+/* Somebody already in Contacts, and somebody who asked not to be written to. */
+await api('data.php', { action: 'bulk_set', token: CT, accountId: ACCT, items: {
+  crm_contacts: JSON.stringify([{ id: 'c-known', name: 'Pat Example5', email: 'pat5@realty5.example', phone: '', status: 'customer', tags: [], source: 'manual', createdAt: now, lastActivity: now, value: 0 }]),
+  crm_contact_lists: JSON.stringify([{ id: LIST, name: 'Tampa realtors — prospects', type: 'static', rules: [], match: 'all', memberIds: [], color: '', createdAt: now, createdBy: 'Dana', kind: 'cold', origin: 'prospecting' }]),
+  crm_suppression_list: JSON.stringify([{ email: 'pat2@realty2.example' }]),
+} });
+const saved = await api('finders.php', { token: CT, accountId: ACCT, action: 'save', projectId: PID, trades: ['real estate agents'], places: ['Tampa, Florida'], perDay: 10, listId: LIST, listName: 'Tampa realtors — prospects' });
+const FID = saved.finderId;
+ok('(a project with a daily finder for real estate agents in Tampa)', !!PID && !!FID, JSON.stringify(saved).slice(0, 200));
+const step = () => api('finders.php', { token: CT, accountId: ACCT, action: 'run_step', projectId: PID, finderId: FID });
+const s1 = await step();
+const pp = () => sql(`SELECT ref, status, source, reject_reason, email FROM crm_project_prospects WHERE project_id = '${PID}' ORDER BY ref`);
+const rows1 = pp();
+ok('a step takes five from the library — half of the day of ten, at most five a step', s1.success && s1.added === 5 && rows1.filter(r => r.status === 'added' && r.source === 'library').length === 5, JSON.stringify({ s1, rows1 }).slice(0, 600));
+ok('…turning away the suppressed address, and the person already in Contacts', rows1.some(r => r.email === 'pat2@realty2.example' && r.status === 'rejected' && r.reject_reason === 'suppressed')
+  && rows1.some(r => r.email === 'pat5@realty5.example' && r.status === 'known'), JSON.stringify(rows1));
+ok('…each recorded as ld:<id> for this project', rows1.every(r => /^ld:\d+$/.test(r.ref)));
+const contactsOf = async () => JSON.parse((await api('data.php', { action: 'get', token: CT, accountId: ACCT, key: 'crm_contacts' })).value || '[]');
+let dana = await contactsOf();
+const given = dana.filter(c => String(c.id).startsWith('pf-'));
+const today = new Date().toISOString().slice(0, 10);
+ok('they join Contacts named "Licensed business data", with the date — never "found on the web"', given.length === 5 && given.every(c =>
+  c.source === 'AI Autopilot · licensed business data' && c.customFields?.dataSource === 'Licensed business data'
+  && c.customFields?.provenance?.startsWith('Licensed business data') && c.customFields.provenance.includes(today)
+  && c.tags.includes('licensed business data') && !c.tags.includes('prospect search') && !/web|website|directory/i.test(c.customFields.provenance)), JSON.stringify(given[0]).slice(0, 600));
+ok('…each address checked first, with who and where they are', given.every(c => c.customFields?.emailStatus === 'domain_ok' && c.firstName === 'Pat' && c.jobTitle && /Tampa, Florida/.test(c.customFields?.foundBy ?? '')), JSON.stringify(given[0]?.customFields));
+ok('…nobody suppressed, nobody twice', !given.some(c => c.email === 'pat2@realty2.example' || c.email === 'pat5@realty5.example') && new Set(given.map(c => c.email)).size === 5);
+const lists1 = JSON.parse((await api('data.php', { action: 'get', token: CT, accountId: ACCT, key: 'crm_contact_lists' })).value || '[]');
+ok('…and onto the project\'s list', lists1.find(l => l.id === LIST)?.memberIds?.length === 5);
+ok('the finder\'s log says where they came from', sql(`SELECT detail FROM crm_finder_runs WHERE finder_id = '${FID}' AND kind = 'library'`).some(r => /^Licensed business data: 5 matched and checked/.test(r.detail)));
+const s2 = await step();
+ok('half of today is the library\'s limit: the next step takes nobody from it', s2.success && pp().filter(r => r.source === 'library').length === rows1.length, JSON.stringify(s2));
+/* The next day. */
+sql(`UPDATE crm_project_prospects SET found_at = '2020-01-01T00:00:00Z' WHERE project_id = '${PID}'`);
+sql(`UPDATE crm_prospect_finders SET day = '2020-01-01', status = 'active' WHERE id = '${FID}'`);
+const s3 = await step();
+const rows3 = pp();
+ok('the next day, five more — none of them anybody it was given before', s3.added === 5 && rows3.filter(r => r.status === 'added').length === 10 && new Set(rows3.map(r => r.ref)).size === rows3.length, JSON.stringify(s3));
+dana = await contactsOf();
+ok('…ten different people in Contacts', new Set(dana.filter(c => String(c.id).startsWith('pf-')).map(c => c.email)).size === 10);
+/* Closed: nothing more. */
+await dir(T, 'settings', { shared: false });
+sql(`UPDATE crm_project_prospects SET found_at = '2020-01-01T00:00:00Z' WHERE project_id = '${PID}'`);
+sql(`UPDATE crm_prospect_finders SET day = '2020-01-02', status = 'active' WHERE id = '${FID}'`);
+const s4 = await step();
+ok('closed again, the finder takes nobody from it', s4.success && pp().length === rows3.length, JSON.stringify(s4));
+await dir(T, 'settings', { shared: true });
+ok('the other customer\'s projects were given nobody', sql(`SELECT COUNT(*) AS n FROM crm_project_prospects WHERE account_id = '${XACCT}'`)[0].n === 0);
 
 /* ── Removed on request, and kept out ── */
+const told = await dir(T, 'remove', { email: 'pat1@realty1.example' });
+ok('removing somebody a project was given names the workspace to tell', told.success && told.removed === 1 && told.passedTo?.includes(ACCT), JSON.stringify(told));
 const gone = 'pat3@realty3.example';
 const rm = await dir(T, 'remove', { email: gone });
-ok('the owner removes a person', rm.success && rm.removed === 1, JSON.stringify(rm));
-const s3 = await dir(T, 'import_start', { fileKey: 'again|1|1', name: 'again.csv', size: 1 });
-const re = await dir(T, 'import_rows', { importId: s3.import.id, rows: [{ name: 'Pat Example3', email: gone, industry: 'Real estate' }, { name: 'New Person', email: 'new@fresh.example', industry: 'Real estate', state: 'Florida', country: 'USA' }] });
+ok('the owner removes a person', rm.success && rm.removed === 1 && rm.passedTo?.length === 0, JSON.stringify(rm));
+const s3i = await dir(T, 'import_start', { fileKey: 'again|1|1', name: 'again.csv', size: 1 });
+const re = await dir(T, 'import_rows', { importId: s3i.import.id, rows: [{ name: 'Pat Example3', email: gone, industry: 'Real estate' }, { name: 'New Person', email: 'new@fresh.example', industry: 'Real estate', state: 'Florida', country: 'USA' }] });
 ok('a later load does not bring a removed person back', re.added === 1, JSON.stringify(re));
 const rmBad = await dir(T, 'remove', {});
 ok('remove with no address asks on its box', rmBad.field === 'leaddir.remove');
 
 /* ── Undoing a load ── */
 let u;
-for (let k = 0; k < 10; k++) { u = await dir(T, 'import_undo', { importId: s3.import.id }); if (u.done) break; }
+for (let k = 0; k < 10; k++) { u = await dir(T, 'import_undo', { importId: s3i.import.id }); if (u.done) break; }
 const a2 = await dir(T, 'admin');
-ok('undoing a load takes its people back out', u.done && a2.total === UNIQUE + 30 - 1, a2.total);
-ok('…and the load says so', a2.imports.find(i => i.id === s3.import.id)?.status === 'undone');
+ok('undoing a load takes its people back out', u.done && a2.total === UNIQUE + 30 - 2, a2.total);
+ok('…and the load says so', a2.imports.find(i => i.id === s3i.import.id)?.status === 'undone');
 
-/* ── A customer's screen ── */
-for (const width of [1280, 390]) {
-  const { page, done } = await signIn(XE, XPW, width);
+/* ── The owner's Lead library screen ── */
+{
+  const { page, done } = await signIn(OWNER, OPW, 1280);
   await page.goto(`${B}/lead-directory`, { waitUntil: 'networkidle' });
   const root = page.getByTestId('lead-directory');
   await root.waitFor({ timeout: 15_000 });
+  ok('the owner\'s screen is the Lead library', /Lead library/.test(await root.locator('h1').innerText()) && /Only you see this screen/.test(await root.innerText()));
   await root.locator('[data-field="leaddir.industry"]').fill('Real estate');
   await root.locator('[data-field="leaddir.place"]').fill('Florida');
   await root.locator('[data-field="leaddir.title"]').fill('owner');
   await root.getByRole('button', { name: /^Search$/ }).click();
   await root.getByTestId('ld-count').waitFor({ timeout: 15_000 });
-  ok(`@${width}: the search shows people, masked`, (await root.locator('tbody tr').count()) > 0 && /•/.test(await root.locator('tbody').innerText()));
+  ok('the search shows people in full', (await root.locator('tbody tr').count()) > 0 && !/•/.test(await root.locator('tbody').innerText()));
   await root.getByRole('checkbox', { name: /^Tick / }).nth(0).check();
   await root.getByRole('checkbox', { name: /^Tick / }).nth(1).check();
-  /* At 390 the same customer ticks the same two again: already seen, so free. */
-  ok(`@${width}: ticking says what it will cost`, (width === 1280 ? /2 ticked · 2 not seen before \(uses 2/ : /^2 ticked$/m).test(await root.getByTestId('ld-actions').innerText()), await root.getByTestId('ld-actions').innerText());
+  ok('ticking costs nothing to say', /^2 ticked$/m.test(await root.getByTestId('ld-actions').innerText()), await root.getByTestId('ld-actions').innerText());
   await root.getByRole('button', { name: /Add to Contacts/ }).click();
   await root.getByText(/new, \d+ already in Contacts/).waitFor({ timeout: 15_000 }).catch(() => {});
-  const out = await root.innerText();
-  ok(`@${width}: they are added to Contacts on a list`, /2 on “owner · Real estate · Florida” — 2 new/.test(out) || (width === 390 && /2 on “owner · Real estate · Florida” — 0 new, 2 already/.test(out)) || /on “owner · Real estate · Florida”/.test(out), out.slice(0, 400));
-  ok(`@${width}: nothing scrolls sideways`, (await overflow(page)) <= 1, await overflow(page));
-  await page.screenshot({ path: `test-results/leaddir-${width}.png`, fullPage: true });
-  /* The browser saves Contacts to the server on its own schedule; wait for it before leaving. */
-  for (let k = 0; k < 30 && !JSON.parse((await api('data.php', { action: 'get', token: XT, accountId: XACCT, key: 'crm_contacts' })).value || '[]').length; k++) await sleep(500);
+  ok('they are added to the owner\'s Contacts on a list', /on “owner · Real estate · Florida”/.test(await root.innerText()), (await root.innerText()).slice(0, 400));
+  ok('@1280: nothing scrolls sideways', (await overflow(page)) <= 1, await overflow(page));
+  await page.screenshot({ path: 'test-results/leadlibrary-1280.png', fullPage: true });
+  const acct = await page.evaluate(() => localStorage.getItem('crm_active_account'));
+  for (let k = 0; k < 30 && !JSON.parse((await api('data.php', { action: 'get', token: T, accountId: acct, key: 'crm_contacts' })).value || '[]').length; k++) await sleep(500);
+  const mine = JSON.parse((await api('data.php', { action: 'get', token: T, accountId: acct, key: 'crm_contacts' })).value || '[]');
+  ok('…named as licensed business data, with where they came from', mine.length >= 2 && mine.every(c => c.source === 'Licensed business data' && c.tags.includes('licensed business data') && c.customFields?.directoryId && c.customFields?.provenance), JSON.stringify(mine[0] ?? {}).slice(0, 400));
   await done();
 }
-const data = await api('data.php', { action: 'get', token: XT, accountId: XACCT, key: 'crm_contacts' });
-const contacts = JSON.parse(data.value || '[]');
-const lists = JSON.parse((await api('data.php', { action: 'get', token: XT, accountId: XACCT, key: 'crm_contact_lists' })).value || '[]');
-ok('the contacts carry who they are, where they came from, and the tag', contacts.length >= 2 && contacts.every(c => c.source === 'Lead directory' && c.tags.includes('lead directory') && c.jobTitle && c.company && c.customFields?.directoryId && !/•/.test(c.email)), JSON.stringify(contacts[0] ?? data).slice(0, 400));
-ok('the list is marked cold', lists.some(l => l.kind === 'cold' && l.memberIds.length >= 2), JSON.stringify(lists).slice(0, 300));
+
+/* ── A customer's Lead lists ── */
+for (const width of [1280, 390]) {
+  const { page, done } = await signIn(CE, CPW, width);
+  await page.goto(`${B}/lead-directory?industry=real%20estate&place=Florida`, { waitUntil: 'networkidle' });
+  await page.getByTestId('lead-lists').waitFor({ timeout: 15_000 }).catch(() => {});
+  ok(`@${width}: the old Lead Directory address lands on the customer's own Lead lists`, /\/lead-lists$/.test(page.url()), page.url());
+  const root = page.getByTestId('lead-lists');
+  const folder = root.getByTestId('ll-folder').filter({ hasText: 'Tampa realtors' });
+  await folder.waitFor({ timeout: 15_000 });
+  ok(`@${width}: a folder for the project, counting its leads`, /\b10\b/.test(await folder.innerText()) && /AI Autopilot project/.test(await folder.innerText()), await folder.innerText());
+  ok(`@${width}: no "directory" anywhere on the page`, !/directory/i.test(await root.innerText()), (await root.innerText()).slice(0, 300));
+  ok(`@${width}: nothing scrolls sideways (folders)`, (await overflow(page)) <= 1, await overflow(page));
+  await page.screenshot({ path: `test-results/leadlists-${width}.png`, fullPage: true });
+  /* Searching the customer's own leads, from the top. */
+  await root.getByTestId('ll-search').fill('pat8@');
+  await root.getByTestId('ll-results').waitFor({ timeout: 5000 });
+  ok(`@${width}: searching finds their own lead`, (await root.getByTestId('ll-row').count()) === 1 && /pat8@realty8\.example/.test(await root.getByTestId('ll-results').innerText()));
+  await root.getByTestId('ll-search').fill('');
+  await folder.click();
+  await root.getByTestId('ll-folder-view').waitFor({ timeout: 5000 });
+  const listCard = root.getByTestId('ll-list').filter({ hasText: 'Tampa realtors — prospects' });
+  ok(`@${width}: the folder holds the project's list`, (await listCard.count()) === 1 && /10 leads/.test(await listCard.innerText()), await root.getByTestId('ll-folder-view').innerText());
+  await listCard.click();
+  await root.getByTestId('ll-list-view').waitFor({ timeout: 5000 });
+  ok(`@${width}: the list shows its ten leads`, (await root.getByTestId('ll-row').count()) === 10);
+  const sources = await root.getByTestId('ll-source').allInnerTexts();
+  ok(`@${width}: each one says it is licensed business data`, sources.length === 10 && sources.every(t => t.trim() === 'Licensed business data'), sources.join(' | '));
+  ok(`@${width}: with its email check`, (await root.getByTestId('ll-list-view').innerText()).includes('Domain takes mail'));
+  ok(`@${width}: the list can be emailed`, (await root.getByTestId('ll-campaign').count()) === 1);
+  ok(`@${width}: nothing scrolls sideways (a list)`, (await overflow(page)) <= 1, await overflow(page));
+  await page.screenshot({ path: `test-results/leadlists-list-${width}.png`, fullPage: true });
+  await root.getByTestId('ll-list-search').fill('Example7');
+  ok(`@${width}: searching within the list`, (await root.getByTestId('ll-row').count()) === 1);
+  await root.getByTestId('ll-list-search').fill('');
+  const [dl] = await Promise.all([page.waitForEvent('download'), root.getByTestId('ll-export').click()]);
+  const csvText = fs.readFileSync(await dl.path(), 'utf8');
+  ok(`@${width}: the export says where every lead came from`, /Where it came from/.test(csvText.split('\r\n')[0]) && csvText.split('\r\n').filter(l => /Licensed business data/.test(l)).length === 10, csvText.slice(0, 300));
+  await page.goBack();
+  await root.getByTestId('ll-folder-view').waitFor({ timeout: 5000 }).catch(() => {});
+  ok(`@${width}: Back goes up a level`, (await root.getByTestId('ll-folder-view').count()) === 1);
+  await done();
+}
 ok('no page errors', errs.length === 0, errs.join(' | '));
 
 await br.close();

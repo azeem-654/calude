@@ -11,7 +11,8 @@
  */
 import { OPT_IN_PS, OPT_IN_WORKFLOW, briefWantsOptIn, withOptIn } from '../src/lib/optInText';
 import { OPT_IN_PS as CLIENT_PS, OPT_IN_WORKFLOW as CLIENT_WF } from '../../src/services/projectSolutions';
-import { DAY_LIMITS, afterSearch, forDay, isKnown, keyOf, knownIndex, nextJob, nextRunAt, rotation, rotationState, type FinderState } from '../src/lib/finderPlan';
+import { DAY_LIMITS, LIBRARY, afterSearch, forDay, isKnown, keyOf, knownIndex, libraryRoom, nextJob, nextRunAt, rotation, rotationState, type FinderState } from '../src/lib/finderPlan';
+import { libraryWhere, tradeIndustries } from '../src/lib/leadDir';
 
 const out: string[] = [];
 const ok = (n: string, p: boolean, d = '') => out.push(`${p ? 'PASS' : 'FAIL'}  ${n}${p ? '' : ` — ${d}`}`);
@@ -88,6 +89,33 @@ const base = (o: Partial<FinderState> = {}): FinderState => ({
   ok('a brief without texts, or none at all, does not', !briefWantsOptIn({ workflows: [{ name: 'Follow up' }] }) && !briefWantsOptIn(null) && !briefWantsOptIn('x'));
   const once = withOptIn('Hello {{firstName}},\n\nThanks.\n\n');
   ok('the offer goes once, at the end', once.endsWith(OPT_IN_PS) && withOptIn(once) === once && once.split('smsOptInLink').length === 2, once);
+}
+
+/* ── The owner's licensed data, as a finder's share ── */
+{
+  ok('a few a step, never more', libraryRoom({ perDay: 100, dayAdded: 0 }, 0, 0) === LIBRARY.perStep);
+  ok('at most half of the day', libraryRoom({ perDay: 10, dayAdded: 0 }, 0, 5) === 0 && libraryRoom({ perDay: 10, dayAdded: 0 }, 0, 3) === 2);
+  ok('an odd day rounds the share up, so one a day still gets one', libraryRoom({ perDay: 1, dayAdded: 0 }, 0, 0) === 1);
+  ok('ready leads waiting count against today', libraryRoom({ perDay: 20, dayAdded: 12 }, 6, 0) === 2 && libraryRoom({ perDay: 20, dayAdded: 12 }, 8, 0) === 0);
+  ok('a full day takes none', libraryRoom({ perDay: 20, dayAdded: 20 }, 0, 0) === 0);
+}
+
+/* ── Which of the library's people a finder may be given ── */
+{
+  const facets = [{ value: 'real estate', n: 900 }, { value: 'commercial real estate', n: 120 }, { value: 'insurance', n: 40 }, { value: 'dentists', n: 30 }];
+  ok('"real estate agents" is filed as real estate (both kinds)', tradeIndustries('real estate agents', facets).join() === 'real estate,commercial real estate', tradeIndustries('real estate agents', facets).join());
+  ok('"dentists" matches as written', tradeIndustries('Dentists', facets).join() === 'dentists');
+  ok('a trade the library does not hold matches nothing — never everybody', !tradeIndustries('roofers', facets).length);
+  ok('filler, or a stray letter, matches nothing', !tradeIndustries('local businesses', facets).length && !tradeIndustries('a', facets).length && !tradeIndustries('', facets).length);
+  ok('a job title is not a trade', !tradeIndustries('business owners', facets).length);
+
+  const states = new Set(['florida', 'texas']), countries = new Set(['united states']);
+  const w = libraryWhere(['real estate agents', 'roofers'], ['Florida', 'Austin, TX'], facets, states, countries);
+  ok('only people with an address, in a matched industry, in one of the places', w.sql.startsWith('has_email = 1 AND ind_k IN (?,?) AND ((st_k = ?) OR (ct_k = ? AND st_k = ?))'), w.sql);
+  ok('…bound in that order', JSON.stringify(w.args) === JSON.stringify(['real estate', 'commercial real estate', 'florida', 'austin', 'texas']), JSON.stringify(w.args));
+  const none = libraryWhere(['roofers'], ['Florida'], facets, states, countries);
+  ok('no matching industry: nothing asked, and why', none.sql === '' && none.why === 'no_industry');
+  ok('no place: nothing asked, and why', libraryWhere(['dentists'], [], facets, states, countries).why === 'no_place');
 }
 
 console.log(out.join('\n'));

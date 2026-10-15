@@ -55,6 +55,13 @@ export const SCHEMA = [
     PRIMARY KEY (account_id, person_id))`,
   'CREATE INDEX IF NOT EXISTS ld_reveals_at ON ld_reveals(account_id, at)',
   'CREATE TABLE IF NOT EXISTS ld_meta (k TEXT PRIMARY KEY, v TEXT)',
+  /* Who was passed to which project's daily prospecting (prospectFinderTick.ts).
+     It is what stops a project being given the same person twice, and it is
+     the answer when somebody asks the owner to be removed: these are the
+     workspaces their details went to, and who must be told (GDPR Art. 19). */
+  `CREATE TABLE IF NOT EXISTS ld_given (project_id TEXT NOT NULL, account_id TEXT NOT NULL, person_id INTEGER NOT NULL, at TEXT NOT NULL,
+    PRIMARY KEY (project_id, person_id))`,
+  'CREATE INDEX IF NOT EXISTS ld_given_person ON ld_given(person_id)',
 ];
 
 /*
@@ -283,6 +290,55 @@ export function industriesLike(q: string, facets: { value: string; n: number }[]
     .sort((a, b) => b.n - a.n)
     .slice(0, 40)
     .map(f => f.value);
+}
+
+/* ── Feeding a project's daily prospecting ────────────────────────────────
+ *
+ * Customers never search the library. When the owner has opened it (shared,
+ * with their statement that they may), a project's daily finder may take a
+ * few people from it whose industry matches one of the finder's kinds of
+ * business and who are in one of its places — labelled on the contact as
+ * "Licensed business data", never as something found on the web.
+ */
+
+/**
+ * A finder's kind of business → the library's industries. "real estate
+ * agents" is filed as "Real estate", so when the whole phrase matches nothing
+ * the last word is dropped, then the next, until something does. Never down
+ * to a word that only says "a business", and never read as a job title: a
+ * finder's trade is who it sells to, not a role in any company.
+ */
+export function tradeIndustries(trade: string, facets: { value: string; n: number }[]): string[] {
+  let words = key(trade).split(' ').filter(Boolean);
+  while (words.length) {
+    const phrase = words.join(' ');
+    /* A phrase of filler or of single letters would match every industry. */
+    if (words.every(w => GENERIC.has(w)) || !words.some(w => w.length > 2)) return [];
+    const hit = industriesLike(phrase, facets);
+    if (hit.length) return hit;
+    words = words.slice(0, -1);
+  }
+  return [];
+}
+
+export interface LibraryWhere { sql: string; args: (string | number)[]; industries: string[]; why: string }
+
+/**
+ * Who in the library a finder may be given: an email address, one of its
+ * trades' industries, one of its places. Places are each read as the search
+ * reads them (`placeWhere`). Empty `sql` and a reason when nothing can match.
+ */
+export function libraryWhere(trades: string[], places: string[], facets: { value: string; n: number }[], states: Set<string>, countries: Set<string>): LibraryWhere {
+  const inds = [...new Set(trades.flatMap(t => tradeIndustries(t, facets)))].slice(0, 40);
+  if (!inds.length) return { sql: '', args: [], industries: [], why: 'no_industry' };
+  const where = places.slice(0, 20).map(p => placeWhere(p, states, countries)).filter(w => w.sql);
+  if (!where.length) return { sql: '', args: [], industries: inds, why: 'no_place' };
+  return {
+    sql: `has_email = 1 AND ind_k IN (${inds.map(() => '?').join(',')}) AND (${where.map(w => `(${w.sql})`).join(' OR ')})`,
+    args: [...inds, ...where.flatMap(w => w.args)],
+    industries: inds,
+    why: '',
+  };
 }
 
 /* ── What a customer sees before spending their allowance ───────────────── */

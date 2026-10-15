@@ -16,12 +16,20 @@ import { getActiveAccountId } from './tenancy';
  */
 export type ProspectSource = 'free' | 'google' | 'osm' | 'register';
 
-/** What each source is called on screen. The word "free" is not a source's name. */
-export const SOURCE_NAME: Record<ProspectSource, string> = {
+/**
+ * What each source is called on screen. The word "free" is not a source's name.
+ *
+ * `library` is not a source anybody searches: it is the install owner's
+ * licensed data, a few of whom a project's daily prospecting may be given
+ * (worker/src/prospectFinderTick.ts). Named for what it is — never "found on
+ * the web", and never the word "directory" on a customer's screen.
+ */
+export const SOURCE_NAME: Record<ProspectSource | 'library', string> = {
   free: 'Business directories',
   osm: 'Business directories',
   register: 'Verified business directories',
   google: 'Google Maps',
+  library: 'Licensed business data',
 };
 
 export interface Prospect {
