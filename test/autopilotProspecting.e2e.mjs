@@ -166,8 +166,32 @@ ok('a found contact the customer deleted is not put back', !contacts().some(c =>
 const ov = await api('finders.php', { token: CT, accountId: ACCT, action: 'overview', projectId: PID });
 ok('the overview counts today, the rotation and the log', ov.finder?.today?.added === 5 && ov.finder.rotation?.[0]?.state && ov.days?.length >= 1 && ov.runs?.length > 0 && ov.totals?.added === 4, JSON.stringify(ov).slice(0, 500));
 
+/* Every business it examined, not only the audience — counted in the groups the tab's tiles and chips use. */
+const leads = await api('finders.php', { token: CT, accountId: ACCT, action: 'prospects', projectId: PID });
+const dbAll = sql(`SELECT COUNT(*) AS n FROM crm_project_prospects WHERE project_id = '${PID}'`)[0].n;
+const groupsSum = ['added', 'waiting', 'no_email', 'known', 'other'].reduce((a, g) => a + (leads.counts?.[g] ?? 0), 0);
+ok('the lead list counts every business examined, and its groups add up', leads.success && leads.counts.all === dbAll && groupsSum === dbAll && dbAll > 5
+  && leads.counts.added === ov.totals.added && leads.counts.known >= 1 && leads.counts.other === 1, JSON.stringify(leads.counts) + ` db=${dbAll}`);
+ok('…newest first, a page of 50, with the rest behind "next"', leads.rows.length === Math.min(50, dbAll) && (dbAll > 50 ? !!leads.next : !leads.next)
+  && leads.rows.every((r, i, a) => !i || a[i - 1].found_at >= r.found_at), `${leads.rows.length} next=${leads.next}`);
+if (leads.next) {
+  const p2 = await api('finders.php', { token: CT, accountId: ACCT, action: 'prospects', projectId: PID, before: leads.next });
+  ok('…and the next page carries on without repeating one', p2.rows.length === dbAll - 50 && !p2.rows.some(r => leads.rows.some(x => x.id === r.id)), `${p2.rows.length}`);
+}
+const knownOnly = await api('finders.php', { token: CT, accountId: ACCT, action: 'prospects', projectId: PID, status: 'known' });
+ok('a filter lists only its group — the business already in Contacts is there, as "known"',
+  knownOnly.rows.length === leads.counts.known && knownOnly.rows.every(r => r.grp === 'known') && knownOnly.rows.some(r => r.name === 'Leeds Dental 4'), JSON.stringify(knownOnly.rows.map(r => r.name)));
+const typedQ = await api('finders.php', { token: CT, accountId: ACCT, action: 'prospects', projectId: PID, q: 'dental 4' });
+ok('a search narrows the list and the chip counts, not the tiles', typedQ.rows.length >= 1 && typedQ.rows.every(r => /dental 4/i.test(r.name) || /dental4/i.test(r.website))
+  && typedQ.matched.all === typedQ.rows.length && typedQ.counts.all === dbAll, JSON.stringify(typedQ.matched));
+const odd = await api('finders.php', { token: CT, accountId: ACCT, action: 'prospects', projectId: PID, q: '100%_' });
+ok('…and a % or _ typed is a character, not a wildcard', odd.success && odd.rows.length === 0, JSON.stringify(odd).slice(0, 200));
+
 /* Another workspace. */
-const x1 = await api('finders.php', { token: XT, accountId: XACCT, action: 'overview', projectId: PID });
+const xl = await api('finders.php', { token: XT, accountId: XACCT, action: 'prospects', projectId: PID });
+const xl2 = await api('finders.php', { token: XT, accountId: ACCT, action: 'prospects', projectId: PID });
+ok('another workspace cannot list its leads', xl.success === false && !xl.rows && xl2.success === false && !xl2.rows, JSON.stringify([xl, xl2]).slice(0, 300));
+const x1 =await api('finders.php', { token: XT, accountId: XACCT, action: 'overview', projectId: PID });
 const x2 = await api('finders.php', { token: XT, accountId: ACCT, action: 'overview', projectId: PID });
 const x3 = await api('finders.php', { token: XT, accountId: XACCT, action: 'run_step', projectId: PID, finderId: FID });
 ok('another workspace can neither read nor drive it', x1.success === false && x2.success === false && x3.success === false, JSON.stringify([x1, x2, x3]));
@@ -235,15 +259,60 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
 {
   const { ctx, page } = await signIn(1280);
   await page.goto(`${B}/autopilot?project=${encodeURIComponent(PID)}&tab=prospects`, { waitUntil: 'networkidle' });
-  const tab = page.getByLabel('Prospects', { exact: true }).first();
-  await page.getByText('Daily prospecting').waitFor({ timeout: 15_000 }).catch(() => {});
+  await page.getByTestId('finder-card').waitFor({ timeout: 15_000 }).catch(() => {});
+  await page.locator('[data-testid="all-leads"] li.pl-row').first().waitFor({ timeout: 15_000 }).catch(() => {});
   const body = await page.innerText('body');
-  const TAB_WANT = [/Daily prospecting/, /Finding every day/, /Added today/, /Added to the audience, day by day/i, /dentists · York/, /Latest prospects/i, /Leeds Dental/];
-  ok('the Prospects tab opens from its link: status, today, the chart, the rotation, the latest',
-    TAB_WANT.every(r => r.test(body)), `missing ${TAB_WANT.filter(r => !r.test(body)).join(' ')}: ${body.slice(body.indexOf('Daily prospecting'), body.indexOf('Daily prospecting') + 900)}`);
+  const TAB_WANT = [/Where this project.s leads come from/, /Daily search/, /Finding every day|Today.s leads are in/, /Searching dentists in Leeds, York/,
+    /Leads added \(all time\)/, /Found without an email/, /Already in your contacts/, /New leads added, day by day/i, /All leads/, /Leeds Dental/];
+  ok('the Prospects tab opens from its link: the source in plain words, the tiles, the chart, every lead',
+    TAB_WANT.every(r => r.test(body)), `missing ${TAB_WANT.filter(r => !r.test(body)).join(' ')}: ${body.slice(0, 1200)}`);
+  ok('…and with a source working it does not offer a first one, or say there is none',
+    !/No prospect search connected yet/.test(body) && (await page.getByTestId('lead-sources-empty').count()) === 0 && (await page.getByTestId('add-lead-source').count()) === 1);
+  /* The tiles are the server's counts, and each equals its chip. */
+  const kpi = async t => Number((await page.locator(`[data-kpi="${t}"]`).innerText()).trim());
+  const chipN = async g => Number((await page.locator(`[data-count="${g}"]`).innerText().catch(() => '0')).trim());
+  const dbN = q => sql(`SELECT COUNT(*) AS n FROM crm_project_prospects WHERE project_id = '${PID}' AND ${q}`)[0].n;
+  const dbAllNow = dbN('1');
+  const tileAll = await kpi('Businesses examined'), tileNo = await kpi('Found without an email'), tileAdded = await kpi('Leads added (all time)');
+  ok('tiles: examined, added and no-email are the real counts, and each equals its filter chip',
+    tileAll === dbAllNow && tileAll === await chipN('all') && tileAdded === dbN("status = 'added'") && tileAdded === await chipN('added')
+      && tileNo === dbN("status = 'no_email'") && tileNo === await chipN('no_email') && tileNo > 5, `${tileAll}/${dbAllNow} ${tileAdded} ${tileNo}`);
+  ok('the list shows the ones turned away too, with what became of each', /No email found/.test(await page.getByTestId('all-leads').innerText())
+    && (await page.locator('[data-testid="all-leads"] li[data-lead-status="no_email"]').count()) > 0, '');
+  await page.getByRole('button', { name: /Found without an email/ }).click();
+  await page.waitForFunction(() => {
+    const rows = [...document.querySelectorAll('[data-testid="all-leads"] li.pl-row')];
+    return rows.length > 0 && rows.every(r => r.getAttribute('data-lead-status') === 'no_email');
+  }, null, { timeout: 10_000 }).catch(() => {});
+  const noRows = await page.locator('[data-testid="all-leads"] li.pl-row').evaluateAll(els => els.map(e => e.getAttribute('data-lead-status')));
+  ok('a tile opens its group in the list', noRows.length === Math.min(50, tileNo) && noRows.every(s => s === 'no_email'), noRows.join(','));
+  if (tileNo > 50) {
+    await page.getByRole('button', { name: 'Show more' }).click();
+    await page.waitForFunction(n => document.querySelectorAll('[data-testid="all-leads"] li.pl-row').length === n, Math.min(100, tileNo), { timeout: 10_000 }).catch(() => {});
+    ok('"Show more" brings the next page', (await page.locator('[data-testid="all-leads"] li.pl-row').count()) === Math.min(100, tileNo)
+      && new RegExp(`Showing ${Math.min(100, tileNo)} of ${tileNo}`).test(await page.getByTestId('leads-shown').innerText()));
+  }
+  await page.getByRole('group', { name: 'Show' }).getByRole('button', { name: /^All/ }).click();
+  const dl = page.waitForEvent('download', { timeout: 15_000 }).catch(() => null);
+  await page.getByTestId('leads-export').click();
+  const file = await dl;
+  const csv = file ? fs.readFileSync(await file.path(), 'utf8') : '';
+  ok('Export CSV gives every lead of the filter, one line each', csv.split(/\r\n/).length === dbAllNow + 1 && /Business,Kind of business/.test(csv) && /No email found/.test(csv), csv.slice(0, 200));
+  const details = page.getByTestId('prospects-details');
+  ok('the rotation and the step log are folded under Details', !(await details.evaluate(d => d.open)) && !/dentists · york/i.test(await page.innerText('body')));
+  await details.locator('summary').click();
+  ok('…and open to show the searches and every step', /dentists · york/i.test(await details.innerText()) && /What it did, step by step/i.test(await details.innerText()));
   ok('@1280: no sideways scroll', (await overflow(page)) <= 0, String(await overflow(page)));
-  await page.screenshot({ path: 'test-results/autopilot-prospects-1280.png', fullPage: false });
-  void tab;
+  await page.getByTestId('lead-sources').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: 'test-results/autopilot-prospects-1280.png', fullPage: true });
+  /* Every search done reads as what it is, with the one thing to do about it. */
+  sql(`UPDATE crm_prospect_finders SET status = 'exhausted', status_reason = 'x' WHERE id = '${FID}'`);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByTestId('finder-card').waitFor({ timeout: 15_000 }).catch(() => {});
+  const fc = await page.getByTestId('finder-card').innerText().catch(() => '');
+  ok('"every search done" says what it means and offers the way on, not a Resume that would find nobody',
+    /All searches done for now/.test(fc) && /nobody new left/.test(fc) && /Add places or kinds of business/.test(fc) && !/Resume/.test(fc), fc.slice(0, 500));
+  sql(`UPDATE crm_prospect_finders SET status = 'active', status_reason = '' WHERE id = '${FID}'`);
 
   /* The wizard: a sentence becomes a finder, with a live sample. */
   await page.goto(`${B}/autopilot?new=1`, { waitUntil: 'networkidle' });
@@ -299,7 +368,7 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
   /* Our booking page, when the project uses it: a preview and the basics, right here. */
   if (/Booking page/.test(bp) || await np.getByRole('region', { name: 'Your booking page' }).count()) {
     const book = np.getByRole('region', { name: 'Your booking page' }).first();
-    ok('the blueprint shows the booking page it will link to, editable in place', (await book.count()) > 0 && /Pick a day/.test(await book.innerText()), bp.slice(0, 400));
+    ok('the blueprint shows the booking page it will link to, editable in place', (await book.count()) > 0 && /Select a Date|Pick a day/i.test(await book.innerText()), bp.slice(0, 400));
     if (await book.count()) {
       await book.locator('[data-field="booking.title"]').fill('Free supply review');
       await book.getByRole('button', { name: '45 min' }).click();
@@ -347,8 +416,16 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
 {
   const m = await signIn(390);
   await m.page.goto(`${B}/autopilot?project=${encodeURIComponent(PID)}&tab=prospects`, { waitUntil: 'networkidle' });
-  await m.page.getByText('Daily prospecting').waitFor({ timeout: 15_000 }).catch(() => {});
-  ok('@390: the Prospects tab fits the phone', (await overflow(m.page)) <= 0 && /Daily prospecting/.test(await m.page.innerText('body')), String(await overflow(m.page)));
+  await m.page.getByTestId('finder-card').waitFor({ timeout: 15_000 }).catch(() => {});
+  await m.page.locator('[data-testid="all-leads"] li.pl-row').first().waitFor({ timeout: 15_000 }).catch(() => {});
+  ok('@390: the Prospects tab fits the phone', (await overflow(m.page)) <= 0 && /Daily search/.test(await m.page.innerText('body')), String(await overflow(m.page)));
+  const cardLike = await m.page.evaluate(() => {
+    const head = document.querySelector('[data-testid="all-leads"] .pl-head');
+    const row = document.querySelector('[data-testid="all-leads"] li.pl-row');
+    return !!row && !!head && getComputedStyle(head).display === 'none' && getComputedStyle(row).borderTopWidth !== '0px'
+      && [...document.querySelectorAll('[data-testid="all-leads"] li.pl-row')].every(r => r.scrollWidth <= r.clientWidth + 1);
+  });
+  ok('@390: every lead is a card that fits', cardLike);
   await m.page.screenshot({ path: 'test-results/autopilot-prospects-390.png', fullPage: true });
   await m.ctx.close();
 }

@@ -1744,3 +1744,18 @@ html[data-theme="dark"] [data-noinvert] [data-noinvert] { filter: none; }
   0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.9; }
   50% { transform: translate(-6%, 36%) scale(1.7); opacity: 0.75; }
 }
+
+/* ── Phones: the header gives the page its first screen back ──
+   The pills still wrap (a scrolling row clips the menus — see below), but the
+   two lit pills drop to a small lens and the trial bar to one line, so a
+   page's own first control (AI Prospecting's sentence box, the wizard's first
+   question) is on the first screen instead of under 375px of chrome. */
+@media (max-width: 760px) {
+  .pill-link.nav-hero { padding: 3px 11px 3px 3px !important; font-size: 13px !important; gap: 6px !important; }
+  .nav-hero .ai-lens { width: 26px !important; height: 26px !important; }
+  .pill-link { padding: 7px 10px !important; font-size: 13px !important; }
+  .nav-pills { row-gap: 2px !important; column-gap: 2px !important; padding: 4px 6px !important; }
+  .trial-bar { padding: 7px 12px !important; gap: 8px !important; flex-wrap: nowrap !important; font-size: 12.5px !important; }
+  .trial-bar .trial-bar-long { display: none; }
+  .trial-bar button, .trial-bar a { padding-top: 5px !important; padding-bottom: 5px !important; }
+}

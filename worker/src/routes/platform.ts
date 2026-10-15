@@ -189,13 +189,13 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
     }
     const state: State = !env.LEADS ? 'off' : total > 0 ? 'ok' : 'unchecked';
     services.push({
-      id: 'lead_directory', name: 'Lead directory (your own leads)',
-      powers: 'Customers → Lead Directory: people from your own lead files that customers search, with their details shown on an allowance',
+      id: 'lead_directory', name: 'Lead library (your own leads)',
+      powers: 'Workspace → Lead library, searched by you alone; opened, a source for customers\' projects\' daily prospecting, labelled "Licensed business data"',
       state,
       detail: !env.LEADS
-        ? 'No database yet — the next deploy creates it. Until then the Lead Directory says it is unavailable.'
+        ? 'No database yet — the next deploy creates it. Until then the Lead library says it is unavailable.'
         : total === 0 ? 'Ready and empty. Load a CSV or ZIP below — any size; it is read in your browser and sent in pieces.'
-          : `${total.toLocaleString('en-US')} people. ${shared ? 'Customers can search it.' : 'Only you can search it until you open it to customers below.'}`,
+          : `${total.toLocaleString('en-US')} people. ${shared ? 'Open: customers\' projects may draw on it (never search it).' : 'Closed: only you use it until you open it to customers\' projects below.'}`,
       checkedAt: null,
       lastError: '',
       where: { label: 'Below, on this tab' },

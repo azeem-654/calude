@@ -1,5 +1,5 @@
 import { askConfirm } from '../shared/ConfirmDialog';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import AICampaignBadge from '../shared/AICampaignBadge';
 import {
   Users, Plus, Search, Mail, Phone, Trash2, Edit2, ChevronDown,
@@ -161,6 +161,17 @@ export default function Contacts() {
   const [showModal, setShowModal] = useState(false);
   const [editContact, setEditContact] = useState<Contact | null>(null);
   const [profileContact, setProfileContact] = useState<Contact | null>(null);
+  /* `?contact=<id>` opens that contact's profile — an Autopilot project's lead
+     list links here from "Open contact". Read once: contacts may arrive after
+     the first render (the cloud pull), so it waits for the id to be present. */
+  const [wantContact, setWantContact] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get('contact') ?? ''; } catch { return ''; }
+  });
+  useEffect(() => {
+    if (!wantContact) return;
+    const c = contacts.find(x => x.id === wantContact);
+    if (c) { setProfileContact(c); setWantContact(''); }
+  }, [wantContact, contacts]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   /* `?import=1` opens the importer straight away — the New Project wizard
      links here when a project that emails people has nobody to email. */

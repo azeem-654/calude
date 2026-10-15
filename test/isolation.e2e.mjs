@@ -1,6 +1,7 @@
 /**
  * Somebody else's workspace never reaches a new account, the top bar never
- * tangles, and the owner's lead library is the owner's alone.
+ * tangles, AI Prospecting never asks the owner's lead library, and the
+ * library is the owner's alone.
  *
  *   VITE_BASE=/ npm run build
  *   npm run test:isolation      (self-contained: wrangler :8939, fresh D1 in .wrangler-isolation)
@@ -14,8 +15,9 @@
  *  - The top bar at 1280, 1440, 1655 and 1900px, as the owner (the widest bar):
  *    no pill runs under the icons on its right, and AI Prospecting has a lit
  *    pill of its own.
- *  - A search for "business owners in Australia" shows the owner's Lead
- *    Directory matches even when the map search itself fails.
+ *  - A search for "business owners in Australia" shows none of the owner's
+ *    Lead Directory beside it, even though the directory holds matches: the
+ *    owner decided customers do not get a searchable directory of people.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -214,6 +216,17 @@ for (const width of [1280, 1440, 1655, 1900]) {
   const page = await ctx.newPage();
   page.on('pageerror', e => errs.push(`5: ${e}`));
   await signIn(page, ERIN);
+  await page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
+  const asked = [];
+  page.on('request', req => { if (/leaddir\.php/.test(req.url())) asked.push(req.postDataJSON()?.action); });
+  await page.getByLabel('Who to look for').fill('business owners in australia');
+  await page.keyboard.press('Enter');
+  await page.getByText(/Searched for business owners in australia/i).waitFor({ timeout: 30_000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+  const body = await page.innerText('body');
+  ok('AI Prospecting shows nobody from the Lead Directory beside a search, and never asks it',
+    await page.getByTestId('directory-matches').count() === 0 && !/Owner Person/.test(body) && !/See them all/.test(body) && !asked.includes('search'), `${asked.join(',')} ${body.slice(0, 300)}`);
+  await page.screenshot({ path: 'test-results/isolation-directory.png' });
   await page.goto(`${B}/lead-directory?industry=construction&place=australia`, { waitUntil: 'networkidle' });
   await page.getByTestId('lead-lists').waitFor({ timeout: 15_000 }).catch(() => {});
   ok('the old address takes a customer to their own Lead lists', /\/lead-lists/.test(page.url()) && !(await page.getByText('Owner Person').count()), page.url());

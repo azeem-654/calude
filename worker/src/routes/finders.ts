@@ -7,6 +7,7 @@
  * `account_id` as well.
  *
  *   overview     — the project's finder, its rotation, 30 days of counts, recent prospects, the log
+ *   prospects    — every business the project examined, any source, any outcome: paged, filtered, counted
  *   save         — create or change the project's finder (and its workflow, and the audience if unset)
  *   set_status   — pause or resume (the workflow that shows it moves with it)
  *   run_step     — one step now ("Run now"), within the same allowances as the cron
@@ -31,6 +32,7 @@ interface Req {
   projectId?: string; finderId?: string; status?: string;
   trades?: unknown; places?: unknown; perDay?: unknown; source?: string;
   listId?: string; listName?: string; append?: boolean; place?: string;
+  q?: string; before?: string; limit?: number;
   prospects?: Record<string, unknown>[];
 }
 
@@ -41,6 +43,25 @@ const words = (v: unknown, max: number) => (Array.isArray(v) ? v : [])
   .filter((x, i, all) => all.findIndex(y => y.toLowerCase() === x.toLowerCase()) === i).slice(0, max);
 const parse = <T>(raw: string | null | undefined, fallback: T): T => { try { return (JSON.parse(raw ?? '') ?? fallback) as T; } catch { return fallback; } };
 const rid = (p: string) => `${p}-${crypto.randomUUID()}`;
+
+/**
+ * The groups the Prospects tab's tiles, chips and filter all count by — one
+ * SQL expression, so a tile can never say a number its own list disagrees with.
+ *   added    — in the project's audience
+ *   waiting  — found, still being checked or waiting for a later day's room
+ *   no_email — nothing to write to: no website, none published, or it takes no mail
+ *   known    — already in Contacts (the daily finder's `known`, a connection's `duplicate`)
+ *   other    — turned away for another reason (opted out, an exclusion, below the bar…) or deleted by the customer
+ */
+const LEAD_GROUPS = ['all', 'added', 'waiting', 'no_email', 'known', 'other'] as const;
+type LeadGroup = typeof LEAD_GROUPS[number];
+const GROUP_SQL = `(CASE
+  WHEN status = 'added' THEN 'added'
+  WHEN status IN ('candidate', 'ready') THEN 'waiting'
+  WHEN status = 'no_email' OR (status = 'rejected' AND reject_reason IN ('no_email', 'no_website', 'site_down', 'invalid_domain')) THEN 'no_email'
+  WHEN status = 'known' OR (status = 'rejected' AND reject_reason = 'duplicate') THEN 'known'
+  ELSE 'other' END)`;
+const SEARCHABLE = ['name', 'email', 'website', 'category', 'query', 'person_name'];
 
 /** The workflow a finder shows as on the project's board: a daily schedule and one step. */
 function finderNodes(trades: string[], places: string[], perDay: number) {
@@ -175,12 +196,61 @@ export async function handleFinders(req: Request, env: Env): Promise<Response> {
       finder: finder && st ? {
         id: finder.id, workflowId: finder.workflow_id, trades: st.trades, places: st.places, perDay: st.perDay, source: finder.source,
         listId: finder.list_id, status: finder.status, statusReason: finder.status_reason,
-        today: { day: st.day, added: st.dayAdded, searches: st.daySearches, reads: st.dayReads },
+        /* The counters belong to the day they were kept on; a finder that has not run today (paused, every search done) added nobody today. */
+        today: st.day === nowIso().slice(0, 10)
+          ? { day: st.day, added: st.dayAdded, searches: st.daySearches, reads: st.dayReads }
+          : { day: nowIso().slice(0, 10), added: 0, searches: 0, reads: 0 },
         limits: DAY_LIMITS, nextRunAt: finder.next_run_at, lastRunAt: finder.last_run_at,
         rotation: rotationState(st),
       } : null,
       days, found, totals: Object.fromEntries(totals.map(t => [t.status, t.n])), recent, runs,
     });
+  }
+
+  if (act === 'prospects') {
+    /* Every business this project has examined, from every source, newest
+       first — the 32 turned away as well as the 5 added. The tab used to list
+       only the audience, so its own tile said 32 and its list showed five. */
+    const group = LEAD_GROUPS.includes(d.status as LeadGroup) ? d.status as LeadGroup : 'all';
+    const q = s(d.q, 80).toLowerCase();
+    const limit = Math.max(1, Math.min(200, Math.round(Number(d.limit) || 50)));
+    const [beforeAt, beforeId] = s(d.before, 160).split('|');
+    const like = `%${q.replace(/[\\%_]/g, c => `\\${c}`)}%`;
+    const where = ['account_id = ?', 'project_id = ?'];
+    const args: unknown[] = [accountId, projectId];
+    if (q) { where.push(`(${SEARCHABLE.map(c => `lower(${c}) LIKE ? ESCAPE '\\'`).join(' OR ')})`); args.push(...SEARCHABLE.map(() => like)); }
+    const counted = async (w: string[], a: unknown[]) => {
+      const rows = (await env.DB.prepare(`SELECT ${GROUP_SQL} AS g, COUNT(*) AS n FROM crm_project_prospects WHERE ${w.join(' AND ')} GROUP BY g`)
+        .bind(...a).all<{ g: LeadGroup; n: number }>()).results ?? [];
+      const out: Record<string, number> = Object.fromEntries(LEAD_GROUPS.map(g => [g, 0]));
+      for (const r of rows) { out[r.g] = Number(r.n) || 0; out.all += Number(r.n) || 0; }
+      return out;
+    };
+    /* `counts` is the tiles' (everything); `matched` is the chips' while a search is typed. */
+    const counts = await counted(where.slice(0, 2), args.slice(0, 2));
+    const matched = q ? await counted(where, args) : counts;
+    const pageWhere = [...where];
+    const pageArgs = [...args];
+    if (group !== 'all') { pageWhere.push(`${GROUP_SQL} = ?`); pageArgs.push(group); }
+    if (beforeAt && beforeId) { pageWhere.push('(found_at < ? OR (found_at = ? AND id < ?))'); pageArgs.push(beforeAt, beforeAt, beforeId); }
+    const rows = (await env.DB.prepare(
+      `SELECT id, finder_id, search_id, name, email, phone, website, address, category, person_name, person_role, email_status, query, source,
+              status, reject_reason, confidence, contact_id, found_at, added_at, ${GROUP_SQL} AS grp
+       FROM crm_project_prospects WHERE ${pageWhere.join(' AND ')} ORDER BY found_at DESC, id DESC LIMIT ?`,
+    ).bind(...pageArgs, limit + 1).all<Record<string, string | number>>()).results ?? [];
+    const more = rows.length > limit;
+    const page = rows.slice(0, limit);
+    const last = page.at(-1);
+    /* What each row's source is called on screen: the daily search, or the connected search by its own name. */
+    const finders = (await env.DB.prepare(
+      `SELECT f.id, f.search_id, d.name AS search_name FROM crm_prospect_finders f
+       LEFT JOIN crm_search_definitions d ON d.id = f.search_id AND d.account_id = f.account_id
+       WHERE f.account_id = ? AND f.project_id = ?`,
+    ).bind(accountId, projectId).all<{ id: string; search_id: string; search_name: string | null }>()).results ?? [];
+    const sources = Object.fromEntries(finders.map(f => [f.id, f.search_id
+      ? { kind: 'search', name: f.search_name || 'A connected search' }
+      : { kind: 'daily', name: 'Daily search' }]));
+    return json({ success: true, rows: page, next: more && last ? `${last.found_at}|${last.id}` : '', counts, matched, sources });
   }
 
   if (act === 'save') {

@@ -498,23 +498,49 @@ waiting for approval whatever the guardrail. `npm run test:prospecting`
 
 `/prospecting` is **AI Prospecting** (`components/Prospecting/AiProspecting.tsx`,
 `AiParts.tsx`, `aiProspecting.css`; the judgement in `services/aiProspecting.ts`).
-A sentence ("dentists in Leeds with a website") is parsed by `parseAsk` — split
-at the last in/near/around, "with a website/email/phone" becomes a filter, not a
-search term — and run by `useProspectSearch.ask` as a plan whose steps are real
-calls, shown as they run with what they found: search, read the first 16
-websites (`AUTO_READ`), free-check every address. The two boxes under the
-composer carry `data-field="prospects.trade"/"prospects.place"`, so a refusal
-naming either still has a box on screen. The dashboard's `ProspectingPanel`
-hands a sentence over as `/prospecting?q=`.
+**One sentence, no boxes, no tabs.** A sentence ("dentists in Leeds with a
+website") is all the customer types — there is no kind-of-business box, no
+town box and no row of source tabs (the owner removed them). `readAsk` /
+`parseAsk` split it at the last in/near/around; "with a website/email/phone"
+becomes a filter, not a search term; and the words that pick a source are
+read and taken out: "registered companies", "limited companies", "Companies
+House", "company register", "with (their) directors" → `register`; "with
+reviews/ratings", "on Google (Maps)", "top-rated" → `google`; anything else →
+the free directory. `chooseSource(asked, availability)` (pure, in
+services/aiProspecting.ts, `test:aiprospecting`) then decides what is
+actually asked: the register only with the owner's Companies House key, Google
+only where it is on — otherwise the free directory, **with a note saying so**
+(under the box before the search, beside the source label after). What was
+understood shows under the words as chips (trade · place · narrowing ·
+source; pressing one selects those words to retype). A sentence missing its
+place or its trade is **asked about under the box** (`askProblem`, with
+recent places or common trades as one-press fixes) and never searched blind.
+It runs as `useProspectSearch.ask`, a plan whose steps are real calls, shown
+as they run with what they found: search, read every website, free-check every
+address. The sentence box carries
+`data-field="prospects.ask prospects.trade prospects.place"` — fieldGuard
+matches one name of several — so a server refusal naming the trade or the
+place is never a dead end, and its words go under the box with how to say it
+in the sentence (`errorField` on the hook). Enter searches, Shift+Enter is a
+new line; the box grows. The dashboard's `ProspectingPanel` hands a sentence
+over as `/prospecting?q=`.
 
-**Two screens** (`AiStart.tsx`, `AiResults.tsx`): *New search* — the headline,
-the live promise in bold, examples, the three illustrated steps, the composer
-(sentence box + `prospects.trade` / `prospects.place`), the trust row, "How it
-works" and "Need ideas?"; the side panel lists recent searches (trade icons,
-"…" menus) and lead lists. As soon as a search starts, *Results* — the
-assistant (a drawn robot whose bubble is the running step's own words), source
-tabs, the search bar with a mic (`MicButton`, the Autopilot voice engine),
-related trades, the progress card (ring = stages done, timeline, sources), the
+**Two screens** (`AiStart.tsx`, `AiResults.tsx`): *New search* is **prompt
+first** — the headline and the sentence box (`Composer`: one card with a
+gradient edge, 20px corners, a glow on focus, the mic and Search inside it)
+are the first thing on screen, above the fold at 1280×720 and 390×720 (`test:
+prospecting` measures both; on a phone the sub-line and the header's title
+give way, and the box sits 16px from each edge with 44px buttons), then the
+example chips and a tip naming only the source words that work on this
+install. Below a hairline: the live promise in bold, the three illustrated
+steps (compact) and the trust row; "How it works" in the header, "Need ideas?"
+in the side panel, which lists recent searches (trade icons, "…" menus) and
+lead lists — beside the page on a laptop, under it on a phone. As soon as a
+search starts, *Results* — the assistant (a drawn robot whose bubble is the
+running step's own words), the same sentence box (`variant="bar"`, the asked
+sentence kept in it) under a read-only label of the source searched
+(`SOURCE_LABEL`) and any note on why, a mic (`MicButton`, the Autopilot voice
+engine), related trades, the progress card (ring = stages done, timeline, sources), the
 step-by-step log, five **counted** figures, the table (#, category, status,
 **found at**, actions, switchable columns, a per-row "…" menu drawn into the
 card so the scrolling table cannot clip it), and a rail: the results' own
@@ -545,11 +571,11 @@ again. The first pass now reads **every** website (not 16), and
 Cloudflare-protected and entity-encoded addresses (`unmask`), four fetches a
 site at most.
 
-**The results name no supplier.** Tabs are *All businesses*, *Registered
-companies*, *With ratings & reviews* (`TAB_NAME`); the rail is "What was
-searched"; the step log says "Searched for …". Only the loading line names
-sources (`useStage`, each line true of the tab chosen — "Searching Google
-Maps" only on the Google tab), and the licences' credit stays in small type
+**The results name no supplier.** The source label reads *All businesses*,
+*Registered companies* or *With ratings & reviews* (`SOURCE_LABEL`); the rail
+is "What was searched"; the step log says "Searched for …". Only the loading
+line names sources (`useStage`, each line true of the source searched —
+"Searching Google Maps" only for a Google search), and the licences' credit stays in small type
 (`Attribution`). `SOURCE_NAME` remains the provenance stamp on imports and the
 Contacts dialog. Checks read **Contact verified · <date>** (a verifier said
 the mailbox takes mail) or **Contact checked · <date>** (format, domain, mail
@@ -584,11 +610,12 @@ pattern guess, and guesses are what prospects.ts refuses. `bestAddress` imports
 the first address no check said would bounce; the check, and a named person's
 name and role, go onto the contact (`customFields.emailStatus`, `firstName`,
 `jobTitle`). **AI Prospecting never searches LinkedIn, Apollo or bought
-data** — their terms forbid exactly this. The owner's own lead files (the Lead
-Directory, below) are shown *beside* a search, never mixed into its results:
-`DirectoryMatches.tsx` asks the directory for the same words and place — even
-when the business search failed — with addresses masked, and **See them all**
-opens `/lead-directory?industry=&place=`. `npm run test:emailverify` and
+data** — their terms forbid exactly this. **Nor does it show the owner's own
+lead files** (the Lead library): the panel that listed directory matches
+beside a search (`DirectoryMatches.tsx`, with a "See them all" link) is gone —
+the owner decided customers must not see a searchable directory of people; the
+platform finds businesses live, it is not a data broker. `test:isolation`
+checks a search never asks `leaddir.php`. `npm run test:emailverify` and
 `npm run test:aiprospecting` (pure); `npm run test:prospecting` drives it with
 DoH and Hunter mocks (`EMAIL_VERIFIER_BASE`), in both themes.
 
@@ -749,7 +776,7 @@ the driver in `worker/src/prospectFinderTick.ts` (2 finders a tick, on the cron
 **before** `runAutopilot`, so a prospect added this tick can be enrolled on
 it), the API in `routes/finders.ts` (`/api/finders.php`: `save` — with `append`
 to merge a rotation —, `overview`, `set_status`, `run_step`, `expand_place`,
-`record`, `removed`, `sync`; every action workspace-checked and the project
+`record`, `removed`, `sync`, `prospects` — the paged lead list; every action workspace-checked and the project
 must be this workspace's). Tables in migration 0063 (`crm_prospect_finders`,
 `crm_project_prospects` — unique per project and `ref`, `crm_finder_runs`,
 `crm_sms_consents`). `npm run test:finder` (pure) and `npm run test:autoprospects`
@@ -772,11 +799,24 @@ must be this workspace's). Tables in migration 0063 (`crm_prospect_finders`,
   A contact the customer deletes (`pf-…` ids, `forgetFoundContacts`) is
   tombstoned `removed` and never re-added. `ProspectSync` pulls new ones into
   the browser on load and on return to the tab.
-- **Screens.** A project's **Prospects** tab: its connected sources first
-  (below), then, folded, the older finder (`ProjectProspects.tsx`): status,
-  KPIs, 30-day chart, the rotation, latest prospects, the step log, and the
-  set-up form (`finder.trades`, `finder.places`, `finder.perDay`,
-  `finder.list`). The wizard asks `prospectTrades` / `prospectPlaces`
+- **Screens.** A project's **Prospects** tab (`ProjectLeads.tsx`): first
+  **Where this project's leads come from** — every source as one compact card
+  (the daily search, `FinderCard` in `ProjectProspects.tsx`; each connected
+  search, `SourceCard` in `ProspectSources.tsx`) with its state in plain words
+  and its actions beside it ("All searches done for now" explains itself and
+  offers *Add places or kinds of business* — no Resume, which would find
+  nobody new), and one **Add another lead source** button; the two-way empty
+  state ("Set up a daily search" / "Connect a search") only when the project
+  has no source at all. Then tiles counted by the server, each opening its
+  group; **All leads** (`LeadsList.tsx`, `finders.php prospects`: every
+  business examined, any source, any outcome — added, still being checked, no
+  email, already in Contacts, turned away with the reason — 50 a page,
+  newest first, chips, search, CSV export, "Open contact" →
+  `/contacts?contact=<id>`; tiles and chips count by one `GROUP_SQL`, so they
+  cannot disagree; a table that becomes cards by container query); the
+  30-day chart; and, folded under **Details**, the rotation and the step log.
+  The set-up form keeps `finder.trades`, `finder.places`, `finder.perDay`,
+  `finder.list`. The wizard asks `prospectTrades` / `prospectPlaces`
   / `prospectPerDay` / `prospectSms` when contacts are to be found, reads them
   from the sentence when it can ("sell my products to real estate agents in
   Virginia" — the *selling-to* clause is the audience, not the business, so
@@ -894,7 +934,10 @@ Worker already closed and fails as "other side closed".
 ## Forms ask only for what they show
 
 A refusal about a particular box names it — `fail(msg, 200, { field:
-'smtp.host' })` — and the input carries `data-field="smtp.host"`.
+'smtp.host' })` — and the input carries `data-field="smtp.host"` (or lists it
+among several, space-separated, when one input answers for more than one name —
+AI Prospecting's sentence box answers for `prospects.trade` and
+`prospects.place`; the guard matches with `~=`).
 `services/fieldGuard.ts` checks, after any refused `/api/*.php` call, that the
 named box is on screen; if not, it is a **dead end**: logged, kept on
 `window.__deadEnds`, and reported to `/api/uireport.php`, which the install
@@ -934,7 +977,8 @@ that **already holds records** (`crm_data`, `crm_projects`, `crm_portfolios`)
 is claimed only by the install owner or the account it was issued to
 (`crm_users.account_id`) — never by whoever names it first.
 `npm run test:isolation` (self-contained: wrangler :8939, fresh D1) covers both,
-the top bar and the owner's lead library being closed to customers.
+the top bar, that AI Prospecting shows nobody from the owner's lead library,
+and that the library is closed to customers.
 
 ## Secrets
 

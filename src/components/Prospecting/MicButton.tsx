@@ -1,12 +1,12 @@
 /**
- * The microphone on the results bar — one round button.
+ * The microphone inside AI Prospecting's sentence box — one round button.
  *
  * The same engine as Autopilot's voice prompts (`useVoiceInput`: the browser's
  * recogniser for a live preview, the server's transcriber for the text), in
  * the customer's remembered language. Autopilot's `VoiceControl` draws a
  * language menu and a sentence of help beside itself, which is right in a
  * wizard and wrong in a search bar; this draws only the state. The words it
- * hears go into the boxes for checking, never straight into a search.
+ * hears go into the box for checking, never straight into a search.
  *
  * While listening the button holds a few bars that move with the microphone's
  * real level (VoiceBars) — the browser's live words trailed the speaker and

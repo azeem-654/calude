@@ -67,10 +67,10 @@ export default function TrialBar() {
   if (closed && !lastDays) return null;
 
   return (
-    <div role="status" style={{ ...BAR, ...(lastDays ? { background: '#fff7ed', color: '#9a3412', borderColor: '#fed7aa' } : {}) }}>
+    <div role="status" className="trial-bar" style={{ ...BAR, ...(lastDays ? { background: '#fff7ed', color: '#9a3412', borderColor: '#fed7aa' } : {}) }}>
       <Clock size={14} />
-      <b>{t.daysLeft === 1 ? 'Last day' : `${t.daysLeft} days left`} in your free trial.</b>
-      {canBuyPlans() && <span style={{ color: 'inherit', opacity: 0.8 }}>No card needed until you choose a plan.</span>}
+      <b>{t.daysLeft === 1 ? 'Last day' : `${t.daysLeft} days left`}<span className="trial-bar-long"> in your free trial</span>.</b>
+      {canBuyPlans() && <span className="trial-bar-long" style={{ color: 'inherit', opacity: 0.8 }}>No card needed until you choose a plan.</span>}
       <span style={{ display: 'inline-flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
         {acct?.kickoffUrl && (
           <a href={acct.kickoffUrl} target="_blank" rel="noopener noreferrer" style={GHOST}>

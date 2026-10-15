@@ -230,6 +230,8 @@ await findDialog.getByRole('button', { name: 'Close' }).click();
   await resetDeadEnds();
   await p.goto(`${B}/autopilot?project=${encodeURIComponent(pjr.id)}&tab=prospects`, { waitUntil: 'networkidle' });
   await settle();
+  /* A project with no lead source offers the choice first; the daily search's form opens from it. */
+  await p.getByRole('button', { name: /Set up a daily search/ }).click({ timeout: 15_000 });
   const region = p.getByLabel('A state or county to split into towns');
   await region.fill('!!', { timeout: 15_000 });
   await p.getByRole('button', { name: /Add its towns/ }).click();

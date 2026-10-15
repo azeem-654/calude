@@ -47,6 +47,21 @@ export interface FinderOverview {
   runs: { kind: string; detail: string; found: number; added: number; at: string }[];
 }
 
+/** The groups the Prospects tab counts and filters by (GROUP_SQL in routes/finders.ts). */
+export type LeadGroup = 'all' | 'added' | 'waiting' | 'no_email' | 'known' | 'other';
+export interface LeadRow {
+  id: string; finder_id: string; search_id: string; name: string; email: string; phone: string; website: string; address: string;
+  category: string; person_name: string; person_role: string; email_status: string; query: string; source: string;
+  status: string; reject_reason: string; confidence: number; contact_id: string; found_at: string; added_at: string; grp: Exclude<LeadGroup, 'all'>;
+}
+export interface LeadsPage {
+  rows: LeadRow[]; next: string;
+  counts: Record<LeadGroup, number>; matched: Record<LeadGroup, number>;
+  sources: Record<string, { kind: 'daily' | 'search'; name: string }>;
+}
+/** One page of every business the project examined, newest first; `before` is the previous page's `next`. */
+export const projectLeads = (projectId: string, p: { status?: LeadGroup; q?: string; before?: string; limit?: number } = {}) =>
+  call<LeadsPage>('prospects', { projectId, ...p });
 export const finderOverview = (projectId: string) => call<FinderOverview>('overview', { projectId });
 export const saveFinder = (p: {
   projectId: string; trades: string[]; places: string[]; perDay: number; source?: 'free' | 'register';

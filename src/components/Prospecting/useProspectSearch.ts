@@ -15,7 +15,7 @@ import {
   type Contactable, type GoogleAvailability, type Prospect, type ProspectSource, type Verdict,
 } from '../../services/prospects';
 import type { Contact } from '../../types';
-import { addressesOf, parseAsk, type Ask } from '../../services/aiProspecting';
+import { addressesOf, askProblem, chooseSource, parseAsk, type Ask } from '../../services/aiProspecting';
 import {
   emailOf, planImport, prospectRows, recordSearch, loadSearches, toggleSaved, forgetSearch,
   loadSnapshot, saveSnapshot, keepable,
@@ -78,6 +78,12 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
   const [enriching, setEnriching] = useState(false);
   const [error, setError] = useState('');
   const [errorCode, setErrorCode] = useState('');
+  /* The box a refusal named (`prospects.trade`, `prospects.place`) — AI
+     Prospecting has no such boxes, so it puts the words under the sentence. */
+  const [errorField, setErrorField] = useState('');
+  /* Why the search went somewhere other than where the sentence asked —
+     "registered companies are not switched on…". Empty when it did not. */
+  const [sourceNote, setSourceNote] = useState('');
   const [moreError, setMoreError] = useState('');
   const [results, setResults] = useState<Prospect[] | null>(null);
   const [attribution, setAttribution] = useState('');
@@ -129,14 +135,14 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
   }, []);
 
   const clear = useCallback(() => {
-    setError(''); setErrorCode(''); setResults(null); setNextPage(''); setPicked(new Set()); setFound({}); setMoreError('');
+    setError(''); setErrorCode(''); setErrorField(''); setResults(null); setNextPage(''); setPicked(new Set()); setFound({}); setMoreError('');
     setChecks({}); setSteps([]); setProgress(null); setRestoredAt('');
   }, []);
 
   /** Start a new search: nothing shown, nothing typed, the source kept. */
   const reset = useCallback(() => {
     clear();
-    setSearched(null); setAsked(''); setTrade(''); setPlace(''); setAnswered(''); setStartedAt(''); setFetchedAt(''); setPrevCount(null);
+    setSearched(null); setAsked(''); setTrade(''); setPlace(''); setAnswered(''); setSourceNote(''); setStartedAt(''); setFetchedAt(''); setPrevCount(null);
     setWant({ email: false, website: false, phone: false });
   }, [clear]);
 
@@ -149,7 +155,7 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
     setPrevCount(before ? before.count : null);
     const r = await searchProspects({ ...q, fresh: live });
     setBusy(false);
-    if (r.error) { setError(r.error); setErrorCode(r.code); return null; }
+    if (r.error) { setError(r.error); setErrorCode(r.code); setErrorField(r.field); return null; }
     setFetchedAt(r.fetchedAt);
     setResults(r.prospects);
     setAnswered(r.source);
@@ -280,10 +286,14 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
    */
   const ask = useCallback(async (text: string, from?: ProspectSource): Promise<{ error: string; want?: Ask['want'] }> => {
     const a = parseAsk(text);
-    if (!a) return { error: 'Say the kind of business and the place — "dentists in Leeds", "cafés near Bristol".' };
+    if (!a) return { error: askProblem(text)?.message ?? 'Say the kind of business and the place — "dentists in Leeds", "cafés near Bristol".' };
     setTrade(a.trade); setPlace(a.place);
-    const src = from ?? source;
-    if (from) setSourceState(from);
+    /* The sentence picks the source ("registered companies", "with
+       reviews"); a search reopened from the history keeps its own. */
+    const choice = from ? { source: from, note: '' } : chooseSource(a.source, google);
+    const src = choice.source;
+    setSourceState(src);
+    setSourceNote(choice.note);
     /* The log on the results names no source — the customer asked for
        businesses, not for an account of the suppliers. Licences' credits stay
        on the card (Attribution); the loading messages say what is searched. */
@@ -340,7 +350,7 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
       });
     }
     return { error: '', want: a.want };
-  }, [source, run, step, lookupSites, verifyList]);
+  }, [google, run, step, lookupSites, verifyList]);
 
   /* Each further page is another search on the same budget, so it is asked
      for, never fetched ahead. */
@@ -458,7 +468,7 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
     source, setSource, answered, google, googleDown, registerDown, downError, offerFree, reset,
     reading, checking, progress, live, startedAt, fetchedAt, prevCount, restoredAt, restore,
     trade, setTrade, place, setPlace,
-    busy, more, enriching, error, errorCode, moreError,
+    busy, more, enriching, error, errorCode, errorField, sourceNote, moreError,
     results, attribution, cached, nextPage, searched,
     picked, toggle, pickAll, chosen, found, emailFor,
     search, rerun, loadMore, enrich, importChosen,

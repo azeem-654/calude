@@ -2,11 +2,13 @@
  * A project's prospecting sources — AI Prospecting searches connected to it
  * (services/prospectSources.ts → /api/sources.php, run by the finder engine).
  *
- *   ProspectSources   the Prospects tab's list: each source with its search,
- *                     schedule, today's verified count against its target, the
- *                     candidate being checked right now, what was turned away
- *                     and why — plus "Connect Prospect Search" and a box for
- *                     plain-language changes ("change it to 25 per day").
+ *   useSources        the project's connections, polled every few seconds while
+ *                     a run is on and twice a minute otherwise.
+ *   SourceCard        one connection on the Prospects tab (ProjectLeads.tsx):
+ *                     its search, schedule, state in plain words, today's
+ *                     verified count against its target, the candidate being
+ *                     checked right now and what was turned away and why.
+ *   CommandBox        plain-language changes ("change it to 25 per day").
  *   ProspectingToday  the Overview's summary: verified today per source.
  *   SourceFlow        how a source's workflow is drawn: schedule → search →
  *                     candidates → verify → duplicates → suppression →
@@ -16,14 +18,14 @@
  * record of the check it is on (`live`), polled every few seconds while a run
  * is on and twice a minute otherwise — never an animation of work.
  */
+import { askConfirm } from '../shared/ConfirmDialog';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowRight, CheckCircle2, Circle, Clock, ExternalLink, Loader, Pause, Play, Plus, Search, Send, Sparkles, Trash2, Workflow, X, XCircle,
+  ArrowRight, CheckCircle2, Circle, Clock, ExternalLink, Loader, Pause, Play, Search, Send, Trash2, XCircle,
 } from 'lucide-react';
 import { T, primaryBtn } from './theme';
 import type { Project } from '../../services/projects';
-import ConnectAutopilot from '../Prospecting/ConnectAutopilot';
 import {
   REJECT_LABEL, applySearch, disconnectSource, projectSources, runSourceNow, setSourceStatus, sourceCommand, updateSource,
   type Connection, type LiveItem, type RejectReason,
@@ -40,7 +42,7 @@ const when = (iso: string) => {
   return !iso || Number.isNaN(d.getTime()) ? '—' : d.toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 };
 
-function useSources(projectId: string) {
+export function useSources(projectId: string) {
   const [conns, setConns] = useState<Connection[] | null>(null);
   const [recent, setRecent] = useState<Record<string, string | number>[]>([]);
   const [log, setLog] = useState<{ finder_id: string; kind: string; detail: string; at: string }[]>([]);
@@ -193,159 +195,119 @@ function Settings({ c, onSaved, onCancel }: { c: Connection; onSaved: (c: Connec
   );
 }
 
-/* ── The Prospects tab's list ── */
+/* ── One connected search, as a lead source on the Prospects tab ── */
 
-export default function ProspectSources({ project, focus }: { project: Project; focus?: string }) {
-  const navigate = useNavigate();
-  const { conns, log, error, load, setConns } = useSources(project.id);
-  const [connect, setConnect] = useState<{ searchId?: string } | null>(null);
-  const [editing, setEditing] = useState('');
-  const [busy, setBusy] = useState('');
-  const [said, setSaid] = useState('');
-  const [text, setText] = useState('');
-  const [picked, setPicked] = useState(focus ?? '');
-
-  useEffect(() => {
-    if (!focus || !conns) return;
-    const t = window.setTimeout(() => document.getElementById(`source-${focus}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
-    return () => window.clearTimeout(t);
-  }, [focus, conns]);
-
-  const replace = (c: Connection) => setConns(cs => (cs ?? []).map(x => (x.id === c.id ? c : x)));
-  const act = async (id: string, what: string, fn: () => Promise<{ success?: boolean; error?: string; connection?: Connection; step?: { detail: string } }>) => {
-    setBusy(`${what}:${id}`); setSaid('');
-    const r = await fn();
-    setBusy('');
-    if (!r.success) { setSaid(r.error ?? 'That did not work.'); return; }
-    if (r.connection) replace(r.connection);
-    if (r.step?.detail) setSaid(r.step.detail);
-    void load();
+/** A connection's state in words: what it is doing and, when it is not, why and what to do. */
+function sourceState(c: Connection): { word: string; tone: string; soft: string; says: string } {
+  if (c.status === 'paused') return { word: 'Paused', tone: T.warn, soft: T.warnSoft, says: c.statusReason || 'Nothing is searched until you resume it. What it already found stays.' };
+  if (c.status === 'exhausted') {
+    return {
+      word: 'All searches done for now', tone: T.muted, soft: T.raised,
+      says: 'This search has been worked to the end of its list, so there is nobody new to find with it. Widen it in AI Prospecting (another place or kind of business) and update the workflow.',
+    };
+  }
+  if (c.today.running && c.today.added < c.target) return { word: 'Running now', tone: T.good, soft: T.goodSoft, says: `${c.today.added} of ${c.target} verified leads found in today's run so far.` };
+  return {
+    word: 'On schedule', tone: T.good, soft: T.goodSoft,
+    says: c.manualOnly ? 'Runs when you press Run now.' : `Next run: ${when(c.nextRunAt)}.`,
   };
+}
 
+export function SourceCard({ c, focused, busy, onAct, onReplace, onSaid }: {
+  c: Connection; focused: boolean; busy: string;
+  onAct: (id: string, what: string, fn: () => Promise<{ success?: boolean; error?: string; connection?: Connection; step?: { detail: string } }>) => Promise<void>;
+  onReplace: (c: Connection) => void; onSaid: (s: string) => void;
+}) {
+  const navigate = useNavigate();
+  const [editing, setEditing] = useState(false);
+  const st = sourceState(c);
+  return (
+    <article id={`source-${c.id}`} style={{ ...card, gap: 8, borderColor: focused ? T.accent : T.line, scrollMarginTop: 80 }} data-testid="source-card">
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <span aria-hidden style={{ display: 'grid', placeItems: 'center', width: 34, height: 34, borderRadius: 10, background: T.accentSoft, flex: '0 0 auto' }}>
+          <Search size={16} color={T.accent} />
+        </span>
+        <div style={{ display: 'grid', gap: 4, minWidth: 0, flex: '1 1 180px' }}>
+          <span style={kicker}>Connected search</span>
+          <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <b style={{ fontSize: 14.5, color: T.ink }}>{c.searchName}</b>
+            <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999, color: st.tone, background: st.soft }}>{st.word}</span>
+          </span>
+          <span style={{ fontSize: 12.5, color: T.muted }}>{c.trade} · {c.place} · {c.target} verified leads / {c.schedule === 'weekdays' ? 'weekday' : c.schedule === 'daily' ? 'day' : 'run'} · {c.minConfidence}% confidence or more</span>
+          <span style={{ fontSize: 12, color: T.muted }}>Workflow: <b style={{ color: T.ink }}>{c.workflowName}</b> · {c.scheduleText} · last run {when(c.lastRunAt)}</span>
+          <span style={{ fontSize: 12.5, color: c.status === 'paused' && c.statusReason ? T.warn : T.muted, lineHeight: 1.55 }}>{st.says}</span>
+          {c.searchVersion < c.latestVersion && (
+            <span style={{ fontSize: 12.5, color: T.ink, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              The search has changed since this was connected.
+              <button type="button" style={btn} onClick={() => void onAct(c.id, 'apply', async () => { const r = await applySearch(c.searchId, 'update', [c.id]); return r; })}>Update workflow</button>
+            </span>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button type="button" style={btn} onClick={() => navigate(`/prospecting?search=${encodeURIComponent(c.searchId)}`)}>View Search <ArrowRight size={13} /></button>
+          {c.status !== 'exhausted' && (
+            <button type="button" style={btn} disabled={!!busy} onClick={() => void onAct(c.id, 'run', () => runSourceNow(c.id))} data-testid="source-run">
+              {busy === `run:${c.id}` ? <Loader size={13} className="spin" /> : <Play size={13} />} Run now</button>
+          )}
+          <button type="button" style={btn} disabled={!!busy} onClick={() => void onAct(c.id, 'status', () => setSourceStatus(c.id, c.status === 'active' ? 'paused' : 'active'))}>
+            {c.status === 'active' ? <><Pause size={13} /> Pause</> : <><Play size={13} /> Resume</>}</button>
+          <button type="button" style={btn} onClick={() => setEditing(!editing)}>Settings</button>
+          <button type="button" style={{ ...btn, color: T.bad }} aria-label={`Disconnect ${c.searchName}`} disabled={!!busy}
+            onClick={async () => {
+              if (await askConfirm({
+                title: `Disconnect “${c.searchName}” from this project?`,
+                message: 'Its workflow is removed; everybody it already added stays in Contacts and on the list.',
+                confirmLabel: 'Disconnect', danger: true,
+              })) void onAct(c.id, 'off', () => disconnectSource(c.id));
+            }}>
+            <Trash2 size={13} /></button>
+        </div>
+      </div>
+      {editing && <Settings c={c} onCancel={() => setEditing(false)} onSaved={n => { onReplace(n); setEditing(false); onSaid('Saved.'); }} />}
+      <LiveRun c={c} />
+    </article>
+  );
+}
+
+/** "Change it to 25 per day" — plain-language changes to the connected searches. */
+export function CommandBox({ project, conns, onReplace, onAct, onConnect, onSaid }: {
+  project: Project; conns: Connection[];
+  onReplace: (c: Connection) => void; onConnect: (searchId?: string) => void; onSaid: (s: string) => void;
+  onAct: (id: string, what: string, fn: () => Promise<{ success?: boolean; error?: string; connection?: Connection; step?: { detail: string } }>) => Promise<void>;
+}) {
+  const [text, setText] = useState('');
+  const [picked, setPicked] = useState('');
+  const [busy, setBusy] = useState(false);
   const tell = async () => {
     const t = text.trim();
     if (!t) return;
-    setBusy('cmd'); setSaid('');
+    setBusy(true); onSaid('');
     const r = await sourceCommand(project.id, t, picked || undefined);
-    setBusy('');
-    if (!r.success) { setSaid(r.error ?? 'That did not work.'); return; }
-    setSaid(r.said);
-    if (r.connection) replace(r.connection);
-    if (r.open === 'connect') setConnect({ searchId: r.searchId || undefined });
-    if (r.open === 'run_now' && r.finderId) await act(r.finderId, 'run', () => runSourceNow(r.finderId!));
+    setBusy(false);
+    if (!r.success) { onSaid(r.error ?? 'That did not work.'); return; }
+    onSaid(r.said);
+    if (r.connection) onReplace(r.connection);
+    if (r.open === 'connect') onConnect(r.searchId || undefined);
+    if (r.open === 'run_now' && r.finderId) await onAct(r.finderId, 'run', () => runSourceNow(r.finderId!));
     if (r.understood) setText('');
   };
-
   return (
-    <section style={{ display: 'grid', gap: 12 }} aria-label="Prospecting sources" data-testid="prospect-sources">
-      <div style={{ ...card, gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'center' }}>
-        <div style={{ display: 'grid', gap: 3, minWidth: 0 }}>
-          <span style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 15, fontWeight: 800, color: T.ink }}><Workflow size={16} color={T.accent} /> Prospecting sources</span>
-          <span style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.55 }}>
-            Searches from AI Prospecting that this project keeps running: each finds new candidates on its schedule, verifies them, turns away
-            duplicates and anybody who opted out, and sends the qualifying ones on.
-          </span>
-        </div>
-        <button type="button" style={{ ...primaryBtn, display: 'inline-flex', gap: 6, alignItems: 'center' }} onClick={() => setConnect({})} data-testid="connect-prospect-search">
-          <Plus size={14} /> Connect Prospect Search
-        </button>
+    <div style={{ display: 'grid', gap: 6 }}>
+      <span style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Tell AI Autopilot what to change about a connected search</span>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {conns.length > 1 && (
+          <select value={picked} onChange={e => setPicked(e.target.value)} aria-label="Which source"
+            style={{ padding: '8px 10px', border: `1px solid ${T.line}`, borderRadius: 9, font: 'inherit', fontSize: 13, color: T.ink, background: T.panel, maxWidth: '100%' }}>
+            <option value="">Which source?</option>
+            {conns.map(c => <option key={c.id} value={c.id}>{c.searchName}</option>)}
+          </select>
+        )}
+        <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void tell(); }} data-field="source.command"
+          placeholder='"Change it to 25 per day", "Only accept leads above 90% confidence"' aria-label="Tell AI Autopilot"
+          style={{ flex: '1 1 260px', minWidth: 0, padding: '8px 10px', border: `1px solid ${T.line}`, borderRadius: 9, font: 'inherit', fontSize: 13, color: T.ink, background: T.panel }} />
+        <button type="button" style={btn} disabled={busy || !text.trim()} onClick={() => void tell()}>{busy ? <Loader size={13} className="spin" /> : <Send size={13} />} Do it</button>
       </div>
-
-      {error && <div role="alert" style={{ ...card, color: T.bad, fontSize: 13 }}>{error}</div>}
-      {conns === null && !error && <div style={{ ...card, color: T.muted, fontSize: 13 }}><Loader size={14} className="spin" /> Reading this project's sources…</div>}
-
-      {conns && conns.length > 0 && (
-        <div style={{ ...card, gap: 8 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: T.ink }}>Tell AI Autopilot</span>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {conns.length > 1 && (
-              <select value={picked} onChange={e => setPicked(e.target.value)} aria-label="Which source"
-                style={{ padding: '8px 10px', border: `1px solid ${T.line}`, borderRadius: 9, font: 'inherit', fontSize: 13, color: T.ink, background: T.panel }}>
-                <option value="">Which source?</option>
-                {conns.map(c => <option key={c.id} value={c.id}>{c.searchName}</option>)}
-              </select>
-            )}
-            <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void tell(); }} data-field="source.command"
-              placeholder='"Change it to 25 per day", "Only accept leads above 90% confidence"' aria-label="Tell AI Autopilot"
-              style={{ flex: '1 1 260px', minWidth: 0, padding: '8px 10px', border: `1px solid ${T.line}`, borderRadius: 9, font: 'inherit', fontSize: 13, color: T.ink, background: T.panel }} />
-            <button type="button" style={btn} disabled={busy === 'cmd' || !text.trim()} onClick={() => void tell()}>{busy === 'cmd' ? <Loader size={13} className="spin" /> : <Send size={13} />} Do it</button>
-          </div>
-        </div>
-      )}
-      {said && <div role="status" style={{ fontSize: 12.5, color: T.ink, background: T.accentSoft, borderRadius: 10, padding: '8px 12px' }} data-testid="source-said">{said}</div>}
-
-      {conns && !conns.length && (
-        <div style={{ ...card, textAlign: 'center', justifyItems: 'center', padding: 22 }}>
-          <Search size={20} color={T.accent} />
-          <b style={{ fontSize: 14, color: T.ink }}>No prospect search connected yet</b>
-          <span style={{ fontSize: 12.5, color: T.muted, maxWidth: 460, lineHeight: 1.6 }}>
-            Build and test a search in AI Prospecting — "dentists in New York City with a website" — then connect it here. This project will
-            keep finding new verified leads from it on the schedule you choose.
-          </span>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-            <button type="button" style={{ ...primaryBtn, display: 'inline-flex', gap: 6, alignItems: 'center' }} onClick={() => setConnect({})}><Plus size={14} /> Connect Prospect Search</button>
-            <button type="button" style={btn} onClick={() => navigate('/prospecting')}><Sparkles size={13} /> Open AI Prospecting</button>
-          </div>
-        </div>
-      )}
-
-      {(conns ?? []).map(c => {
-        const statusWord = c.status === 'active' ? (c.today.running ? 'Running' : 'Active') : c.status === 'paused' ? 'Paused' : 'Every search done';
-        const tone = c.status === 'active' ? T.good : c.status === 'paused' ? T.warn : T.muted;
-        return (
-          <article key={c.id} id={`source-${c.id}`} style={{ ...card, borderColor: focus === c.id ? T.accent : T.line, scrollMarginTop: 80 }} data-testid="source-card">
-            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-              <div style={{ display: 'grid', gap: 4, minWidth: 0, flex: '1 1 260px' }}>
-                <span style={kicker}>Prospecting source</span>
-                <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <b style={{ fontSize: 15, color: T.ink }}>{c.searchName}</b>
-                  <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999, color: tone, background: c.status === 'active' ? T.goodSoft : c.status === 'paused' ? T.warnSoft : T.raised }}>{statusWord}</span>
-                </span>
-                <span style={{ fontSize: 12.5, color: T.muted }}>{c.trade} · {c.place} · {c.target} verified leads / {c.schedule === 'weekdays' ? 'weekday' : c.schedule === 'daily' ? 'day' : 'run'} · {c.minConfidence}% confidence or more</span>
-                <span style={{ fontSize: 12, color: T.muted }}>Workflow: <b style={{ color: T.ink }}>{c.workflowName}</b> · {c.scheduleText}</span>
-                <span style={{ fontSize: 12, color: T.muted }}>Last run: {when(c.lastRunAt)} · Next run: {c.manualOnly ? 'when you start it' : when(c.nextRunAt)}</span>
-                {c.statusReason && <span style={{ fontSize: 12.5, color: T.warn }}>{c.statusReason}</span>}
-                {c.searchVersion < c.latestVersion && (
-                  <span style={{ fontSize: 12.5, color: T.ink, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    The search has changed since this was connected.
-                    <button type="button" style={btn} onClick={() => void act(c.id, 'apply', async () => { const r = await applySearch(c.searchId, 'update', [c.id]); return r; })}>Update workflow</button>
-                  </span>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                <button type="button" style={btn} onClick={() => navigate(`/prospecting?search=${encodeURIComponent(c.searchId)}`)}>View Search <ArrowRight size={13} /></button>
-                <button type="button" style={btn} disabled={!!busy} onClick={() => void act(c.id, 'run', () => runSourceNow(c.id))} data-testid="source-run">
-                  {busy === `run:${c.id}` ? <Loader size={13} className="spin" /> : <Play size={13} />} Run now</button>
-                <button type="button" style={btn} disabled={!!busy} onClick={() => void act(c.id, 'status', () => setSourceStatus(c.id, c.status === 'active' ? 'paused' : 'active'))}>
-                  {c.status === 'active' ? <><Pause size={13} /> Pause</> : <><Play size={13} /> Resume</>}</button>
-                <button type="button" style={btn} onClick={() => setEditing(editing === c.id ? '' : c.id)}>Settings</button>
-                <button type="button" style={{ ...btn, color: T.bad }} aria-label={`Disconnect ${c.searchName}`} disabled={!!busy}
-                  onClick={() => { if (window.confirm(`Disconnect "${c.searchName}" from this project? Its workflow is removed; everybody it already added stays in Contacts and on the list.`)) void act(c.id, 'off', () => disconnectSource(c.id)); }}>
-                  <Trash2 size={13} /></button>
-              </div>
-            </div>
-            {editing === c.id && <Settings c={c} onCancel={() => setEditing('')} onSaved={n => { replace(n); setEditing(''); setSaid('Saved.'); }} />}
-            <LiveRun c={c} />
-            {log.some(l => l.finder_id === c.id) && (
-              <details>
-                <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 650, color: T.ink }}>What it did, step by step</summary>
-                <ul style={{ margin: '8px 0 0', padding: 0, listStyle: 'none', display: 'grid', gap: 5 }}>
-                  {log.filter(l => l.finder_id === c.id).slice(0, 15).map((l, i) => (
-                    <li key={i} style={{ fontSize: 12, color: T.ink, display: 'grid', gridTemplateColumns: '120px minmax(0, 1fr)', gap: 8 }}>
-                      <span style={{ color: T.muted }}>{when(l.at)}</span><span style={{ overflowWrap: 'anywhere' }}>{l.detail}</span>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </article>
-        );
-      })}
-
-      {connect && (
-        <ConnectAutopilot projectId={project.id} searchId={connect.searchId} onClose={() => { setConnect(null); void load(); }} onDone={() => void load()} />
-      )}
-    </section>
+    </div>
   );
 }
 

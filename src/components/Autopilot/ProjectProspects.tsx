@@ -1,48 +1,43 @@
 /**
- * A project's Prospects tab — the people it is finding, day by day, and the
- * daily prospect finder that finds them (worker/src/prospectFinderTick.ts).
+ * A project's daily prospect finder (worker/src/prospectFinderTick.ts), in the
+ * pieces the Prospects tab (ProjectLeads.tsx) lays out:
  *
- * ── What it shows, and what it will not ──
+ *   useFinderOverview  the finder, its rotation, 30 days of counts and the log
+ *   FinderCard         the finder as one lead source: what it searches, its
+ *                      state in plain words, and Pause / Resume / Change
+ *   FinderSetup        kinds of business, places, how many a day, the list
+ *   DailyChart         added per day, the last 30 days
+ *   RotationPanel      which searches are done, next and waiting
  *
- * Every number is counted from `crm_project_prospects`: added per day, waiting,
- * being read, nothing to write to, already in Contacts. The rotation says which
- * searches are done, which is next and which are waiting — and when every one
- * is done it says so, rather than implying the audience grows for ever. A place
- * has a finite number of listed businesses; "more every day" lasts until the
- * rotation is used up, and then needs more places or kinds of business.
+ * ── What it says, and what it will not ──
  *
- * ── Setting it up ──
+ * A place has a finite number of listed businesses; "more every day" lasts
+ * until the rotation is used up. When every search is done the card says so
+ * and asks for more places or kinds of business — it does not offer Resume
+ * there, because resuming the same searches finds nobody new and would look
+ * like the button did something.
  *
  * Kinds of business, places (a state becomes its towns — `expandPlace`), how
- * many a day, which source, and the list they go on (the project's audience, or
- * a new one made here). The same finder is set up from the New Project wizard;
- * both go through `saveFinder`, so there is one place that decides what a
- * finder is. A search connected from AI Prospecting is a *source* instead
- * (ProspectSources.tsx, above this on the tab) — the same engine, with a
+ * many a day, which source, and the list they go on. The same finder is set up
+ * from the New Project wizard; both go through `saveFinder`, so there is one
+ * place that decides what a finder is. A search connected from AI Prospecting
+ * is a *source* instead (ProspectSources.tsx) — the same engine, with a
  * schedule, a verified target and its own checks.
  *
  * Authored light like the rest of Autopilot (theme.ts): the app's dark mode
  * inverts it with everything else.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import {
-  AlertTriangle, BadgeCheck, CheckCircle2, Globe, Loader, MapPin, Pause, Play, Plus, Search, Sparkles, Target, Users, X, Zap,
-} from 'lucide-react';
+import { Globe, Loader, MapPin, Pause, Play, Plus, Search, Target, X, Zap } from 'lucide-react';
 import { T, primaryBtn } from './theme';
 import type { Project } from '../../services/projects';
 import {
-  expandPlace, finderOverview, runFinderStep, saveFinder, setFinderStatus, type FinderOverview,
+  expandPlace, finderOverview, runFinderStep, saveFinder, setFinderStatus, type FinderInfo, type FinderOverview,
 } from '../../services/finders';
 import { createList, loadLists } from '../../services/contactLists';
 import { flushNow } from '../../services/serverData';
 import { currentActor } from '../../services/contactPermissions';
 
-const STATUS_WORD: Record<string, string> = { valid: 'Contact verified', domain_ok: 'Contact checked', risky: 'Risky', invalid: 'Invalid' };
-const when = (iso: string) => {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
-};
 const btn: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 9, border: `1px solid ${T.line}`,
   background: T.panel, color: T.ink, font: 'inherit', fontSize: 12.5, fontWeight: 650, cursor: 'pointer',
@@ -51,7 +46,7 @@ const card: React.CSSProperties = { background: T.panel, border: `1px solid ${T.
 const label: React.CSSProperties = { fontSize: 11, fontWeight: 700, letterSpacing: '0.05em', color: T.muted, textTransform: 'uppercase' };
 
 /** The last 30 days, one bar a day, with the days that added nobody shown as nothing rather than skipped. */
-function DailyChart({ days }: { days: { day: string; added: number }[] }) {
+export function DailyChart({ days }: { days: { day: string; added: number }[] }) {
   const series = useMemo(() => {
     const by = new Map(days.map(d => [d.day, d.added]));
     const out: { day: string; n: number }[] = [];
@@ -114,7 +109,7 @@ function Chips({ values, onChange, placeholder, field, icon }: {
   );
 }
 
-function Setup({ project, initial, onSaved, onCancel }: {
+export function FinderSetup({ project, initial, onSaved, onCancel }: {
   project: Project;
   initial: { trades: string[]; places: string[]; perDay: number; source: 'free' | 'register'; listId: string } | null;
   onSaved: () => void; onCancel?: () => void;
@@ -215,184 +210,139 @@ function Setup({ project, initial, onSaved, onCancel }: {
   );
 }
 
-export default function ProjectProspects({ project, folded = false }: { project: Project; folded?: boolean }) {
-  const navigate = useNavigate();
+
+/** The finder overview, re-read every minute while the page is visible. */
+export function useFinderOverview(projectId: string) {
   const [data, setData] = useState<FinderOverview | null>(null);
   const [error, setError] = useState('');
-  const [editing, setEditing] = useState(false);
-  const [busy, setBusy] = useState('');
-  const [said, setSaid] = useState('');
-  /* Beside connected searches the older set-up form waits behind one line until asked for. */
-  const [unfolded, setUnfolded] = useState(!folded);
-
   const load = useCallback(async () => {
-    const r = await finderOverview(project.id);
+    const r = await finderOverview(projectId);
     if (!r.success) { setError(r.error ?? 'Could not read this project\'s prospects.'); return; }
     setError(''); setData(r);
-  }, [project.id]);
+  }, [projectId]);
   useEffect(() => {
     void load();
     const t = window.setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 60_000);
     return () => window.clearInterval(t);
   }, [load]);
+  return { data, error, load };
+}
 
-  if (error) return <div style={{ ...card, color: T.bad, fontSize: 13 }}><AlertTriangle size={14} /> {error}</div>;
-  if (!data) return <div style={{ ...card, color: T.muted, fontSize: 13 }}><Loader size={14} className="spin" /> Reading this project's prospects…</div>;
+const placesText = (places: string[]) =>
+  places.length > 3 ? `${places.slice(0, 3).join(', ')} and ${places.length - 3} more` : places.join(', ');
 
-  const f = data.finder;
-  const t = data.totals;
-  const today = f ? f.today : null;
-
-  if (!f && !unfolded) {
-    return (
-      <button type="button" style={{ ...btn, justifySelf: 'start' }} onClick={() => setUnfolded(true)}>
-        <Target size={13} /> Or find by kinds of business and places, every day
-      </button>
-    );
+/**
+ * The finder's state in words a customer can act on. "Every search done" on
+ * its own read as a fault; it means the places given have nobody new left.
+ */
+export function finderState(f: FinderInfo): { word: string; tone: string; soft: string; says: string } {
+  if (f.status === 'paused') {
+    return { word: 'Paused', tone: T.warn, soft: T.warnSoft, says: f.statusReason ? `Paused: ${f.statusReason}` : 'Nothing is searched until you resume it. What it already found stays.' };
   }
-
-  if (!f || editing) {
-    return (
-      <div style={{ display: 'grid', gap: 12 }} aria-label="Prospects">
-        {!f && (
-          <div style={card}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, fontWeight: 750, color: T.ink }}><Target size={17} color={T.accent} /> Find new prospects every day</span>
-            <span style={{ fontSize: 13, color: T.muted, lineHeight: 1.6 }}>
-              AI Autopilot searches business directories live, reads each business's own website for the address it publishes, checks
-              it, and adds the new ones to this project's audience — a few at a time through the day, until today's number is in.
-              It never emails anybody itself.
-            </span>
-            {(t.added ?? 0) > 0 && <span style={{ fontSize: 12.5, color: T.ink }}>{t.added} already added to this project by hand from AI Prospecting.</span>}
-          </div>
-        )}
-        <Setup project={project} onSaved={() => { setEditing(false); void load(); }} onCancel={f ? () => setEditing(false) : undefined}
-          initial={f ? { trades: f.trades, places: f.places, perDay: f.perDay, source: f.source, listId: f.listId } : null} />
-        <button type="button" style={{ ...btn, justifySelf: 'start' }} onClick={() => navigate('/prospecting')}><Plus size={13} /> Or add some by hand in AI Prospecting</button>
-      </div>
-    );
+  if (f.status === 'exhausted') {
+    return {
+      word: 'All searches done for now', tone: T.muted, soft: T.raised,
+      says: 'It has searched every kind of business in every place you gave it, to the end of each list, so there is nobody new left to find there. Add a place or another kind of business and it starts again.',
+    };
   }
+  const full = f.today.added >= f.perDay;
+  return {
+    word: full ? 'Today\'s leads are in' : 'Finding every day', tone: T.good, soft: T.goodSoft,
+    says: full
+      ? `Today's ${f.perDay} are added — it carries on tomorrow.`
+      : `${f.today.added} of ${f.perDay} added today. It works a few at a time through the day, by itself, whether or not you are signed in.`,
+  };
+}
 
-  const statusWord = f.status === 'active' ? 'Finding every day' : f.status === 'paused' ? 'Paused' : 'Every search done';
-  const tone = f.status === 'active' ? T.good : f.status === 'paused' ? T.warn : T.muted;
-
+/** The daily finder as one lead source: what it looks for, where it stands, and what to do about it. */
+export function FinderCard({ project, f, onChanged, onEdit, editing, onCancelEdit }: {
+  project: Project; f: FinderInfo; onChanged: () => void; onEdit: () => void; editing: boolean; onCancelEdit: () => void;
+}) {
+  const [busy, setBusy] = useState('');
+  const [said, setSaid] = useState('');
+  const st = finderState(f);
   return (
-    <div style={{ display: 'grid', gap: 12 }} aria-label="Prospects">
-      <div style={{ ...card, gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'start' }}>
-        <div style={{ display: 'grid', gap: 4, minWidth: 0 }}>
+    <article style={{ ...card, gap: 8 }} data-testid="finder-card" aria-label="Daily search">
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <span aria-hidden style={{ display: 'grid', placeItems: 'center', width: 34, height: 34, borderRadius: 10, background: T.accentSoft, flex: '0 0 auto' }}>
+          <Target size={17} color={T.accent} />
+        </span>
+        <div style={{ display: 'grid', gap: 4, minWidth: 0, flex: '1 1 180px' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <b style={{ fontSize: 15, color: T.ink }}>Daily prospecting</b>
-            <span data-testid="finder-status" style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999, color: tone, background: f.status === 'active' ? T.goodSoft : f.status === 'paused' ? T.warnSoft : T.raised }}>{statusWord}</span>
+            <b style={{ fontSize: 14.5, color: T.ink }}>Daily search</b>
+            <span data-testid="finder-status" style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 9px', borderRadius: 999, color: st.tone, background: st.soft }}>{st.word}</span>
           </span>
-          <span style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.55, overflowWrap: 'anywhere' }}>
-            {f.trades.join(', ')} · in {f.places.length > 3 ? `${f.places.slice(0, 3).join(', ')} and ${f.places.length - 3} more` : f.places.join(', ')} · {f.perDay} a day
+          <span style={{ fontSize: 13, color: T.ink, lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+            Searching <b>{f.trades.join(', ')}</b> in <b>{placesText(f.places)}</b> — up to {f.perDay} new leads a day.
           </span>
-          {f.statusReason && <span style={{ fontSize: 12.5, color: T.warn }}>{f.statusReason}</span>}
+          <span style={{ fontSize: 12.5, color: f.status === 'paused' && f.statusReason ? T.warn : T.muted, lineHeight: 1.55 }} data-testid="finder-says">{st.says}</span>
         </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {f.status === 'active' && (
-            <button type="button" style={btn} disabled={!!busy} onClick={async () => {
-              setBusy('run'); setSaid('');
-              const r = await runFinderStep(project.id, f.id);
-              setBusy(''); setSaid(r.success ? r.detail : (r.error ?? 'It could not run.'));
-              void load();
-            }}>{busy === 'run' ? <Loader size={13} className="spin" /> : <Play size={13} />} Run a step now</button>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {f.status === 'exhausted' ? (
+            <button type="button" style={{ ...primaryBtn, display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={onEdit}>
+              <Plus size={13} /> Add places or kinds of business
+            </button>
+          ) : (
+            <>
+              {f.status === 'active' && (
+                <button type="button" style={btn} disabled={!!busy} onClick={async () => {
+                  setBusy('run'); setSaid('');
+                  const r = await runFinderStep(project.id, f.id);
+                  setBusy(''); setSaid(r.success ? r.detail : (r.error ?? 'It could not run.'));
+                  onChanged();
+                }}>{busy === 'run' ? <Loader size={13} className="spin" /> : <Play size={13} />} Run a step now</button>
+              )}
+              <button type="button" style={btn} disabled={!!busy} onClick={async () => {
+                setBusy('status'); setSaid('');
+                const r = await setFinderStatus(project.id, f.id, f.status === 'active' ? 'paused' : 'active');
+                setBusy('');
+                if (!r.success) setSaid(r.error ?? 'That did not work.');
+                onChanged();
+              }}>{f.status === 'active' ? <><Pause size={13} /> Pause</> : <><Play size={13} /> Resume</>}</button>
+              <button type="button" style={btn} onClick={onEdit}>Change what it finds</button>
+            </>
           )}
-          <button type="button" style={btn} disabled={!!busy} onClick={async () => {
-            setBusy('status');
-            await setFinderStatus(project.id, f.id, f.status === 'active' ? 'paused' : 'active');
-            setBusy(''); void load();
-          }}>{f.status === 'active' ? <><Pause size={13} /> Pause</> : <><Play size={13} /> Resume</>}</button>
-          <button type="button" style={btn} onClick={() => setEditing(true)}>Change what it finds</button>
         </div>
       </div>
       {said && <div role="status" style={{ fontSize: 12.5, color: T.ink, background: T.accentSoft, borderRadius: 10, padding: '8px 12px' }}>{said}</div>}
+      {editing && (
+        <FinderSetup project={project} onSaved={() => { onCancelEdit(); onChanged(); }} onCancel={onCancelEdit}
+          initial={{ trades: f.trades, places: f.places, perDay: f.perDay, source: f.source, listId: f.listId }} />
+      )}
+    </article>
+  );
+}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-        {[
-          { n: `${today?.added ?? 0} / ${f.perDay}`, l: 'Added today', Icon: Zap },
-          { n: t.added ?? 0, l: 'In the audience', Icon: Users },
-          { n: t.ready ?? 0, l: 'Ready for another day', Icon: CheckCircle2 },
-          { n: t.candidate ?? 0, l: 'Websites still to read', Icon: Globe },
-          { n: t.no_email ?? 0, l: 'Nothing to write to', Icon: X },
-          { n: t.known ?? 0, l: 'Already in Contacts', Icon: BadgeCheck },
-        ].map(k => (
-          <div key={k.l} style={{ ...card, gap: 2, padding: 12 }}>
-            <k.Icon size={14} color={T.accent} />
-            <b style={{ fontSize: 20, color: T.ink, fontVariantNumeric: 'tabular-nums' }} data-kpi={k.l}>{k.n}</b>
-            <span style={{ fontSize: 11.5, color: T.muted }}>{k.l}</span>
-          </div>
+/** Which searches are done, next and waiting, and today's allowance — for the Details fold. */
+export function RotationPanel({ f }: { f: FinderInfo }) {
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      <span style={label}>Searches in the rotation</span>
+      <span style={{ fontSize: 12, color: T.muted, lineHeight: 1.55 }}>
+        Each kind of business in each place, town by town; a crossed-out one has been searched to the end of its list.
+        Today: {f.today.searches} of {f.limits.searches} searches, {f.today.reads} of {f.limits.reads} websites read.
+      </span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 150, overflowY: 'auto' }}>
+        {f.rotation.map(r => (
+          <span key={`${r.trade}|${r.place}`} title={r.state === 'done' ? 'Searched to the end' : r.state === 'next' ? 'Next' : 'Waiting its turn'}
+            style={{
+              fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999,
+              color: r.state === 'done' ? T.muted : r.state === 'next' ? T.accent : T.ink,
+              background: r.state === 'done' ? T.raised : r.state === 'next' ? T.accentSoft : T.panel,
+              border: `1px solid ${r.state === 'next' ? T.accent : T.line}`, textDecoration: r.state === 'done' ? 'line-through' : 'none',
+            }}>{r.trade} · {r.place}</span>
         ))}
       </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(320px, 100%), 1fr))', gap: 12 }}>
-        <div style={card}>
-          <span style={label}>Added to the audience, day by day</span>
-          <DailyChart days={data.days} />
-        </div>
-        <div style={card}>
-          <span style={label}>Searches in the rotation</span>
-          <span style={{ fontSize: 12, color: T.muted }}>
-            Each kind of business in each place, town by town. Today: {today?.searches ?? 0} of {f.limits.searches} searches, {today?.reads ?? 0} of {f.limits.reads} websites.
-          </span>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxHeight: 150, overflowY: 'auto' }}>
-            {f.rotation.map(r => (
-              <span key={`${r.trade}|${r.place}`} title={r.state === 'done' ? 'Run to its end' : r.state === 'next' ? 'Next' : 'Waiting its turn'}
-                style={{
-                  fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 999,
-                  color: r.state === 'done' ? T.muted : r.state === 'next' ? T.accent : T.ink,
-                  background: r.state === 'done' ? T.raised : r.state === 'next' ? T.accentSoft : T.panel,
-                  border: `1px solid ${r.state === 'next' ? T.accent : T.line}`, textDecoration: r.state === 'done' ? 'line-through' : 'none',
-                }}>{r.trade} · {r.place}</span>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div style={card}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={label}>Latest prospects</span><span style={{ flex: 1 }} />
-          <button type="button" style={btn} onClick={() => navigate('/prospecting')}><Sparkles size={13} /> Add more in AI Prospecting</button></span>
-        {!data.recent.length && <span style={{ fontSize: 12.5, color: T.muted }}>None yet — the first appear within a few minutes of starting, a few at a time.</span>}
-        {data.recent.length > 0 && (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, minWidth: 560 }} aria-label="Latest prospects">
-              <thead><tr style={{ textAlign: 'left', color: T.muted, fontSize: 11 }}>
-                {['Business', 'Email', 'Found', 'Where it is'].map(h => <th key={h} style={{ padding: '6px 8px', borderBottom: `1px solid ${T.line}`, fontWeight: 700 }}>{h}</th>)}
-              </tr></thead>
-              <tbody>
-                {data.recent.map(r => (
-                  <tr key={r.id}>
-                    <td style={{ padding: '7px 8px', borderBottom: `1px solid ${T.lineSoft}` }}>
-                      <b style={{ color: T.ink }}>{r.name}</b>
-                      <span style={{ display: 'block', fontSize: 11, color: T.muted }}>{r.category}{r.person_name ? ` · ${r.person_name}${r.person_role ? `, ${r.person_role}` : ''}` : ''}</span>
-                    </td>
-                    <td style={{ padding: '7px 8px', borderBottom: `1px solid ${T.lineSoft}` }}>
-                      <span style={{ color: T.ink }}>{r.email || '—'}</span>
-                      {r.email_status && <span style={{ display: 'block', fontSize: 11, color: r.email_status === 'valid' ? T.good : T.muted }}>{STATUS_WORD[r.email_status] ?? r.email_status}</span>}
-                    </td>
-                    <td style={{ padding: '7px 8px', borderBottom: `1px solid ${T.lineSoft}`, whiteSpace: 'nowrap', color: T.muted }}>{when(r.found_at)}</td>
-                    <td style={{ padding: '7px 8px', borderBottom: `1px solid ${T.lineSoft}`, color: r.status === 'added' ? T.good : T.warn }}>
-                      {r.status === 'added' ? (r.source === 'manual' ? 'In the audience · added by hand' : 'In the audience') : 'Ready — joins on a later day'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {data.runs.length > 0 && (
-        <details style={card}>
-          <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 650, color: T.ink }}>What it did, step by step</summary>
-          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 6 }}>
-            {data.runs.map((r, i) => (
-              <li key={i} style={{ fontSize: 12, color: T.ink, display: 'grid', gridTemplateColumns: '110px minmax(0, 1fr)', gap: 8 }}>
-                <span style={{ color: T.muted }}>{when(r.at)}</span><span style={{ overflowWrap: 'anywhere' }}>{r.detail}</span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
     </div>
+  );
+}
+
+/** What the daily search does, above a first set-up. */
+export function FinderIntro() {
+  return (
+    <span style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.6 }}>
+      AI Autopilot searches business directories live, reads each business's own website for the address it publishes, checks it, and adds
+      the new ones to this project's audience — a few at a time through the day, until the day's number is in. It never emails anybody itself.
+    </span>
   );
 }
