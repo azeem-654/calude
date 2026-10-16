@@ -186,7 +186,7 @@ export interface ProjectDay {
  */
 export async function fetchProjectDay(projectId: string): Promise<{ day: ProjectDay | null; error: string }> {
   const r = await call('day', { projectId });
-  if (!r.success) return { day: null, error: String(r.error ?? 'Could not read what this project has done.') };
+  if (!r.success) return { day: null, error: String(r.error ?? 'Could not read what this business workspace has done.') };
   return {
     day: {
       today: String(r.today ?? ''),
@@ -289,7 +289,7 @@ export async function fetchWorkflows(projectId: string): Promise<{
   if (!r.success) {
     return {
       workflows: [], stepState: {}, runCounts: {},
-      error: String(r.error ?? 'Could not read this project\'s workflows.'),
+      error: String(r.error ?? 'Could not read this business workspace\'s workflows.'),
     };
   }
   return {

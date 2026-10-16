@@ -49,7 +49,7 @@ function choiceIdea(q: Question, text: string): Ideas {
   return {
     options: opts.map(o => o.label),
     pick: [pick.label],
-    why: best >= 0 ? `Your request points to “${pick.label}”.` : `The usual choice for a project like this — change it if yours is different.`,
+    why: best >= 0 ? `Your request points to “${pick.label}”.` : `The usual choice for a business like this — change it if yours is different.`,
     placeholder: '',
   };
 }

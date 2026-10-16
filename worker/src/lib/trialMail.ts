@@ -139,7 +139,7 @@ export async function nudgeHtml(env: Env, n: Nudge, who: { email: string; name: 
     <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:540px;margin:0 auto;color:#17191c">
       ${paras}
       <p style="margin:20px 0 10px">
-        <a href="${esc(origin(env))}/autopilot" style="display:inline-block;background:#17191c;color:#c8f24d;font-weight:700;text-decoration:none;padding:12px 22px;border-radius:999px">Start my first project</a>
+        <a href="${esc(origin(env))}/autopilot" style="display:inline-block;background:#17191c;color:#c8f24d;font-weight:700;text-decoration:none;padding:12px 22px;border-radius:999px">Start my first business workspace</a>
       </p>
       ${kick ? `<p style="margin:0 0 20px"><a href="${esc(kick)}" style="color:#3b5bdb;font-weight:600">Or book a free 20-minute call</a></p>` : ''}
       <p style="font-size:12px;color:#6b7280;line-height:1.6;margin:24px 0 0;border-top:1px solid #eceef1;padding-top:12px">
@@ -268,7 +268,7 @@ function ago(iso: string | null): string {
 
 function signals(s: Signup): string {
   return [
-    s.projects ? `${s.projects} project${s.projects === 1 ? '' : 's'}` : 'no project',
+    s.projects ? `${s.projects} business workspace${s.projects === 1 ? '' : 's'}` : 'no business workspace',
     s.mailboxes ? 'mailbox connected' : 'no mailbox',
     `last here ${ago(s.lastSeen)}`,
   ].join(' · ');
@@ -339,7 +339,7 @@ export async function buildOwnerDigest(env: Env): Promise<DigestContent> {
       ${section('New in the last 24 hours', 'A welcome message is already waiting in their app.', fresh.map(s => ({ s, line: `signed up ${ago(s.createdAt)} · ${signals(s)}` })))}
       ${section('Trials ending in the next 2 days', 'The best time for a personal note or a call.', ending.map(s => ({ s, line: `${s.trial.daysLeft} day${s.trial.daysLeft === 1 ? '' : 's'} left · ${signals(s)}` })))}
       ${section('Trials that ended without paying', 'They can still choose a plan; nothing they made is gone.', endedNow.map(s => ({ s, line: signals(s) })))}
-      ${section('Not started', 'A day or more in with no project. The onboarding emails are working on these.', stuck.map(s => ({ s, line: `day ${Math.floor(age(s))} · ${signals(s)}` })))}
+      ${section('Not started', 'A day or more in with no business workspace. The onboarding emails are working on these.', stuck.map(s => ({ s, line: `day ${Math.floor(age(s))} · ${signals(s)}` })))}
       ${section('Gone quiet', 'On trial and not in the app for two days.', quiet.map(s => ({ s, line: signals(s) })))}
       ${section('Asked for help', 'Started a screen share in the last 24 hours.', help.map(s => ({ s, line: signals(s) })))}
       ${nudgeRows.length ? `<h3 style="font-size:15px;margin:22px 0 2px">Onboarding emails</h3>

@@ -72,7 +72,7 @@ export default function ProjectRevenueStrip({ projectId }: { projectId: string }
         <button onClick={() => navigate(`/analytics?section=revenue&project=${encodeURIComponent(projectId)}`)} style={{
           display: 'inline-flex', alignItems: 'center', gap: 4, border: 'none', background: 'none', padding: 0,
           color: T.accent, fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
-        }}>All projects <ArrowRight size={12} /></button>
+        }}>All business workspaces <ArrowRight size={12} /></button>
       </div>
 
       {error && <p style={{ margin: '8px 0 0', fontSize: 12, color: T.warn }}>{error}</p>}
@@ -91,10 +91,10 @@ export default function ProjectRevenueStrip({ projectId }: { projectId: string }
 
       {me && me.revenueCents === 0 && (
         <p style={{ margin: '6px 0 0', fontSize: 12, color: T.muted, lineHeight: 1.55 }}>
-          Counts paid shop orders and won deals in this project&rsquo;s pipeline.
+          Counts paid shop orders and won deals in this business workspace&rsquo;s pipeline.
           {me.shops.length
-            ? ' Sales through the shop below are credited here — share its link in this project’s posts and emails.'
-            : ' To credit sales here, connect a shop to this project under Websites → Shops.'}
+            ? ' Sales through the shop below are credited here — share its link in this business workspace’s posts and emails.'
+            : ' To credit sales here, connect a shop to this business workspace under Websites → Shops.'}
         </p>
       )}
 
@@ -104,10 +104,10 @@ export default function ProjectRevenueStrip({ projectId }: { projectId: string }
         return (
           <div key={s.slug} style={{ marginTop: 10, display: 'grid', gap: 4 }}>
             <span style={{ fontSize: 11.5, color: T.muted }}>
-              This project&rsquo;s shop link{live ? ' — sales from it are credited here' : ' — the shop is a draft, so publish it before sharing'}
+              This business workspace&rsquo;s shop link{live ? ' — sales from it are credited here' : ' — the shop is a draft, so publish it before sharing'}
             </span>
             <div style={{ display: 'flex', gap: 6, minWidth: 0 }}>
-              <input readOnly value={link} aria-label="This project's shop link" onFocus={e => e.currentTarget.select()} style={{
+              <input readOnly value={link} aria-label="This business workspace's shop link" onFocus={e => e.currentTarget.select()} style={{
                 flex: 1, minWidth: 0, padding: '7px 9px', borderRadius: 9, border: `1px solid ${T.line}`, background: T.raised,
                 fontSize: 12, color: live ? T.ink : T.muted, fontFamily: 'inherit',
               }} />

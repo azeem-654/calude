@@ -151,7 +151,7 @@ endpoint. Key order: workspace key → install key → `env.AI_API_KEY`.
 
 | Feature | Sent | Why |
 |---|---|---|
-| New Project (`intake.php`) | prompt, attached images/PDFs, up to 3 web pages, voice note, portfolio profile | understand the request |
+| New business workspace (`intake.php`) | prompt, attached images/PDFs, up to 3 web pages, voice note, portfolio profile | understand the request |
 | Autopilot writing, blog, social, campaigns | business profile, request | write content |
 | Reply drafts (`replyTick`) | the inbound email + profile | draft a reply |
 | Chat assistant (`agentBrain`) | last 14 turns + knowledge base | answer the visitor |

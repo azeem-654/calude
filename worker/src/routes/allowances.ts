@@ -203,7 +203,7 @@ export async function handleAllowances(req: Request, env: Env): Promise<Response
     const projectId = String(d.projectId ?? '').slice(0, 80);
     if (projectId) {
       const own = await env.DB.prepare('SELECT 1 AS x FROM crm_projects WHERE id = ? AND account_id = ?').bind(projectId, accountId).first();
-      if (!own) return fail('That project is not in this workspace.', 404, { code: 'not_found' });
+      if (!own) return fail('That business workspace is not one of yours.', 404, { code: 'not_found' });
     }
     const r = await check(env, accountId, meter.id, need, { projectId });
     if (r.ok) return json({ success: true, ok: true, left: r.left });

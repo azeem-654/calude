@@ -64,22 +64,22 @@ export interface Meter {
 }
 
 export const METERS: Meter[] = [
-  { id: 'autopilot_projects', label: 'AI Autopilot projects', one: 'AI Autopilot project', kind: 'count', group: 'AI Autopilot',
-    counted: 'Projects that exist across all your workspaces. Deleting one frees its place.' },
-  { id: 'workflows_per_project', label: 'Workflows per project', one: 'workflow', kind: 'count', group: 'AI Autopilot',
-    counted: 'Workflows in one project, counted per project.' },
+  { id: 'autopilot_projects', label: 'AI Autopilot business workspaces', one: 'AI Autopilot business workspace', kind: 'count', group: 'AI Autopilot',
+    counted: 'Business workspaces in AI Autopilot, counted across every account you own. Deleting one frees its place.' },
+  { id: 'workflows_per_project', label: 'Workflows per business workspace', one: 'workflow', kind: 'count', group: 'AI Autopilot',
+    counted: 'Workflows in one business workspace, counted per business workspace.' },
   { id: 'sub_accounts', label: 'Client sub-accounts', one: 'sub-account', kind: 'count', group: 'Workspace',
     counted: 'Workspaces you run beyond your own.' },
   { id: 'ai_requests', label: 'AI requests', one: 'AI request', kind: 'monthly', group: 'AI writing',
     counted: 'Each time a screen asks the AI to write or read something for you.' },
   { id: 'social_posts', label: 'Social posts by AI Autopilot', one: 'social post', kind: 'monthly', group: 'AI writing',
-    counted: 'Each post a project’s agent or AI Video Studio writes into Social Creator.' },
+    counted: 'Each post a business workspace’s agent or AI Video Studio writes into Social Creator.' },
   { id: 'blog_articles', label: 'Blog articles by AI Autopilot', one: 'blog article', kind: 'monthly', group: 'AI writing',
-    counted: 'Each article a project’s agent or AI Video Studio drafts into Blog.' },
+    counted: 'Each article a business workspace’s agent or AI Video Studio drafts into Blog.' },
   { id: 'ai_emails', label: 'Emails written by AI Autopilot', one: 'email', kind: 'monthly', group: 'AI writing',
-    counted: 'Each email in a campaign a project’s agent or AI Video Studio writes.' },
+    counted: 'Each email in a campaign a business workspace’s agent or AI Video Studio writes.' },
   { id: 'prospects_found', label: 'Prospects found daily', one: 'prospect', kind: 'monthly', group: 'Prospecting',
-    counted: 'Each business a project’s daily prospecting adds to its audience.' },
+    counted: 'Each business a business workspace’s daily prospecting adds to its audience.' },
   { id: 'long_videos', label: 'Recordings processed', one: 'recording', kind: 'monthly', group: 'Video',
     counted: 'Each recording uploaded to AI Video Studio and processed.' },
   { id: 'ai_shorts', label: 'AI Shorts', one: 'AI Short', kind: 'monthly', group: 'Video',
@@ -89,7 +89,7 @@ export const METERS: Meter[] = [
   { id: 'render_minutes', label: 'Render minutes', one: 'minute', kind: 'monthly', group: 'Video', unit: 'min',
     counted: 'The length of every video rendered, re-renders included.' },
   { id: 'video_storage_gb', label: 'Video storage', one: 'GB', kind: 'standing', group: 'Video', unit: 'GB',
-    counted: 'Recordings and rendered files kept. Deleting a project frees it.' },
+    counted: 'Recordings and rendered files kept. Deleting a video project frees it.' },
   { id: 'login_addresses', label: 'Branded login addresses', one: 'login address', kind: 'count', group: 'Workspace',
     counted: 'Addresses your clients sign in at under your brand — a free subdomain or your own domain. Removing one frees its place.' },
 ];
@@ -231,8 +231,8 @@ export const INCLUDED: string[] = [
  * only on Custom, which has no checkout and starts with a conversation.
  */
 export const CUSTOM_OFFER: string[] = [
-  'Any allowance raised to fit — projects, Shorts, prospects, sub-accounts',
-  'Done-for-you setup of your first projects and workflows',
+  'Any allowance raised to fit — business workspaces, Shorts, prospects, sub-accounts',
+  'Done-for-you setup of your first business workspaces and workflows',
   'An onboarding call and a named contact',
   'Integrations scoped and quoted for you',
   'Invoiced billing on request',
@@ -357,7 +357,7 @@ export function refusalText(m: Meter, used: number, limit: number, planName: str
   const what = m.kind === 'monthly'
     ? `This month’s ${num(limit)} ${plural(limit, m.one)} on ${planName} ${limit === 1 ? 'is' : 'are'} used (${num(Math.round(used))} of ${num(limit)})`
     : m.id === 'workflows_per_project'
-      ? `This project already has ${num(used)} of the ${num(limit)} ${plural(limit, m.one)} ${planName} allows in one project`
+      ? `This business workspace already has ${num(used)} of the ${num(limit)} ${plural(limit, m.one)} ${planName} allows in one business workspace`
       : m.kind === 'standing'
         ? `${planName} includes ${num(limit)} ${m.unit ?? ''} of ${m.label.toLowerCase()} and ${num(Math.round(used * 10) / 10)} ${m.unit ?? ''} ${used === 1 ? 'is' : 'are'} in use`.replace(/\s+/g, ' ')
         : `${planName} includes ${num(limit)} ${plural(limit, m.one)} and ${num(used)} ${used === 1 ? 'exists' : 'exist'}`;
@@ -378,8 +378,8 @@ export function featureLines(p: Pick<PlanDef, 'limits'>): string[] {
   const L = p.limits;
   const n = (v: number, one: string, many: string) => isUnlimited(v) ? `Unlimited ${many}` : `${num(v)} ${v === 1 ? one : many}`;
   return [
-    n(L.autopilot_projects, 'AI Autopilot project', 'AI Autopilot projects'),
-    `${isUnlimited(L.workflows_per_project) ? 'Unlimited' : `Up to ${num(L.workflows_per_project)}`} workflows per project`,
+    n(L.autopilot_projects, 'AI Autopilot business workspace', 'AI Autopilot business workspaces'),
+    `${isUnlimited(L.workflows_per_project) ? 'Unlimited' : `Up to ${num(L.workflows_per_project)}`} workflows per business workspace`,
     `${n(L.ai_shorts, 'AI Short', 'AI Shorts')} and ${n(L.long_videos, 'recording', 'recordings')} processed a month`,
     `${n(L.social_posts, 'social post', 'social posts')} and ${n(L.blog_articles, 'blog article', 'blog articles')} written a month`,
     `${n(L.ai_emails, 'AI-written email', 'AI-written emails')} a month`,
@@ -425,7 +425,7 @@ export function comparison(plans: PlanDef[] = CARD_PLANS()): CompareGroup[] {
   const each = (label: string, f: (p: PlanDef) => Cell, note?: string): CompareRow => ({ label, ...(note ? { note } : {}), values: Object.fromEntries(plans.map(p => [p.id, f(p)])) });
   return [
     { name: 'AI Autopilot', rows: [
-      meter('autopilot_projects', 'Projects at once'),
+      meter('autopilot_projects', 'Business workspaces at once'),
       meter('workflows_per_project'),
       meter('ai_requests'),
       meter('social_posts', 'Social posts written for you'),
@@ -438,7 +438,7 @@ export function comparison(plans: PlanDef[] = CARD_PLANS()): CompareGroup[] {
       meter('prospects_found', 'Prospects found for you daily'),
       all('Live business-directory search'),
       all('Free email checks (format, domain, mail server)'),
-      all('A tested search connected to a project'),
+      all('A tested search connected to a business workspace'),
     ] },
     { name: 'AI Video Studio', rows: [
       meter('long_videos'),

@@ -74,7 +74,7 @@ export default function CloudBadge() {
             </span>
           </div>
           <p>
-            Protected Central runs on servers, not on this computer. AI Autopilot projects, workflows,
+            Protected Central runs on servers, not on this computer. AI Autopilot business workspaces, workflows,
             follow-up emails and texts, inbox replies, daily prospect finders and review checks keep
             running when you close the app or switch your computer off.
           </p>

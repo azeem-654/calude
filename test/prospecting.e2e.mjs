@@ -354,8 +354,8 @@ let listId = '';
 
   /* The Autopilot shortcut: the wizard opens working from the list. */
   await page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
-  await listMenu(page, LIST, 'Use this list in a new AI Autopilot project');
-  const np = page.getByRole('dialog', { name: 'New project' });
+  await listMenu(page, LIST, 'Use it in a new AI Autopilot business workspace');
+  const np = page.getByRole('dialog', { name: 'New business workspace' });
   await np.waitFor({ timeout: 8000 });
   const prompt = await np.getByLabel('What would you like AI Autopilot to do?').inputValue();
   ok('the Autopilot shortcut opens New Project with a starting sentence naming the list', /Dentists — Leeds test/.test(prompt), prompt);
@@ -399,7 +399,7 @@ let listId = '';
   }
   ok('the list question was shown', sawPicker);
   const bpText = await np.innerText();
-  ok('the blueprint says only the list is written to', /Only the people on that list are written to by this project/.test(bpText), bpText.slice(0, 600));
+  ok('the blueprint says only the list is written to', /Only the people on that list are written to by this business workspace/.test(bpText), bpText.slice(0, 600));
   await cta.click(); // → connections
   await page.waitForTimeout(400);
   await cta.click(); // → review
@@ -629,7 +629,7 @@ console.log('\nAI Prospecting — sources, bulk emails, Add to…');
   /* Add to a workflow. */
   for (const n of [10, 13]) await page.getByRole('checkbox', { name: `Tick Leeds Dental ${n}`, exact: true }).check();
   const bar = page.getByRole('toolbar', { name: 'With the ticked businesses' });
-  ok('ticking shows what can be done with them', /2 ticked/.test(await bar.innerText()) && /Add to a workflow/.test(await bar.innerText()) && /Add to an AI project/.test(await bar.innerText()) && /Add to an email campaign/.test(await bar.innerText()));
+  ok('ticking shows what can be done with them', /2 ticked/.test(await bar.innerText()) && /Add to a workflow/.test(await bar.innerText()) && /Add to AI Autopilot/.test(await bar.innerText()) && /Add to an email campaign/.test(await bar.innerText()));
   await bar.getByRole('button', { name: /Add to a workflow/ }).click();
   const wf = page.getByRole('region', { name: 'Add to a workflow' });
   ok('a paused workflow is offered but cannot be chosen, and says why', await wf.getByRole('radio', { name: /Old nurture/ }).isDisabled() && /switch it on in Marketing/.test(await wf.innerText()));
@@ -644,8 +644,8 @@ console.log('\nAI Prospecting — sources, bulk emails, Add to…');
   ok('the server refuses a workflow that is not on', forged.success === false && /not switched on/.test(forged.error), JSON.stringify(forged));
   /* One row's own menu: that business alone. */
   await page.getByRole('button', { name: 'More for Leeds Dental 22', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Add to an AI project' }).click();
-  const one = page.getByRole('region', { name: 'Add to an AI project' });
+  await page.getByRole('menuitem', { name: 'Add to AI Autopilot' }).click();
+  const one = page.getByRole('region', { name: 'Add to an AI Autopilot business workspace' });
   ok('a row\'s own "…" menu adds just that business', /1 ticked/.test(await one.innerText()) && await page.getByRole('checkbox', { name: 'Tick Leeds Dental 22', exact: true }).isChecked(), await one.innerText().catch(() => ''));
   await one.getByRole('button', { name: 'Close' }).click();
   await page.getByRole('button', { name: 'Untick all' }).click();
@@ -664,8 +664,8 @@ console.log('\nAI Prospecting — sources, bulk emails, Add to…');
 
   /* Add to the AI project built earlier from a list. */
   await page.getByRole('checkbox', { name: 'Tick Leeds Dental 19', exact: true }).check();
-  await bar.getByRole('button', { name: /Add to an AI project/ }).click();
-  const pj = page.getByRole('region', { name: 'Add to an AI project' });
+  await bar.getByRole('button', { name: /Add to AI Autopilot/ }).click();
+  const pj = page.getByRole('region', { name: 'Add to an AI Autopilot business workspace' });
   await pj.getByRole('radio').first().waitFor({ timeout: 15_000 });
   await pj.getByRole('radio').first().check();
   ok('the project with a list says it adds to that list', /Adds them to its list “Dentists — Leeds test”/.test(await pj.innerText()), await pj.innerText());

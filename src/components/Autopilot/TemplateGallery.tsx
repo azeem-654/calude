@@ -120,7 +120,7 @@ export default function TemplateGallery({ onBack }: { onBack: () => void }) {
       { icon: Layers, value: String(CATEGORIES.length), label: 'Jobs covered', sub: 'Filed by the problem' },
       { icon: Sparkles, value: String(ai), label: 'AI-written', sub: 'Content written for you' },
       usedHere > 0
-        ? { icon: Zap, value: String(usedHere), label: 'In use here', sub: 'Across your projects' }
+        ? { icon: Zap, value: String(usedHere), label: 'In use here', sub: 'Across your business workspaces' }
         : { icon: Zap, value: String(quick), label: 'Under 15 minutes', sub: 'To set up from scratch' },
     ];
   }, [uses]);
@@ -128,7 +128,7 @@ export default function TemplateGallery({ onBack }: { onBack: () => void }) {
   async function use(t: WorkflowTemplate) {
     if (!projectId) {
       setAnswerBad(true);
-      setAnswer('Choose a project on the right first — a workflow belongs to one.');
+      setAnswer('Choose a business workspace on the right first — a workflow belongs to one.');
       return;
     }
     setAdding(t.key);
@@ -139,7 +139,7 @@ export default function TemplateGallery({ onBack }: { onBack: () => void }) {
     setPreview(null);
     setAnswerBad(!r.success);
     setAnswer(r.success
-      ? `"${t.name}" added as a draft. Open the project to read it and switch it on.`
+      ? `"${t.name}" added as a draft. Open the business workspace to read it and switch it on.`
       : String(r.error ?? 'That could not be added.'));
     if (r.success) setUses(u => ({ ...u, [t.key]: (u[t.key] ?? 0) + 1 }));
   }
@@ -161,7 +161,7 @@ export default function TemplateGallery({ onBack }: { onBack: () => void }) {
         <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 16 }}>
           <div style={{ minWidth: 0, flex: '1 1 420px' }}>
             <button onClick={onBack} style={{ ...ghostBtn, marginBottom: 10 }}>
-              <ArrowLeft size={12} /> Back to projects
+              <ArrowLeft size={12} /> Back to business workspaces
             </button>
             <h1 style={{
               margin: 0, fontSize: 'clamp(24px, 3.4vw, 34px)', fontWeight: 800,

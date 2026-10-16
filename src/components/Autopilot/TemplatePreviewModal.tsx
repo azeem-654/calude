@@ -167,7 +167,7 @@ export default function TemplatePreviewModal({
             {projectName
               ? <>Adds to <strong style={{ color: T.ink }}>{projectName}</strong> as a draft. Every step is
                 yours to change, and nothing reaches anybody until you switch it on.</>
-              : 'Choose a project in the assistant panel first — a workflow belongs to one.'}
+              : 'Choose a business workspace in the assistant panel first — a workflow belongs to one.'}
           </span>
           <button onClick={onClose} style={ghostBtn}>Keep looking</button>
           <button onClick={onUse} disabled={!!adding || !projectName} className="press ap-btn" style={{

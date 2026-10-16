@@ -29,8 +29,8 @@ const LABEL: Record<string, string> = {
   trial_cta_clicked: 'Pressed Start free / Build this',
   signup_started: 'Opened sign-up',
   signup_completed: 'Created an account',
-  autopilot_project_build_started: 'Project build started',
-  autopilot_project_created: 'Project created',
+  autopilot_project_build_started: 'Business workspace build started',
+  autopilot_project_created: 'Business workspace created',
   first_workflow_created: 'First workflow created',
   first_value_reached: 'Reached a first output',
 };

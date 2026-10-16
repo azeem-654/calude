@@ -624,7 +624,7 @@ function QuickCreate() {
     return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc); };
   }, [open]);
   const items: { label: string; desc: string; to: string; icon: typeof Plus }[] = [
-    { label: 'New AI Autopilot project', desc: 'Describe it in a sentence', to: '/autopilot?new=1', icon: Sparkles },
+    { label: 'New AI Autopilot business workspace', desc: 'Describe it in a sentence', to: '/autopilot?new=1', icon: Sparkles },
     { label: 'Find prospects', desc: 'AI Prospecting, live', to: '/prospecting', icon: Crosshair },
     { label: 'New email campaign', desc: 'Write, schedule and send', to: '/marketing?new=campaign', icon: Send },
     { label: 'Contacts', desc: 'Add or import people', to: '/contacts', icon: Users },

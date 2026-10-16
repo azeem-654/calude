@@ -574,7 +574,7 @@ async function runWelcome(env: Env, order: OrderRow): Promise<{ ok: boolean; det
  */
 async function runHandoff(env: Env, order: OrderRow): Promise<{ ok: boolean; detail: string; error: string }> {
   if (!order.project_id) {
-    return { ok: true, detail: 'No project was attached to this order.', error: '' };
+    return { ok: true, detail: 'No business workspace was attached to this order.', error: '' };
   }
   const res = await env.DB.prepare(
     `UPDATE crm_projects SET status = 'running', last_planned_at = NULL, last_error = '', updated_at = ?

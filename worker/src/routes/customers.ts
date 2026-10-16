@@ -85,18 +85,18 @@ const SETTINGS_KEY = 'customer_success';
 export const DEFAULT_NUDGES: Nudge[] = [
   {
     day: 1,
-    subject: 'Your first project takes about three minutes',
-    body: 'Hi {name},\n\nYou started your Protected Central trial yesterday but have not made a project yet. The quickest way in: open AI Autopilot and describe one thing you want handled — "follow up every new lead the same day", say, or "a post every morning". It shows you exactly what it will build before anything exists, and nothing sends until you approve it.\n\nIf you would rather do it together, book a free 20-minute call and we will set it up with you on your screen.',
+    subject: 'Your first business workspace takes about three minutes',
+    body: 'Hi {name},\n\nYou started your Protected Central trial yesterday but have not made a business workspace yet. The quickest way in: open AI Autopilot and describe one thing you want handled — "follow up every new lead the same day", say, or "a post every morning". It shows you exactly what it will build before anything exists, and nothing sends until you approve it.\n\nIf you would rather do it together, book a free 20-minute call and we will set it up with you on your screen.',
   },
   {
     day: 3,
     subject: 'Stuck on anything?',
-    body: 'Hi {name},\n\nYou have {daysLeft} days left in your trial and no project yet, so I wanted to check nothing is in the way. The two things people usually get stuck on are connecting a mailbox and knowing what to ask AI Autopilot for.\n\nJust reply to this email with what you are trying to do, press the help button in the corner of any screen to share your screen with us, or book a call.',
+    body: 'Hi {name},\n\nYou have {daysLeft} days left in your trial and no business workspace yet, so I wanted to check nothing is in the way. The two things people usually get stuck on are connecting a mailbox and knowing what to ask AI Autopilot for.\n\nJust reply to this email with what you are trying to do, press the help button in the corner of any screen to share your screen with us, or book a call.',
   },
   {
     day: 5,
     subject: '{daysLeft} days left — want us to set it up with you?',
-    body: 'Hi {name},\n\nYour free trial ends in {daysLeft} days. If you would like to see it working for your own business before then, book a 20-minute call and we will build your first project together, on your screen — you leave with it running.\n\nEverything you make during the trial stays yours if you choose a plan.',
+    body: 'Hi {name},\n\nYour free trial ends in {daysLeft} days. If you would like to see it working for your own business before then, book a 20-minute call and we will build your first business workspace together, on your screen — you leave with it running.\n\nEverything you make during the trial stays yours if you choose a plan.',
   },
 ];
 
@@ -104,7 +104,7 @@ const DEFAULTS: Settings = {
   kickoffUrl: '',
   welcomeOn: true,
   welcomeTitle: 'Welcome — your 7-day trial has started',
-  welcomeBody: 'Book a free 20-minute kickoff call and we will set up your first project with you, on your screen. Or press the help button in the corner any time — chat, a call, or share your screen.',
+  welcomeBody: 'Book a free 20-minute kickoff call and we will set up your first business workspace with you, on your screen. Or press the help button in the corner any time — chat, a call, or share your screen.',
   nudgesOn: true,
   nudges: DEFAULT_NUDGES,
   digestOn: true,
@@ -176,7 +176,7 @@ export async function welcomeNewAccount(env: Env, email: string): Promise<void> 
  */
 async function stockWelcome(env: Env, kickoffUrl: string): Promise<string> {
   const parts = ['Start in AI Autopilot: describe one thing you want handled and it shows you exactly what it will build before anything exists. Nothing sends until you approve it.'];
-  if (safeLink(kickoffUrl)) parts.push('If you would rather do it together, book a free 20-minute kickoff call and we will set up your first project with you, on your screen.');
+  if (safeLink(kickoffUrl)) parts.push('If you would rather do it together, book a free 20-minute kickoff call and we will set up your first business workspace with you, on your screen.');
   if (await houseWidgetKey(env)) parts.push('Or press the help button in the corner any time to ask us.');
   return parts.join(' ');
 }

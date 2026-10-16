@@ -317,12 +317,12 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
   /* A plan brought from the site's "Find my solution": said here, so the
      visitor knows the answers they gave are not lost behind the form. */
   const plan = sitePlan;
-  const planName = plan ? (plan.name || solutionByKey(plan.solutionKeys[0])?.label || 'your project') : '';
+  const planName = plan ? (plan.name || solutionByKey(plan.solutionKeys[0])?.label || 'your business workspace') : '';
   const sub = view === 'code'
     ? 'We email you a six-digit code — no password needed. A new address gets its own workspace and a 7-day free trial.'
     : mode === 'setup' ? 'Set up the agency owner login to get started.'
       : mode === 'register' ? (plan ? `Create your account and “${planName}” is built for you straight away. 7 days free, no card needed.` : `Your own ${brand.appName} workspace in under a minute. No card needed.`)
-        : plan ? `Sign in and “${planName}” is built in your workspace.` : brand.loginHeadline;
+        : plan ? `Sign in and “${planName}” is built for you straight away.` : brand.loginHeadline;
 
   const noticeBox = notice && (
     <div className="au-notice"><AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} /><span>{notice}</span></div>
@@ -360,7 +360,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
           <div className="au-visual-brand" aria-hidden="true"><LogoMark size={24} tile={false} /> AI Autopilot</div>
           <p className="au-visual-head">
             {mode === 'login'
-              ? 'Your projects kept running while you were away — posts written, leads followed up, replies caught.'
+              ? 'Your business workspaces kept running while you were away — posts written, leads followed up, replies caught.'
               : 'Describe your business once. AI Autopilot builds the workflows, writes the posts and follows up every lead.'}
           </p>
           <div className="au-visual-gap" />

@@ -1580,7 +1580,7 @@ async function noteMissingPortfolio(env: Env, run: RunRow, report: AutopilotRepo
      VALUES (?,?,?,'error','done',?,?,'{}','{"type":"none"}',NULL,?,?)`,
   ).bind(
     rid(), run.account_id, run.id, summary,
-    'a project writes in the voice of one client, and none is attached to this one — pick or add a portfolio on the project',
+    'a business workspace writes in the voice of one client, and none is attached to this one — pick or add a portfolio on the business workspace',
     now, now,
   ).run();
   report.planned++;

@@ -163,7 +163,7 @@ export function contactOf(r: PPRow, projectId: string, now = nowIso(), x: Contac
        operator licensed. Saying so is what lets the customer answer "where
        did you get my details?" truthfully. */
     fields.dataSource = LICENSED_SOURCE.label;
-    fields.provenance = `${LICENSED_SOURCE.label} (${LICENSED_SOURCE.licence}), given to this project's daily prospecting on ${r.found_at.slice(0, 10)}`;
+    fields.provenance = `${LICENSED_SOURCE.label} (${LICENSED_SOURCE.licence}), given to this business workspace's daily prospecting on ${r.found_at.slice(0, 10)}`;
   } else if (x.searchName) {
     const pol = SOURCE_POLICY[(r.source as keyof typeof SOURCE_POLICY)] ?? SOURCE_POLICY.free;
     fields.prospectSearch = x.searchName;
@@ -184,7 +184,7 @@ export function contactOf(r: PPRow, projectId: string, now = nowIso(), x: Contac
     tags: [...new Set([licensed ? 'licensed business data' : 'prospect search', 'autopilot', r.category, EMAIL_TAG[r.email_status] ?? '', ...(x.tags ?? [])].filter(Boolean))],
     ...(x.owner ? { assignedTo: x.owner } : {}),
     source: r.source === 'manual'
-      ? 'AI Prospecting · added to a project'
+      ? 'AI Prospecting · added to a business workspace'
       : licensed ? `AI Autopilot · ${LICENSED_SOURCE.label.toLowerCase()}` : 'AI Autopilot · daily prospecting',
     /* A date, as every other writer of contacts stores it (the list prints
        it as it is, so a full timestamp showed as one). */
@@ -562,7 +562,7 @@ async function searchStep(env: Env, f: FinderRow, s: FinderState, job: Extract<J
   const state = afterSearch(s, job, next);
   return {
     state,
-    detail: `Searched ${job.trade} in ${job.place}: ${prospects.length} found, ${fresh} new to this project${next ? '' : ' — that search is done'}`,
+    detail: `Searched ${job.trade} in ${job.place}: ${prospects.length} found, ${fresh} new to this business workspace${next ? '' : ' — that search is done'}`,
     found: fresh,
   };
 }
@@ -660,7 +660,7 @@ export async function stepFinder(env: Env, f: FinderRow, now = new Date()): Prom
   /* Today's room first: what is already ready joins the audience before anything new is looked for. */
   let added = await addReady(env, f, s, conn ? live : undefined);
   s = { ...s, dayAdded: s.dayAdded + added };
-  if (added) await log(env, f, 'add', `Added ${added} to the project's audience`, 0, added);
+  if (added) await log(env, f, 'add', `Added ${added} to the business workspace's audience`, 0, added);
 
   /* Then a few from the owner's licensed data, when they have opened it — a
      failure there is the library's, never the reason today's search stops. */
@@ -672,7 +672,7 @@ export async function stepFinder(env: Env, f: FinderRow, now = new Date()): Prom
     const more = await addReady(env, f, s, conn ? live : undefined);
     s = { ...s, dayAdded: s.dayAdded + more };
     added += more;
-    if (more) await log(env, f, 'add', `Added ${more} to the project's audience`, 0, more);
+    if (more) await log(env, f, 'add', `Added ${more} to the business workspace's audience`, 0, more);
   }
 
   const counts = await env.DB.prepare(
@@ -703,7 +703,7 @@ export async function stepFinder(env: Env, f: FinderRow, now = new Date()): Prom
     const more = await addReady(env, f, s, conn ? live : undefined);
     s = { ...s, dayAdded: s.dayAdded + more };
     added += more;
-    if (more) await log(env, f, 'add', `Added ${more} to the project's audience`, 0, more);
+    if (more) await log(env, f, 'add', `Added ${more} to the business workspace's audience`, 0, more);
   } else if (job.kind === 'exhausted') {
     detail = 'Every search in the rotation has been run to its end. Add places or kinds of business to find more.';
     await saveState(env, f, s, { status: 'exhausted', reason: detail, next: restUntil(job), tally: conn ? tally : undefined });

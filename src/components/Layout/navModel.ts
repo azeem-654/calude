@@ -64,11 +64,11 @@ export const NAV_GROUPS: NavGroup[] = [
     path: '/autopilot',
     items: [{
       path: '/autopilot', label: 'AI Autopilot',
-      desc: 'One board per project — it finds the work and does it',
+      desc: 'AI Autopilot Business Workspaces — one per business; each finds the work and does it',
       icon: Rocket,
       /* 'sales agent' is here on purpose: that module was folded into this one,
          and somebody who learnt the old name must still find where it went. */
-      aka: ['auto', 'brain', 'automation', 'ai', 'run', 'hands off', 'projects', 'board', 'sales agent', 'agent'],
+      aka: ['auto', 'brain', 'automation', 'ai', 'run', 'hands off', 'projects', 'project', 'business workspaces', 'business workspace', 'board', 'sales agent', 'agent'],
     }],
   },
   {
@@ -140,7 +140,7 @@ export const NAV_GROUPS: NavGroup[] = [
       /* The owner's own lead files. Searched by the owner alone (the server
          refuses anybody else); customers meet them only as "Licensed business
          data" on what their projects' daily prospecting adds. */
-      { path: '/lead-directory', label: 'Lead library', desc: 'Your own lead files — search them, and choose whether projects may draw on them', icon: BookUser, aka: ['lead directory', 'lead library', 'leads database', 'people search', 'licensed data', 'lead files'], ownerOnly: true },
+      { path: '/lead-directory', label: 'Lead library', desc: 'Your own lead files — search them, and choose whether customers\' business workspaces may draw on them', icon: BookUser, aka: ['lead directory', 'lead library', 'leads database', 'people search', 'licensed data', 'lead files'], ownerOnly: true },
       { path: '/moderation', label: 'Content review', desc: 'Anything held before it went out, and what became of the account', icon: ShieldAlert, aka: ['moderation', 'review', 'held', 'approve', 'suspend', 'abuse', 'policy'], ownerOnly: true },
     ],
   },

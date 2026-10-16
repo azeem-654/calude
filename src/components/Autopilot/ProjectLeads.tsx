@@ -103,7 +103,7 @@ export default function ProjectLeads({ project, focus }: { project: Project; foc
     window.setTimeout(() => document.getElementById('project-all-leads')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
 
-  if (loading) return <div style={{ ...card, color: T.muted, fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}><Loader size={14} className="spin" /> Reading this project's leads…</div>;
+  if (loading) return <div style={{ ...card, color: T.muted, fontSize: 13, display: 'flex', gap: 8, alignItems: 'center' }}><Loader size={14} className="spin" /> Reading this business workspace's leads…</div>;
 
   /* Today's additions are counted from the table (every source, by hand too, UTC day), not summed from
      each source's own day counter — a connection's run day is in the customer's zone, the finder's in UTC. */
@@ -120,10 +120,10 @@ export default function ProjectLeads({ project, focus }: { project: Project; foc
           : `New leads that joined the audience today, from every source — the day's ${todayTarget} are in.`,
       show: todayTarget > 0 || todayAdded > 0,
     },
-    { g: 'added', value: String(n('added')), title: 'Leads added (all time)', help: 'In this project\'s audience — the people its outreach can go to, once you approve it.', show: true },
-    { g: 'all', value: String(n('all')), title: 'Businesses examined', help: 'Every business this project has looked at, from every source — all of them are listed below.', show: true },
+    { g: 'added', value: String(n('added')), title: 'Leads added (all time)', help: 'In this business workspace\'s audience — the people its outreach can go to, once you approve it.', show: true },
+    { g: 'all', value: String(n('all')), title: 'Businesses examined', help: 'Every company this business workspace has looked at, from every source — all of them are listed below.', show: true },
     { g: 'no_email', value: String(n('no_email')), title: 'Found without an email', help: 'Can\'t be written to: no website, no address published on it, or the address takes no mail. Kept so they are never examined twice.', show: true },
-    { g: 'known', value: String(n('known')), title: 'Already in your contacts', help: 'Found again but already in Contacts or this project — not added twice.', show: true },
+    { g: 'known', value: String(n('known')), title: 'Already in your contacts', help: 'Found again but already in Contacts or this business workspace — not added twice.', show: true },
     {
       g: 'waiting', value: String(n('waiting')), title: 'Still being checked',
       help: `${totals.candidate ?? 0} websites still to read, ${totals.ready ?? 0} checked and waiting for a later day's room.`, show: true,
@@ -134,7 +134,7 @@ export default function ProjectLeads({ project, focus }: { project: Project; foc
   const sourceCount = (f ? 1 : 0) + conns.length;
   const working = (f && f.status === 'active' ? 1 : 0) + conns.filter(c => c.status === 'active').length;
   const headline = !any ? '' : working === sourceCount
-    ? `${sourceCount === 1 ? 'One source finds' : `${sourceCount} sources find`} new leads for this project by itself, on its own schedule.`
+    ? `${sourceCount === 1 ? 'One source finds' : `${sourceCount} sources find`} new leads for this business workspace by itself, on its own schedule.`
     : working === 0
       ? `${sourceCount === 1 ? 'Its one source is' : `All ${sourceCount} sources are`} stopped — see below for why and what to do.`
       : `${working} of ${sourceCount} sources are finding new leads; the others are stopped — see each one for why.`;
@@ -147,10 +147,10 @@ export default function ProjectLeads({ project, focus }: { project: Project; foc
 
       {/* ── 1 · Where the leads come from ── */}
       {any ? (
-        <section style={{ ...card, gap: 12 }} aria-label="Where this project's leads come from" data-testid="lead-sources">
+        <section style={{ ...card, gap: 12 }} aria-label="Where this business workspace's leads come from" data-testid="lead-sources">
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <div style={{ display: 'grid', gap: 3, flex: '1 1 260px', minWidth: 0 }}>
-              <b style={{ fontSize: 15, color: T.ink }}>Where this project's leads come from</b>
+              <b style={{ fontSize: 15, color: T.ink }}>Where this business workspace's leads come from</b>
               <span style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.55 }}>{headline} Everything they found — added or not — is listed under All leads.</span>
             </div>
             <button type="button" style={btn} aria-expanded={open === 'menu'} onClick={() => setOpen(open === 'menu' ? '' : 'menu')} data-testid="add-lead-source">
@@ -162,7 +162,7 @@ export default function ProjectLeads({ project, focus }: { project: Project; foc
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(230px, 100%), 1fr))', gap: 10 }} aria-label="Ways to add leads">
               {f ? (
                 <Choice icon={<Target size={15} color={T.accent} />} title="Widen the daily search"
-                  says="Add places or kinds of business to the search this project already runs every day — no second search to look after.">
+                  says="Add places or kinds of business to the search this business workspace already runs every day — no second search to look after.">
                   <button type="button" style={btn} onClick={() => setOpen('finder')}>Add places or kinds of business</button>
                 </Choice>
               ) : (
@@ -176,7 +176,7 @@ export default function ProjectLeads({ project, focus }: { project: Project; foc
                 <button type="button" style={btn} onClick={() => { setOpen(''); setConnect({}); }} data-testid="connect-prospect-search">Connect a search</button>
               </Choice>
               <Choice icon={<Sparkles size={15} color={T.accent} />} title="Add some by hand"
-                says="Search in AI Prospecting, tick the businesses you want and add them to this project.">
+                says="Search in AI Prospecting, tick the businesses you want and add them to this business workspace.">
                 <button type="button" style={btn} onClick={() => navigate('/prospecting')}>Open AI Prospecting</button>
               </Choice>
             </div>
@@ -201,11 +201,11 @@ export default function ProjectLeads({ project, focus }: { project: Project; foc
           {said && <div role="status" style={{ fontSize: 12.5, color: T.ink, background: T.accentSoft, borderRadius: 10, padding: '8px 12px' }} data-testid="source-said">{said}</div>}
         </section>
       ) : (
-        <section style={{ ...card, gap: 12 }} aria-label="Where this project's leads come from" data-testid="lead-sources-empty">
+        <section style={{ ...card, gap: 12 }} aria-label="Where this business workspace's leads come from" data-testid="lead-sources-empty">
           <div style={{ display: 'grid', gap: 4 }}>
-            <b style={{ fontSize: 15, color: T.ink }}>Where will this project's leads come from?</b>
+            <b style={{ fontSize: 15, color: T.ink }}>Where will this business workspace's leads come from?</b>
             <span style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.55 }}>
-              Nothing is finding leads for this project yet. Choose one way — you can add another later.
+              Nothing is finding leads for this business workspace yet. Choose one way — you can add another later.
               {n('added') > 0 && ` ${n('added')} ${n('added') === 1 ? 'was' : 'were'} already added by hand from AI Prospecting; they are listed below.`}
             </span>
           </div>

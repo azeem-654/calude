@@ -236,7 +236,7 @@ if (!cronOk || !process.env.PERSIST) {
 
   let got = await fire();
   let d1 = to(got, 'new@signup.test');
-  check('day 1 goes to somebody a day in with no project', d1.length === 1 && /first project/.test(d1[0]?.subject), JSON.stringify(got.map(m => [m.to, m.subject])));
+  check('day 1 goes to somebody a day in with no project', d1.length === 1 && /first business workspace/.test(d1[0]?.subject), JSON.stringify(got.map(m => [m.to, m.subject])));
   check('…with the app, the kickoff call and a way to stop them', /\/autopilot/.test(d1[0]?.html) && d1[0]?.html.includes('cal.example/kickoff') && /trial-optout\.php/.test(d1[0]?.html), d1[0]?.html.slice(0, 300));
   check('…and the one-click unsubscribe header mail providers want', /List-Unsubscribe:.*trial-optout/i.test(d1[0]?.head ?? ''));
   check('nobody who signed up minutes ago is emailed', !to(got, 'unproved@signup.test').length && !to(got, 'second@signup.test').length);

@@ -48,7 +48,7 @@ export async function fetchProjectLinks(): Promise<{ links: ProjectLink[] | null
       body: JSON.stringify({ token: sessionToken(), accountId, action: 'folders' }),
     });
     const d = await r.json().catch(() => ({ success: false, error: `The server answered ${r.status}.` })) as { success?: boolean; error?: string; projects?: ProjectLink[] };
-    return d.success ? { links: d.projects ?? [], error: '' } : { links: null, error: d.error ?? 'Your projects could not be read.' };
+    return d.success ? { links: d.projects ?? [], error: '' } : { links: null, error: d.error ?? 'Your business workspaces could not be read.' };
   } catch {
     return { links: null, error: 'Could not reach the server.' };
   }

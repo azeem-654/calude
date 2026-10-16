@@ -226,7 +226,7 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
    */
   if (act === 'day') {
     const projectId = String(d.projectId ?? '').trim();
-    if (!projectId) return fail('Which project?', 400);
+    if (!projectId) return fail('Which business workspace?', 400);
 
     /*
      * The customer's own day, not UTC's.
@@ -350,14 +350,14 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
   if (act === 'instruct') {
     const projectId = String(d.projectId ?? '').trim();
     const instruction = String(d.instruction ?? '').trim();
-    if (!projectId) return fail('Which project?', 400);
+    if (!projectId) return fail('Which business workspace?', 400);
     if (instruction.length < 4) return fail('Say what you would like it to do — a sentence is enough.');
     if (instruction.length > 1200) return fail('That is longer than this box takes. A sentence or two works best.');
 
     const project = await env.DB.prepare(
       'SELECT id, name, portfolio_id AS portfolioId FROM crm_projects WHERE id = ? AND account_id = ?',
     ).bind(projectId, accountId).first<{ id: string; name: string; portfolioId: string }>();
-    if (!project) return fail('That project could not be found.', 404);
+    if (!project) return fail('That business workspace could not be found.', 404);
 
     /* Counted over the last 24 hours rather than per calendar day: a day
        boundary hands somebody a fresh allowance at midnight and none at 23:59,
@@ -449,7 +449,7 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
    */
   if (act === 'workflows') {
     const projectId = String(d.projectId ?? '').trim();
-    if (!projectId) return fail('Which project?', 400);
+    if (!projectId) return fail('Which business workspace?', 400);
     const { results } = await env.DB.prepare(
       `SELECT id, project_id AS projectId, name, description, status, nodes, position,
               template_key AS templateKey, created_at AS createdAt, updated_at AS updatedAt
@@ -532,7 +532,7 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
    */
   if (act === 'agent_runs') {
     const projectId = String(d.projectId ?? '').trim();
-    if (!projectId) return fail('Which project?', 400);
+    if (!projectId) return fail('Which business workspace?', 400);
     const { results } = await env.DB.prepare(
       `SELECT id, workflow_id AS workflowId, node_id AS nodeId, produces, outcome, detail, link,
               created_at AS createdAt
@@ -572,10 +572,10 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
 
   if (act === 'save_workflow') {
     const projectId = String(d.projectId ?? '').trim();
-    if (!projectId) return fail('Which project?', 400);
+    if (!projectId) return fail('Which business workspace?', 400);
     const owns = await env.DB.prepare('SELECT 1 AS n FROM crm_projects WHERE id = ? AND account_id = ?')
       .bind(projectId, accountId).first();
-    if (!owns) return fail('That project could not be found.', 404);
+    if (!owns) return fail('That business workspace could not be found.', 404);
 
     const rec = (d.record ?? {}) as Record<string, unknown>;
     const name = String(rec.name ?? '').trim().slice(0, 160);
@@ -700,14 +700,14 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
   if (act === 'build_workflow') {
     const projectId = String(d.projectId ?? '').trim();
     const instruction = String(d.instruction ?? '').trim();
-    if (!projectId) return fail('Which project?', 400);
+    if (!projectId) return fail('Which business workspace?', 400);
     if (instruction.length < 8) return fail('Say what should happen — a sentence is enough.');
     if (instruction.length > 1000) return fail('That is longer than this box takes. A sentence or two works best.');
 
     const project = await env.DB.prepare(
       'SELECT id, name, portfolio_id AS portfolioId FROM crm_projects WHERE id = ? AND account_id = ?',
     ).bind(projectId, accountId).first<{ id: string; name: string; portfolioId: string }>();
-    if (!project) return fail('That project could not be found.', 404);
+    if (!project) return fail('That business workspace could not be found.', 404);
 
     /* Asked before the model is: a workflow that could not be kept is a
        model call the operator paid for and nobody can use. */

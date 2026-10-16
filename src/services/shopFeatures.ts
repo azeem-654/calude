@@ -91,7 +91,7 @@ export const SHOP_FEATURES: FeatureGroup[] = [
       { label: 'Product copy written for you', detail: 'Descriptions, pages and posts written from your own profile, shown to you before anything publishes.', state: 'yes', route: '/autopilot' },
       { label: 'Email campaigns', detail: 'Written, scheduled and sent from your own mailbox, so replies come back to you.', state: 'yes', route: '/marketing' },
       { label: 'Abandoned basket follow-up', detail: 'The order exists the moment somebody starts paying, so a stall is something AI Autopilot can chase.', state: 'yes', route: '/autopilot' },
-      { label: 'Win-backs and post-purchase', detail: 'Part of the build order for a shop project, in that sequence.', state: 'yes', route: '/autopilot' },
+      { label: 'Win-backs and post-purchase', detail: 'Part of the build order for a business workspace that sells products, in that sequence.', state: 'yes', route: '/autopilot' },
       { label: 'Reviews', detail: 'Collected and answered, with the bad ones surfaced rather than buried.', state: 'yes', route: '/reputation' },
       { label: 'Subscriptions and repeat billing', detail: 'Not here. One-off orders only.', state: 'no' },
     ],

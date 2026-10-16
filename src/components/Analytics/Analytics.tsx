@@ -57,7 +57,7 @@ export default function Analytics() {
       <Header title="Reports" subtitle="How every module is performing" />
       <div style={{ padding: 'clamp(14px, 3vw, 28px)' }}>
         <div style={{ display: 'flex', gap: 7, marginBottom: 18, flexWrap: 'wrap' }}>
-          {([['overview', 'Overview'], ['revenue', 'Revenue by project'], ['deliverability', 'Deliverability']] as const).map(([id, label]) => (
+          {([['overview', 'Overview'], ['revenue', 'Revenue by business workspace'], ['deliverability', 'Deliverability']] as const).map(([id, label]) => (
             <button key={id} onClick={() => setSection(id)} title={label} aria-pressed={section === id}
               style={{ padding: '8px 15px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
                 border: `1px solid ${section === id ? '#17191c' : '#e2e8f0'}`,

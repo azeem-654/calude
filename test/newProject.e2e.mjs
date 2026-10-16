@@ -58,11 +58,11 @@ async function open(width, tag, reducedMotion = 'no-preference') {
     try {
       for (let i = 0; i < 60; i++) { try { if ((await fetch(B)).ok) break; } catch { /* restarting */ } await new Promise(r => setTimeout(r, 1000)); }
       await p.goto(`${B}/autopilot`, { waitUntil: 'networkidle' });
-      await p.getByRole('button', { name: /New project|Start your first project/i }).first().click({ timeout: 20000 });
+      await p.getByRole('button', { name: /New business workspace|Start your first business workspace/i }).first().click({ timeout: 20000 });
       break;
     } catch (e) { if (attempt >= 2) throw e; }
   }
-  const d = p.getByRole('dialog', { name: 'New project' });
+  const d = p.getByRole('dialog', { name: 'New business workspace' });
   await d.waitFor({ timeout: 8000 });
   return { ctx, p, d, errs };
 }
@@ -172,7 +172,7 @@ for (const width of [1280, 390]) {
   ok(`T1@${width} connections list the Social Creator`, /Social Creator/.test(connections));
   ok(`T1@${width} build reached 100%`, /100%/.test(built), built.slice(0, 500));
   ok(`T1@${width} build created the workflows`, /Created [1-9] workflow/.test(built), built.slice(-400));
-  await d.getByRole('button', { name: /Open the project/ }).click();
+  await d.getByRole('button', { name: /Open the business workspace/ }).click();
   await p.waitForTimeout(1500);
   const page = await p.innerText('body');
   ok(`T1@${width} lands on the project Overview`, /Overview/.test(page) && /latest outputs/i.test(page), page.slice(0, 300));
@@ -211,7 +211,7 @@ for (const width of [1280, 390]) {
   await p.waitForTimeout(3500);
   const buying = await d.innerText();
   ok('T2b the next screen is the domain purchase', /domains? and (mailboxes|email)/i.test(buying) && /register a domain|domain/i.test(buying), buying.slice(0, 300));
-  ok('T2b not held for a project that does not exist', !/Finish creating the project first/.test(buying));
+  ok('T2b not held for a project that does not exist', !/Finish creating the business workspace first/.test(buying));
   ok('T2b no page errors', !errs.length, errs.join(' | '));
   await ctx.close();
 }

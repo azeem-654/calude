@@ -30,9 +30,9 @@ export default function Requirements({ ids, ready, mailboxPlan, finder }: {
   return (
     <div style={{ display: 'grid', gap: 18 }}>
       <div>
-        <h2 className="wz-title">What this project <span className="wz-accent">connects to</span></h2>
+        <h2 className="wz-title">What this business workspace <span className="wz-accent">connects to</span></h2>
         <p style={{ margin: '9px 0 0', fontSize: 14.5, color: '#6b7280', lineHeight: 1.55 }}>
-          Only what this project uses. Anything not connected yet can be done later — the project still starts, and the step that needs it waits.
+          Only what this business workspace uses. Anything not connected yet can be done later — the business workspace still starts, and the step that needs it waits.
         </p>
       </div>
       <div style={{ display: 'grid', gap: 9 }}>
@@ -47,7 +47,7 @@ export default function Requirements({ ids, ready, mailboxPlan, finder }: {
              something for the customer to fix. */
           const finding = id === 'contacts' && !!finder;
           const state = finding ? 'finding' : id === 'contacts' ? (people > 0 ? 'ready' : 'missing') : key ? (ready ? ready[key] : 'checking') : info.kind;
-          const tone = state === 'finding' ? { bg: '#eef2ff', fg: '#4c39d1', label: 'Found by this project' }
+          const tone = state === 'finding' ? { bg: '#eef2ff', fg: '#4c39d1', label: 'Found by this business workspace' }
             : state === 'ready' || state === 'included' ? { bg: '#e8f6ee', fg: '#0f7b3d', label: state === 'ready' ? 'Connected' : 'Included' }
             : state === 'missing' ? { bg: '#fff4ed', fg: '#9a3412', label: 'Not set up yet' }
               : state === 'optional' ? { bg: '#f1f5f9', fg: '#475569', label: 'Optional' }
@@ -64,9 +64,9 @@ export default function Requirements({ ids, ready, mailboxPlan, finder }: {
                 </span>
                 <span style={{ display: 'block', fontSize: 13, color: '#6b7280', marginTop: 3, lineHeight: 1.5 }}>
                   {info.why}
-                  {finding && finder && ` This project finds its own: ${finder.trades.join(', ') || 'the businesses you named'}${finder.places.length ? ` in ${finder.places.length > 3 ? `${finder.places.slice(0, 3).join('; ')} and ${finder.places.length - 3} more` : finder.places.join('; ')}` : ''}, up to ${finder.perDay} new a day. The search starts the moment you build it, and you watch the first ones arrive.${people > 0 ? ` ${people} already in this workspace.` : ''}`}
+                  {finding && finder && ` This business workspace finds its own: ${finder.trades.join(', ') || 'the businesses you named'}${finder.places.length ? ` in ${finder.places.length > 3 ? `${finder.places.slice(0, 3).join('; ')} and ${finder.places.length - 3} more` : finder.places.join('; ')}` : ''}, up to ${finder.perDay} new a day. The search starts the moment you build it, and you watch the first ones arrive.${people > 0 ? ` ${people} already in this workspace.` : ''}`}
                   {id === 'contacts' && !finding && (people > 0 ? ` ${people} in this workspace.` : ' None yet — import a list, or your forms and booking page will add people as they arrive.')}
-                  {id === 'mailbox' && state === 'missing' && mailboxPlan === 'buy' && ' You chose to have one set up — domains and mailboxes are picked right after the project is created.'}
+                  {id === 'mailbox' && state === 'missing' && mailboxPlan === 'buy' && ' You chose to have one set up — domains and mailboxes are picked right after the business workspace is created.'}
                   {state === 'unknown' && ' We could not reach the setting to check — that is not the same as it being missing.'}
                 </span>
                 {(state === 'missing' || state === 'optional') && info.route && (

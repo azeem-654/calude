@@ -352,7 +352,7 @@ export default function SecurityCenter() {
             <Download size={16} color="#17191c" style={{ marginTop: 2 }} />
             <div style={{ flex: '1 1 240px' }}>
               <b style={{ fontSize: 13.5 }}>Export this workspace</b>
-              <p style={SUB}>Contacts, deals, campaigns, projects, workflows, products, orders, tickets and forms, as one JSON file. Passwords and service keys are never included.</p>
+              <p style={SUB}>Contacts, deals, campaigns, AI Autopilot business workspaces, workflows, products, orders, tickets and forms, as one JSON file. Passwords and service keys are never included.</p>
             </div>
             <button type="button" style={BTN} disabled={busy === 'export' || !ov.workspace} onClick={() => void doExport()}>
               {busy === 'export' ? <Loader size={14} className="spin" /> : <Download size={14} />} Download
@@ -365,8 +365,8 @@ export default function SecurityCenter() {
               <b style={{ fontSize: 13.5 }}>What AI receives</b>
               <p style={SUB}>
                 AI features use Google’s Gemini, called from our server (the one exception is AI Shorts’ video analysis, which uploads the video from your browser with a key you saved yourself). It receives what the task in front of it needs:
-                your business profile and your request when writing a post or planning a project; the files, pages or voice
-                note you give the New Project wizard; the text of an incoming email when drafting a reply to it; a visitor’s
+                your business profile and your request when writing a post or planning a business workspace; the files, pages or voice
+                note you give the New business workspace wizard; the text of an incoming email when drafting a reply to it; a visitor’s
                 chat when the chat assistant answers; a form submission when it is summarised for you; and the text of a
                 message before it is sent, to screen it for abuse. Your contact list is not sent — emails are written with
                 placeholders like{' {{firstName}} '}that are filled in on our side. Whether Google may use this data to improve its models

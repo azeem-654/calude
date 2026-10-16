@@ -120,7 +120,7 @@ export default function Questions({ screen, state, ws, files, answer, onFiles, o
           <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
             <span className="np-logo-well" data-big="1"><img src={design.logo.logo.dataUrl} alt="Logo found on the website" /></span>
             <span style={{ display: 'grid', gap: 8, flex: '1 1 200px' }}>
-              <span style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.5 }}>Is this your logo? It goes on the posts, pages and emails this project makes.</span>
+              <span style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.5 }}>Is this your logo? It goes on the posts, pages and emails this business workspace makes.</span>
               <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button type="button" className="np-use-logo" aria-pressed={state.known.logo?.source === 'you' && state.known.logo.value === 'site'}
                   onClick={() => answer('logo', 'site', 'you')}>
@@ -542,7 +542,7 @@ function ListPicker({ value, onPick }: { value: string; onPick: (id: string) => 
     return (
       <div style={{ display: 'grid', gap: 8 }}>
         <span style={{ fontSize: 13.5, color: '#9a3412', lineHeight: 1.55 }}>
-          This workspace has no hand-picked contact lists yet{smart ? ` (${smart} smart list${smart === 1 ? '' : 's'}, which a project cannot follow)` : ''}.
+          You have no hand-picked contact lists yet{smart ? ` (${smart} smart list${smart === 1 ? '' : 's'}, which a business workspace cannot follow)` : ''}.
           Fill one in Prospecting or make one in Contacts, then come back — or choose another answer above.
         </span>
         <a href="/prospecting" target="_blank" rel="noopener noreferrer" className="np-tool" style={{ justifySelf: 'start', textDecoration: 'none' }}>Open Prospecting</a>
@@ -563,7 +563,7 @@ function ListPicker({ value, onPick }: { value: string; onPick: (id: string) => 
       {picked?.cold && (
         <span style={{ fontSize: 12.5, color: '#92400e', lineHeight: 1.55 }}>
           Nobody on “{picked.name}” asked to hear from you, so AI Autopilot treats them as cold: it starts them a
-          few at a time, and every batch waits for you to approve it — whatever the project&rsquo;s other settings say.
+          few at a time, and every batch waits for you to approve it — whatever the business workspace&rsquo;s other settings say.
         </span>
       )}
       {picked && picked.withEmail === 0 && (

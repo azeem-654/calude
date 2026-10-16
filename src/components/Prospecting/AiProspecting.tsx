@@ -463,7 +463,7 @@ export default function AiProspecting() {
                   { label: 'Find more prospects', onClick: () => { open(h); window.setTimeout(() => { if (s.nextPage) void s.loadMore(); else void go(askSentence(h.trade, h.place, h.source), h.source); }, 60); } },
                   { label: 'Save to a contact list', onClick: () => { open(h); window.setTimeout(() => { s.pickAll(true); setSaving(true); scrollTo(); }, 80); } },
                   {
-                    label: (defFor(h.source, h.trade, h.place)?.connections.length ?? 0) > 0 ? 'Connected to AI Autopilot — connect another project' : 'Connect to AI Autopilot',
+                    label: (defFor(h.source, h.trade, h.place)?.connections.length ?? 0) > 0 ? 'Connected to AI Autopilot — connect another business workspace' : 'Connect to AI Autopilot',
                     onClick: () => setConnectFor({ trade: h.trade, place: h.place, source: h.source }),
                   },
                   { label: h.saved ? 'Unpin' : 'Pin to the top', onClick: () => s.saveSearch(h) },
@@ -692,7 +692,7 @@ export default function AiProspecting() {
                     <button type="button" className="aip-chip" onClick={openSave}><Bookmark size={12} /> Save to Contacts</button>
                     <button type="button" className="aip-chip" data-accent="true" data-testid="connect-autopilot-btn"
                       onClick={() => s.searched && setConnectFor({ trade: s.searched.trade, place: s.searched.place, source: s.searched.source, query: s.asked, filters: { website: s.want.website, phone: s.want.phone } })}
-                      title="An AI Autopilot project runs this search on a schedule and adds new verified leads">
+                      title="An AI Autopilot business workspace runs this search on a schedule and adds new verified leads">
                       <Workflow size={12} /> Connect to AI Autopilot
                     </button>
                     <button type="button" className="aip-chip" onClick={() => exportCsv()}><Download size={12} /> Export CSV</button>
@@ -713,14 +713,14 @@ export default function AiProspecting() {
                       {connOpen && d.connections.map(c => (
                         <div key={c.id} className="aip-conn-row">
                           <dl>
-                            <div><dt>Project</dt><dd>{c.projectName}</dd></div>
+                            <div><dt>Business workspace</dt><dd>{c.projectName}</dd></div>
                             <div><dt>Workflow</dt><dd>{c.workflowName}</dd></div>
                             <div><dt>Schedule</dt><dd>{c.scheduleText}</dd></div>
                             <div><dt>Target</dt><dd>{c.target} verified leads a run</dd></div>
                             <div><dt>Status</dt><dd>{c.status === 'active' ? 'Active' : c.status === 'paused' ? 'Paused' : 'Every search done'}{c.upToDate ? '' : ' · uses an earlier version of this search'}</dd></div>
                           </dl>
                           <div className="aip-shortcuts">
-                            <button type="button" className="aip-chip" onClick={() => navigate(`/autopilot?project=${encodeURIComponent(c.projectId)}`)}>View project</button>
+                            <button type="button" className="aip-chip" onClick={() => navigate(`/autopilot?project=${encodeURIComponent(c.projectId)}`)}>View business workspace</button>
                             <button type="button" className="aip-chip" onClick={() => navigate(`/autopilot?project=${encodeURIComponent(c.projectId)}&tab=workflows`)}>View workflow</button>
                             <button type="button" className="aip-chip" onClick={() => navigate(`/autopilot?project=${encodeURIComponent(c.projectId)}&tab=prospects&source=${encodeURIComponent(c.id)}`)}>Manage connection</button>
                             <button type="button" className="aip-chip" onClick={async () => { await setSourceStatus(c.id, c.status === 'active' ? 'paused' : 'active'); reloadDefs(); }}>{c.status === 'active' ? 'Pause' : 'Resume'}</button>

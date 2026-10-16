@@ -80,7 +80,7 @@ export default function RevenueByProject() {
   const series = useMemo<Series[]>(() => {
     if (!report) return [];
     const out: Series[] = [];
-    const other: Series = { key: 'other', name: 'Other projects', color: OTHER, total: 0, values: report.buckets.map(() => 0) };
+    const other: Series = { key: 'other', name: 'Other business workspaces', color: OTHER, total: 0, values: report.buckets.map(() => 0) };
     report.projects.forEach((p, i) => {
       if (!p.revenueCents) return;
       if (i < SLOTS.length) {
@@ -128,7 +128,7 @@ export default function RevenueByProject() {
     <div style={{ display: 'grid', gap: 16 }}>
       {/* One filter row, above everything it scopes. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a', margin: 0, flex: '1 1 auto' }}>Revenue by project</h2>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a', margin: 0, flex: '1 1 auto' }}>Revenue by business workspace</h2>
         <div role="group" aria-label="Period" style={{ display: 'flex', gap: 4, padding: 4, background: SURFACE, border: '1px solid #e6e9f0', borderRadius: 10 }}>
           {([30, 90, 365] as const).map(n => (
             <button key={n} onClick={() => setDays(n)} aria-pressed={days === n} style={{
@@ -182,7 +182,7 @@ export default function RevenueByProject() {
           </div>
 
           {nothing ? <EmptyState hasProjects={report.projects.length > 0} /> : (
-            <figure style={{ ...card, margin: 0 }} aria-label="Revenue over time, by project">
+            <figure style={{ ...card, margin: 0 }} aria-label="Revenue over time, by business workspace">
               <figcaption style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', alignItems: 'baseline', marginBottom: 10 }}>
                 <span style={{ fontSize: 15, fontWeight: 600, color: '#0f172a' }}>Revenue over time</span>
                 <span style={{ fontSize: 12, color: MUTED }}>{report.bucket === 'day' ? 'Per day' : 'Per week'}, by the day the money arrived (UTC)</span>
@@ -234,8 +234,8 @@ export default function RevenueByProject() {
 
           {allUnattributed && (
             <p style={{ ...card, margin: 0, fontSize: 12.5, color: INK2, lineHeight: 1.6 }}>
-              None of this period&rsquo;s revenue could be credited to a project yet. Connect a shop to a project (Websites → Shops → the shop&rsquo;s Project box),
-              or share the project&rsquo;s own shop link from its Overview — sales through either are credited to it from then on.
+              None of this period&rsquo;s revenue could be credited to a business workspace yet. Connect a shop to a business workspace (Websites → Shops → the shop&rsquo;s Business workspace box),
+              or share the business workspace&rsquo;s own shop link from its Overview — sales through either are credited to it from then on.
             </p>
           )}
 
@@ -335,7 +335,7 @@ function ProjectTable({ report, series, focus }: { report: RevenueReport; series
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, fontVariantNumeric: 'tabular-nums', minWidth: 720 }}>
           <thead><tr>
-            <th style={{ ...th, paddingLeft: 18 }}>Project</th>
+            <th style={{ ...th, paddingLeft: 18 }}>Business workspace</th>
             <th style={{ ...th, textAlign: 'right' }}>Revenue</th>
             <th style={{ ...th, textAlign: 'right' }}>Share</th>
             <th style={{ ...th, textAlign: 'right' }}>Paid orders</th>
@@ -372,7 +372,7 @@ function ProjectTable({ report, series, focus }: { report: RevenueReport; series
         </table>
       </div>
       <p style={{ margin: 0, padding: '10px 18px', fontSize: 11.5, color: MUTED, lineHeight: 1.5, borderTop: `1px solid ${GRID}` }}>
-        Won deals are counted from each project&rsquo;s own pipeline and shown at the value typed on the deal. A deal carries no currency, so it is never added to revenue.
+        Won deals are counted from each business workspace&rsquo;s own pipeline and shown at the value typed on the deal. A deal carries no currency, so it is never added to revenue.
       </p>
     </div>
   );
@@ -386,10 +386,10 @@ function EmptyState({ hasProjects }: { hasProjects: boolean }) {
         <p style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>No paid orders in this period</p>
         <p style={{ fontSize: 12.5, color: '#64748b', margin: 0, lineHeight: 1.6 }}>
           This counts money that actually arrived: shop orders paid through your connected processor, and orders you mark
-          paid under Online shop → Orders. Won deals in a project&rsquo;s pipeline are shown beside it.
+          paid under Online shop → Orders. Won deals in a business workspace&rsquo;s pipeline are shown beside it.
           {hasProjects
-            ? ' To credit a sale to a project, connect a shop to that project, or share the project’s own shop link from its Overview.'
-            : ' Revenue is credited to AI Autopilot projects — create one, then connect a shop to it.'}
+            ? ' To credit a sale to a business workspace, connect a shop to that business workspace, or share the business workspace’s own shop link from its Overview.'
+            : ' Revenue is credited to AI Autopilot business workspaces — create one, then connect a shop to it.'}
         </p>
       </div>
     </div>
@@ -400,17 +400,17 @@ function HowCredited() {
   return (
     <details style={{ ...card }}>
       <summary style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, fontWeight: 600, color: '#0f172a', cursor: 'pointer' }}>
-        <Info size={14} color={MUTED} /> How revenue is credited to a project
+        <Info size={14} color={MUTED} /> How revenue is credited to a business workspace
       </summary>
       <div style={{ fontSize: 12.5, color: INK2, lineHeight: 1.65, marginTop: 8 }}>
-        <p style={{ margin: '0 0 6px' }}>An order counts once it is paid (or fulfilled), on the day the money arrived. Each order goes to one project, on the first of these that is true:</p>
+        <p style={{ margin: '0 0 6px' }}>An order counts once it is paid (or fulfilled), on the day the money arrived. Each order goes to one business workspace, on the first of these that is true:</p>
         <ol style={{ margin: '0 0 6px', paddingLeft: 20 }}>
-          <li>the buyer arrived on that project&rsquo;s own shop link (it carries <code>?pj=</code>);</li>
-          <li>the shop it was bought in belongs to that project;</li>
-          <li>every item in it is a product of that project.</li>
+          <li>the buyer arrived on that business workspace&rsquo;s own shop link (it carries <code>?pj=</code>);</li>
+          <li>the shop it was bought in belongs to that business workspace;</li>
+          <li>every item in it is a product of that business workspace.</li>
         </ol>
         <p style={{ margin: '0 0 6px' }}>Anything else is <b>Unattributed</b> — it is shown, never shared out by guesswork. Refunds are listed beside revenue and are not in it.</p>
-        <p style={{ margin: 0 }}><b>Recovered by AI Autopilot</b> is an unpaid order that a project&rsquo;s AI Autopilot sent a fresh payment link for, paid after that email went out. Figures in other currencies are never converted or added together.</p>
+        <p style={{ margin: 0 }}><b>Recovered by AI Autopilot</b> is an unpaid order that a business workspace&rsquo;s AI Autopilot sent a fresh payment link for, paid after that email went out. Figures in other currencies are never converted or added together.</p>
       </div>
     </details>
   );

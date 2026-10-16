@@ -304,7 +304,7 @@ export function BackgroundField({ st, palette, name, headline, onMode, onFile }:
       </div>
       {st.error && <span style={{ display: 'flex', gap: 6, fontSize: 12.5, color: '#9a3412' }}><AlertTriangle size={14} /> {st.error}</span>}
       <span style={{ fontSize: 12, color: '#6b7280', display: 'inline-flex', gap: 5, alignItems: 'center' }}>
-        <ImageIcon size={12} /> Used behind the first section of the website or funnel this project builds. You can change it in the page editor any time.
+        <ImageIcon size={12} /> Used behind the first section of the website or funnel this business workspace builds. You can change it in the page editor any time.
       </span>
     </div>
   );
@@ -357,7 +357,7 @@ export function LogoField({ value, byAi, st, onFind, onFile, onNone, onAi, onUse
                   : 'No logo yet'}
           </b>
           <span style={{ fontSize: 12.5, color: '#6b7280', lineHeight: 1.45 }}>
-            {have ? (chosen ? 'Chosen — it goes on the posts, pages and emails this project makes, and onto the client’s profile.' : 'Is this the right one? Use it, or upload another.')
+            {have ? (chosen ? 'Chosen — it goes on the posts, pages and emails this business workspace makes, and onto the client’s profile.' : 'Is this the right one? Use it, or upload another.')
               : 'A PNG or SVG with a transparent background works best.'}
           </span>
           {have && (

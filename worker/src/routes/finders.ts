@@ -166,7 +166,7 @@ export async function handleFinders(req: Request, env: Env): Promise<Response> {
     });
   }
 
-  if (!project) return fail('That project is not in this workspace.', 404);
+  if (!project) return fail('That business workspace is not one of yours.', 404);
 
   if (act === 'overview') {
     const f = await env.DB.prepare('SELECT id FROM crm_prospect_finders WHERE account_id = ? AND project_id = ? AND length(search_id) = 0 ORDER BY created_at LIMIT 1')
@@ -304,7 +304,7 @@ export async function handleFinders(req: Request, env: Env): Promise<Response> {
         `INSERT INTO crm_project_workflows (id, account_id, project_id, name, description, status, nodes, position, created_at, updated_at)
          VALUES (?,?,?,?,?, 'active', ?, ?, ?, ?)`,
       ).bind(workflowId, accountId, projectId, 'Find new prospects daily',
-        'Searches business directories every day, reads each website for the address it publishes, checks it, and adds the new ones to this project\'s audience. Sends nothing.',
+        'Searches business directories every day, reads each website for the address it publishes, checks it, and adds the new ones to this business workspace\'s audience. Sends nothing.',
         nodes, pos?.n ?? 0, now, now).run();
     }
 
@@ -339,7 +339,7 @@ export async function handleFinders(req: Request, env: Env): Promise<Response> {
   }
 
   const finder = d.finderId ? await loadFinder(env, s(d.finderId, 80), accountId) : null;
-  if (['set_status', 'run_step'].includes(act) && (!finder || finder.project_id !== projectId)) return fail('That finder is not part of this project.', 404);
+  if (['set_status', 'run_step'].includes(act) && (!finder || finder.project_id !== projectId)) return fail('That finder is not part of this business workspace.', 404);
 
   if (act === 'set_status') {
     const status = d.status === 'paused' ? 'paused' : 'active';

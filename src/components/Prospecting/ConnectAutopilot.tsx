@@ -138,20 +138,20 @@ export default function ConnectAutopilot({ search, searchId, projectId, onClose,
     if (at === 'search' && !def) { setErr({ text: 'Choose a saved search.', field: 'source.search' }); return; }
     if (at === 'project') {
       if (newProject.on) {
-        if (!newProject.name.trim()) { setErr({ text: 'Name the new project.', field: 'source.project' }); return; }
+        if (!newProject.name.trim()) { setErr({ text: 'Name the new business workspace.', field: 'source.project' }); return; }
         const pf = newProject.portfolioId || portfolios[0]?.id;
-        if (!pf) { setErr({ text: 'A project writes for one of your clients — add a client in AI Autopilot first.', field: 'source.project' }); return; }
+        if (!pf) { setErr({ text: 'A business workspace writes for one of your clients — add a client in AI Autopilot first.', field: 'source.project' }); return; }
         setBusy(true);
         const r = await saveProject({
           name: newProject.name.trim(), portfolioId: pf, kind: 'leadgen', guardrails: guardrailsFor(['find', 'email']),
           objective: def ? `Find and win ${def.trade} in ${def.place}` : 'Find and win new clients',
         });
         setBusy(false);
-        if (!r.success || !r.id) { setErr({ text: r.error ?? 'The project could not be made.', field: 'source.project' }); return; }
+        if (!r.success || !r.id) { setErr({ text: r.error ?? 'The business workspace could not be made.', field: 'source.project' }); return; }
         const b = await fetchBoard();
         setProjects(b.projects as Project[]);
         setPick(String(r.id)); setNewProject({ on: false, name: '', portfolioId: '' });
-      } else if (!pick) { setErr({ text: 'Choose which project uses these prospects.', field: 'source.project' }); return; }
+      } else if (!pick) { setErr({ text: 'Choose which business workspace uses these prospects.', field: 'source.project' }); return; }
     }
     if (at === 'workflow' && def) {
       if (!name.trim()) { setErr({ text: 'Name the workflow.', field: 'source.name' }); return; }
@@ -197,9 +197,9 @@ export default function ConnectAutopilot({ search, searchId, projectId, onClose,
 
   const field = (f: string) => (err?.field === f ? { outline: `2px solid ${BAD}`, outlineOffset: 2 } : {});
   const title: Record<string, string> = {
-    search: 'Which saved search should this project use?',
-    project: 'Which AI Autopilot project should use these prospects?',
-    workflow: 'How should this prospect search work inside your project?',
+    search: 'Which saved search should this business workspace use?',
+    project: 'Which AI Autopilot business workspace should use these prospects?',
+    workflow: 'How should this prospect search work inside your business workspace?',
     schedule: 'How often should Protected Central find new prospects?',
     verify: 'How should each prospect be verified?',
     destination: 'Where should successful prospects go?',
@@ -214,7 +214,7 @@ export default function ConnectAutopilot({ search, searchId, projectId, onClose,
           <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg,#6366f1,#ec4899)', color: '#fff' }}><Bot size={18} /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>Connect to AI Autopilot</div>
-            <div style={{ fontSize: 12, color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{def ? `Search: ${def.name}` : 'A saved AI Prospecting search becomes a lead source for a project'}</div>
+            <div style={{ fontSize: 12, color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{def ? `Search: ${def.name}` : 'A saved AI Prospecting search becomes a lead source for a business workspace'}</div>
           </div>
           {!done && <span style={{ fontSize: 12, color: MUTED, whiteSpace: 'nowrap' }}>Step {step + 1} of {STEPS.length}</span>}
           <button type="button" aria-label="Close" onClick={onClose} disabled={busy} style={iconBtn}><X size={16} /></button>
@@ -254,21 +254,21 @@ export default function ConnectAutopilot({ search, searchId, projectId, onClose,
               )}
 
               {at === 'project' && (
-                <div role="radiogroup" aria-label="Projects" data-field="source.project" style={{ display: 'grid', gap: 8, ...field('source.project') }}>
-                  {projects === null && <span style={muted}><Loader size={13} className="spin" /> Reading your projects…</span>}
+                <div role="radiogroup" aria-label="Business workspaces" data-field="source.project" style={{ display: 'grid', gap: 8, ...field('source.project') }}>
+                  {projects === null && <span style={muted}><Loader size={13} className="spin" /> Reading your business workspaces…</span>}
                   {(projects ?? []).map(p => (
                     <Choice key={p.id} on={!newProject.on && pick === p.id} onPick={() => { setPick(p.id); setNewProject(n => ({ ...n, on: false })); }} title={p.name} sub={p.objective || p.portfolioName} />
                   ))}
-                  <Choice on={newProject.on} onPick={() => setNewProject(n => ({ ...n, on: true, name: n.name || (def ? `${def.place} ${def.trade} outreach` : '') }))} title="Create new project" sub="A lead-generation project for one of your clients" icon={<Plus size={14} />} />
+                  <Choice on={newProject.on} onPick={() => setNewProject(n => ({ ...n, on: true, name: n.name || (def ? `${def.place} ${def.trade} outreach` : '') }))} title="Create new business workspace" sub="A lead-generation business workspace for one of your clients" icon={<Plus size={14} />} />
                   {newProject.on && (
                     <div style={{ display: 'grid', gap: 8, padding: '4px 0 0 30px' }}>
-                      <label style={lbl}>Project name<input value={newProject.name} onChange={e => setNewProject(n => ({ ...n, name: e.target.value }))} style={input} /></label>
+                      <label style={lbl}>Business workspace name<input value={newProject.name} onChange={e => setNewProject(n => ({ ...n, name: e.target.value }))} style={input} /></label>
                       <label style={lbl}>For which client
                         <select value={newProject.portfolioId || portfolios[0]?.id || ''} onChange={e => setNewProject(n => ({ ...n, portfolioId: e.target.value }))} style={input}>
                           {portfolios.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                       </label>
-                      {!portfolios.length && <span style={{ ...muted, color: BAD }}>Add a client in AI Autopilot first — a project writes in a client's name.</span>}
+                      {!portfolios.length && <span style={{ ...muted, color: BAD }}>Add a client in AI Autopilot first — a business workspace writes in a client's name.</span>}
                     </div>
                   )}
                 </div>
@@ -338,7 +338,7 @@ export default function ConnectAutopilot({ search, searchId, projectId, onClose,
                   </label>
                   <div style={{ border: `1px solid ${LINE}`, borderRadius: 12, padding: 12, display: 'grid', gap: 6 }}>
                     <span style={kicker}>Automatically reject</span>
-                    {['Duplicates — already in your CRM or this project', 'Suppressed contacts and unsubscribes', 'Invalid businesses and exclusions', 'Invalid domains', 'Failed verification'].map(x => (
+                    {['Duplicates — already in your CRM or this business workspace', 'Suppressed contacts and unsubscribes', 'Invalid businesses and exclusions', 'Invalid domains', 'Failed verification'].map(x => (
                       <span key={x} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}><CheckCircle2 size={14} color={GOOD} /> {x} <span style={{ ...muted, marginLeft: 'auto' }}>always on</span></span>
                     ))}
                   </div>
@@ -381,12 +381,12 @@ export default function ConnectAutopilot({ search, searchId, projectId, onClose,
                   </label>
                   <label style={{ ...lbl, padding: 12, borderRadius: 12, border: `1px solid ${ACCENT}55`, background: SOFT }}>
                     <span style={{ fontWeight: 800, color: INK, display: 'flex', gap: 6, alignItems: 'center' }}><Zap size={14} color={ACCENT} /> Connect next workflow</span>
-                    <span>Each verified lead starts in another workflow of {project?.name ?? 'this project'}.</span>
+                    <span>Each verified lead starts in another workflow of {project?.name ?? 'this business workspace'}.</span>
                     <select data-field="source.next" value={nextWorkflowId} onChange={e => setNextWorkflowId(e.target.value)} style={{ ...input, ...field('source.next') }}>
                       <option value="">None for now — they wait on the list</option>
                       {flows.map(w => <option key={w.id} value={w.id}>{w.name}{w.status !== 'active' ? ` (${w.status} — switch it on for leads to start)` : ''}</option>)}
                     </select>
-                    {!flows.length && <span style={muted}>This project has no other workflow yet — add one (an outreach sequence, say) and connect it here later.</span>}
+                    {!flows.length && <span style={muted}>This business workspace has no other workflow yet — add one (an outreach sequence, say) and connect it here later.</span>}
                   </label>
                 </div>
               )}
@@ -417,7 +417,7 @@ function Done({ c, onClose, go }: { c: Connection; onClose: () => void; go: (to:
     <div style={{ display: 'grid', gap: 12 }} data-testid="connect-done">
       <span style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 16, fontWeight: 800, color: GOOD }}><CheckCircle2 size={20} /> Connected — AI Autopilot is on it</span>
       <div style={{ border: `1px solid ${LINE}`, borderRadius: 14, padding: 14, display: 'grid', gap: 6 }}>
-        <Row k="Project" v={c.projectName} />
+        <Row k="Business workspace" v={c.projectName} />
         <Row k="Workflow" v={c.workflowName} />
         <Row k="Schedule" v={c.scheduleText} />
         <Row k="Target" v={`${c.target} verified leads a run`} />
@@ -425,7 +425,7 @@ function Done({ c, onClose, go }: { c: Connection; onClose: () => void; go: (to:
         <Row k="Next run" v={c.manualOnly ? 'When you start it' : c.nextRunAt ? new Date(c.nextRunAt).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'} />
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" style={primary} onClick={() => go(`/autopilot?project=${encodeURIComponent(c.projectId)}&tab=prospects&source=${encodeURIComponent(c.id)}`)}>View project</button>
+        <button type="button" style={primary} onClick={() => go(`/autopilot?project=${encodeURIComponent(c.projectId)}&tab=prospects&source=${encodeURIComponent(c.id)}`)}>View business workspace</button>
         <button type="button" style={ghost} onClick={() => go(`/autopilot?project=${encodeURIComponent(c.projectId)}&tab=workflows`)}>View workflow</button>
         <button type="button" style={ghost} onClick={onClose}>Close</button>
       </div>

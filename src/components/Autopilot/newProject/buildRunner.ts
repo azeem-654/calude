@@ -102,7 +102,7 @@ async function resolveLogo(inp: BuildInput): Promise<{ dataUrl: string; note: st
       const small = await shrinkLogo(r.logo);
       if (small.ok) return { dataUrl: small.dataUrl, note: 'Logo taken from the website.' };
     }
-    return { dataUrl: '', note: 'No logo could be taken from the website, so the name is used — add one on the project any time.' };
+    return { dataUrl: '', note: 'No logo could be taken from the website, so the name is used — add one on the business workspace any time.' };
   }
   return { dataUrl: '', note: '' };
 }
@@ -166,7 +166,7 @@ export function planSteps(inp: BuildInput): BuildStep[] {
         : business === 'upload' ? 'Reading your company profile'
           : 'Saving your business profile',
     state: 'todo', weight: business === 'website' || business === 'upload' ? 3 : 1,
-  }, { key: 'project', label: 'Creating the project', state: 'todo', weight: 2 }];
+  }, { key: 'project', label: 'Creating the business workspace', state: 'todo', weight: 2 }];
   for (const w of inp.bp.workflows) {
     steps.push({ key: `wf:${w.key}`, label: `Creating ${w.name}`, state: 'todo', weight: w.origin === 'ai' ? 3 : 1.5 });
   }
@@ -242,7 +242,7 @@ export async function runBuild(
       else {
         const r = await readPortfolioFromUrl(site);
         if (r.success && r.profile) profile = { ...r.profile, website: site };
-        else profileNote = `Could not read the website (${r.error ?? 'no answer'}), so the profile starts from its name — add detail on the project later.`;
+        else profileNote = `Could not read the website (${r.error ?? 'no answer'}), so the profile starts from its name — add detail on the business workspace later.`;
       }
       /* The fallbacks go *after* the spread. A reading that returned
          `companyName: ""` used to be spread over them, and the save was sent
@@ -259,7 +259,7 @@ export async function runBuild(
         const docs = inp.files.filter(f => f.kind === 'pdf' || f.kind === 'text');
         const u = docs.length ? await understand({ prompt: 'Describe the business in the attached document.', files: docs, urls: [], candidates: [] }) : null;
         if (u?.ok && u.understanding?.profile?.companyName) profile = { ...u.understanding.profile };
-        else profileNote = u?.noAi ? 'The document could not be read without the AI, so the profile starts almost empty — add detail on the project later.' : 'The document did not say enough to describe the business — add detail on the project later.';
+        else profileNote = u?.noAi ? 'The document could not be read without the AI, so the profile starts almost empty — add detail on the business workspace later.' : 'The document did not say enough to describe the business — add detail on the business workspace later.';
       }
       profile = {
         ...profile,
@@ -282,7 +282,7 @@ export async function runBuild(
     const r = await savePortfolio({ name: companyName.slice(0, 120), profile, source });
     if (!r.success || !r.id) {
       set('profile', { state: 'failed', detail: r.error ?? 'The business profile could not be saved.' });
-      result.fatal = r.error ?? 'The business profile could not be saved, so there is nothing for the project to write from.';
+      result.fatal = r.error ?? 'The business profile could not be saved, so there is nothing for the business workspace to write from.';
       return result;
     }
     portfolioId = r.id;
@@ -300,13 +300,13 @@ export async function runBuild(
     let detail = 'Already in Protected Central.';
     if (existing && lg.dataUrl && lg.dataUrl !== String(existing.profile?.logoUrl ?? '')) {
       const r = await savePortfolio({ id: existing.id, name: existing.name, profile: { ...existing.profile, logoUrl: lg.dataUrl } });
-      detail = r.success ? `${lg.note} ${detail}` : `The logo could not be saved (${r.error ?? 'no answer'}) — add it on the project.`;
+      detail = r.success ? `${lg.note} ${detail}` : `The logo could not be saved (${r.error ?? 'no answer'}) — add it on the business workspace.`;
     } else if (lg.note && !lg.dataUrl) detail = `${detail} ${lg.note}`;
     set('profile', { state: 'done', detail }, `I’m using ${companyName}’s profile.`);
   }
 
   /* ── 2 · The project ── */
-  set('project', { state: 'now' }, 'I’m setting up the project.');
+  set('project', { state: 'now' }, 'I’m setting up the business workspace.');
   /* The planner reads the list from the server. One filled in Prospecting a
      second ago may still be in the sync's debounce, and a project whose
      audience the server cannot find plans "that list is gone" on its first
@@ -317,13 +317,13 @@ export async function runBuild(
   const finderSpec = bp.workflows.find(w => w.key === 'finder');
   let finderList = '';
   if (finderSpec && !bp.audienceListId) {
-    const made = createList({ name: `${bp.name.trim() || 'AI Autopilot project'} — prospects`, type: 'static', memberIds: [], createdBy: currentActor().name, kind: 'cold', origin: 'prospecting' });
+    const made = createList({ name: `${bp.name.trim() || 'AI Autopilot business workspace'} — prospects`, type: 'static', memberIds: [], createdBy: currentActor().name, kind: 'cold', origin: 'prospecting' });
     finderList = made.id;
     bp = { ...bp, audienceListId: made.id };
   }
   if (bp.audienceListId) await flushNow();
   const p = await saveProject({
-    name: bp.name.trim().slice(0, 150) || 'AI Autopilot project',
+    name: bp.name.trim().slice(0, 150) || 'AI Autopilot business workspace',
     objective: bp.objective.trim().length >= 8 ? bp.objective.trim() : `${bp.objective.trim()} — set up with AI Autopilot`.slice(0, 400),
     portfolioId,
     kind: kindOf(bp),
@@ -335,8 +335,8 @@ export async function runBuild(
   if (!p.success || !p.id) {
     /* A plan-allowance refusal says so, by name — not "could not be saved". */
     if (isAllowanceRefusal(p as { success?: boolean; code?: string })) refreshAllowances();
-    set('project', { state: 'failed', detail: p.error ?? 'The project could not be saved.' });
-    result.fatal = p.error ?? 'The project could not be saved.';
+    set('project', { state: 'failed', detail: p.error ?? 'The business workspace could not be saved.' });
+    result.fatal = p.error ?? 'The business workspace could not be saved.';
     return result;
   }
   result.projectId = p.id;
@@ -369,14 +369,14 @@ export async function runBuild(
         }
       } else {
         result.problems.push(`${w.name}: ${r.error ?? 'not saved'}`);
-        set(`wf:${w.key}`, { state: 'warn', detail: `${r.error ?? 'It could not be set up.'} You can set it up from the project's Prospects tab.` });
+        set(`wf:${w.key}`, { state: 'warn', detail: `${r.error ?? 'It could not be set up.'} You can set it up from the business workspace's Prospects tab.` });
       }
       continue;
     }
     if (w.origin === 'ai') {
       const r = await buildWorkflow(p.id, w.instruction ?? w.purpose);
       if (r.ok) { result.created.workflows++; set(`wf:${w.key}`, { state: 'done', detail: r.message }); }
-      else { result.problems.push(`${w.name}: ${r.message}`); set(`wf:${w.key}`, { state: 'warn', detail: `${r.message} You can add it from the project with Create Workflow.` }); }
+      else { result.problems.push(`${w.name}: ${r.message}`); set(`wf:${w.key}`, { state: 'warn', detail: `${r.message} You can add it from the business workspace with Create Workflow.` }); }
       continue;
     }
     /* A template's emails were written for one trade; they are rewritten
@@ -429,7 +429,7 @@ export async function runBuild(
       state: on === agentFlows.length && on > 0 ? 'done' : 'warn',
       detail: on === agentFlows.length && on > 0
         ? 'On. Everything they make is saved for you to check — nothing is published.'
-        : `${on} of ${agentFlows.length} switched on. The rest can be switched on from the project.`,
+        : `${on} of ${agentFlows.length} switched on. The rest can be switched on from the business workspace.`,
     });
   }
 
@@ -536,13 +536,13 @@ export async function runBuild(
   set('validate', { state: 'now' }, 'I’m checking whether anything is missing.');
   const check = await fetchWorkflows(p.id);
   if (check.error) {
-    set('validate', { state: 'warn', detail: `Could not read the project back to check it: ${check.error}` });
+    set('validate', { state: 'warn', detail: `Could not read the business workspace back to check it: ${check.error}` });
   } else {
     const n = check.workflows.length;
     const ok = n >= result.created.workflows;
     set('validate', {
       state: ok && !result.problems.length ? 'done' : 'warn',
-      detail: `${n} workflow${n === 1 ? '' : 's'} on the project${result.problems.length ? ` · ${result.problems.length} step${result.problems.length === 1 ? '' : 's'} need you` : ''}.`,
+      detail: `${n} workflow${n === 1 ? '' : 's'} in the business workspace${result.problems.length ? ` · ${result.problems.length} step${result.problems.length === 1 ? '' : 's'} need you` : ''}.`,
     });
   }
   result.ok = true;

@@ -164,7 +164,7 @@ export default function LeadDirectoryAdmin() {
         Load your own lead files — a CSV, a ZIP or .csv.gz, several files, or a whole folder with folders inside it, of any
         size. Everything is read here in your browser a piece at a time, so there is no upload limit, and several files go in at once. Before it loads you see which column became which field; columns it does not recognise are kept with each person under their own name. Only you
         search them, on <strong>Workspace → Lead library</strong>. Customers never browse them: when you open the library,
-        their projects' daily prospecting may be given a few matching people each day — checked first, never twice, and
+        the daily prospecting in their business workspaces may be given a few matching people each day — checked first, never twice, and
         labelled <strong>“Licensed business data”</strong> on every contact.
       </p>
 
@@ -177,7 +177,7 @@ export default function LeadDirectoryAdmin() {
         <>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <Stat label="People in the library" value={fmtN(a.total)} />
-            <Stat label="Projects may draw on it" value={a.shared ? 'Yes' : 'Not yet'} />
+            <Stat label="Business workspaces may draw on it" value={a.shared ? 'Yes' : 'Not yet'} />
             <Stat label="Removed on request" value={fmtN(a.removed)} />
           </div>
           {!!a.industries.length && (
@@ -352,12 +352,12 @@ export default function LeadDirectoryAdmin() {
 
           {/* ── Customers' projects ── */}
           <div style={{ border: `1px solid ${LINE}`, borderRadius: 14, padding: 14, display: 'grid', gap: 8 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>Let customers' projects draw on it</div>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>Let customers' business workspaces draw on it</div>
             {a.shared ? (
               <>
                 <div style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.6 }}>
-                  Open{a.attestedAt ? ` (you confirmed the right to share it on ${new Date(a.attestedAt).toLocaleDateString()})` : ''}: projects'
-                  daily prospecting may be given people whose industry and place match it — at most half of a day's leads, each
+                  Open{a.attestedAt ? ` (you confirmed the right to share it on ${new Date(a.attestedAt).toLocaleDateString()})` : ''}: the daily prospecting in customers'
+                  business workspaces may be given people whose industry and place match it — at most half of a day's leads, each
                   address checked, labelled “Licensed business data”. Customers still cannot search it.
                 </div>
                 <button onClick={() => void share(false)} style={{ ...btn, justifySelf: 'start' }}>Close it</button>
@@ -366,14 +366,14 @@ export default function LeadDirectoryAdmin() {
               <>
                 <div style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.6 }}>
                   Closed: only you use it. Most lead sellers license their data to the buyer alone — passing records into your
-                  customers' CRMs, even a few a day through their projects, needs a licence that allows it, and may make you a
+                  customers' CRMs, even a few a day through their business workspaces, needs a licence that allows it, and may make you a
                   data broker in some places (docs/LEAD-DIRECTORY.md §7). Check both before opening it.
                 </div>
                 <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: INK }}>
                   <input data-field="leaddir.attest" type="checkbox" checked={attest} onChange={e => setAttest(e.target.checked)} style={{ marginTop: 3 }} />
                   I hold the right to share these records with my customers, and I will remove anybody who asks.
                 </label>
-                <button onClick={() => void share(true)} style={{ ...btn, justifySelf: 'start' }}>Open it to customers' projects</button>
+                <button onClick={() => void share(true)} style={{ ...btn, justifySelf: 'start' }}>Open it to customers' business workspaces</button>
               </>
             )}
           </div>

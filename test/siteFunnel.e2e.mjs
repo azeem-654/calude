@@ -104,7 +104,7 @@ async function signUp(page, who) {
 async function waitBuilt(page) {
   for (let i = 0; i < 60; i++) {
     const t = await page.locator('body').innerText().catch(() => '');
-    if (/Open the project/.test(t)) return t;
+    if (/Open the business workspace/.test(t)) return t;
     await page.waitForTimeout(1000);
   }
   return await page.locator('body').innerText();
@@ -140,7 +140,7 @@ const NEVER = /mailbox|send from|who should the emails come from|which contact l
   const sub = await signUp(page, who);
   ok('1 · the sign-up screen says the plan is waiting', /is built for you straight away/.test(sub), sub.slice(0, 300));
   const built = await waitBuilt(page);
-  ok('7 · after sign-up the project builds by itself — no questions asked again', /Your AI Autopilot is ready|Open the project/.test(built) && !/Your plan from the website is here/.test(built), built.slice(0, 500));
+  ok('7 · after sign-up the project builds by itself — no questions asked again', /Your AI Autopilot is ready|Open the business workspace/.test(built) && !/Your plan from the website is here/.test(built), built.slice(0, 500));
   const projects = await projectsOf(who);
   ok('1 · the project exists with its workflows', projects.length === 1 && /Pike Roofing/.test(projects[0].name), JSON.stringify(projects.map(p => p.name)));
   ok('1 · the plan is not kept once built', await page.evaluate(() => !localStorage.getItem('pc_site_plan')));
@@ -167,9 +167,9 @@ const NEVER = /mailbox|send from|who should the emails come from|which contact l
   await page.getByRole('button', { name: /Type it in/ }).click();
   await page.getByLabel('Business name').fill('Bright Smile Dental');
   await page.getByLabel('What it does').fill('Family dental clinic in Leeds');
-  await page.getByRole('button', { name: /Build my project/ }).click();
+  await page.getByRole('button', { name: /Build my business workspace/ }).click();
   const built = await waitBuilt(page);
-  ok('2 · then it builds', /Open the project/.test(built), built.slice(0, 300));
+  ok('2 · then it builds', /Open the business workspace/.test(built), built.slice(0, 300));
   const projects = await projectsOf(who);
   ok('2 · the content project exists, named for the business', projects.length === 1 && /Bright Smile Dental/.test(projects[0].name), JSON.stringify(projects.map(p => p.name)));
   await ctx.close();
@@ -228,7 +228,7 @@ const NEVER = /mailbox|send from|who should the emails come from|which contact l
   const who = { name: 'Cam Cafe', email: 'cam@cornercafe.test', pw: 'Another-horse-7-coffee' };
   await signUp(page, who);
   const built = await waitBuilt(page);
-  ok('8 · on a phone: wizard → sign-up → project built', /Open the project/.test(built), built.slice(0, 300));
+  ok('8 · on a phone: wizard → sign-up → project built', /Open the business workspace/.test(built), built.slice(0, 300));
   ok('4 · the reactivation project exists', (await projectsOf(who)).length === 1);
   await ctx.close();
 }

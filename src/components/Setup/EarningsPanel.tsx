@@ -135,7 +135,7 @@ export default function EarningsPanel() {
 
           {!loading && !items.length && (
             <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
-              Nothing has been sold yet. Once a customer buys a domain through the project wizard, every
+              Nothing has been sold yet. Once a customer buys a domain through the business workspace wizard, every
               item appears here with what it cost you beside what they paid.
             </p>
           )}

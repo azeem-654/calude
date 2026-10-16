@@ -104,7 +104,7 @@ export default function ClientLinks({ portfolios }: { portfolios: Portfolio[] })
           <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '11px 12px', borderRadius: 11, background: '#f4f7fb' }}>
             <ShieldCheck size={15} color="#1e3a5f" style={{ flexShrink: 0, marginTop: 1 }} />
             <p style={{ margin: 0, fontSize: 11.5, color: '#1e3a5f', lineHeight: 1.6 }}>
-              Anybody with the link can read that one client's progress — their projects, how far the
+              Anybody with the link can read that one client's progress — their business workspaces, how far the
               work has got, and what has been done. They <strong>cannot</strong> see your other clients,
               your contacts, your prices or anything they could change. Revoke it any time.
             </p>

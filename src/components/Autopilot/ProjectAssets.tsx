@@ -75,7 +75,7 @@ export default function ProjectAssets({ projectId, projectName, companyName, con
   }, [projectId]);
 
   if (loading) {
-    return <div style={{ padding: '10px 0', fontSize: 12, color: MUTED }}>Loading what this project has…</div>;
+    return <div style={{ padding: '10px 0', fontSize: 12, color: MUTED }}>Loading what this business workspace has…</div>;
   }
 
   const a = assets!;
@@ -84,7 +84,7 @@ export default function ProjectAssets({ projectId, projectName, companyName, con
   return (
     <div style={{ border: `1px solid ${LINE}`, borderRadius: 14, background: '#fff', overflow: 'hidden' }}>
       <div style={{ padding: '11px 13px', borderBottom: `1px solid ${LINE}`, background: '#fafbfc' }}>
-        <div style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>What this project has</div>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: INK }}>What this business workspace has</div>
         <div style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>
           Its domain, email and website — and where to change them.
         </div>
@@ -153,7 +153,7 @@ export default function ProjectAssets({ projectId, projectName, companyName, con
 
         {!has && !a.pending.length && (
           <p style={{ margin: '8px 0 10px', fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>
-            Nothing bought for this project yet. AI Autopilot still writes and plans everything — it just
+            Nothing bought for this business workspace yet. AI Autopilot still writes and plans everything — it just
             sends from a mailbox you connect yourself, and has no site of its own.
           </p>
         )}
@@ -203,7 +203,7 @@ export default function ProjectAssets({ projectId, projectName, companyName, con
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 800, color: INK }}>Set up {companyName || projectName}</div>
                 <div style={{ fontSize: 11.5, color: MUTED, marginTop: 1 }}>
-                  Domain, business email and a starter website — bought for this project.
+                  Domain, business email and a starter website — bought for this business workspace.
                 </div>
               </div>
               <button onClick={() => setBuying(false)} aria-label="Close"

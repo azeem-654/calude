@@ -105,7 +105,7 @@ export default function UsageCard() {
 
 /** The four meters the AI Autopilot board is about, on one line. Nothing at all when unreadable. */
 const STRIP: MeterId[] = ['autopilot_projects', 'social_posts', 'ai_shorts', 'prospects_found'];
-const SHORT: Partial<Record<MeterId, string>> = { autopilot_projects: 'Projects', social_posts: 'Posts', ai_shorts: 'Shorts', prospects_found: 'Prospects' };
+const SHORT: Partial<Record<MeterId, string>> = { autopilot_projects: 'Business Workspaces', social_posts: 'Posts', ai_shorts: 'Shorts', prospects_found: 'Prospects' };
 
 export function MeterStrip() {
   const v = useAllowances();

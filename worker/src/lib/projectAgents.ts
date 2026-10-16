@@ -451,7 +451,7 @@ async function runAgentNode(
      project (lib/video/pipeline.ts), never on a clock — "Run now" has nothing
      to run, and must not fall through to writing posts from the portfolio. */
   if (c('produces') === 'video_package' || c('source') === 'video') {
-    return { outcome: 'skipped', detail: 'This step runs when a recording is uploaded to the project in AI Video Studio — upload one there or from the Assets tab.' };
+    return { outcome: 'skipped', detail: 'This step runs when a recording is uploaded to the business workspace in AI Video Studio — upload one there or from the Assets tab.' };
   }
 
   /* The plan's monthly allowance for what this step makes, asked before a
@@ -798,7 +798,7 @@ async function finderStepFor(env: Env, accountId: string, projectId: string, wor
   const row = await env.DB.prepare('SELECT id FROM crm_prospect_finders WHERE account_id = ? AND project_id = ? AND workflow_id = ?')
     .bind(accountId, projectId, workflowId).first<{ id: string }>().catch(() => null);
   const f = row ? await loadFinder(env, row.id, accountId) : null;
-  if (!f) return { outcome: 'failed', detail: 'This workflow has no prospect finder behind it — set one up on the project\'s Prospects tab.' };
+  if (!f) return { outcome: 'failed', detail: 'This workflow has no prospect finder behind it — set one up on the business workspace\'s Prospects tab.' };
   if (!force) {
     return { outcome: 'ok', detail: `Finds through the day: ${f.day_added} added today of ${f.per_day}.`, link: { kind: 'prospects', id: f.id, label: 'Prospects', route: `/autopilot?project=${encodeURIComponent(projectId)}&tab=prospects` } };
   }
@@ -825,7 +825,7 @@ export async function runAgentOnce(
   const project = await env.DB.prepare(
     'SELECT id, name, portfolio_id, objective FROM crm_projects WHERE id = ? AND account_id = ?',
   ).bind(projectId, accountId).first<ProjectRow>();
-  if (!project) return { ok: false, outcome: 'failed', detail: 'That project could not be found.' };
+  if (!project) return { ok: false, outcome: 'failed', detail: 'That business workspace could not be found.' };
 
   let out: Produced;
   try {

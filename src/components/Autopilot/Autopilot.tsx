@@ -167,7 +167,7 @@ export default function Autopilot() {
         <div role="tablist" aria-label="AI Autopilot sections"
           style={{ display: 'flex', gap: 3, marginTop: 14 }}>
           {([
-            { id: 'projects', label: 'Projects' },
+            { id: 'projects', label: 'Business Workspaces' },
             { id: 'templates', label: 'Templates' },
           ] as const).map(v => {
             const on = view === v.id;
@@ -210,7 +210,7 @@ export default function Autopilot() {
         )}
         {setupOrder === 'cancelled' && (
           <p style={{ fontSize: 12.5, color: T.muted, margin: 0 }}>
-            That payment was cancelled, so nothing was bought. Your project is running either way.
+            That payment was cancelled, so nothing was bought. Your business workspace is running either way.
           </p>
         )}
 

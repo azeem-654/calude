@@ -240,7 +240,7 @@ await p.waitForTimeout(2500);
 await p.goto(`${B}/analytics?section=revenue`, { waitUntil: 'networkidle' });
 await p.waitForTimeout(1500);
 const body = await p.textContent('body');
-ok('the revenue section opens from the link', /Revenue by project/.test(body ?? ''));
+ok('the revenue section opens from the link', /Revenue by business workspace/.test(body ?? ''));
 ok('…shows the period\'s revenue', (body ?? '').includes('$247'), (body ?? '').match(/\$[\d,.]+/g)?.slice(0, 6).join(' '));
 ok('…draws the stacked bars', await p.locator('.recharts-bar-rectangle path').count() > 0);
 ok('…and the per-project table', await p.locator('tr[data-project]').count() === 4);

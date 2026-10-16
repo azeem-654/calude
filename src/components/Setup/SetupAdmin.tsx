@@ -411,7 +411,7 @@ function JobsPanel() {
         {loading && <p style={{ margin: 0, fontSize: 13, color: MUTED }}>Loading…</p>}
         {!loading && !orders.length && (
           <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
-            No setups have been ordered yet. When somebody buys a domain through the project wizard,
+            No setups have been ordered yet. When somebody buys a domain through the business workspace wizard,
             it appears here with every step it went through.
           </p>
         )}

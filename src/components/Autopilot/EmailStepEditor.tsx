@@ -150,7 +150,7 @@ export default function EmailStepEditor({ node, set }: { node: WorkflowNode; set
   ].filter(Boolean);
 
   const improve = async () => {
-    if (!ctx.projectId) { setMsg({ ok: false, text: 'Open this from a project to use its business profile.' }); return; }
+    if (!ctx.projectId) { setMsg({ ok: false, text: 'Open this from a business workspace to use its business profile.' }); return; }
     setBusy('ai'); setMsg(null);
     const r = await writeEmails({
       projectId: ctx.projectId,

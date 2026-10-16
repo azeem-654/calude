@@ -48,8 +48,8 @@ const FILTERS: { id: Filter; label: string; test: (s: Signup) => boolean }[] = [
 const TEMPLATES = (kickoff: string) => [
   {
     id: 'kickoff', label: 'Kickoff call invite',
-    title: 'Can I help you set up your first project?',
-    body: 'Thanks for starting your trial. Book a free 20-minute kickoff call and I will set up your first AI Autopilot project with you, on your screen — you leave with something already running.',
+    title: 'Can I help you set up your first business workspace?',
+    body: 'Thanks for starting your trial. Book a free 20-minute kickoff call and I will set up your first AI Autopilot business workspace with you, on your screen — you leave with something already running.',
     link: kickoff, linkLabel: 'Book my kickoff call',
   },
   {
@@ -329,7 +329,7 @@ export default function Signups() {
                     <td style={TD}>{ago(s.lastSeen)}</td>
                     <td style={TD}>
                       <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
-                        <Signal on={s.projects > 0} label={s.projects ? `${s.projects} project${s.projects === 1 ? '' : 's'}` : 'No project'} />
+                        <Signal on={s.projects > 0} label={s.projects ? `${s.projects} business workspace${s.projects === 1 ? '' : 's'}` : 'No business workspace'} />
                         <Signal on={s.mailboxes > 0} label={s.mailboxes ? 'Mailbox' : 'No mailbox'} />
                         {s.helpAsked > 0 && <span style={{ ...PILL, background: '#eef2ff', color: '#3730a3' }}><LifeBuoy size={11} /> Asked for help</span>}
                         {s.nudges.filter(n => n.status !== 'skipped').map(n => (
@@ -400,10 +400,10 @@ export default function Signups() {
         <section style={PANEL}>
           <h2 style={H2}><MailCheck size={16} /> Onboarding emails — days 1, 3 and 5</h2>
           <p style={{ margin: '4px 0 12px', fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
-            Sent from your mailbox to people on a trial who have <b>not made a project yet</b>. Each goes once, at the same
-            time of day they signed up. They stop the moment somebody makes a project, pays, or presses &ldquo;stop these
+            Sent from your mailbox to people on a trial who have <b>not made a business workspace yet</b>. Each goes once, at the same
+            time of day they signed up. They stop the moment somebody makes a business workspace, pays, or presses &ldquo;stop these
             emails&rdquo;. Replies come to you. <code>{'{name}'}</code> and <code>{'{daysLeft}'}</code> are filled in; the
-            &ldquo;Start my first project&rdquo; button, your kickoff link and the opt-out link are added underneath.
+            &ldquo;Start my first business workspace&rdquo; button, your kickoff link and the opt-out link are added underneath.
           </p>
           {!canEmail && (
             <p style={{ margin: '0 0 12px', fontSize: 13, color: '#9a3412', background: '#fff7ed', borderRadius: 10, padding: '8px 12px' }}>
