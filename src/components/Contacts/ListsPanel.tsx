@@ -204,7 +204,7 @@ export function ListHeader({
           {view.real && <button type="button" className="cl-btn" onClick={onEmail} disabled={!n}><Mail size={14} /> Email this list</button>}
           <button type="button" className="cl-btn" onClick={onExport} disabled={!n || !canExport} data-testid="cl-export"
             title="A spreadsheet of these contacts, with where each one came from"><Download size={14} /> Export CSV</button>
-          {onOpenWorkspace && <button type="button" className="cl-btn" onClick={onOpenWorkspace}><ExternalLink size={14} /> Open the workspace</button>}
+          {onOpenWorkspace && <button type="button" className="cl-btn" onClick={onOpenWorkspace}><ExternalLink size={14} /> Open the business workspace</button>}
           {view.real && canManage && list && <button type="button" className="cl-btn icon" onClick={onEdit} title="Rename or change this list" aria-label="Edit this list"><Pencil size={14} /></button>}
           {view.real && canManage && list && <button type="button" className="cl-btn icon danger" onClick={onDelete} title="Delete this list — its contacts stay" aria-label="Delete this list"><Trash2 size={14} /></button>}
           <button type="button" className="cl-btn icon" onClick={onClose} title="Show every contact" aria-label="Close this list"><X size={14} /></button>

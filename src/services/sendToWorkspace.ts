@@ -42,7 +42,7 @@ export function workspaceOptions(projects: Project[]): WorkspaceOption[] {
       id: p.id, name: p.name, ok: !!p.brief,
       note: aud?.listId ? `Adds them to its list “${aud.listName || 'audience'}”`
         : p.brief ? 'They become the people it writes to'
-          : 'Made before workspaces had an audience — open it in AI Autopilot to choose one',
+          : 'Made before business workspaces had an audience — open it in AI Autopilot to choose one',
     };
   });
 }
@@ -69,7 +69,7 @@ export async function sendToWorkspace(input: {
   query?: string;
 }): Promise<SendResult> {
   const { project: p, people } = input;
-  if (!p.brief) return { ok: false, message: `“${p.name}” was made before workspaces had an audience — open it in AI Autopilot to choose one first.` };
+  if (!p.brief) return { ok: false, message: `“${p.name}” was made before business workspaces had an audience — open it in AI Autopilot to choose one first.` };
   if (!people.length) return { ok: false, message: 'Nobody to send — the list is empty.' };
 
   const t = targetListFor(p, input.from ?? null, loadLists());
