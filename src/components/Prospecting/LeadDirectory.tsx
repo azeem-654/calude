@@ -185,8 +185,8 @@ export default function LeadDirectory() {
       {st && (
         <div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>
           Only you see this screen. {st.shared
-            ? 'It is open: projects\' daily prospecting may be given a few people from it who match their kinds of business and places, each checked first and labelled "Licensed business data" on the contact.'
-            : 'It is closed: no customer\'s project draws on it. Open it on Settings → Platform services once you are sure your licence lets you share these records.'}
+            ? 'It is open: the daily prospecting in customers\' business workspaces may be given a few people from it who match their kinds of business and places, each checked first and labelled "Licensed business data" on the contact.'
+            : 'It is closed: no customer\'s business workspace draws on it. Open it on Settings → Platform services once you are sure your licence lets you share these records.'}
         </div>
       )}
 

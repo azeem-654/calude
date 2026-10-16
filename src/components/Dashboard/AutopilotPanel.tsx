@@ -191,7 +191,7 @@ function ProjectRow({ project, cards, onOpen }: { project: Project; cards: Card[
             <span style={{ marginLeft: 'auto' }}>acted {relative(project.lastActedAt)}</span>
           </div>
           <p style={{ margin: '6px 0 0', fontSize: 11, color: '#9aa1b0', lineHeight: 1.5 }}>
-            Of the {planned} {planned === 1 ? 'thing' : 'things'} it has planned for this project so far.
+            Of the {planned} {planned === 1 ? 'thing' : 'things'} it has planned for this business workspace so far.
             It plans more as it goes, so this is not a countdown to finished.
           </p>
         </>
@@ -261,7 +261,7 @@ export default function AutopilotPanel() {
   if (!pulse || pulse.state === 'loading') return null;
 
   const shell = (children: React.ReactNode) => (
-    <section aria-label="AI Autopilot" className="ap-panel slide-up">
+    <section aria-label="AI Autopilot Business Workspaces" className="ap-panel slide-up">
       <div className="ap-panel-head">
         {/* The same core as the nav pill, so the two read as one module. */}
         <span className="ap-panel-badge" aria-hidden="true">
@@ -270,7 +270,7 @@ export default function AutopilotPanel() {
           <Zap size={15} />
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: INK, letterSpacing: '-0.025em' }}>AI Autopilot</h2>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: INK, letterSpacing: '-0.025em' }}>AI Autopilot Business Workspaces</h2>
           <p style={{ margin: '2px 0 0', fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
             It runs the rest of this app for you — finding people, writing and sending, publishing,
             answering, booking. Everything else on this screen is a report on what it did.
@@ -304,7 +304,7 @@ export default function AutopilotPanel() {
           <Zap size={15} /> Put one thing on AI Autopilot
         </button>
         <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.6, textAlign: 'center' }}>
-          One project per client and per push. You say what you want to happen; it works out what to
+          One business workspace per business. You say what you want to happen; it works out what to
           do, and asks before anything reaches a person.
         </p>
       </>,

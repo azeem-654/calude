@@ -301,7 +301,7 @@ export async function readAll(env: Env, accountId: string): Promise<AllowanceVie
   for (const m of METERS) {
     if (m.id === 'workflows_per_project') {
       const top = [...(projects ?? [])].sort((a, b) => b.n - a.n)[0];
-      meters.push({ id: m.id, used: top?.n ?? 0, limit: st.limits[m.id], ...(top ? { note: `Most in one project: ${top.name}` } : {}) });
+      meters.push({ id: m.id, used: top?.n ?? 0, limit: st.limits[m.id], ...(top ? { note: `Most in one business workspace: ${top.name}` } : {}) });
       continue;
     }
     if (m.id === 'sub_accounts') { meters.push({ id: m.id, used: subs.used, limit: subs.limit }); continue; }

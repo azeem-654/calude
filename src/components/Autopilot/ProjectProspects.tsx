@@ -125,7 +125,7 @@ export function FinderSetup({ project, initial, onSaved, onCancel }: {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const listId = initial?.listId || audience?.listId || '';
-  const listName = listId ? loadLists().find(l => l.id === listId)?.name ?? audience?.listName ?? 'the project\'s list' : '';
+  const listName = listId ? loadLists().find(l => l.id === listId)?.name ?? audience?.listName ?? 'the business workspace\'s list' : '';
 
   const expand = async () => {
     if (!region.trim()) return;
@@ -195,7 +195,7 @@ export function FinderSetup({ project, initial, onSaved, onCancel }: {
         </div>
       </div>
       <span style={{ fontSize: 12, color: T.muted, lineHeight: 1.55 }}>
-        They go on <b style={{ color: T.ink }} data-field="finder.list">{listName || `a new list, "${project.name} — prospects"`}</b>, which this project writes to.
+        They go on <b style={{ color: T.ink }} data-field="finder.list">{listName || `a new list, "${project.name} — prospects"`}</b>, which this business workspace writes to.
         Your outreach is proposed to them 20 at a time, and each batch waits for your approval. Google Maps is not used for daily searches: it is paid per
         search and its terms do not allow keeping what it returns.
       </span>
@@ -217,7 +217,7 @@ export function useFinderOverview(projectId: string) {
   const [error, setError] = useState('');
   const load = useCallback(async () => {
     const r = await finderOverview(projectId);
-    if (!r.success) { setError(r.error ?? 'Could not read this project\'s prospects.'); return; }
+    if (!r.success) { setError(r.error ?? 'Could not read this business workspace\'s prospects.'); return; }
     setError(''); setData(r);
   }, [projectId]);
   useEffect(() => {
@@ -342,7 +342,7 @@ export function FinderIntro() {
   return (
     <span style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.6 }}>
       AI Autopilot searches business directories live, reads each business's own website for the address it publishes, checks it, and adds
-      the new ones to this project's audience — a few at a time through the day, until the day's number is in. It never emails anybody itself.
+      the new ones to this business workspace's audience — a few at a time through the day, until the day's number is in. It never emails anybody itself.
     </span>
   );
 }

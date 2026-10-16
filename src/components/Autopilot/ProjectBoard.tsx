@@ -223,7 +223,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
       const pf = await savePortfolio({ name: DEMO_CLIENT.name, profile: DEMO_CLIENT.profile, source: 'manual' });
       if (!pf.success || !pf.id) throw new Error(String(pf.error ?? 'the client could not be saved'));
 
-      setDemoBusy('Starting the project…');
+      setDemoBusy('Starting the business workspace…');
       const pr = await saveProject({
         name: DEMO_PROJECT.name,
         objective: DEMO_PROJECT.objective,
@@ -231,7 +231,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
         kind: DEMO_PROJECT.kind,
         guardrails: DEMO_PROJECT.guardrails,
       });
-      if (!pr.success || !pr.id) throw new Error(String(pr.error ?? 'the project could not be started'));
+      if (!pr.success || !pr.id) throw new Error(String(pr.error ?? 'the business workspace could not be started'));
 
       setDemoBusy('Adding the workflows…');
       for (const key of DEMO_WORKFLOWS) {
@@ -355,8 +355,8 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
   const remove = async (p: Project) => {
     if (!await askConfirm({
       title: `Delete “${p.name}”?`,
-      message: 'Everything AI Autopilot recorded for this project — its workflows, plan, activity and schedule — is deleted. The campaigns, posts and contacts it already made stay where they are.',
-      confirmLabel: 'Delete project', danger: true,
+      message: 'Everything AI Autopilot recorded for this business workspace — its workflows, plan, activity and schedule — is deleted. The campaigns, posts and contacts it already made stay where they are.',
+      confirmLabel: 'Delete business workspace', danger: true,
     })) return;
     const r = await deleteProject(p.id);
     if (!r.success) { addNotification(r.error ?? 'Could not delete that.', 'error'); return; }
@@ -366,7 +366,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
   };
 
   if (loading) {
-    return <p style={{ fontSize: 13, color: MUTED, padding: '20px 0' }}>Loading your projects…</p>;
+    return <p style={{ fontSize: 13, color: MUTED, padding: '20px 0' }}>Loading your business workspaces…</p>;
   }
 
   if (!projects.length) {
@@ -381,10 +381,10 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
       }}>
         <AutopilotBot size={62} awake />
         <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: INK, letterSpacing: '-0.02em' }}>
-          No projects yet
+          No business workspaces yet
         </h3>
         <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.6, maxWidth: 470 }}>
-          A project is one push for one client — find dental patients, sell a range of products,
+          A business workspace is one business and what you want for it — find dental patients, sell a range of products,
           win consultancy work. Each one runs on its own and reports here.
         </p>
 
@@ -416,7 +416,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
             background: ACCENT, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
             fontFamily: 'inherit',
           }}>
-            <Plus size={14} /> Start your first project
+            <Plus size={14} /> Start your first business workspace
           </button>
           <button onClick={() => void makeDemo()} disabled={!!demoBusy} className="press" style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -431,7 +431,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
         <p style={{ margin: '2px 0 0', fontSize: 11, color: MUTED, lineHeight: 1.5, maxWidth: 440 }}>
           {/* Said plainly: the example is not a mock-up, it is a real project
               that really runs — which is also why it has to be deletable. */}
-          The example builds a real client, a real project and three real workflows you can read, change
+          The example builds a real client, a real business workspace and three real workflows you can read, change
           and delete. Nothing in it is switched on.
         </p>
       </div>
@@ -469,7 +469,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
         <AutopilotBot size={30} awake={projects.some(p => p.status === 'running' || p.status === 'learning')} />
         <span style={{ minWidth: 0 }}>
           <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: INK }}>
-            {projects.length} project{projects.length === 1 ? '' : 's'}
+            {projects.length} AI Autopilot business workspace{projects.length === 1 ? '' : 's'}
           </span>
           <span style={{ display: 'block', fontSize: 11.5, color: MUTED, marginTop: 1 }}>
             Each runs on the server every five minutes, whether or not this is open.
@@ -481,7 +481,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
           borderRadius: 999, border: 'none', background: ACCENT, color: '#fff',
           fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0,
         }}>
-          <Plus size={14} /> New project
+          <Plus size={14} /> New business workspace
         </button>
       </div>
 
@@ -511,7 +511,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
                 <span style={{
                   fontSize: 10, fontWeight: 800, color: MUTED, letterSpacing: '0.09em',
                   textTransform: 'uppercase', whiteSpace: 'nowrap',
-                }}>Project {i + 1} of {projects.length}</span>
+                }}>Business workspace {i + 1} of {projects.length}</span>
                 <span style={{ display: 'inline-flex', gap: 4 }}>
                   {(['up', 'down'] as const).map(dir => {
                     const end = dir === 'up' ? i === 0 : i === projects.length - 1;
@@ -593,7 +593,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
                 <button onClick={() => setInfra(infra === p.id ? null : p.id)}
                   title={pool.domains > 0
                     ? `${pool.domains} sending ${pool.domains === 1 ? 'domain' : 'domains'}, ${pool.mailboxesPerDomain} mailboxes on each`
-                    : 'AI Autopilot buys and builds no domains for this project'}
+                    : 'AI Autopilot buys and builds no domains for this business workspace'}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 7px',
                     borderRadius: 999, cursor: 'pointer', fontFamily: 'inherit', fontSize: 10.5, fontWeight: 700,
@@ -652,7 +652,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
             {cards.length === 0 ? (
               <p style={{ margin: 0, padding: '18px 10px', textAlign: 'center', fontSize: 12, color: MUTED, lineHeight: 1.55 }}>
                 {live
-                  ? 'Nothing yet — AI Autopilot plans each project once a day, and the first plan lands within a day of starting it.'
+                  ? 'Nothing yet — AI Autopilot plans each business workspace once a day, and the first plan lands within a day of starting it.'
                   : 'Paused. Resume it and AI Autopilot will pick it up on the next plan.'}
               </p>
             ) : (
@@ -679,7 +679,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         gap: 7, color: MUTED, fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit',
       }}>
-        <Plus size={14} /> Add another project
+        <Plus size={14} /> Add another business workspace
       </button>
     </div>
   );

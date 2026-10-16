@@ -114,7 +114,7 @@ const TABS: { id: Tab; label: string; icon: typeof Bot }[] = [
   { id: 'assets', label: 'Assets', icon: ImageIcon },
   { id: 'schedule', label: 'Schedule', icon: Clock },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-  { id: 'settings', label: 'Project Settings', icon: SettingsIcon },
+  { id: 'settings', label: 'Business Workspace Settings', icon: SettingsIcon },
 ];
 
 /** The tint behind each workflow's index badge, so a card is findable at a glance. */
@@ -465,7 +465,7 @@ export default function ProjectCard({
     const liveFlows = flows.filter(f => f.status === 'active');
 
     if (!live) {
-      return ['This project is paused, so I am not doing anything on it. Switch it on and I pick up at the next pass.'];
+      return ['This business workspace is paused, so I am not doing anything on it. Switch it on and I pick up at the next pass.'];
     }
 
     if (liveFlows.length) {
@@ -599,7 +599,7 @@ export default function ProjectCard({
               </button>
               <button onClick={() => { setMenu(false); onDelete(project); }} className="press"
                 style={{ ...ghost(), color: '#b42318' }}>
-                <Trash2 size={11} /> Delete project
+                <Trash2 size={11} /> Delete business workspace
               </button>
             </div>
           )}
@@ -697,7 +697,7 @@ export default function ProjectCard({
                    * ── Why this is not the launch plan alone any more ──
                    *
                    * It was, and for a project created a minute ago that is
-                   * honestly zero — but 0% under "Getting this project ready"
+                   * honestly zero — but 0% under "Getting this business workspace ready"
                    * reads as broken rather than as early. Four things are
                    * genuinely done at creation and every one is a record that
                    * exists: the project, the client it writes from, the
@@ -716,7 +716,7 @@ export default function ProjectCard({
                       <AutopilotBot size={30} awake={live} busy={live && !setup.stalled} />
                       <span style={{ minWidth: 0, flex: 1 }}>
                         <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: INK }}>
-                          Getting this project ready
+                          Getting this business workspace ready
                         </span>
                         <span style={{ display: 'block', fontSize: 11.5, color: MUTED, marginTop: 1, lineHeight: 1.5 }}>
                           {/* What it is doing *now*, not a description of the
@@ -791,7 +791,7 @@ export default function ProjectCard({
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10,
                   }}><WorkflowIcon size={18} /></span>
                   <h4 style={{ margin: '0 0 5px', fontSize: 14, fontWeight: 800, color: INK }}>
-                    No workflows on this project yet
+                    No workflows in this business workspace yet
                   </h4>
                   <p style={{ margin: '0 auto 4px', maxWidth: 440, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
                     A workflow is what happens on its own when somebody fills in this client's form, is
@@ -1098,7 +1098,7 @@ export default function ProjectCard({
                 <SettingsIcon size={14} color={T.accent} style={{ flexShrink: 0 }} />
                 <span style={{ minWidth: 0, flex: 1 }}>
                   <span style={{ display: 'block', fontSize: 12.5, fontWeight: 800, color: INK }}>
-                    What this project is allowed to do
+                    What this business workspace is allowed to do
                   </span>
                   <span style={{ display: 'block', fontSize: 11, color: MUTED, marginTop: 2, lineHeight: 1.5 }}>
                     {(() => {
@@ -1106,7 +1106,7 @@ export default function ProjectCard({
                       const on = g.filter(v => v === 'on').length;
                       const ask = g.filter(v => v === 'approval').length;
                       const off = g.filter(v => v === 'off').length;
-                      return `${on} on its own · ${ask} ask first · ${off} off — change them in Project Settings`;
+                      return `${on} on its own · ${ask} ask first · ${off} off — change them in Business Workspace Settings`;
                     })()}
                   </span>
                 </span>
@@ -1155,7 +1155,7 @@ export default function ProjectCard({
                   Nothing made yet
                 </h4>
                 <p style={{ margin: '0 auto', maxWidth: 430, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
-                  Social posts, page designs and images this project produces collect here, with a link to
+                  Social posts, page designs and images this business workspace produces collect here, with a link to
                   the module that owns each one — the asset itself lives there, and this is the shortcut.
                 </p>
               </div>
@@ -1345,7 +1345,7 @@ export default function ProjectCard({
                   <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
                     Nothing queued. {live
                       ? 'It plans again within the day and adds what it finds.'
-                      : 'This project is paused, so nothing will be.'}
+                      : 'This business workspace is paused, so nothing will be.'}
                   </p>
                 ) : (
                   <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 7 }}>
@@ -1460,7 +1460,7 @@ export default function ProjectCard({
             cursor: building || prompt.trim().length < 8 ? 'default' : 'pointer',
           }}>
             {building ? <Loader size={13} className="spin" /> : <Sparkles size={13} />}
-            {building ? 'Building…' : 'Update project'}
+            {building ? 'Building…' : 'Update business workspace'}
           </button>
 
           {answer && (

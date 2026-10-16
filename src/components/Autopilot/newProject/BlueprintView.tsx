@@ -25,7 +25,7 @@ export interface EditMessage { who: 'you' | 'ai' | 'bad'; text: string }
 
 const ORIGIN: Record<string, { label: string; tone: string; icon: typeof Wand2 }> = {
   template: { label: 'Ready-made, personalised', tone: 'good', icon: LayoutTemplate },
-  generated: { label: 'Built for this project', tone: 'accent', icon: Cpu },
+  generated: { label: 'Built for this business workspace', tone: 'accent', icon: Cpu },
   ai: { label: 'Written by AI during the build', tone: 'accent', icon: Wand2 },
 };
 
@@ -53,8 +53,8 @@ export default function BlueprintView({ bp, onRename }: { bp: Blueprint; onRenam
       </div>
 
       <div className="np-bp-hero np-rise">
-        <label style={{ display: 'block', fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', opacity: 0.75 }}>PROJECT</label>
-        <input value={bp.name} onChange={e => onRename(e.target.value)} aria-label="Project name"
+        <label style={{ display: 'block', fontSize: 11, fontWeight: 800, letterSpacing: '0.08em', opacity: 0.75 }}>BUSINESS WORKSPACE</label>
+        <input value={bp.name} onChange={e => onRename(e.target.value)} aria-label="Business workspace name"
           style={{
             width: '100%', boxSizing: 'border-box', background: 'transparent', border: 'none', outline: 'none',
             color: '#fff', font: 'inherit', fontSize: 'clamp(20px, 3vw, 26px)', fontWeight: 800,
@@ -107,7 +107,7 @@ export default function BlueprintView({ bp, onRename }: { bp: Blueprint; onRenam
           </div>
         ) : (
           <p style={{ margin: 0, fontSize: 13, color: '#6b7280', lineHeight: 1.55 }}>
-            No recurring workflow — this project is set-up work and the daily planner. You can add workflows to it at any time.
+            No recurring workflow — this business workspace is set-up work and the daily planner. You can add workflows to it at any time.
           </p>
         )}
       </div>

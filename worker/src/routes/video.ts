@@ -297,7 +297,7 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
     let defaults: Partial<VideoRequest> = {};
     if (d.autopilotProjectId) {
       const ap = await env.DB.prepare('SELECT id FROM crm_projects WHERE id = ? AND account_id = ?').bind(s(d.autopilotProjectId, 80), accountId).first<{ id: string }>();
-      if (!ap) return fail('That AI Autopilot project is not in this workspace.', 200, { field: 'video.autopilot' });
+      if (!ap) return fail('That AI Autopilot business workspace is not one of yours.', 200, { field: 'video.autopilot' });
       autopilot = ap.id;
       const wf = d.workflowId
         ? await env.DB.prepare('SELECT id, nodes FROM crm_project_workflows WHERE id = ? AND project_id = ? AND account_id = ?').bind(s(d.workflowId, 80), ap.id, accountId).first<{ id: string; nodes: string }>()

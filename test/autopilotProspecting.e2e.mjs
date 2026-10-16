@@ -262,7 +262,7 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
   await page.getByTestId('finder-card').waitFor({ timeout: 15_000 }).catch(() => {});
   await page.locator('[data-testid="all-leads"] li.pl-row').first().waitFor({ timeout: 15_000 }).catch(() => {});
   const body = await page.innerText('body');
-  const TAB_WANT = [/Where this project.s leads come from/, /Daily search/, /Finding every day|Today.s leads are in/, /Searching dentists in Leeds, York/,
+  const TAB_WANT = [/Where this business workspace.s leads come from/, /Daily search/, /Finding every day|Today.s leads are in/, /Searching dentists in Leeds, York/,
     /Leads added \(all time\)/, /Found without an email/, /Already in your contacts/, /New leads added, day by day/i, /All leads/, /Leeds Dental/];
   ok('the Prospects tab opens from its link: the source in plain words, the tiles, the chart, every lead',
     TAB_WANT.every(r => r.test(body)), `missing ${TAB_WANT.filter(r => !r.test(body)).join(' ')}: ${body.slice(0, 1200)}`);
@@ -316,7 +316,7 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
 
   /* The wizard: a sentence becomes a finder, with a live sample. */
   await page.goto(`${B}/autopilot?new=1`, { waitUntil: 'networkidle' });
-  const np = page.getByRole('dialog', { name: 'New project' });
+  const np = page.getByRole('dialog', { name: 'New business workspace' });
   await np.waitFor({ timeout: 10_000 });
   await np.getByLabel('What would you like AI Autopilot to do?').fill('I want to sell my dental supplies to dentists in Leeds and find customers by email and SMS.');
   const cta = np.locator('footer .wz-cta');
@@ -386,9 +386,9 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
   }
   await cta.click(); await page.waitForTimeout(400);
   /* Connections: contacts the project finds itself are not "not set up yet". */
-  await np.getByText('Found by this project').scrollIntoViewIfNeeded().catch(() => {}); await shot(page, 'connections');
+  await np.getByText('Found by this business workspace').scrollIntoViewIfNeeded().catch(() => {}); await shot(page, 'connections');
   const conn = await np.innerText();
-  ok('connections: contacts are found by this project, not missing', /Found by this project/.test(conn) && /searching starts|search starts/i.test(conn) && !/Contacts\s*Not set up yet/.test(conn), conn.slice(0, 900));
+  ok('connections: contacts are found by this project, not missing', /Found by this business workspace/.test(conn) && /searching starts|search starts/i.test(conn) && !/Contacts\s*Not set up yet/.test(conn), conn.slice(0, 900));
   await cta.click(); await page.waitForTimeout(300);
   await shot(page, 'review');
   const review = await np.innerText();
@@ -401,7 +401,7 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
   await page.waitForFunction(() => document.querySelector('[aria-label="Finding your first prospects"]')?.getAttribute('aria-busy') === 'false', null, { timeout: 90_000 }).catch(() => {});
   if (await live.count()) { await live.scrollIntoViewIfNeeded(); await page.waitForTimeout(1200); await shot(page, 'build'); }
   const lt = (await live.count()) ? await live.innerText() : await np.innerText();
-  ok('the build finds the first prospects while the customer watches', /prospects? added to this project/.test(lt) && /Searched dentists in Leeds|Read \d+ websites/.test(lt) && !/Nobody to email yet/.test(await np.innerText()), lt.slice(0, 900));
+  ok('the build finds the first prospects while the customer watches', /prospects? added to this business workspace/.test(lt) && /Searched dentists in Leeds|Read \d+ websites/.test(lt) && !/Nobody to email yet/.test(await np.innerText()), lt.slice(0, 900));
   const fresh = sql(`SELECT f.id, f.trades, f.places, f.list_id, p.brief FROM crm_prospect_finders f JOIN crm_projects p ON p.id = f.project_id WHERE f.account_id = '${ACCT}' AND f.project_id != '${PID}'`);
   ok('the build sets up the finder with its own list as the project\'s audience', fresh.length === 1 && /dentists/.test(fresh[0].trades) && /Leeds/.test(fresh[0].places)
     && fresh[0].list_id && fresh[0].brief.includes(fresh[0].list_id), JSON.stringify(fresh).slice(0, 500));

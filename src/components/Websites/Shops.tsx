@@ -240,7 +240,7 @@ export default function Shops() {
                 style={{ ...inp, padding: 4, height: 40, cursor: 'pointer' }} />
             </div>
             <div style={{ flex: 1, minWidth: 200 }}>
-              <label style={lbl}>Project</label>
+              <label style={lbl}>Business workspace</label>
               <select value={draft.projectId ?? ''} onChange={e => setDraft({ ...draft, projectId: e.target.value })}
                 style={inp}>
                 <option value="">Everything in this workspace</option>
@@ -248,8 +248,8 @@ export default function Shops() {
               </select>
               <p style={{ margin: '6px 0 0', fontSize: 12.5, color: MUTED, lineHeight: 1.5 }}>
                 {projects.length === 0
-                  ? 'No “Sell products” project yet — add one under AI Autopilot to keep one client’s catalogue apart from another’s.'
-                  : 'Pick one to show only that project’s products.'}
+                  ? 'No “Sell products” business workspace yet — add one under AI Autopilot to keep one client’s catalogue apart from another’s.'
+                  : 'Pick one to show only that business workspace’s products.'}
               </p>
             </div>
           </div>

@@ -126,7 +126,7 @@ export default function DigitalSetupStep({ companyName, contactEmail, projectId,
   };
 
   const buy = async () => {
-    if (!projectId) { setError('Finish the project first — this is bought for it.'); return; }
+    if (!projectId) { setError('Finish the business workspace first — this is bought for it.'); return; }
     setBuying(true);
     setError('');
     const r = await startCheckout({
@@ -155,7 +155,7 @@ export default function DigitalSetupStep({ companyName, contactEmail, projectId,
             <p style={{ margin: '5px 0 0', fontSize: 12.5, color: MUTED, lineHeight: 1.6 }}>
               We can register a domain for {companyName || 'this business'}, create its business email,
               publish a starter website and have all of it working before your first campaign goes out.
-              Optional — the project runs without it.
+              Optional — the business workspace runs without it.
             </p>
             <button onClick={() => setWanted(true)} style={{
               marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -213,7 +213,7 @@ export default function DigitalSetupStep({ companyName, contactEmail, projectId,
           <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '11px 12px', borderRadius: 11, background: '#fffbeb', border: '1px solid #fde68a' }}>
             <AlertCircle size={15} color="#b45309" style={{ flexShrink: 0, marginTop: 1 }} />
             <p style={{ margin: 0, fontSize: 11.5, color: '#78350f', lineHeight: 1.6 }}>
-              Domain registration is not switched on for this installation yet. Your project will still
+              Domain registration is not switched on for this installation yet. Your business workspace will still
               run — this step can be done later.
             </p>
           </div>
@@ -383,7 +383,7 @@ export default function DigitalSetupStep({ companyName, contactEmail, projectId,
             </button>
             {!projectId && (
               <p style={{ margin: 0, fontSize: 11.5, color: MUTED }}>
-                Finish creating the project first — this is set up for it.
+                Finish creating the business workspace first — this is set up for it.
               </p>
             )}
           </>

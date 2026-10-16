@@ -147,9 +147,9 @@ let CONN = '';
   await page.getByTestId('connect-autopilot-btn').waitFor({ timeout: 60_000 });
   await page.getByTestId('connect-autopilot-btn').click();
   const dlg = page.getByRole('dialog', { name: 'Connect to AI Autopilot' });
-  await dlg.getByText('Which AI Autopilot project should use these prospects?').waitFor({ timeout: 10_000 });
+  await dlg.getByText('Which AI Autopilot business workspace should use these prospects?').waitFor({ timeout: 10_000 });
   await dlg.getByRole('radio', { name: /Leeds Dental Outreach/ }).waitFor({ timeout: 10_000 });
-  ok('Step 1 asks which project, listing this workspace\'s and "Create new project"', (await dlg.getByRole('radio', { name: /Leeds Dental Outreach/ }).count()) === 1 && (await dlg.getByRole('radio', { name: /Create new project/ }).count()) === 1);
+  ok('Step 1 asks which project, listing this workspace\'s and "Create new project"', (await dlg.getByRole('radio', { name: /Leeds Dental Outreach/ }).count()) === 1 && (await dlg.getByRole('radio', { name: /Create new business workspace/ }).count()) === 1);
   await dlg.getByRole('radio', { name: /Leeds Dental Outreach/ }).click();
   await dlg.getByTestId('connect-next').click();
   await dlg.getByTestId('source-criteria').waitFor({ timeout: 10_000 });
@@ -305,7 +305,7 @@ for (const width of [1280, 390]) {
     await page.getByRole('tab', { name: /^Workflows/ }).first().click().catch(() => {});
     await page.getByTestId('workflows-connect-search').first().click({ timeout: 15_000 }).catch(async e => { await page.screenshot({ path: 'test-results/sources-fresh.png', fullPage: true }); throw e; });
     const dlg = page.getByRole('dialog', { name: 'Connect to AI Autopilot' });
-    await dlg.getByText('Which saved search should this project use?').waitFor({ timeout: 10_000 });
+    await dlg.getByText('Which saved search should this business workspace use?').waitFor({ timeout: 10_000 });
     ok('@1280: a fresh project connects from its own side, choosing among saved searches', (await dlg.getByRole('radio', { name: /Dentists — Leeds/ }).count()) === 1);
     await dlg.getByRole('button', { name: 'Close' }).first().click();
   }

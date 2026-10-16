@@ -166,7 +166,7 @@ export default function AddTo({ s, mode, suggested, onClose, onDone, go }: {
         <button type="button" className="aip-icon-btn" aria-label="Close" onClick={onClose}><X size={14} /></button>
       </div>
       <div style={{ padding: '0 16px 16px', display: 'grid', gap: 10 }}>
-        {mode === 'project' && projects === null && <span className="aip-muted"><Loader size={12} className="spin" /> Reading your projects…</span>}
+        {mode === 'project' && projects === null && <span className="aip-muted"><Loader size={12} className="spin" /> Reading your business workspaces…</span>}
         {projectError && <Notice text={projectError} />}
         {projects !== null && !options.length && (
           <span className="aip-muted">

@@ -318,7 +318,7 @@ export default function WorkflowWizard({
             >
               {adding === picked.key
                 ? <><Loader size={13} className="spin" /> Adding…</>
-                : <><Check size={13} /> Add it to this project</>}
+                : <><Check size={13} /> Add it to this business workspace</>}
             </button>
           </footer>
         )}

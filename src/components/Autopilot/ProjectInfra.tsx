@@ -72,7 +72,7 @@ export default function ProjectInfra({ project, onSaved }: {
     onSaved(r.projects ?? []);
     addNotification(
       n === 0
-        ? 'AI Autopilot will not buy or build anything for this project.'
+        ? 'AI Autopilot will not buy or build anything for this business workspace.'
         : `AI Autopilot will build ${n} ${n === 1 ? 'domain' : 'domains'} with ${m} ${m === 1 ? 'mailbox' : 'mailboxes'} each. Each step waits for your approval before it spends anything.`,
       'success',
     );
@@ -90,7 +90,7 @@ export default function ProjectInfra({ project, onSaved }: {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13.5, fontWeight: 800, color: INK }}>Domains and mailboxes</div>
           <div style={{ fontSize: 11.5, color: MUTED, marginTop: 1 }}>
-            What AI Autopilot builds for this project before it sends anything
+            What AI Autopilot builds for this business workspace before it sends anything
           </div>
         </div>
         <span style={{
@@ -165,7 +165,7 @@ export default function ProjectInfra({ project, onSaved }: {
               {/* Asked every time, and the honest answer is "nothing". Leaving
                   it unsaid reads as a missing step rather than an absent cost. */}
               <p style={{ margin: '10px 0 0', paddingTop: 9, borderTop: `1px solid ${LINE}`, fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>
-                No hosting to buy. The site, funnels and shop this project builds are served by
+                No hosting to buy. The site, funnels and shop this business workspace builds are served by
                 Protected Central itself — a domain here is for <em>sending</em>, and pointing one
                 at a published site is a DNS record, not a separate bill.
               </p>

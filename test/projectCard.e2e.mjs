@@ -124,7 +124,7 @@ for (const width of [390, 1280]) {
     (await p.getByRole('tab', { name: /^Workflows$/ }).count()) === 0, 'the old view switcher is still there');
 
   ok(`${width}px · the Edit with AI column is beside it`,
-    /Edit with AI/.test(t) && /Update project/.test(t));
+    /Edit with AI/.test(t) && /Update business workspace/.test(t));
 
   /* ── The bot says something, and it is true ──
      A face that talks is the most persuasive thing on a screen and the easiest
@@ -155,10 +155,10 @@ for (const width of [390, 1280]) {
   await p.getByRole('tab', { name: /AI Agents/ }).first().click();
   await p.waitForTimeout(500);
   let t = (await p.textContent('body')) ?? '';
-  ok('AI Agents points at what the project may do', /What this project is allowed to do/.test(t), t.slice(0, 200));
+  ok('AI Agents points at what the project may do', /What this business workspace is allowed to do/.test(t), t.slice(0, 200));
   /* It used to list the permissions here, unchangeable. Now it summarises them
      and sends you where they can actually be set. */
-  ok('and says where they are changed', /Project Settings/.test(t));
+  ok('and says where they are changed', /Business Workspace Settings/.test(t));
 
   await p.getByRole('tab', { name: /^Assets/ }).first().click();
   await p.waitForTimeout(500);
@@ -177,7 +177,7 @@ for (const width of [390, 1280]) {
   t = (await p.textContent('body')) ?? '';
   ok('Analytics draws the working day', /Reads the business/.test(t) && /Next/.test(t), t.slice(0, 250));
 
-  await p.getByRole('tab', { name: /Project Settings/ }).first().click();
+  await p.getByRole('tab', { name: /Business Workspace Settings/ }).first().click();
   await p.waitForTimeout(600);
   t = (await p.textContent('body')) ?? '';
   ok('Settings still reaches the sending pool', /domain|sending/i.test(t), t.slice(0, 200));

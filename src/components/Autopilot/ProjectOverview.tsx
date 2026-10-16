@@ -186,7 +186,7 @@ export default function ProjectOverview({ project, flows, runs, assets, onCreate
         </div>
       ) : (
         <p style={{ margin: 0, fontSize: 12, color: T.muted, lineHeight: 1.55 }}>
-          This project was set up before blueprints were kept, so there is no plan to show here — its workflows and outputs above are the whole story.
+          This business workspace was set up before blueprints were kept, so there is no plan to show here — its workflows and outputs above are the whole story.
         </p>
       )}
     </div>

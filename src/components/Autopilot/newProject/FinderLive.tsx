@@ -97,7 +97,7 @@ export default function FinderLive({ projectId, finderId, perDay, trades, places
         <span className="np-finder-live-ic">{busy ? <Loader size={17} className="spin" /> : <UserPlus size={17} />}</span>
         <div style={{ minWidth: 0, flex: 1 }}>
           <b style={{ display: 'block', fontSize: 15, color: '#17191c' }}>
-            {busy ? 'Finding your first prospects now' : added ? `${added} prospect${added === 1 ? '' : 's'} added to this project` : 'Your project is finding its own prospects'}
+            {busy ? 'Finding your first prospects now' : added ? `${added} prospect${added === 1 ? '' : 's'} added to this business workspace` : 'Your business workspace is finding its own prospects'}
           </b>
           <span style={{ display: 'block', fontSize: 13, color: '#6b7280', lineHeight: 1.55, marginTop: 2 }}>
             {trades.join(', ')}{where ? ` in ${where}` : ''} — searched live, each website read for the address it publishes, every address checked.
@@ -122,7 +122,7 @@ export default function FinderLive({ projectId, finderId, perDay, trades, places
         <span style={{ fontSize: 13, color: '#334155', lineHeight: 1.6 }}>
           {note && <>{note} </>}
           It carries on by itself every few minutes — up to {perDay} new prospects a day — and AI Autopilot writes to them
-          in batches of 20, each batch waiting for your approval on the project's board.
+          in batches of 20, each batch waiting for your approval on the business workspace's board.
         </span>
       )}
       <Link to={`/autopilot?project=${encodeURIComponent(projectId)}&tab=prospects`} className="np-finder-live-link">

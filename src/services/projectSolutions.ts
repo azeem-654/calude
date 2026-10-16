@@ -282,7 +282,7 @@ const Q: Record<string, Question> = {
   emailLayout: {
     id: 'emailLayout', group: 'layout', type: 'layout', need: 'required',
     prompt: 'How should the emails look?',
-    help: 'Applies to every email this project’s workflows send.',
+    help: 'Applies to every email this business workspace’s workflows send.',
     options: LAYOUTS.email,
     aiDecides: DEFAULT_LAYOUT.email,
   },
@@ -499,7 +499,7 @@ const Q: Record<string, Question> = {
     options: [
       { value: 'crm', label: 'Already in Protected Central' },
       { value: 'upload', label: 'A spreadsheet I will import', hint: 'Contacts → Import takes a CSV' },
-      { value: 'find', label: 'Find new ones for me every day', hint: 'AI searches the internet for new businesses every day, reads their websites, checks each address and adds them to this project — total automation. You approve each batch before it is emailed.' },
+      { value: 'find', label: 'Find new ones for me every day', hint: 'AI searches the internet for new businesses every day, reads their websites, checks each address and adds them to this business workspace — total automation. You approve each batch before it is emailed.' },
       { value: 'list', label: 'A contact list I have', hint: 'Including the lists you fill in Prospecting' },
     ],
   },
@@ -517,7 +517,7 @@ const Q: Record<string, Question> = {
   contactList: {
     id: 'contactList', group: 'contacts', type: 'text', need: 'required',
     prompt: 'Which contact list?',
-    help: 'Only the people on it are written to by this project. Smart lists are not offered — they are worked out in your browser, and AI Autopilot runs on the server.',
+    help: 'Only the people on it are written to by this business workspace. Smart lists are not offered — they are worked out in your browser, and AI Autopilot runs on the server.',
     showIf: { id: 'contactSource', in: ['list'] },
   },
   /*
@@ -621,7 +621,7 @@ const Q: Record<string, Question> = {
     options: [
       { value: 'have', label: 'Yes — I will connect my mailbox' },
       { value: 'buy', label: 'No — set one up for me', hint: 'Domains and mailboxes, bought and configured' },
-      { value: 'later', label: 'Not sure yet', hint: 'The project starts; nothing sends until this is sorted' },
+      { value: 'later', label: 'Not sure yet', hint: 'The business workspace starts; nothing sends until this is sorted' },
     ],
   },
   dailyVolume: {
@@ -956,7 +956,7 @@ export const REQUIREMENT_INFO: Record<RequirementId, RequirementInfo> = {
   blog: { label: 'Blog', why: 'Where drafted articles are kept.', kind: 'included', route: '/blog-automation' },
   shorts: { label: 'AI Video Studio', why: 'Where video scripts are kept (Quick Shorts).', kind: 'included', route: '/video-studio?tab=quick-shorts' },
   websites: { label: 'Websites and funnels', why: 'Where launch and offer pages are built.', kind: 'included', route: '/websites' },
-  contacts: { label: 'Contacts', why: 'The people this project works with.', kind: 'included', route: '/contacts' },
+  contacts: { label: 'Contacts', why: 'The people this business workspace works with.', kind: 'included', route: '/contacts' },
   pipeline: { label: 'Deals pipeline', why: 'Tracks where each person is.', kind: 'included', route: '/pipelines' },
   mailbox: { label: 'An email mailbox', why: 'Email goes out through a real mailbox, so replies come back to you.', kind: 'check', route: '/settings?tab=email-sms' },
   sms: { label: 'An SMS provider', why: 'Texts need a number licensed to send them.', kind: 'check', route: '/settings?tab=email-sms' },
@@ -1202,7 +1202,7 @@ function outreachPart(a: Answers, opts: { page?: boolean } = {}): Partial<Contri
   if (source === 'find') {
     wfs.unshift({
       key: 'finder', name: 'Find new prospects daily', origin: 'generated',
-      purpose: `Searches business directories live every day for ${trades.join(', ') || 'your audience'}${places.length ? ` in ${places.slice(0, 3).join('; ')}${places.length > 3 ? ` and ${places.length - 3} more` : ''}` : ''}, reads each website for the address it publishes, checks it, and adds up to ${perDay} new prospects a day to this project.`,
+      purpose: `Searches business directories live every day for ${trades.join(', ') || 'your audience'}${places.length ? ` in ${places.slice(0, 3).join('; ')}${places.length > 3 ? ` and ${places.length - 3} more` : ''}` : ''}, reads each website for the address it publishes, checks it, and adds up to ${perDay} new prospects a day to this business workspace.`,
       nodes: [
         { id: 'n0', type: 'trigger', label: 'Every day', config: { event: 'schedule', cadence: 'daily' }, nextId: 'n1' },
         { id: 'n1', type: 'ai', label: 'Find new prospects', config: { source: 'directory', produces: 'prospects', perDay: String(perDay), trades: trades.join(', '), places: places.join('; ') }, nextId: null },
@@ -1238,7 +1238,7 @@ function outreachPart(a: Answers, opts: { page?: boolean } = {}): Partial<Contri
     setup,
     outputs: [
       `A ${one(a.sequenceLength, '5')}-email sequence written from your offer`,
-      source === 'find' ? `Up to ${perDay} new prospects a day, found live and added to this project's audience` : '',
+      source === 'find' ? `Up to ${perDay} new prospects a day, found live and added to this business workspace's audience` : '',
       fromList ? 'The sequence sent to the people on the contact list you chose' : '',
       reply === 'draft' ? 'Drafted answers to replies' : '',
       booking !== 'none' ? 'Booked calls from interested people' : '',
@@ -1260,7 +1260,7 @@ function outreachPart(a: Answers, opts: { page?: boolean } = {}): Partial<Contri
       source === 'upload' ? 'The list is imported in Contacts — AI Autopilot works from what is there.' : '',
       /* Said because it is the difference from every other outreach project,
          which picks up anybody new in the workspace. */
-      fromList ? 'Only the people on that list are written to by this project — anybody new in Contacts is left alone unless you add them to it.' : '',
+      fromList ? 'Only the people on that list are written to by this business workspace — anybody new in Contacts is left alone unless you add them to it.' : '',
       source === 'find' ? 'A place has only so many listed businesses: when every search is run to its end the finder says so and asks for more places or kinds of business.' : '',
       /* Texting strangers is regulated (in the US, the TCPA and state laws like Virginia's); an email is not consent. */
       source === 'find' && wantsSms ? 'Texts go only to prospects who opt in — the outreach email carries a link where they can say yes to texts.' : '',
@@ -1671,7 +1671,7 @@ export const SOLUTIONS: Solution[] = [
           outputs: [...(long ? ['A cleaned long video per recording'] : []), `${shorts} Short${shorts === 1 ? '' : 's'} per recording`, 'Captions (burned in, SRT and VTT)', 'PNG thumbnails', 'Titles, descriptions and hashtags'],
           destinations: [{ label: 'AI Video Studio', route: '/video-studio' }],
           approvals: ['Nothing is published — each video waits for you as Needs review'],
-          manual: ['Upload each recording (AI Video Studio, or the project’s Assets tab)', 'Post the finished videos — direct posting is not connected'],
+          manual: ['Upload each recording (AI Video Studio, or the business workspace’s Assets tab)', 'Post the finished videos — direct posting is not connected'],
           requirements: ['videoStudio'],
         });
       }

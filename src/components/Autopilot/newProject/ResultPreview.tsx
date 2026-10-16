@@ -97,7 +97,7 @@ export default function ResultPreview({ bp, brand, palette, logo, templateId, pa
         <div>
           <b style={{ display: 'block', fontSize: 15, color: '#17191c' }}>What it might look like</b>
           <span style={{ fontSize: 12.5, color: '#6b7280', lineHeight: 1.5 }}>
-            A preview, not the final copy — the real posts, pages and emails are written from your business profile when the project runs, and every one can be edited. Go back a step to change the colours, layout or template.
+            A preview, not the final copy — the real posts, pages and emails are written from your business profile when the business workspace runs, and every one can be edited. Go back a step to change the colours, layout or template.
           </span>
         </div>
       </div>

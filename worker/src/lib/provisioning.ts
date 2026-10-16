@@ -149,7 +149,7 @@ export async function managedSpendAllowed(
   if (!raw) {
     return {
       ok: false,
-      reason: 'This workspace has not paid for a subscription yet, and managed buying spends real money on the operator\'s account. It will go ahead on its own once a payment comes in — or switch this project to your own registrar to buy it yourself.',
+      reason: 'Your account has not paid for a subscription yet, and managed buying spends real money on the operator\'s account. It will go ahead on its own once a payment comes in — or switch this business workspace to your own registrar to buy it yourself.',
     };
   }
   let status = '';

@@ -79,6 +79,7 @@ ok('a 90% bar turns away what 85% takes', !qualify({ ...good, phone: '' }, DEFAU
 /* ── What a sentence changes ── */
 const c = (s: string) => parseSourceCommand(s);
 ok('"Connect my NYC Dentists search to this project."', JSON.stringify(c('Connect my NYC Dentists search to this project.')) === '{"kind":"connect","search":"nyc dentists"}', c('Connect my NYC Dentists search to this project.'));
+ok('"Connect "NYC Dentists" to this business workspace." — the screen\'s own word', JSON.stringify(c('Connect "NYC Dentists" to this business workspace.')) === '{"kind":"connect","search":"nyc dentists"}', c('Connect "NYC Dentists" to this business workspace.'));
 ok('"Find 40 new prospects from this search every weekday."', JSON.stringify(c('Find 40 new prospects from this search every weekday.')) === '{"kind":"target","target":40,"schedule":"weekdays"}', c('Find 40 new prospects from this search every weekday.'));
 ok('"Change it to 25 per day."', JSON.stringify(c('Change it to 25 per day.')) === '{"kind":"target","target":25,"schedule":"daily"}', c('Change it to 25 per day.'));
 ok('"Pause this prospecting source."', c('Pause this prospecting source.').kind === 'pause');

@@ -37,10 +37,10 @@ export default function TemplatePicker({ value, onPick, brand, prefer, hasSite =
   /* The AI's suggestion, said with its reason — a rule, not a model call:
      what the business already has decides it. */
   const why = hasSite
-    ? `You already have a website${host ? ` (${host})` : ''}, so a second one is not needed. A funnel gives this project one focused page to send people to — it converts better than a home page.`
+    ? `You already have a website${host ? ` (${host})` : ''}, so a second one is not needed. A funnel gives this business workspace one focused page to send people to — it converts better than a home page.`
     : prefer === 'funnel'
       ? 'A funnel is one focused page with one action — book, buy or enquire — which is what a campaign needs. Add a full website later if you want one.'
-      : 'You have no website yet and this project is about being found, so a small website comes first. A funnel can be added for campaigns later.';
+      : 'You have no website yet and this business workspace is about being found, so a small website comes first. A funnel can be added for campaigns later.';
   const [all, setAll] = useState(false);
   const list = useMemo(() => TEMPLATE_CATALOG
     .filter(t => t.kind === tab && t.category !== 'Thank You Pages')
@@ -82,7 +82,7 @@ export default function TemplatePicker({ value, onPick, brand, prefer, hasSite =
       <p className="np-kind-why"><Sparkles size={13} /> <span><b>AI suggestion:</b> {why}</span></p>
 
       {none ? (
-        <span style={{ fontSize: 13, color: '#475569' }}>No page will be built. The project’s emails and posts link to {host || 'your own website'} instead{host ? '' : ', if you have one'}.</span>
+        <span style={{ fontSize: 13, color: '#475569' }}>No page will be built. The business workspace’s emails and posts link to {host || 'your own website'} instead{host ? '' : ', if you have one'}.</span>
       ) : (<>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: '#17191c' }}>Pick a design to start from{tab === 'funnel' ? ' — funnels' : ' — websites'}</span>

@@ -144,7 +144,7 @@ export function FullEmails({ steps, name, logo, palette, layout, booking }: {
         <div className="np-mail-head">
           <span><b>From</b> {name}</span>
           <span><b>To</b> Alex Morgan &lt;alex@brightsmile.example&gt;</span>
-          <span><b>Subject</b> {render(step.subject || '(written when the project is built)')}</span>
+          <span><b>Subject</b> {render(step.subject || '(written when the business workspace is built)')}</span>
           <small>{step.workflow}</small>
         </div>
         <div className="np-mail-body" data-framed={framed ? '1' : undefined}>
@@ -155,7 +155,7 @@ export function FullEmails({ steps, name, logo, palette, layout, booking }: {
           )}
           <div className="np-mail-text">
             {body ? body.split(/\n{2,}/).map((par, n) => <p key={n}>{render(par)}</p>)
-              : <p style={{ color: '#94a3b8' }}>This email is written for your business when the project is built — from your profile and offer.</p>}
+              : <p style={{ color: '#94a3b8' }}>This email is written for your business when the business workspace is built — from your profile and offer.</p>}
           </div>
         </div>
       </div>

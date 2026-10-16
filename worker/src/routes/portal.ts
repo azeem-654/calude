@@ -161,7 +161,7 @@ export async function handlePortal(req: Request, env: Env): Promise<Response> {
     ).filter(p => p.projectId && projectIds.includes(p.projectId));
 
     const boards = pipelines.map(p => ({
-      name: String(p.name ?? 'Project'),
+      name: String(p.name ?? 'Business workspace'),
       ...boardProgress((p.stages ?? []).map(s => ({ name: String(s.name ?? ''), deals: s.deals }))),
     }));
 
@@ -183,7 +183,7 @@ export async function handlePortal(req: Request, env: Env): Promise<Response> {
     return json({
       success: true,
       report: {
-        client: pf?.name ?? prof.companyName ?? 'Your project',
+        client: pf?.name ?? prof.companyName ?? 'Your business',
         label: portal.label,
         projects: (projects ?? []).map(p => ({
           name: p.name,

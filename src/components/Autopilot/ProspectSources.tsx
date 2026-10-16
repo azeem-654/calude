@@ -49,7 +49,7 @@ export function useSources(projectId: string) {
   const [error, setError] = useState('');
   const load = useCallback(async () => {
     const r = await projectSources(projectId);
-    if (!r.success) { setError(r.error ?? 'Could not read this project\'s prospecting sources.'); return; }
+    if (!r.success) { setError(r.error ?? 'Could not read this business workspace\'s prospecting sources.'); return; }
     setError(''); setConns(r.connections); setRecent(r.recent ?? []); setLog(r.log ?? []);
   }, [projectId]);
   const running = (conns ?? []).some(c => c.today.running && c.today.added < c.target);
@@ -255,7 +255,7 @@ export function SourceCard({ c, focused, busy, onAct, onReplace, onSaid }: {
           <button type="button" style={{ ...btn, color: T.bad }} aria-label={`Disconnect ${c.searchName}`} disabled={!!busy}
             onClick={async () => {
               if (await askConfirm({
-                title: `Disconnect “${c.searchName}” from this project?`,
+                title: `Disconnect “${c.searchName}” from this business workspace?`,
                 message: 'Its workflow is removed; everybody it already added stays in Contacts and on the list.',
                 confirmLabel: 'Disconnect', danger: true,
               })) void onAct(c.id, 'off', () => disconnectSource(c.id));
@@ -342,9 +342,9 @@ export function SourceFlow({ nodes, conn }: { nodes: { type: string; label?: str
           </button>
         )}
       </div>
-      {down}{box('Find new candidates', 'Only businesses this project has never examined')}
+      {down}{box('Find new candidates', 'Only businesses this business workspace has never examined')}
       {down}{box('Verify', 'Website, the address it publishes, domain and mail server')}
-      {down}{box('Duplicate check', 'Against your CRM and this project')}
+      {down}{box('Duplicate check', 'Against your CRM and this business workspace')}
       {down}{box('Suppression check', 'Your suppression list and every unsubscribe')}
       {down}{box('Confidence condition', `${min}% or more`)}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10, marginTop: 4 }}>
@@ -353,7 +353,7 @@ export function SourceFlow({ nodes, conn }: { nodes: { type: string; label?: str
           {box('Add to CRM', 'As a prospect, with where it was found')}
           {(d?.tags?.length ?? 0) > 0 && <>{down}{box('Apply tag', d!.tags.join(', '))}</>}
           {d?.pipelineId && <>{down}{box('Create opportunity')}</>}
-          {d?.nextWorkflowId && <>{down}{box('Start next workflow', 'In this project', true)}</>}
+          {d?.nextWorkflowId && <>{down}{box('Start next workflow', 'In this business workspace', true)}</>}
         </div>
         <div style={{ display: 'grid', gap: 6, alignContent: 'start' }}>
           <span style={{ fontSize: 11, fontWeight: 800, color: T.bad }}>NO</span>

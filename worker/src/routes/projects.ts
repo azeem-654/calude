@@ -414,7 +414,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     const used = await env.DB.prepare('SELECT count(*) AS n FROM crm_projects WHERE portfolio_id = ? AND account_id = ?')
       .bind(id, accountId).first<{ n: number }>();
     if ((used?.n ?? 0) > 0) {
-      return fail(`${used?.n} project${used?.n === 1 ? '' : 's'} still write${used?.n === 1 ? 's' : ''} from this portfolio. Point ${used?.n === 1 ? 'it' : 'them'} at another one first.`);
+      return fail(`${used?.n} business workspace${used?.n === 1 ? '' : 's'} still write${used?.n === 1 ? 's' : ''} from this portfolio. Point ${used?.n === 1 ? 'it' : 'them'} at another one first.`);
     }
     await env.DB.prepare('DELETE FROM crm_portfolios WHERE id = ? AND account_id = ?').bind(id, accountId).run();
     return json({ success: true, portfolios: await listPortfolios() });
@@ -424,21 +424,21 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
   if (act === 'save_project') {
     const id = String(d.id ?? '').trim() || rid('pj');
     const name = String(d.name ?? '').trim();
-    if (!name) return fail('Give the project a name — it is how you will tell it from the others.');
+    if (!name) return fail('Give the business workspace a name — it is how you will tell it from the others.');
 
     const objective = String(d.objective ?? '').trim();
     if (objective.length < 8) {
-      return fail('Say what you want this project to achieve — a sentence is enough, in your own words.');
+      return fail('Say what you want this business workspace to achieve — a sentence is enough, in your own words.');
     }
 
     const portfolioId = String(d.portfolioId ?? '').trim();
-    if (!portfolioId) return fail('Choose which client this project is for.');
+    if (!portfolioId) return fail('Choose which client this business workspace is for.');
     const pf = await env.DB.prepare('SELECT 1 AS n FROM crm_portfolios WHERE id = ? AND account_id = ?')
       .bind(portfolioId, accountId).first();
     if (!pf) return fail('That portfolio is not in this workspace.');
 
     const kind = String(d.kind ?? '') || 'general';
-    if (!KINDS.has(kind)) return fail(`"${d.kind}" is not a kind of project this app runs.`);
+    if (!KINDS.has(kind)) return fail(`"${d.kind}" is not a kind of business workspace this app runs.`);
 
     /*
      * The numbers, clamped rather than trusted.
@@ -484,7 +484,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
        than saving a project whose page would then describe nothing. */
     const brief = d.brief === undefined ? null : sanitiseBrief(d.brief);
     if (d.brief !== undefined && brief === null) {
-      return fail('The project blueprint could not be saved — it was not a blueprint, or it was far too large.');
+      return fail('The business workspace blueprint could not be saved — it was not a blueprint, or it was far too large.');
     }
 
     const now = nowIso();
@@ -492,7 +492,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
        used to update the other workspace's row — their guardrails, their brief —
        while leaving it theirs; the WHERE on the upsert now stops that, and this
        says so instead of answering "saved". */
-    if (d.id && await foreignId(env, 'crm_projects', id, accountId)) return fail('That project is not in this workspace.', 403);
+    if (d.id && await foreignId(env, 'crm_projects', id, accountId)) return fail('That business workspace is not one of yours.', 403);
     const existing = await env.DB.prepare('SELECT created_at, guardrails, status, launch_steps AS launchSteps, brief FROM crm_projects WHERE id = ? AND account_id = ?')
       .bind(id, accountId).first<{ created_at: string; guardrails: string; status: string; launchSteps: string; brief: string }>();
 
@@ -616,7 +616,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     const res = await env.DB.prepare(
       'UPDATE crm_projects SET purchase_mode = ?, pool_target = ?, updated_at = ? WHERE id = ? AND account_id = ?',
     ).bind(mode, target, nowIso(), id, accountId).run();
-    if (!res.meta.changes) return fail('That project is not in this workspace.');
+    if (!res.meta.changes) return fail('That business workspace is not one of yours.');
 
     return json({ success: true, projects: await listProjects() });
   }
@@ -624,10 +624,10 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
   if (act === 'set_status') {
     const id = String(d.id ?? '').trim();
     const status = String(d.status ?? '');
-    if (!STATUSES.has(status)) return fail(`"${d.status}" is not a state a project can be in.`);
+    if (!STATUSES.has(status)) return fail(`"${d.status}" is not a state a business workspace can be in.`);
     const res = await env.DB.prepare('UPDATE crm_projects SET status = ?, updated_at = ? WHERE id = ? AND account_id = ?')
       .bind(status, nowIso(), id, accountId).run();
-    if (!res.meta.changes) return fail('That project is not in this workspace.');
+    if (!res.meta.changes) return fail('That business workspace is not one of yours.');
     return json({ success: true, projects: await listProjects() });
   }
 
@@ -664,7 +664,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
 
     const row = await env.DB.prepare('SELECT guardrails FROM crm_projects WHERE id = ? AND account_id = ?')
       .bind(id, accountId).first<{ guardrails: string }>();
-    if (!row) return fail('That project is not in this workspace.');
+    if (!row) return fail('That business workspace is not one of yours.');
 
     let current = { ...DEFAULT_GUARDRAILS } as Record<string, string>;
     try { current = { ...current, ...JSON.parse(row.guardrails ?? '{}') as Record<string, string> }; }
@@ -689,15 +689,15 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
    * ones, so a stale screen cannot lose it.
    */
   if (act === 'reorder_projects') {
-    if (!Array.isArray(d.ids) || d.ids.length > 200) return fail('Send the projects in the order to show them.');
+    if (!Array.isArray(d.ids) || d.ids.length > 200) return fail('Send the business workspaces in the order to show them.');
     const ids = d.ids.map(x => String(x ?? '').trim());
-    if (ids.some(x => !x) || new Set(ids).size !== ids.length) return fail('Each project can appear once in the order.');
+    if (ids.some(x => !x) || new Set(ids).size !== ids.length) return fail('Each business workspace can appear once in the order.');
     const { results } = await env.DB.prepare(
       'SELECT id FROM crm_projects WHERE account_id = ? ORDER BY position, created_at, id',
     ).bind(accountId).all<{ id: string }>();
     const mine = (results ?? []).map(r => r.id);
     const known = new Set(mine);
-    if (ids.some(x => !known.has(x))) return fail('That project is not in this workspace.', 403);
+    if (ids.some(x => !known.has(x))) return fail('That business workspace is not one of yours.', 403);
     const order = [...ids, ...mine.filter(x => !ids.includes(x))];
     if (order.length) {
       await env.DB.batch(order.map((id, i) =>

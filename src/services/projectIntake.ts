@@ -704,12 +704,12 @@ const NAME_SUFFIX: Record<string, string> = {
   'product-marketing': 'Product Launch',
   'video-content': 'Video Content',
   'local-business': 'Local Growth',
-  custom: 'AI Autopilot Project',
+  custom: 'AI Autopilot Business Workspace',
 };
 
 export function defaultName(keys: string[], company: string, known: KnownMap): string {
   const first = keys[0] ?? CUSTOM;
-  let suffix = NAME_SUFFIX[first] ?? 'AI Autopilot Project';
+  let suffix = NAME_SUFFIX[first] ?? 'AI Autopilot Business Workspace';
   if (first === 'social-growth') {
     const f = String(known.frequency?.value ?? '');
     suffix = f === 'daily' ? 'Daily Content Engine' : f === 'weekdays' ? 'Weekday Content Engine' : 'Content Engine';
@@ -820,8 +820,8 @@ export function buildBlueprint(state: IntakeState, ctx: BlueprintContext): Bluep
   if (plannerChannels.length) {
     agents.push({
       name: 'AI Autopilot Planner',
-      role: `Looks at the project every day and decides what to do next — ${plannerChannels.map(ch => (PLANNER_WORDS[ch] ?? ch)).join(', ')}.`,
-      workflow: 'The whole project',
+      role: `Looks at the business workspace every day and decides what to do next — ${plannerChannels.map(ch => (PLANNER_WORDS[ch] ?? ch)).join(', ')}.`,
+      workflow: 'The whole business workspace',
     });
   }
 
@@ -959,7 +959,7 @@ export function kindOf(bp: Blueprint): ProjectKind {
 export function launchStepsOf(bp: Blueprint): LaunchStep[] {
   return bp.setup.slice(0, 12).map(s => ({
     label: s.label.slice(0, 120),
-    why: s.by === 'autopilot' ? 'Done by AI Autopilot while it builds the project.' : 'Yours to do — the link goes straight there.',
+    why: s.by === 'autopilot' ? 'Done by AI Autopilot while it builds the business workspace.' : 'Yours to do — the link goes straight there.',
     route: s.route ?? '',
   }));
 }

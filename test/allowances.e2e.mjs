@@ -66,7 +66,7 @@ const p1 = await mk('Kitchen fitters'), p2 = await mk('Bathroom fitters');
 ok('two projects are made on the trial', p1.success && p2.success, [p1, p2]);
 const p3 = await mk('Architects');
 ok('the third is refused by name', p3.success === false && p3.code === 'allowance' && p3.meter === 'autopilot_projects' && p3.used === 2 && p3.limit === 2 && p3.status === 402, p3);
-ok('…saying the plan and the plan that raises it', /Free trial includes 2 AI Autopilot projects and 2 exist/.test(p3.error) && p3.upgrade?.id === 'starter' && /Starter includes 3/.test(p3.error), p3.error);
+ok('…saying the plan and the plan that raises it', /Free trial includes 2 AI Autopilot business workspaces and 2 exist/.test(p3.error) && p3.upgrade?.id === 'starter' && /Starter includes 3/.test(p3.error), p3.error);
 ok('…and nothing was written', (await api('projects.php', { token: CT, accountId: ACCT, action: 'get' })).projects?.length === 2);
 const asked = await api('allowances.php', { token: CT, accountId: ACCT, action: 'check', meter: 'autopilot_projects' });
 ok('`check` answers the same before anything is tried', asked.success && asked.ok === false && asked.code === 'allowance' && asked.limit === 2, asked);
@@ -114,7 +114,7 @@ for (const width of [1280, 390]) {
   const card = page.locator('[data-usage-card]');
   await card.locator('[data-meter="autopilot_projects"]').waitFor({ timeout: 15_000 });
   const row = await card.locator('[data-meter="autopilot_projects"]').innerText();
-  ok(`${width}: the Usage card says 2 of 2 projects`, /AI Autopilot projects/.test(row) && /2 of 2/.test(row), row);
+  ok(`${width}: the Usage card says 2 of 2 projects`, /AI Autopilot business workspaces/.test(row) && /2 of 2/.test(row), row);
   const shorts = await card.locator('[data-meter="ai_shorts"]').innerText();
   ok(`${width}: …and every other meter, used and allowed`, /0 of 10/.test(shorts) && (await card.locator('[data-meter]').count()) === 14, shorts);
   ok(`${width}: …on the free trial`, /Free trial/.test(await card.innerText()));
@@ -128,7 +128,7 @@ for (const width of [1280, 390]) {
   const strip = page.locator('[data-meter-strip]');
   await strip.waitFor({ timeout: 15_000 }).catch(() => {});
   const s = await strip.innerText().catch(() => '');
-  ok(`${width}: the board's strip says 2/2 projects`, /Projects\s*2\/2/.test(s.replace(/\n/g, ' ')), s);
+  ok(`${width}: the board's strip says 2/2 projects`, /Business Workspaces\s*2\/2/.test(s.replace(/\n/g, ' ')), s);
   ok(`${width}: nothing is wider than the window on the board`, (await overflow(page)) <= 0, await overflow(page));
   await ctx.close();
 }
@@ -142,7 +142,7 @@ for (const width of [1280, 390]) {
   await page.goto(`${B}/signups`, { waitUntil: 'networkidle' });
   const ed = page.locator('[data-plan-limits]');
   await ed.waitFor({ timeout: 15_000 });
-  await ed.getByLabel('Free trial: AI Autopilot projects').fill('3');
+  await ed.getByLabel('Free trial: AI Autopilot business workspaces').fill('3');
   await ed.getByLabel('Growth: AI Shorts').fill('150');
   await ed.getByRole('button', { name: 'Save allowances' }).click();
   await ed.getByText('Saved.').waitFor({ timeout: 10_000 }).catch(() => {});

@@ -271,7 +271,7 @@ export async function handleSources(req: Request, env: Env): Promise<Response> {
     const def = await loadDef(s(d.searchId, 80));
     if (!def) return fail('Choose a search first.', 200, { field: 'source.search' });
     const project = await loadProject(s(d.projectId, 80));
-    if (!project) return fail('Choose which project uses these prospects.', 200, { field: 'source.project' });
+    if (!project) return fail('Choose which business workspace uses these prospects.', 200, { field: 'source.project' });
     const refused = await sourceRefusal(env, def.source, owner);
     if (refused) return fail(refused.error, 200, { code: refused.code });
     const v = await rateLimit(env, { what: 'source-connect', who: accountId, max: 40, windowSeconds: 3600 });
@@ -318,7 +318,7 @@ export async function handleSources(req: Request, env: Env): Promise<Response> {
 
   if (act === 'project') {
     const project = await loadProject(s(d.projectId, 80));
-    if (!project) return fail('That project is not in this workspace.', 404);
+    if (!project) return fail('That business workspace is not one of yours.', 404);
     const rows = (await env.DB.prepare("SELECT id FROM crm_prospect_finders WHERE account_id = ? AND project_id = ? AND search_id != '' ORDER BY created_at").bind(accountId, project.id).all<{ id: string }>()).results ?? [];
     const conns = [];
     for (const r of rows) { const f = await loadFinder(env, r.id, accountId); if (f) conns.push(await connView(f)); }
@@ -399,7 +399,7 @@ export async function handleSources(req: Request, env: Env): Promise<Response> {
   /* ── A typed sentence ── */
   if (act === 'command') {
     const project = await loadProject(s(d.projectId, 80));
-    if (!project) return fail('That project is not in this workspace.', 404);
+    if (!project) return fail('That business workspace is not one of yours.', 404);
     const text = s(d.text, 300);
     const cmd = parseSourceCommand(text);
     const conns = (await env.DB.prepare("SELECT id FROM crm_prospect_finders WHERE account_id = ? AND project_id = ? AND search_id != '' ORDER BY created_at").bind(accountId, project.id).all<{ id: string }>()).results ?? [];
@@ -411,10 +411,10 @@ export async function handleSources(req: Request, env: Env): Promise<Response> {
     if (cmd.kind === 'connect') {
       const defs = (await env.DB.prepare('SELECT * FROM crm_search_definitions WHERE account_id = ?').bind(accountId).all<DefRow>()).results ?? [];
       const m = bestMatch(cmd.search, defs);
-      return json({ success: true, understood: true, open: 'connect', searchId: m?.id ?? '', said: m ? `Connect "${m.name}" to this project — check the settings and press Activate.` : `No saved search matches "${cmd.search}". Run it in AI Prospecting first, then connect it.` });
+      return json({ success: true, understood: true, open: 'connect', searchId: m?.id ?? '', said: m ? `Connect "${m.name}" to this business workspace — check the settings and press Activate.` : `No saved search matches "${cmd.search}". Run it in AI Prospecting first, then connect it.` });
     }
     if (!target) {
-      return json({ success: true, understood: true, said: conns.length ? 'Which prospecting source? Choose one, then say it again.' : 'This project has no prospecting source yet — connect a search first.', needsSource: conns.length > 1 });
+      return json({ success: true, understood: true, said: conns.length ? 'Which prospecting source? Choose one, then say it again.' : 'This business workspace has no prospecting source yet — connect a search first.', needsSource: conns.length > 1 });
     }
     const c = connectionOf(target);
     const patch: Req = {};
@@ -432,7 +432,7 @@ export async function handleSources(req: Request, env: Env): Promise<Response> {
       return json({ success: true, understood: true, open: 'run_now', finderId: target.id, said: 'Starting today\'s run now.' });
     }
     if (cmd.kind === 'skip_contacted') {
-      return json({ success: true, understood: true, said: 'That is already how it works: anybody already in your CRM, already in this project, on your suppression list or unsubscribed is turned away as a duplicate or suppressed, and never examined twice.' });
+      return json({ success: true, understood: true, said: 'That is already how it works: anybody already in your CRM, already in this business workspace, on your suppression list or unsubscribed is turned away as a duplicate or suppressed, and never examined twice.' });
     }
     if (cmd.kind === 'target') {
       patch.target = cmd.target;
@@ -448,7 +448,7 @@ export async function handleSources(req: Request, env: Env): Promise<Response> {
       const flows = (await env.DB.prepare('SELECT id, name FROM crm_project_workflows WHERE account_id = ? AND project_id = ?').bind(accountId, project.id).all<{ id: string; name: string }>()).results ?? [];
       const sourceFlows = new Set(((await env.DB.prepare('SELECT workflow_id FROM crm_prospect_finders WHERE account_id = ?').bind(accountId).all<{ workflow_id: string }>()).results ?? []).map(x => x.workflow_id));
       const m = bestMatch(cmd.workflow, flows.filter(w => !sourceFlows.has(w.id)));
-      if (!m) return json({ success: true, understood: true, said: `No workflow in this project is called anything like "${cmd.workflow}".` });
+      if (!m) return json({ success: true, understood: true, said: `No workflow in this business workspace is called anything like "${cmd.workflow}".` });
       patch.destination = { ...c.destination, nextWorkflowId: m.id };
       said = `New verified leads now start in "${m.name}".`;
     }
@@ -512,7 +512,7 @@ async function readSettings(env: Env, accountId: string, projectId: string, d: R
   if (nextWorkflowId) {
     const wf = await env.DB.prepare('SELECT id FROM crm_project_workflows WHERE id = ? AND account_id = ? AND project_id = ?').bind(nextWorkflowId, accountId, projectId).first<{ id: string }>();
     const isSource = await env.DB.prepare('SELECT id FROM crm_prospect_finders WHERE account_id = ? AND workflow_id = ?').bind(accountId, nextWorkflowId).first<{ id: string }>();
-    if (!wf || isSource) return { error: 'Choose a workflow of this project that works with contacts.', field: 'source.next' };
+    if (!wf || isSource) return { error: 'Choose a workflow of this business workspace that works with contacts.', field: 'source.next' };
   }
   return {
     schedule, runDays, runHour, tz, target, minConfidence, verify, listName: list.name ?? '',

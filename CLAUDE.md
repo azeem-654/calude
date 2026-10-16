@@ -86,6 +86,17 @@ were skipped rather than sending something broken.
 what to drive. The planner is pure and takes a `Workspace` snapshot, which is
 why it can be tested without a database — keep it that way.
 
+**Customers call a project a "business workspace"** (the owner's word: each
+project is a business). In user-facing text — labels, toasts, refusals,
+emails — it is "business workspace" mid-sentence, "Business Workspace(s)" in
+titles, tabs and buttons, and the collection is **AI Autopilot Business
+Workspaces**. Never a bare "workspace": that already means the customer's
+account (the switcher, sub-accounts), so a sentence naming both is reworded
+("That business workspace is not one of yours."). Code, types, routes
+(`/autopilot?project=`), API actions (`save_project`), tables and test ids
+keep "project"; so does a video project in AI Video Studio, and the nav's
+`aka` keeps "project(s)" so search still finds it.
+
 - **`effect` is its own column, not `detail`.** `detail` is what happened,
   written at the end. They were once the same column, and approving an action
   erased what it was supposed to do; the tick then did nothing and marked it

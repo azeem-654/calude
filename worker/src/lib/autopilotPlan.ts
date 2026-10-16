@@ -444,7 +444,7 @@ export function planNext(ws: Workspace): PlannedAction[] {
         kind: 'create',
         summary: wantsFunnel ? 'Build a funnel to sell from' : 'Build a website for what you do',
         because: wantsFunnel
-          ? 'this project sells a product and has nowhere to sell it, and a funnel is one page with one decision on it — which is what a product needs'
+          ? 'this business workspace sells a product and has nowhere to sell it, and a funnel is one page with one decision on it — which is what a product needs'
           : 'there is no website or funnel here, so every campaign would send people nowhere — and a services business is judged on whether it looks like a real firm',
         permission: 'createWorkflows',
         effect: { type: 'write', what: wantsFunnel ? 'landing' : 'website' },
@@ -572,8 +572,8 @@ export function planNext(ws: Workspace): PlannedAction[] {
         channels: ['email'],
         scope: 'project',
         kind: 'error',
-        summary: `The contact list "${aud.name}" this project writes to no longer exists`,
-        because: 'it was deleted or merged away in Contacts, so this project has nobody to write to — choose another list on the project, or make it again in Prospecting',
+        summary: `The contact list "${aud.name}" this business workspace writes to no longer exists`,
+        because: 'it was deleted or merged away in Contacts, so this business workspace has nobody to write to — choose another list on the business workspace, or make it again in Prospecting',
         effect: { type: 'none' },
       });
     } else if (aud.smart) {

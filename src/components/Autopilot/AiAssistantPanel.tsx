@@ -73,7 +73,7 @@ export default function AiAssistantPanel({
               {projectId && <span className="ap-live-dot" />}
               {/* The honest state. "Online" on a screen where it cannot do
                   anything is the small lie this panel is careful about. */}
-              {building ? 'Writing it now…' : projectId ? 'Ready' : 'Choose a project first'}
+              {building ? 'Writing it now…' : projectId ? 'Ready' : 'Choose a business workspace first'}
             </span>
           </span>
         </header>
@@ -91,13 +91,13 @@ export default function AiAssistantPanel({
               display: 'flex', gap: 7,
             }}>
               <Info size={13} style={{ flexShrink: 0, marginTop: 1 }} />
-              <span>There are no projects yet. A workflow belongs to one, so make a project first and this
+              <span>There are no business workspaces yet. A workflow belongs to one, so make a business workspace first and this
                 can write for it.</span>
             </p>
           ) : (
             <label style={{ display: 'block' }}>
               <span style={{ display: 'block', fontSize: 10.5, fontWeight: 800, color: T.muted, marginBottom: 4 }}>
-                WHICH PROJECT
+                WHICH BUSINESS WORKSPACE
               </span>
               <select value={projectId} onChange={e => onProject(e.target.value)} style={{
                 width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 10,

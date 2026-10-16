@@ -355,7 +355,7 @@ let listId = '';
   /* The Autopilot shortcut: the wizard opens working from the list. */
   await page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
   await listMenu(page, LIST, 'Use it in a new AI Autopilot business workspace');
-  const np = page.getByRole('dialog', { name: 'New project' });
+  const np = page.getByRole('dialog', { name: 'New business workspace' });
   await np.waitFor({ timeout: 8000 });
   const prompt = await np.getByLabel('What would you like AI Autopilot to do?').inputValue();
   ok('the Autopilot shortcut opens New Project with a starting sentence naming the list', /Dentists — Leeds test/.test(prompt), prompt);
@@ -399,7 +399,7 @@ let listId = '';
   }
   ok('the list question was shown', sawPicker);
   const bpText = await np.innerText();
-  ok('the blueprint says only the list is written to', /Only the people on that list are written to by this project/.test(bpText), bpText.slice(0, 600));
+  ok('the blueprint says only the list is written to', /Only the people on that list are written to by this business workspace/.test(bpText), bpText.slice(0, 600));
   await cta.click(); // → connections
   await page.waitForTimeout(400);
   await cta.click(); // → review

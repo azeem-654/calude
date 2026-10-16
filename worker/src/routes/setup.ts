@@ -542,7 +542,7 @@ export async function handleSetup(req: Request, env: Env): Promise<Response> {
 
   if (act === 'project_assets') {
     const projectId = String(d.projectId ?? '').trim();
-    if (!projectId) return fail('Which project?');
+    if (!projectId) return fail('Which business workspace?');
 
     /*
      * Everything bought for this project, found through its orders.

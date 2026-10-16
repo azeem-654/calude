@@ -78,7 +78,7 @@ export default function FirstLeads({ trades, places, perDay, onCorrect, onAdd }:
     if (r.error && !r.code) { await new Promise(res => window.setTimeout(res, 2500)); r = await searchProspects({ source: 'free', trade, place, fresh: true }); }
     if (!live()) return;
     if (r.error) {
-      mark('search', { state: 'warn', detail: `The business directory did not answer just now (${r.error}). This does not hold the project up — once built, it searches by itself and retries.` });
+      mark('search', { state: 'warn', detail: `The business directory did not answer just now (${r.error}). This does not hold the business workspace up — once built, it searches by itself and retries.` });
       mark('read', { state: 'todo' }); mark('check', { state: 'todo' });
       return;
     }
@@ -255,7 +255,7 @@ export default function FirstLeads({ trades, places, perDay, onCorrect, onAdd }:
       </div>
 
       <p style={{ margin: 0, fontSize: 12.5, color: '#6b7280', lineHeight: 1.55 }}>
-        Nothing is saved yet. When the project is built it starts with this search, then works through {trades.length > 1 ? `${trades.length} kinds of business` : trade}
+        Nothing is saved yet. When the business workspace is built it starts with this search, then works through {trades.length > 1 ? `${trades.length} kinds of business` : trade}
         {places.length > 1 ? ` across ${places.length} places` : ''}, adding only businesses whose address was checked. You approve each batch before anybody is emailed.
       </p>
     </div>

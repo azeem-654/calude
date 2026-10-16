@@ -98,7 +98,7 @@ export function setupProgress(input: SetupInput): SetupProgress {
   const steps: SetupStep[] = [
     {
       key: 'created',
-      label: 'Project created',
+      label: 'Business workspace created',
       state: 'done',
       detail: 'It exists on the server and runs whether or not this is open.',
     },
@@ -108,7 +108,7 @@ export function setupProgress(input: SetupInput): SetupProgress {
       state: input.hasPortfolio ? 'done' : 'stuck',
       detail: input.hasPortfolio
         ? 'Everything it writes comes from this profile.'
-        : 'No client is attached, so there is nothing to write from. Add one in Project Settings.',
+        : 'No client is attached, so there is nothing to write from. Add one in Business Workspace Settings.',
     },
     {
       key: 'permissions',
@@ -124,7 +124,7 @@ export function setupProgress(input: SetupInput): SetupProgress {
       state: input.launchSteps.length > 0 ? 'done' : 'waiting',
       detail: input.launchSteps.length > 0
         ? `${input.launchSteps.length} steps, in the order you saw in the wizard.`
-        : 'No build order was recorded for this project.',
+        : 'No build order was recorded for this business workspace.',
     },
     {
       key: 'plan',

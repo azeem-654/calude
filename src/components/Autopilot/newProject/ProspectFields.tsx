@@ -163,7 +163,7 @@ function LiveSample({ trade, place }: { trade: string; place: string }) {
           this says that rather than showing a red error mid-setup. */}
       {!state.busy && state.error && (
         <span style={{ fontSize: 12.5, color: '#92400e', lineHeight: 1.55 }}>
-          The business directory did not answer just now, so there is no sample to show. That does not hold the project up —
+          The business directory did not answer just now, so there is no sample to show. That does not hold the business workspace up —
           once it is published it searches by itself every few minutes, tries again when a source is busy, and adds what it finds.
           <span style={{ display: 'block', color: '#6b7280', fontSize: 11.5, marginTop: 2 }}>{state.error}</span>
         </span>
@@ -174,7 +174,7 @@ function LiveSample({ trade, place }: { trade: string; place: string }) {
             {state.note && <span style={{ fontSize: 12, color: '#4c39d1' }}>{state.note}</span>}
             <span style={{ fontSize: 12, color: '#6b7280' }}>
               {state.total} found live at {time} — the first {state.rows.length} below. Every day it reads their websites for the address each publishes,
-              checks it, and adds the new ones to this project.
+              checks it, and adds the new ones to this business workspace.
             </span>
             <ul className="np-sample-list">
               {state.rows.map(p => (

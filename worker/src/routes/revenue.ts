@@ -109,7 +109,7 @@ export async function handleRevenue(req: Request, env: Env): Promise<Response> {
      foreign id is refused rather than answered with zeros — zeros would say
      "that project earned nothing", which is a claim about somebody else's. */
   const only = String(d.projectId ?? '').trim();
-  if (only && !projects.some(p => p.id === only)) return fail('That project is not in this workspace.', 403);
+  if (only && !projects.some(p => p.id === only)) return fail('That business workspace is not one of yours.', 403);
 
   const { since, buckets } = windowFor(days);
   const look = await attributionLookups(env, accountId);

@@ -114,8 +114,8 @@ export default function Understanding({ stages, state, finished, questionCount, 
 
       {finished && state && (
         <div className="np-rise" style={{ display: 'grid', gap: 16 }}>
-          <section className="np-understood" aria-label="Your project">
-            <span className="np-eyebrow"><Sparkles size={13} /> YOUR PROJECT</span>
+          <section className="np-understood" aria-label="Your business workspace">
+            <span className="np-eyebrow"><Sparkles size={13} /> YOUR BUSINESS WORKSPACE</span>
             <p className="np-understood-summary">{state.summary}</p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ fontSize: 12.5, color: '#6b7280' }}>
@@ -161,7 +161,7 @@ export default function Understanding({ stages, state, finished, questionCount, 
           </section>
 
           {onToggleAddon && (
-            <section className="np-addons" aria-label="Add more to this project">
+            <section className="np-addons" aria-label="Add more to this business workspace">
               <span className="np-eyebrow"><Sparkles size={13} /> ALSO HAVE AI AUTOPILOT DO THIS — OPTIONAL</span>
               <div className="np-addon-row">
                 {ADDONS.filter(a => a.key !== state.solutionKeys[0]).map(a => {
@@ -205,7 +205,7 @@ export default function Understanding({ stages, state, finished, questionCount, 
             <span>
               {questionCount === 0 ? 'I have everything I need to draw up the plan.'
                 : topics.length ? `About ${topics.join(', ').toLowerCase()} — each with suggestions and “Let AI decide”.`
-                  : 'Only the ones this project needs, each with suggestions and “Let AI decide”.'}
+                  : 'Only the ones this business workspace needs, each with suggestions and “Let AI decide”.'}
             </span>
           </section>
 

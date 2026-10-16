@@ -36,8 +36,8 @@ const openAutopilot = async (ctx) => {
   const errs = [];
   p.on('pageerror', e => errs.push(String(e)));
   await p.goto(`${B}/autopilot`, { waitUntil: 'networkidle' });
-  await p.getByRole('button', { name: /New project|Start your first project/i }).first().click();
-  await p.getByRole('dialog', { name: 'New project' }).waitFor({ timeout: 8000 });
+  await p.getByRole('button', { name: /New business workspace|Start your first business workspace/i }).first().click();
+  await p.getByRole('dialog', { name: 'New business workspace' }).waitFor({ timeout: 8000 });
   await p.waitForTimeout(900);
   return { p, errs };
 };

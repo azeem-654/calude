@@ -364,7 +364,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
       const bad = siteSources.filter(s => !s.ok);
       mark('site', r.ok
         ? (bad.length ? { state: 'warn', detail: `Could not read ${bad.map(b => host(b.what)).join(', ')}: ${bad[0].error}` } : { state: 'done', detail: readProfile || undefined })
-        : { state: 'warn', detail: 'Not read — it will be read again while the project is built.' });
+        : { state: 'warn', detail: 'Not read — it will be read again while the business workspace is built.' });
     }
     if (files.length) {
       const bad = fileSources.filter(s => !s.ok);
@@ -392,7 +392,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
       state: 'done',
       detail: fromTemplates
         ? `${fromTemplates} of ${TEMPLATE_COUNT} ready-made workflow templates fit — they will be personalised.`
-        : draft.workflows.length ? 'None fit exactly, so the workflows will be built for this project.' : 'Nothing recurring needed so far.',
+        : draft.workflows.length ? 'None fit exactly, so the workflows will be built for this business workspace.' : 'Nothing recurring needed so far.',
     });
     mark('known', { state: 'now' }); await pause(220);
     const knownCount = Object.keys(st.known).length;
@@ -770,7 +770,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     };
     setPhase('build');
     setSteps(planSteps(input));
-    setSay(seed ? 'Building your Protected Central project…' : 'I’m getting started.');
+    setSay(seed ? 'Building your Protected Central business workspace…' : 'I’m getting started.');
     if (seed) clearPendingPlan();
     const solution = bp.solutionKeys[0];
     trackKnown('autopilot_project_build_started', { solution });
@@ -865,7 +865,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     if (phase === 'understand') return screens.length || (state && allQuestions(state).some(q => applies(q, state.known) && !state.known[q.id])) ? 'Answer a few questions' : 'See the blueprint';
     if (phase === 'questions' && leadsOpen) return screenIdx + 1 < screens.length ? 'These look right — continue' : 'These look right — see the plan';
     if (phase === 'questions' && leadsDue()) return 'Find my first leads';
-    if (phase === 'questions') return screenIdx + 1 < screens.length ? 'Next' : seed ? 'Build my project' : 'See the blueprint';
+    if (phase === 'questions') return screenIdx + 1 < screens.length ? 'Next' : seed ? 'Build my business workspace' : 'See the blueprint';
     if (phase === 'blueprint') return 'Looks good — continue';
     if (phase === 'requirements') return 'Review';
     if (phase === 'review') return gap ? `First: ${gap.replace(/…$/, '').toLowerCase()}` : 'Build My AI Autopilot';
@@ -939,7 +939,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
   );
 
   return (
-    <WizardBackdrop label="New project" onClose={close}>
+    <WizardBackdrop label="New business workspace" onClose={close}>
       <div className="wz-card np-card" onKeyDown={e => { if (e.key === 'Escape') close(); }}>
         <header className="np-head">
           <button type="button" onClick={close} disabled={building} style={{
@@ -1095,7 +1095,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                   </button>
                 )}
                 {result.projectId && (
-                  <WizardCta onClick={() => onCreated(result.projectId)} label="Open the project" icon={<ArrowRight size={15} />} />
+                  <WizardCta onClick={() => onCreated(result.projectId)} label="Open the business workspace" icon={<ArrowRight size={15} />} />
                 )}
                 {!result.projectId && <WizardCta onClick={() => { setResult(null); setPhase('review'); }} label="Back to the review" icon={<ArrowLeft size={15} />} />}
               </>
@@ -1103,7 +1103,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
               <WizardCta onClick={() => undefined} disabled label="Building…" icon={<Loader size={15} className="spin" />} />
             )
           ) : phase === 'domains' ? (
-            <button type="button" className="np-back" onClick={() => onCreated(result?.projectId)}>Skip for now — open the project</button>
+            <button type="button" className="np-back" onClick={() => onCreated(result?.projectId)}>Skip for now — open the business workspace</button>
           ) : (
             <WizardCta
               onClick={next}

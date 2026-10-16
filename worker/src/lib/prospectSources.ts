@@ -229,7 +229,7 @@ export type RejectReason =
   | 'failed_verification' | 'disposable' | 'role_address' | 'free_mail' | 'not_mailbox_verified' | 'low_confidence' | 'excluded';
 
 export const REJECT_LABEL: Record<RejectReason, string> = {
-  duplicate: 'Already in your CRM or this project',
+  duplicate: 'Already in your CRM or this business workspace',
   suppressed: 'On your suppression or unsubscribe list',
   no_email: 'No address published',
   no_website: 'No website',
@@ -303,7 +303,7 @@ export function qualify(c: Candidate, filters: Filters, verify: Verify, minConfi
   if (c.phone) add('phone', 'Phone number', 'pass', c.phone, 5);
   else { add('phone', 'Phone number', filters.phone ? 'fail' : 'skip', 'None listed'); if (filters.phone) reject('no_phone'); }
 
-  add('duplicate', 'Duplicate check', c.duplicate ? 'fail' : 'pass', c.duplicate ? 'Already in your CRM or this project' : 'New to you');
+  add('duplicate', 'Duplicate check', c.duplicate ? 'fail' : 'pass', c.duplicate ? 'Already in your CRM or this business workspace' : 'New to you');
   if (c.duplicate) reject('duplicate');
   add('suppression', 'Suppression check', c.suppressed ? 'fail' : 'pass', c.suppressed ? 'Asked not to be contacted' : 'Not on your lists');
   if (c.suppressed) reject('suppressed');
@@ -367,8 +367,8 @@ function scheduleIn(t: string): { schedule: Schedule; weeklyDay?: number } | nul
 export function parseSourceCommand(text: string): Command {
   const t = ` ${text.toLowerCase().replace(/[’']/g, '').replace(/[.!?,;]+(?=\s|$)/g, ' ').replace(/\s+/g, ' ').trim()} `;
   if (!t.trim()) return { kind: 'unknown' };
-  const conn = /\bconnect (?:my |the )?(.+?) search\b/.exec(t) ?? /\bconnect (?:my |the )?(?:search )?(?:for )?"?(.+?)"?(?: to (?:this|the) project)?\s*$/.exec(t.trim());
-  if (conn && !/\bworkflow\b/.test(t)) return { kind: 'connect', search: conn[1].replace(/\b(?:to|into) (?:this|the|my) project\b/, '').trim() };
+  const conn = /\bconnect (?:my |the )?(.+?) search\b/.exec(t) ?? /\bconnect (?:my |the )?(?:search )?(?:for )?"?(.+?)"?(?: to (?:this|the) (?:project|business workspace))?\s*$/.exec(t.trim());
+  if (conn && !/\bworkflow\b/.test(t)) return { kind: 'connect', search: conn[1].replace(/\b(?:to|into) (?:this|the|my) (?:project|business workspace)\b/, '').trim() };
   if (/\b(?:pause|stop|halt)\b(?! adding)/.test(t) && /\b(?:source|prospecting|search|finding|it|this)\b/.test(t)) return { kind: 'pause' };
   if (/\b(?:resume|restart|unpause|start again|switch (?:it )?back on)\b/.test(t)) return { kind: 'resume' };
   if (/\b(?:run|find|start) (?:it |them |one )?now\b|\brun (?:a|today'?s) run\b/.test(t)) return { kind: 'run_now' };

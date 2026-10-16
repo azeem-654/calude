@@ -129,7 +129,7 @@ export default function LeadsList({ projectId, projectName, group, onGroup, refr
   /** From the top again — as many as are on screen (up to a page of 200), so a refresh does not fold "Show more" back up. */
   const reload = useCallback(async (keep: boolean) => {
     const r = await projectLeads(projectId, { status: group, q, limit: keep ? Math.min(200, Math.max(50, shown.current)) : 50 });
-    if (!r.success) { setError(r.error ?? 'Could not read this project\'s leads.'); return; }
+    if (!r.success) { setError(r.error ?? 'Could not read this business workspace\'s leads.'); return; }
     setError('');
     setRows(r.rows); setNext(r.next); setMatched(r.matched); setSources(r.sources);
     onCounts(r.counts);
@@ -188,7 +188,7 @@ export default function LeadsList({ projectId, projectName, group, onGroup, refr
         <div style={{ display: 'grid', gap: 3, flex: '1 1 260px', minWidth: 0 }}>
           <b style={{ fontSize: 15, color: T.ink }}>All leads</b>
           <span style={{ fontSize: 12.5, color: T.muted, lineHeight: 1.55 }}>
-            Every business this project has looked at, newest first, and what became of it — the ones added to your audience and the ones it could not use.
+            Every company this business workspace has looked at, newest first, and what became of it — the ones added to your audience and the ones it could not use.
           </span>
         </div>
         <button type="button" style={btn} disabled={busy === 'csv' || !total} onClick={() => void exportCsv()} data-testid="leads-export">

@@ -58,8 +58,8 @@ const shortsMsg = refusalText(meterOf('ai_shorts')!, 30, 30, 'Starter', { name: 
 ok('a monthly refusal names the plan, the numbers, the date and the plan that raises it',
   /30 AI Shorts on Starter/.test(shortsMsg) && /30 of 30/.test(shortsMsg) && /1 November/.test(shortsMsg) && /Growth includes 100 a month/.test(shortsMsg), shortsMsg);
 const projMsg = refusalText(meterOf('autopilot_projects')!, 2, 2, 'Free trial', { name: 'Starter', limit: 3 });
-ok('a count refusal says what exists and how to make room', /Free trial includes 2 AI Autopilot projects and 2 exist/.test(projMsg) && /delete one/.test(projMsg), projMsg);
-ok('a workflow refusal is about the one project', /This project already has 6 of the 6 workflows/.test(refusalText(meterOf('workflows_per_project')!, 6, 6, 'Starter', null)));
+ok('a count refusal says what exists and how to make room', /Free trial includes 2 AI Autopilot business workspaces and 2 exist/.test(projMsg) && /delete one/.test(projMsg), projMsg);
+ok('a workflow refusal is about the one project', /This business workspace already has 6 of the 6 workflows/.test(refusalText(meterOf('workflows_per_project')!, 6, 6, 'Starter', null)));
 
 /* ── One table: the site, Plan & billing and the server ── */
 console.log('One table');

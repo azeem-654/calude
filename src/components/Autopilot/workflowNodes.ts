@@ -76,7 +76,7 @@ export interface AgentSource {
 export const AGENT_SOURCES: Record<string, AgentSource> = {
   portfolio: {
     label: "The client's own portfolio",
-    hint: 'What they do, what they sell and who buys it — the profile on this project.',
+    hint: 'What they do, what they sell and who buys it — the profile on this business workspace.',
     needsUrl: false,
   },
   rss: {
@@ -113,7 +113,7 @@ export const AGENT_SOURCES: Record<string, AgentSource> = {
      does not offer it for writing posts (see `editorChoices`). */
   directory: {
     label: 'Business directories',
-    hint: 'Searched live every day for the kinds of business and the places this project prospects in — set on its Prospects tab.',
+    hint: 'Searched live every day for the kinds of business and the places this business workspace prospects in — set on its Prospects tab.',
     needsUrl: false,
     finderOnly: true,
   },
@@ -121,7 +121,7 @@ export const AGENT_SOURCES: Record<string, AgentSource> = {
      project. Only the catalogue's "Recordings I upload" builds it. */
   video: {
     label: 'Recordings you upload',
-    hint: 'Each video uploaded into this project in AI Video Studio, as it arrives.',
+    hint: 'Each video uploaded into this business workspace in AI Video Studio, as it arrives.',
     needsUrl: false,
     finderOnly: true,
   },
@@ -140,7 +140,7 @@ export const AGENT_OUTPUTS: Record<string, AgentOutput> = {
   blog: { label: 'A blog post', where: 'Blog', route: '/blog-automation' },
   email_campaign: { label: 'An email campaign', where: 'Campaigns', route: '/marketing?tab=sequences' },
   /* Made by the project's daily prospect finder (worker/src/prospectFinderTick.ts), never chosen in the editor. */
-  prospects: { label: 'New prospects', where: "this project's audience", route: '/autopilot', finderOnly: true },
+  prospects: { label: 'New prospects', where: "this business workspace's audience", route: '/autopilot', finderOnly: true },
   /* Made by AI Video Studio (worker/src/lib/video/pipeline.ts) when a recording is uploaded into the project. */
   video_package: { label: 'A cleaned video, Shorts, captions and PNG thumbnails', where: 'AI Video Studio', route: '/video-studio', finderOnly: true },
 };
@@ -193,14 +193,14 @@ export function nodeDetail(type: string, config: Record<string, string> = {}): s
     /* A schedule reads as a schedule. "schedule — daily" is the code's words;
        "Every day" is what somebody set. */
     if (c('event') === 'schedule') return scheduleLabel(config);
-    if (c('event') === 'video_uploaded') return 'A recording is uploaded to this project';
+    if (c('event') === 'video_uploaded') return 'A recording is uploaded to this business workspace';
     const ev = c('event').replace(/_/g, ' ');
     const named = c('formName') || c('tag');
     return named ? `${ev} — ${named}` : ev;
   }
   if (type === 'ai') {
     if (c('produces') === 'prospects') {
-      return `Searches business directories → up to ${Number(c('perDay')) || 20} new prospects a day → this project's audience`;
+      return `Searches business directories → up to ${Number(c('perDay')) || 20} new prospects a day → this business workspace's audience`;
     }
     if (c('produces') === 'video_package') {
       const n = Number(c('shorts')) || 0;
@@ -627,9 +627,9 @@ export function previewStep(node: WorkflowNode, contact = SAMPLE_CONTACT): StepP
         headline: `Finds up to ${Number(c('perDay')) || 20} new prospects a day: ${c('trades') || 'the kinds of business set'} in ${c('places') || 'the places set'}.`,
         blocked: '',
         notes: [
-          'It searches live, reads each business\'s website for the address it publishes, checks it, and adds the new ones to this project\'s audience. It sends nothing.',
+          'It searches live, reads each business\'s website for the address it publishes, checks it, and adds the new ones to this business workspace\'s audience. It sends nothing.',
           'Your outreach is proposed to them in batches of 20, and each batch waits for your approval.',
-          'Change what it looks for, and where, on the project\'s Prospects tab.',
+          'Change what it looks for, and where, on the business workspace\'s Prospects tab.',
         ],
       };
     }

@@ -65,7 +65,7 @@ export default function ProjectLogo({
   const tint = palette[h % palette.length];
 
   async function store(dataUrl: string) {
-    if (!portfolio) { onError('This project has no client yet, so there is nowhere to keep a logo.'); return; }
+    if (!portfolio) { onError('This business workspace has no client yet, so there is nowhere to keep a logo.'); return; }
     setBusy(true);
     const r = await savePortfolio({
       id: portfolio.id,
@@ -109,7 +109,7 @@ export default function ProjectLogo({
         onClick={() => input.current?.click()}
         disabled={busy || !portfolio}
         aria-label={label}
-        title={portfolio ? label : 'This project has no client yet.'}
+        title={portfolio ? label : 'This business workspace has no client yet.'}
         style={{
           width: size, height: size, borderRadius: 15, padding: 0, overflow: 'hidden',
           border: `1px solid ${LINE}`, background: logo ? '#fff' : tint.bg,

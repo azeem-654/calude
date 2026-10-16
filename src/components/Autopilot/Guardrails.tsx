@@ -57,7 +57,7 @@ const ABOUT: Record<string, { label: string; what: string; risk?: boolean }> = {
   },
   sendEmail: {
     label: 'Send email',
-    what: "Email this client's contacts from the address on this project.",
+    what: "Email this client's contacts from the address on this business workspace.",
     risk: true,
   },
   sendSms: {
@@ -120,10 +120,10 @@ export default function Guardrails({ projectId, guardrails, onChanged }: {
   return (
     <div>
       <h4 style={{ margin: '0 0 3px', fontSize: 13, fontWeight: 800, color: T.ink }}>
-        What this project is allowed to do
+        What this business workspace is allowed to do
       </h4>
       <p style={{ margin: '0 0 10px', fontSize: 11.5, color: T.muted, lineHeight: 1.55 }}>
-        Each of these applies to this project only. Changing one takes effect on the next pass — within
+        Each of these applies to this business workspace only. Changing one takes effect on the next pass — within
         five minutes — and nothing already waiting for you is sent by turning something on.
       </p>
 
@@ -186,7 +186,7 @@ export default function Guardrails({ projectId, guardrails, onChanged }: {
                   fontSize: 10.5, color: T.warn, lineHeight: 1.5,
                 }}>
                   <AlertTriangle size={12} style={{ flexShrink: 0, marginTop: 1 }} />
-                  This now happens without asking you. You will see it in the project's activity after the
+                  This now happens without asking you. You will see it in the business workspace's activity after the
                   fact rather than before.
                 </p>
               )}

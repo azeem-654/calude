@@ -114,7 +114,7 @@ export default function DnsManager() {
       <div style={{ border: `1px dashed ${LINE}`, borderRadius: 16, padding: '30px 22px', textAlign: 'center' }}>
         <Globe size={20} color={MUTED} />
         <p style={{ margin: '8px 0 0', fontSize: 13, color: MUTED, lineHeight: 1.6 }}>
-          No domains in this workspace yet. Start a project and add a domain to it, and its records
+          No domains here yet. Start an AI Autopilot business workspace and add a domain to it, and its records
           will be managed here.
         </p>
       </div>
