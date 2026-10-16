@@ -503,7 +503,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
     name: 'Daily Social Content Automation',
     category: 'content',
     description: "Write one social post every morning from the client's own profile.",
-    blurb: 'Reads what the client does and who buys it, writes one post with a headline set on the image, and files it as a draft in the Social Creator.',
+    blurb: 'Reads what the client does and who buys it, writes one post with a headline set on the image, and files it as a draft in the Graphics Designer & Editor.',
     pain: 'Posting consistently is the part everybody abandons in week three, and an empty feed makes a business look shut.',
     industry: ['Agency', 'Local business', 'Retail', 'Trades'],
     keywords: ['social media', 'instagram', 'facebook', 'daily post', 'content', 'posting', 'schedule'],
@@ -630,7 +630,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
    * This app does not post to Instagram, LinkedIn or X. There is no social
    * integration in the codebase — email, SMS, WordPress, calendar, payments,
    * and that is the list. Every template below therefore writes **real,
-   * editable drafts into the Social Creator**, and says so. Drawing a "Publish
+   * editable drafts into the Graphics Designer & Editor**, and says so. Drawing a "Publish
    * to Instagram" node that the engine would step over is precisely the silent
    * failure this product exists to not be.
    *
@@ -649,7 +649,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
     keywords: ['multi platform', 'cross post', 'social posting', 'instagram', 'linkedin', 'facebook', 'twitter', 'x', 'repurpose'],
     needs: [
       'A client profile with something in it',
-      'Nothing to publish with — this app writes the drafts, and you publish from the Social Creator',
+      'Nothing to publish with — this app writes the drafts, and you publish from the Graphics Designer & Editor',
     ],
     outcome: 'Four platform-shaped drafts a day instead of one caption pasted four times. It writes them; it does not post them.',
     nodes: [
@@ -676,7 +676,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
     keywords: ['linkedin', 'repurpose', 'b2b', 'thought leadership', 'blog to social', 'content'],
     needs: [
       'The blog feed address — the feed itself, not the page it sits on',
-      'Nothing to publish with — drafts land in the Social Creator for you to post',
+      'Nothing to publish with — drafts land in the Graphics Designer & Editor for you to post',
     ],
     outcome: 'A LinkedIn draft for each new article. Quiet on the weeks nothing was published, which it records as skipped rather than as done.',
     nodes: [
@@ -697,7 +697,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
     keywords: ['youtube', 'shorts', 'reels', 'tiktok', 'video', 'repurpose', 'clips', 'social'],
     needs: [
       'The channel ID, which begins UC — a handle or a video link will not do, and it says so',
-      'Nothing to publish with — drafts land in the Social Creator',
+      'Nothing to publish with — drafts land in the Graphics Designer & Editor',
     ],
     outcome: 'Two drafts per new video. Nothing is clipped or edited — this writes the words, not the footage.',
     nodes: [
@@ -719,7 +719,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
     keywords: ['content calendar', 'weekly', 'batch', 'schedule', 'social', 'planning', 'posts'],
     needs: [
       'A client profile with something in it',
-      'Nothing to publish with — the week’s drafts land in the Social Creator',
+      'Nothing to publish with — the week’s drafts land in the Graphics Designer & Editor',
     ],
     outcome: 'Six drafts a week, waiting to be read and scheduled. Whether they go out is still somebody’s decision.',
     nodes: [
@@ -740,7 +740,7 @@ export const TEMPLATES: WorkflowTemplate[] = [
     keywords: ['blog to social', 'snippets', 'repurpose', 'atomise', 'content', 'rss'],
     needs: [
       'The blog feed address',
-      'Nothing to publish with — drafts land in the Social Creator',
+      'Nothing to publish with — drafts land in the Graphics Designer & Editor',
     ],
     outcome: 'Three drafts per article rather than one link. On weeks with no new article it records that nothing was new.',
     nodes: [

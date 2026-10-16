@@ -211,7 +211,7 @@ const n = (
      did it put it" is the question this feature is answered by. */
   ok('the agent step says what it reads and where the result goes',
     /portfolio/i.test(nodeDetail('ai', { source: 'portfolio', produces: 'social' }))
-    && /Social Creator/.test(nodeDetail('ai', { source: 'portfolio', produces: 'social' })),
+    && /Graphics Designer & Editor/.test(nodeDetail('ai', { source: 'portfolio', produces: 'social' })),
     nodeDetail('ai', { source: 'portfolio', produces: 'social' }));
   ok('and a schedule trigger reads as a schedule rather than as its config',
     nodeDetail('trigger', { event: 'schedule', cadence: 'weekly' }) === 'Every week',

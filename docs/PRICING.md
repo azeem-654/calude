@@ -136,7 +136,7 @@ send. The owner reads it on Sign-ups & trials → Plans & allowances →
 |---|---|
 | Contacts | They live in the browser's synced records; the server sees a whole list at a time and there is no single moment a contact is "created" that it could refuse. A limit shown on a card that nothing enforces is a promise in the wrong direction. The old cards said "Up to 2,500 contacts" — that was removed. |
 | Email sends | They go through the customer's own mailbox (or their own provider key) and cost the operator nothing. The one sending door (`lib/deliver.ts`) also carries sign-in codes, which a cap must never stop. |
-| Posts and articles written by hand in Social Creator / Blog | They reach the server as AI requests, and are counted there. |
+| Posts and articles written by hand in the Graphics Designer & Editor / Blog | They reach the server as AI requests, and are counted there. |
 | Users / seats | Nothing enforces a seat count today. |
 | Email verifier credits, Lead Directory reveals, Google Maps searches | Already capped per workspace by their own fair-use budgets on the owner's keys (`BUDGET` in `lib/emailVerify.ts`, `REVEAL_BUDGET`, `placesBudget`). Folding them into plans is a later step. |
 

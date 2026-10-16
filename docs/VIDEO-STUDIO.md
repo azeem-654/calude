@@ -28,7 +28,7 @@ Studio is built beside it on the server, and its nav entry says what it is.
 
 There is no `ContentStudio` component. "Content" is a nav group
 (`Layout/navModel.ts`, id `content`) holding **Repurposing**, **AI Shorts** and
-**Post designer** (Social Creator). Social Creator posts are `crm_social_posts`
+**Graphics Designer & Editor** (once "Post designer", the Social Creator). Its posts are `crm_social_posts`
 (localStorage, synced to `crm_data`); a draft tagged `ready-to-publish` reads
 "Ready to publish". Repurposing's **Content Library** (`ContentLibrary.tsx`)
 lists every generated asset by kind (Clips, Images, …).

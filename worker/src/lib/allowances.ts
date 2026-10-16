@@ -73,7 +73,7 @@ export const METERS: Meter[] = [
   { id: 'ai_requests', label: 'AI requests', one: 'AI request', kind: 'monthly', group: 'AI writing',
     counted: 'Each time a screen asks the AI to write or read something for you.' },
   { id: 'social_posts', label: 'Social posts by AI Autopilot', one: 'social post', kind: 'monthly', group: 'AI writing',
-    counted: 'Each post a project’s agent or AI Video Studio writes into Social Creator.' },
+    counted: 'Each post a project’s agent or AI Video Studio writes into the Graphics Designer & Editor.' },
   { id: 'blog_articles', label: 'Blog articles by AI Autopilot', one: 'blog article', kind: 'monthly', group: 'AI writing',
     counted: 'Each article a project’s agent or AI Video Studio drafts into Blog.' },
   { id: 'ai_emails', label: 'Emails written by AI Autopilot', one: 'email', kind: 'monthly', group: 'AI writing',

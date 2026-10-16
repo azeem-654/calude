@@ -347,7 +347,7 @@ export async function understand(env: Env, key: string, accountId: string, d: In
     'A customer has described, in their own words, what they want AI Autopilot to do. Understand the request BEFORE any question is asked.',
     '',
     'WHAT THE PRODUCT CAN ACTUALLY DO (never promise more):',
-    '- Scheduled AI agents that read a business profile, a web page, a Google search, an RSS feed or a YouTube channel, and write: social post designs (branded image + caption + hashtags, as drafts in Social Creator), blog article drafts, or email campaigns (drafts).',
+    '- Scheduled AI agents that read a business profile, a web page, a Google search, an RSS feed or a YouTube channel, and write: social post designs (branded image + caption + hashtags, as drafts in the Graphics Designer & Editor), blog article drafts, or email campaigns (drafts).',
     '- Contact workflows: when a form is filled / contact created / tag added / deal stage changes / appointment booked → wait, branch, send email, send SMS, tag, create a task, assign.',
     '- A daily planner that can write landing pages and websites, email sequences, find new leads (with approval), book meetings, chase unpaid orders, thank buyers.',
     '- Commerce: products (imported from CSV), a public shop page, checkout via the customer\'s own payment processor.',

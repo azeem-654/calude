@@ -121,7 +121,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Content',
     items: [
       { path: '/video-studio', label: 'AI Video Studio', desc: 'Edit and clean a recording, make Shorts, captions, music, posts and quizzes — AI Shorts and Repurposing included', icon: Clapperboard, aka: ['video', 'video editor', 'shorts', 'ai shorts', 'reels', 'tiktok', 'clips', 'podcast', 'webinar', 'captions', 'subtitles', 'thumbnails', 'transcript', 'repurpose', 'repurposing', 'social automation', 'noise', 'music', 'quiz'] },
-      { path: '/social-creator', label: 'Post designer', desc: 'Design social posts with AI and publish them', icon: Palette, aka: ['social creator', 'graphics', 'canva'] },
+      { path: '/social-creator', label: 'Graphics Designer & Editor', desc: 'Design and edit social posts, graphics and video thumbnails', icon: Palette, aka: ['post designer', 'social creator', 'graphics', 'graphic designer', 'image editor', 'thumbnail editor', 'canva'] },
     ],
   },
   {

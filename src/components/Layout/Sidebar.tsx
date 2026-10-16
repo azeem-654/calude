@@ -31,7 +31,7 @@ const navGroups = [
     label: 'Studio',
     items: [
       { path: '/video-studio',   icon: Scissors, label: 'AI Video Studio' },
-      { path: '/social-creator', icon: Palette,  label: 'Social Creator' },
+      { path: '/social-creator', icon: Palette,  label: 'Graphics Designer & Editor' },
     ],
   },
   {

@@ -37,7 +37,7 @@ export interface Produced {
 
 /** The icon for a kind, and the module it belongs to in the customer's words. */
 const KINDS: Record<string, { icon: typeof FileText; where: string }> = {
-  'social-post': { icon: ImageIcon, where: 'Social Creator' },
+  'social-post': { icon: ImageIcon, where: 'Graphics Designer & Editor' },
   'blog-post': { icon: FileText, where: 'Blog' },
   sequence: { icon: Mail, where: 'Campaigns' },
   campaign: { icon: Mail, where: 'Campaigns' },

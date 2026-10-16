@@ -336,7 +336,7 @@ function taskTemplates(state: OnboardingState): TaskTpl[] {
   );
   if (ch.has('facebook') || ch.has('instagram') || ch.has('linkedin')) packs.push(
     { title: 'Refresh social profiles with the new brand kit', stage: 0, priority: 'high' },
-    { title: 'Schedule 12 posts from Social Creator templates', stage: 1, priority: 'high' },
+    { title: 'Schedule 12 posts from Graphics Designer & Editor templates', stage: 1, priority: 'high' },
     { title: 'Post 3× per week on your chosen social channels', stage: 1, priority: 'normal' },
     { title: 'Boost your best-performing post of the month', stage: 2, priority: 'normal' },
   );

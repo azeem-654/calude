@@ -541,6 +541,7 @@ export default function SocialCreator() {
           style={{ position: 'absolute', top: 18, right: 18, display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', border: 'none', borderRadius: 10, background: 'rgba(255,255,255,0.95)', color: '#6d28d9', fontWeight: 800, fontSize: 13.5, cursor: 'pointer' }}>
           <Plus size={16} /> New Design
         </button>
+        <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.85)', fontSize: 12.5, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 6 }}>Graphics Designer & Editor</div>
         <h1 style={{ margin: '0 0 20px', fontSize: 32, fontWeight: 800, color: '#fff', textAlign: 'center', letterSpacing: '-0.02em', textShadow: '0 2px 12px rgba(0,0,0,0.2)' }}>
           What will you design today?
         </h1>
