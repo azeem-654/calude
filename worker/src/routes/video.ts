@@ -136,6 +136,17 @@ async function signedOutputs(env: Env, origin: string, p: ProjectRow, outs: Outp
   }));
 }
 
+/**
+ * Every set number this output has or has been asked for. A set is numbered
+ * when it is asked for, but its thumbnails arrive only when the engine is
+ * done — counting only the arrived ones gave two quick requests the same
+ * number, and the second was dropped as a duplicate of the first.
+ */
+async function setsOf(env: Env, o: OutputRow): Promise<number[]> {
+  const { results } = await env.DB.prepare(`SELECT input FROM crm_video_jobs WHERE project_id = ? AND target = ? AND kind = 'thumbnails'`).bind(o.project_id, o.id).all<{ input: string }>();
+  return [...parse<Thumb[]>(o.thumbs, []).map(t => t.set), ...results.map(r => Number(parse<{ set?: number }>(r.input, {}).set) || 0)];
+}
+
 async function readProject(env: Env, accountId: string, id: string): Promise<ProjectRow | null> {
   return env.DB.prepare('SELECT * FROM crm_video_projects WHERE id = ? AND account_id = ?').bind(id, accountId).first<ProjectRow>();
 }
@@ -710,7 +721,7 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
         const r = await saveEdit(env, p, undefined, [{ op: 'thumbnail.headline', target: o.id, text: s(d.headline, 90) }], 'Thumbnail headline', user.email);
         if (!r.ok) return json({ success: false, conflict: true, error: 'Try again.' });
       }
-      const sets = parse<Thumb[]>(o.thumbs, []).map(t => t.set);
+      const sets = (await setsOf(env, o)).filter(n => n < 100);
       const set = Math.min(6, (sets.length ? Math.max(...sets) : 0) + 1);
       if (sets.includes(6)) return fail('Six sets is the most a video keeps — choose one of those.');
       await enqueue(env, { accountId, projectId: p.id, kind: 'thumbnails', target: o.id, idem: `thumbs:${o.id}:${set}:${Date.now()}`, input: { set } });
@@ -721,8 +732,7 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
     case 'thumb_custom': {
       const o = await outputRow();
       if (!o) return fail('Choose a video first.', 200, { code: 'no_output' });
-      const all = parse<Thumb[]>(o.thumbs, []);
-      const set = Math.max(100, ...all.map(t => t.set)) + 1;
+      const set = Math.max(100, ...(await setsOf(env, o)).filter(n => n < 200)) + 1;
       const spec = cleanThumbSpec(d.spec, { layout: 'bold', text: thumbWords(o.title || p.name), highlight: '', at: 1, accent: '#facc15', color: '#0b0b12', textColor: '#ffffff', border: true, zoom: 0.5 });
       if (!spec.text) return fail('Write the words for the thumbnail.', 200, { field: 'video.thumbText' });
       await enqueue(env, { accountId, projectId: p.id, kind: 'thumbnails', target: o.id, idem: `thumbs:${o.id}:${set}`, input: { set, custom: spec } });
