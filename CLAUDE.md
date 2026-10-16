@@ -655,7 +655,7 @@ gradient) is tied to real work and stops under reduced motion.
 screen may look like one.** The people the install owner loads from their own
 files are the **Lead library**: searched by the owner alone on
 `/lead-directory` (Workspace → Lead library, `ownerOnly` in navModel,
-`Prospecting/LeadDirectory.tsx`; anybody else is redirected to `/lead-lists`).
+`Prospecting/LeadDirectory.tsx`; anybody else is redirected to `/contacts`).
 On the server `facets`, `search` and `reveal` answer 403 `not_owner` to
 everybody but the install owner — checked before the database is, so the
 answer is the same with no `LEADS` binding — and a customer's `status` says
@@ -688,16 +688,29 @@ whether sharing licensed personal data is selling it).
   recipient's data came from (GDPR Art. 14). No `LEADS` binding → skipped,
   said once a day in the finder's log; closed → skipped silently. `remove`
   answers `passedTo` (the workspaces given that person), for Art. 19.
-- **Customers → Lead lists** (`/lead-lists`, `Prospecting/LeadLists.tsx`,
-  `services/leadLists.ts` pure but its fetch) shows only what is already in
-  the workspace: a folder per AI Autopilot project (`finders.php` `folders`:
-  the brief's audience list and every finder's list, plus contacts with that
-  `customFields.projectId` on none of them), "Saved from AI Prospecting"
-  (`origin: 'prospecting'`) and "Other lists"; a list's leads with their
-  check, source (`sourceOf` — old `Lead directory` imports read "Licensed
-  business data") and date; search, CSV export with "Where it came from",
-  Open in Contacts, Email this list (`/marketing?new=campaign&list=`). Place
-  kept in `?folder=&list=`. Phones get cards, not a wide table.
+- **The customer's lists live in Contacts** (`/contacts`; the old
+  `/lead-lists` redirects there keeping `?list=`, and its nav entry is gone).
+  `Contacts/ListsPanel.tsx` draws them beside the table — `ListsSidebar`
+  (built by `buildFolders` in `services/leadLists.ts`, pure but its fetch):
+  a folder per AI Autopilot business workspace (`finders.php` `folders`: the
+  brief's audience list and every finder's list, plus contacts with that
+  `customFields.projectId` on none of them, shown as `found:<id>`), "Saved
+  from AI Prospecting" (`origin: 'prospecting'`) and "My lists"; on a phone
+  it folds to one line. Opening a list filters the table and shows
+  `ListHeader`: count, kind, the email checks, **Send to AI Autopilot**,
+  Email this list (`/marketing?new=campaign&list=`), Export CSV (`toCsv`,
+  "Where it came from"), edit, delete. The Source under a name is
+  `sourceOf` (old `Lead directory` imports read "Licensed business data").
+  Ticked contacts can be sent to AI Autopilot or put on a new list.
+  **Sending to a business workspace has one implementation**,
+  `services/sendToWorkspace.ts` (Contacts' `SendToWorkspace.tsx` and AI
+  Prospecting's Add to): the workspace's own static audience list, else the
+  list being sent if hand-picked, else a new one — a smart list is never
+  pointed at, the server cannot run its rules. `?list=<id>&send=1` opens
+  the dialog (AI Prospecting's "Send it to AI Autopilot"). The table
+  scrolls inside `.cl-table-scroll` (window height, sticky header) so its
+  sideways bar is always on screen; AI Prospecting's results table does the
+  same (`.aip-table-wrap` from 721px of container).
 
 - **Its own D1 database, bound as `LEADS`** (`crmpro-leads`, staging
   `crmpro-staging-leads`): millions of rows must never fill the product's
@@ -758,7 +771,7 @@ whether sharing licensed personal data is selling it).
   a `VITE_BASE=/` build; the owner loads a ZIP and a whole folder through the card and searches
   it, customers are refused and redirected, a finder is given library people
   — suppressed, known and repeat people turned away, half a day at most,
-  nothing while closed — and the customer's Lead lists at 1280 and 390).
+  nothing while closed — and the customer's lists in Contacts at 1280 and 390).
   `test:finder` holds `libraryRoom`/`libraryWhere` still; `test:security`
   and `test:isolation` cover the closed customer actions. Never commit a
   real lead file.

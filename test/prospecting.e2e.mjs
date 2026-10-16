@@ -325,7 +325,7 @@ let listId = '';
   ok('…and seven on the list', (lists ?? []).find(l => l.id === listId)?.memberIds.length === 7);
   await openDrawer(page);
   const side = page.locator(`[data-list="${listId}"]`);
-  ok('the list is under "My lead lists" with its count', /Dentists — Leeds test/.test(await side.innerText()) && /7 businesses/.test(await side.innerText()), await side.innerText().catch(() => ''));
+  ok('the list is under "My contact lists" with its count', /Dentists — Leeds test/.test(await side.innerText()) && /7 businesses/.test(await side.innerText()), await side.innerText().catch(() => ''));
   await page.screenshot({ path: 'test-results/prospecting-1280.png' });
   await page.waitForTimeout(2500); // the sync's debounce
 
@@ -354,7 +354,7 @@ let listId = '';
 
   /* The Autopilot shortcut: the wizard opens working from the list. */
   await page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
-  await listMenu(page, LIST, 'Use this list in a new AI Autopilot project');
+  await listMenu(page, LIST, 'Use it in a new AI Autopilot business workspace');
   const np = page.getByRole('dialog', { name: 'New project' });
   await np.waitFor({ timeout: 8000 });
   const prompt = await np.getByLabel('What would you like AI Autopilot to do?').inputValue();
@@ -435,7 +435,7 @@ for (const width of [390, 1280]) {
     await page.screenshot({ path: 'test-results/prospecting-390-import.png' });
     await page.goto(`${B}/contacts?list=${listId}`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(800);
-    ok('@390: "Open in Contacts" lands on the list', /Static list/.test(await page.innerText('body')) && (await overflow(page)) <= 0);
+    ok('@390: "Open in Contacts" lands on the list', /Hand-picked/.test(await page.innerText('body')) && (await overflow(page)) <= 0);
   }
   await ctx.close();
 }
@@ -629,7 +629,7 @@ console.log('\nAI Prospecting — sources, bulk emails, Add to…');
   /* Add to a workflow. */
   for (const n of [10, 13]) await page.getByRole('checkbox', { name: `Tick Leeds Dental ${n}`, exact: true }).check();
   const bar = page.getByRole('toolbar', { name: 'With the ticked businesses' });
-  ok('ticking shows what can be done with them', /2 ticked/.test(await bar.innerText()) && /Add to a workflow/.test(await bar.innerText()) && /Add to an AI project/.test(await bar.innerText()) && /Add to an email campaign/.test(await bar.innerText()));
+  ok('ticking shows what can be done with them', /2 ticked/.test(await bar.innerText()) && /Add to a workflow/.test(await bar.innerText()) && /Add to AI Autopilot/.test(await bar.innerText()) && /Add to an email campaign/.test(await bar.innerText()));
   await bar.getByRole('button', { name: /Add to a workflow/ }).click();
   const wf = page.getByRole('region', { name: 'Add to a workflow' });
   ok('a paused workflow is offered but cannot be chosen, and says why', await wf.getByRole('radio', { name: /Old nurture/ }).isDisabled() && /switch it on in Marketing/.test(await wf.innerText()));
@@ -644,8 +644,8 @@ console.log('\nAI Prospecting — sources, bulk emails, Add to…');
   ok('the server refuses a workflow that is not on', forged.success === false && /not switched on/.test(forged.error), JSON.stringify(forged));
   /* One row's own menu: that business alone. */
   await page.getByRole('button', { name: 'More for Leeds Dental 22', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Add to an AI project' }).click();
-  const one = page.getByRole('region', { name: 'Add to an AI project' });
+  await page.getByRole('menuitem', { name: 'Add to AI Autopilot' }).click();
+  const one = page.getByRole('region', { name: 'Add to an AI Autopilot business workspace' });
   ok('a row\'s own "…" menu adds just that business', /1 ticked/.test(await one.innerText()) && await page.getByRole('checkbox', { name: 'Tick Leeds Dental 22', exact: true }).isChecked(), await one.innerText().catch(() => ''));
   await one.getByRole('button', { name: 'Close' }).click();
   await page.getByRole('button', { name: 'Untick all' }).click();
@@ -664,14 +664,14 @@ console.log('\nAI Prospecting — sources, bulk emails, Add to…');
 
   /* Add to the AI project built earlier from a list. */
   await page.getByRole('checkbox', { name: 'Tick Leeds Dental 19', exact: true }).check();
-  await bar.getByRole('button', { name: /Add to an AI project/ }).click();
-  const pj = page.getByRole('region', { name: 'Add to an AI project' });
+  await bar.getByRole('button', { name: /Add to AI Autopilot/ }).click();
+  const pj = page.getByRole('region', { name: 'Add to an AI Autopilot business workspace' });
   await pj.getByRole('radio').first().waitFor({ timeout: 15_000 });
   await pj.getByRole('radio').first().check();
   ok('the project with a list says it adds to that list', /Adds them to its list “Dentists — Leeds test”/.test(await pj.innerText()), await pj.innerText());
   await pj.getByRole('checkbox', { name: /Clause 3 of the acceptable use policy/ }).check();
   await pj.getByRole('button', { name: /^Add 1 to/ }).click();
-  await page.getByText(/Autopilot proposes them in batches of 20/).waitFor({ timeout: 15_000 }).catch(() => {});
+  await page.getByText(/in batches of 20/).waitFor({ timeout: 15_000 }).catch(() => {});
   const lp = (await stored(page, 'crm_contact_lists') ?? []).find(l => l.id === listId);
   ok('…and the project\'s own list grows by one', lp?.memberIds.length === 8, JSON.stringify(lp?.memberIds.length));
 

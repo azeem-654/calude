@@ -12,8 +12,8 @@ customer could look people up by industry and place is what one looks like.
 What you loaded is now your **Lead library** — searched by you alone — and,
 when you open it, a quiet extra source for your customers' projects' daily
 prospecting, labelled **"Licensed business data"** on every lead it supplies
-(section 4). Customers have **Customers → Lead lists** instead: their *own*
-leads, a folder per project.
+(section 4). Customers have their **lists in Contacts** instead: their *own*
+leads, a folder per AI Autopilot business workspace.
 
 ---
 
@@ -130,7 +130,7 @@ puts people in your own Contacts on a list marked *cold*, named as **Licensed
 business data** with where they came from.
 
 **Your customers: nothing to search.** The menu item is gone, the old address
-takes them to their own Lead lists, and the server refuses them the search,
+takes them to their own Contacts, and the server refuses them the search,
 the facets and the reveal (403 `not_owner`) — the API is closed, not just the
 button. A customer can only ask whether the library is open, never how big it
 is or what is in it.
@@ -167,12 +167,13 @@ people. Closing the library stops all of it at the next step.
 their details were given to (`passedTo` in the answer), because you must pass
 the request on to them — their copy in those CRMs is theirs to delete.
 
-**Customers → Lead lists** (`/lead-lists`) is their own leads, folder by
-folder: one per AI Autopilot project (its audience list and the lists its
-finders fill), one for what they saved from AI Prospecting, and their other
-lists. They can search their own leads, open a list in Contacts, email it as a
-campaign and export it as CSV — with a "Where it came from" column. Nothing on
-that page reaches beyond what is already in their workspace.
+**Their lists in Contacts** (beside the contact table; the old `/lead-lists`
+address redirects there) are their own leads, folder by folder: one per AI
+Autopilot business workspace (its audience list and the lists its finders
+fill), one for what they saved from AI Prospecting, and their own lists. They
+can open a list, send it to an AI Autopilot business workspace, email it as a
+campaign and export it as CSV — with a "Where it came from" column. Nothing
+there reaches beyond what is already in their workspace.
 
 ---
 
