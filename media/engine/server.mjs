@@ -21,7 +21,7 @@
  *   POST   /jobs          {id, op, params, inputs, upload, poke?}  → 202 {state}
  *   GET    /jobs/:id      → {state, stage, pct, result?, error?}
  *   DELETE /jobs/:id      → cancel
- *   GET    /health        → {ok, ffmpeg, busy}
+ *   GET    /health        → {ok, ffmpeg, busy, features: {track, youtube}}
  *
  * A job id seen before is answered with its state, not run again — the
  * Worker may dispatch twice (a retry after a timeout) and must not get two
@@ -41,6 +41,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { TREND_LAYOUTS, thumbPlan, rgbOf, CONDENSE, HALO } from './thumbLayout.mjs';
 
 const PORT = Number(process.env.PORT) || 8080;
 const SECRET = process.env.MEDIA_ENGINE_SECRET || '';
@@ -100,7 +101,7 @@ const server = http.createServer(async (req, res) => {
   for await (const c of req) { chunks.push(c); if (chunks.reduce((n, x) => n + x.length, 0) > 4 * 1024 * 1024) return send(res, 413, { error: 'too large' }); }
   const body = Buffer.concat(chunks);
   const url = new URL(req.url, 'http://engine');
-  if (url.pathname === '/health') return send(res, 200, { ok: true, ffmpeg: await ffmpegVersion(), busy: running + queue.length, features: { track: await canTrack() } });
+  if (url.pathname === '/health') return send(res, 200, { ok: true, ffmpeg: await ffmpegVersion(), busy: running + queue.length, features: { track: await canTrack(), youtube: !!(await canFetch()) } });
   if (url.pathname === '/busy') return send(res, 200, { busy: running + queue.length });
   if (!signedOk(req, body)) return send(res, 401, { error: 'unsigned' });
 
@@ -771,162 +772,154 @@ function layoutFilter(layout, W, H, color, accent) {
   }
 }
 
-/* ── The trending layouts: built here from words, colours and a face ─────── */
+/* ── The trending layouts: a plan (thumbLayout.mjs) painted with FFmpeg and libass ── */
 
-/**
- * What a 2025–26 thumbnail that gets clicked looks like, by the creators'
- * own advice (docs/VIDEO-STUDIO.md §13): one dominant subject — a face, big;
- * three to five words; two or three colours; a thick outline on every letter,
- * because it has to read at phone size; one word picked out in the accent;
- * a coloured edge so it stands out on both YouTube themes; and, sparingly, a
- * ring or an arrow that points at what the video shows. Five layouts follow
- * that, each drawn from the frame and the face found in it:
- *   bold        the face close up on one side, the words huge on the other
- *   callout     the whole frame, a ring round the face and an arrow to it
- *   cinematic   letterboxed, muted and graded — for finance and documentary
- *   split       two moments side by side
- *   number      the figure in the headline, enormous, on an accent tile
+/*
+ * thumbLayout.mjs decides the geometry — the crop that puts the face where it
+ * goes, the gradient panels, the spotlight, every line of words with its size
+ * and place, the ring, the arrow, the sticker. The designer's preview draws
+ * the very same plan in the browser. Here it becomes:
+ *   - an FFmpeg graph built only from the plan's numbers (crop, grade, blur,
+ *     gradient fills as geq expressions of numbers, the spotlight's ellipse,
+ *     letterbox, edge) — never from request text;
+ *   - an ASS file for everything drawn on top (words, boxes, ring,
+ *     arrow, tile, sticker, strip), where the customer's words are escaped
+ *     text and nothing else.
  */
-const THUMB_NEW = new Set(['bold', 'callout', 'cinematic', 'split', 'number']);
 const assHex = (hex, alpha = 0) => { const h = HEX.test(hex) ? hex.slice(1) : 'ffffff'; return `&H${alpha.toString(16).padStart(2, '0')}${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}`.toUpperCase(); };
 const assSafe = t => String(t ?? '').replace(/[{}]/g, m => (m === '{' ? '(' : ')')).replace(/\\/g, '/').replace(/[\r\n]+/g, ' ').trim();
-/* A figure worth a tile: "$49", "30%", "10x", "4 million" — a unit only when no letter follows it. */
-const NUMBER = /[$€£₺₨]?\d[\d.,]*(?:\s?(?:%|[kKmMbB](?![a-z])|[xX](?![a-z])|\+))?(?:\s(?:million|billion|thousand|percent|hours?|days?|minutes?))?/i;
-
-/** Words into lines of at most `per` words, at most `max` lines. */
-function lines(text, per, max) {
-  const w = text.split(/\s+/).filter(Boolean);
-  const out = [];
-  for (let i = 0; i < w.length && out.length < max; i += per) out.push(w.slice(i, i + per).join(' '));
-  return out;
-}
-
-/** The headline as ASS lines: uppercase, thick outline, the chosen word in the accent. */
-function headlineEvents({ text, highlight, x, y, an, size, color, accent, outline, maxWidth, per = 2, maxLines = 4, upper = true, spacing = 0 }) {
-  const shown = upper ? text.toLocaleUpperCase() : text;
-  const ls = lines(shown, per, maxLines);
-  const longest = Math.max(1, ...ls.map(l => l.length));
-  /* Bold sans runs about 0.6 of its size per character: shrink to fit the room. */
-  const fs = Math.max(18, Math.round(Math.min(size, maxWidth / (longest * 0.6))));
-  const hl = String(highlight ?? '').toLocaleUpperCase().replace(/[^\p{L}\p{N}$€£%]/gu, '');
-  const body = ls.map(l => l.split(' ').map(word => {
-    const bare = word.replace(/[^\p{L}\p{N}$€£%]/gu, '');
-    return hl && bare === hl ? `{\\c${assHex(accent)}}${assSafe(word)}{\\c${assHex(color)}}` : assSafe(word);
-  }).join(' ')).join('\\N');
-  return [`Dialogue: 2,0:00:00.00,0:00:10.00,T,,0,0,0,,{\\an${an}\\pos(${Math.round(x)},${Math.round(y)})\\fs${fs}\\bord${Math.max(2, Math.round(fs * outline))}\\shad${Math.max(2, Math.round(fs / 16))}\\fsp${spacing}\\c${assHex(color)}\\3c&H000000&\\4c&H000000&}${body}`, fs, ls.length];
-}
+/** Like assSafe, but keeps the space a run starts with (a word after the first on its line). */
+const assRun = t => String(t ?? '').replace(/[{}]/g, m => (m === '{' ? '(' : ')')).replace(/\\/g, '/').replace(/[\r\n]+/g, ' ');
+const n0 = v => Math.round(Number(v) || 0);
 
 function ellipse(cx, cy, rx, ry) {
   const k = 0.5523, r = n => Math.round(n);
   return `m ${r(cx + rx)} ${r(cy)} b ${r(cx + rx)} ${r(cy + k * ry)} ${r(cx + k * rx)} ${r(cy + ry)} ${r(cx)} ${r(cy + ry)} b ${r(cx - k * rx)} ${r(cy + ry)} ${r(cx - rx)} ${r(cy + k * ry)} ${r(cx - rx)} ${r(cy)} b ${r(cx - rx)} ${r(cy - k * ry)} ${r(cx - k * rx)} ${r(cy - ry)} ${r(cx)} ${r(cy - ry)} b ${r(cx + k * rx)} ${r(cy - ry)} ${r(cx + rx)} ${r(cy - k * ry)} ${r(cx + rx)} ${r(cy)}`;
 }
-
-/** An arrow from (x1,y1) to (x2,y2) as one filled shape. */
-function arrow(x1, y1, x2, y2, width) {
-  const dx = x2 - x1, dy = y2 - y1, len = Math.max(1, Math.hypot(dx, dy));
-  const ux = dx / len, uy = dy / len, nx = -uy, ny = ux;
-  const head = Math.min(len * 0.45, width * 3.2), hw = width * 1.6, w = width / 2;
-  const bx = x2 - ux * head, by = y2 - uy * head;
-  const p = [[x1 + nx * w, y1 + ny * w], [bx + nx * w, by + ny * w], [bx + nx * hw, by + ny * hw], [x2, y2], [bx - nx * hw, by - ny * hw], [bx - nx * w, by - ny * w], [x1 - nx * w, y1 - ny * w]];
-  return `m ${p.map(([x, y]) => `${Math.round(x)} ${Math.round(y)}`).join(' l ')}`;
-}
+const poly = pts => `m ${pts.map(([x, y]) => `${n0(x)} ${n0(y)}`).join(' l ')}`;
+const rect = b => poly([[b.x, b.y], [b.x + b.w, b.y], [b.x + b.w, b.y + b.h], [b.x, b.y + b.h]]);
+const shape = (layer, tags, drawing) => `Dialogue: ${layer},0:00:00.00,0:00:10.00,D,,0,0,0,,{\\an7\\pos(0,0)${tags}\\p1}${drawing}{\\p0}`;
 
 function assDoc(W, H, events) {
   return ['[Script Info]', 'ScriptType: v4.00+', `PlayResX: ${W}`, `PlayResY: ${H}`, 'WrapStyle: 2', 'ScaledBorderAndShadow: yes', '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    'Style: T,Noto Sans,64,&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,-1,0,0,0,96,100,0,0,1,4,3,5,0,0,0,1',
+    `Style: T,Noto Sans,64,&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,-1,0,0,0,${CONDENSE},100,0,0,1,4,3,5,0,0,0,1`,
+    /* BorderStyle 3: an opaque box fitted to the line — the highlighted word's box. */
+    `Style: B,Noto Sans,64,&H00111111,&H00FFFFFF,&H0015CCFA,&H80000000,-1,0,0,0,${CONDENSE},100,0,0,3,8,4,5,0,0,0,1`,
     'Style: D,Noto Sans,20,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1',
     '', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text', ...events, ''].join('\n');
 }
 
-/**
- * One trending thumbnail: the picture's filter (crop, grade, panel, border)
- * and its ASS (words, ring, arrow). `face` is the largest face in the frame
- * as fractions, or null — then nothing is ringed, because circling nothing
- * in particular is the clickbait the advice warns against.
- */
-function trendLayout(it, W, H, srcW, srcH, face) {
-  const portrait = H > W;
-  const accent = HEX.test(it.accent) ? it.accent : '#facc15';
-  const panel = HEX.test(it.color) ? it.color : '#0b0b12';
-  const color = HEX.test(it.textColor) ? it.textColor : '#ffffff';
-  const text = assSafe(it.text || 'Watch this').slice(0, 80);
-  const zoom = num(it.zoom, 0.5, 0, 1);
-  const border = it.border !== false;
-  const hexF = h => h.replace('#', '0x');
-  const events = [];
-  const fx = face ? face.x + face.w / 2 : 0.5, fy = face ? face.y + face.h / 2 : 0.45;
-  /** A crop of the source that puts the face at (px, py) of the output, the face `fh` of its height. */
-  const aim = (px, py, fh) => {
-    let s = face ? (fh * H) / (face.h * srcH) : Math.max(W / srcW, H / srcH);
-    s = Math.max(s, W / srcW, H / srcH);
-    const cw = Math.min(srcW, W / s), ch = Math.min(srcH, H / s);
-    const x = Math.min(srcW - cw, Math.max(0, fx * srcW - px * cw)), y = Math.min(srcH - ch, Math.max(0, fy * srcH - py * ch));
-    return `crop=${Math.round(cw)}:${Math.round(ch)}:${Math.round(x)}:${Math.round(y)},scale=${W}:${H},setsar=1`;
-  };
-  const edge = border ? `,drawbox=x=0:y=0:w=${W}:h=${H}:color=${hexF(accent)}@1:t=${Math.round(Math.min(W, H) * 0.018)}` : '';
-  let look = '';
-  const layout = it.layout === 'number' && !NUMBER.test(text) ? 'bold' : it.layout;
-  if (layout === 'bold' || layout === 'number') {
-    const faceLeft = fx <= 0.5;
-    if (portrait) {
-      look = `${aim(0.5, 0.33, 0.30 + 0.18 * zoom)},eq=contrast=1.12:saturation=1.3,unsharp=5:5:0.5`;
-      for (let i = 0; i < 12; i++) look += `,drawbox=x=0:y=${Math.round(H * (0.46 + i * 0.015))}:w=${W}:h=${Math.round(H * 0.015) + 1}:color=${hexF(panel)}@${(0.07 * (i + 1)).toFixed(2)}:t=fill`;
-      look += `,drawbox=x=0:y=${Math.round(H * 0.64)}:w=${W}:h=${H - Math.round(H * 0.64)}:color=${hexF(panel)}@0.92:t=fill`;
-    } else {
-      look = `${aim(faceLeft ? 0.3 : 0.7, 0.46, 0.5 + 0.28 * zoom)},eq=contrast=1.12:saturation=1.3,unsharp=5:5:0.5`;
-      const from = faceLeft ? 0.42 : 0.58;
-      for (let i = 0; i < 12; i++) {
-        const x0 = faceLeft ? from + i * 0.0125 : from - (i + 1) * 0.0125;
-        look += `,drawbox=x=${Math.round(W * x0)}:y=0:w=${Math.round(W * 0.0125) + 1}:h=${H}:color=${hexF(panel)}@${(0.07 * (i + 1)).toFixed(2)}:t=fill`;
-      }
-      look += faceLeft ? `,drawbox=x=${Math.round(W * 0.57)}:y=0:w=${W}:h=${H}:color=${hexF(panel)}@0.92:t=fill` : `,drawbox=x=0:y=0:w=${Math.round(W * 0.43)}:h=${H}:color=${hexF(panel)}@0.92:t=fill`;
-    }
-    look += edge;
-    const areaX = portrait ? W / 2 : faceLeft ? W * 0.785 : W * 0.215;
-    const areaW = portrait ? W * 0.88 : W * 0.40;
-    const areaY = portrait ? H * 0.8 : H * 0.5;
-    if (layout === 'number') {
-      const n = (text.match(NUMBER) ?? [''])[0].trim();
-      const rest = text.replace(n, '').replace(/\s+/g, ' ').trim();
-      const tile = portrait ? [W * 0.12, H * 0.66, W * 0.76, H * 0.16] : [areaX - areaW / 2, H * 0.14, areaW, H * 0.42];
-      look += `,drawbox=x=${Math.round(tile[0])}:y=${Math.round(tile[1])}:w=${Math.round(tile[2])}:h=${Math.round(tile[3])}:color=${hexF(accent)}@1:t=fill`;
-      const [ev] = headlineEvents({ text: n, highlight: '', x: tile[0] + tile[2] / 2, y: tile[1] + tile[3] / 2, an: 5, size: tile[3] * 0.8, color: '#111111', accent, outline: 0, maxWidth: tile[2] * 0.92, per: 3, maxLines: 1 });
-      events.push(ev.replace('\\3c&H000000&', '\\3c&HFFFFFF&').replace(/\\shad\d+/, '\\shad0'));
-      if (rest) events.push(headlineEvents({ text: rest, highlight: it.highlight, x: areaX, y: portrait ? H * 0.89 : H * 0.74, an: 5, size: H * (portrait ? 0.05 : 0.1), color, accent, outline: 0.08, maxWidth: areaW, per: 3, maxLines: 2 })[0]);
-    } else {
-      events.push(headlineEvents({ text, highlight: it.highlight, x: areaX, y: areaY, an: 5, size: H * (portrait ? 0.075 : 0.17), color, accent, outline: 0.09, maxWidth: areaW, per: portrait ? 2 : 2, maxLines: 4 })[0]);
-    }
-  } else if (layout === 'callout') {
-    /* Where the crop puts the face, and how big — the ring is drawn round exactly that. */
-    const cf = portrait ? 0.24 + 0.1 * zoom : 0.42 + 0.2 * zoom;
-    const [px, py] = portrait ? [0.5, 0.58] : [0.6, 0.5];
-    look = `${aim(px, py, face ? cf : 0.4)},eq=contrast=1.1:saturation=1.35,vignette=angle=0.5${edge}`;
-    const textLeft = portrait || !face || fx >= 0.42;
-    const [ev, fs, n] = headlineEvents({ text, highlight: it.highlight, x: textLeft ? W * 0.05 : W * 0.95, y: H * 0.06, an: textLeft ? 7 : 9, size: H * (portrait ? 0.06 : 0.15), color, accent, outline: 0.09, maxWidth: W * (portrait ? 0.9 : 0.5), per: 2, maxLines: 3 });
-    events.push(ev);
-    if (face) {
-      const cx = W * px, cy = H * py, fh = H * cf, fw = fh * (face.w * srcW) / (face.h * srcH);
-      const rx = fw * 0.85, ry = fh * 0.8;
-      const ringColor = '#ef4444';
-      events.push(`Dialogue: 1,0:00:00.00,0:00:10.00,D,,0,0,0,,{\\an7\\pos(0,0)\\1a&HFF&\\bord${Math.round(Math.min(W, H) * 0.012)}\\3c${assHex(ringColor)}\\shad0\\p1}${ellipse(cx, cy, rx, ry)}{\\p0}`);
-      const tx = portrait ? W * 0.3 : textLeft ? W * 0.05 + Math.min(W * 0.4, fs * 3) : W * 0.6, ty = H * 0.06 + fs * n * 1.15 + (portrait ? H * 0.01 : 0);
-      const ex = portrait ? cx - rx * 0.35 : cx - rx * 0.92 * (textLeft ? 1 : -0.2), ey = portrait ? cy - ry * 0.95 : cy - ry * 0.55;
-      events.push(`Dialogue: 1,0:00:00.00,0:00:10.00,D,,0,0,0,,{\\an7\\pos(0,0)\\c${assHex(ringColor)}\\bord${Math.max(2, Math.round(Math.min(W, H) * 0.005))}\\3c&H000000&\\shad0\\p1}${arrow(tx, ty, ex, ey, Math.min(W, H) * 0.028)}{\\p0}`);
-    }
-  } else if (layout === 'cinematic') {
-    const bar = Math.round(H * (portrait ? 0.06 : 0.1));
-    look = `${aim(0.5, 0.42, 0.38)},eq=contrast=1.08:saturation=0.72,lutrgb=r='clip(val*1.02+16*(val-128)/128,0,255)':b='clip(val*0.98-16*(val-128)/128,0,255)',vignette=angle=0.42` +
-      `,drawbox=x=0:y=0:w=${W}:h=${bar}:color=black@1:t=fill,drawbox=x=0:y=${H - bar}:w=${W}:h=${bar}:color=black@1:t=fill` +
-      `,drawbox=x=${Math.round(W * 0.42)}:y=${Math.round(H * 0.69)}:w=${Math.round(W * 0.16)}:h=${Math.max(3, Math.round(H * 0.006))}:color=${hexF(accent)}@1:t=fill`;
-    events.push(headlineEvents({ text, highlight: it.highlight, x: W / 2, y: H * 0.79, an: 5, size: H * (portrait ? 0.045 : 0.085), color, accent, outline: 0.04, maxWidth: W * 0.86, per: 4, maxLines: 2, spacing: Math.round(H * 0.006) })[0]);
-  } else if (layout === 'split') {
-    /* The second frame arrives as input 1; the graph stacks them. */
-    look = 'SPLIT';
-    events.push(headlineEvents({ text, highlight: it.highlight, x: W / 2, y: portrait ? H * 0.5 : H * 0.84, an: 5, size: H * (portrait ? 0.06 : 0.12), color, accent, outline: 0.1, maxWidth: W * 0.9, per: 3, maxLines: 2 })[0]);
+/** The plan's overlays and words, as ASS. */
+function planAss(plan) {
+  const { W, H } = plan;
+  const ev = [];
+  if (plan.rule) ev.push(shape(1, `\\1c${assHex(plan.rule.color)}\\bord0\\shad0`, rect(plan.rule)));
+  if (plan.tile) ev.push(shape(1, `\\1c${assHex(plan.tile.color)}\\bord0\\shad${Math.round(plan.tile.h * 0.05)}\\4c&H000000&\\4a&H60&`, rect(plan.tile)));
+  if (plan.split?.vs) {
+    const v = plan.split.vs;
+    ev.push(shape(3, `\\1c${assHex(v.color)}\\3c&HFFFFFF&\\bord${Math.round(v.r * 0.1)}\\shad${Math.round(v.r * 0.08)}\\4c&H000000&\\4a&H50&`, ellipse(v.cx, v.cy, v.r, v.r)));
+    ev.push(`Dialogue: 4,0:00:00.00,0:00:10.00,T,,0,0,0,,{\\an5\\pos(${n0(v.cx)},${n0(v.cy)})\\fs${Math.round(v.r * 1.05)}\\bord0\\shad0\\c${assHex(v.ink)}}VS`);
   }
-  return { look, ass: assDoc(W, H, events), split: layout === 'split', accent, border };
+  if (plan.badge) {
+    const b = plan.badge;
+    ev.push(shape(5, `\\1c${assHex(b.color)}\\1a&H38&\\bord0\\shad0`, rect(b)));
+    ev.push(shape(5, `\\1c${assHex(b.bar)}\\bord0\\shad0`, rect({ x: b.x, y: b.y, w: Math.max(4, Math.round(b.h * 0.14)), h: b.h })));
+    ev.push(`Dialogue: 6,0:00:00.00,0:00:10.00,T,,0,0,0,,{\\an4\\pos(${n0(b.x + b.h * 0.42)},${n0(b.y + b.h / 2)})\\fs${Math.round(b.h * 0.56)}\\fscx100\\bord0\\shad0\\c${assHex(b.ink)}\\fsp${Math.round(b.h * 0.04)}}${assSafe(b.text.toLocaleUpperCase())}`);
+  }
+  for (const l of plan.lines) {
+    const an = l.align === 'left' ? 4 : l.align === 'right' ? 6 : 5;
+    const body = l.runs.map(r => `{\\c${assHex(r.color)}}${assRun(r.t)}`).join('');
+    const font = l.font !== 'Noto Sans' ? `\\fn${l.font}` : '';
+    const at = `\\an${an}\\pos(${n0(l.x)},${n0(l.y)})\\fs${l.fs}${font}\\fsp${n0(l.spacing)}`;
+    if (l.box) {
+      ev.push(`Dialogue: 8,0:00:00.00,0:00:10.00,B,,0,0,0,,{${at}\\frz${-l.box.tilt}\\3c${assHex(l.box.color)}\\bord${l.box.pad}\\shad${l.shadow}\\4c&H000000&\\4a&H40&}${body}`);
+      continue;
+    }
+    /* A soft dark halo first, so the words read on anything; then the words, outlined and dropped. */
+    if (l.glow) ev.push(`Dialogue: 6,0:00:00.00,0:00:10.00,T,,0,0,0,,{${at}\\1a&HFF&\\3c&H000000&\\3a&H60&\\bord${l.glow}\\blur${Math.round(l.glow * 0.8)}\\shad0}${body}`);
+    ev.push(`Dialogue: 7,0:00:00.00,0:00:10.00,T,,0,0,0,,{${at}\\3c&H000000&\\bord${l.stroke}\\shad${l.shadow}\\4c&H000000&\\4a&H30&}${body}`);
+  }
+  if (plan.ring) {
+    const r = plan.ring;
+    ev.push(shape(9, `\\1a&HFF&\\3c${assHex(r.color)}\\bord${r.t}\\shad0`, ellipse(r.cx, r.cy, r.rx, r.ry)));
+  }
+  if (plan.arrow) ev.push(shape(9, `\\1c${assHex(plan.arrow.color)}\\3c&H000000&\\bord${Math.max(2, Math.round(Math.min(W, H) * 0.005))}\\shad${Math.max(2, Math.round(Math.min(W, H) * 0.006))}\\4c&H000000&\\4a&H60&`, poly(plan.arrow.pts)));
+  if (plan.sticker) {
+    const s = plan.sticker;
+    ev.push(shape(10, `\\1c${assHex(s.disc)}\\3c&HFFFFFF&\\bord${Math.max(2, Math.round(s.r * 0.1))}\\shad${Math.round(s.r * 0.1)}\\4c&H000000&\\4a&H50&`, ellipse(s.cx, s.cy, s.r, s.r)));
+    if (s.mark) ev.push(shape(11, '\\1c&HFFFFFF&\\bord0\\shad0', poly(s.mark)));
+    if (s.glyph) ev.push(`Dialogue: 11,0:00:00.00,0:00:10.00,T,,0,0,0,,{\\an5\\pos(${n0(s.cx)},${n0(s.cy + s.r * 0.04)})\\fs${Math.round(s.r * 1.35)}\\fscx100\\bord0\\shad0\\c&HFFFFFF&}${s.glyph}`);
+  }
+  return assDoc(W, H, ev);
+}
+
+/** A colour fill over the whole picture as a geq source: a two-colour gradient, with its alpha ramp. Numbers only. */
+function fillSource(f, W, H) {
+  const [r0, g0, b0] = rgbOf(f.c0solid), [r1, g1, b1] = rgbOf(f.c1solid);
+  /* Colour runs along the CSS angle (180° = top to bottom, 135° = top-left to bottom-right). */
+  const th = ((Number(f.angle) || 180) * Math.PI) / 180;
+  const sx = Math.sin(th), sy = -Math.cos(th), norm = Math.abs(sx) + Math.abs(sy) || 1;
+  const t = `clip(((X/${W}-0.5)*${sx.toFixed(4)}+(Y/${H}-0.5)*${sy.toFixed(4)})/${(norm / 2).toFixed(4)}*0.5+0.5,0,1)`;
+  const ch = (a, b) => `${a}+(${b - a})*${t}`;
+  const a = f.alpha ?? { axis: 'full', max: 1 };
+  const max = Math.max(0, Math.min(1, Number(a.max) || 0));
+  const ramp = a.axis === 'x' || a.axis === 'y'
+    ? `clip(((${a.axis === 'x' ? 'X' : 'Y'})/${a.axis === 'x' ? W : H}-${Number(a.from).toFixed(4)})/(${(Number(a.to) - Number(a.from)).toFixed(4)}),0,1)`
+    : '1';
+  return `color=c=black:s=${W}x${H}:d=1,format=rgba,geq=r='${ch(r0, r1)}':g='${ch(g0, g1)}':b='${ch(b0, b1)}':a='${(255 * max).toFixed(1)}*${ramp}'`;
+}
+
+/** The picture under the overlays: crop, grade, blur, fills, spotlight, vignette, letterbox, edge. Numbers only. */
+function planGraph(plan, frameA, frameB) {
+  const { W, H } = plan;
+  const g = plan.grade;
+  const crop = c => `crop=${n0(c.w)}:${n0(c.h)}:${n0(c.x)}:${n0(c.y)},scale=${W}:${H},setsar=1`;
+  const grade = (blur = 0) => `eq=contrast=${g.contrast}:saturation=${g.saturation}:brightness=${g.brightness}` +
+    (g.sharpen && !blur ? ',unsharp=5:5:0.5' : '') + (blur ? `,gblur=sigma=${blur}` : '') +
+    (g.cinematic ? ",lutrgb=r='clip(val*1.02+16*(val-128)/128,0,255)':b='clip(val*0.98-16*(val-128)/128,0,255)'" : '');
+  const parts = [];
+  let cur;
+  if (plan.split) {
+    const hw = plan.split.vertical ? W : W / 2, hh = plan.split.vertical ? H / 2 : H;
+    const half = c => `crop=${n0(c.w)}:${n0(c.h)}:${n0(c.x)}:${n0(c.y)},scale=${hw}:${hh},setsar=1`;
+    parts.push(`[${frameA}]${half(plan.crop)},eq=contrast=1.1:saturation=1.25[sa]`, `[${frameB}]${half(plan.crop2)},eq=contrast=1.1:saturation=1.25[sb]`);
+    const d = plan.split.divider;
+    const div = plan.split.vertical ? `drawbox=x=0:y=${H / 2 - Math.round(d.t / 2)}:w=${W}:h=${d.t}` : `drawbox=x=${W / 2 - Math.round(d.t / 2)}:y=0:w=${d.t}:h=${H}`;
+    parts.push(`[sa][sb]${plan.split.vertical ? 'vstack' : 'hstack'},${div}:color=${d.color.replace('#', '0x')}@1:t=fill[p0]`);
+    cur = 'p0';
+  } else {
+    if (plan.spot) parts.push(`[${frameA}]split=2[base][sharp]`);
+    parts.push(`[${plan.spot ? 'base' : frameA}]${crop(plan.crop)},${grade(g.blur)}[p0]`);
+    cur = 'p0';
+  }
+  plan.fills.forEach((f, i) => {
+    parts.push(`${fillSource(f, W, H)}[f${i}]`, `[${cur}][f${i}]overlay=format=auto[q${i}]`);
+    cur = `q${i}`;
+  });
+  if (plan.halo) {
+    /* The accent glowing behind the subject: a soft ellipse a little wider than the spotlight, which then covers its middle. */
+    const h = plan.halo;
+    const [hr, hg, hb] = rgbOf(h.color);
+    const dist = `hypot((X-${h.cx.toFixed(1)})/${h.rx.toFixed(1)},(Y-${h.cy.toFixed(1)})/${h.ry.toFixed(1)})`;
+    parts.push(`color=c=black:s=${W}x${H}:d=1,format=rgba,geq=r='${hr}':g='${hg}':b='${hb}':a='${HALO.max}*clip((${HALO.outer}-${dist})/${HALO.soft},0,1)*clip((${dist}-${HALO.inner})/${HALO.rise},0,1)'[halo]`, `[${cur}][halo]overlay=format=auto[h1]`);
+    cur = 'h1';
+  }
+  if (plan.spot) {
+    const s = plan.spot;
+    /* The subject sharp and bright over the blurred background, its edge feathered into it. */
+    const fe = Math.max(0.05, Math.min(0.8, Number(s.feather) || 0.35));
+    const dist = `hypot((X-${s.cx.toFixed(1)})/${s.rx.toFixed(1)},(Y-${s.cy.toFixed(1)})/${s.ry.toFixed(1)})`;
+    parts.push(`[sharp]${crop(plan.crop)},eq=contrast=1.12:saturation=1.3,unsharp=5:5:0.6,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='255*clip((1-${dist})/${fe.toFixed(3)},0,1)'[spot]`);
+    parts.push(`[${cur}][spot]overlay=format=auto[s1]`);
+    cur = 's1';
+  }
+  const tail = [];
+  if (plan.vignette) tail.push('vignette=angle=0.5');
+  if (plan.bars) tail.push(`drawbox=x=0:y=0:w=${W}:h=${plan.bars}:color=black@1:t=fill`, `drawbox=x=0:y=${H - plan.bars}:w=${W}:h=${plan.bars}:color=black@1:t=fill`);
+  if (plan.edge) tail.push(`drawbox=x=0:y=0:w=${W}:h=${H}:color=${plan.edge.color.replace('#', '0x')}@1:t=${plan.edge.t}`);
+  return { parts, out: cur, tail: tail.join(',') };
 }
 
 async function thumbnail(job, dir) {
@@ -977,22 +970,18 @@ async function thumbnail(job, dir) {
     const inputs = [];
     let graph;
     let face = null;
-    if (THUMB_NEW.has(String(it.layout))) {
+    let drawn = String(it.layout);
+    if (TREND_LAYOUTS.includes(String(it.layout))) {
       face = fr.face;
-      const t = trendLayout(it, W, H, fr.w, fr.h, face);
-      await fsp.writeFile(assFile, t.ass);
-      if (t.split) {
-        const fr2 = await grab(it.at2 ?? num(it.at, 1, 0, 6 * 3600) + 6);
-        const half = H > W ? `scale=${W}:${H / 2}:force_original_aspect_ratio=increase,crop=${W}:${H / 2}` : `scale=${W / 2}:${H}:force_original_aspect_ratio=increase,crop=${W / 2}:${H}`;
-        inputs.push('-i', fr.big, '-i', fr2.big);
-        const stack = H > W ? 'vstack' : 'hstack';
-        const div = H > W ? `drawbox=x=0:y=${H / 2 - Math.round(H * 0.006)}:w=${W}:h=${Math.round(H * 0.012)}` : `drawbox=x=${W / 2 - Math.round(W * 0.006)}:y=0:w=${Math.round(W * 0.012)}:h=${H}`;
-        graph = `[0:v]${half},eq=contrast=1.1:saturation=1.25[a];[1:v]${half},eq=contrast=1.1:saturation=1.25[b];[a][b]${stack},${div}:color=${t.accent.replace('#', '0x')}@1:t=fill` +
-          `${t.border ? `,drawbox=x=0:y=0:w=${W}:h=${H}:color=${t.accent.replace('#', '0x')}@1:t=${Math.round(Math.min(W, H) * 0.018)}` : ''},subtitles=filename=${assFile}:fontsdir=${FONTS}`;
-      } else {
-        inputs.push('-i', fr.big);
-        graph = `[0:v]${t.look},subtitles=filename=${assFile}:fontsdir=${FONTS}`;
-      }
+      /* The second moment (split) is read first: each half is framed on its own face. */
+      const fr2 = it.layout === 'split' ? await grab(it.at2 ?? num(it.at, 1, 0, 6 * 3600) + 6) : null;
+      const plan = thumbPlan(it, W, H, { w: fr.w, h: fr.h }, face, fr2?.face ?? null);
+      drawn = plan.layout;
+      await fsp.writeFile(assFile, planAss(plan));
+      inputs.push('-i', fr.big);
+      if (plan.split) inputs.push('-i', fr2.big);
+      const g = planGraph(plan, '0:v', '1:v');
+      graph = `${g.parts.join(';')};[${g.out}]${g.tail ? `${g.tail},` : ''}subtitles=filename=${assFile}:fontsdir=${FONTS}`;
     } else {
       await fsp.writeFile(assFile, String(it.ass ?? ''));
       inputs.push('-i', it.bg === 'portrait' && portrait ? portrait : fr.cover);
@@ -1007,12 +996,115 @@ async function thumbnail(job, dir) {
     const s = JSON.parse(stdout).streams?.[0] ?? {};
     if (s.codec_name !== 'png' || s.width !== W || s.height !== H) throw new Error(`thumbnail ${name} is ${s.codec_name} ${s.width}×${s.height}, not PNG ${W}×${H}`);
     const up = await upload(job, out, name, 'image/png');
-    made.push({ ...up, width: W, height: H, layout: it.layout, id: it.id ?? '', face: !!face });
+    made.push({ ...up, width: W, height: H, layout: drawn, id: it.id ?? '', face: !!face });
   }
   return { thumbs: made };
 }
 
-const OPS = { prepare, render, thumbnail, track, probe: async job => ({ probe: summarise(await probe(job.inputs.source, job)) }) };
+/* ── fetch_url: the customer's own YouTube video, as if they had uploaded it ── */
+
+/**
+ * yt-dlp, run as tightly as it allows: no configuration files, no plugins,
+ * no remote components, no --exec, one video and never a playlist. The
+ * engine is handed a video id, never the customer's text: the URL is built
+ * here from an id that must be eleven of [A-Za-z0-9_-], and a `url` param,
+ * if one is sent, must be on youtube.com or youtu.be and is reduced to its id
+ * the same way. Nothing from the request ever becomes an argument.
+ *
+ * Two runs: the video's details first (duration, live, size), so a video that
+ * is too long for the plan is refused before a byte of it is fetched; then
+ * the best version up to 1080 lines in a container FFmpeg reads (MP4, else
+ * Matroska), uploaded through the signed link exactly like a render.
+ *
+ * yt-dlp's own failure is passed back word for word (`ytdlp: …`) and read by
+ * the Worker (lib/video/youtube.ts youtubeRefusal), which knows which of them
+ * no retry can change — private, age-restricted, "not a bot" — so that
+ * judgement lives in one tested place.
+ */
+const YTDLP = process.env.YTDLP || 'yt-dlp';
+const YT_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be', 'www.youtu.be']);
+let ytdlpCache = null;
+async function canFetch() {
+  if (ytdlpCache !== null) return ytdlpCache;
+  try { ytdlpCache = (await exec(YTDLP, ['--version'], null)).stdout.trim().slice(0, 40) || false; } catch { ytdlpCache = false; }
+  return ytdlpCache;
+}
+
+function youtubeId(p) {
+  const id = String(p.videoId ?? '');
+  if (/^[A-Za-z0-9_-]{11}$/.test(id)) return id;
+  if (p.url) {
+    let u;
+    try { u = new URL(String(p.url)); } catch { return ''; }
+    if (u.protocol !== 'https:' || !YT_HOSTS.has(u.hostname.toLowerCase())) return '';
+    const seg = u.pathname.split('/').filter(Boolean);
+    const got = u.hostname.toLowerCase().endsWith('youtu.be') ? seg[0] : seg[0] === 'watch' ? u.searchParams.get('v') : ['shorts', 'live', 'embed'].includes(seg[0]) ? seg[1] : '';
+    return /^[A-Za-z0-9_-]{11}$/.test(String(got ?? '')) ? String(got) : '';
+  }
+  return '';
+}
+
+async function fetchUrl(job, dir) {
+  const p = job.params;
+  const id = youtubeId(p);
+  if (!id) throw new Error('refused: youtube:not_youtube');
+  if (!(await canFetch())) throw new Error('refused: youtube:not_installed');
+  const url = `https://www.youtube.com/watch?v=${id}`;
+  const maxDuration = num(p.maxDuration, 3 * 3600, 2, 6 * 3600);
+  const allowance = num(p.allowanceSeconds, maxDuration, 0, 6 * 3600);
+  const maxBytes = Math.round(num(p.maxBytes, 8e9, 1e6, 12e9));
+  const common = ['--ignore-config', '--no-plugin-dirs', '--no-remote-components', '--js-runtimes', 'node', '--no-playlist', '--no-cache-dir', '--no-exec',
+    '--socket-timeout', '30', '--retries', '3', '--no-colors', '--ffmpeg-location', FFMPEG];
+  const ytFail = e => new Error(`ytdlp: ${String(e?.message ?? e).replace(/^[^:]*exited \d+:\s*/, '').slice(-500)}`);
+
+  job.stage = 'details'; job.pct = null;
+  let info;
+  try {
+    const { stdout } = await exec(YTDLP, [...common, '--skip-download', '--dump-single-json', '--', url], job);
+    info = JSON.parse(stdout);
+  } catch (e) { if (job.cancelled) throw e; throw ytFail(e); }
+  const duration = Number(info?.duration) || 0;
+  if (info?.is_live || info?.live_status === 'is_live' || info?.live_status === 'is_upcoming') throw new Error('refused: youtube:live');
+  if (duration > maxDuration) throw new Error(`refused: youtube:too_long:${Math.round(duration)}:${Math.round(maxDuration)}`);
+  if (duration > allowance) throw new Error(`refused: youtube:over_allowance:${Math.round(duration)}:${Math.round(allowance)}`);
+  const approx = Number(info?.filesize_approx || info?.filesize) || 0;
+  if (approx > maxBytes) throw new Error('refused: youtube:too_big');
+
+  job.stage = 'download'; job.pct = 0;
+  const outTpl = path.join(dir, 'yt', 'source.%(ext)s');
+  try {
+    await exec(YTDLP, [...common,
+      '-f', 'bv*[height<=1080]+ba/b[height<=1080]', '-S', 'res:1080,vcodec:h264,acodec:aac', '--merge-output-format', 'mp4/mkv',
+      '--max-filesize', String(maxBytes), '--no-mtime', '--newline', '--progress-template', 'download:pc %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s',
+      '-o', outTpl, '--', url], job, {
+      onLine: line => {
+        const m = line.match(/^pc (\d+) (\S+) (\S+)/);
+        if (!m) return;
+        const total = Number(m[2]) || Number(m[3]) || 0;
+        if (total > 0) job.pct = Math.min(99, Math.round((Number(m[1]) / total) * 100));
+      },
+    });
+  } catch (e) { if (job.cancelled) throw e; throw ytFail(e); }
+  const made = (await fsp.readdir(path.join(dir, 'yt')).catch(() => [])).filter(f => /^source\.(mp4|mkv|webm)$/.test(f));
+  if (!made.length) throw new Error('refused: youtube:empty');
+  const file = path.join(dir, 'yt', made[0]);
+  /* What arrived is probed like an upload before it is handed on: a picture,
+     and a container the prepare step will accept. */
+  job.stage = 'probe';
+  const got = summarise(await probe(file, job));
+  if (!got.hasVideo) throw new Error('refused: youtube:no_video');
+  const ext = made[0].split('.').pop();
+  const type = ext === 'mp4' ? 'video/mp4' : ext === 'webm' ? 'video/webm' : 'video/x-matroska';
+  job.stage = 'upload'; job.pct = null;
+  const up = await upload(job, file, `original.${ext}`, type);
+  return {
+    file: { ...up, type },
+    info: { id, title: String(info?.title ?? '').slice(0, 200), channel: String(info?.channel ?? info?.uploader ?? '').slice(0, 120), duration },
+    probe: got,
+  };
+}
+
+const OPS = { prepare, render, thumbnail, track, fetch_url: fetchUrl, probe: async job => ({ probe: summarise(await probe(job.inputs.source, job)) }) };
 
 fs.mkdirSync(WORK, { recursive: true });
 server.listen(PORT, () => console.log(`media engine on :${PORT}${SECRET ? ' (signed)' : OPEN ? ' (open: behind a service binding)' : ' (refusing: no secret)'}`));

@@ -109,7 +109,7 @@ export function StagesCard({ view, onRetry, onCancel }: { view: ProjectView; onR
 
 /* ── Finishing an upload that stopped ─────────────────────────────────────── */
 
-function ResumeUpload({ view, onDone }: { view: ProjectView; onDone: () => void }) {
+function ResumeUpload({ view, onDone, instead }: { view: ProjectView; onDone: () => void; instead?: boolean }) {
   const [p, setP] = useState<UploadProgress | null>(null);
   const [err, setErr] = useState('');
   const go = async (f: File | undefined) => {
@@ -121,14 +121,43 @@ function ResumeUpload({ view, onDone }: { view: ProjectView; onDone: () => void 
   const pct = p ? Math.round((p.sent / Math.max(1, p.total)) * 100) : 0;
   return (
     <div className="vs-card vs-col" data-testid="vs-resume">
-      <h2><Upload size={16} /> {view.upload ? 'Finish the upload' : 'Add the video'}</h2>
-      <p className="vs-sub">{view.upload ? `“${view.upload.name}” stopped at ${view.upload.done.length} of ${Math.ceil(view.upload.bytes / view.upload.partSize)} parts. Choose the same file and it carries on from there.` : 'This project has no video yet.'}</p>
+      <h2><Upload size={16} /> {view.upload ? 'Finish the upload' : instead ? 'Upload the file instead' : 'Add the video'}</h2>
+      <p className="vs-sub">{view.upload ? `“${view.upload.name}” stopped at ${view.upload.done.length} of ${Math.ceil(view.upload.bytes / view.upload.partSize)} parts. Choose the same file and it carries on from there.` : instead ? 'The MP4 YouTube Studio gives you, or the original recording.' : 'This project has no video yet.'}</p>
       <label className="vs-btn primary" style={{ justifySelf: 'start' }}>
         <Upload size={14} /> Choose the file
         <input type="file" hidden accept="video/*,.mkv" onChange={e => void go(e.target.files?.[0])} data-testid="vs-resume-file" />
       </label>
       {p && <><div className="vs-bar"><i style={{ width: `${pct}%` }} /></div><span className="vs-sub" style={{ margin: 0 }}>{bytesLabel(p.sent)} of {bytesLabel(p.total)}{p.resumed ? ' — resumed' : ''}</span></>}
       {err && <div className="vs-note bad">{err}</div>}
+    </div>
+  );
+}
+
+/* ── A YouTube start that YouTube refused ─────────────────────────────────── */
+
+/**
+ * The fetch stopped (YouTube refused the server, the video is private, too
+ * long for the month…). The sentence is the server's; the way forward is the
+ * one that always works — the file from YouTube Studio, uploaded into this
+ * same project, which keeps the request and the choices already made.
+ */
+function YoutubeStopped({ view, onRetry, onDone }: { view: ProjectView; onRetry: () => void; onDone: () => void }) {
+  const yt = view.source.youtube!;
+  return (
+    <div className="vs-col" style={{ gap: 12 }} data-testid="vs-youtube-stopped">
+      <div className="vs-card vs-col" style={{ gap: 10 }}>
+        <div className="vs-yt-card" style={{ border: 0, padding: 0, background: 'none' }}>
+          <img src={yt.thumb} alt="" width={160} height={90} loading="lazy" referrerPolicy="no-referrer" />
+          <div className="vs-col" style={{ gap: 3, minWidth: 0 }}>
+            <b>{yt.title || `YouTube video ${yt.id}`}</b>
+            <a className="vs-kbd" href={yt.url} target="_blank" rel="noreferrer noopener">{yt.url}</a>
+          </div>
+        </div>
+        <div className="vs-note bad" role="alert" data-testid="vs-youtube-error"><AlertCircle size={15} /> <span>{view.project.error || 'The video could not be fetched from YouTube.'}</span></div>
+        <p className="vs-sub" style={{ margin: 0 }}><b>The way that always works:</b> {view.project.wayForward || 'download it from YouTube Studio and upload the file instead.'} Your choices for this project are kept.</p>
+        <div className="vs-row"><button type="button" className="vs-btn ghost sm" onClick={onRetry}><RefreshCw size={13} /> Try YouTube again</button></div>
+      </div>
+      <ResumeUpload view={view} onDone={onDone} instead />
     </div>
   );
 }
@@ -349,6 +378,8 @@ export default function VideoEditor({ id }: { id: string }) {
 
   const st = view.project.status;
   const hasSource = !!view.source.probe || st === 'processing';
+  /* Started from YouTube, stopped before any video arrived. */
+  const ytStopped = !!view.source.youtube && !view.source.probe && st === 'failed' && !view.upload;
   const stale = view.outputs.filter(o => o.stale);
   const working = st !== 'ready' || view.jobs.some(j => j.state === 'queued' || j.state === 'running' || j.state === 'failed');
   const proposed = doc.cuts.filter(c => c.state === 'proposed').length;
@@ -401,7 +432,8 @@ export default function VideoEditor({ id }: { id: string }) {
       </aside>
 
       <main className="vse-stage">
-        {!hasSource && (st === 'draft' || st === 'uploading') ? <ResumeUpload view={view} onDone={() => void refresh()} />
+        {ytStopped ? <YoutubeStopped view={view} onRetry={() => void retryVideo(id).then(refresh)} onDone={() => void refresh()} />
+          : !hasSource && (st === 'draft' || st === 'uploading') ? <ResumeUpload view={view} onDone={() => void refresh()} />
           : view.source.proxyUrl ? <Player ctx={ctx} /> : (
             <div className="vse-player"><div className="vse-screen" style={{ minHeight: 280 }}><span className="vs-kbd"><Loader size={14} className="spin" /> The preview appears when the video is prepared.</span></div></div>
           )}

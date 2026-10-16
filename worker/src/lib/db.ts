@@ -35,6 +35,8 @@ export interface Env {
   MEDIA_ENGINE_SECRET?: string;
   /** A Workers AI stand-in for tests (POST <base>/run/<model>). Unset in production. */
   WORKERS_AI_BASE?: string;
+  /** YouTube's oEmbed (a video's title before it is fetched), pointed at a mock by tests. Unset in production. */
+  YOUTUBE_OEMBED_BASE?: string;
   /**
    * Wraps the install secrets in crm_meta (see installSecret). A Cloudflare
    * secret; once set, never change it.

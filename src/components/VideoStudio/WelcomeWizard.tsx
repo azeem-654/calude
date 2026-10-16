@@ -136,7 +136,7 @@ export default function WelcomeWizard({ compact, onGoal, onTab, onReady, onCance
 
   return (
     <div className="vs-welcome" data-testid="vs-wizard-options" data-goal={g.key}>
-      <div className="vs-steps"><span><i>1</i> Goal</span><span>›</span><span className="on"><i>2</i> Choices</span><span>›</span><span><i>3</i> Upload</span></div>
+      <div className="vs-steps"><span><i>1</i> Goal</span><span>›</span><span className="on"><i>2</i> Choices</span><span>›</span><span><i>3</i> Your video</span></div>
       <div className="vs-row">
         <span className="vs-mark" style={{ width: 36, height: 36, borderRadius: 11 }}><g.icon size={18} /></span>
         <div style={{ flex: 1, minWidth: 220 }}><h2 style={{ fontSize: 20 }}>{g.title}</h2><span className="vs-kbd">{g.blurb}</span></div>
@@ -196,7 +196,7 @@ export default function WelcomeWizard({ compact, onGoal, onTab, onReady, onCance
       </div>
       <div className="vs-row">
         <span className="vs-spacer" />
-        <button type="button" className="vs-btn ai" onClick={() => result && onReady(result)} data-testid="vs-wiz-next"><Wand2 size={15} /> Next: upload the video <ArrowRight size={15} /></button>
+        <button type="button" className="vs-btn ai" onClick={() => result && onReady(result)} data-testid="vs-wiz-next"><Wand2 size={15} /> Next: add the video <ArrowRight size={15} /></button>
       </div>
     </div>
   );

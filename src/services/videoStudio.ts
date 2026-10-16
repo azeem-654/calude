@@ -19,6 +19,7 @@ export { cleanupSummary, isFiller } from '../../worker/src/lib/video/cleanup';
 export { cameraPath, cutTimes, punchSpans, overlaySpan, trackAt, cssLook, type TrackFile, type TrackRow } from '../../worker/src/lib/video/motion';
 export { toXmeml, editorialScore } from '../../worker/src/lib/video/xml';
 export type { VideoMeta } from '../../worker/src/lib/video/shorts';
+export { parseYoutubeUrl, youtubeThumb, YOUTUBE_WAY_FORWARD, type YoutubeLink } from '../../worker/src/lib/video/youtube';
 
 type Answer<T> = T & { success?: boolean; error?: string; field?: string; code?: string; conflict?: boolean };
 
@@ -53,7 +54,14 @@ export interface ProjectSummary {
 
 export interface Stage { key: string; label: string; state: 'done' | 'active' | 'waiting' | 'failed' | 'skipped'; pct: number | null; note: string }
 
-export interface ThumbSpec { layout: string; text: string; highlight: string; at: number; at2?: number; accent: string; color: string; textColor: string; border: boolean; zoom: number }
+export interface ThumbSpec {
+  layout: string; text: string; highlight: string; at: number; at2?: number; accent: string; color: string; textColor: string; border: boolean; zoom: number;
+  /* The trending layouts' options (media/engine/thumbLayout.mjs) — absent on older thumbnails, which draw as before. */
+  color2?: string; hlStyle?: 'color' | 'box'; side?: 'auto' | 'left' | 'right' | 'center'; textPos?: 'auto' | 'top' | 'middle' | 'bottom';
+  textSize?: number; sticker?: string; pointer?: 'auto' | 'none' | 'arrow' | 'circle' | 'both'; badge?: string;
+}
+/** The plan the engine paints, so the designer's preview is drawn from the same numbers. */
+export { thumbPlan, normaliseSpec, inkOn, lineRect, TREND_LAYOUTS, STICKERS, EM, CONDENSE, HALO, type Plan as ThumbPlan } from '../../media/engine/thumbLayout.mjs';
 export interface ThumbView { index: number; layout: string; width: number; height: number; bytes: number; verified: boolean; check: string; headline: string; set: number; url: string; downloadUrl: string; spec: ThumbSpec | null; face: boolean }
 export interface TrackStatus { ready: boolean; summary: { detector: string; seen: number; faces: number; tracks: number; switches: { speaker: number; face: number }; frames: number } | null; error: string; at: string }
 
@@ -71,11 +79,15 @@ export interface ProjectView {
   project: {
     id: string; name: string; prompt: string; status: string; stage: string; stageNote: string; error: string; language: string;
     createdAt: string; updatedAt: string; autopilotProjectId: string | null; autopilotProjectName: string; workflowId: string | null;
+    /** For a project started from YouTube that has no video yet: what to do instead. */
+    wayForward?: string;
   };
   request: (VideoRequest & { language?: string }) | null;
   source: { name: string; bytes: number; probe: Probe | null; proxyUrl: string; posterUrl: string; waveUrl: string; silences?: [number, number][];
     filmstrip?: { url: string; every: number; tiles: number; w: number; h: number } | null;
-    track?: TrackStatus | null; trackUrl?: string };
+    track?: TrackStatus | null; trackUrl?: string;
+    /** Started from the customer's own YouTube video (fetched: the bytes arrived and were checked). */
+    youtube?: { id: string; url: string; title: string; channel: string; thumb: string; fetched: boolean } | null };
   extras: Extras;
   musicUrl: string;
   transcriptUrl: string;
@@ -119,8 +131,13 @@ export interface FoundTrack {
   duration: number; previewUrl: string; pageUrl: string; provider: string; genres: string[];
 }
 
-export const createVideoProject = (p: { name: string; prompt: string; settings?: Partial<VideoRequest> & { language?: string }; autopilotProjectId?: string; workflowId?: string; want?: Want }) =>
-  call<{ id: string; request: VideoRequest }>('create', p);
+export const createVideoProject = (p: {
+  name: string; prompt: string; settings?: Partial<VideoRequest> & { language?: string }; autopilotProjectId?: string; workflowId?: string; want?: Want;
+  /** Instead of an upload: the customer's own YouTube video, with their word that they may use it. */
+  youtubeUrl?: string; rightsConfirmed?: boolean; title?: string;
+}) => call<{ id: string; request: VideoRequest }>('create', p);
+/** Which video a pasted link names, and what YouTube calls it (asked by the server, never by the browser). */
+export const youtubeInfo = (youtubeUrl: string) => call<{ id: string; url: string; thumb: string; title: string; author: string; note: string }>('youtube_info', { youtubeUrl });
 export const getVideoProject = (projectId: string) => call<ProjectView>('get', { projectId });
 export const videoStatus = (projectId: string, knownVersion: number) => call<ProjectView>('status', { projectId, knownVersion });
 export const renameVideoProject = (projectId: string, name: string) => call('rename', { projectId, name });
@@ -146,6 +163,25 @@ export const chooseMusic = (projectId: string, baseVersion: number, trackId: str
 export const startRepurpose = (projectId: string, want: { posts: number; blog: boolean; email: boolean }) => call('repurpose', { projectId, ...want });
 export const startQuiz = (projectId: string) => call('quiz', { projectId });
 export const designThumb = (projectId: string, outputId: string, spec: ThumbSpec) => call<{ set: number }>('thumb_custom', { projectId, outputId, spec });
+
+/**
+ * A thumbnail redesigned in the Graphics Designer & Editor, made this video's
+ * thumbnail: the PNG goes straight to storage through a signed link, then the
+ * server checks it from its bytes (a real PNG, the size the video needs)
+ * before it is offered and chosen. `accountId` is the workspace the video is
+ * in — a design opened from another workspace is refused here, by name,
+ * rather than answered "not found".
+ */
+export async function applyDesignAsThumb(target: { projectId: string; outputId: string; accountId?: string }, png: Blob): Promise<{ ok: true; note: string } | { ok: false; error: string }> {
+  if (target.accountId && target.accountId !== getActiveAccountId()) return { ok: false, error: 'This video is in another workspace — switch to it, then use the design.' };
+  const u = await call<{ url: string; key: string; width: number; height: number }>('thumb_upload_url', { projectId: target.projectId, outputId: target.outputId });
+  if (!u.success) return { ok: false, error: u.error ?? 'The upload could not start.' };
+  const put = await fetch(`${u.url}&name=designed.png&type=image/png`, { method: 'PUT', body: png }).then(r => r.json()).catch(() => ({ success: false })) as { success?: boolean };
+  if (!put.success) return { ok: false, error: 'The picture did not upload — try again.' };
+  const a = await call<{ index: number; note: string }>('thumb_attach', { projectId: target.projectId, outputId: target.outputId, key: u.key });
+  if (!a.success) return { ok: false, error: a.error ?? 'The picture was not accepted.' };
+  return { ok: true, note: a.note ?? '' };
+}
 export const trackNow = (projectId: string) => call('track_now', { projectId });
 export async function loadTrack(url: string): Promise<import('../../worker/src/lib/video/motion').TrackFile | null> {
   if (!url) return null;

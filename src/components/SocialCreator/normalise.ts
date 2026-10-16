@@ -70,9 +70,19 @@ export function normalisePost(raw: unknown): DesignPost | null {
     thumbnail: typeof p.thumbnail === 'string' ? p.thumbnail : undefined,
     tags: Array.isArray(p.tags) ? (p.tags as unknown[]).filter((t): t is string => typeof t === 'string') : [],
     aiPrompt: typeof p.aiPrompt === 'string' ? p.aiPrompt : undefined,
+    /* The Video Studio link survives only whole: every field it needs, or none. */
+    videoThumb: videoThumbOf(p.videoThumb),
     createdAt: created,
     updatedAt: iso(p.updatedAt ?? created),
   };
+}
+
+function videoThumbOf(v: unknown): DesignPost['videoThumb'] {
+  const t = v as Record<string, unknown> | null;
+  if (!t || typeof t !== 'object') return undefined;
+  const ok = typeof t.projectId === 'string' && typeof t.outputId === 'string' && typeof t.accountId === 'string'
+    && (t.width === 1280 && t.height === 720 || t.width === 1080 && t.height === 1920);
+  return ok ? { projectId: t.projectId as string, outputId: t.outputId as string, accountId: t.accountId as string, width: t.width as number, height: t.height as number, title: typeof t.title === 'string' ? t.title : '' } : undefined;
 }
 
 /** Every stored record, made openable. Anything with no id at all is dropped. */

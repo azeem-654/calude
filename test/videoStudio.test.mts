@@ -20,6 +20,8 @@ import { checkPng } from '../worker/src/lib/video/png';
 import { cameraPath, cutTimes, punchSpans, overlayAss, overlaySpan, trackAt, cssLook, type TrackRow } from '../worker/src/lib/video/motion';
 import { toXmeml, editorialScore } from '../worker/src/lib/video/xml';
 import { pickHighlight, thumbWords, cleanThumbSpec } from '../worker/src/lib/video/pipeline';
+import { thumbPlan, normaliseSpec, lineRect, TREND_LAYOUTS, STICKERS } from '../media/engine/thumbLayout.mjs';
+import { parseYoutubeUrl, youtubeRefusal, cleanOembed, youtubeThumb, YOUTUBE_WAY_FORWARD } from '../worker/src/lib/video/youtube';
 
 let pass = 0, failN = 0;
 const ok = (name: string, cond: unknown, detail: unknown = '') => {
@@ -400,6 +402,91 @@ console.log('\nThe assistant, for the new edits');
   const title = parseVideoCommand('Add a title "Three ways to win"', ctx);
   ok('"add a title …" puts the words at the playhead', title.ops[0]?.op === 'overlay.add' && (title.ops[0] as { s: number; text: string }).s === 42 && (title.ops[0] as { text: string }).text === 'Three ways to win', title);
   ok('…and without quotes, asks for them rather than guessing', !parseVideoCommand('Add a title', ctx).ops.length);
+}
+
+console.log('\nA project from the customer\'s own YouTube video');
+{
+  const id = 'dQw4w9WgXcQ';
+  const good: [string, string][] = [
+    [`https://www.youtube.com/watch?v=${id}`, 'watch'], [`https://youtube.com/watch?v=${id}&t=42s&list=PL123`, 'watch'], [`youtube.com/watch?v=${id}`, 'watch'],
+    [`https://m.youtube.com/watch?v=${id}`, 'watch'], [`https://youtu.be/${id}?si=abc`, 'share'], [`youtu.be/${id}`, 'share'],
+    [`https://www.youtube.com/shorts/${id}`, 'short'], [`https://youtube.com/live/${id}?feature=share`, 'live'], [`https://www.youtube.com/embed/${id}`, 'watch'],
+    [`  https://www.youtube.com/watch?v=${id}  `, 'watch'],
+  ];
+  for (const [u, kind] of good) {
+    const r = parseYoutubeUrl(u);
+    ok(`a link is read to its id: ${u.trim()}`, r.ok && r.id === id && r.kind === kind && r.url === `https://www.youtube.com/watch?v=${id}`, r);
+  }
+  const bad: [string, RegExp][] = [
+    ['', /Paste the link/], ['not a link at all', /not a link|not YouTube|is to/], [`https://vimeo.com/${id}`, /vimeo\.com, not YouTube/],
+    [`https://www.youtube.com.evil.example/watch?v=${id}`, /not YouTube/], [`https://evil.example/?u=youtube.com/watch?v=${id}`, /not YouTube/],
+    ['https://www.youtube.com/playlist?list=PL1234567', /playlist/], ['https://www.youtube.com/@growthshow', /channel/], ['https://www.youtube.com/results?search_query=x', /search/],
+    ['https://www.youtube.com/watch?v=short', /11 letters/], [`https://www.youtube.com/watch?v=${id}x`, /11 letters/], ['https://www.youtube.com/watch', /does not name a video/],
+    [`javascript:alert(1)//youtube.com/watch?v=${id}`, /not a web link|not YouTube|not a link/], [`https://user:pw@www.youtube.com/watch?v=${id}`, /not a YouTube link/],
+    [`ftp://www.youtube.com/watch?v=${id}`, /not a web link/],
+  ];
+  for (const [u, why] of bad) {
+    const r = parseYoutubeUrl(u);
+    ok(`…and refused by name: ${u || '(empty)'}`, !r.ok && why.test(r.error), r);
+  }
+  ok('the still shown is YouTube\'s own, by id only', youtubeThumb(id) === `https://i.ytimg.com/vi/${id}/hqdefault.jpg` && youtubeThumb('../x') === '');
+
+  const bot = youtubeRefusal('ytdlp: ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication.');
+  ok('"Sign in to confirm you\'re not a bot" is a refusal no retry changes, said plainly, with the way forward', bot.terminal && bot.code === 'bot' && /not a bot/.test(bot.message) && bot.message.endsWith(YOUTUBE_WAY_FORWARD), bot);
+  ok('…a private video', youtubeRefusal('ytdlp: ERROR: [youtube] x: Private video. Sign in if you\'ve been granted access to this video').code === 'private');
+  const age = youtubeRefusal('ytdlp: ERROR: [youtube] x: Sign in to confirm your age. This video may be inappropriate for some users.');
+  ok('…an age-restricted one (not mistaken for the bot check)', age.code === 'age' && age.terminal, age);
+  ok('…members only', youtubeRefusal('ytdlp: ERROR: [youtube] x: Join this channel to get access to members-only content like this video').code === 'members');
+  ok('…unavailable', youtubeRefusal('ytdlp: ERROR: [youtube] x: Video unavailable. This video has been removed by the uploader').code === 'unavailable');
+  ok('…too many requests is YouTube refusing the server', youtubeRefusal('ytdlp: ERROR: unable to download video data: HTTP Error 429: Too Many Requests').code === 'bot');
+  const long = youtubeRefusal('refused: youtube:too_long:14400:10800');
+  ok('the engine\'s own check: too long, in minutes', long.terminal && /240 minutes/.test(long.message) && /180 minutes/.test(long.message), long);
+  const over = youtubeRefusal('refused: youtube:over_allowance:3000:600');
+  ok('…over this month\'s allowance, saying how much is left', over.terminal && /50 minutes/.test(over.message) && /10 minutes of this month/.test(over.message), over);
+  ok('…a live stream not finished', youtubeRefusal('refused: youtube:live').code === 'live');
+  const net = youtubeRefusal('ytdlp: ERROR: Unable to download webpage: <urlopen error [Errno 104] Connection reset by peer>');
+  ok('a network hiccup is retried, not a refusal — and still says the way forward', !net.terminal && net.code === 'unknown' && net.message.endsWith(YOUTUBE_WAY_FORWARD), net);
+  ok('oEmbed\'s answer is kept to a title and a channel, markup dropped', JSON.stringify(cleanOembed({ title: 'How we <b>grow</b>\n', author_name: 'Growth Show', html: '<iframe>' })) === JSON.stringify({ title: 'How we b grow /b', author: 'Growth Show' }), cleanOembed({ title: 'How we <b>grow</b>\n', author_name: 'Growth Show' }));
+  ok('…and nothing without a title', cleanOembed({ author_name: 'x' }) === null && cleanOembed(null) === null);
+}
+
+console.log('\nTrending thumbnails: one plan for the engine and the preview');
+{
+  const face = { x: 0.2, y: 0.2, w: 0.2, h: 0.35 };
+  const src = { w: 1920, h: 1080 };
+  ok('eight trending layouts, including the 9:16 Shorts cover', TREND_LAYOUTS.length === 8 && TREND_LAYOUTS.includes('short') && TREND_LAYOUTS.includes('glow'));
+  const evil = normaliseSpec({ layout: 'bold;drawtext=x', sticker: 'skull', side: 'up', pointer: 'laser', accent: 'red', textSize: 9, badge: 'x'.repeat(80), hlStyle: 'neon' });
+  ok('every option is held to the engine\'s own lists and ranges', evil.layout === 'bold' && evil.sticker === '' && evil.side === 'auto' && evil.pointer === 'auto' && evil.accent === '#facc15' && evil.textSize === 1.4 && evil.badge.length === 28 && evil.hlStyle === 'color', evil);
+  const inFrame = (pl: ReturnType<typeof thumbPlan>) => pl.lines.every(l => { const r = lineRect(l); return r.x0 >= -2 && r.x1 <= pl.W + 2 && r.y0 >= -2 && r.y1 <= pl.H + 2; });
+  for (const layout of TREND_LAYOUTS) for (const [W, H] of [[1280, 720], [1080, 1920]]) {
+    const pl = thumbPlan({ layout, text: 'I tried this for 30 days', highlight: '30', sticker: 'check', pointer: 'both', badge: '@show' }, W, H, src, face);
+    ok(`${layout} at ${W}×${H}: every line of words inside the picture, the words all there`, inFrame(pl) && pl.lines.map(l => l.runs.map(r => r.t).join('')).join(' ').replace(/\s+/g, ' ').includes('30'), pl.lines.map(l => [l.x, l.y, l.w, l.fs]));
+  }
+  const box = thumbPlan({ layout: 'glow', text: 'Stop doing this now', highlight: 'stop', hlStyle: 'box' }, 1280, 720, src, face);
+  ok('a boxed highlight gets a line of its own, in a tilted accent box with ink that reads on it', box.lines.some(l => l.box && l.runs.length === 1 && l.runs[0].t === 'STOP' && l.box.tilt === -3 && l.runs[0].color === '#0b0b0f'), box.lines);
+  const coloured = thumbPlan({ layout: 'bold', text: 'Why nobody buys', highlight: 'nobody', accent: '#22d3ee' }, 1280, 720, src, face);
+  ok('…or coloured in the accent, two-tone, in its line', coloured.lines.some(l => l.runs.some(r => r.t.trim() === 'NOBODY' && r.color === '#22d3ee') && l.runs.some(r => r.color === '#ffffff')));
+  const noFace = thumbPlan({ layout: 'callout', text: 'Look at this', pointer: 'both' }, 1280, 720, src, null);
+  ok('with no face found nothing is ringed, pointed at or glowed round', !noFace.ring && !noFace.arrow && !noFace.halo);
+  const ring = thumbPlan({ layout: 'callout', text: 'Big news for owners', pointer: 'both' }, 1280, 720, src, face);
+  ok('a callout rings the face and points at it — the arrow never through the words', !!ring.ring && !!ring.arrow && ring.arrow.pts.every(([x, y]) => !ring.lines.map(lineRect).some(r => x > r.x0 + 4 && x < r.x1 - 4 && y > r.y0 + 4 && y < r.y1 - 4)), ring.arrow);
+  const glow = thumbPlan({ layout: 'glow', text: 'Do this first' }, 1280, 720, src, face);
+  ok('glow: the frame blurred under the gradient, the face sharp in a spotlight with a halo of the accent', glow.grade.blur > 0 && !!glow.spot && !!glow.halo && glow.fills.length > 0);
+  const side = thumbPlan({ layout: 'bold', text: 'Two words', side: 'right' }, 1280, 720, src, face);
+  ok('face on the right puts the words on the left', side.lines.every(l => l.x < 640));
+  const num = thumbPlan({ layout: 'number', text: '8 hours of work in 1' }, 1280, 720, src, face);
+  ok('the number layout puts the figure on its own tile', !!num.tile && num.lines[0].runs.map(r => r.t).join('') === '8 HOURS');
+  ok('…and with no figure is drawn as "bold", saying so', thumbPlan({ layout: 'number', text: 'No figure here' }, 1280, 720, src, face).layout === 'bold');
+  ok('the Shorts cover is a 9:16 layout; on 16:9 it is drawn as "bold"', thumbPlan({ layout: 'short', text: 'x y' }, 1080, 1920, src, face).layout === 'short' && thumbPlan({ layout: 'short', text: 'x y' }, 1280, 720, src, face).layout === 'bold');
+  const vs = thumbPlan({ layout: 'split', text: 'Before vs After' }, 1280, 720, src, face, face);
+  ok('"A vs B" splits the words under each half, with a VS disc', !!vs.split?.vs && vs.lines.length === 2 && vs.lines[0].x < 640 && vs.lines[1].x > 640 && !!vs.crop && !!vs.crop2);
+  for (const k of STICKERS) {
+    const st = thumbPlan({ layout: 'headline', text: 'Words here', sticker: k }, 1280, 720, src, null).sticker;
+    ok(`sticker "${k}" drawn inside the picture`, !!st && st.cx - st.r >= 0 && st.cx + st.r <= 1280 && st.cy - st.r >= 0 && st.cy + st.r <= 720 && (!!st.mark || !!st.glyph), st);
+  }
+  ok('even lines: "of work in 1" is never left with "1" alone', num.lines.slice(1).every(l => l.runs.map(r => r.t).join('').trim().split(' ').length >= 2), num.lines.map(l => l.runs.map(r => r.t).join('')));
+  const spec = cleanThumbSpec({ layout: 'glow', text: 'A b c', sticker: 'star', side: 'left', color2: '#123456', textSize: 0.2 }, { layout: 'bold', text: 'x', highlight: '', at: 5, accent: '#facc15', color: '#000000', textColor: '#ffffff', border: true, zoom: 0.5 });
+  ok('a designed spec keeps the new options, cleaned', spec.layout === 'glow' && spec.sticker === 'star' && spec.side === 'left' && spec.color2 === '#123456' && spec.textSize === 0.6, spec);
 }
 
 console.log(`\n${pass} passed, ${failN} failed`);

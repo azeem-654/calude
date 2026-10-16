@@ -14,15 +14,20 @@
  *   - downloads are the files that exist at the size they were made — no
  *     "4K" button on a 1080p render;
  *   - Export XML is the cut list for Premiere Pro or DaVinci Resolve, which
- *     re-links to the customer's own copy of the recording.
+ *     re-links to the customer's own copy of the recording;
+ *   - every checked thumbnail opens in the Graphics Designer & Editor
+ *     (designerHandoff.ts), and a design can come back as the thumbnail.
  */
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  Download, Image as ImageIcon, FileCode2, Copy as CopyIcon, Pencil, Wand2, CopyPlus, Clapperboard, Loader, Captions as CaptionsIcon, LayoutGrid, List, Check, ShieldCheck,
+  Download, Image as ImageIcon, FileCode2, Copy as CopyIcon, Pencil, Wand2, CopyPlus, Clapperboard, Loader, Captions as CaptionsIcon, LayoutGrid, List, Check, ShieldCheck, Paintbrush,
 } from 'lucide-react';
+import { useApp } from '../../context/AppContext';
+import { thumbAsDesign } from './designerHandoff';
 import {
   clock, keepRanges, keptLength, toXmeml, editorialScore, renderOutputs, setOutputStatus, chooseThumb, moreThumbnails, STATUS_LABEL,
-  type OutputView, type VideoMeta,
+  type OutputView, type VideoMeta, type ThumbView,
 } from '../../services/videoStudio';
 import { MetaEditor } from './OutputsPanel';
 import ThumbnailDesigner from './ThumbnailDesigner';
@@ -40,7 +45,25 @@ function CopyBtn({ text, label }: { text: string; label: string }) {
   return <button type="button" className="ob-act" disabled={!text} onClick={() => { void navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1400); }); }}>{done ? <Check size={14} /> : <CopyIcon size={14} />} {done ? 'Copied' : label}</button>;
 }
 
+/** Opens a thumbnail as a new design in the Graphics Designer & Editor (see designerHandoff.ts). */
+function useEditInDesigner(ctx: EditorCtx) {
+  const { addSocialPost } = useApp() as unknown as { addSocialPost: (p: import('../SocialCreator/types').DesignPost) => void };
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const open = async (o: OutputView, t: ThumbView) => {
+    if (busy) return;
+    setBusy(true);
+    const r = await thumbAsDesign(o, t, ctx.view.project.id);
+    setBusy(false);
+    if (!r.ok) { ctx.say({ who: 'ai', text: r.error }); return; }
+    addSocialPost(r.post);
+    navigate(`/social-creator/editor/${r.post.id}`);
+  };
+  return { open, busy };
+}
+
 function Row({ ctx, o, n, onDesign, onWords }: { ctx: EditorCtx; o: OutputView; n: number; onDesign: () => void; onWords: () => void }) {
+  const designer = useEditInDesigner(ctx);
   const { view, doc, duration, transcript } = ctx;
   const clip = o.kind === 'short' ? doc.clips.find(c => c.id === o.clipId) : undefined;
   const [mode, setMode] = useState<'description' | 'transcript'>('description');
@@ -101,10 +124,16 @@ function Row({ ctx, o, n, onDesign, onWords }: { ctx: EditorCtx; o: OutputView; 
         <div className="ob-thumbs" data-testid="vs-board-thumbs">
           <span>Thumbnails</span>
           {o.thumbs.slice(-8).map(t => (
-            <button key={t.index} type="button" className={`ob-thumb ${tall ? 'tall' : ''}`} aria-pressed={o.chosenThumb === t.index} disabled={!t.verified} title={t.verified ? `${t.layout} · ${t.check}` : t.check}
-              onClick={() => void chooseThumb(view.project.id, o.id, t.index).then(() => ctx.refresh())}>
-              <img src={t.url} alt={`Thumbnail ${t.index + 1}: ${t.headline}`} loading="lazy" />
-            </button>
+            <span key={t.index} className="ob-thumb-wrap">
+              <button type="button" className={`ob-thumb ${tall ? 'tall' : ''}`} aria-pressed={o.chosenThumb === t.index} disabled={!t.verified} title={t.verified ? `${t.layout} · ${t.check}` : t.check}
+                onClick={() => void chooseThumb(view.project.id, o.id, t.index).then(() => ctx.refresh())}>
+                <img src={t.url} alt={`Thumbnail ${t.index + 1}: ${t.headline}`} loading="lazy" />
+              </button>
+              {t.verified && (
+                <button type="button" className="ob-thumb-edit" disabled={designer.busy} onClick={() => void designer.open(o, t)} data-act="edit-in-designer"
+                  title="Edit in Graphics Designer & Editor" aria-label={`Edit thumbnail ${t.index + 1} in Graphics Designer & Editor`}><Paintbrush size={12} /></button>
+              )}
+            </span>
           ))}
           {thumbJob && <span className="vs-kbd"><Loader size={12} className="spin" /> Making…</span>}
           {o.rendered && <button type="button" className="ob-thumb add" onClick={onDesign} data-act="design-thumb"><Wand2 size={15} /><small>Design</small></button>}
@@ -115,6 +144,11 @@ function Row({ ctx, o, n, onDesign, onWords }: { ctx: EditorCtx; o: OutputView; 
         {o.downloadUrl ? <a className="ob-act primary" href={o.downloadUrl} data-act="board-download"><Download size={14} /> Download MP4 <small>{o.width}×{o.height}</small></a>
           : <span className="ob-act off"><Clapperboard size={14} /> Not rendered yet</span>}
         {chosen?.verified && <a className="ob-act" href={chosen.downloadUrl} data-act="board-png"><ImageIcon size={14} /> Thumbnail PNG</a>}
+        {chosen?.verified && (
+          <button type="button" className="ob-act" disabled={designer.busy} onClick={() => void designer.open(o, chosen)} data-act="board-edit-in-designer">
+            {designer.busy ? <Loader size={14} className="spin" /> : <Paintbrush size={14} />} Edit in Graphics Designer & Editor
+          </button>
+        )}
         {o.srtUrl && <a className="ob-act" href={o.srtUrl}><CaptionsIcon size={14} /> Captions SRT</a>}
         {o.vttUrl && <a className="ob-act" href={o.vttUrl}><CaptionsIcon size={14} /> Captions VTT</a>}
         <button type="button" className="ob-act" onClick={xml} data-act="export-xml"><FileCode2 size={14} /> Export XML</button>
