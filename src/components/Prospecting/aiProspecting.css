@@ -245,6 +245,13 @@ html[data-theme="dark"] .aip-vars {
 @container (min-width: 721px) {
   .aip-table { min-width: 1080px; }
   .aip-table td .pp-name { white-space: nowrap; }
+  /* A long result list scrolls inside its own box, the height of the window,
+     with the header held at the top — so the sideways scroll bar is always on
+     screen. Without it the bar sat under the last of several hundred rows, and
+     seeing the right-hand columns meant scrolling the whole page to the end
+     first (the owner's report). */
+  .aip-table-wrap { max-height: max(360px, calc(100dvh - 230px)); overflow: auto; }
+  .aip-table thead th { position: sticky; top: 0; z-index: 2; background: var(--aip-card); box-shadow: inset 0 -1px 0 var(--aip-line); }
 }
 .aip-table th { text-transform: uppercase; font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; color: var(--aip-faint); background: transparent; padding: 9px 12px; }
 .aip-table td { padding: 11px 12px; vertical-align: middle; }

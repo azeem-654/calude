@@ -2,7 +2,7 @@
  * The owner's lead library, end to end (routes/leaddir.ts, lib/leadDir.ts,
  * services/leadImport.ts, Settings → Platform services → the library card,
  * Workspace → Lead library), what it gives a project's daily prospecting
- * (prospectFinderTick.ts `libraryStep`), and Customers → Lead lists.
+ * (prospectFinderTick.ts `libraryStep`), and the customer's lists in Contacts.
  *
  *   VITE_BASE=/ npm run build
  *   npm run test:leaddir         (self-contained: Geoapify + DNS mock on :8978,
@@ -15,7 +15,7 @@
  *  - customers cannot load, cannot change settings, and never search it or
  *    see a person in it — opened or not (403 `not_owner`); a customer's
  *    status says only whether it is open; the old address sends them to
- *    their own Lead lists;
+ *    their own Contacts;
  *  - opening it needs the owner's statement that they may share it;
  *  - the owner searches it, in full, on the Lead library screen and adds
  *    people to their own Contacts as "Licensed business data";
@@ -27,7 +27,7 @@
  *  - closed, the finder takes nobody from it;
  *  - a person removed on request stays out when the same file is loaded again;
  *  - a load can be undone;
- *  - the customer's Lead lists show the project's folder, its list and its
+ *  - the customer's lists in Contacts show the workspace's folder, its list and its
  *    leads with their source, search them and export them, at 1280px and
  *    390px, with no page errors, no sideways scroll and no "directory".
  */
@@ -371,46 +371,46 @@ ok('…and the load says so', a2.imports.find(i => i.id === s3i.import.id)?.stat
   await done();
 }
 
-/* ── A customer's Lead lists ── */
+/* ── A customer's lists, inside Contacts ── */
 for (const width of [1280, 390]) {
   const { page, done } = await signIn(CE, CPW, width);
   await page.goto(`${B}/lead-directory?industry=real%20estate&place=Florida`, { waitUntil: 'networkidle' });
-  await page.getByTestId('lead-lists').waitFor({ timeout: 15_000 }).catch(() => {});
-  ok(`@${width}: the old Lead Directory address lands on the customer's own Lead lists`, /\/lead-lists$/.test(page.url()), page.url());
-  const root = page.getByTestId('lead-lists');
-  const folder = root.getByTestId('ll-folder').filter({ hasText: 'Tampa realtors' });
-  await folder.waitFor({ timeout: 15_000 });
-  ok(`@${width}: a folder for the project, counting its leads`, /\b10\b/.test(await folder.innerText()) && /AI Autopilot project/.test(await folder.innerText()), await folder.innerText());
-  ok(`@${width}: no "directory" anywhere on the page`, !/directory/i.test(await root.innerText()), (await root.innerText()).slice(0, 300));
-  ok(`@${width}: nothing scrolls sideways (folders)`, (await overflow(page)) <= 1, await overflow(page));
-  await page.screenshot({ path: `test-results/leadlists-${width}.png`, fullPage: true });
-  /* Searching the customer's own leads, from the top. */
-  await root.getByTestId('ll-search').fill('pat8@');
-  await root.getByTestId('ll-results').waitFor({ timeout: 5000 });
-  ok(`@${width}: searching finds their own lead`, (await root.getByTestId('ll-row').count()) === 1 && /pat8@realty8\.example/.test(await root.getByTestId('ll-results').innerText()));
-  await root.getByTestId('ll-search').fill('');
-  await folder.click();
-  await root.getByTestId('ll-folder-view').waitFor({ timeout: 5000 });
-  const listCard = root.getByTestId('ll-list').filter({ hasText: 'Tampa realtors — prospects' });
-  ok(`@${width}: the folder holds the project's list`, (await listCard.count()) === 1 && /10 leads/.test(await listCard.innerText()), await root.getByTestId('ll-folder-view').innerText());
-  await listCard.click();
-  await root.getByTestId('ll-list-view').waitFor({ timeout: 5000 });
-  ok(`@${width}: the list shows its ten leads`, (await root.getByTestId('ll-row').count()) === 10);
-  const sources = await root.getByTestId('ll-source').allInnerTexts();
+  await page.getByTestId('cl-sidebar').waitFor({ timeout: 15_000 }).catch(() => {});
+  ok(`@${width}: the old Lead Directory address lands on the customer's own Contacts`, /\/contacts$/.test(page.url()), page.url());
+  const side = page.getByTestId('cl-sidebar');
+  /* On a phone the lists fold into one line above the table. */
+  if (width < 1000) await side.getByRole('button', { name: /^Lists ·/ }).click();
+  const ws = side.getByTestId('cl-workspaces');
+  await ws.getByText('Tampa realtors', { exact: false }).first().waitFor({ timeout: 15_000 });
+  ok(`@${width}: a folder for the business workspace, counting its leads`, /Tampa realtors[\s\S]*\b10\b/.test(await ws.innerText()), await ws.innerText());
+  ok(`@${width}: no "directory" anywhere in the lists`, !/directory/i.test(await side.innerText()), (await side.innerText()).slice(0, 300));
+  ok(`@${width}: nothing scrolls sideways (lists)`, (await overflow(page)) <= 1, await overflow(page));
+  await page.screenshot({ path: `test-results/contactlists-${width}.png`, fullPage: true });
+  const listBtn = side.getByTestId('cl-list').filter({ hasText: 'Tampa realtors — prospects' });
+  ok(`@${width}: the folder holds the workspace's list`, (await listBtn.count()) === 1 && /\b10\b/.test(await listBtn.innerText()), await ws.innerText());
+  await listBtn.click();
+  const head = page.getByTestId('cl-head');
+  await head.waitFor({ timeout: 5000 });
+  ok(`@${width}: the list's header counts its ten`, /10 contacts/.test(await head.innerText()), await head.innerText());
+  ok(`@${width}: the table shows its ten leads`, (await page.getByTestId('contact-row').count()) === 10, await page.getByTestId('contact-row').count());
+  const sources = await page.getByTestId('contact-source').allInnerTexts();
   ok(`@${width}: each one says it is licensed business data`, sources.length === 10 && sources.every(t => t.trim() === 'Licensed business data'), sources.join(' | '));
-  ok(`@${width}: with its email check`, (await root.getByTestId('ll-list-view').innerText()).includes('Domain takes mail'));
-  ok(`@${width}: the list can be emailed`, (await root.getByTestId('ll-campaign').count()) === 1);
+  ok(`@${width}: with its email checks`, /domain takes mail/i.test(await head.innerText()), await head.innerText());
+  ok(`@${width}: the list can be emailed and sent to AI Autopilot`, (await head.getByRole('button', { name: /Email this list/ }).count()) === 1 && (await page.getByTestId('cl-send').count()) === 1);
   ok(`@${width}: nothing scrolls sideways (a list)`, (await overflow(page)) <= 1, await overflow(page));
-  await page.screenshot({ path: `test-results/leadlists-list-${width}.png`, fullPage: true });
-  await root.getByTestId('ll-list-search').fill('Example7');
-  ok(`@${width}: searching within the list`, (await root.getByTestId('ll-row').count()) === 1);
-  await root.getByTestId('ll-list-search').fill('');
-  const [dl] = await Promise.all([page.waitForEvent('download'), root.getByTestId('ll-export').click()]);
+  await page.screenshot({ path: `test-results/contactlists-list-${width}.png`, fullPage: true });
+  await page.getByPlaceholder('Search name, email, company...').fill('pat8@');
+  ok(`@${width}: searching within the list`, (await page.getByTestId('contact-row').count()) === 1);
+  await page.getByPlaceholder('Search name, email, company...').fill('');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByTestId('cl-export').click()]);
   const csvText = fs.readFileSync(await dl.path(), 'utf8');
   ok(`@${width}: the export says where every lead came from`, /Where it came from/.test(csvText.split('\r\n')[0]) && csvText.split('\r\n').filter(l => /Licensed business data/.test(l)).length === 10, csvText.slice(0, 300));
-  await page.goBack();
-  await root.getByTestId('ll-folder-view').waitFor({ timeout: 5000 }).catch(() => {});
-  ok(`@${width}: Back goes up a level`, (await root.getByTestId('ll-folder-view').count()) === 1);
+  /* Send to AI Autopilot names the workspace it would go to before anything moves. */
+  await page.getByTestId('cl-send').click();
+  const dlg = page.getByTestId('cl-send-dialog');
+  await dlg.getByText('Tampa realtors').first().waitFor({ timeout: 10_000 }).catch(() => {});
+  ok(`@${width}: Send to AI Autopilot offers the business workspace`, /Tampa realtors/.test(await dlg.innerText()), await dlg.innerText());
+  await dlg.getByRole('button', { name: 'Cancel' }).click();
   await done();
 }
 ok('no page errors', errs.length === 0, errs.join(' | '));

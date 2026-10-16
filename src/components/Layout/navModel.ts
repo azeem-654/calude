@@ -20,7 +20,7 @@ import {
   BarChart3, Building2, Calendar, CalendarClock, CreditCard,
   Globe, Inbox, LayoutDashboard, LayoutTemplate, Newspaper, Palette, Rocket,
   Send, Settings as SettingsIcon, ShieldAlert, Star, TrendingUp, Users,
-  type LucideIcon, Package, UserPlus, BadgePercent, Crosshair, BookUser, Clapperboard, FolderOpen } from 'lucide-react';
+  type LucideIcon, Package, UserPlus, BadgePercent, Crosshair, BookUser, Clapperboard } from 'lucide-react';
 
 export interface NavItem {
   path: string;
@@ -75,16 +75,10 @@ export const NAV_GROUPS: NavGroup[] = [
     id: 'customers',
     label: 'Customers',
     items: [
-      { path: '/contacts', label: 'Contacts', desc: 'Everyone you know, with their whole history', icon: Users, aka: ['people', 'leads', 'crm', 'customers'] },
+      { path: '/contacts', label: 'Contacts', desc: 'Everyone you know, with their whole history — and your lists, one folder per AI Autopilot business workspace', icon: Users, aka: ['people', 'leads', 'crm', 'customers', 'lists', 'contact lists', 'lead lists', 'my leads', 'folders', 'export leads', 'lead directory', 'segments'] },
       /* Beside Contacts, because that is where what it finds goes — and the
          word somebody types looking for it is rarely "prospecting". */
       { path: '/prospecting', label: 'AI Prospecting', desc: 'Say who to sell to — find businesses, their published emails, checked', icon: Crosshair, aka: ['prospecting', 'find customers', 'prospects', 'leads', 'lead generation', 'find businesses', 'google maps', 'directory', 'lists', 'email finder', 'verify email', 'email verification', 'apollo', 'linkedin'] },
-      /* The customer's own leads, a folder per project — everything AI
-         Prospecting and the projects' daily finders have found and kept.
-         There is no screen here for looking people up in a database: this
-         product finds leads live and is not a lead seller. ('lead directory'
-         is an alias so somebody who learnt the old screen's name lands here.) */
-      { path: '/lead-lists', label: 'Lead lists', desc: 'Your own prospects, a folder for each project — export, open or email them', icon: FolderOpen, aka: ['leads', 'lead lists', 'lists', 'folders', 'prospects', 'my leads', 'export leads', 'lead directory'] },
       { path: '/conversations', label: 'Unified Inbox', desc: 'Every mailbox, plus SMS and chat, in one shared thread', icon: Inbox, aka: ['conversations', 'messages', 'chat', 'email', 'inbox', 'unified'] },
       { path: '/reputation', label: 'Reviews', desc: 'Watch what people say and answer it', icon: Star, aka: ['reputation', 'ratings', 'google reviews'] },
       /* Beside the inbox on purpose: this is where the conversations in that

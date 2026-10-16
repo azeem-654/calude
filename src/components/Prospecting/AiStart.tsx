@@ -267,7 +267,7 @@ export function StartScreen({ s, text, setText, onGo, error, onExample, verifier
         <div className="aip-trust">
           <span><Zap size={16} /><b>Live business data</b><small>Searched when you ask, time-stamped</small></span>
           <span><ShieldCheck size={16} /><b>Checked email addresses</b><small>Fewer bounces, a safer domain</small></span>
-          <span><Users size={16} /><b>Ready to outreach</b><small>Lists, workflows, AI projects, campaigns</small></span>
+          <span><Users size={16} /><b>Ready to outreach</b><small>Contact lists, workflows, AI Autopilot, campaigns</small></span>
         </div>
       </div>
     </div>
@@ -289,7 +289,7 @@ export function HowItWorks({ onClose }: { onClose: () => void }) {
           <li><b>It searches live.</b> All businesses by default; say "registered companies" for the company register with directors, or "with reviews" for businesses with ratings — where those are switched on. Asked at that moment, never a stored list.</li>
           <li><b>It reads their websites.</b> The address each business chose to publish, from its own pages, right then. Never a guessed firstname@ address.</li>
           <li><b>It checks every address.</b> Format, domain and mail server; with a verifier connected, whether the mailbox exists. Each result is tagged with the day it was checked — Contact verified (the mailbox answered), Contact checked (domain and mail server), Risky, Invalid.</li>
-          <li><b>You choose where they go.</b> Tick them and save to a contact list, or add them to a workflow, an AI project or an email campaign. Nobody is emailed until you start something that emails.</li>
+          <li><b>You choose where they go.</b> Tick them and save them to a contact list in Contacts, or add them to a workflow, an AI Autopilot business workspace or an email campaign. Nobody is emailed until you start something that emails.</li>
         </ol>
         <p className="aip-fine" style={{ padding: '0 18px 16px' }}>
           Never LinkedIn, Apollo or bought data — their terms forbid this use. Found businesses never asked to hear from you,

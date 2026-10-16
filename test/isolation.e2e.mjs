@@ -228,8 +228,8 @@ for (const width of [1280, 1440, 1655, 1900]) {
     await page.getByTestId('directory-matches').count() === 0 && !/Owner Person/.test(body) && !/See them all/.test(body) && !asked.includes('search'), `${asked.join(',')} ${body.slice(0, 300)}`);
   await page.screenshot({ path: 'test-results/isolation-directory.png' });
   await page.goto(`${B}/lead-directory?industry=construction&place=australia`, { waitUntil: 'networkidle' });
-  await page.getByTestId('lead-lists').waitFor({ timeout: 15_000 }).catch(() => {});
-  ok('the old address takes a customer to their own Lead lists', /\/lead-lists/.test(page.url()) && !(await page.getByText('Owner Person').count()), page.url());
+  await page.getByTestId('cl-sidebar').waitFor({ timeout: 15_000 }).catch(() => {});
+  ok('the old address takes a customer to their own Contacts', /\/contacts/.test(page.url()) && !(await page.getByText('Owner Person').count()), page.url());
   await page.goto('about:blank'); await ctx.close();
 }
 

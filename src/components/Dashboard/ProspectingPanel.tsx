@@ -58,7 +58,7 @@ export default function ProspectingPanel() {
       </div>
       <div className="aip-dash-stats">
         {[
-          { Icon: ListChecks, n: stats.lists, label: 'lead lists' },
+          { Icon: ListChecks, n: stats.lists, label: 'contact lists' },
           { Icon: Users, n: stats.prospects, label: 'prospects in Contacts' },
           { Icon: MailCheck, n: stats.withEmail, label: 'with an email' },
           { Icon: ShieldCheck, n: stats.verified, label: 'mailboxes verified' },

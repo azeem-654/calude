@@ -2,9 +2,10 @@ import { askConfirm } from '../shared/ConfirmDialog';
 import { useState, useMemo, useEffect } from 'react';
 import AICampaignBadge from '../shared/AICampaignBadge';
 import {
-  Users, Plus, Search, Mail, Phone, Trash2, Edit2, ChevronDown,
-  Filter, Download, Upload, Tag, X, Eye, Merge, Activity, UserCircle2, ShieldCheck,
+  Users, Plus, Search, Mail, Phone, Trash2, Edit2,
+  Filter, Download, Upload, Tag, X, Eye, Merge, Activity, UserCircle2, ShieldCheck, Bot,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import {
@@ -15,15 +16,18 @@ import {
   placedDealsForContact, winProbability, summariseDeals, bulkMoveContactDeals,
 } from '../../services/contactDeals';
 import {
-  loadLists, listMembers, addToStaticList, purgeContactFromLists,
+  loadLists, listMembers, addToStaticList, purgeContactFromLists, createList, updateList, deleteList, STARTER_LISTS,
   type ContactList,
 } from '../../services/contactLists';
+import { buildFolders, fetchProjectLinks, sourceOf, toCsv, type ProjectLink } from '../../services/leadLists';
+import { fetchBoard } from '../../services/projects';
 import { currentActor, can, denyReason, ownersInUse, ownerOf } from '../../services/contactPermissions';
 import {
   healthFor, localCheck, verifyEmails, recordHealth, listHygiene, isSuppressed,
   HEALTH_META, type Verdict,
 } from '../../services/deliverability';
-import ListsPanel from './ListsPanel';
+import { ListEditor, ListHeader, ListsSidebar } from './ListsPanel';
+import SendToWorkspace from './SendToWorkspace';
 import MergeWizard from './MergeWizard';
 import TeamFeed from './TeamFeed';
 import type { Contact } from '../../types';
@@ -192,17 +196,40 @@ export default function Contacts() {
 
   /* ── Part 5: lists, merge, ownership ── */
   const actor = useMemo(() => currentActor(), []);
+  const navigate = useNavigate();
   const [lists, setLists] = useState<ContactList[]>(() => loadLists());
-  /* `?list=<id>` opens on that list — Prospecting links here with the list it
-     just filled, so the customer sees the people rather than being told. */
+  /* `?list=<id>` opens on that list — AI Prospecting links here with the list
+     it just filled, so the customer sees the people rather than being told.
+     `found:<workspace>` is a business workspace's finds that are on no list. */
   const [activeList, setActiveList] = useState<string | null>(() => {
-    try {
-      const id = new URLSearchParams(window.location.search).get('list');
-      return id && loadLists().some(l => l.id === id) ? id : null;
-    } catch { return null; }
+    try { return new URLSearchParams(window.location.search).get('list') || null; } catch { return null; }
   });
+  /* `&send=1` opens "Send to AI Autopilot" on it straight away. */
+  const [sendFor, setSendFor] = useState<'list' | 'selected' | null>(() => {
+    try { return new URLSearchParams(window.location.search).get('send') === '1' ? 'list' : null; } catch { return null; }
+  });
+  const [listEditing, setListEditing] = useState<ContactList | 'new' | null>(null);
   const [showMerge, setShowMerge] = useState(false);
   const [showFeed, setShowFeed] = useState(false);
+
+  /* The business workspaces and which lists each one writes to and fills —
+     only the server knows the second, so a project's folder waits for it. */
+  const [projects, setProjects] = useState<{ id: string; name: string; status: string }[]>([]);
+  const [links, setLinks] = useState<ProjectLink[]>([]);
+  const [foldersLoading, setFoldersLoading] = useState(true);
+  const [foldersError, setFoldersError] = useState('');
+  useEffect(() => {
+    let live = true;
+    void Promise.all([fetchBoard(), fetchProjectLinks()]).then(([b, l]) => {
+      if (!live) return;
+      setFoldersLoading(false);
+      setProjects(b.projects.map(p => ({ id: p.id, name: p.name, status: p.status })));
+      setLinks(l.links ?? []);
+      /* Said, not hidden: without the answer a workspace's folder cannot know its lists. */
+      setFoldersError(b.error || l.error ? `Your business workspaces could not all be read (${b.error || l.error}). Their lists are under "My lists" for now.` : '');
+    });
+    return () => { live = false; };
+  }, []);
 
   /* Email health per contact: the stored verification verdict when we have
      one, otherwise what can be decided locally right now. */
@@ -219,12 +246,40 @@ export default function Contacts() {
   const hygiene = useMemo(() => listHygiene(contacts), [contacts, healthVersion]);
 
   const listCtx = useMemo(() => ({ pipelines, appointments }), [pipelines, appointments]);
-  const listMemberIds = useMemo(() => {
+  const folders = useMemo(() => buildFolders({
+    projects, links, lists, contacts, membersOf: l => listMembers(l, contacts, listCtx),
+  }), [projects, links, lists, contacts, listCtx]);
+  const openView = useMemo(() => {
     if (!activeList) return null;
-    const l = lists.find(x => x.id === activeList);
-    if (!l) return null;
-    return new Set(listMembers(l, contacts, listCtx).map(c => c.id));
-  }, [activeList, lists, contacts, listCtx]);
+    for (const f of folders) for (const v of f.lists) if (v.id === activeList) return { view: v, folder: f };
+    return null;
+  }, [activeList, folders]);
+  const openList = openView?.view.real ? lists.find(l => l.id === activeList) : undefined;
+  /* A list that is not here (deleted elsewhere, or a link to another
+     workspace's) filters nothing, rather than showing nobody. */
+  const listMemberIds = useMemo(() => (openView ? new Set(openView.view.members.map(c => c.id)) : null), [openView]);
+  const listColor = (id: string) => lists.find(l => l.id === id)?.color;
+
+  const seedStarters = () => {
+    for (const st of STARTER_LISTS) {
+      if (lists.some(l => l.name === st.name)) continue;
+      createList({ name: st.name, type: 'smart', rules: st.rules, match: st.match, createdBy: actor.name });
+    }
+    setLists(loadLists());
+    addNotification(`${STARTER_LISTS.length} ready-made segments added`);
+  };
+
+  const downloadCsv = (name: string, people: Contact[]) => {
+    const blob = new Blob([toCsv(people)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'contacts'}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   const addRule = () => setFilterRules(p => [...p, { field: 'name', op: 'contains', value: '' }]);
   const updateRule = (i: number, updates: Partial<FilterRule>) => setFilterRules(p => p.map((r, j) => j === i ? { ...r, ...updates } : r));
@@ -335,8 +390,15 @@ export default function Contacts() {
   };
 
   /** Drop the selection into a static list. */
-  const bulkAddToList = (listId: string) => {
-    if (!listId) return;
+  const bulkAddToList = (pick: string) => {
+    if (!pick) return;
+    let listId = pick;
+    if (pick === '__new') {
+      const name = window.prompt('Name the new list:', `My list — ${new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`);
+      if (!name?.trim()) return;
+      const picked = contacts.filter(c => selected.has(c.id));
+      listId = createList({ name, type: 'static', createdBy: actor.name, ...(picked.some(c => c.status === 'prospect') ? { kind: 'cold' as const } : {}) }).id;
+    }
     const res = addToStaticList(listId, [...selected]);
     setLists(res.lists);
     const name = res.lists.find(l => l.id === listId)?.name ?? 'the list';
@@ -573,18 +635,66 @@ export default function Contacts() {
           )}
         </div>
 
-        {/* Saved lists */}
-        <ListsPanel
-          lists={lists} contacts={contacts} pipelines={pipelines} appointments={appointments}
-          activeId={activeList} canManage={can('manage_lists', actor)}
-          onActivate={setActiveList} onChange={setLists}
-          onNotify={(text, kind) => addNotification(text, kind)}
-          createdBy={actor.name}
+        <div className="cl-layout">
+        <ListsSidebar
+          folders={folders} total={contacts.length} activeId={activeList}
+          onActivate={id => { setActiveList(id); setSelected(new Set()); setListEditing(null); }}
+          canManage={can('manage_lists', actor)}
+          onNew={() => setListEditing('new')}
+          onStarters={lists.length ? undefined : seedStarters}
+          loading={foldersLoading} error={foldersError} colorOf={listColor}
         />
+        <div className="cl-main">
+
+        {listEditing && (
+          <div style={{ marginBottom: 12 }}>
+            <ListEditor
+              list={listEditing === 'new' ? null : listEditing}
+              contacts={contacts}
+              ctx={listCtx}
+              onCancel={() => setListEditing(null)}
+              onSave={(name, type, rules, match) => {
+                if (listEditing !== 'new') {
+                  setLists(updateList(listEditing.id, { name, rules, match }));
+                  addNotification(`List "${name}" updated`);
+                } else {
+                  const l = createList({ name, type, rules, match, createdBy: actor.name });
+                  setLists(loadLists());
+                  setActiveList(l.id);
+                  addNotification(type === 'static'
+                    ? `List "${name}" made — tick contacts and use "Add to list" to fill it`
+                    : `List "${name}" made`);
+                }
+                setListEditing(null);
+              }}
+            />
+          </div>
+        )}
+
+        {openView && !listEditing && (
+          <ListHeader
+            view={openView.view} folder={openView.folder} list={openList}
+            canManage={can('manage_lists', actor)} canExport={can('export', actor)}
+            onSend={() => setSendFor('list')}
+            onEmail={() => navigate(`/marketing?new=campaign&list=${encodeURIComponent(openView.view.id)}`)}
+            onExport={() => { downloadCsv(openView.view.name, openView.view.members); addNotification(`Exported ${openView.view.members.length} contacts`); }}
+            onEdit={() => openList && setListEditing(openList)}
+            onDelete={async () => {
+              if (!openList || !await askConfirm({ title: `Delete the list “${openList.name}”?`, message: 'The contacts in it stay in Contacts. A business workspace writing to this list would have nobody left to write to.', confirmLabel: 'Delete list', danger: true })) return;
+              setLists(deleteList(openList.id));
+              setActiveList(null);
+              addNotification(`List "${openList.name}" deleted`, 'info');
+            }}
+            onOpenWorkspace={openView.folder?.kind === 'project'
+              ? () => navigate(`/autopilot?project=${encodeURIComponent(openView.folder!.id.slice('project:'.length))}&tab=prospects`)
+              : undefined}
+            onClose={() => setActiveList(null)}
+          />
+        )}
 
         {/* Bulk action bar */}
         {selected.size > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', backgroundColor: '#eceef1', borderRadius: 12, marginBottom: 12, border: '1px solid #d5d8dd', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 16px', backgroundColor: '#eceef1', borderRadius: 12, marginBottom: 12, border: '1px solid #d5d8dd', boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: '#17191c' }}>{selected.size} selected</span>
             <button onClick={bulkTag} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #d5d8dd', borderRadius: 9, backgroundColor: 'white', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Tag size={12} /> Add Tag</button>
             <select value="" onChange={e => { bulkAssign(e.target.value); e.target.value = ''; }}
@@ -595,14 +705,13 @@ export default function Contacts() {
               {ownersInUse(contacts).filter(o => o !== actor.email).map(o => <option key={o} value={o}>{o}</option>)}
               <option value="__unassign">Unassign</option>
             </select>
-            {lists.some(l => l.type === 'static') && (
-              <select value="" onChange={e => { bulkAddToList(e.target.value); e.target.value = ''; }}
-                title="Add the selected contacts to a static list"
-                style={{ padding: '6px 10px', border: '1px solid #d5d8dd', borderRadius: 9, backgroundColor: 'white', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                <option value="">Add to list…</option>
-                {lists.filter(l => l.type === 'static').map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
-            )}
+            <select value="" onChange={e => { bulkAddToList(e.target.value); e.target.value = ''; }}
+              title="Put the selected contacts on a hand-picked list"
+              style={{ padding: '6px 10px', border: '1px solid #d5d8dd', borderRadius: 9, backgroundColor: 'white', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              <option value="">Add to list…</option>
+              <option value="__new">+ A new list…</option>
+              {lists.filter(l => l.type === 'static').map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
             <select value="" onChange={e => { bulkMoveStage(e.target.value); e.target.value = ''; }}
               title="Move every open deal for the selected contacts into a stage"
               style={{ padding: '6px 10px', border: '1px solid #d5d8dd', borderRadius: 9, backgroundColor: 'white', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
@@ -613,6 +722,10 @@ export default function Contacts() {
                 </optgroup>
               ))}
             </select>
+            <button onClick={() => setSendFor('selected')} data-testid="cl-send-selected" title="Hand the ticked contacts to an AI Autopilot business workspace"
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: 'none', borderRadius: 9, background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              <Bot size={12} /> Send to AI Autopilot
+            </button>
             <button onClick={exportCSV} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #d5d8dd', borderRadius: 9, backgroundColor: 'white', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Download size={12} /> Export</button>
             <button onClick={bulkDelete} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #fecaca', borderRadius: 9, backgroundColor: '#fef2f2', color: '#dc2626', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Trash2 size={12} /> Delete</button>
             <button onClick={() => setSelected(new Set())} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}><X size={16} /></button>
@@ -620,11 +733,13 @@ export default function Contacts() {
         )}
 
         {/* Table */}
-        {/* Eleven columns will not fit a phone. The table scrolls sideways
-            inside its own card rather than dragging the whole page with it. */}
+        {/* Fourteen columns will not fit a phone, and a long list is longer
+            than the window: the table scrolls both ways inside its own box,
+            the header held at the top, so the sideways bar is always in view
+            (contactLists.css, .cl-table-scroll). */}
         <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden' }}>
-          <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
+          <div className="cl-table-scroll" data-testid="contacts-scroll">
+          <table className="cl-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1180 }}>
             <thead>
               <tr style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e6e9f0' }}>
                 <th style={{ padding: '12px 16px', textAlign: 'left', width: '40px' }}>
@@ -642,7 +757,7 @@ export default function Contacts() {
               {filtered.map((contact, i) => {
                 const sc = statusColors[contact.status];
                 return (
-                  <tr key={contact.id} onClick={() => setProfileContact(contact)} style={{ borderBottom: i < filtered.length - 1 ? '1px solid #f1f5f9' : 'none', transition: 'background 0.1s', cursor: 'pointer' }}
+                  <tr key={contact.id} data-testid="contact-row" onClick={() => setProfileContact(contact)} style={{ borderBottom: i < filtered.length - 1 ? '1px solid #f1f5f9' : 'none', transition: 'background 0.1s', cursor: 'pointer' }}
                     onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f8fafc')}
                     onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'white')}>
                     <td style={{ padding: '14px 16px' }} onClick={e => e.stopPropagation()}>
@@ -661,8 +776,11 @@ export default function Contacts() {
                           <button onClick={() => setProfileContact(contact)} style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', letterSpacing: '-0.01em', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', display: 'block' }}>
                             {contact.name}
                           </button>
-                          <p title={`${contact.source}${contact.company ? ` · ${contact.company}` : ''}`}
-                            style={{ fontSize: '12px', color: '#94a3b8', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{contact.source}{contact.company ? ` · ${contact.company}` : ''}</p>
+                          {/* Where they came from, in words a customer can repeat to
+                              the person (services/leadLists.ts `sourceOf`); the full
+                              provenance on hover. */}
+                          <p title={contact.customFields?.provenance || `${contact.source}${contact.company ? ` · ${contact.company}` : ''}`}
+                            style={{ fontSize: '12px', color: '#94a3b8', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span data-testid="contact-source">{sourceOf(contact)}</span>{contact.company ? ` · ${contact.company}` : ''}</p>
                           {/* Which campaign produced this contact, resolved live
                               so a renamed one reads correctly and a deleted one
                               says so. */}
@@ -805,6 +923,8 @@ export default function Contacts() {
             </div>
           )}
         </div>
+        </div>
+        </div>
       </div>
 
       {showFind && <FindProspects onClose={() => setShowFind(false)} onImported={() => setLists(loadLists())} />}
@@ -841,6 +961,17 @@ export default function Contacts() {
             res.removedIds.forEach(id => deleteContact(id));
             setLists(loadLists());
           }}
+        />
+      )}
+
+      {sendFor && (sendFor === 'list' ? openView : selected.size > 0) && (
+        <SendToWorkspace
+          people={sendFor === 'list' ? openView!.view.members : contacts.filter(c => selected.has(c.id))}
+          from={sendFor === 'list' ? openList ?? null : null}
+          label={sendFor === 'list' ? `The list “${openView!.view.name}”` : `${selected.size} ticked`}
+          createdBy={actor.name}
+          onClose={() => setSendFor(null)}
+          onDone={m => { setSendFor(null); setLists(loadLists()); if (sendFor === 'selected') setSelected(new Set()); addNotification(m, 'success'); }}
         />
       )}
 

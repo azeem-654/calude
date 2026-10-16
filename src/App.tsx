@@ -21,7 +21,6 @@ import Dashboard from './components/Dashboard/Dashboard';
 import Contacts from './components/Contacts/Contacts';
 import AiProspecting from './components/Prospecting/AiProspecting';
 import LeadDirectory from './components/Prospecting/LeadDirectory';
-import LeadLists from './components/Prospecting/LeadLists';
 import { isInstallOwner } from './services/moderation';
 import Conversations from './components/Conversations/Conversations';
 import CalendarView from './components/Calendar/CalendarView';
@@ -85,6 +84,12 @@ function MovedIntoStudio({ tab }: { tab: 'quick-shorts' | 'repurpose' }) {
   const q = new URLSearchParams(loc.search);
   q.set('tab', tab);
   return <Navigate to={`/video-studio?${q.toString()}${loc.hash}`} replace />;
+}
+
+/** Lead lists became the lists inside Contacts; `?list=` opens the same list there. */
+function LeadListsMoved() {
+  const list = new URLSearchParams(useLocation().search).get('list');
+  return <Navigate to={list ? `/contacts?list=${encodeURIComponent(list)}` : '/contacts'} replace />;
 }
 
 function SitePlanHandoff({ isClient }: { isClient: boolean }) {
@@ -214,11 +219,13 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/" element={<Dashboard />} />
           <Route path="/contacts" element={<Contacts />} />
           <Route path="/prospecting" element={<AiProspecting />} />
-          <Route path="/lead-lists" element={<LeadLists />} />
+          {/* Lead lists are the lists inside Contacts now; an old link or
+              bookmark lands on the same list there. */}
+          <Route path="/lead-lists" element={<LeadListsMoved />} />
           {/* The owner's Lead library. Anybody else asking for the old address
-              lands on their own lead lists — the server refuses them the
+              lands on their own Contacts — the server refuses them the
               search either way (routes/leaddir.ts). */}
-          <Route path="/lead-directory" element={isInstallOwner() ? <LeadDirectory /> : <Navigate to="/lead-lists" replace />} />
+          <Route path="/lead-directory" element={isInstallOwner() ? <LeadDirectory /> : <Navigate to="/contacts" replace />} />
           <Route path="/ai-prospecting" element={<Navigate to="/prospecting" replace />} />
           <Route path="/engagement" element={<Engagement />} />
           <Route path="/conversations" element={<Conversations />} />

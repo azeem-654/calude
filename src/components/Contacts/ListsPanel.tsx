@@ -1,159 +1,223 @@
 /**
- * ListsPanel.tsx — saved segments across the top of the contact list, plus the
- * rule builder for smart lists.
+ * ListsPanel.tsx — the lists beside the contact table, the open list's header,
+ * and the rule builder for smart lists.
+ *
+ * ── One place for every list ──
+ *
+ * Lead lists used to be a screen of their own (Customers → Lead lists), with
+ * the same contacts in folders. It is folded in here: the sidebar keeps its
+ * folders — one per AI Autopilot business workspace (the lists it writes to
+ * and fills, which only the server knows: `finders.php folders`), what was
+ * saved from AI Prospecting, and the customer's own lists — and opening one
+ * filters this table rather than a second, poorer one. services/leadLists.ts
+ * still builds the folders; nothing here searches anything but this
+ * workspace's own contacts.
  */
-import { askConfirm } from '../shared/ConfirmDialog';
 import { useMemo, useState } from 'react';
-import { Bookmark, Plus, Trash2, Pencil, Check, X, Sparkles, Users } from 'lucide-react';
+import {
+  Bookmark, Bot, Check, ChevronDown, ChevronRight, Crosshair, Download, ExternalLink, Folder, Loader, Mail, Pencil,
+  Plus, Rocket, Search, Sparkles, Trash2, Users, X,
+} from 'lucide-react';
 import type { Appointment, Contact, Pipeline } from '../../types';
 import {
-  LIST_FIELDS, OPS_FOR, fieldDef, describeList, listMembers, createList,
-  updateList, deleteList, STARTER_LISTS,
+  LIST_FIELDS, OPS_FOR, fieldDef, describeList, listMembers,
   type ContactList, type ListRule,
 } from '../../services/contactLists';
+import { CHECK_LABEL, checkOf, type CheckState, type LeadFolder, type LeadListView } from '../../services/leadLists';
+import './contactLists.css';
 
 const INK = '#17191c';
+const fmtN = (n: number) => n.toLocaleString('en-US');
+const fmtDate = (iso: string) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+};
+const STATUS_LABEL: Record<string, string> = { running: 'Running', learning: 'Learning', paused: 'Paused', off: 'Off' };
+const CHECK_ORDER: CheckState[] = ['valid', 'domain_ok', 'risky', 'invalid', 'none'];
 
-interface Props {
-  lists: ContactList[];
-  contacts: Contact[];
-  pipelines: Pipeline[];
-  appointments: Appointment[];
+/* ── The sidebar ── */
+
+export function ListsSidebar({
+  folders, total, activeId, onActivate, canManage, onNew, onStarters, loading, error, colorOf,
+}: {
+  folders: LeadFolder[];
+  total: number;
   activeId: string | null;
-  canManage: boolean;
   onActivate: (id: string | null) => void;
-  onChange: (lists: ContactList[]) => void;
-  onNotify: (text: string, kind?: 'success' | 'error' | 'info') => void;
-  createdBy: string;
-}
+  canManage: boolean;
+  onNew: () => void;
+  /** Offered only while the customer has no lists at all. */
+  onStarters?: () => void;
+  loading: boolean;
+  error: string;
+  colorOf: (listId: string) => string | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const [shut, setShut] = useState<Set<string>>(new Set());
+  const projects = folders.filter(f => f.kind === 'project');
+  const saved = folders.find(f => f.kind === 'prospecting');
+  const mine = folders.find(f => f.kind === 'other');
+  const allLists = folders.flatMap(f => f.lists);
+  const activeName = activeId ? allLists.find(l => l.id === activeId)?.name ?? 'A list' : 'All contacts';
+  const needle = q.trim().toLowerCase();
+  const match = (l: LeadListView) => !needle || l.name.toLowerCase().includes(needle);
+  const pick = (id: string | null) => { onActivate(id); setOpen(false); };
 
-export default function ListsPanel({
-  lists, contacts, pipelines, appointments, activeId, canManage,
-  onActivate, onChange, onNotify, createdBy,
-}: Props) {
-  const [editing, setEditing] = useState<ContactList | null>(null);
-  const [creating, setCreating] = useState(false);
-
-  const ctx = useMemo(() => ({ pipelines, appointments }), [pipelines, appointments]);
-  const counts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const l of lists) m.set(l.id, listMembers(l, contacts, ctx).length);
-    return m;
-  }, [lists, contacts, ctx]);
-
-  const seedStarters = () => {
-    let next = lists;
-    for (const s of STARTER_LISTS) {
-      if (next.some(l => l.name === s.name)) continue;
-      createList({ name: s.name, type: 'smart', rules: s.rules, match: s.match, createdBy });
-    }
-    next = JSON.parse(localStorage.getItem('crm_contact_lists') || '[]');
-    onChange(next);
-    onNotify(`${STARTER_LISTS.length} starter segments added`);
-  };
+  const item = (l: LeadListView, sub: boolean) => (
+    <button key={l.id} type="button" className={`cl-item${sub ? ' cl-sub' : ''}`} aria-current={activeId === l.id}
+      onClick={() => pick(activeId === l.id ? null : l.id)} data-testid="cl-list" title={l.smart ? 'Smart list — its rules are run again every time you open it' : undefined}>
+      {sub ? null : <span className="cl-dot" style={{ background: colorOf(l.id) ?? '#94a3b8' }} />}
+      {l.smart ? <Sparkles size={12} style={{ flex: 'none', opacity: 0.7 }} /> : null}
+      <span className="cl-name">{l.name}</span>
+      <span className="cl-n">{fmtN(l.members.length)}</span>
+    </button>
+  );
 
   return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <button onClick={() => onActivate(null)} title="Show every contact"
-          style={chip(activeId === null, '#475569')}>
-          <Users size={12} /> All contacts <span style={{ opacity: 0.65 }}>{contacts.length}</span>
-        </button>
-
-        {lists.map(l => (
-          <button key={l.id} onClick={() => onActivate(l.id === activeId ? null : l.id)}
-            title={describeList(l)} style={chip(activeId === l.id, l.color)}>
-            <Bookmark size={12} /> {l.name} <span style={{ opacity: 0.65 }}>{counts.get(l.id) ?? 0}</span>
-          </button>
-        ))}
-
-        {canManage && (
-          <>
-            <button onClick={() => { setCreating(true); setEditing(null); }} title="Create a saved list"
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 999, border: '1px dashed #cbd5e1', background: '#fff', color: '#64748b', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-              <Plus size={12} /> New list
-            </button>
-            {!lists.length && (
-              <button onClick={seedStarters} title="Add five ready-made segments"
-                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 999, border: '1px solid #e2e8f0', background: '#fff', color: '#4f46e5', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                <Sparkles size={12} /> Add starter segments
-              </button>
-            )}
-          </>
-        )}
-
-        {activeId && canManage && (
-          <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
-            <button onClick={() => { setEditing(lists.find(l => l.id === activeId) ?? null); setCreating(false); }}
-              title="Edit this list"
-              style={{ padding: 6, borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', display: 'flex', color: '#475569' }}>
-              <Pencil size={12} />
-            </button>
-            <button title="Delete this list"
-              onClick={async () => {
-                const l = lists.find(x => x.id === activeId);
-                if (!l || !await askConfirm({ title: `Delete the list “${l.name}”?`, message: 'The contacts in it are not affected.', confirmLabel: 'Delete list', danger: true })) return;
-                onChange(deleteList(activeId));
-                onActivate(null);
-                onNotify(`List "${l.name}" deleted`, 'info');
-              }}
-              style={{ padding: 6, borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', cursor: 'pointer', display: 'flex', color: '#dc2626' }}>
-              <Trash2 size={12} />
-            </button>
-          </div>
-        )}
+    <aside className="cl-side" data-open={open} aria-label="Contact lists" data-testid="cl-sidebar">
+      <button type="button" className="cl-side-toggle" aria-expanded={open} onClick={() => setOpen(o => !o)}>
+        <Bookmark size={14} /> <span>Lists · {activeName}</span> <ChevronDown size={15} />
+      </button>
+      <div className="cl-side-head">
+        <h3>Lists</h3>
+        {canManage && <button type="button" className="cl-new" onClick={onNew} title="Make a list"><Plus size={12} /> New list</button>}
       </div>
-
-      {activeId && !editing && !creating && (
-        <div style={{ marginTop: 8, fontSize: 11.5, color: '#94a3b8' }}>
-          {(() => {
-            const l = lists.find(x => x.id === activeId);
-            if (!l) return null;
-            return l.type === 'smart'
-              ? `Smart list — re-evaluated every time you open it: ${describeList(l)}`
-              : `Static list — ${describeList(l)}`;
-          })()}
+      <div className="cl-side-body">
+        {allLists.length > 6 && (
+          <label className="cl-find">
+            <Search size={13} aria-hidden />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Find a list" aria-label="Find a list" />
+          </label>
+        )}
+        <div className="cl-group">
+          <button type="button" className="cl-item" aria-current={activeId === null} onClick={() => pick(null)}>
+            <Users size={14} style={{ flex: 'none' }} /> <span className="cl-name">All contacts</span> <span className="cl-n">{fmtN(total)}</span>
+          </button>
         </div>
-      )}
 
-      {(creating || editing) && (
-        <ListEditor
-          list={editing}
-          contacts={contacts}
-          ctx={ctx}
-          onCancel={() => { setCreating(false); setEditing(null); }}
-          onSave={(name, type, rules, match) => {
-            if (editing) {
-              onChange(updateList(editing.id, { name, rules, match }));
-              onNotify(`List "${name}" updated`);
-            } else {
-              const l = createList({ name, type, rules, match, createdBy });
-              onChange(JSON.parse(localStorage.getItem('crm_contact_lists') || '[]'));
-              onActivate(l.id);
-              onNotify(`List "${name}" created`);
-            }
-            setCreating(false);
-            setEditing(null);
-          }}
-        />
-      )}
+        <div className="cl-group" data-testid="cl-workspaces">
+          <div className="cl-group-label"><Rocket size={11} /> AI Autopilot business workspaces</div>
+          {loading && !projects.length && <div className="cl-empty"><Loader size={11} className="spin" /> Reading your business workspaces…</div>}
+          {!loading && !projects.length && <div className="cl-empty">None yet. A business workspace that finds its own customers keeps everyone it finds in a folder here.</div>}
+          {projects.map(f => {
+            const isOpen = !shut.has(f.id);
+            const lists = f.lists.filter(match);
+            if (needle && !lists.length && !f.name.toLowerCase().includes(needle)) return null;
+            return (
+              <div key={f.id}>
+                <button type="button" className="cl-item cl-folder" aria-expanded={isOpen}
+                  onClick={() => setShut(s => { const n = new Set(s); if (n.has(f.id)) n.delete(f.id); else n.add(f.id); return n; })}>
+                  <ChevronRight size={13} className="cl-caret" />
+                  <span className="cl-name">{f.name}</span>
+                  {f.status && <span className="cl-state" data-s={f.status}>{STATUS_LABEL[f.status] ?? f.status}</span>}
+                  <span className="cl-n">{fmtN(f.people.length)}</span>
+                </button>
+                {isOpen && (lists.length
+                  ? lists.map(l => item(l, true))
+                  : <div className="cl-empty" style={{ paddingLeft: 26 }}>Nobody found yet.</div>)}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="cl-group" data-testid="cl-saved">
+          <div className="cl-group-label"><Crosshair size={11} /> Saved from AI Prospecting</div>
+          {saved?.lists.filter(match).map(l => item(l, false))}
+          {!saved?.lists.length && <div className="cl-empty">Businesses you save from AI Prospecting arrive here as a list.</div>}
+        </div>
+
+        <div className="cl-group" data-testid="cl-mine">
+          <div className="cl-group-label"><Folder size={11} /> My lists</div>
+          {mine?.lists.filter(match).map(l => item(l, false))}
+          {!mine?.lists.length && (
+            <div className="cl-empty">
+              {canManage ? <><button type="button" onClick={onNew}>Make a list</button> — hand-picked, or smart rules that stay current.</> : 'No lists yet.'}
+              {onStarters && canManage && <> Or <button type="button" onClick={onStarters}>add five ready-made segments</button>.</>}
+            </div>
+          )}
+        </div>
+        {error && <p className="cl-note" role="status">{error}</p>}
+      </div>
+    </aside>
+  );
+}
+
+/* ── The open list ── */
+
+function CheckBar({ people }: { people: Contact[] }) {
+  const withEmail = people.filter(c => c.email);
+  if (!withEmail.length) return null;
+  const n = Object.fromEntries(CHECK_ORDER.map(k => [k, 0])) as Record<CheckState, number>;
+  for (const c of withEmail) n[checkOf(c)]++;
+  return (
+    <div className="cl-checks">
+      <div className="cl-bar" aria-hidden>
+        {CHECK_ORDER.map(k => (n[k] ? <i key={k} className={`cl-c-${k}`} style={{ width: `${(n[k] / withEmail.length) * 100}%` }} /> : null))}
+      </div>
+      <div className="cl-legend">
+        {CHECK_ORDER.filter(k => n[k]).map(k => <span key={k}><i className={`cl-c-${k}`} /> {fmtN(n[k])} {CHECK_LABEL[k].toLowerCase()}</span>)}
+      </div>
     </div>
   );
 }
 
-function chip(active: boolean, color: string): React.CSSProperties {
-  return {
-    display: 'flex', alignItems: 'center', gap: 6, padding: '6px 13px', borderRadius: 999,
-    border: `1px solid ${active ? color : '#e2e8f0'}`,
-    background: active ? color : '#fff',
-    color: active ? '#fff' : '#475569',
-    fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
-  };
+export function ListHeader({
+  view, folder, list, canManage, canExport, onSend, onEmail, onExport, onEdit, onDelete, onOpenWorkspace, onClose,
+}: {
+  view: LeadListView;
+  folder: LeadFolder | null;
+  /** The stored list — absent for a workspace's finds that are on no list. */
+  list?: ContactList;
+  canManage: boolean;
+  canExport: boolean;
+  onSend: () => void;
+  onEmail: () => void;
+  onExport: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onOpenWorkspace?: () => void;
+  onClose: () => void;
+}) {
+  const n = view.members.length;
+  return (
+    <section className="cl-head" aria-label={`The list ${view.name}`} data-testid="cl-head">
+      <div className="cl-head-top">
+        <span className="cl-head-icon" aria-hidden>{folder?.kind === 'project' ? <Rocket size={18} /> : folder?.kind === 'prospecting' ? <Crosshair size={18} /> : <Bookmark size={18} />}</span>
+        <div className="cl-head-title">
+          <h2>{view.name}</h2>
+          <p>
+            <span>{fmtN(n)} {n === 1 ? 'contact' : 'contacts'}</span>
+            {folder?.kind === 'project' && <span className="cl-pill" data-s="workspace">{folder.name}</span>}
+            {view.cold && <span className="cl-pill" data-s="cold" title="People who have not asked to hear from you — AI Autopilot sends to them a few at a time, each batch approved">Prospects</span>}
+            {view.smart ? <span className="cl-pill" data-s="smart">Smart list</span> : view.real ? <span className="cl-pill">Hand-picked</span> : <span className="cl-pill">Found, on no list</span>}
+            {view.createdAt && <span>· made {fmtDate(view.createdAt)}</span>}
+          </p>
+          {list && list.type === 'smart' && <p style={{ marginTop: 4 }}>Its rules, run again every time you open it: {describeList(list)}</p>}
+        </div>
+        <div className="cl-actions">
+          <button type="button" className="cl-btn primary" onClick={onSend} disabled={!n} data-testid="cl-send"
+            title="Hand these people to an AI Autopilot business workspace to write to">
+            <Bot size={14} /> Send to AI Autopilot
+          </button>
+          {view.real && <button type="button" className="cl-btn" onClick={onEmail} disabled={!n}><Mail size={14} /> Email this list</button>}
+          <button type="button" className="cl-btn" onClick={onExport} disabled={!n || !canExport} data-testid="cl-export"
+            title="A spreadsheet of these contacts, with where each one came from"><Download size={14} /> Export CSV</button>
+          {onOpenWorkspace && <button type="button" className="cl-btn" onClick={onOpenWorkspace}><ExternalLink size={14} /> Open the workspace</button>}
+          {view.real && canManage && list && <button type="button" className="cl-btn icon" onClick={onEdit} title="Rename or change this list" aria-label="Edit this list"><Pencil size={14} /></button>}
+          {view.real && canManage && list && <button type="button" className="cl-btn icon danger" onClick={onDelete} title="Delete this list — its contacts stay" aria-label="Delete this list"><Trash2 size={14} /></button>}
+          <button type="button" className="cl-btn icon" onClick={onClose} title="Show every contact" aria-label="Close this list"><X size={14} /></button>
+        </div>
+      </div>
+      <CheckBar people={view.members} />
+    </section>
+  );
 }
 
 /* ── Rule builder ── */
 
-function ListEditor({ list, contacts, ctx, onSave, onCancel }: {
+export function ListEditor({ list, contacts, ctx, onSave, onCancel }: {
   list: ContactList | null;
   contacts: Contact[];
   ctx: { pipelines: Pipeline[]; appointments: Appointment[] };

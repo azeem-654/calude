@@ -66,14 +66,16 @@ const members = (l: ContactList, contacts: Contact[]) => {
   return contacts.filter(c => ids.has(c.id));
 };
 
-/** Where a list goes next — the same three everywhere a list is offered. */
+/** Where a list goes next — the same everywhere a list is offered. The list
+ *  lives in Contacts, so that comes first; "Send to AI Autopilot" opens it
+ *  there with the send dialog up (`&send=1`). */
 function ListShortcuts({ list, go }: { list: ContactList; go: (to: string) => void }) {
   const id = encodeURIComponent(list.id);
   return (
     <div className="aip-shortcuts">
+      <button type="button" className="aip-chip" data-accent="true" onClick={() => go(`/contacts?list=${id}`)}><Users size={12} /> Open the list in Contacts</button>
+      <button type="button" className="aip-chip" onClick={() => go(`/contacts?list=${id}&send=1`)}><Bot size={12} /> Send it to AI Autopilot</button>
       <button type="button" className="aip-chip" onClick={() => go(`/marketing?new=campaign&list=${id}`)}><Send size={12} /> Send a campaign to this list</button>
-      <button type="button" className="aip-chip" onClick={() => go(`/autopilot?new=1&list=${id}`)}><Bot size={12} /> Use this list in a new AI Autopilot project</button>
-      <button type="button" className="aip-chip" onClick={() => go(`/contacts?list=${id}`)}><Users size={12} /> Open in Contacts</button>
     </div>
   );
 }
@@ -459,7 +461,7 @@ export default function AiProspecting() {
                 <Kebab label={`More for ${h.trade} in ${h.place}`} items={[
                   { label: 'Run again', onClick: () => void go(askSentence(h.trade, h.place, h.source), h.source) },
                   { label: 'Find more prospects', onClick: () => { open(h); window.setTimeout(() => { if (s.nextPage) void s.loadMore(); else void go(askSentence(h.trade, h.place, h.source), h.source); }, 60); } },
-                  { label: 'Save to list', onClick: () => { open(h); window.setTimeout(() => { s.pickAll(true); setSaving(true); scrollTo(); }, 80); } },
+                  { label: 'Save to a contact list', onClick: () => { open(h); window.setTimeout(() => { s.pickAll(true); setSaving(true); scrollTo(); }, 80); } },
                   {
                     label: (defFor(h.source, h.trade, h.place)?.connections.length ?? 0) > 0 ? 'Connected to AI Autopilot — connect another project' : 'Connect to AI Autopilot',
                     onClick: () => setConnectFor({ trade: h.trade, place: h.place, source: h.source }),
@@ -472,11 +474,11 @@ export default function AiProspecting() {
           })}
 
           <div className="aip-side-row">
-            <span className="aip-side-label">My lead lists</span>
+            <span className="aip-side-label">My contact lists</span>
             {shownLists.length > 4 && <button type="button" className="aip-see" onClick={() => setMoreLists(v => !v)}>{moreLists ? 'Fewer' : 'See all'}</button>}
           </div>
           {!shownLists.length && (
-            <span className="aip-side-empty">{q ? 'No list matches.' : 'None yet. Tick the businesses that fit and save them as a list — it appears here, in Contacts, and as an audience for campaigns and AI Autopilot.'}</span>
+            <span className="aip-side-empty">{q ? 'No list matches.' : 'None yet. Tick the businesses that fit and save them to a contact list — it appears here and in Contacts, ready to send to AI Autopilot or a campaign.'}</span>
           )}
           {listsToShow.map(l => {
             const m = members(l, contacts);
@@ -491,9 +493,10 @@ export default function AiProspecting() {
                   <small>{m.length} {m.length === 1 ? 'business' : 'businesses'} · {withEmail} with an email{verified ? ` · ${verified} verified` : ''}</small>
                 </span>
                 <Kebab label={`More for ${l.name}`} items={[
-                  { label: 'Send a campaign to this list', onClick: () => navigate(`/marketing?new=campaign&list=${id}`) },
-                  { label: 'Use this list in a new AI Autopilot project', onClick: () => navigate(`/autopilot?new=1&list=${id}`) },
                   { label: 'Open in Contacts', onClick: () => navigate(`/contacts?list=${id}`) },
+                  { label: 'Send to AI Autopilot', onClick: () => navigate(`/contacts?list=${id}&send=1`) },
+                  { label: 'Send a campaign to this list', onClick: () => navigate(`/marketing?new=campaign&list=${id}`) },
+                  { label: 'Use it in a new AI Autopilot business workspace', onClick: () => navigate(`/autopilot?new=1&list=${id}`) },
                 ]} />
               </div>
             );
@@ -532,7 +535,7 @@ export default function AiProspecting() {
           )}
           {results.length > 0 && screen === 'results' && <>
             <button type="button" className="aip-btn" onClick={() => exportCsv()}><Download size={13} /> Export</button>
-            <button type="button" className="aip-btn" data-accent="true" onClick={openSave}><Bookmark size={13} /> Save as list</button>
+            <button type="button" className="aip-btn" data-accent="true" onClick={openSave}><Bookmark size={13} /> Save to Contacts</button>
           </>}
         </header>
 
@@ -686,7 +689,7 @@ export default function AiProspecting() {
                       title={deepReady ? 'Asks the mail server whether each mailbox exists' : deepWhy}>
                       <ShieldCheck size={12} /> {deepReady ? `Verify ${Math.min(60, toDeep.length)} mailbox${toDeep.length === 1 ? '' : 'es'}` : 'Verify mailboxes — needs a verifier'}
                     </button>
-                    <button type="button" className="aip-chip" onClick={openSave}><Bookmark size={12} /> Save as list</button>
+                    <button type="button" className="aip-chip" onClick={openSave}><Bookmark size={12} /> Save to Contacts</button>
                     <button type="button" className="aip-chip" data-accent="true" data-testid="connect-autopilot-btn"
                       onClick={() => s.searched && setConnectFor({ trade: s.searched.trade, place: s.searched.place, source: s.searched.source, query: s.asked, filters: { website: s.want.website, phone: s.want.phone } })}
                       title="An AI Autopilot project runs this search on a schedule and adds new verified leads">
@@ -760,9 +763,9 @@ export default function AiProspecting() {
                 )}
 
                 {results.length > 0 && !addMode && (saving || s.picked.size > 0) && (
-                  <section className="aip-card" ref={importRef} aria-label="Save as a list">
+                  <section className="aip-card" ref={importRef} aria-label="Save to a contact list">
                     <div className="aip-card-head">
-                      <span className="aip-card-title"><Bookmark size={14} /> Save {s.chosen.length || ''} as a list</span>
+                      <span className="aip-card-title"><Bookmark size={14} /> Save {s.chosen.length || ''} to a contact list</span>
                       <span style={{ flex: 1 }} />
                       <button type="button" className="aip-icon-btn" aria-label="Close" onClick={() => { setSaving(false); s.pickAll(false); }}><X size={14} /></button>
                     </div>
@@ -786,9 +789,9 @@ export default function AiProspecting() {
         {screen === 'results' && s.picked.size > 0 && (
           <div className="aip-actionbar" role="toolbar" aria-label="With the ticked businesses">
             <b>{s.picked.size} ticked</b>
-            <button type="button" className="aip-chip" onClick={openSave}><Bookmark size={12} /> Save to a list</button>
+            <button type="button" className="aip-chip" onClick={openSave}><Bookmark size={12} /> Save to a contact list</button>
             <button type="button" className="aip-chip" onClick={() => openAdd('workflow')}><GitBranch size={12} /> Add to a workflow</button>
-            <button type="button" className="aip-chip" onClick={() => openAdd('project')}><Bot size={12} /> Add to an AI project</button>
+            <button type="button" className="aip-chip" onClick={() => openAdd('project')}><Bot size={12} /> Add to AI Autopilot</button>
             <button type="button" className="aip-chip" onClick={() => openAdd('campaign')}><Send size={12} /> Add to an email campaign</button>
             <button type="button" className="aip-chip" onClick={() => exportCsv(s.picked)}><Download size={12} /> Export ticked</button>
             <button type="button" className="aip-icon-btn" aria-label="Untick all" title="Untick all" onClick={() => { s.pickAll(false); setAddMode(null); }}><X size={13} /></button>

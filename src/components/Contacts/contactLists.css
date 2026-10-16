@@ -1,0 +1,142 @@
+/* Contacts → the lists beside the table (ListsPanel.tsx).
+   Light colours only: the app's dark mode inverts the page. */
+
+.cl-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (min-width: 1000px) {
+  .cl-layout { grid-template-columns: 252px minmax(0, 1fr); }
+}
+.cl-main { min-width: 0; }
+
+/* ── The sidebar ── */
+.cl-side {
+  background: #fff; border: 1px solid #e6e9f0; border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04); overflow: hidden;
+}
+@media (min-width: 1000px) {
+  /* Held beside the table while it scrolls, and scrolls itself when a
+     customer has more lists than the window is tall. */
+  .cl-side { position: sticky; top: 12px; max-height: calc(100dvh - 24px); display: flex; flex-direction: column; }
+  .cl-side-body { overflow-y: auto; min-height: 0; }
+  .cl-side-toggle { display: none !important; }
+}
+@media (max-width: 999px) {
+  .cl-side[data-open="false"] .cl-side-body { display: none; }
+  .cl-side-body { max-height: 60vh; overflow-y: auto; }
+}
+.cl-side-toggle {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 14px; border: 0; background: #fff;
+  font: inherit; font-size: 13px; font-weight: 700; color: #17191c; cursor: pointer; text-align: left;
+}
+.cl-side-toggle span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-side-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 8px; }
+.cl-side-head h3 { margin: 0; flex: 1; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: #64748b; font-weight: 750; }
+.cl-new {
+  display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 999px; border: 1px solid #e2e8f0;
+  background: #fff; color: #17191c; font: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer;
+}
+.cl-new:hover { background: #f4f5f7; }
+.cl-find { margin: 0 12px 8px; position: relative; }
+.cl-find input {
+  width: 100%; box-sizing: border-box; padding: 7px 10px 7px 28px; border: 1px solid #e2e8f0; border-radius: 9px;
+  font: inherit; font-size: 12.5px; outline: none; background: #fbfbfc;
+}
+.cl-find svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: #94a3b8; }
+.cl-group { padding: 4px 8px 8px; }
+.cl-group + .cl-group { border-top: 1px solid #f0f1f4; padding-top: 8px; }
+.cl-group-label { display: flex; align-items: center; gap: 6px; padding: 6px 8px 4px; font-size: 10.5px; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; color: #94a3b8; }
+.cl-group-label svg { flex: none; }
+.cl-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border: 0; border-radius: 9px; background: none;
+  font: inherit; font-size: 13px; color: #334155; cursor: pointer; text-align: left; min-width: 0;
+}
+.cl-item:hover { background: #f4f5f7; }
+.cl-item[aria-current="true"] { background: #17191c; color: #fff; }
+.cl-item[aria-current="true"] .cl-n { color: rgba(255, 255, 255, 0.7); }
+.cl-item .cl-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-item .cl-n { font-size: 11.5px; font-weight: 700; color: #94a3b8; font-variant-numeric: tabular-nums; }
+.cl-item.cl-sub { padding-left: 26px; font-size: 12.5px; }
+.cl-dot { width: 8px; height: 8px; border-radius: 3px; flex: none; }
+.cl-folder { font-weight: 700; color: #17191c; }
+.cl-folder .cl-caret { transition: transform 0.15s; flex: none; color: #94a3b8; }
+.cl-folder[aria-expanded="true"] .cl-caret { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .cl-folder .cl-caret { transition: none; } }
+.cl-state { font-size: 10px; font-weight: 750; padding: 1px 6px; border-radius: 999px; background: #f1f5f9; color: #64748b; }
+.cl-state[data-s="running"] { background: #e7f6ec; color: #15803d; }
+.cl-state[data-s="learning"] { background: #e3f6f6; color: #0f766e; }
+.cl-state[data-s="paused"] { background: #fff4e0; color: #b45309; }
+.cl-empty { padding: 4px 8px 6px; font-size: 12px; color: #94a3b8; line-height: 1.45; }
+.cl-empty button { border: 0; background: none; padding: 0; font: inherit; color: #4f46e5; font-weight: 700; cursor: pointer; }
+.cl-note { margin: 0; padding: 10px 14px 14px; font-size: 11.5px; color: #94a3b8; line-height: 1.5; border-top: 1px solid #f0f1f4; }
+
+/* ── The open list, above the table ── */
+.cl-head {
+  background: #fff; border: 1px solid #e6e9f0; border-radius: 16px; padding: 14px 16px; margin-bottom: 12px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04); display: grid; gap: 10px;
+}
+.cl-head-top { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.cl-head-icon { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; background: #eef0ff; color: #4f46e5; flex: none; }
+.cl-head-title { flex: 1 1 220px; min-width: 0; }
+.cl-head-title h2 { margin: 0; font-size: 17px; font-weight: 750; color: #0f172a; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.cl-head-title p { margin: 3px 0 0; font-size: 12.5px; color: #64748b; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.cl-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+.cl-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 9px; border: 1px solid #e2e8f0;
+  background: #fff; color: #17191c; font: inherit; font-size: 12.5px; font-weight: 650; cursor: pointer; white-space: nowrap;
+}
+.cl-btn:hover { background: #f4f5f7; }
+.cl-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.cl-btn.primary { background: linear-gradient(135deg, #4f46e5, #7c3aed); border-color: transparent; color: #fff; box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25); }
+.cl-btn.primary:hover { filter: brightness(1.06); }
+.cl-btn.danger { color: #dc2626; border-color: #fecaca; background: #fef2f2; }
+.cl-btn.icon { padding: 8px; }
+.cl-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 750; padding: 2px 8px; border-radius: 999px; background: #f1f5f9; color: #475569; white-space: nowrap; }
+.cl-pill[data-s="cold"] { background: #eef0ff; color: #4338ca; }
+.cl-pill[data-s="smart"] { background: #fdf4ff; color: #a21caf; }
+.cl-pill[data-s="workspace"] { background: #ecfeff; color: #0e7490; }
+.cl-checks { display: grid; gap: 5px; }
+.cl-bar { display: flex; height: 6px; border-radius: 99px; overflow: hidden; background: #eef0f4; }
+.cl-bar i { display: block; height: 100%; }
+.cl-c-valid { background: #16a34a; }
+.cl-c-domain_ok { background: #0ea5a4; }
+.cl-c-risky { background: #f59e0b; }
+.cl-c-invalid { background: #dc2626; }
+.cl-c-none { background: #cbd5e1; }
+.cl-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: #64748b; }
+.cl-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.cl-legend i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+
+/* ── The table scrolls inside its own box ──
+   The window's height, with the header held at the top, so the sideways
+   scroll bar is always on screen: before, it sat under the last row, and
+   seeing the right-hand columns of a long list meant scrolling to its end. */
+.cl-table-scroll { overflow: auto; max-height: max(360px, calc(100dvh - 150px)); }
+.cl-table thead th { position: sticky; top: 0; z-index: 2; background: #f8fafc; box-shadow: inset 0 -1px 0 #e6e9f0; }
+
+/* ── Send to AI Autopilot ── */
+.cl-modal-back { position: fixed; inset: 0; z-index: 1000; background: rgba(15, 23, 42, 0.45); display: grid; place-items: center; padding: 16px; }
+.cl-modal {
+  width: min(560px, 100%); max-height: calc(100dvh - 32px); overflow: auto; background: #fff; border-radius: 18px;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.3); padding: 20px; display: grid; gap: 12px; box-sizing: border-box;
+}
+.cl-modal h2 { margin: 0; font-size: 17px; color: #0f172a; display: flex; align-items: center; gap: 8px; }
+.cl-modal p { margin: 0; font-size: 13px; color: #475569; line-height: 1.5; }
+.cl-choice {
+  display: flex; gap: 10px; align-items: flex-start; padding: 11px 12px; border: 1px solid #e2e8f0; border-radius: 12px; cursor: pointer;
+}
+.cl-choice[data-on="true"] { border-color: #4f46e5; background: #f5f5ff; }
+.cl-choice[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
+.cl-choice b { display: block; font-size: 13.5px; color: #0f172a; overflow-wrap: anywhere; }
+.cl-choice small { display: block; font-size: 12px; color: #64748b; margin-top: 2px; }
+.cl-modal-foot { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.cl-error { font-size: 12.5px; color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 8px 10px; }
+.cl-ok { font-size: 12.5px; color: #166534; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 8px 10px; }
+/* Beside the lists the table has less room: every cell keeps to one line and
+   the box scrolls sideways, rather than folding a tag or a date a word per
+   line and making each row five times its height. */
+.cl-table td { white-space: nowrap; }
+.cl-table td > div { flex-wrap: nowrap !important; }
+@media (max-width: 999px) {
+  /* The fold's own line already says "Lists"; folded shut, nothing else shows. */
+  .cl-side-head h3 { visibility: hidden; }
+  .cl-side[data-open="false"] .cl-side-head { display: none; }
+}

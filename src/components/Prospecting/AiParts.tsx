@@ -189,7 +189,7 @@ function RowMenu({ name, onPick }: { name: string; onPick: (w: 'list' | 'workflo
       {at && createPortal(
         <span className="aip-menu aip-row-menu" role="menu" style={{ top: at.top, right: at.right }} onMouseLeave={() => setAt(null)}
           onClick={e => e.stopPropagation()}>
-          {([['list', 'Save to a list'], ['workflow', 'Add to a workflow'], ['project', 'Add to an AI project'], ['campaign', 'Add to an email campaign']] as const).map(([w, label]) => (
+          {([['list', 'Save to a contact list'], ['workflow', 'Add to a workflow'], ['project', 'Add to AI Autopilot'], ['campaign', 'Add to an email campaign']] as const).map(([w, label]) => (
             <button key={w} type="button" role="menuitem" onClick={() => { setAt(null); onPick(w); }}>{label}</button>
           ))}
         </span>,

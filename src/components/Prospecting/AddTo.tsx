@@ -3,7 +3,7 @@
  * or an email campaign that already exists, in one go.
  *
  * Every route first imports them (once each, stamped, on a contact list, after
- * the acceptable-use box) through the same `importChosen` as "Save as list",
+ * the acceptable-use box) through the same `importChosen` as "Save to a contact list",
  * then hands the contacts to the target the way that target already takes
  * people — never a second way in:
  *
@@ -11,12 +11,12 @@
  *   `enrolInto`), only into a switched-on workflow. The workflow engine does
  *   not read the suppression list, so anybody on it is left out here and the
  *   count says so.
- * - **AI project** — the project's audience is a contact list
+ * - **AI Autopilot business workspace** (a project on the server) — its audience is a contact list
  *   (`brief.audience.listId`), and the cron re-reads it: adding to the list IS
  *   adding to the project, cold people still in batches of 20 that wait for
  *   approval. A project with a brief but no list is given this one, by
- *   re-saving it with every target it already had (saveProject resets what it
- *   is not sent). A project from before briefs is not touched.
+ *   re-saving it with every target it already had — services/sendToWorkspace.ts,
+ *   shared with Contacts. A project from before briefs is not touched.
  * - **Email campaign** — a draft is pointed at the list (the wizard reads it
  *   back at launch, through its own gate); a scheduled one has its sequence,
  *   and the new people are enrolled for the scheduled time, skipping the
@@ -26,24 +26,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bot, GitBranch, Loader, Mail, Plus, X } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { fetchBoard, saveProject, type Project } from '../../services/projects';
+import { fetchBoard, type Project } from '../../services/projects';
+import { mailable, sendToWorkspace, workspaceOptions } from '../../services/sendToWorkspace';
 import { enrolContacts } from '../../services/engagement';
 import { enrollInSequence } from '../../services/contactEmail';
 import { isSuppressed } from '../../services/deliverability';
 import { flushNow } from '../../services/serverData';
-import { recordProjectProspects } from '../../services/finders';
 import { loadLists } from '../../services/contactLists';
-import type { Contact } from '../../types';
 import { Notice, RuleConfirm } from './ProspectParts';
 import type { ListChoice, ProspectSearch } from './useProspectSearch';
 
 export type AddMode = 'workflow' | 'project' | 'campaign';
 
-const TITLE: Record<AddMode, string> = { workflow: 'Add to a workflow', project: 'Add to an AI project', campaign: 'Add to an email campaign' };
+const TITLE: Record<AddMode, string> = { workflow: 'Add to a workflow', project: 'Add to an AI Autopilot business workspace', campaign: 'Add to an email campaign' };
 const ICON = { workflow: GitBranch, project: Bot, campaign: Mail };
 
-/** May this contact be emailed by something we start? */
-const mailable = (c: Contact) => !!c.email && !isSuppressed(c.email) && c.customFields?.emailStatus !== 'invalid';
 
 interface Option { id: string; name: string; note: string; ok: boolean }
 
@@ -79,15 +76,7 @@ export default function AddTo({ s, mode, suggested, onClose, onDone, go }: {
         note: a.status === 'active' ? 'On — they start at its first step' : `${a.status === 'draft' ? 'A draft' : 'Paused'} — switch it on in Marketing → Automations first`,
       }));
     }
-    if (mode === 'project') {
-      return (projects ?? []).map(p => {
-        const aud = (p.brief as { audience?: { listId?: string; listName?: string } } | null | undefined)?.audience;
-        return {
-          id: p.id, name: p.name, ok: !!p.brief,
-          note: aud?.listId ? `Adds them to its list “${aud.listName || 'audience'}”` : p.brief ? 'Makes this list the people it writes to' : 'Made before projects had an audience — open it on the board to choose one',
-        };
-      });
-    }
+    if (mode === 'project') return workspaceOptions(projects ?? []);
     return campaigns.filter(c => c.type === 'email').map(c => ({
       id: c.id, name: c.name,
       ok: c.status === 'draft' || (c.status === 'scheduled' && !!c.sequenceId),
@@ -112,7 +101,7 @@ export default function AddTo({ s, mode, suggested, onClose, onDone, go }: {
 
   const run = async () => {
     setErr('');
-    if (!chosen) { setErr(`Choose ${mode === 'workflow' ? 'a workflow' : mode === 'project' ? 'a project' : 'a campaign'}.`); return; }
+    if (!chosen) { setErr(`Choose ${mode === 'workflow' ? 'a workflow' : mode === 'project' ? 'a business workspace' : 'a campaign'}.`); return; }
     setBusy(true);
     try {
       if (mode === 'workflow') {
@@ -129,28 +118,15 @@ export default function AddTo({ s, mode, suggested, onClose, onDone, go }: {
 
       if (mode === 'project') {
         const p = (projects ?? []).find(x => x.id === chosen.id)!;
-        const brief = (p.brief ?? {}) as Record<string, unknown> & { audience?: { listId?: string } };
+        const brief = (p.brief ?? {}) as { audience?: { listId?: string } };
         const r = importFor(brief.audience?.listId);
         if ('error' in r) { setErr(r.error); return; }
-        await flushNow();
-        if (!brief.audience?.listId || brief.audience.listId !== r.list?.id) {
-          let goals: string[] = [];
-          try { goals = JSON.parse(p.goals || '[]') as string[]; } catch { goals = []; }
-          const saved = await saveProject({
-            id: p.id, name: p.name, objective: p.objective, portfolioId: p.portfolioId, kind: p.kind,
-            revenueTarget: p.revenueTarget, volumeTarget: p.volumeTarget, goals,
-            brief: { ...brief, audience: { listId: r.list!.id, listName: r.list!.name } },
-          });
-          if (!saved.success) { setErr(`They were saved on “${r.list?.name}”, but the project could not be pointed at it: ${saved.error ?? 'no answer'}.`); return; }
-        }
-        /* Counted on the project's Prospects tab beside what its daily finder adds. */
-        await recordProjectProspects(p.id, r.contacts.map(c => ({
-          ref: `contact:${c.id}`, contactId: c.id, name: c.name, email: c.email, phone: c.phone, website: c.website ?? '',
-          address: c.address ?? '', category: c.tags?.[1] ?? '', emailStatus: c.customFields?.emailStatus ?? '',
-          foundAt: c.customFields?.foundAt ?? '', query: s.searched ? `${s.searched.trade}|${s.searched.place}` : '',
-        })));
-        const reach = r.contacts.filter(mailable).length;
-        onDone(`${r.contacts.length} on “${p.name}”'s list “${r.list?.name}” — ${reach} can be emailed. AI Autopilot proposes them in batches of 20 and asks you before each one, because they never asked to hear from you.`);
+        const sent = await sendToWorkspace({
+          project: p, people: r.contacts, from: r.list ?? null, createdBy: 'AI Prospecting',
+          query: s.searched ? `${s.searched.trade}|${s.searched.place}` : '',
+        });
+        if (!sent.ok) { setErr(sent.message); return; }
+        onDone(sent.message);
         return;
       }
 
@@ -194,7 +170,7 @@ export default function AddTo({ s, mode, suggested, onClose, onDone, go }: {
         {projectError && <Notice text={projectError} />}
         {projects !== null && !options.length && (
           <span className="aip-muted">
-            {mode === 'workflow' ? 'You have no workflows yet.' : mode === 'project' ? 'You have no AI projects yet.' : 'You have no email campaigns yet.'}
+            {mode === 'workflow' ? 'You have no workflows yet.' : mode === 'project' ? 'You have no AI Autopilot business workspaces yet.' : 'You have no email campaigns yet.'}
           </span>
         )}
         <div role="radiogroup" aria-label={TITLE[mode]} className="aip-targets" data-field={`addto.${mode}`}>
@@ -211,7 +187,7 @@ export default function AddTo({ s, mode, suggested, onClose, onDone, go }: {
         <div className="aip-row">
           {fresh && <button type="button" className="aip-chip" onClick={() => go(fresh.to)}><Plus size={12} /> {fresh.label}</button>}
           {mode !== 'workflow' && (
-            <span className="aip-muted">Or save them as a list and start a new {mode === 'project' ? 'project' : 'campaign'} from it — the list's buttons on the left.</span>
+            <span className="aip-muted">Or save them to a contact list and start a new {mode === 'project' ? 'business workspace' : 'campaign'} from it — the list's buttons on the left.</span>
           )}
         </div>
         <RuleConfirm confirmed={confirmed} onChange={setConfirmed} />
