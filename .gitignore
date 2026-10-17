@@ -62,3 +62,9 @@ test-results/
 .wrangler-video/
 .wrangler-ytvideo/
 __pycache__/
+
+# The code graph graphify builds locally (not shared)
+graphify-out/
+
+# Per-machine Claude Code settings (the graphify hook names this machine's path)
+.claude/settings.local.json

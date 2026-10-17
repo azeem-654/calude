@@ -1,0 +1,17 @@
+# What graphify (a code knowledge graph for Claude Code) should not read:
+# copies of the repository, build output, media and generated pictures.
+.claude/
+node_modules/
+dist/
+dist-root/
+public/
+marketing/
+test-results/
+graphify-out/
+mobile/*/android/
+mobile/*/ios/
+.wrangler*/
+*.webp
+*.mp4
+*.png
+*.jpg
