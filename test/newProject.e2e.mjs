@@ -169,7 +169,7 @@ for (const width of [1280, 390]) {
   }
   const { connections, built } = await buildIt(p, d);
   ok(`T1@${width} connections list no mailbox`, !/email mailbox/i.test(connections), connections.slice(0, 400));
-  ok(`T1@${width} connections list the Social Creator`, /Social Creator/.test(connections));
+  ok(`T1@${width} connections list the Graphics Designer & Editor`, /Graphics Designer & Editor/.test(connections));
   ok(`T1@${width} build reached 100%`, /100%/.test(built), built.slice(0, 500));
   ok(`T1@${width} build created the workflows`, /Created [1-9] workflow/.test(built), built.slice(-400));
   await d.getByRole('button', { name: /Open the business workspace/ }).click();

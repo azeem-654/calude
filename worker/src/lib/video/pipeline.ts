@@ -1,7 +1,9 @@
 /**
  * Video Studio's processing, as jobs in D1 that anything may advance.
  *
- *   upload → prepare (engine) → transcribe (Workers AI, piece by piece)
+ *   upload ─┐
+ *   or fetch_url (engine: the customer's own YouTube video, see youtube.ts)
+ *          → prepare (engine) → transcribe (Workers AI, piece by piece)
  *          → analyze (cleanup rules + the AI's choice of Shorts and chapters)
  *          → metadata (AI, per video) → render (engine, per video)
  *          → thumbnails (engine, per video; PNGs checked here)
@@ -41,10 +43,12 @@ import { applyOps } from './edit';
 import { checkPng } from './png';
 import { dispatch, engineCancel, engineMode, engineStatus, type EngineJob } from './engine';
 import { transcribePiece, transcriberMode } from './transcribe';
-import { deletePrefix, fileUrl, pokeUrl, projectPrefix, uploadPrefixUrl } from './store';
-import { meter, PRICE, refusal } from './usage';
+import { deletePrefix, fileUrl, looksLikeVideo, pokeUrl, projectPrefix, uploadPrefixUrl } from './store';
+import { youtubeRefusal } from './youtube';
+import { allowance, meter, PRICE, refusal } from './usage';
 import { counted as countedAllowance, record as recordAllowance, roomFor } from '../allowanceStore';
 import { brandOf, type VideoBrand } from './brand';
+import { TREND_LAYOUTS as ENGINE_LAYOUTS, normaliseSpec } from '../../../../media/engine/thumbLayout.mjs';
 
 /* ── Rows ─────────────────────────────────────────────────────────────────── */
 
@@ -84,11 +88,34 @@ export interface Source {
   silences?: [number, number][];
   /** Faces and the speaker (engine `track`): the file, what it found, or why it could not run. */
   track?: { key?: string; summary?: Pick<TrackFile, 'detector' | 'seen' | 'faces' | 'tracks' | 'switches' | 'frames'>; error?: string; at: string };
+  /**
+   * Started from the customer's own YouTube video instead of an upload: the
+   * id (the only thing the engine is given), what oEmbed said it was called,
+   * and who confirmed it is theirs to use, when. `key` appears only once the
+   * engine has fetched real bytes and they were checked here.
+   */
+  youtube?: { id: string; url: string; title: string; channel: string; rightsBy: string; rightsAt: string };
 }
-/** What a thumbnail was made from, so it can be opened again in the editor and changed. */
+/**
+ * What a thumbnail was made from, so it can be opened again in the editor and
+ * changed. The options after `zoom` came with the trending layouts' second
+ * round (media/engine/thumbLayout.mjs); a spec without them draws as before.
+ */
 export interface ThumbSpec {
   layout: string; text: string; highlight: string; at: number; at2?: number;
   accent: string; color: string; textColor: string; border: boolean; zoom: number;
+  /** The gradient's second colour ('' = the first, darkened). */
+  color2?: string;
+  /** The highlighted word coloured, or in a tilted box of the accent. */
+  hlStyle?: 'color' | 'box';
+  side?: 'auto' | 'left' | 'right' | 'center';
+  textPos?: 'auto' | 'top' | 'middle' | 'bottom';
+  /** 0.6–1.4 times the layout's own size. */
+  textSize?: number;
+  sticker?: string;
+  pointer?: 'auto' | 'none' | 'arrow' | 'circle' | 'both';
+  /** A channel strip, ≤ 28 characters. */
+  badge?: string;
 }
 export interface Thumb { key: string; width: number; height: number; layout: string; bytes: number; verified: boolean; check: string; headline: string; set: number; spec?: ThumbSpec; face?: boolean }
 
@@ -211,13 +238,14 @@ export async function runVideoJobs(env: Env, budgetMs = 25_000): Promise<{ ran: 
 }
 
 async function runJob(env: Env, origin: string, job: JobRow, until: number): Promise<void> {
-  const engineKind = job.kind === 'prepare' || job.kind === 'render' || job.kind === 'thumbnails' || job.kind === 'track';
+  const engineKind = job.kind === 'prepare' || job.kind === 'render' || job.kind === 'thumbnails' || job.kind === 'track' || job.kind === 'fetch_url';
   if (!(await lease(env, job, engineKind ? 40 : 120))) return;
   const p = await project(env, job.project_id);
   if (!p || p.account_id !== job.account_id) { await save(env, job, { state: 'cancelled', error: 'project gone' }); return; }
   if (!env.VIDEO) { await save(env, job, { next_at: later(600), stage: 'waiting', error: 'Video storage is not set up yet.' }); return; }
   try {
     switch (job.kind) {
+      case 'fetch_url': return await fetchJob(env, origin, job, p);
       case 'prepare': return await engineStep(env, origin, job, p, () => buildPrepare(env, origin, p), r => onPrepared(env, job, p, r), 120);
       case 'transcribe': return await transcribeStep(env, job, p, until);
       case 'analyze': return await analyzeStep(env, origin, job, p);
@@ -240,7 +268,9 @@ async function runJob(env: Env, origin: string, job: JobRow, until: number): Pro
 /* ── Engine jobs ──────────────────────────────────────────────────────────── */
 
 async function engineStep(env: Env, origin: string, job: JobRow, p: ProjectRow,
-  build: () => Promise<Omit<EngineJob, 'id' | 'poke'>>, onDone: (r: Record<string, unknown>) => Promise<void>, timeoutMin: number): Promise<void> {
+  build: () => Promise<Omit<EngineJob, 'id' | 'poke'>>, onDone: (r: Record<string, unknown>) => Promise<void>, timeoutMin: number,
+  /** Turns the engine's failure into the customer's sentence, and says whether a retry could change it. */
+  explain?: (err: string) => { terminal: boolean; message: string }): Promise<void> {
   if (engineMode(env) === 'none') {
     await save(env, job, { next_at: later(600), stage: 'waiting', error: 'The media engine is not set up yet.' });
     return;
@@ -275,14 +305,89 @@ async function engineStep(env: Env, origin: string, job: JobRow, p: ProjectRow,
     return;
   }
   if (v.state === 'done') {
-    await onDone(v.result ?? {});
+    if (explain) {
+      /* What arrived is checked in onDone; a failed check is explained like the engine's own failure. */
+      try { await onDone(v.result ?? {}); } catch (e) {
+        const x = explain(String((e as Error)?.message ?? e));
+        return failAttempt(env, job, x.message, x.terminal);
+      }
+    } else await onDone(v.result ?? {});
     await save(env, job, { state: 'done', progress: 100, stage: 'done', finished_at: nowIso(), result: JSON.stringify(v.result ?? {}).slice(0, 60_000), error: '' });
     await refreshProject(env, p.id);
     return;
   }
   const err = v.error || (v.state === 'unknown' ? 'the engine lost the job (restarted)' : v.state);
+  if (explain && v.state !== 'unknown') {
+    const x = explain(err);
+    /* The last attempt says the sentence too, not the engine's raw words. */
+    return failAttempt(env, job, x.message, x.terminal);
+  }
   /* A refusal is about the file, not the run: retrying cannot change it. */
   return failAttempt(env, job, err.replace(/^refused:\s*/, ''), /^refused:/.test(err));
+}
+
+/* ── From the customer's own YouTube video (instead of an upload) ─────────── */
+
+/**
+ * The engine fetches the video (yt-dlp) straight into this project's source
+ * folder through a signed link, as if the browser had uploaded it; then it
+ * is checked here as an upload is — the bytes are there, the size matches,
+ * the first bytes are a video container, storage has room — and only then
+ * does it become the source and `prepare` start. The recording is counted
+ * against the plan at that moment, like a finished upload; its minutes are
+ * metered by `prepare` from the probe, exactly as for an upload. The engine
+ * is told how many minutes are left this month, so a video that would not
+ * fit is refused from its details before a byte is fetched.
+ */
+async function fetchJob(env: Env, origin: string, job: JobRow, p: ProjectRow): Promise<void> {
+  const src = parse<Source>(p.source, {});
+  if (!src.youtube?.id) { await save(env, job, { state: 'cancelled', error: 'nothing to fetch' }); return; }
+  if (src.key) { await save(env, job, { state: 'done', stage: 'done', progress: 100, finished_at: nowIso(), error: '' }); return; }
+  const dir = `${projectPrefix(p.account_id, p.id)}source/`;
+  return engineStep(env, origin, job, p, async () => {
+    const a = await allowance(env, p.account_id, false);
+    const leftSeconds = Math.max(0, Math.floor((a.limits.sourceMin - a.used.sourceMin) * 60));
+    return {
+      op: 'fetch_url' as const,
+      params: { videoId: src.youtube!.id, maxDuration: 3 * 3600, allowanceSeconds: Math.min(3 * 3600, leftSeconds), maxBytes: 8e9 },
+      inputs: {},
+      upload: await uploadPrefixUrl(env, origin, p.account_id, dir, 8 * 3600),
+    };
+  }, async r => {
+    const f = (r.file ?? {}) as { name?: string; bytes?: number; type?: string };
+    const name = String(f.name ?? '');
+    if (!/^original\.(mp4|mkv|webm)$/.test(name)) throw new Error('the engine returned no video file');
+    const key = dir + name;
+    const head = await env.VIDEO!.head(key);
+    /* Never a source without bytes: what the engine says it sent must be what R2 holds. */
+    if (!head || !(head.size > 0) || head.size !== Number(f.bytes)) throw new Error('the fetched video did not arrive whole');
+    const first = await env.VIDEO!.get(key, { range: { offset: 0, length: 64 } });
+    if (!first || !looksLikeVideo(new Uint8Array(await first.arrayBuffer()))) {
+      await env.VIDEO!.delete(key).catch(() => null);
+      throw new Error('refused: youtube:no_video');
+    }
+    const room = await refusal(env, p.account_id, { bytes: head.size });
+    if (room) {
+      await env.VIDEO!.delete(key).catch(() => null);
+      throw new Error(`refused: youtube:storage:${room}`);
+    }
+    const info = (r.info ?? {}) as { title?: string; channel?: string };
+    const now = await project(env, p.id);
+    const cur = parse<Source>(now?.source, src);
+    const next: Source = {
+      ...cur, key, bytes: head.size, type: f.type || 'video/mp4',
+      name: `${(cur.youtube?.title || String(info.title ?? '') || `YouTube ${cur.youtube!.id}`).slice(0, 110)}.${name.split('.').pop()}`,
+      youtube: { ...cur.youtube!, title: cur.youtube!.title || String(info.title ?? '').slice(0, 140), channel: cur.youtube!.channel || String(info.channel ?? '').slice(0, 80) },
+    };
+    await setProject(env, p.id, { source: JSON.stringify(next), status: 'processing', stage: 'prepare', error: '' });
+    await recordAllowance(env, p.account_id, 'long_videos', `long:${p.id}`);
+    await enqueue(env, { accountId: p.account_id, projectId: p.id, kind: 'prepare', idem: `prepare:${p.id}:${key}` });
+  }, 120, err => {
+    /* Storage is the one refusal about the account, not YouTube. */
+    const store = err.match(/refused:\s*youtube:storage:(.*)$/s);
+    if (store) return { terminal: true, message: store[1] };
+    return youtubeRefusal(err);
+  });
 }
 
 async function buildPrepare(env: Env, origin: string, p: ProjectRow) {
@@ -780,12 +885,21 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
 
 /* ── Thumbnails ───────────────────────────────────────────────────────────── */
 
-/** The classic layouts (kept for older sets) and the trending ones (media/engine trendLayout). */
+/** The classic layouts (kept for older sets) and the trending ones — the engine's own list (media/engine/thumbLayout.mjs). */
 export const THUMB_LAYOUTS = ['left', 'band', 'frame'] as const;
-export const TREND_LAYOUTS = ['bold', 'callout', 'cinematic', 'split', 'number'] as const;
+export const TREND_LAYOUTS: readonly string[] = ENGINE_LAYOUTS;
 export const ALL_LAYOUTS: readonly string[] = [...TREND_LAYOUTS, ...THUMB_LAYOUTS];
-/** Which three layouts each set offers — a different look each time "another set" is asked for. */
-const THUMB_SETS = [['bold', 'callout', 'cinematic'], ['split', 'number', 'bold'], ['callout', 'band', 'frame'], ['bold', 'cinematic', 'left']];
+/**
+ * Which three layouts each set offers — a different look each time "another
+ * set" is asked for. A Short's cover (1080×1920) leads with the Shorts cover.
+ * "number" with no figure in the words is drawn as "bold" by the engine.
+ */
+const THUMB_SETS = [['bold', 'glow', 'callout'], ['headline', 'number', 'split'], ['cinematic', 'bold', 'glow'], ['callout', 'band', 'frame']];
+const SHORT_SETS = [['short', 'glow', 'bold'], ['headline', 'callout', 'number'], ['cinematic', 'short', 'split']];
+/** The colours each trending layout starts from when nobody has chosen any: the gradients of the examples. */
+const LOOKS: Record<string, { color: string; color2: string }> = {
+  glow: { color: '#6d28d9', color2: '#1d4ed8' }, headline: { color: '#0f172a', color2: '#7f1d1d' }, short: { color: '#0b0b12', color2: '#3b0764' },
+};
 
 /** The word worth the accent colour: a figure if there is one, else the longest of the last three words. */
 export function pickHighlight(headline: string): string {
@@ -807,12 +921,19 @@ export function cleanThumbSpec(raw: unknown, fallback: ThumbSpec): ThumbSpec {
   const hex = (v: unknown, d: string) => (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v : d);
   const n = (v: unknown, lo: number, hi: number, d: number) => { const x = Number(v); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d; };
   const text = String(r.text ?? fallback.text).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 80) || fallback.text;
-  return {
-    layout: ALL_LAYOUTS.includes(String(r.layout)) ? String(r.layout) : fallback.layout,
-    text, highlight: String(r.highlight ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 30),
+  const layout = ALL_LAYOUTS.includes(String(r.layout)) ? String(r.layout) : fallback.layout;
+  const base: ThumbSpec = {
+    layout, text, highlight: String(r.highlight ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 30),
     at: n(r.at, 0, 6 * 3600, fallback.at), ...(r.at2 !== undefined ? { at2: n(r.at2, 0, 6 * 3600, fallback.at) } : {}),
     accent: hex(r.accent, fallback.accent), color: hex(r.color, fallback.color), textColor: hex(r.textColor, fallback.textColor),
     border: typeof r.border === 'boolean' ? r.border : fallback.border, zoom: n(r.zoom, 0, 1, fallback.zoom),
+  };
+  if (!TREND_LAYOUTS.includes(layout)) return base;
+  /* The newer options, each held to the engine's own lists and ranges. */
+  const o = normaliseSpec({ ...r, layout });
+  return {
+    ...base, color2: o.color2, hlStyle: o.hlStyle, side: o.side, textPos: o.textPos, textSize: o.textSize,
+    sticker: o.sticker, pointer: o.pointer, badge: o.badge,
   };
 }
 
@@ -844,15 +965,16 @@ async function thumbnailJob(env: Env, origin: string, job: JobRow, p: ProjectRow
   const accent = /^#[0-9a-f]{6}$/i.test(brand.accent) && brand.accent.toLowerCase() !== '#ffffff' ? brand.accent : '#facc15';
   const words = thumbWords(headline);
   const base: ThumbSpec = { layout: 'bold', text: words, highlight: pickHighlight(words), at, accent, color: '#0b0b12', textColor: '#ffffff', border: true, zoom: 0.5 };
+  const sets = W < H ? SHORT_SETS : THUMB_SETS;
   const specs: ThumbSpec[] = input.custom
     ? [cleanThumbSpec(input.custom, base)]
-    : THUMB_SETS[(set - 1) % THUMB_SETS.length].map(layout => ({ ...base, layout, ...(layout === 'split' ? { at2: momentAt(0.75) } : {}) }));
+    : sets[(set - 1) % sets.length].map(layout => ({ ...base, layout, ...(LOOKS[layout] ?? {}), ...(layout === 'split' ? { at2: momentAt(0.75) } : {}) }));
   return engineStep(env, origin, job, p, async () => ({
     op: 'thumbnail' as const,
     params: {
       at, width: W, height: H,
       items: specs.map((sp, k) => (TREND_LAYOUTS as readonly string[]).includes(sp.layout)
-        ? { name: `thumb-${k + 1}.png`, id: `${set}-${k + 1}`, layout: sp.layout, text: sp.text, highlight: sp.highlight, at: sp.at, ...(sp.at2 !== undefined ? { at2: sp.at2 } : {}), accent: sp.accent, color: sp.color, textColor: sp.textColor, border: sp.border, zoom: sp.zoom }
+        ? { ...cleanThumbSpec(sp, sp), name: `thumb-${k + 1}.png`, id: `${set}-${k + 1}` }
         : { name: `thumb-${k + 1}.png`, id: `${set}-${k + 1}`, layout: sp.layout, at: sp.at, color: brand.color, accent: sp.accent, ass: thumbAss(sp.text, sp.layout as 'left' | 'band' | 'frame', W, H, sp.accent) }),
     },
     inputs: {
@@ -905,7 +1027,7 @@ async function trackJob(env: Env, origin: string, job: JobRow, p: ProjectRow): P
 /* ── The project as a whole ───────────────────────────────────────────────── */
 
 async function onJobFailed(env: Env, job: JobRow, error: string): Promise<void> {
-  const core = job.kind === 'prepare' || job.kind === 'transcribe' || job.kind === 'analyze';
+  const core = job.kind === 'prepare' || job.kind === 'transcribe' || job.kind === 'analyze' || job.kind === 'fetch_url';
   if (core) {
     await setProject(env, job.project_id, { status: 'failed', error: error.slice(0, 400), stage: job.kind });
   } else if (job.kind === 'track') {
@@ -981,8 +1103,12 @@ export function stagesOf(p: ProjectRow, jobs: JobRow[], outs: OutputRow[], uploa
   const renders = of('render'), thumbs = of('thumbnails');
   const doc = parse<VideoDoc>(p.doc, null as unknown as VideoDoc);
   const renderedN = outs.filter(o => o.status !== 'processing' && o.status !== 'failed').length;
+  const fetches = of('fetch_url');
   const stages: Stage[] = [
-    { key: 'upload', label: 'Uploading source', state: src.key ? 'done' : upload ? 'active' : 'waiting', pct: null, note: src.name ?? '' },
+    /* From YouTube, the first stage is the fetch, with the engine's own byte count. */
+    src.youtube && (fetches.length || !src.key)
+      ? { key: 'fetch_url', label: 'Fetching your video from YouTube', state: src.key ? 'done' : st(fetches), pct: pctOf(fetches), note: noteOf(fetches) || src.youtube.title }
+      : { key: 'upload', label: 'Uploading source', state: src.key ? 'done' : upload ? 'active' : 'waiting', pct: null, note: src.name ?? '' },
     { key: 'prepare', label: 'Preparing video', state: st(of('prepare')), pct: pctOf(of('prepare')), note: noteOf(of('prepare')) },
     { key: 'transcribe', label: 'Transcribing', state: src.probe && !src.probe.hasAudio ? 'skipped' : st(of('transcribe')), pct: pctOf(of('transcribe')), note: noteOf(of('transcribe')) },
     { key: 'analyze', label: 'Analyzing topics and cleanup', state: st(of('analyze')), pct: null, note: noteOf(of('analyze')) },

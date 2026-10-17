@@ -31,7 +31,7 @@ const LINE = '#e6e9f0';
 const CHANNELS: { id: ChannelId; label: string; icon: typeof Mail; where: string }[] = [
   { id: 'email', label: 'Email sequence', icon: Mail, where: 'Marketing → Sequences' },
   { id: 'sms', label: 'SMS campaign', icon: MessageSquare, where: 'Marketing → Campaigns' },
-  { id: 'social', label: 'Social posts', icon: Image, where: 'Social Creator' },
+  { id: 'social', label: 'Social posts', icon: Image, where: 'Graphics Designer & Editor' },
   { id: 'blog', label: 'Blog project', icon: FileText, where: 'Blog Automation' },
   { id: 'short', label: 'Short video script', icon: Clapperboard, where: 'Kept here to shoot' },
   { id: 'landing', label: 'Landing page', icon: LayoutTemplate, where: 'Funnels' },
@@ -515,7 +515,7 @@ export default function FlowLauncher({ onClose, onDone }: { onClose: () => void;
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
                 <button onClick={() => { navigate('/marketing'); onClose(); }} style={darkBtn}>Open Marketing</button>
-                <button onClick={() => { navigate('/social-creator'); onClose(); }} style={ghostBtn}>Open Social Creator</button>
+                <button onClick={() => { navigate('/social-creator'); onClose(); }} style={ghostBtn}>Open Graphics Designer & Editor</button>
                 <button onClick={takeBack} style={{ ...ghostBtn, color: '#b42318', marginLeft: 'auto' }}>
                   <Undo2 size={12} /> Undo all of it
                 </button>

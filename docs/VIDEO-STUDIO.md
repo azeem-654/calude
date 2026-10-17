@@ -28,7 +28,7 @@ Studio is built beside it on the server, and its nav entry says what it is.
 
 There is no `ContentStudio` component. "Content" is a nav group
 (`Layout/navModel.ts`, id `content`) holding **Repurposing**, **AI Shorts** and
-**Post designer** (Social Creator). Social Creator posts are `crm_social_posts`
+**Graphics Designer & Editor** (once "Post designer", the Social Creator). Its posts are `crm_social_posts`
 (localStorage, synced to `crm_data`); a draft tagged `ready-to-publish` reads
 "Ready to publish". Repurposing's **Content Library** (`ContentLibrary.tsx`)
 lists every generated asset by kind (Clips, Images, …).
@@ -235,7 +235,8 @@ publishing only with real providers.
 | Before/after audio in the preview | Planned | — |
 | Eye contact, background removal | Unavailable — provider setup required | — |
 | Direct publishing | Unavailable — Ready to publish manually | — |
-| Import from YouTube / Drive / Dropbox | Planned | — |
+| Start from the customer's own YouTube video | Working once the engine image with yt-dlp is deployed (see §14) | `lib/video/youtube.ts`, engine `fetch_url` |
+| Import from Google Drive / Dropbox | Planned | — |
 
 Tests: `npm run test:video` (94 checks, pure, in the staging pipeline) and
 `npm run test:videoe2e` (the 20-step journey on a 20-minute recording with the
@@ -446,3 +447,122 @@ direct publishing are not available.
 Tests: `npm run test:video` (127, pure) and `npm run test:videoe2e` (the
 journey above, plus two people taking turns — a public-domain 1863 portrait
 of Abraham Lincoln in `test/fixtures/faces`, used twice).
+
+## 14. From a YouTube link, trending thumbnails round two, the Graphics Designer & Editor (2026-10-16)
+
+The owner asked for three things: start a long video from a YouTube link
+(a recording on a PC is huge; the same video on the customer's channel is
+already uploaded), thumbnails in the style of today's trending ones with
+everything editable, and a way to take a thumbnail into the post designer —
+now called the **Graphics Designer & Editor** everywhere a customer reads it
+(routes and code names unchanged; search still finds "post designer").
+
+### A YouTube link instead of a file
+
+The wizard's third step is **"Your video"**: *From my computer* or *From a
+YouTube link* (`NewVideoProject.tsx`). The link is read by
+`lib/video/youtube.ts` (pure, shared with the browser): `watch?v=`,
+`youtu.be/`, `/shorts/`, `/live/` and `/embed/` give an eleven-character id;
+another site, a playlist, a channel or a search is refused by name on
+`data-field="video.youtube"`. The title and channel come from YouTube's
+oEmbed **through the Worker** (`youtube_info`, `YOUTUBE_OEMBED_BASE` for
+tests); the browser asks YouTube for nothing but the still
+(`i.ytimg.com/vi/<id>/hqdefault.jpg`). Nothing starts until the customer
+ticks **"This is my video, or I have the rights to use it"**
+(`video.youtubeRights`) — YouTube's terms allow downloading only what you own
+or may use — and who ticked it, when, is kept on the source.
+
+`create` with `youtubeUrl` makes the project and queues engine job
+**`fetch_url`** (same idempotency, lease, attempts and back-off as every
+job). The engine (`server.mjs fetchUrl`) is given **the id only** and builds
+the URL itself (a `url` param must be on youtube.com/youtu.be and is reduced
+to its id); yt-dlp runs with `--ignore-config --no-plugin-dirs
+--no-remote-components --no-playlist --no-cache-dir --no-exec`, Node as its
+JavaScript runtime, the URL after `--`. It reads the video's details first —
+live, over Video Studio's three hours, or over **the minutes left in this
+month's allowance** (the Worker passes them) is refused before a byte is
+fetched — then the best ≤ 1080-line version in MP4 (else Matroska), probed,
+and uploaded through the signed prefix link like a render. The Worker then
+checks it as an upload is checked — the bytes are there, the size matches,
+the first bytes are a video container, storage has room — and only then is
+it the source: the recording is counted (`long_videos`), `prepare` runs and
+meters its minutes from the probe exactly as for an upload.
+
+yt-dlp's own words come back as `ytdlp: …` and are read in one tested place,
+`youtubeRefusal`: "Sign in to confirm you're not a bot" (YouTube often says
+this to cloud servers, whatever the video), private, age-restricted,
+members-only, unavailable, geo-blocked are **terminal**, each a sentence
+ending **"Download it from YouTube Studio (Content → ⋮ → Download) and upload
+the file instead."**; anything unrecognised is retried. The editor shows the
+stopped project with that sentence and **Upload the file instead** into the
+same project, keeping every choice (`upload_start` accepts it once no fetch
+is running, and cancels the failed one). Never a source without bytes.
+
+**Honest limits.** From Cloudflare's addresses YouTube may refuse often; the
+way forward is on screen. yt-dlp is pinned (`yt-dlp[default]==2026.8.19`,
+bringing yt-dlp-ejs) in `media/Dockerfile`; when fetching starts failing for
+every video, bump the pin first. The Docker image was **not built** in the
+session that added this (no registry access); the engine code path was run
+locally against a stand-in.
+
+### Trending thumbnails, round two
+
+`media/engine/thumbLayout.mjs` (plain JavaScript, no imports, types in
+`thumbLayout.d.mts`) turns a request into a **plan** in pixels: the crop that
+puts the face where the layout wants it, gradient panels, a blurred-frame
+background, a spotlight and an accent halo round the face, every line of
+words with its size and place (uppercase, condensed, thick outline, drop
+shadow, soft dark halo; the picked word coloured or in a **tilted accent box
+on its own line**), a ring and an arrow (only round a found face, and never
+through the words — no room, no arrow, and the designer says so), a sticker
+from a fixed list placed clear of the words, a channel strip, a VS disc. The
+engine paints the plan — an FFmpeg graph built only from its numbers
+(gradients and the spotlight are `geq` expressions of numbers) plus an ASS
+file whose only free text is the escaped words — and the designer's preview
+draws **the same plan** with CSS and SVG, so the preview is the PNG's layout
+(fonts and blur are the browser's; it says it is a preview).
+
+Eight layouts, a fixed list: **bold** (face + huge words on a gradient
+panel), **glow** (frame blurred into the gradient, face sharp in a spotlight
+with an accent halo — not a cut-out; background removal needs a provider),
+**headline** (words first, for screens), **short** (the 9:16 Shorts cover:
+face high, strip on top, words low), **callout** (ring + arrow), **split**
+(two moments, each framed on its own face; "A vs B" puts each half under its
+picture with a VS disc), **number** (the figure on an accent tile;
+"#10", "8 hours"), **cinematic**. A Short's sets lead with the cover.
+Options, each held to the engine's lists and ranges (`normaliseSpec`,
+`cleanThumbSpec`): picked word and its style, accent, a two-colour gradient
+(six presets from the examples), text colour, words at top/middle/bottom,
+word size 60–140 %, face left/centre/right, sticker (tick, cross, up, down,
+money, alert, question, star), pointer (arrow, circle, both, none), channel
+strip, moment(s), zoom, edge. Every PNG is still checked by `png.ts` before
+it is offered. Fixed on the way: two designs asked for quickly got the same
+set number, and the second was dropped as a duplicate (`setsOf` now counts
+sets still being made).
+
+### Edit in Graphics Designer & Editor
+
+Every checked thumbnail on the board has a brush (and the row an **Edit in
+Graphics Designer & Editor** action). `designerHandoff.ts` fetches the PNG
+now (its signed link expires on the hour), draws it as a JPEG data URL (a
+design lives in `crm_social_posts`, synced whole and refused over 2 MB) and
+creates a design whose canvas is half the video's size — the designer
+exports at twice its canvas, so the PNG is exactly 1280×720, or 1080×1920
+for a Short's cover — carrying `videoThumb` (project, output, workspace).
+The editor then shows a banner and **Use as this video's thumbnail**: the
+PNG goes straight to R2 through a signed link (`thumb_upload_url`), and
+`thumb_attach` checks it from its bytes (`checkPng` at the exact size,
+≤ 10 MB, key inside this output's folder) before adding it as a `designed`
+thumbnail and choosing it; anything else is deleted and refused. Over 2 MB it
+says YouTube will want it smaller.
+
+Tests: `npm run test:video` (202, pure — the link parser, the refusal
+reader, every layout's plan inside the picture, boxed and two-tone words,
+arrows clear of words, stickers, split, clean specs) and `npm run
+test:videoyoutube` (53 checks: engine with a yt-dlp stand-in that refuses
+unless the locked-down arguments are there, oEmbed and Whisper mocks, real
+wrangler and D1, the browser at 1280 and 390 — the bot refusal and the
+upload instead, too long, over the month's minutes, a fetch prepared and
+metered like an upload, every layout a checked PNG, the designer preview,
+the round trip through the Graphics Designer & Editor, a forged PNG and a
+foreign key refused).

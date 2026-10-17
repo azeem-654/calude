@@ -118,7 +118,7 @@ function MonthReviewModal({ month, onClose, onPublished }: { month: ContentMonth
           {social.length > 0 && (
             <>
               <span style={{ fontSize: 11, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                <Share2 size={12} /> 30-day social calendar — {social.length} posts (approving creates editable designs in Social Creator)
+                <Share2 size={12} /> 30-day social calendar — {social.length} posts (approving creates editable designs in the Graphics Designer & Editor)
               </span>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {social.map((p, i) => {

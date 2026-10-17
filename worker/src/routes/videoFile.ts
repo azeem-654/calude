@@ -25,21 +25,16 @@
 import type { Env } from '../lib/db';
 import { nowIso } from '../lib/db';
 import { json } from '../lib/http';
-import { verify } from '../lib/video/store';
+import { verify, looksLikeVideo } from '../lib/video/store';
 import { advanceProject, originOf } from '../lib/video/pipeline';
 import { listenTo } from '../lib/video/music';
 
-const OUT_TYPES = new Set(['video/mp4', 'audio/mpeg', 'audio/mp4', 'audio/ogg', 'audio/wav', 'audio/flac', 'image/png', 'image/jpeg', 'application/json', 'text/plain', 'text/vtt']);
+const OUT_TYPES = new Set(['video/mp4', 'video/webm', 'video/x-matroska', 'audio/mpeg', 'audio/mp4', 'audio/ogg', 'audio/wav', 'audio/flac', 'image/png', 'image/jpeg', 'application/json', 'text/plain', 'text/vtt']);
 const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
 const MAX_PART = 16 * 1024 * 1024;
 
-/** Is the start of this file an MP4/MOV or a Matroska/WebM container? */
-export function looksLikeVideo(b: Uint8Array): boolean {
-  if (b.length < 12) return false;
-  const ftyp = b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70;
-  const ebml = b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3;
-  return ftyp || ebml;
-}
+/* The container sniff lives in store.ts, shared with a fetch from YouTube. */
+export { looksLikeVideo };
 
 /* A part goes to R2 as a stream of exactly the length it declared — never
    held whole. Reading 16 MB parts into memory, with the browser sending

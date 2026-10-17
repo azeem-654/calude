@@ -103,11 +103,11 @@ export function outputsOf(nodes: WorkflowNode[]): string[] {
   }
 
   /* The AI steps, named by where the work lands rather than by what they are.
-     "An AI step" tells nobody anything; "Draft posts in the Social Creator"
+     "An AI step" tells nobody anything; "Draft posts in the Graphics Designer & Editor"
      is the thing somebody is deciding whether they want. */
   for (const n of nodes.filter(x => x.type === 'ai')) {
     const produces = String(n.config?.produces ?? 'social');
-    if (produces === 'social') out.push('Draft posts in the Social Creator');
+    if (produces === 'social') out.push('Draft posts in the Graphics Designer & Editor');
     else if (produces === 'blog') out.push('A draft article in Blog');
     else if (produces === 'email_campaign') out.push('A draft campaign in Campaigns');
   }

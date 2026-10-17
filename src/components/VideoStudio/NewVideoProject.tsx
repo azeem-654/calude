@@ -5,12 +5,19 @@
  * the common asks, the file, and what was understood said back before
  * anything runs. Advanced settings stay folded unless opened. The upload is
  * resumable and its bar is bytes the server confirmed.
+ *
+ * The video can come from the customer's computer or — because a recording
+ * on a PC is often tens of gigabytes and the same video on their channel is
+ * already uploaded — from a link to their own YouTube video, which the media
+ * engine fetches. The link is checked here by the same rules the server
+ * uses (lib/video/youtube.ts), its title asked of YouTube by the server, and
+ * nothing starts until the customer ticks that the video is theirs to use.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Upload, Wand2, ChevronDown, ChevronUp, Loader, Film, AlertCircle, Bot } from 'lucide-react';
+import { Upload, Wand2, ChevronDown, ChevronUp, Loader, Film, AlertCircle, Bot, SquarePlay, HardDrive } from 'lucide-react';
 import VoiceControl from '../Autopilot/voice/VoiceControl';
 import {
-  createVideoProject, parseRequest, describeRequest, uploadVideo, bytesLabel, SHORTS_MAX,
+  createVideoProject, parseRequest, describeRequest, uploadVideo, bytesLabel, SHORTS_MAX, parseYoutubeUrl, youtubeInfo, youtubeThumb,
   type Template, type VideoRequest, type UploadProgress, type Want,
 } from '../../services/videoStudio';
 import { fetchBoard, type Project } from '../../services/projects';
@@ -53,6 +60,38 @@ export default function NewVideoProject({ template, want, autopilotProjectId, on
   const [error, setError] = useState('');
   const [listening, setListening] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  /* Where the video comes from: this computer, or the customer's own YouTube video. */
+  const [from, setFrom] = useState<'file' | 'youtube'>('file');
+  const [ytText, setYtText] = useState('');
+  const [ytShowErr, setYtShowErr] = useState(false);
+  const [ytInfo, setYtInfo] = useState<{ id: string; title: string; author: string; note: string } | null>(null);
+  const [ytServerErr, setYtServerErr] = useState('');
+  const [ytLooking, setYtLooking] = useState(false);
+  const [rights, setRights] = useState(false);
+  const yt = useMemo(() => parseYoutubeUrl(ytText), [ytText]);
+  const nameTouched = useRef(false);
+  const ytId = yt.ok ? yt.id : '';
+
+  /* The title, asked of YouTube by the server once the link names a video. */
+  useEffect(() => {
+    setYtServerErr('');
+    if (!ytId) { setYtInfo(null); setYtLooking(false); return; }
+    let gone = false;
+    setYtLooking(true);
+    const t = setTimeout(() => {
+      void youtubeInfo(`https://www.youtube.com/watch?v=${ytId}`).then(r => {
+        if (gone) return;
+        setYtLooking(false);
+        if (!r.success) { setYtServerErr(r.error ?? 'That link could not be checked.'); setYtInfo(null); return; }
+        setYtInfo({ id: r.id, title: r.title, author: r.author, note: r.note });
+        if (r.title && !nameTouched.current) setName(r.title.slice(0, 80));
+      });
+    }, 350);
+    return () => { gone = true; clearTimeout(t); };
+  }, [ytId]);
+  /* A half-typed link is not an error yet: say what is wrong once they pause or leave the box. */
+  useEffect(() => { setYtShowErr(false); if (!ytText.trim()) return; const t = setTimeout(() => setYtShowErr(true), 900); return () => clearTimeout(t); }, [ytText]);
+  const ytError = ytServerErr || (ytShowErr && !yt.ok && ytText.trim() ? yt.error : '');
 
   useEffect(() => { void fetchBoard().then(b => setApProjects(b.projects as Project[])); }, []);
   useEffect(() => { if (template) { setPrompt(template.prompt); setSettings(template.settings); } }, [template]);
@@ -71,7 +110,20 @@ export default function NewVideoProject({ template, want, autopilotProjectId, on
     if (!name) setName(f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').slice(0, 80));
   };
 
+  const startYoutube = async () => {
+    setYtShowErr(true);
+    if (!yt.ok || ytServerErr) { setError(yt.ok ? ytServerErr : yt.error); return; }
+    if (!rights) { setError('Tick the box to confirm this is your video, or that you have the rights to use it.'); return; }
+    setError('');
+    setBusy('creating');
+    const c = await createVideoProject({ name: name.trim() || ytInfo?.title || 'YouTube video', prompt: prompt.trim(), settings, autopilotProjectId: ap || undefined, want, youtubeUrl: yt.url, rightsConfirmed: true, title: ytInfo?.title ?? '' });
+    setBusy('');
+    if (!c.success) { setError(c.error ?? 'The project could not be created.'); return; }
+    onCreated(c.id);
+  };
+
   const start = async () => {
+    if (from === 'youtube') { await startYoutube(); return; }
     if (!file) { setError('Choose the video first.'); return; }
     setError('');
     setBusy('creating');
@@ -90,7 +142,7 @@ export default function NewVideoProject({ template, want, autopilotProjectId, on
   return (
     <div className="vs-new" data-testid="vs-new-project">
       <div className="vs-col">
-        {template && want && <div className="vs-steps"><span><i>1</i> Goal</span><span>›</span><span><i>2</i> Choices</span><span>›</span><span className="on"><i>3</i> Upload</span></div>}
+        {template && want && <div className="vs-steps"><span><i>1</i> Goal</span><span>›</span><span><i>2</i> Choices</span><span>›</span><span className="on"><i>3</i> Your video</span></div>}
         <div className="vs-prompt">
           <div className="vs-prompt-in">
             <label htmlFor="vs-prompt" style={{ fontWeight: 800, fontSize: 17, display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -110,6 +162,12 @@ export default function NewVideoProject({ template, want, autopilotProjectId, on
           </div>
         </div>
 
+        <div className="vs-source-seg" role="tablist" aria-label="Where the video comes from" data-testid="vs-source">
+          <button type="button" role="tab" aria-selected={from === 'file'} onClick={() => { setFrom('file'); setError(''); }} disabled={!!busy} data-source="file"><HardDrive size={15} /> From my computer</button>
+          <button type="button" role="tab" aria-selected={from === 'youtube'} onClick={() => { setFrom('youtube'); setError(''); }} disabled={!!busy} data-source="youtube"><SquarePlay size={15} /> From a YouTube link</button>
+        </div>
+
+        {from === 'file' ? (
         <div className={`vs-drop ${over ? 'over' : ''}`} role="button" tabIndex={0} data-field="video.file"
           onClick={() => inputRef.current?.click()} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') inputRef.current?.click(); }}
           onDragOver={e => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
@@ -119,7 +177,35 @@ export default function NewVideoProject({ template, want, autopilotProjectId, on
           {file ? <Film size={28} color="#c084fc" /> : <Upload size={28} color="#c084fc" />}
           <b>{file ? file.name : 'Upload your recording'}</b>
           <span className="vs-sub" style={{ margin: 0 }}>{file ? bytesLabel(file.size) : 'MP4, MOV, MKV or WebM · up to 12 GB · 16:9, 9:16, 1:1 or 4:5. Your original is kept untouched.'}</span>
+          {!file && <span className="vs-kbd" style={{ margin: 0 }}>A huge file? <button type="button" className="vs-linkbtn" onClick={e => { e.stopPropagation(); setFrom('youtube'); }} data-act="to-youtube">Or paste a YouTube link</button> to a video already on your channel.</span>}
         </div>
+        ) : (
+        <div className="vs-card vs-yt" data-testid="vs-youtube">
+          <label className="vs-label" htmlFor="vs-yt-url"><span className="vs-row" style={{ gap: 6 }}><SquarePlay size={14} /> The link to your video on YouTube</span>
+            <input id="vs-yt-url" className="vs-input" data-field="video.youtube" data-testid="vs-yt-url" value={ytText} disabled={!!busy} inputMode="url" autoComplete="off" spellCheck={false}
+              aria-invalid={!!ytError} aria-describedby={ytError ? 'vs-yt-err' : undefined}
+              placeholder="youtube.com/watch?v=… · youtu.be/… · /shorts/… · /live/…"
+              onChange={e => setYtText(e.target.value)} onBlur={() => setYtShowErr(true)} />
+          </label>
+          {ytError && <div className="vs-note bad" id="vs-yt-err" role="alert" data-testid="vs-yt-error"><AlertCircle size={15} /> {ytError}</div>}
+          {yt.ok && !ytServerErr && (
+            <div className="vs-yt-card" data-testid="vs-yt-card">
+              <img src={youtubeThumb(yt.id)} alt="" width={160} height={90} loading="lazy" referrerPolicy="no-referrer" />
+              <div className="vs-col" style={{ gap: 3, minWidth: 0 }}>
+                <b data-testid="vs-yt-title">{ytInfo?.title || (ytLooking ? 'Looking up the title…' : `YouTube video ${yt.id}`)}</b>
+                {ytInfo?.author && <span className="vs-kbd">{ytInfo.author}</span>}
+                <span className="vs-kbd">Fetched by our server at up to 1080p, then prepared like an upload.</span>
+                {ytInfo?.note && <span className="vs-kbd" style={{ color: '#fbbf24' }}>{ytInfo.note}</span>}
+              </div>
+            </div>
+          )}
+          <label className="vs-opt" data-field="video.youtubeRights">
+            <input type="checkbox" checked={rights} onChange={e => setRights(e.target.checked)} disabled={!!busy} data-testid="vs-yt-rights" />
+            <span><b>This is my video, or I have the rights to use it</b></span>
+          </label>
+          <span className="vs-kbd">YouTube's terms allow downloading only videos you own or have permission to use. YouTube also often refuses servers, and private, age-restricted and members-only videos need a sign-in — if it refuses, download the file from YouTube Studio and upload it instead.</span>
+        </div>
+        )}
 
         {busy === 'uploading' && progress && (
           <div className="vs-card" style={{ display: 'grid', gap: 8 }} data-testid="vs-upload-progress">
@@ -136,7 +222,7 @@ export default function NewVideoProject({ template, want, autopilotProjectId, on
           <h2>What will be made</h2>
           <div className="vs-understood" data-testid="vs-understood">{understood.understood.map(u => <span key={u}>{u}</span>)}{want && wantWords(want).map(u => <span key={u} className="also">{u}</span>)}</div>
           <label className="vs-label">Project name
-            <input className="vs-input" data-field="video.name" value={name} onChange={e => setName(e.target.value)} placeholder="Weekly podcast — episode 12" />
+            <input className="vs-input" data-field="video.name" value={name} onChange={e => { nameTouched.current = true; setName(e.target.value); }} placeholder="Weekly podcast — episode 12" />
           </label>
           <label className="vs-label"><span style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Bot size={13} /> Save into an AI Autopilot project (optional)</span>
             <select className="vs-select" data-field="video.autopilot" value={ap} onChange={e => setAp(e.target.value)}>
@@ -192,8 +278,8 @@ export default function NewVideoProject({ template, want, autopilotProjectId, on
           <div className="vs-row" style={{ marginTop: 4 }}>
             <button type="button" className="vs-btn ghost" onClick={onCancel} disabled={!!busy}>Cancel</button>
             <span className="vs-spacer" />
-            <button type="button" className="vs-btn ai" onClick={() => void start()} disabled={!!busy || !file} data-testid="vs-start">
-              {busy ? <Loader size={15} className="spin" /> : <Wand2 size={15} />} {busy === 'creating' ? 'Creating…' : busy === 'uploading' ? `Uploading ${pct}%` : 'Upload and start'}
+            <button type="button" className="vs-btn ai" onClick={() => void start()} disabled={!!busy || (from === 'file' ? !file : !yt.ok || !rights || !!ytServerErr)} data-testid="vs-start">
+              {busy ? <Loader size={15} className="spin" /> : <Wand2 size={15} />} {busy === 'creating' ? 'Creating…' : busy === 'uploading' ? `Uploading ${pct}%` : from === 'youtube' ? 'Fetch from YouTube and start' : 'Upload and start'}
             </button>
           </div>
           <p className="vs-kbd" style={{ margin: 0 }}>Nothing is published anywhere. Cuts are proposed with reasons, and you can restore anything — the original is never changed.</p>

@@ -176,7 +176,7 @@ export const REELS: Record<string, ReelShot[]> = {
     { file: 'sites-list', caption: 'Whole websites, built and published from the same login.', alt: 'The websites list' },
   ],
   social: [
-    { file: 'social-gallery', caption: 'Posts on the right canvas for each platform, written for you by your projects.', alt: 'The social creator' },
+    { file: 'social-gallery', caption: 'Posts on the right canvas for each platform, written for you by your projects.', alt: 'The Graphics Designer & Editor' },
     { file: 'social-editor', caption: 'Every post is a real design you can change before it goes out.', alt: 'The social post editor' },
   ],
   blog: [

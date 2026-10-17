@@ -31,7 +31,9 @@ import { fileUrl, projectPrefix, workspacePrefix, sign, deletePrefix } from '../
 import { allowance, refusal } from '../lib/video/usage';
 import { check as allowanceCheck, counted as countedAllowance, record as recordAllowance, refusalBody } from '../lib/allowanceStore';
 import { searchMusic, trackById, storeTrack, musicQuery, looksLikeAudio } from '../lib/video/music';
+import { checkPng } from '../lib/video/png';
 import { brandOf, kitOf, saveKit } from '../lib/video/brand';
+import { cleanOembed, parseYoutubeUrl, youtubeThumb, YOUTUBE_WAY_FORWARD } from '../lib/video/youtube';
 import {
   advanceProject, cancelProject, enqueue, originOf, outputsOf, parse, readTranscript, renderSpec, stagesOf, syncOutputs, queueAfterEdit,
   recreditOutputs, type Extras, type JobRow, type OutputRow, type ProjectRow, type Source, type Thumb,
@@ -49,6 +51,8 @@ interface Req {
   patch?: Record<string, unknown>; kit?: Record<string, unknown>; file?: string; probe?: boolean; light?: boolean; knownVersion?: number;
   q?: string; page?: number; trackId?: string; key?: string; title?: string; rightsConfirmed?: boolean; applyTo?: string;
   posts?: number; blog?: boolean; email?: boolean;
+  /** Start from the customer's own YouTube video instead of an upload (create, youtube_info). */
+  youtubeUrl?: string;
   want?: { repurpose?: { posts?: number; blog?: boolean; email?: boolean }; quiz?: boolean; denoise?: string; voice?: boolean; music?: string };
 }
 
@@ -83,7 +87,7 @@ async function capabilities(env: Env, accountId: string, probe: boolean): Promis
     { key: 'thumbnails', label: 'PNG thumbnails', status: engine ? 'working' : 'needs_configuration', note: 'Exact headline text, brand colours and logo; every file checked to be a real PNG.' },
     { key: 'audio', label: 'Background noise reduction (light, medium, strong), voice clarity, loudness', status: engine ? 'working' : 'needs_configuration', note: 'Steady noise — fans, hum, hiss — is taken out. Distorted or cut-out speech cannot be rebuilt, and is not claimed to be.' },
     { key: 'music', label: 'Background music: royalty-free library and your own tracks', status: engine && storage ? 'working' : 'needs_configuration', note: 'Openverse tracks under CC0, public domain or CC BY only (credit added to descriptions), or your own upload with your rights confirmed. Ducked under speech, faded in and out.' },
-    { key: 'repurpose', label: 'Repurpose: posts, an article and emails from the recording', status: ai ? 'working' : 'needs_configuration', note: 'Drafts in Social Creator, Blog and Campaigns — nothing is published or sent.' },
+    { key: 'repurpose', label: 'Repurpose: posts, an article and emails from the recording', status: ai ? 'working' : 'needs_configuration', note: 'Drafts in the Graphics Designer & Editor, Blog and Campaigns — nothing is published or sent.' },
     { key: 'quiz', label: 'Quiz from a training recording', status: ai ? 'working' : 'needs_configuration', note: 'Multiple-choice questions about what is actually said, each linked to its moment.' },
     { key: 'speaker_tracking', label: 'Face and speaker tracking for 9:16 and other crops', status: !engine ? 'needs_configuration' : health && health.track === false ? 'needs_configuration' : 'working',
       note: health && health.track === false ? 'This engine was built without OpenCV — the next engine deploy adds it.' : 'Follows the most prominent face, or whoever\'s mouth moves while there is speech. It reads lips, not voices: two people talking at once, or a speaker turned away, are not told apart.' },
@@ -96,7 +100,10 @@ async function capabilities(env: Env, accountId: string, probe: boolean): Promis
     { key: 'eye_contact', label: 'Eye-contact correction', status: 'unavailable', note: 'Provider setup required.' },
     { key: 'bg_removal', label: 'Portrait background removal', status: 'unavailable', note: 'Provider setup required. A portrait can be used as it is.' },
     { key: 'publishing', label: 'Direct publishing to social platforms', status: 'unavailable', note: 'Ready to publish manually: download the video and PNG, copy the caption, description and hashtags.' },
-    { key: 'import', label: 'Import from YouTube, Google Drive, Dropbox', status: 'planned', note: 'Upload a file you own for now.' },
+    { key: 'youtube', label: 'Start from your own YouTube video', status: !engine || !storage ? 'needs_configuration' : health && health.youtube === false ? 'needs_configuration' : 'working',
+      note: health && health.youtube === false ? 'This engine was built without yt-dlp — the next engine deploy adds it.'
+        : 'Only a video you own or may use. YouTube often refuses servers ("confirm you\'re not a bot"), and private, age-restricted and members-only videos need a sign-in — then download it from YouTube Studio and upload the file.' },
+    { key: 'import', label: 'Import from Google Drive, Dropbox', status: 'planned', note: 'Upload the file for now.' },
   ];
 }
 
@@ -129,6 +136,17 @@ async function signedOutputs(env: Env, origin: string, p: ProjectRow, outs: Outp
   }));
 }
 
+/**
+ * Every set number this output has or has been asked for. A set is numbered
+ * when it is asked for, but its thumbnails arrive only when the engine is
+ * done — counting only the arrived ones gave two quick requests the same
+ * number, and the second was dropped as a duplicate of the first.
+ */
+async function setsOf(env: Env, o: OutputRow): Promise<number[]> {
+  const { results } = await env.DB.prepare(`SELECT input FROM crm_video_jobs WHERE project_id = ? AND target = ? AND kind = 'thumbnails'`).bind(o.project_id, o.id).all<{ input: string }>();
+  return [...parse<Thumb[]>(o.thumbs, []).map(t => t.set), ...results.map(r => Number(parse<{ set?: number }>(r.input, {}).set) || 0)];
+}
+
 async function readProject(env: Env, accountId: string, id: string): Promise<ProjectRow | null> {
   return env.DB.prepare('SELECT * FROM crm_video_projects WHERE id = ? AND account_id = ?').bind(id, accountId).first<ProjectRow>();
 }
@@ -149,11 +167,13 @@ async function projectView(env: Env, origin: string, p: ProjectRow, opts: { ligh
     project: {
       id: p.id, name: p.name, prompt: p.prompt, status: p.status, stage: p.stage, stageNote: p.stage_note, error: p.error,
       language: p.language, createdAt: p.created_at, updatedAt: p.updated_at,
+      wayForward: src.youtube && !src.probe ? YOUTUBE_WAY_FORWARD : '',
       autopilotProjectId: p.autopilot_project_id, autopilotProjectName: ap?.name ?? '', workflowId: p.workflow_id,
     },
     request: parse<VideoRequest | null>(p.request, null),
     source: {
       name: src.name ?? '', bytes: src.bytes ?? 0, probe: src.probe ?? null,
+      youtube: src.youtube ? { id: src.youtube.id, url: src.youtube.url, title: src.youtube.title, channel: src.youtube.channel, thumb: youtubeThumb(src.youtube.id), fetched: !!src.key } : null,
       proxyUrl: src.proxy ? await fileUrl(env, origin, p.account_id, src.proxy, 4 * 3600) : '',
       track: src.track ? { ready: !!src.track.key, summary: src.track.summary ?? null, error: src.track.error ?? '', at: src.track.at } : null,
       trackUrl: src.track?.key && sendDoc ? await fileUrl(env, origin, p.account_id, src.track.key, 4 * 3600) : '',
@@ -265,6 +285,28 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
     return json({ success: true, capabilities: await capabilities(env, accountId, !!d.probe), usage: await allowance(env, accountId) });
   }
 
+  /* A pasted link, read back before anything is made: which video, what it is
+     called (YouTube's oEmbed, asked by the Worker — the browser asks YouTube
+     for nothing but the still). Nothing is stored. */
+  if (act === 'youtube_info') {
+    const link = parseYoutubeUrl(s(d.youtubeUrl, 500));
+    if (!link.ok) return fail(link.error, 200, { field: 'video.youtube', code: 'not_youtube' });
+    const rl = await rateLimit(env, { what: 'video-ytinfo', who: accountId, max: 120, windowSeconds: 3600 });
+    if (!rl.allowed) return json({ success: true, id: link.id, url: link.url, thumb: youtubeThumb(link.id), title: '', author: '', note: 'The video\'s title could not be looked up just now.' });
+    const base = (env.YOUTUBE_OEMBED_BASE ?? '').trim().replace(/\/$/, '') || 'https://www.youtube.com';
+    let title = '', author = '', note = '', missing = false;
+    try {
+      const r = await fetch(`${base}/oembed?format=json&url=${encodeURIComponent(link.url)}`, { signal: AbortSignal.timeout(6000), headers: { accept: 'application/json' } });
+      if (r.ok) { const o = cleanOembed(await r.json().catch(() => null)); title = o?.title ?? ''; author = o?.author ?? ''; }
+      else if (r.status === 404 || r.status === 400) missing = true;
+      /* 401/403: private, or embedding switched off — a private one cannot be fetched, an unlisted one with embedding off can. */
+      else if (r.status === 401 || r.status === 403) note = 'YouTube will not show this video\'s details — it may be private. A private video cannot be fetched; an unlisted one can.';
+      else note = 'The video\'s title could not be looked up just now.';
+    } catch { note = 'The video\'s title could not be looked up just now.'; }
+    if (missing) return fail(`YouTube says there is no video at that link. Check it, and that the video is public or unlisted. ${YOUTUBE_WAY_FORWARD}`, 200, { field: 'video.youtube', code: 'no_video' });
+    return json({ success: true, id: link.id, url: link.url, thumb: youtubeThumb(link.id), title, author, note });
+  }
+
   if (act === 'list') {
     const { results } = await env.DB.prepare(
       `SELECT p.*, (SELECT COUNT(*) FROM crm_video_outputs o WHERE o.project_id = p.id AND o.kind = 'short') AS shorts,
@@ -285,6 +327,13 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
   }
 
   if (act === 'create') {
+    /* From a YouTube link instead of an upload: the link and the rights box are
+       refused by name before anything is made. */
+    const yt = d.youtubeUrl !== undefined && d.youtubeUrl !== null && String(d.youtubeUrl).trim() !== '' ? parseYoutubeUrl(s(d.youtubeUrl, 500)) : null;
+    if (yt && !yt.ok) return fail(yt.error, 200, { field: 'video.youtube', code: 'not_youtube' });
+    if (yt && d.rightsConfirmed !== true) return fail('Tick the box to confirm this is your video, or that you have the rights to use it.', 200, { field: 'video.youtubeRights' });
+    if (yt && !env.VIDEO) return fail('Video storage is not set up yet, so nothing can be fetched. The owner enables R2 in Cloudflare; the next deploy creates the bucket.', 503, { code: 'no_storage' });
+    if (yt && engineMode(env) === 'none') return fail(`The media engine that fetches from YouTube is not set up yet. ${YOUTUBE_WAY_FORWARD}`, 503, { code: 'no_engine' });
     const rl = await rateLimit(env, { what: 'video-create', who: accountId, max: 40, windowSeconds: 3600 });
     if (!rl.allowed) return fail('That is a lot of new video projects in an hour — try again shortly.', 429);
     const no = await refusal(env, accountId, {});
@@ -353,13 +402,20 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
     } };
     const id = `vp-${crypto.randomUUID()}`;
     const now = nowIso();
-    const name = s(d.name, 120) || 'Untitled video';
+    const name = s(d.name, 120) || (yt?.ok ? 'YouTube video' : 'Untitled video');
+    /* A YouTube start records who said it is theirs to use, and when — kept with the source. */
+    const source: Source = yt?.ok ? { youtube: { id: yt.id, url: yt.url, title: s(d.title, 140), channel: '', rightsBy: user.email, rightsAt: now } } : {};
     await env.DB.batch([
-      env.DB.prepare(`INSERT INTO crm_video_projects (id, account_id, name, prompt, request, autopilot_project_id, workflow_id, status, doc, doc_version, extras, created_by, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, 1, ?, ?, ?, ?)`).bind(id, accountId, name, prompt, JSON.stringify(request), autopilot, workflow, JSON.stringify(doc), JSON.stringify(extras), user.email, now, now),
+      env.DB.prepare(`INSERT INTO crm_video_projects (id, account_id, name, prompt, request, autopilot_project_id, workflow_id, status, stage, source, doc, doc_version, extras, created_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`).bind(id, accountId, name, prompt, JSON.stringify(request), autopilot, workflow,
+          yt?.ok ? 'processing' : 'draft', yt?.ok ? 'fetch_url' : '', JSON.stringify(source), JSON.stringify(doc), JSON.stringify(extras), user.email, now, now),
       env.DB.prepare('INSERT INTO crm_video_versions (project_id, version, account_id, doc, note, created_by, created_at) VALUES (?, 1, ?, ?, ?, ?, ?)')
         .bind(id, accountId, JSON.stringify(doc), 'Project created', user.email, now),
     ]);
+    if (yt?.ok) {
+      await enqueue(env, { accountId, projectId: id, kind: 'fetch_url', idem: `fetch:${id}:${yt.id}`, maxAttempts: 3 });
+      kick(id);
+    }
     /* Music asked for in the wizard is found now, while the video uploads. */
     let musicNote = '';
     if (typeof w.music === 'string' && w.music.trim() && env.VIDEO) {
@@ -394,7 +450,7 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
         description: meta.description ?? '', hashtags: (meta.hashtags ?? []).join(' '),
       };
     }));
-    const sources = await env.DB.prepare(`SELECT id, name, source, created_at FROM crm_video_projects WHERE account_id = ? AND source != '{}' ORDER BY created_at DESC LIMIT 200`)
+    const sources = await env.DB.prepare(`SELECT id, name, source, created_at FROM crm_video_projects WHERE account_id = ? AND json_extract(source, '$.key') IS NOT NULL ORDER BY created_at DESC LIMIT 200`)
       .bind(accountId).all<{ id: string; name: string; source: string; created_at: string }>();
     return json({
       success: true, items,
@@ -437,6 +493,11 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       if (!(size > 0) || size > MAX_BYTES) return fail('Videos up to 12 GB can be uploaded.', 200, { field: 'video.file' });
       const src = parse<Source>(p.source, {});
       if (src.key) return fail('This project already has its video. Start a new project for another recording.', 200, { code: 'has_source' });
+      /* A project that was to come from YouTube may take the file instead —
+         that is the way forward when YouTube refuses — but not while the fetch
+         is still going, or two sources would race for the same key. */
+      const fetching = await env.DB.prepare(`SELECT COUNT(*) AS n FROM crm_video_jobs WHERE project_id = ? AND kind = 'fetch_url' AND state IN ('queued','running')`).bind(p.id).first<{ n: number }>();
+      if ((fetching?.n ?? 0) > 0) return fail('This project is still fetching your video from YouTube. Wait for it, or cancel it, before uploading the file.', 200, { field: 'video.file', code: 'fetching' });
       const no = await refusal(env, accountId, { bytes: size });
       if (no) return fail(no, 402, { code: 'allowance' });
       /* Asked again here (it is counted when the upload completes): a draft
@@ -457,7 +518,11 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
         id = `vu-${crypto.randomUUID()}`;
         await env.DB.prepare(`INSERT INTO crm_video_uploads (id, account_id, project_id, r2_key, upload_id, name, bytes, type, part_size, file_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
           .bind(id, accountId, p.id, key, up.uploadId, name, size, type || 'video/mp4', PART, fileKey, nowIso(), nowIso()).run();
-        await env.DB.prepare(`UPDATE crm_video_projects SET status = 'uploading', stage = 'upload', updated_at = ? WHERE id = ?`).bind(nowIso(), p.id).run();
+        await env.DB.batch([
+          env.DB.prepare(`UPDATE crm_video_projects SET status = 'uploading', stage = 'upload', error = '', updated_at = ? WHERE id = ?`).bind(nowIso(), p.id),
+          /* The YouTube attempt is over once the file comes instead. */
+          env.DB.prepare(`UPDATE crm_video_jobs SET state = 'cancelled', updated_at = ? WHERE project_id = ? AND kind = 'fetch_url' AND state = 'failed'`).bind(nowIso(), p.id),
+        ]);
       }
       const t = await sign(env, { a: accountId, k: key, m: 'up', u: id }, 24 * 3600);
       return json({ success: true, uploadId: id, partSize: PART, parts: Math.ceil(size / PART), done: open ? Object.keys(parse<Record<string, string>>(open.parts, {})).map(Number) : [], partUrl: `${origin}/api/video-file.php?t=${t}` });
@@ -493,7 +558,7 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
         await env.VIDEO.resumeMultipartUpload(row.r2_key, row.upload_id).abort().catch(() => null);
         await env.DB.prepare(`UPDATE crm_video_uploads SET state = 'aborted', updated_at = ? WHERE id = ?`).bind(nowIso(), row.id).run();
       }
-      await env.DB.prepare(`UPDATE crm_video_projects SET status = 'draft', stage = '', updated_at = ? WHERE id = ? AND source = '{}'`).bind(nowIso(), p.id).run();
+      await env.DB.prepare(`UPDATE crm_video_projects SET status = 'draft', stage = '', updated_at = ? WHERE id = ? AND json_extract(source, '$.key') IS NULL`).bind(nowIso(), p.id).run();
       return json({ success: true });
     }
 
@@ -656,7 +721,7 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
         const r = await saveEdit(env, p, undefined, [{ op: 'thumbnail.headline', target: o.id, text: s(d.headline, 90) }], 'Thumbnail headline', user.email);
         if (!r.ok) return json({ success: false, conflict: true, error: 'Try again.' });
       }
-      const sets = parse<Thumb[]>(o.thumbs, []).map(t => t.set);
+      const sets = (await setsOf(env, o)).filter(n => n < 100);
       const set = Math.min(6, (sets.length ? Math.max(...sets) : 0) + 1);
       if (sets.includes(6)) return fail('Six sets is the most a video keeps — choose one of those.');
       await enqueue(env, { accountId, projectId: p.id, kind: 'thumbnails', target: o.id, idem: `thumbs:${o.id}:${set}:${Date.now()}`, input: { set } });
@@ -667,13 +732,56 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
     case 'thumb_custom': {
       const o = await outputRow();
       if (!o) return fail('Choose a video first.', 200, { code: 'no_output' });
-      const all = parse<Thumb[]>(o.thumbs, []);
-      const set = Math.max(100, ...all.map(t => t.set)) + 1;
+      const set = Math.max(100, ...(await setsOf(env, o)).filter(n => n < 200)) + 1;
       const spec = cleanThumbSpec(d.spec, { layout: 'bold', text: thumbWords(o.title || p.name), highlight: '', at: 1, accent: '#facc15', color: '#0b0b12', textColor: '#ffffff', border: true, zoom: 0.5 });
       if (!spec.text) return fail('Write the words for the thumbnail.', 200, { field: 'video.thumbText' });
       await enqueue(env, { accountId, projectId: p.id, kind: 'thumbnails', target: o.id, idem: `thumbs:${o.id}:${set}`, input: { set, custom: spec } });
       kick(p.id);
       return json({ success: true, set });
+    }
+
+    /* ── A thumbnail redesigned in the Graphics Designer & Editor, brought back ──
+       The designer exports a PNG in the browser; it is uploaded straight to
+       R2 through a signed link under this output's folder (never through this
+       route), then checked here from its bytes — signature, header CRC, the
+       exact size the video needs, IEND — before it is called a thumbnail and
+       chosen. Anything else is deleted and refused. */
+    case 'thumb_upload_url': {
+      if (!env.VIDEO) return fail('Video storage is not set up yet.', 503, { code: 'no_storage' });
+      const o = await outputRow();
+      if (!o) return fail('That video is not in this project any more.', 200, { code: 'no_output' });
+      const room = await refusal(env, accountId, { bytes: 4e6 });
+      if (room) return fail(room, 402, { code: 'allowance' });
+      const prefix = `${projectPrefix(accountId, p.id)}out/${o.id}/thumbs/up-${crypto.randomUUID().slice(0, 8)}/`;
+      return json({ success: true, url: `${origin}/api/video-file.php?t=${await sign(env, { a: accountId, k: prefix, m: 'put' }, 1800)}`, key: `${prefix}designed.png`,
+        width: o.kind === 'short' ? 1080 : 1280, height: o.kind === 'short' ? 1920 : 720 });
+    }
+
+    case 'thumb_attach': {
+      if (!env.VIDEO) return fail('Video storage is not set up yet.', 503, { code: 'no_storage' });
+      const o = await outputRow();
+      if (!o) return fail('That video is not in this project any more.', 200, { code: 'no_output' });
+      const key = s(d.key, 300);
+      if (!key.startsWith(`${projectPrefix(accountId, p.id)}out/${o.id}/thumbs/up-`) || !key.endsWith('/designed.png') || key.includes('..')) return fail('That upload is not part of this video.', 403);
+      const W = o.kind === 'short' ? 1080 : 1280, H = o.kind === 'short' ? 1920 : 720;
+      const head = await env.VIDEO.head(key);
+      if (!head) return fail('The picture did not arrive — try again.', 200, { code: 'not_uploaded' });
+      if (head.size > 10 * 1024 * 1024) { await env.VIDEO.delete(key).catch(() => null); return fail('That picture is over 10 MB, so it was not kept.', 200, { code: 'too_big' }); }
+      const obj = await env.VIDEO.get(key);
+      const bytes = obj ? new Uint8Array(await obj.arrayBuffer()) : new Uint8Array();
+      const chk = checkPng(bytes, { width: W, height: H });
+      if (!chk.ok) {
+        await env.VIDEO.delete(key).catch(() => null);
+        return fail(`That is not a ${W}×${H} PNG (${chk.reason}), so it was not used.`, 200, { code: 'not_png' });
+      }
+      const all = parse<Thumb[]>(o.thumbs, []);
+      const set = Math.max(200, ...all.map(t => t.set)) + 1;
+      const next: Thumb[] = [...all, { key, width: chk.width, height: chk.height, layout: 'designed', bytes: bytes.length, verified: true,
+        check: `PNG ${chk.width}×${chk.height}, signature and header checked`, headline: 'Designed in the Graphics Designer & Editor', set }];
+      await env.DB.prepare('UPDATE crm_video_outputs SET thumbs = ?, chosen_thumb = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(next), next.length - 1, nowIso(), o.id).run();
+      /* YouTube takes custom thumbnails up to 2 MB: said, not hidden, when this one is larger. */
+      return json({ success: true, index: next.length - 1, bytes: bytes.length,
+        note: bytes.length > 2 * 1024 * 1024 ? `It is ${(bytes.length / 1048576).toFixed(1)} MB; YouTube accepts custom thumbnails up to 2 MB, so it will need making smaller (as a JPEG, say) before it goes on YouTube.` : '' });
     }
 
     case 'track_now': {

@@ -90,6 +90,14 @@ export async function verify(env: Env, token: string | null): Promise<Grant | nu
   return g;
 }
 
+/** Is the start of this file an MP4/MOV or a Matroska/WebM container? (an upload's first part, a video fetched from YouTube) */
+export function looksLikeVideo(b: Uint8Array): boolean {
+  if (b.length < 12) return false;
+  const ftyp = b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70;
+  const ebml = b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3;
+  return ftyp || ebml;
+}
+
 const safe = (s: string) => s.replace(/[^A-Za-z0-9_-]/g, '');
 export const projectPrefix = (accountId: string, projectId: string) => `v/${safe(accountId)}/${safe(projectId)}/`;
 export const workspacePrefix = (accountId: string) => `v/${safe(accountId)}/`;

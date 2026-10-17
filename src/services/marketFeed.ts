@@ -223,8 +223,8 @@ export const MODULES: Module[] = [
     ],
   },
   {
-    symbol: 'SOCIAL', name: 'Social Creator', dept: 'Content', category: 'Content',
-    route: '/social-creator', dest: 'Social Creator',
+    symbol: 'SOCIAL', name: 'Graphics Designer & Editor', dept: 'Content', category: 'Content',
+    route: '/social-creator', dest: 'Graphics Designer & Editor',
     basis: 'Social posts designed, and how much of it actually ships',
     comps: [
       { kind: 'saturate', key: 'posts', half: 15, weight: 1.5, label: 'Designs', hint: 'Social posts created',

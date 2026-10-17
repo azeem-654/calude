@@ -136,7 +136,7 @@ export interface AgentOutput {
 }
 
 export const AGENT_OUTPUTS: Record<string, AgentOutput> = {
-  social: { label: 'Social posts, as images', where: 'Social Creator', route: '/social-creator' },
+  social: { label: 'Social posts, as images', where: 'Graphics Designer & Editor', route: '/social-creator' },
   blog: { label: 'A blog post', where: 'Blog', route: '/blog-automation' },
   email_campaign: { label: 'An email campaign', where: 'Campaigns', route: '/marketing?tab=sequences' },
   /* Made by the project's daily prospect finder (worker/src/prospectFinderTick.ts), never chosen in the editor. */

@@ -5,7 +5,7 @@ import {
   Share2, Eye, EyeOff, Lock, Unlock, Trash2, Copy, AlignLeft, AlignCenter,
   AlignRight, Bold, Italic, Underline, ChevronUp, ChevronDown, Layers,
   Palette, Settings, ZoomIn, ZoomOut, RotateCcw, Move, Plus, Check,
-  Wand2, X, Save, Maximize2, Minimize2,
+  Wand2, X, Save, Maximize2, Minimize2, Clapperboard,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { DesignPost, CanvasElement, CanvasBackground, TextElement, ShapeElement, ImageElement, StickerElement, HistoryEntry } from './types';
@@ -658,7 +658,8 @@ function LayersPanel({ elements, selectedId, onSelect, onUpdate, onDelete, onReo
 }
 
 /* ── Export Canvas to PNG ── */
-async function exportToPNG(post: DesignPost): Promise<void> {
+/** The design as a PNG at twice the canvas — what Export PNG downloads, and what goes back to AI Video Studio as a thumbnail. */
+async function renderPNG(post: DesignPost): Promise<Blob | null> {
   const SCALE = 2;
   const canvas = document.createElement('canvas');
   canvas.width = post.canvasWidth * SCALE;
@@ -772,15 +773,18 @@ async function exportToPNG(post: DesignPost): Promise<void> {
     ctx.restore();
   }
 
-  canvas.toBlob(blob => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `design-${Date.now()}.png`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, 'image/png');
+  return new Promise<Blob | null>(res => canvas.toBlob(b => res(b), 'image/png'));
+}
+
+async function exportToPNG(post: DesignPost): Promise<void> {
+  const blob = await renderPNG(post);
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `design-${Date.now()}.png`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /* ══════════════════════════════════════════════════════ */
@@ -810,6 +814,8 @@ export default function PostEditor() {
   const [showStickers, setShowStickers] = useState(false);
   const [saved, setSaved] = useState(true);
   const [exporting, setExporting] = useState(false);
+  /* Sending a redesigned thumbnail back to AI Video Studio. */
+  const [toVideo, setToVideo] = useState<{ busy: boolean; ok: boolean; msg: string }>({ busy: false, ok: false, msg: '' });
   const canvasRef = useRef<HTMLDivElement>(null);
   const imageUploadRef = useRef<HTMLInputElement>(null);
   // Smart snapping guides (Canva-style magenta lines while dragging)
@@ -1220,7 +1226,35 @@ export default function PostEditor() {
           style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: 'none', borderRadius: 6, background: '#22c55e', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
           <Download size={14} /> {exporting ? 'Exporting…' : 'Export PNG'}
         </button>
+        {post.videoThumb && (
+          <button
+            data-act="use-as-thumb"
+            title="Make this design the thumbnail of the video it came from, in AI Video Studio"
+            onClick={async () => {
+              const link = post.videoThumb!;
+              setToVideo({ busy: true, ok: false, msg: '' });
+              save();
+              const png = await renderPNG({ ...post, elements, background });
+              if (!png) { setToVideo({ busy: false, ok: false, msg: 'The design could not be drawn as a PNG.' }); return; }
+              /* Loaded on press: the designer does not carry Video Studio's code otherwise. */
+              const { applyDesignAsThumb } = await import('../../services/videoStudio');
+              const r = await applyDesignAsThumb(link, png);
+              setToVideo(r.ok ? { busy: false, ok: true, msg: `It is now the thumbnail of “${link.title || 'the video'}”.${r.note ? ` ${r.note}` : ''}` } : { busy: false, ok: false, msg: r.error });
+            }}
+            disabled={toVideo.busy}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: 'none', borderRadius: 6, background: '#8b5cf6', color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>
+            <Clapperboard size={14} /> {toVideo.busy ? 'Sending…' : 'Use as this video\'s thumbnail'}
+          </button>
+        )}
       </div>
+      {post.videoThumb && (
+        <div data-testid="designer-video-banner" role={toVideo.msg ? 'status' : undefined}
+          style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '7px 16px', fontSize: 12.5, background: toVideo.msg ? (toVideo.ok ? '#ecfdf5' : '#fef2f2') : '#f5f3ff', color: toVideo.msg ? (toVideo.ok ? '#065f46' : '#991b1b') : '#4c1d95', borderBottom: '1px solid #e2e8f0' }}>
+          <span style={{ flex: '1 1 260px' }}>{toVideo.msg || `Redesigning a thumbnail of “${post.videoThumb.title || 'your video'}” (${post.videoThumb.width}×${post.videoThumb.height}). Export PNG downloads it; “Use as this video's thumbnail” sends it back to AI Video Studio, where it is checked and chosen.`}</span>
+          <button onClick={() => { save(); navigate(`/video-studio/${post.videoThumb!.projectId}`); }}
+            style={{ border: '1px solid currentColor', background: 'transparent', color: 'inherit', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Back to the video</button>
+        </div>
+      )}
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* ── Left Panel ── */}

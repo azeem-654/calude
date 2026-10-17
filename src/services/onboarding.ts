@@ -59,9 +59,9 @@ export interface ChannelOption { id: string; label: string; module: string; }
 export const CHANNEL_OPTIONS: ChannelOption[] = [
   { id: 'email',     label: 'Email marketing',   module: 'Marketing → Campaigns & Sequences' },
   { id: 'sms',       label: 'SMS marketing',     module: 'Marketing → SMS flows' },
-  { id: 'facebook',  label: 'Facebook',          module: 'Social Creator → Post calendar' },
-  { id: 'instagram', label: 'Instagram',         module: 'Social Creator → Post calendar' },
-  { id: 'linkedin',  label: 'LinkedIn',          module: 'Social Creator → Post calendar' },
+  { id: 'facebook',  label: 'Facebook',          module: 'Graphics Designer & Editor → Post calendar' },
+  { id: 'instagram', label: 'Instagram',         module: 'Graphics Designer & Editor → Post calendar' },
+  { id: 'linkedin',  label: 'LinkedIn',          module: 'Graphics Designer & Editor → Post calendar' },
   { id: 'video',     label: 'YouTube / Shorts',  module: 'AI Shorts → Clip pipeline' },
   { id: 'blog',      label: 'Blog / SEO',        module: 'Websites → Blog posts' },
   { id: 'reviews',   label: 'Google reviews',    module: 'Reputation → Review requests' },

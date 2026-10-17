@@ -117,7 +117,7 @@ const CHAPTERS: Chapter[] = [
         reel: 'websites',
       },
       {
-        id: 'social', title: 'Social creator', tone: 'moss', icon: ImageIcon,
+        id: 'social', title: 'Graphics Designer & Editor', tone: 'moss', icon: ImageIcon,
         body: 'Posts on the right canvas for each platform, in your colours, editable before they go.',
         reel: 'social',
       },
@@ -228,7 +228,7 @@ const SOURCES = [
 ];
 
 const CHAIN = [
-  { icon: ImageIcon, label: 'Social posts', where: 'Social Creator' },
+  { icon: ImageIcon, label: 'Social posts', where: 'Graphics Designer & Editor' },
   { icon: FileText, label: 'Blog posts', where: 'Blog' },
   { icon: Mail, label: 'Email campaigns', where: 'Campaigns' },
   { icon: MessageSquare, label: 'Follow-ups', where: 'When a lead arrives' },
@@ -252,7 +252,7 @@ const CAPABILITIES: { group: string; icon: typeof Send; items: string[] }[] = [
   }] : []),
   { group: 'Convert', icon: MousePointerClick, items: ['Funnels', 'Websites', 'Forms & surveys', 'Booking pages', 'Online shop & checkout'] },
   { group: 'Manage', icon: Users, items: ['Contacts', 'Pipelines', 'Conversations', 'Calendar', 'Support tickets'] },
-  { group: 'Create', icon: Sparkles, items: ['Social creator', 'Blog automation', 'AI Shorts', 'Content library', 'Brand overlays'] },
+  { group: 'Create', icon: Sparkles, items: ['Graphics Designer & Editor', 'Blog automation', 'AI Shorts', 'Content library', 'Brand overlays'] },
   { group: 'Run it as an agency', icon: Building2, items: ['Sub-accounts', 'White-label branding', 'Per-client billing', 'Role-based access', 'Isolated data'] },
 ];
 

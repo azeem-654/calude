@@ -90,9 +90,17 @@ export interface DesignPost {
   thumbnail?: string;
   tags: string[];
   aiPrompt?: string;
+  /**
+   * Opened from AI Video Studio to redesign one of a video's thumbnails: which
+   * video it belongs to, so the editor can offer "Use as this video's
+   * thumbnail" (exported at the size the video needs: canvas × 2).
+   */
+  videoThumb?: VideoThumbLink;
   createdAt: string;
   updatedAt: string;
 }
+
+export interface VideoThumbLink { projectId: string; outputId: string; accountId: string; width: number; height: number; title: string }
 
 export interface BrandKit {
   colors: string[];

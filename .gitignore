@@ -60,4 +60,5 @@ test-results/
 .claude/worktrees/
 .wrangler-reels/
 .wrangler-video/
+.wrangler-ytvideo/
 __pycache__/

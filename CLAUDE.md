@@ -1305,11 +1305,29 @@ export is a canvas recording; Video Studio is the real one.
   overlays, chapters re-timed), progress bar, animated overlays placed on the
   recording (ASS). The preview shows them (`cssLook`, speed, zoom, tracked
   object-position, overlays) and says it is close.
-- **Thumbnails** follow the trending advice (§13 of the doc): engine
-  `trendLayout` — bold (face close-up + huge outlined words), callout (ring +
-  arrow, only round a found face), cinematic, split, number; each PNG keeps its
-  `spec`; `thumb_custom` + `ThumbnailDesigner.tsx` (live preview from a proxy
-  frame) make and choose a designed one.
+- **Thumbnails** follow the trending advice (§13–14 of the doc): one plan,
+  `media/engine/thumbLayout.mjs` (`thumbPlan`, plain JS, types in `.d.mts`),
+  eight layouts — bold, glow, headline, short (9:16 cover), callout, split
+  ("A vs B"), number, cinematic — painted by the engine (numbers-only FFmpeg
+  graph + escaped ASS) and drawn by `ThumbnailDesigner.tsx` as its preview;
+  options (picked word coloured or boxed, gradient, word place/size, face
+  side, sticker, arrow/ring, strip) clamped by `normaliseSpec`. A ring or
+  arrow only round a found face, never through the words. Each PNG keeps its
+  `spec`; `thumb_custom` makes a designed one. **Edit in Graphics Designer &
+  Editor** (the post designer's name everywhere a customer reads it) opens a
+  thumbnail as a design (`designerHandoff.ts`); **Use as this video's
+  thumbnail** comes back through `thumb_upload_url` + `thumb_attach`
+  (`checkPng` at the exact size before it is chosen).
+- **From a YouTube link** (`lib/video/youtube.ts`, shared): the wizard's
+  "Your video" step takes the customer's own video's link plus a rights
+  box; engine job `fetch_url` runs pinned yt-dlp on the id only, refuses
+  from the details what the plan's minutes cannot take, uploads like a
+  render; the Worker checks the bytes before it is the source, then it is an
+  upload. `youtubeRefusal` reads yt-dlp's words — "not a bot", private,
+  age, members are terminal, each ending "Download it from YouTube Studio
+  … and upload the file instead", offered in the same project.
+  `npm run test:videoyoutube` (engine :8883 with `test/ytdlpStub.mjs`,
+  Whisper :8884, oEmbed :8885, wrangler :8963, `.wrangler-ytvideo`).
 - **The board** (`OutputsBoard.tsx`, under the editor): per video an editorial
   score (`editorialScore` — never a forecast), preview, thumbnails, words,
   chapters, downloads at the size made, Export XML (`toXmeml`, Premiere/Resolve),
