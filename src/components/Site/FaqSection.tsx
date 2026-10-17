@@ -9,7 +9,7 @@ import { Plus } from 'lucide-react';
 const FAQ: { q: string; a: string }[] = [
   {
     q: 'What happens after I sign up?',
-    a: 'If you made a plan with Find my solution, your AI Autopilot project is built straight away from your answers — its workflows, schedules and first outputs — and you land in it, not on an empty dashboard. Otherwise you describe what you want in one sentence and it is built the same way.',
+    a: 'If you made a plan with Find my solution, your AI Autopilot business workspace is built straight away from your answers — its workflows, schedules and first outputs — and you land in it, not on an empty dashboard. Otherwise you describe what you want in one sentence and it is built the same way.',
   },
   {
     q: 'Do I need a credit card?',
@@ -17,7 +17,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'Will it email or text anybody without me?',
-    a: 'No. Anything that emails or texts starts as a draft, and new prospects are proposed in batches that wait for your approval. What each project may do on its own is a setting you can see and change.',
+    a: 'No. Anything that emails or texts starts as a draft, and new prospects are proposed in batches that wait for your approval. What each business workspace may do on its own is a setting you can see and change.',
   },
   {
     q: 'What do I need to connect?',
@@ -37,7 +37,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'What happens when I reach a plan’s allowance?',
-    a: 'That one thing waits — a new project, the month’s next Short or post — and the app says which allowance it is, how much is used and which plan raises it. Everything you made stays, nothing is charged extra, and monthly allowances start again on the 1st. Plan & billing shows what is left.',
+    a: 'That one thing waits — a new business workspace, the month’s next Short or post — and the app says which allowance it is, how much is used and which plan raises it. Everything you made stays, nothing is charged extra, and monthly allowances start again on the 1st. Plan & billing shows what is left.',
   },
   {
     q: 'Is my business data safe?',

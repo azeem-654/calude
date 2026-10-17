@@ -1076,7 +1076,7 @@ const RECIPES: Record<string, () => Promise<void>> = {
   },
   'analytics-revenue': async () => {
     await go('/analytics?section=revenue', 3000);
-    await onScreen('/analytics', 'Revenue by project', REALTY.name);
+    await onScreen('/analytics', 'Revenue by business workspace', REALTY.name);
   },
 
   /* ── The agents: their own tab, and one drawn as a workflow ── */

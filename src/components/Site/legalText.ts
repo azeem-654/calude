@@ -64,7 +64,7 @@ export const PRIVACY: LegalSection[] = [
   {
     id: 'ai', title: 'Artificial intelligence',
     body: [
-      'Some features use Google\'s Gemini models, called from our servers. They receive what the task you asked for needs — for example your business profile and your request when writing a post, the files or web pages you give the project wizard, or the email being replied to — and not your whole workspace. Your contact list is not sent; messages are written with placeholders that we fill in ourselves.',
+      'Some features use Google\'s Gemini models, called from our servers. They receive what the task you asked for needs — for example your business profile and your request when writing a post, the files or web pages you give the new business workspace wizard, or the email being replied to — and not your whole workspace. Your contact list is not sent; messages are written with placeholders that we fill in ourselves.',
       'One exception: analysing a video in AI Shorts uploads that video to Google directly from your browser, using an AI key you saved yourself.',
       'Whether Google may use this information to improve its products depends on the plan of the AI key in use; Google\'s terms say prompts under paid plans are not used that way.',
     ],

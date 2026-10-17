@@ -21,7 +21,7 @@ export default function PricingSection() {
         <h2>Three plans, <em>or one built around you.</em></h2>
         <p>
           Every plan starts with 7 days free, and no card is asked for until you choose one. Each says exactly
-          how much it makes for you a month — projects, posts, Shorts, prospects — and your Usage page shows
+          how much it makes for you a month — business workspaces, posts, Shorts, prospects — and your Usage page shows
           what is left. Every plan is white-label: your name, logo and colours.
         </p>
       </div>
@@ -33,7 +33,7 @@ export default function PricingSection() {
         <strong>Every plan includes</strong>
         <ul>{table.included.map(f => <li key={f}><Check size={12} /> {f}</li>)}</ul>
         <p>
-          The free trial runs on a smaller allowance ({table.trial.limits.autopilot_projects} AI Autopilot projects,
+          The free trial runs on a smaller allowance ({table.trial.limits.autopilot_projects} AI Autopilot business workspaces,
           {' '}{table.trial.limits.ai_shorts} AI Shorts, {table.trial.limits.social_posts} social posts) and needs no card.
           Allowances are shared by every workspace you run. What you charge your own clients is yours to set.
         </p>

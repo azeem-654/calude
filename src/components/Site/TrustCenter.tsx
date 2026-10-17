@@ -74,7 +74,7 @@ const SECTIONS: { id: string; icon: typeof Lock; title: string; lead: string; po
     lead: 'AI features use Google’s Gemini models. They receive what the task needs, not your workspace.',
     points: [
       'Writing posts, articles and campaigns: your business profile and your request.',
-      'Starting a project: what you type or say, and any files or web pages you give it.',
+      'Starting a business workspace: what you type or say, and any files or web pages you give it.',
       'Replying to email and chat: the message being answered, with your business profile.',
       'Screening outgoing messages for abuse: the text of that message.',
       'Your contact list is not sent — messages are written with placeholders that are filled in on our side.',

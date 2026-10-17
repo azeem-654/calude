@@ -202,7 +202,7 @@ const AUTOPILOT = [
   { icon: GitBranch, title: 'See every branch', body: 'Workflows are drawn the way they run, each fork labelled Yes or No and every path joined up.' },
   { icon: PenLine, title: 'Edit any step in place', body: 'The pen on a step opens that step alone, with your real forms, tags and stages to pick from — or a new form made on the spot.' },
   { icon: LayoutTemplate, title: `${TEMPLATES.length} ready-made workflows`, body: 'Filed by the problem they solve — missed calls, quotes gone quiet, reviews, daily posts — each previewed in full first.' },
-  { icon: ShieldCheck, title: 'Nothing sends unasked', body: 'Anything that emails or texts starts as a draft. What each project may do on its own is a setting you can change.' },
+  { icon: ShieldCheck, title: 'Nothing sends unasked', body: 'Anything that emails or texts starts as a draft. What each business workspace may do on its own is a setting you can change.' },
 ];
 
 /* What a project's board says as it works — the kind of line it writes, shown
@@ -237,7 +237,7 @@ const CHAIN = [
 /* ── What it actually does, in place of testimonials ─────────────────────── */
 
 const CAPABILITIES: { group: string; icon: typeof Send; items: string[] }[] = [
-  { group: 'Automate', icon: Bot, items: ['AI Autopilot projects', `${TEMPLATES.length} workflow templates`, 'Branching workflows', 'Scheduled AI agents', 'Voice prompts'] },
+  { group: 'Automate', icon: Bot, items: ['AI Autopilot Business Workspaces', `${TEMPLATES.length} workflow templates`, 'Branching workflows', 'Scheduled AI agents', 'Voice prompts'] },
   {
     group: 'Reach', icon: Send,
     /* Prospect search is held back on the live site (services/features.ts). A
@@ -617,7 +617,7 @@ export default function SiteHome() {
         <div className="dc-flow-shot reveal" ref={flow}>
           {/* The agents themselves — not the outreach workflows, which are
               not what this section is about. */}
-          <ShotReel shots={REELS.agents} label="A project's agents" />
+          <ShotReel shots={REELS.agents} label="A business workspace's agents" />
         </div>
       </section>
 

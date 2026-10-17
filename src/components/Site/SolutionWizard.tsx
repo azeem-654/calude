@@ -445,8 +445,8 @@ export default function SolutionWizard({ onClose, initialPick = '', inline = fal
                 <h2 className="sw-title">Here’s what Protected Central can build for you.</h2>
                 <div className="sw-sol-head">
                   <label className="sw-sol-name">
-                    <span>Project</span>
-                    <input value={state.name || bp.name} onChange={e => { const name = e.target.value.slice(0, 80); setState(s => (s ? { ...s, name } : s)); }} aria-label="Project name" />
+                    <span>Business workspace</span>
+                    <input value={state.name || bp.name} onChange={e => { const name = e.target.value.slice(0, 80); setState(s => (s ? { ...s, name } : s)); }} aria-label="Business workspace name" />
                   </label>
                   <div className="sw-sol-obj"><span>Objective</span><p>{bp.objective}</p></div>
                 </div>
@@ -454,7 +454,7 @@ export default function SolutionWizard({ onClose, initialPick = '', inline = fal
                 <div className="sw-sol-grid">
                   <section>
                     <h3><Bot size={15} /> AI agents</h3>
-                    <ul className="sw-list">{(bp.agents.length ? bp.agents : [{ name: 'AI Autopilot', role: 'Plans and runs the project', workflow: '' }]).slice(0, 5).map(a => <li key={`${a.name}-${a.workflow}`}><b>{a.name}</b> <span>{a.role}</span></li>)}</ul>
+                    <ul className="sw-list">{(bp.agents.length ? bp.agents : [{ name: 'AI Autopilot', role: 'Plans and runs the business workspace', workflow: '' }]).slice(0, 5).map(a => <li key={`${a.name}-${a.workflow}`}><b>{a.name}</b> <span>{a.role}</span></li>)}</ul>
                   </section>
                   <section>
                     <h3><Sparkles size={15} /> What it produces</h3>
@@ -487,7 +487,7 @@ export default function SolutionWizard({ onClose, initialPick = '', inline = fal
                       <li key={r}><CircleDashed size={13} /> <span><b>{REQUIREMENT_INFO[r].label}</b>{REQUIREMENT_INFO[r].kind === 'optional' ? ' (optional)' : ''} — {REQUIREMENT_INFO[r].why}</span></li>
                     ))}</ul>
                   ) : <p className="sw-note ok">Nothing to connect first — everything this plan uses is included.</p>}
-                  <p className="sw-safe"><ShieldCheck size={14} /> The project is built for you on sign-up. Anything that emails, texts or publishes waits for your approval.</p>
+                  <p className="sw-safe"><ShieldCheck size={14} /> Your AI Autopilot business workspace is built for you on sign-up. Anything that emails, texts or publishes waits for your approval.</p>
                 </section>
                 {state.unsupported.length > 0 && (
                   <p className="sw-note">Not something Protected Central does today: {state.unsupported.join('; ')}.</p>

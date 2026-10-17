@@ -34,7 +34,7 @@ const PROSPECTING = [
   { icon: MapPin, title: 'Three kinds of source', body: 'Business directories, verified business directories (the UK company register, with directors) and Google Maps — named for what they are, on every row.' },
   { icon: Globe, title: 'The email they publish', body: 'Each business\'s own website is read for the address it chose to publish. Never a guessed firstname@ that bounces.' },
   { icon: ShieldCheck, title: 'Checked before you send', body: 'Format, domain and mail server on every address — and the mailbox itself, catch-alls and named people when a mailbox verifier is connected.' },
-  { icon: ListChecks, title: 'Straight into work', body: 'Save a list, or add the ticked ones to a workflow, an AI Autopilot project or an email campaign — each row time-stamped with when it was found.' },
+  { icon: ListChecks, title: 'Straight into work', body: 'Save a list, or add the ticked ones to a workflow, an AI Autopilot business workspace or an email campaign — each row time-stamped with when it was found.' },
   /* This card said "No scraped LinkedIn" until the Lead Directory (the owner's
      own lead files, which may come from a vendor that collects from LinkedIn)
      was added beside AI Prospecting. It now says only what stays true of both. */
@@ -75,7 +75,7 @@ const TRADES: Trade[] = [
 const DAILY = [
   { icon: Repeat, title: 'Searches its rotation', body: 'Each kind of business in each town, a few at a time through the day — a state is worked town by town, largest first.' },
   { icon: Search, title: 'Reads and checks', body: 'Reads each new business\'s website for its address, checks it, and leaves out anyone already in your contacts.' },
-  { icon: CalendarClock, title: 'Adds your number a day', body: 'Up to the number you chose join the project\'s audience — 10, 20, 100 — with when each was found.' },
+  { icon: CalendarClock, title: 'Adds your number a day', body: 'Up to the number you chose join the business workspace\'s audience — 10, 20, 100 — with when each was found.' },
   { icon: MessageSquareText, title: 'Writes to them — with you', body: 'Outreach goes 20 at a time, each batch waiting for your approval. Texts only to the ones who say yes on their own page.' },
 ];
 
@@ -110,7 +110,7 @@ const CHIPS = [
   { icon: Search, title: '51 found live', sub: 'Realtors in Richmond, Virginia' },
   { icon: Globe, title: 'Websites read', sub: 'The address each one publishes' },
   { icon: ShieldCheck, title: '33 mailboxes verified', sub: 'Checked before you send' },
-  { icon: CalendarClock, title: '20 new every day', sub: 'Added to an AI Autopilot project' },
+  { icon: CalendarClock, title: '20 new every day', sub: 'Added to an AI Autopilot business workspace' },
 ];
 
 export default function ProspectingShowcase() {
@@ -144,9 +144,9 @@ export default function ProspectingShowcase() {
       <div className="dc-daily reveal" ref={daily}>
         <div className="dc-daily-copy">
           <span className="dc-eyebrow"><Sparkles size={13} /> On AI Autopilot</span>
-          <h3>And a project that finds its own, every day.</h3>
+          <h3>And a business workspace that finds its own, every day.</h3>
           <p>
-            Tell an AI Autopilot project "sell to real estate agents in Virginia" — in the wizard, or with
+            Tell an AI Autopilot business workspace "sell to real estate agents in Virginia" — in the wizard, or with
             <b> Connect to AI Autopilot</b> on any search you have tested — and it keeps finding new verified leads on its own schedule.
           </p>
           <ol className="dc-daily-steps">
@@ -159,7 +159,7 @@ export default function ProspectingShowcase() {
             ))}
           </ol>
         </div>
-        <figure className="dc-daily-card" aria-label="Thirty days of a sample project's daily prospecting">
+        <figure className="dc-daily-card" aria-label="Thirty days of a sample business workspace's daily prospecting">
           <div className="dc-daily-top">
             <span><BarChart3 size={14} /> Brightline Realty — Virginia listings</span>
             <i><CheckCircle2 size={12} /> Finding every day</i>
@@ -176,7 +176,7 @@ export default function ProspectingShowcase() {
           <div className="dc-daily-chips">
             {['real estate agents · Richmond', 'property managers · Norfolk', 'mortgage brokers · Virginia Beach'].map(c => <span key={c}>{c}</span>)}
           </div>
-          <figcaption>Sample project — the same chart its Prospects tab draws.</figcaption>
+          <figcaption>Sample business workspace — the same chart its Prospects tab draws.</figcaption>
         </figure>
       </div>
       </>}

@@ -79,8 +79,8 @@ export const REELS: Record<string, ReelShot[]> = {
   hero: [
     {
       file: 'hero-board',
-      caption: 'AI Autopilot runs every client\'s project on the server — what it did, and what waits for you.',
-      alt: 'The AI Autopilot board: a client project\'s overview with its workflows, what it made and what waits for approval',
+      caption: 'AI Autopilot runs every client\'s business workspace on the server — what it did, and what waits for you.',
+      alt: 'The AI Autopilot board: a client business workspace\'s overview with its workflows, what it made and what waits for approval',
     },
     {
       file: 'hero-flow',
@@ -94,8 +94,8 @@ export const REELS: Record<string, ReelShot[]> = {
     },
     {
       file: 'hero-daily',
-      caption: 'A project that finds its own prospects every day, and adds the reachable ones to its audience.',
-      alt: 'A project\'s Prospects tab: finding every day, today\'s count, a 30-day chart and the latest prospects',
+      caption: 'A business workspace that finds its own prospects every day, and adds the reachable ones to its audience.',
+      alt: 'A business workspace\'s Prospects tab: finding every day, today\'s count, a 30-day chart and the latest prospects',
     },
     {
       file: 'hero-dashboard',
@@ -115,7 +115,7 @@ export const REELS: Record<string, ReelShot[]> = {
     {
       file: 'ap-describe',
       caption: 'Describe what you want in a sentence — typed, spoken, or with files and a website.',
-      alt: 'The new project screen with a box asking what the project should do',
+      alt: 'The new business workspace screen with a box asking what it should do',
     },
     {
       file: 'ap-diagram',
@@ -136,8 +136,8 @@ export const REELS: Record<string, ReelShot[]> = {
     },
     {
       file: 'ap-activity',
-      caption: 'What each project did, what its agents made, and what is coming up next.',
-      alt: 'A project\'s Activity tab: actions carried out, posts its agents made, and what is planned',
+      caption: 'What each business workspace did, what its agents made, and what is coming up next.',
+      alt: 'A business workspace\'s Activity tab: actions carried out, posts its agents made, and what is planned',
     },
   ],
 
@@ -167,12 +167,12 @@ export const REELS: Record<string, ReelShot[]> = {
     },
     {
       file: 'pr-addto',
-      caption: 'Tick the ones you want and add them to a list, a workflow, a project or a campaign.',
+      caption: 'Tick the ones you want and add them to a list, a workflow, an AI Autopilot business workspace or a campaign.',
       alt: 'AI Prospecting results for accountants in Manchester with rows ticked and the Add to menu open',
     },
     {
       file: 'pr-every-day',
-      caption: '"Connect to AI Autopilot" makes a tested search a project\'s recurring lead source.',
+      caption: '"Connect to AI Autopilot" makes a tested search a business workspace\'s recurring lead source.',
       alt: 'The Connect to AI Autopilot wizard: the linked search, its criteria, and how many verified leads a run',
     },
   ],
@@ -223,12 +223,12 @@ export const REELS: Record<string, ReelShot[]> = {
   ],
   analytics: [
     { file: 'analytics', module: 'Analytics', caption: 'Revenue, leads and where they came from, read live from the modules.', alt: 'The reports overview' },
-    { file: 'analytics-revenue', module: 'Analytics', caption: 'Revenue by project: paid orders credited to the project that brought them in.', alt: 'Reports, Revenue by project' },
+    { file: 'analytics-revenue', module: 'Analytics', caption: 'Revenue by business workspace: paid orders credited to the business workspace that brought them in.', alt: 'Reports, Revenue by business workspace' },
   ],
 
   /* "Your sources in. Every channel out." — the agents, not the workflows. */
   agents: [
-    { file: 'agent-list', caption: 'A project\'s agents on their schedule: what each reads, what it makes and where it lands.', alt: 'A project\'s AI Agents tab listing its scheduled agents' },
+    { file: 'agent-list', caption: 'A business workspace\'s agents on their schedule: what each reads, what it makes and where it lands.', alt: 'A business workspace\'s AI Agents tab listing its scheduled agents' },
     { file: 'agent-flow', caption: 'An agent is a step in a workflow: every day, write a post from the client\'s portfolio.', alt: 'A content workflow: a daily trigger and an AI agent step' },
   ],
 
@@ -257,22 +257,22 @@ export const REELS: Record<string, ReelShot[]> = {
  * what you do, what it does for you, and what comes out of it.
  */
 const NOTES: Record<string, string[]> = {
-  'hero-board': ['Each client gets a project that runs on the server, every five minutes', 'Its workflows, what it has made and what it is set up to do', 'You approve what matters — the rest runs itself'],
+  'hero-board': ['Each client gets a business workspace that runs on the server, every five minutes', 'Its workflows, what it has made and what it is set up to do', 'You approve what matters — the rest runs itself'],
   'hero-flow': ['A workflow emails, waits and checks for a reply', 'Replies become tasks; the quiet ones get a follow-up', 'Texts go only to people who said yes'],
   'hero-prospecting': ['Type who you want and where', 'It searches live, reads each business\'s own website and finds its address', 'Every address is checked before it reaches your list'],
-  'hero-daily': ['Set the trades, the towns and how many a day', 'The project finds new businesses every day on its own', 'Only reachable prospects join the audience — then the outreach starts'],
+  'hero-daily': ['Set the trades, the towns and how many a day', 'The business workspace finds new businesses every day on its own', 'Only reachable prospects join the audience — then the outreach starts'],
   'hero-dashboard': ['Your day at a glance', 'Meetings, deals in motion and what AI Autopilot did', 'And what is waiting on you, ready to press'],
   'hero-pipeline': ['Every deal in its stage, for every client', 'Values weighted by stage, so the forecast is honest', 'Drag a deal forward the moment it moves'],
   'ap-describe': ['Say what you want in one sentence — or speak it', 'Add your website or files for the rest', 'Or start from a ready-made solution'],
   'ap-diagram': ['Every step drawn as it runs', 'Each fork labelled: Yes or No', 'Change any step in place with the pen'],
   'ap-step': ['Open just the step you want to change', 'Pick from your real forms, tags and stages', 'Test it before it goes live'],
-  'ap-gallery': ['Ready-made workflows, filed by the problem they solve', 'Preview the whole flow before you use it', 'One press adds it to a project'],
-  'ap-activity': ['What the project carried out, and when', 'What its agents made, with a link to each', 'And what it plans next'],
+  'ap-gallery': ['Ready-made workflows, filed by the problem they solve', 'Preview the whole flow before you use it', 'One press adds it to a business workspace'],
+  'ap-activity': ['What the business workspace carried out, and when', 'What its agents made, with a link to each', 'And what it plans next'],
   'pr-start': ['One sentence starts a search: a trade and a town', 'Every search is kept, with its results and checks', 'Saved lists sit beside them'],
   'pr-dentists': ['The same sentence works for any trade, in any town', 'Websites read live, addresses found where the business published them', 'Each address checked as it goes'],
   'pr-lawyers': ['Firms found with the address each one publishes', 'Whether that address takes mail, checked as it goes', 'Every row says when it was found'],
-  'pr-addto': ['Tick the businesses you want', 'Save them to a list, or add them to a workflow, a project or a campaign', 'They are imported once, never twice'],
-  'pr-every-day': ['Connect a search you tested to an AI Autopilot project', 'Pick the schedule and how many verified leads a run', 'Duplicates and opt-outs are turned away automatically'],
+  'pr-addto': ['Tick the businesses you want', 'Save them to a list, or add them to a workflow, a business workspace or a campaign', 'They are imported once, never twice'],
+  'pr-every-day': ['Connect a search you tested to an AI Autopilot business workspace', 'Pick the schedule and how many verified leads a run', 'Duplicates and opt-outs are turned away automatically'],
   'contacts-list': ['Everyone you have spoken to, in one list', 'Health, stage, deals and value on every row', 'Sort, filter, tag and export in a couple of clicks'],
   'contacts-profile': ['One person, on one page', 'Lifecycle stage, open deals and meetings at the top', 'The next best action, suggested'],
   'contacts-deals': ['Every deal with this person', 'Its stage and its value', 'Without leaving their page'],
@@ -280,7 +280,7 @@ const NOTES: Record<string, string[]> = {
   'funnels-builder': ['Each step of the funnel in order', 'Its visitors, conversions and rate', 'Split-test a page, or edit it'],
   'sites-list': ['Whole websites, built from the same login', 'Published or still in draft', 'Visitors and views on each'],
   'sites-builder': ['Pages built from ready blocks', 'Drag a block in, then edit it in place', 'Preview on desktop, tablet and phone'],
-  'social-gallery': ['Posts on the right canvas for each platform', 'Start from a template or from what your projects wrote', 'Every design kept in one place'],
+  'social-gallery': ['Posts on the right canvas for each platform', 'Start from a template or from what your business workspaces wrote', 'Every design kept in one place'],
   'social-editor': ['Every post is a real design', 'Change the words, colours and picture before it goes out', 'Export it as a PNG'],
   'blog-projects': ['A blog project for each site', 'Its clusters, keywords and the pages it must lift', 'Portfolio, strategy, plan, write and publish'],
   'blog-strategy': ['What you sell and who to', 'How you write, measured from your own writing', 'Topic clusters pointed at the pages that earn'],
@@ -296,7 +296,7 @@ const NOTES: Record<string, string[]> = {
   'agency': ['A workspace for every client', 'Each with its own plan and price', 'Open any of them in one click'],
   'agency-brand': ['Your product name, not ours', 'Your logo and your sign-in headline', 'Previewed before you save'],
   'analytics': ['Revenue, leads and where they came from', 'Read live from every module', 'Deals by stage and by owner'],
-  'analytics-revenue': ['Paid orders, credited to the project that brought them', 'Refunds beside revenue, never inside it', 'What AI Autopilot recovered, counted'],
+  'analytics-revenue': ['Paid orders, credited to the business workspace that brought them', 'Refunds beside revenue, never inside it', 'What AI Autopilot recovered, counted'],
   'agent-list': ['Agents that run on a schedule', 'What each one reads and what it makes', 'Everything it makes is a draft until you publish'],
   'agent-flow': ['An agent is one step in a workflow', 'Every day it reads the client\'s portfolio', 'And writes the post into the Graphics Designer & Editor'],
   'own-mailbox': ['Your own mailboxes, as many as you need', 'Each checked by connecting, sending and receiving', 'Passwords kept on the server, never shown again'],

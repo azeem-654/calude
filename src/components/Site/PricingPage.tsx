@@ -44,11 +44,11 @@ export default function PricingPage() {
   }, []);
 
   const faq: { q: string; a: string }[] = [
-    { q: 'Is there a free trial?', a: `Yes — 7 days, and no card is asked for. The trial has its own allowance (${table.trial.limits.autopilot_projects} AI Autopilot projects, ${table.trial.limits.ai_shorts} AI Shorts, ${table.trial.limits.social_posts} social posts, ${table.trial.limits.prospects_found} prospects found), enough to build a real project and see it work.` },
+    { q: 'Is there a free trial?', a: `Yes — 7 days, and no card is asked for. The trial has its own allowance (${table.trial.limits.autopilot_projects} AI Autopilot business workspaces, ${table.trial.limits.ai_shorts} AI Shorts, ${table.trial.limits.social_posts} social posts, ${table.trial.limits.prospects_found} prospects found), enough to build a real project and see it work.` },
     { q: 'What happens when the trial ends?', a: 'The AI and the automations stop until you choose a plan. Everything you made stays in your workspace, and you can download all of it from Settings at any time.' },
     { q: 'How does yearly billing work?', a: 'You pay ten months’ price once a year — two months free — on the same plan and allowances. Prices are in US dollars.' },
     { q: 'Can I cancel?', a: 'Yes. Plan & billing → Manage billing & payment method opens the payment provider’s own portal, where you change your card, see invoices and cancel. When the provider tells us the subscription has ended, the AI and automations stop as they do at the end of a trial; your records stay yours.' },
-    { q: 'What happens when I reach an allowance?', a: 'That one thing waits — a new project, the month’s next Short or post — and the app says which allowance it is, how much is used and which plan raises it. Nothing is charged extra, and monthly allowances start again on the 1st.' },
+    { q: 'What happens when I reach an allowance?', a: 'That one thing waits — a new business workspace, the month’s next Short or post — and the app says which allowance it is, how much is used and which plan raises it. Nothing is charged extra, and monthly allowances start again on the 1st.' },
     { q: 'Can I change plan?', a: 'Choose a larger plan from Plan & billing before you subscribe, or, once subscribed, write to us with the form below and we move you.' },
     { q: 'Who sees my card?', a: 'Nobody here. You pay on the payment provider’s own secure checkout; this app never sees or stores your card.' },
   ];
@@ -98,7 +98,7 @@ export default function PricingPage() {
               <ul>
                 <li><Check size={13} /> <span>Your name, logo and colours on your workspace and on each client’s.</span></li>
                 <li><Check size={13} /> <span>Each client gets a workspace of their own, under your brand, kept apart from every other.</span></li>
-                <li><Check size={13} /> <span>Client report links show a client their project’s progress — never your prices, costs or contacts.</span></li>
+                <li><Check size={13} /> <span>Client report links show a client their business workspace’s progress — never your prices, costs or contacts.</span></li>
               </ul>
             </div>
             <div className="tc-card">
