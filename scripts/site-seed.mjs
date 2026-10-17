@@ -37,7 +37,11 @@ function workspace() {
     tags: [...TAGS[i % TAGS.length], p.industry.toLowerCase()],
     source: SOURCES[i % SOURCES.length],
     createdAt: iso(-60 + (i % 58)), lastActivity: day(-(i % 21)),
-    value: [0, 24000, 78000, 0, 12000, 46000, 8500][i % 7],
+    /* On a cycle of ten — not the seven the status, tags and source run on
+       (sorted by value, the list showed one source down the whole first
+       screen), nor a divisor of the 36 the names repeat on (namesakes at
+       two companies sat side by side with the same value). */
+    value: [0, 24000, 78000, 0, 12000, 46000, 8500, 31000, 0, 15500][i % 10],
     address: p.address,
     customFields: { industry: p.industry, town: p.town },
   }));
@@ -57,6 +61,22 @@ function workspace() {
          The board said one thing and the figure above it another. */
       status: id === 'won' ? 'won' : 'active',
       ...(id === 'won' ? { closedAt: iso(-1 - n) } : {}),
+      /* The first deal in each column is worked on, so a deal opened on the
+         site's picture has what a real one has: labels, sub-tasks, history. */
+      ...(n === 0 ? {
+        labels: [{ color: '#6d3bf5', text: 'Retainer' }, { color: '#0f766e', text: 'Referral' }],
+        description: `Wants ${['the booking service and a new site', 'more enquiries from search', 'reviews and a monthly report'][i % 3]} before the busy season.`,
+        subtasks: [
+          { id: `st-${id}-1`, title: 'Discovery call', done: true, assignedTo: 'You', createdAt: iso(-12) },
+          { id: `st-${id}-2`, title: 'Send the proposal', done: id !== 'new', assignedTo: 'Maya', dueDate: day(2), priority: 'high', createdAt: iso(-9) },
+          { id: `st-${id}-3`, title: 'Agree the start date', done: false, assignedTo: 'You', dueDate: day(6), createdAt: iso(-5) },
+        ],
+        activity: [
+          { id: `da-${id}-1`, text: `Deal created from ${contacts[i].name}'s enquiry`, timestamp: iso(-14) },
+          { id: `da-${id}-2`, text: 'Discovery call held — 40 minutes', timestamp: iso(-12) },
+          { id: `da-${id}-3`, text: 'Proposal sent by email', timestamp: iso(-6) },
+        ],
+      } : {}),
     })),
   });
 
