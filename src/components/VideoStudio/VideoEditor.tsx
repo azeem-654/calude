@@ -395,7 +395,7 @@ export default function VideoEditor({ id }: { id: string }) {
         <span className="vs-kbd vse-src">
           {view.source.probe ? `${clock(view.source.probe.duration)} · ${view.source.probe.width}×${view.source.probe.height}` : view.source.name || 'No video yet'}{view.project.language ? ` · ${view.project.language.toUpperCase()}` : ''}
         </span>
-        {view.project.autopilotProjectId && <Link className="vs-aplink vs-kbd" to={`/autopilot?project=${view.project.autopilotProjectId}&tab=assets`}><Bot size={12} /> {view.project.autopilotProjectName || 'AI Autopilot project'}</Link>}
+        {view.project.autopilotProjectId && <Link className="vs-aplink vs-kbd" to={`/autopilot?project=${view.project.autopilotProjectId}&tab=assets`}><Bot size={12} /> {view.project.autopilotProjectName || 'AI Autopilot business workspace'}</Link>}
         <span className="vs-spacer" />
         {busy && <Loader size={14} className="spin" />}
         <button type="button" className="vs-btn sm" disabled={version <= 1} onClick={() => void go(version - 1)} aria-label="Undo" title="Undo (Ctrl+Z)"><Undo2 size={14} /></button>

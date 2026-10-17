@@ -156,7 +156,7 @@ export default function VideoStudio() {
         <span className="vs-mark"><Clapperboard size={22} /></span>
         <div className="vs-grow">
           <h1>AI Video Studio</h1>
-          <p>Upload a recording: get it cleaned, its noise reduced, music under it, distinct Shorts, captions, thumbnails, posts and a quiz — saved to your content and your AI Autopilot projects.</p>
+          <p>Upload a recording: get it cleaned, its noise reduced, music under it, distinct Shorts, captions, thumbnails, posts and a quiz — saved to your content and your AI Autopilot business workspaces.</p>
         </div>
         <button type="button" className="vs-btn" onClick={() => setShowCaps(true)}><ShieldCheck size={15} /> What works</button>
         {!creating && <button type="button" className="vs-btn ai" onClick={() => startNew()} data-testid="vs-new"><Plus size={16} /> New video project</button>}

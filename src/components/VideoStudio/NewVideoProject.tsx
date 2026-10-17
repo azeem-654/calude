@@ -224,7 +224,7 @@ export default function NewVideoProject({ template, want, autopilotProjectId, on
           <label className="vs-label">Project name
             <input className="vs-input" data-field="video.name" value={name} onChange={e => { nameTouched.current = true; setName(e.target.value); }} placeholder="Weekly podcast — episode 12" />
           </label>
-          <label className="vs-label"><span style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Bot size={13} /> Save into an AI Autopilot project (optional)</span>
+          <label className="vs-label"><span style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Bot size={13} /> Save into an AI Autopilot business workspace (optional)</span>
             <select className="vs-select" data-field="video.autopilot" value={ap} onChange={e => setAp(e.target.value)}>
               <option value="">No — keep it in Video Studio</option>
               {apProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
