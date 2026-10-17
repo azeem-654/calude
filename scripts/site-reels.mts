@@ -832,7 +832,7 @@ const RECIPES: Record<string, () => Promise<void>> = {
   },
   'hero-daily': async () => {
     await focusProject(REALTY.id, 'prospects');
-    await onScreen('/autopilot', 'AI Autopilot', 'Daily prospecting');
+    await onScreen('/autopilot', 'AI Autopilot', "Where this business workspace's leads come from", 'All leads');
   },
   'hero-dashboard': async () => {
     await go('/', 2600);
