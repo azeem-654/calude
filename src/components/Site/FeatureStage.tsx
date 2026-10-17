@@ -16,13 +16,19 @@
  * Every icon breathes in a small loop of its own, staggered so they never move
  * together. Nothing moves with reduced motion asked for (site.css).
  */
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import ShotReel from './ShotReel';
 import type { ReelShot } from './reels';
 import { useReveal, useRevealGroup } from './useReveal';
 
 type Icon = (p: { size?: number }) => ReactNode;
-export interface StageFeature { icon: Icon; title: string; body: string }
+/**
+ * `module`: the module this block is about, as the reel's shots name it. A
+ * chapter's reel runs through several modules; the block whose screen is
+ * showing is lit, so a visitor reading "Contacts" under a picture of the
+ * pipeline can see at once which block the picture belongs to.
+ */
+export interface StageFeature { icon: Icon; title: string; body: string; module?: string }
 export interface StageChip { icon: Icon; title: string; sub: string }
 
 export default function FeatureStage({
@@ -46,6 +52,7 @@ export default function FeatureStage({
   const head = useReveal<HTMLDivElement>();
   const show = useReveal<HTMLDivElement>();
   const feats = useRevealGroup<HTMLDivElement>('.dc-stage-feat');
+  const [showing, setShowing] = useState<string | undefined>(shots[0]?.module);
   return (
     <section className={`dc-stage ${className}`} id={id} aria-label={label}>
       <div className="dc-stage-head reveal" ref={head}>
@@ -56,7 +63,7 @@ export default function FeatureStage({
       </div>
 
       <div className={`dc-stage-show reveal${chips?.length ? ' has-chips' : ''}`} ref={show}>
-        <ShotReel shots={shots} label={label} />
+        <ShotReel shots={shots} label={label} onShow={s => setShowing(s.module)} />
         {!!chips?.length && (
           <div className="dc-stage-chips" aria-hidden="true">
             {chips.slice(0, 4).map((c, i) => (
@@ -71,7 +78,7 @@ export default function FeatureStage({
 
       <div className={`dc-stage-feats stagger${features.length % 3 === 0 ? ' three' : features.length === 4 ? ' four' : ''}`} ref={feats}>
         {features.map(f => (
-          <div key={f.title} className="dc-stage-feat">
+          <div key={f.title} className={`dc-stage-feat${f.module && f.module === showing ? ' on' : ''}`}>
             <span className="dc-stage-ic"><span className="dc-stage-ic-in"><f.icon size={17} /></span></span>
             <div><b>{f.title}</b><span>{f.body}</span></div>
           </div>

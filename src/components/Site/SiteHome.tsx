@@ -257,10 +257,10 @@ const CAPABILITIES: { group: string; icon: typeof Send; items: string[] }[] = [
 ];
 
 const OWNERSHIP: { icon: typeof Send; title: string; body: string; reel: Reel }[] = [
-  { icon: Send, title: 'Your mailbox', reel: 'marketing', body: 'Gmail, Microsoft 365, Brevo or anything that speaks SMTP. Stored encrypted on the server, used only to send your mail, never handed back to a browser.' },
-  { icon: ShieldCheck, title: 'Your domain', reel: 'marketing', body: 'SPF, DKIM and DMARC checked against your own domain — and written for you when Cloudflare is connected.' },
-  { icon: Palette, title: 'Your name', reel: 'agency', body: 'White-label the product name, logo and colour per client, so what they log into looks like yours.' },
-  { icon: Lock, title: 'Your data', reel: 'agency', body: 'One workspace per client, isolated on the server. Naming somebody else’s workspace is refused, not hidden.' },
+  { icon: Send, title: 'Your mailbox', reel: 'mailbox', body: 'Gmail, Microsoft 365, Brevo or anything that speaks SMTP. Stored encrypted on the server, used only to send your mail, never handed back to a browser.' },
+  { icon: ShieldCheck, title: 'Your domain', reel: 'domain', body: 'SPF, DKIM and DMARC checked against your own domain — and written for you when Cloudflare is connected.' },
+  { icon: Palette, title: 'Your name', reel: 'brand', body: 'White-label the product name, logo and colour per client, so what they log into looks like yours.' },
+  { icon: Lock, title: 'Your data', reel: 'data', body: 'One workspace per client, isolated on the server. Naming somebody else’s workspace is refused, not hidden.' },
 ];
 
 /* ── Security, on the home page ──────────────────────────────────────────
@@ -321,7 +321,7 @@ function ChapterBlock({ c, onFind }: { c: Chapter; onFind: () => void }) {
       body={c.body}
       label={`${c.lead} ${c.emph}`}
       shots={shots}
-      features={c.tiles.map(t => ({ icon: t.icon, title: t.title, body: t.body }))}
+      features={c.tiles.map(t => ({ icon: t.icon, title: t.title, body: t.body, module: t.title }))}
     >
       <div className="dc-cta-pair">
         <StartFree />
@@ -615,7 +615,9 @@ export default function SiteHome() {
         </div>
 
         <div className="dc-flow-shot reveal" ref={flow}>
-          <ShotReel shots={REELS.autopilot.slice(1, 3)} label="A workflow, drawn as it runs" />
+          {/* The agents themselves — not the outreach workflows, which are
+              not what this section is about. */}
+          <ShotReel shots={REELS.agents} label="A project's agents" />
         </div>
       </section>
 

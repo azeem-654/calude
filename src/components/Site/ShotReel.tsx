@@ -149,7 +149,7 @@ function Viewer({ shots, at, small, onClose, onGo }: { shots: ReelShot[]; at: nu
 }
 
 export default function ShotReel({
-  shots, label, eager = false,
+  shots, label, eager = false, onShow,
 }: {
   shots: ReelShot[];
   /** What the reel is of, for a screen reader: "AI Autopilot". */
@@ -161,6 +161,8 @@ export default function ShotReel({
   strip?: boolean;
   /** Kept for callers; a slide now lasts as long as its page takes to read. */
   holdMs?: number;
+  /** Told which shot is showing, whenever it changes (FeatureStage lights its module's block). */
+  onShow?: (shot: ReelShot) => void;
 }) {
   const [at, setAt] = useState(0);
   const [inView, setInView] = useState(false);
@@ -246,6 +248,8 @@ export default function ShotReel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [at, paused, plan?.fit, plan?.fx, plan?.ty, plan?.travel, run]);
 
+  useEffect(() => { if (shots[at]) onShow?.(shots[at]); }, [at]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const go = (i: number) => setAt((i + shots.length) % shots.length);
   const n = shots.length;
 
@@ -328,7 +332,8 @@ export default function ShotReel({
       </div>
 
       <div className="dc-reel-caption">
-        <p key={shot.file} className="dc-reel-text">{shot.caption}</p>
+        {/* A chapter's reel crosses modules, so each slide says whose screen it is. */}
+        <p key={shot.file} className="dc-reel-text">{shot.module && <b className="dc-reel-mod">{shot.module}</b>}{shot.caption}</p>
         <button type="button" className="dc-reel-open" aria-label={`Open “${shot.caption}” full size`} onClick={() => setViewing(true)}>
           <Maximize2 size={13} /><span>Full size</span>
         </button>

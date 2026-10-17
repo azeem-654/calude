@@ -1361,6 +1361,13 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
   min-width: 0;
 }
 
+/* Whose screen it is, before the caption, when a reel crosses modules. */
+.dc-reel-mod {
+  display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.01em; vertical-align: 1px;
+  color: #17191c; background: var(--lime);
+}
+
 .dc-reel-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
 .dc-reel-arrow {
@@ -2384,6 +2391,8 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 }
 .dc-stage-feat:hover { border-color: rgba(200, 242, 77, 0.35); background: rgba(255, 255, 255, 0.055); transform: translateY(-2px); }
 .dc-stage-feat b { display: block; color: var(--text); font-size: 15px; margin-bottom: 4px; }
+/* The block whose module the reel is showing (FeatureStage `module`). */
+.dc-stage-feat.on { border-color: rgba(200, 242, 77, 0.5); background: rgba(200, 242, 77, 0.06); }
 .dc-stage-feat span { color: var(--muted); font-size: 13.5px; line-height: 1.55; }
 .dc-stage-ic { width: 38px; height: 38px; border-radius: 12px; flex-shrink: 0; display: grid; place-items: center; background: rgba(200, 242, 77, 0.12); color: var(--lime); }
 .dc-stage-ic-in { display: flex; }

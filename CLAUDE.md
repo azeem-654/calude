@@ -1634,8 +1634,14 @@ across 25 industries, all on `.example`), and photographs every shot in
 `src/components/Site/reels.ts` **three ways**, each the page from the window
 down: the desktop in a 1920×1200 window, 1.5× (`<file>.webp`, 2000 wide, and
 `<file>-sm.webp`, 1200), and the app's own phone layout in a 390×720 window,
-3× (`<file>-m.webp`, 1000 wide). `PHONE_ONLY=1` retakes just the phone ones. A
-shot with no recipe stops the run.
+3× (`<file>-m.webp`, 1000 wide, starting under the top bar). `PHONE_ONLY=1`
+retakes just the phone ones. A shot with no recipe stops the run, and every
+recipe ends on `onScreen(path, heading, …texts)` — a shot that landed
+anywhere else (a redirect to the dashboard, a tab that is gone) is refused,
+because that is how the sections came to show each other's screens. **Each
+section's reel is screens of its own module only**; a chapter's reel names
+the module on every slide (`module`) and lights that module's block.
+`HOLD=1` seeds and waits, for working out a recipe by hand.
 
 **Readable at every size** (ShotReel): every reel is a strip of slides.
 Each picture is the **whole page** from where its recipe left it scrolled (up

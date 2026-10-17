@@ -35,7 +35,13 @@
  * A shot in `src/components/Site/reels.ts` with no recipe here stops the run
  * before anything is taken, and a screen showing the error boundary is refused
  * rather than written — a marketing page with an error on it is worse than one
- * with a gap.
+ * with a gap. So is a shot whose recipe did not prove where it landed
+ * (`onScreen`: the module's own address and heading): a picture of the
+ * dashboard under a Contacts caption is how the sections came to show each
+ * other's screens. A refused shot keeps its old picture and the run exits 1.
+ *
+ * HOLD=1 seeds the workspace and stops before photographing, with the sign-in
+ * written to /tmp/site-reel-raw/session.json, for working out a new recipe.
  */
 import pw from '/opt/node22/lib/node_modules/playwright/index.js';
 import { execSync, spawn } from 'node:child_process';
@@ -45,6 +51,7 @@ import path from 'node:path';
 import { REEL_FILES } from '../src/components/Site/reels.ts';
 import { TEMPLATES } from '../src/components/Autopilot/workflowTemplates.ts';
 import { designFromPost } from '../worker/src/lib/projectAgents.ts';
+import { buildFunnelPageBlocks, buildWebsiteTemplatePages } from '../src/components/shared/pageTemplates.ts';
 // @ts-expect-error — plain .mjs modules shared with the older capture scripts.
 import { workspaceSeed } from './site-seed.mjs';
 // @ts-expect-error — as above.
@@ -144,16 +151,33 @@ const persist = path.resolve('.wrangler-reels');
 fs.rmSync(persist, { recursive: true, force: true });
 execSync(`npx wrangler d1 migrations apply crmpro --local --persist-to ${persist}`, { stdio: 'ignore', env: { ...process.env, CI: '1' } });
 const vars = [`APP_ORIGIN:${B}`, `GEOAPIFY_BASE:${G}`, `DOH_BASE:${G}/dns-query`, `EMAIL_VERIFIER_BASE:${G}`];
-const wr = spawn('npx', ['wrangler', 'dev', '--local', '--port', String(PORT), '--inspector-port', String(INSPECT), '--persist-to', persist, ...vars.flatMap(v => ['--var', v])], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+/* Local `wrangler dev` can exit when a browser drops a request mid-flight —
+   it took the whole phone pass down with it once, every shot after it
+   "connection refused". So it is started again whenever it exits, on the
+   same database, and the next navigation waits for it. */
+let wr: ReturnType<typeof spawn>;
 let wlog = '';
-wr.stdout!.on('data', c => { wlog += c; }); wr.stderr!.on('data', c => { wlog += c; });
-const stop = () => { try { process.kill(-wr.pid!, 'SIGTERM'); } catch { /* gone */ } mock.close(); };
+let stopping = false;
+const startWrangler = () => {
+  wr = spawn('npx', ['wrangler', 'dev', '--local', '--port', String(PORT), '--inspector-port', String(INSPECT), '--persist-to', persist, ...vars.flatMap(v => ['--var', v])], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  wr.stdout!.on('data', c => { wlog += c; }); wr.stderr!.on('data', c => { wlog += c; });
+  wr.on('exit', code => {
+    if (stopping) return;
+    console.log(`wrangler exited (${code}) — starting it again`);
+    setTimeout(startWrangler, 1000);
+  });
+};
+startWrangler();
+const stop = () => { stopping = true; try { process.kill(-wr.pid!, 'SIGTERM'); } catch { /* gone */ } mock.close(); };
 process.on('exit', stop);
 process.on('uncaughtException', e => { console.log(e); console.log(wlog.slice(-2000)); stop(); process.exit(1); });
-for (let i = 0; i < 90; i++) {
-  try { const r = await fetch(`${B}/api/data.php`, { method: 'POST', headers: { Connection: 'close' }, body: '{"action":"ping"}' }); if (r.ok) break; } catch { /* starting */ }
-  await new Promise(r => setTimeout(r, 1000));
-}
+const ready = async () => {
+  for (let i = 0; i < 90; i++) {
+    try { const r = await fetch(`${B}/api/data.php`, { method: 'POST', headers: { Connection: 'close' }, body: '{"action":"ping"}' }); if (r.ok) return; } catch { /* starting */ }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+};
+await ready();
 
 /* Retried on a dropped connection only; a real error answer is returned as it is. */
 async function post(p: string, body: Record<string, unknown>): Promise<Record<string, any>> {
@@ -215,6 +239,28 @@ const seed = workspaceSeed();
 const w = seed.data;
 const now = new Date().toISOString();
 const ago = (days: number, hours = 0) => new Date(Date.now() - days * 86_400_000 - hours * 3_600_000).toISOString();
+
+/* The sites and funnels with real pages in them, built by the same builders
+   the New Website and funnel wizards use — a builder photographed on an
+   empty canvas ("Start Building") is not a picture of a website builder. */
+type Page = { name: string; type: string; visitors: number; conversions: number };
+const SITE_LOOK: Record<string, [string, string, string]> = {
+  'ws-1': ['agency', '#6d3bf5', 'Growth, sites and booking for local services'],
+  'ws-2': ['business', '#0369a1', 'Family and cosmetic dentistry in Leeds'],
+  'ws-3': ['business', '#b45309', 'Strength and conditioning in Austin'],
+};
+w.websites = w.websites.map((site: { id: string; name: string; pages: Page[] }) => {
+  const [tpl, color, tagline] = SITE_LOOK[site.id] ?? ['business', '#6d3bf5', ''];
+  const pages = buildWebsiteTemplatePages(tpl, { name: site.name, color, tagline });
+  return { ...site, pages: pages.map((pg, i) => ({ ...pg, visitors: site.pages[i]?.visitors ?? 0, conversions: site.pages[i]?.conversions ?? 0 })) };
+});
+w.funnels = w.funnels.map((f: { pages: Page[] }) => ({
+  ...f,
+  pages: f.pages.map(pg => ({ ...pg, blocks: buildFunnelPageBlocks(pg.type as never, {
+    name: 'Rivera Studio', color: '#6d3bf5', tagline: 'Growth, sites and booking for local services',
+    heroTitle: pg.type === 'landing' ? `${pg.name} — for owner-run clinics and firms` : undefined,
+  }) })),
+}));
 
 /* Social posts with real canvases, composed exactly as the agent composes them. */
 const POSTS = [
@@ -287,6 +333,34 @@ const items: Record<string, string> = {
     }]),
   )),
   crm_setup_hidden: '1',
+  /* The booking page as an owner who has filled it in has it — Scheduling →
+     Booking page shows the editor beside the real page. The website fill has
+     already run (it would otherwise read riverastudio.com, find nothing on
+     this machine and say so across the picture). No testimonial: the page
+     shows one only when the owner typed a real one. */
+  crm_booking_autofilled: 'riverastudio.com',
+  crm_schedule: JSON.stringify({
+    userId: 'user-1', title: 'Free 30-minute growth audit', duration: 30, bufferBefore: 0, bufferAfter: 10, dailyLimit: 6,
+    timezone: 'America/Chicago', slug: 'rivera-studio', location: 'Google Meet',
+    description: 'We look at where your enquiries come from today, what happens to them, and the two or three changes that would bring in more.',
+    hostName: 'Alex Rivera', hostRole: 'Founder, Rivera Studio', tagline: 'Growth, sites and booking for local services',
+    tags: ['Booking', 'Websites', 'Follow-up', 'Reviews'],
+    pointsTitle: 'What you leave with',
+    points: [
+      { icon: 'chart', title: 'Where enquiries come from', detail: 'Your sources, counted — and which ones turn into customers.' },
+      { icon: 'clock', title: 'How fast you answer', detail: 'The gap between an enquiry and your reply, and how to close it.' },
+      { icon: 'star', title: 'Your reviews', detail: 'Where you stand on Google, and a simple way to ask for more.' },
+      { icon: 'target', title: 'Three changes', detail: 'The ones worth doing first, in plain words, yours to keep.' },
+    ],
+    discuss: ['Your website and booking', 'Follow-up after an enquiry', 'Reviews and referrals'],
+    theme: 'midnight-lime', help: 'alex@riverastudio.com',
+    weekly: {
+      mon: { enabled: true, from: '09:00', to: '17:00' }, tue: { enabled: true, from: '09:00', to: '17:00' },
+      wed: { enabled: true, from: '09:00', to: '17:00' }, thu: { enabled: true, from: '09:00', to: '17:00' },
+      fri: { enabled: true, from: '09:00', to: '15:00' }, sat: { enabled: false, from: '09:00', to: '17:00' },
+      sun: { enabled: false, from: '09:00', to: '17:00' },
+    },
+  }),
   /* A configured workspace: a banner saying "email provider not set up yet"
      across a photograph of the campaigns screen is the wrong picture of a
      product that sends mail. The password is placeholder dots. */
@@ -310,6 +384,25 @@ const items: Record<string, string> = {
 };
 const bulk = await as('/api/data.php', { action: 'bulk_set', items });
 if (!bulk.success) throw new Error(`could not write the workspace: ${JSON.stringify(bulk).slice(0, 300)}`);
+
+/* The agency's own mailboxes, on the server where they live, and proved —
+   "Your mailbox" is a picture of mailboxes, not of "No mailbox connected yet".
+   The passwords and keys are placeholders: nothing here sends (no cron runs,
+   and these hosts are not reachable from the capture machine). */
+for (const mb of [
+  { label: 'Sales', from: { name: 'Alex Rivera', email: 'alex@riverastudio.com' },
+    smtp: { host: 'smtp.gmail.com', port: 587, encryption: 'tls', username: 'alex@riverastudio.com', password: 'placeholder-app-password' },
+    imap: { host: 'imap.gmail.com', port: 993, encryption: 'ssl', username: 'alex@riverastudio.com', password: 'placeholder-app-password' } },
+  { label: 'Campaigns', from: { name: 'Rivera Studio', email: 'hello@riverastudio.com' }, provider: { name: 'brevo', key: 'placeholder-brevo-key' } },
+  { label: 'Support', from: { name: 'Rivera Studio support', email: 'support@riverastudio.com' },
+    smtp: { host: 'smtp.office365.com', port: 587, encryption: 'tls', username: 'support@riverastudio.com', password: 'placeholder-app-password' },
+    imap: { host: 'outlook.office365.com', port: 993, encryption: 'ssl', username: 'support@riverastudio.com', password: 'placeholder-app-password' } },
+]) {
+  const r = await as('/api/mailbox.php', { action: 'save', ...mb });
+  if (!r.success) throw new Error(`could not save the ${mb.label} mailbox: ${JSON.stringify(r).slice(0, 200)}`);
+}
+d1(`UPDATE crm_mailbox_accounts SET out_verified_at = ${q(ago(2))}, out_verified_port = 587,
+    in_verified_at = CASE WHEN imap_host = '' THEN NULL ELSE ${q(ago(2))} END WHERE account_id = ${q(ACCT)};`);
 
 /* ── Clients, projects and their workflows, through the real API ──────────── */
 
@@ -481,8 +574,12 @@ const finderId = FID || ((): string => { throw new Error(`no finder id in ${JSON
 
 /* What the agents have made, so every project's "made so far" rail has
    something true on it: the posts above, recorded as their runs. */
-d1(posts.map((p, i) => {
-  const pj = projects[i % projects.length];
+/* Each post on its own client's project, and a post for a client with no
+   project (the plumber) on none — a Brightline Realty board listing a
+   plumber's post as "made so far" is a picture of the wrong client. */
+d1(posts.flatMap((p, i) => {
+  const pj = projects.find(x => x.name.startsWith(POSTS[i].co));
+  if (!pj) return [];
   return `INSERT INTO crm_agent_runs (id, account_id, project_id, workflow_id, node_id, produces, outcome, detail, link, created_at)
    VALUES (${q(`ar-reel-${i}`)}, ${q(ACCT)}, ${q(pj.id)}, ${q(pj.wf[pj.wf.length - 1])}, 'n1', 'social', 'ok',
      'Made 1 post from the client portfolio.',
@@ -524,13 +621,46 @@ d1(posts.map((p, i) => {
   d1(projects.map((pj, i) => `UPDATE crm_projects SET last_acted_at = ${q(ago(0, i * 0.7 + 0.3))} WHERE id = ${q(pj.id)};`).join('\n'));
 }
 
+/* Thirty days of paid orders, each credited to the project that brought it
+   in (lib/revenue.ts: the project's shop link, its shop, or its products) and
+   a few to none — Reports → Revenue by project reads these. */
+{
+  const VIA = ['link', 'shop', 'products'];
+  const ITEMS: [string, number][] = [['Growth audit', 49000], ['Website care plan', 29000], ['Booking setup', 89000], ['Review campaign', 39000], ['Local SEO month', 69000]];
+  const rows: string[] = [];
+  for (let k = 0; k < 46; k++) {
+    const pj = k % 9 === 8 ? null : projects[[0, 0, 1, 2, 0, 1, 3, 4][k % 8]];
+    const [item, cents] = ITEMS[k % ITEMS.length];
+    const at = ago(k % 29, k % 7);
+    const status = k % 13 === 6 ? 'refunded' : k % 5 === 2 ? 'fulfilled' : 'paid';
+    rows.push(`(${q(`ord-reel-${k}`)}, ${q(ACCT)}, ${q(`buyer${k}@customers.example`)}, ${q(JSON.stringify([{ name: item, qty: 1, priceCents: cents }]))}, ${cents}, 'USD', ${q(status)}, 'shop', ${q(at)}, ${q(at)}, ${q(at)}, ${q(pj?.id ?? '')}, ${q(pj ? VIA[k % 3] : '')})`);
+  }
+  d1(`INSERT INTO crm_orders (id, account_id, email, items, total_cents, currency, status, channel, placed_at, updated_at, paid_at, project_id, project_via) VALUES ${rows.join(',\n')};`);
+}
+
 /* ── Engagement: forms and tickets ───────────────────────────────────────── */
 
-for (const name of ['Get a quote', 'Book a consultation', 'New-patient sign-up', 'Catering enquiry', 'Newsletter sign-up']) {
+/* Saved oldest first: the list is newest first, and the form the editor
+   picture opens ("Get a quote", saved last) is the one filled in fully. */
+for (const name of ['Newsletter sign-up', 'Catering enquiry', 'New-patient sign-up', 'Book a consultation', 'Get a quote']) {
+  const full = name === 'Get a quote';
   await as('/api/engagement.php', {
     action: 'save_form', record: {
-      name, headline: name, status: 'live', createPerson: true,
-      fields: [{ key: 'name', label: 'Your name', type: 'text', required: true }, { key: 'email', label: 'Email', type: 'email', required: true }],
+      name, headline: full ? 'Get a quote in one working day' : name, status: 'live', createPerson: true,
+      blurb: full ? 'Tell us about the job and we will come back with a price — no call needed unless you want one.' : '',
+      successMessage: full ? 'Thanks — your quote is on its way. Most arrive the same day.' : '',
+      consentText: full ? 'I agree to be contacted about this quote.' : '',
+      notifyEmails: full ? 'alex@riverastudio.com, maya@riverastudio.com' : '',
+      fields: [
+        { key: 'name', label: 'Your name', type: 'text', required: true },
+        { key: 'email', label: 'Email', type: 'email', required: true },
+        ...(full ? [
+          { key: 'phone', label: 'Phone', type: 'phone', required: false },
+          { key: 'service', label: 'What do you need?', type: 'select', required: true, options: ['A new website', 'More enquiries', 'Online booking', 'Reviews'] },
+          { key: 'budget', label: 'Monthly budget', type: 'number', required: false },
+          { key: 'details', label: 'Anything else we should know', type: 'textarea', required: false },
+        ] : []),
+      ],
     },
   });
 }
@@ -547,6 +677,14 @@ d1(`UPDATE crm_users SET trial_ends_at = NULL WHERE account_id = ${q(ACCT)}; DEL
 d1(`INSERT INTO crm_ticks (id, at) VALUES ('reel-tick', ${q(new Date(Date.now() + 15 * 60_000).toISOString())});`);
 
 /* ── Photographing ───────────────────────────────────────────────────────── */
+
+/* HOLD=1 stops here with the seeded workspace running, and writes how to sign
+   in to it — for working out a new recipe by hand before writing it down. */
+if (process.env.HOLD) {
+  fs.writeFileSync(`${RAW}/session.json`, JSON.stringify({ base: B, token: TOK, accountId: ACCT, projects }, null, 2));
+  console.log(`holding: ${B}, sign-in in ${RAW}/session.json — stop with Ctrl+C`);
+  await new Promise(() => {});
+}
 
 const browser = await pw.chromium.launch();
 const ctx = await browser.newContext({ viewport: VIEW, deviceScaleFactor: SCALE });
@@ -585,9 +723,36 @@ const hideNoise = async () => {
   await page.addStyleTag({ content: '.toast-stack,[data-trialbar],.trial-bar,[aria-label="Help"],[data-corner-help]{display:none!important}' }).catch(() => {});
 };
 const go = async (route: string, settle = 2000) => {
+  await ready();
   await page.goto(`${B}${route}`, { waitUntil: 'networkidle' });
   await hideNoise();
   await page.waitForTimeout(settle);
+};
+/*
+ * Where a recipe has to have landed before its picture may be taken.
+ *
+ * The owner found sections showing each other's screens. A recipe that lands
+ * somewhere else does not fail on its own: an unknown route redirects to the
+ * dashboard (App.tsx's `*`), a tab that is gone leaves the page on its first
+ * tab, a click that misses leaves the list where it was — and the picture is
+ * taken all the same, of the wrong module, under that module's caption. So
+ * every recipe ends by naming the address it must be on and the module's own
+ * heading (or a line only that screen carries), and `photograph` refuses a
+ * shot whose recipe did not.
+ */
+let proved = '';
+const onScreen = async (path: string, heading: string | RegExp | null, ...texts: (string | RegExp)[]) => {
+  const here = new URL(page.url()).pathname;
+  if (here !== path) throw new Error(`landed on ${here}, not ${path}`);
+  if (heading) {
+    await page.getByRole('heading', { name: heading }).locator('visible=true').first().waitFor({ timeout: 12_000 })
+      .catch(() => { throw new Error(`${path}: no heading "${heading}" on the screen`); });
+  }
+  for (const t of texts) {
+    await page.getByText(t).locator('visible=true').first().waitFor({ timeout: 12_000 })
+      .catch(() => { throw new Error(`${path}: "${t}" is not on the screen`); });
+  }
+  proved = `${path} ${heading}`;
 };
 /** Scroll so `el` starts just under the app's sticky bar. */
 const under = async (text: string | RegExp, gap = 150) => {
@@ -602,7 +767,8 @@ const aiSearch = async (ask: string, verify = false) => {
   const box = page.getByLabel('Who to look for').first();
   await box.fill(ask);
   await page.keyboard.press('Enter');
-  await page.getByText(/Checked \d+ address/).first().waitFor({ timeout: 60_000 }).catch(() => {});
+  /* "Checked 41 contacts — format, domain and mail server" in the step log. */
+  await page.getByText(/Checked \d+ (address|contact)/).first().waitFor({ timeout: 60_000 }).catch(() => {});
   await page.waitForTimeout(1500);
   if (verify) {
     await page.getByRole('button', { name: /^Verify \d+ mailbox/ }).first().click().catch(() => {});
@@ -617,41 +783,123 @@ const aiSearch = async (ask: string, verify = false) => {
   await hideNoise();
 };
 const focusProject = (id: string, tab = '') => go(`/autopilot?project=${encodeURIComponent(id)}${tab ? `&tab=${tab}` : ''}`, 2600);
-/** A project's card on its Workflows tab, where the diagrams are drawn. */
-const workflowsOf = async (id: string) => {
+/** A project's card on one of its tabs (Workflows, AI Agents, Activity…). */
+const projectTab = async (id: string, name: string) => {
   await focusProject(id);
   /* A phone draws the tabs differently; if neither form is there, the card
-     is photographed on the tab it opened on rather than failing the shot. */
-  await page.locator(`#project-${id}`).getByRole('tab', { name: /^Workflows/ }).first().click({ timeout: 6000 })
-    .catch(() => page.locator(`#project-${id}`).getByText(/^Workflows/).first().click({ timeout: 6000 }))
+     stays on the tab it opened on — and the screen check after it says so. */
+  await page.locator(`#project-${id}`).getByRole('tab', { name: new RegExp(`^${name}`) }).first().click({ timeout: 6000 })
+    .catch(() => page.locator(`#project-${id}`).getByText(new RegExp(`^${name}`)).first().click({ timeout: 6000 }))
     .catch(() => {});
   await page.waitForTimeout(1500);
 };
+const workflowsOf = (id: string) => projectTab(id, 'Workflows');
+/* On a phone a Settings panel sits under the whole Settings menu, so every
+   Settings picture opened on the same list of tabs; and a tab pressed lower
+   down leaves the page scrolled to where it was. There the picture starts
+   at the panel itself. A wide window shows both side by side and is left. */
+const phoneUnder = async (text: string | RegExp) => {
+  if ((page.viewportSize()?.width ?? 1920) < 600) await under(text, 16);
+};
+/** Contacts, the person's profile open from a search for them. */
+const profileOf = async (name: string) => {
+  await go('/contacts');
+  await page.getByPlaceholder(/Search name/).first().fill(name);
+  await page.waitForTimeout(700);
+  await page.getByText(name, { exact: true }).first().click();
+  await page.waitForTimeout(1200);
+};
+/** The person whose profile is photographed: a customer with deals and meetings. */
+const PERSON = (w.contacts as { name: string; status: string }[])[2].name;
 
-/** How to reach each picture. Every file in reels.ts must be here. */
+/** How to reach each picture. Every file in reels.ts must be here, and every one ends on `onScreen`. */
 const RECIPES: Record<string, () => Promise<void>> = {
   /* ── The hero: the whole platform, one screen at a time ── */
   'hero-board': async () => {
-    await workflowsOf(REALTY.id);
+    await focusProject(REALTY.id);
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(500);
+    await onScreen('/autopilot', 'AI Autopilot', REALTY.name);
   },
   'hero-flow': async () => {
     await workflowsOf(REALTY.id);
     await under('Prospect outreach — email, follow up, hand over', 120);
+    await onScreen('/autopilot', 'AI Autopilot', 'Prospect outreach — email, follow up, hand over', 'Replied in 3 days?');
   },
-  'hero-prospecting': () => aiSearch('real estate agents in Richmond, Virginia with a website', true),
-  'hero-daily': () => focusProject(REALTY.id, 'prospects'),
-  'hero-dashboard': () => go('/', 2600),
-  'hero-pipeline': () => go('/pipelines'),
+  'hero-prospecting': async () => {
+    await aiSearch('real estate agents in Richmond, Virginia with a website', true);
+    await onScreen('/prospecting', null, 'Live data', /Searched live for real estate agents/);
+  },
+  'hero-daily': async () => {
+    await focusProject(REALTY.id, 'prospects');
+    await onScreen('/autopilot', 'AI Autopilot', 'Daily prospecting');
+  },
+  'hero-dashboard': async () => {
+    await go('/', 2600);
+    await onScreen('/', /This week|Today's schedule/, /Good (morning|afternoon|evening)/);
+  },
+  'hero-pipeline': async () => {
+    await go('/pipelines');
+    await onScreen('/pipelines', 'Deals', 'Active Pipeline');
+  },
+
+  /* ── AI Autopilot's own section ── */
+  'ap-describe': async () => {
+    /* `?new=1` opens the wizard itself: the New project button is drawn
+       differently on a phone, and missing it photographed the board. */
+    await go('/autopilot?new=1', 1600);
+    const box = page.getByRole('dialog').locator('textarea').first();
+    await box.fill('I want to sell my products to real estate agents in Virginia — find new ones every day, email them, and text the ones who say yes.').catch(() => {});
+    await page.waitForTimeout(500);
+    await onScreen('/autopilot', /What would you like/);
+  },
+  'ap-diagram': async () => {
+    await workflowsOf(projects[1].id);
+    await under('Missed call — text back and book', 168);
+    await onScreen('/autopilot', 'AI Autopilot', 'Missed call — text back and book', 'Already a patient?');
+  },
+  'ap-step': async () => {
+    await workflowsOf(projects[2].id);
+    await under('New enquiry — qualify, route and book', 168);
+    const flow = page.getByRole('group', { name: 'Workflow diagram' }).filter({ hasText: 'A job over $5k?' }).first();
+    await flow.getByRole('button', { name: 'Edit step: A form is submitted' }).click();
+    await page.waitForTimeout(1000);
+    await onScreen('/autopilot', 'AI Autopilot', 'They fill in a form');
+  },
+  'ap-gallery': async () => {
+    await go('/autopilot?view=templates');
+    await onScreen('/autopilot', 'AI Workflow Template Gallery');
+  },
+  'ap-activity': async () => {
+    await projectTab(REALTY.id, 'Activity');
+    await onScreen('/autopilot', 'AI Autopilot', 'Going on now', 'What the agents made');
+  },
 
   /* ── AI Prospecting's own section ── */
-  'pr-start': () => go('/prospecting', 1800),
-  'pr-dentists': () => aiSearch('dentists in Leeds', true),
-  'pr-lawyers': () => aiSearch('law firms in Denver, Colorado'),
-  'pr-daily-chart': async () => {
-    await focusProject(REALTY.id, 'prospects');
-    await under(/Added to the audience, day by day/i, 230);
+  'pr-start': async () => {
+    await go('/prospecting', 1800);
+    await onScreen('/prospecting', 'Who do you want to sell to?');
+  },
+  'pr-dentists': async () => {
+    await aiSearch('dentists in Leeds', true);
+    await onScreen('/prospecting', null, 'Live data', /Searched live for dentists/);
+  },
+  'pr-lawyers': async () => {
+    await aiSearch('law firms in Denver, Colorado');
+    await onScreen('/prospecting', null, 'Live data', /Searched live for law firms/);
+  },
+  'pr-addto': async () => {
+    await aiSearch('accountants in Manchester');
+    /* The last five rows: the panel opens under the table, and a picture
+       starting above the first rows ends long before it. */
+    const boxes = page.locator('tbody input[type="checkbox"]');
+    const rows = await boxes.count();
+    for (let i = Math.max(0, rows - 5); i < rows; i++) await boxes.nth(i).check();
+    await page.getByRole('button', { name: 'Add to an email campaign' }).first().click();
+    await page.waitForTimeout(1200);
+    await hideNoise();
+    await under(/^Showing \d+ of \d+/, 560);
+    await onScreen('/prospecting', null, 'Live data', /^5 ticked$/);
   },
   'pr-every-day': async () => {
     await aiSearch('gyms in Austin, Texas');
@@ -663,65 +911,202 @@ const RECIPES: Record<string, () => Promise<void>> = {
     await dlg.getByTestId('connect-next').click().catch(() => {});
     await dlg.getByTestId('source-criteria').waitFor({ timeout: 8000 }).catch(() => {});
     await page.waitForTimeout(500);
+    await onScreen('/prospecting', null, 'Live data', /How should this prospect search work/);
   },
 
-  /* ── The module reels further down the page ── */
-  'dashboard': () => go('/', 2600),
-  'ap-board': () => go('/autopilot', 2600),
-  'ap-describe': async () => {
-    await go('/autopilot');
-    await page.getByRole('button', { name: /New project/ }).first().click();
-    await page.waitForTimeout(1200);
-    const box = page.getByRole('dialog').locator('textarea').first();
-    await box.fill('I want to sell my products to real estate agents in Virginia — find new ones every day, email them, and text the ones who say yes.').catch(() => {});
-    await page.waitForTimeout(500);
-  },
-  'ap-diagram': async () => {
-    await workflowsOf(projects[1].id);
-    await under('Missed call — text back and book', 168);
-  },
-  'ap-step': async () => {
-    await workflowsOf(projects[2].id);
-    await under('New enquiry — qualify, route and book', 168);
-    const flow = page.getByRole('group', { name: 'Workflow diagram' }).filter({ hasText: 'A job over $5k?' }).first();
-    await flow.getByRole('button', { name: 'Edit step: A form is submitted' }).click();
-    await page.waitForTimeout(1000);
-  },
-  'ap-gallery': () => go('/autopilot?view=templates'),
-  'contacts-list': () => go('/contacts'),
-  'contacts-profile': async () => {
+  /* ── Contacts ── */
+  'contacts-list': async () => {
     await go('/contacts');
-    await page.getByText(w.contacts[2].name).first().click();
-    await page.waitForTimeout(1200);
+    /* By value, highest first: the people the business deals with, rather
+       than today's found prospects, which are the newest activity. */
+    const value = page.locator('th', { hasText: /^Value/ }).first();
+    await value.click();
+    await page.waitForTimeout(300);
+    await value.click();
+    await page.waitForTimeout(800);
+    /* Pressing a header scrolls the wide table sideways on a phone. */
+    await page.evaluate(() => { for (const el of document.querySelectorAll<HTMLElement>('*')) if (el.scrollLeft) el.scrollLeft = 0; window.scrollTo(0, 0); });
+    await page.waitForTimeout(300);
+    /* The heading alone: the lists beside the table are being redrawn, and
+       the check must not depend on their wording. */
+    await onScreen('/contacts', 'Contacts', /^Value/i);
   },
-  'pipe-board': () => go('/pipelines'),
+  'contacts-profile': async () => {
+    await profileOf(PERSON);
+    await onScreen('/contacts', PERSON, 'Next best action', 'Contact Information');
+  },
+  'contacts-deals': async () => {
+    await profileOf(PERSON);
+    await page.getByRole('button', { name: /^Deals \(/ }).first().click();
+    await page.waitForTimeout(900);
+    await onScreen('/contacts', PERSON, /retainer|growth plan|website \+ booking|annual plan|lead generation|reviews package/);
+  },
+
+  /* ── Funnels and websites ── */
+  'funnels-list': async () => {
+    await go('/funnels');
+    /* Not the funnel's name: at 390px the cards overflow and their titles
+       collapse to nothing (an app layout bug, not the recipe's). */
+    await onScreen('/funnels', 'Funnels & Sites', 'New Funnel');
+  },
+  'funnels-builder': async () => {
+    await go('/funnels');
+    await page.getByRole('button', { name: /Open Builder/ }).first().click();
+    await page.waitForTimeout(2000);
+    /* Into the first step's page itself: the step list alone is a few
+       numbers, the page is what a funnel is. */
+    await page.getByRole('button', { name: /Open Page Editor/ }).first().click();
+    await page.waitForTimeout(2500);
+    await onScreen('/funnels', null, 'Free audit offer', 'Lead Form');
+  },
+  'sites-list': async () => {
+    await go('/websites');
+    await onScreen('/websites', 'Websites', 'riverastudio.com');
+  },
+  'sites-builder': async () => {
+    await go('/websites');
+    await page.getByRole('button', { name: /Open Builder/ }).first().click();
+    await page.waitForTimeout(2500);
+    /* The builder is full-window and has no page heading of its own. */
+    await onScreen('/websites', null, 'Live preview', 'Hero Banner');
+  },
+
+  /* ── Social and blog ── */
+  'social-gallery': async () => {
+    await go('/social-creator', 2400);
+    await onScreen('/social-creator', 'What will you design today?', 'Total Designs');
+  },
+  'social-editor': async () => {
+    await go('/social-creator/editor/sp-reel-1', 2600);
+    const here = new URL(page.url()).pathname;
+    if (here !== '/social-creator/editor/sp-reel-1') throw new Error(`landed on ${here}, not the post editor`);
+    await page.getByText('Export PNG').locator('visible=true').first().waitFor({ timeout: 12_000 });
+    await page.getByText('Three homes listed this week in Richmond').locator('visible=true').first().waitFor({ timeout: 12_000 });
+    proved = 'post editor';
+  },
+  'blog-projects': async () => {
+    await go('/blog-automation');
+    await onScreen('/blog-automation', 'Blogs that make the site rank', 'Rivera Studio — organic');
+  },
+  'blog-strategy': async () => {
+    await go('/blog-automation');
+    await page.getByRole('button', { name: /^Strategy/ }).first().click();
+    await page.waitForTimeout(2000);
+    await onScreen('/blog-automation', 'Blog & SEO', 'Topic clusters', 'Pages that have to rank');
+  },
+
+  /* ── Pipelines ── */
+  'pipe-board': async () => {
+    await go('/pipelines');
+    await onScreen('/pipelines', 'Deals', 'Weighted Value');
+  },
+  'pipe-deal': async () => {
+    await go('/pipelines');
+    await page.getByText((w.pipelines[0].stages[0].deals[0] as { title: string }).title).first().click();
+    await page.waitForTimeout(1500);
+    await onScreen('/pipelines', (w.pipelines[0].stages[0].deals[0] as { title: string }).title, 'Send the proposal');
+  },
   'pipe-table': async () => {
     await go('/pipelines');
     await page.getByRole('button', { name: /^Table$/ }).first().click().catch(() => page.getByText('Table').first().click());
     await page.waitForTimeout(1000);
+    await onScreen('/pipelines', 'Deals', /^Probability$/i);
   },
+
+  /* ── Email & sequences ── */
   'mkt-campaigns': async () => {
     await go('/marketing?tab=campaigns');
-    /* The seeded mailbox has never been proved, so the set-up banner is
-       rightly offered; dismissed is what an owner with a working one sees. */
-    await page.getByRole('button', { name: '✕' }).first().click().catch(() => {});
+    /* The set-up banner, if any is still offered, dismissed as an owner would. */
+    await page.getByRole('button', { name: '✕' }).first().click({ timeout: 2000 }).catch(() => {});
     await page.waitForTimeout(300);
+    await onScreen('/marketing', 'Email campaigns', 'North Texas outreach', 'Create Campaign');
   },
-  'mkt-sequences': () => go('/marketing?tab=sequences'),
-  'eng-forms': () => go('/engagement?tab=forms'),
+  'mkt-sequences': async () => {
+    await go('/marketing?tab=sequences');
+    await onScreen('/marketing', 'Email campaigns', 'Create sequence', 'New business — outreach');
+  },
+
+  /* ── Forms and tickets ── */
+  'eng-forms': async () => {
+    await go('/engagement?tab=forms');
+    /* Newest first: "Get a quote", saved last with every field filled in. */
+    await page.getByRole('button', { name: /^Edit$/ }).first().click();
+    await page.waitForTimeout(1500);
+    await phoneUnder(/^Forms$/);
+    await onScreen('/engagement', 'Customer Engagement', 'The questions', 'Add a question');
+  },
   'eng-tickets': async () => {
     await go('/engagement?tab=tickets');
     await page.getByText('Booking link shows the wrong clinic hours').first().click();
     await page.waitForTimeout(1000);
+    await onScreen('/engagement', 'Customer Engagement', 'Internal note', 'Waiting on customer');
   },
-  'funnels-list': () => go('/funnels'),
-  'social-editor': () => go('/social-creator/editor/sp-reel-1', 2600),
-  'sites-list': () => go('/websites'),
-  'social-gallery': () => go('/social-creator', 2400),
-  'blog-projects': () => go('/blog-automation'),
-  'cal-week': () => go('/calendar'),
-  'agency': () => go('/agency'),
-  'analytics': () => go('/analytics'),
+
+  /* ── Calendar and the booking page ── */
+  'cal-week': async () => {
+    await go('/calendar');
+    await onScreen('/calendar', 'Calendar', 'Quick Connects');
+  },
+  'cal-booking': async () => {
+    await go('/scheduling');
+    await page.getByRole('button', { name: /^Booking page$/ }).first().click();
+    await page.waitForTimeout(2500);
+    await phoneUnder('Your booking page');
+    await onScreen('/scheduling', 'Booking pages', 'Your booking page', 'Select a Date & Time');
+  },
+
+  /* ── Agency, white-label and reports ── */
+  'agency': async () => {
+    await go('/agency');
+    await onScreen('/agency', 'Agency', 'Monthly recurring revenue');
+  },
+  'agency-brand': async () => {
+    await go('/settings?tab=branding');
+    /* Typed, not saved: the preview beside the form shows the name as the
+       owner types it, which is the point of the screen. */
+    await page.locator('#brand-name').fill('Rivera Growth');
+    await page.locator('#brand-headline').fill('Sign in to Rivera Growth');
+    await page.waitForTimeout(600);
+    await phoneUnder('White-label this workspace');
+    await onScreen('/settings', 'White-label this workspace', 'Sign in to Rivera Growth');
+  },
+  'analytics': async () => {
+    await go('/analytics');
+    await onScreen('/analytics', 'Reports', 'Revenue won', 'Where contacts came from');
+  },
+  'analytics-revenue': async () => {
+    await go('/analytics?section=revenue', 3000);
+    await onScreen('/analytics', 'Revenue by project', REALTY.name);
+  },
+
+  /* ── The agents: their own tab, and one drawn as a workflow ── */
+  'agent-list': async () => {
+    await projectTab(REALTY.id, 'AI Agents');
+    await onScreen('/autopilot', 'AI Autopilot', 'Agents on a schedule', 'Write a post from the portfolio');
+  },
+  'agent-flow': async () => {
+    await workflowsOf(REALTY.id);
+    await under('Daily Social Content Automation', 168);
+    await onScreen('/autopilot', 'AI Autopilot', 'Daily Social Content Automation', 'Write a post from the portfolio');
+  },
+
+  /* ── "Yours, not ours" ── */
+  'own-mailbox': async () => {
+    await go('/settings', 2500);
+    await phoneUnder(/^Mailboxes$/);
+    /* Collapsed, each mailbox is its name and its Send / Receive checks. */
+    await onScreen('/settings', 'Mailboxes', /^Campaigns$/, /^Support$/, 'Primary');
+  },
+  'own-domain': async () => {
+    await go('/settings?tab=deliverability', 2500);
+    await phoneUnder('Reputation & authentication');
+    await onScreen('/settings', 'Settings', 'Authentication (SPF, DKIM, DMARC)', 'Records to publish');
+  },
+  'own-data': async () => {
+    await go('/settings?tab=security', 2500);
+    await phoneUnder('Protected Workspace');
+    await onScreen('/settings', 'Settings', 'Protected Workspace', 'Signed-in devices');
+  },
 };
 
 const missing = (REEL_FILES as string[]).filter(f => !RECIPES[f]);
@@ -743,8 +1128,19 @@ const crops: Record<string, { y: number; h: number }> = {};
 async function photograph(suffix: string) {
   for (const file of REEL_FILES as string[]) {
     if (only.length && !only.includes(file)) continue;
-    try {
+    const attempt = async () => {
+      proved = '';
       await RECIPES[file]();
+      if (!proved) throw new Error('the recipe never checked which screen it reached');
+    };
+    try {
+      /* Once more if the Worker dropped (it is restarted above) — never
+         for a wrong screen, which is the recipe's to fix. */
+      await attempt().catch(async e => {
+        if (!/ERR_CONNECTION|ECONNREFUSED|ERR_EMPTY_RESPONSE|socket hang up|page\.goto: Timeout/.test(String(e))) throw e;
+        await ready();
+        await attempt();
+      });
     } catch (e) {
       console.log(`FAILED  ${file}${suffix}: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
       process.exitCode = 1;
@@ -752,10 +1148,27 @@ async function photograph(suffix: string) {
     }
     const broken = await page.evaluate(() => /ran into a problem|something went wrong/i.test(document.body.innerText));
     if (broken) { console.log(`REFUSED ${file}${suffix} — the screen is showing an error`); process.exitCode = 1; continue; }
+    /* A dialog, or a drawer pinned over the page (a contact's profile is a
+       fixed panel with no dialog role), is fixed to the window: below it the
+       page would run on without it, so such a screen is the window alone, and
+       its own scrolling pane is left as it is — let out, the profile drawer
+       came apart over the list behind it on a phone. */
+    const fixedOver = await page.evaluate(() => {
+      let found = false;
+      for (const el of document.querySelectorAll<HTMLElement>('[role="dialog"], body *')) {
+        const r = el.getBoundingClientRect();
+        const pinned = el.getAttribute('role') === 'dialog' ? r.height > 200
+          : getComputedStyle(el).position === 'fixed' && getComputedStyle(el).visibility !== 'hidden'
+            /* On screen across its middle — not a drawer slid away to the side. */
+            && r.height > innerHeight * 0.6 && r.width > innerWidth * 0.4 && r.left < innerWidth / 2 && r.right > innerWidth / 2;
+        if (pinned) { el.setAttribute('data-reel-overlay', ''); found = true; }
+      }
+      return found;
+    });
     const at = await page.evaluate(() => {
       for (const el of document.querySelectorAll<HTMLElement>('body *')) {
         const cs = getComputedStyle(el);
-        if (!/(auto|scroll)/.test(cs.overflowY) || el.closest('[role="dialog"]')) continue;
+        if (!/(auto|scroll)/.test(cs.overflowY) || el.closest('[data-reel-overlay]')) continue;
         if (el.clientHeight < 280 || el.scrollHeight <= el.clientHeight + 40) continue;
         el.style.maxHeight = 'none'; el.style.height = 'auto'; el.style.overflowY = 'visible';
         /* …and whatever holds it to the window's height (AI Prospecting's shell). */
@@ -767,17 +1180,32 @@ async function photograph(suffix: string) {
       return { y: Math.round(window.scrollY), h: document.documentElement.scrollHeight };
     });
     await page.waitForTimeout(400);
+    /* On a phone the app's top bar is a third of the window and the same on
+       every screen, so every phone picture opened on the same thing. It is
+       left out: the picture starts at the page's own heading. Not over a
+       dialog, which is pinned to the window and would lose its top. */
+    const navEnd = suffix && !fixedOver ? await page.evaluate(() => {
+      /* Anything else stuck to the top (Settings' menu, on a phone) is drawn
+         where the window was in a whole-page capture — over the panel below
+         it. Left in its place in the page instead. */
+      for (const el of document.querySelectorAll<HTMLElement>('body *')) if (getComputedStyle(el).position === 'sticky') el.style.position = 'static';
+      const bar = document.querySelector<HTMLElement>('header.app-header');
+      if (!bar) return 0;
+      bar.style.position = 'static';
+      return Math.round(bar.getBoundingClientRect().bottom + window.scrollY);
+    }) : 0;
+    if (navEnd > at.y) at.y = navEnd;
     const docH = await page.evaluate(() => document.documentElement.scrollHeight);
-    /* A dialog or side panel is fixed to the window: below it the page would
-       run on without it, so such a screen is the window alone. */
-    const fixedOver = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].some(d => d.getBoundingClientRect().height > 200));
     const max = fixedOver ? page.viewportSize()!.height : suffix ? MAX_H.phone : MAX_H.desk;
     const h = Math.max(1, Math.min(max, docH - at.y));
     /* Clipped as it is taken: a whole page at 3× can pass the 16,384-pixel
        limit Chromium can capture in one go. */
     crops[`${file}${suffix}`] = { y: 0, h };
     const width = page.viewportSize()!.width;
-    await page.screenshot({ path: `${RAW}/${file}${suffix}.png`, fullPage: true, clip: { x: 0, y: at.y, width, height: h } });
+    /* Over a pinned panel the window itself: a whole-page capture of a page
+       scrolled under a fixed drawer cut the drawer short. */
+    if (fixedOver) await page.screenshot({ path: `${RAW}/${file}${suffix}.png` });
+    else await page.screenshot({ path: `${RAW}/${file}${suffix}.png`, fullPage: true, clip: { x: 0, y: at.y, width, height: h } });
     taken.push(`${file}${suffix}`);
   }
 }
