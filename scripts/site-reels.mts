@@ -792,6 +792,19 @@ const projectTab = async (id: string, name: string) => {
     .catch(() => page.locator(`#project-${id}`).getByText(new RegExp(`^${name}`)).first().click({ timeout: 6000 }))
     .catch(() => {});
   await page.waitForTimeout(1500);
+  await toProject(id);
+};
+/* The board lists every business workspace, newest on top, so the one named
+   is rarely first: the picture is taken from the window down, and it once
+   showed another client's workflows above the one the caption was about.
+   Its card is put at the top, and a card that will not come there refuses
+   the shot rather than photographing whatever is above it. */
+const toProject = async (id: string, gap = 84) => {
+  const card = page.locator(`#project-${id}`).first();
+  await card.evaluate((el, g) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - g), gap);
+  await page.waitForTimeout(700);
+  const top = await card.evaluate(el => el.getBoundingClientRect().top);
+  if (top < 0 || top > 320) throw new Error(`the business workspace's card is at ${Math.round(top)}px, not at the top of the picture`);
 };
 const workflowsOf = (id: string) => projectTab(id, 'Workflows');
 /* On a phone a Settings panel sits under the whole Settings menu, so every
@@ -816,9 +829,7 @@ const PERSON = (w.contacts as { name: string; status: string }[])[2].name;
 const RECIPES: Record<string, () => Promise<void>> = {
   /* ── The hero: the whole platform, one screen at a time ── */
   'hero-board': async () => {
-    await focusProject(REALTY.id);
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await page.waitForTimeout(500);
+    await projectTab(REALTY.id, 'Overview');
     await onScreen('/autopilot', 'AI Autopilot', REALTY.name);
   },
   'hero-flow': async () => {
@@ -831,7 +842,7 @@ const RECIPES: Record<string, () => Promise<void>> = {
     await onScreen('/prospecting', null, 'Live data', /Searched live for real estate agents/);
   },
   'hero-daily': async () => {
-    await focusProject(REALTY.id, 'prospects');
+    await projectTab(REALTY.id, 'Prospects');
     await onScreen('/autopilot', 'AI Autopilot', "Where this business workspace's leads come from", 'All leads');
   },
   'hero-dashboard': async () => {
