@@ -573,13 +573,13 @@ export default function Funnels() {
         </div>
 
         {/* Funnel cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px', marginBottom: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))', gap: '20px', marginBottom: '24px' }}>
           {funnels.map(funnel => {
             const cvr = funnel.visitors > 0 ? ((funnel.conversions / funnel.visitors) * 100).toFixed(1) : '0';
             const ftype = FUNNEL_TYPES.find(t => funnel.goal === t.category);
             return (
               <div key={funnel.id}
-                style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden', transition: 'box-shadow 0.15s, border-color 0.15s' }}
+                style={{ minWidth: 0, backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', overflow: 'hidden', transition: 'box-shadow 0.15s, border-color 0.15s' }}
                 onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 24px rgba(16,24,40,0.08)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#d5d8dd'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 1px 2px rgba(16,24,40,0.04)'; (e.currentTarget as HTMLDivElement).style.borderColor = '#e6e9f0'; }}>
                 {/* Card header with color accent */}
