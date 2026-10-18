@@ -37,6 +37,13 @@ eq('"local" is not part of the trade', ask('find local plumbers in Leeds'), ['pl
   const b = parseAsk('get me 50 roofers near Bristol that have email addresses');
   ok('"that have email addresses" and a number', b?.trade === 'roofers' && b.place === 'Bristol' && b.want.email, JSON.stringify(b));
 }
+/* The owner's words: an industry clause is the trade, "people based in" is not. */
+ok('"people based in texas who belong to the real estate industry" → real estate · texas',
+  JSON.stringify(ask('find people based in texas who belong to the real estate industry')) === JSON.stringify(['real estate', 'texas']), JSON.stringify(ask('find people based in texas who belong to the real estate industry')));
+ok('"people in the dental industry in Ohio" → dental · Ohio', JSON.stringify(ask('people in the dental industry in Ohio')) === JSON.stringify(['dental', 'Ohio']));
+ok('"businesses based in Austin, Texas in the roofing sector" → roofing · Austin, Texas',
+  JSON.stringify(ask('find businesses based in Austin, Texas in the roofing sector')) === JSON.stringify(['roofing', 'Austin, Texas']));
+ok('"real estate agents based in Texas" keeps the trade', JSON.stringify(ask('real estate agents based in Texas')) === JSON.stringify(['real estate agents', 'Texas']));
 ok('no place → null, so the page asks for one', parseAsk('find dentists') === null);
 ok('empty → null', parseAsk('   ') === null);
 ok('no kind of business → null', parseAsk('in Leeds') === null);

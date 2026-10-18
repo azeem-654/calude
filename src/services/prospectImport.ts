@@ -17,6 +17,9 @@
  */
 import type { Contact } from '../types';
 import type { Prospect, ProspectSource, Contactable, Verdict } from './prospects';
+/* LICENSED in prospects.ts — written out, not imported: that module
+   loads the API client, and this one stays pure for the tests. */
+const LICENSED = 'Licensed business data';
 import { bestAddress, personFor } from './aiProspecting';
 
 /** What the shown results were searched for, as the search form had it. */
@@ -78,6 +81,9 @@ export function prospectRows(
       ...(p.companyNumber ? { companyNumber: p.companyNumber } : {}),
       /* When it was found at its source, so a list says how fresh it was the day it was made. */
       ...(p.foundAt ? { foundAt: p.foundAt } : {}),
+      /* Licensed data says so on the contact, as the daily finder's does —
+         a cold emailer must be able to say where an address came from. */
+      ...(p.library ? { dataSource: LICENSED } : {}),
     };
     /* With no named person behind the address, the register's first serving
        director is the person to write to — named by law, and current. */
@@ -90,11 +96,11 @@ export function prospectRows(
       status: 'prospect',
       /* Tagged with where and what, because a list of 40 businesses with no
          label is unusable a week later. */
-      tags: ['prospect search', p.category, emailTag(v), p.companyNumber ? 'company register' : ''].filter(Boolean),
+      tags: ['prospect search', p.category, emailTag(v), p.companyNumber ? 'company register' : '', p.library ? 'licensed business data' : ''].filter(Boolean),
       /* The stamp says what made the row, so a list full of found businesses
          can still be told apart from people who asked to hear from you — which
          is the distinction the sending rules turn on. */
-      source: `${from} · ${what}`,
+      source: `${p.library ? LICENSED : from} · ${what}`,
       createdAt: now,
       lastActivity: now,
       value: 0,

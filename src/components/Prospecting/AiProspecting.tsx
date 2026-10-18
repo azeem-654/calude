@@ -201,7 +201,10 @@ export default function AiProspecting() {
     const r = await s.ask(line, from);
     if (r.error) setAskError(r.error);
     /* "…with an email" narrows what is shown; the search itself is the same. */
-    if (r.want) setFilter(r.want.email ? 'email' : r.want.phone ? 'phone' : r.want.website ? 'website' : 'all');
+    /* Only businesses with an email address unless something else was asked
+       for — a row with no address is not somebody this search can reach. The
+       chips above the table still show every row with "All". */
+    if (r.want) setFilter(r.want.phone ? 'phone' : r.want.website && !r.want.email ? 'website' : 'email');
   };
 
   /* A recent search opens with what it found — at once, with when it was
@@ -216,7 +219,7 @@ export default function AiProspecting() {
     const back = snap.asked ? parseAsk(snap.asked) : null;
     setText(back && (back.source === snap.source || (back.source === 'free' && snap.source === 'osm')) ? snap.asked : askSentence(snap.trade, snap.place, snap.source));
     const w = snap.want;
-    setFilter(w?.email ? 'email' : w?.phone ? 'phone' : w?.website ? 'website' : 'all');
+    setFilter(w?.phone ? 'phone' : w?.website && !w?.email ? 'website' : 'email');
   };
 
   /* A workflow's "View Prospect Search →" opens the search it is linked to (?search=<id>). */

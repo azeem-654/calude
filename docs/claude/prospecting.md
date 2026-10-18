@@ -165,7 +165,21 @@ lead files** (the Lead library): the panel that listed directory matches
 beside a search (`DirectoryMatches.tsx`, with a "See them all" link) is gone —
 the owner decided customers must not see a searchable directory of people; the
 platform finds businesses live, it is not a data broker. `test:isolation`
-checks a search never asks `leaddir.php`. `npm run test:emailverify` and
+checks a customer's search never asks `leaddir.php`. **The install owner's own
+search is the exception, by the owner's decision**: `ask` (useProspectSearch)
+first calls `searchLibraryProspects` (services/leadDirectory.ts — `leaddir.php
+search` with the sentence's trade as the industry, its place, `hasEmail`), and
+only when the library has nobody (or cannot be asked, said in the source note)
+runs the directory search. Library rows carry `library: true`; imported, they
+are stamped "Licensed business data" (source, tag, `dataSource`). Pages load by
+`ld:<last id>`. The server answers `not_owner` to anybody else, and the hook
+does not ask for them.
+
+**Only businesses with an email address are shown by default**: the results'
+filter starts on "With email" (unless a phone or website was asked for); "All"
+is one chip away. The sentence reader takes an industry clause as the trade
+("people based in Texas who belong to the real estate industry" → real estate ·
+Texas; `INDUSTRY` in services/aiProspecting.ts). `npm run test:emailverify` and
 `npm run test:aiprospecting` (pure); `npm run test:prospecting` drives it with
 DoH and Hunter mocks (`EMAIL_VERIFIER_BASE`), in both themes.
 

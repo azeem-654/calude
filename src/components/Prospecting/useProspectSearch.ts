@@ -16,6 +16,8 @@ import {
 } from '../../services/prospects';
 import type { Contact } from '../../types';
 import { addressesOf, askProblem, chooseSource, parseAsk, type Ask } from '../../services/aiProspecting';
+import { isInstallOwner } from '../../services/moderation';
+import { searchLibraryProspects } from '../../services/leadDirectory';
 import {
   emailOf, planImport, prospectRows, recordSearch, loadSearches, toggleSaved, forgetSearch,
   loadSnapshot, saveSnapshot, keepable,
@@ -298,7 +300,33 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
        businesses, not for an account of the suppliers. Licences' credits stay
        on the card (Attribution); the loading messages say what is searched. */
     const where = 'Search';
-    const list = await run({ source: src, trade: a.trade, place: a.place });
+    /* The install owner's own searches ask their Lead library first — millions
+       of people they loaded, with email addresses — and go to the business
+       directories only when it has nobody to offer (or cannot be asked). A
+       customer's search never does: the library is the owner's, not a
+       directory customers may search (CLAUDE.md, the Lead library). */
+    let list: Prospect[] | null = null;
+    let fromLibrary = false;
+    let libMore = false;
+    if (src === 'free' && !from && isInstallOwner()) {
+      setBusy(true); clear();
+      setStartedAt(new Date().toISOString()); setPrevCount(null);
+      const lib = await searchLibraryProspects(a.trade, a.place);
+      if (lib.prospects.length) {
+        setBusy(false);
+        setFetchedAt(lib.fetchedAt); setResults(lib.prospects); setAnswered('free'); setAttribution(''); setCached(false);
+        setNextPage(lib.more ? `ld:${lib.after}` : '');
+        const q = { source: 'free' as const, trade: a.trade, place: a.place };
+        setSearched(q);
+        setHistory(recordSearch({ ...q, count: lib.prospects.length }));
+        list = lib.prospects; fromLibrary = true; libMore = lib.more;
+      } else {
+        setSourceNote(lib.error
+          ? `Your lead library could not be searched (${lib.error}), so this searched business directories instead.`
+          : `Nobody in your lead library matched ${a.trade} in ${a.place} with an email address, so this searched business directories instead.`);
+      }
+    }
+    if (!fromLibrary) list = await run({ source: src, trade: a.trade, place: a.place });
     setAsked(text.trim()); setWant(a.want);
     if (!list) {
       step('search', { label: `Searched for ${a.trade} in ${a.place}`, detail: 'The search was refused — see why below.', state: 'failed', badge: where });
@@ -306,8 +334,9 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
     }
     const named = list.filter(p => p.officers?.length).length;
     step('search', {
-      label: `Searched for ${a.trade} in ${a.place}`,
-      detail: src === 'register' ? `${list.length} active compan${list.length === 1 ? 'y' : 'ies'}${named ? `, ${named} with their directors named` : ''}` : `${list.length} found`,
+      label: fromLibrary ? `Searched your lead library for ${a.trade} in ${a.place}` : `Searched for ${a.trade} in ${a.place}`,
+      detail: fromLibrary ? `${list.length} with an email address${libMore ? ' — more to load' : ''}`
+        : src === 'register' ? `${list.length} active compan${list.length === 1 ? 'y' : 'ies'}${named ? `, ${named} with their directors named` : ''}` : `${list.length} found`,
       state: 'done', badge: where, count: list.length,
     });
     if (!list.length) return { error: '', want: a.want };
@@ -333,7 +362,11 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
         state: r.error ? 'failed' : 'done', badge: 'Websites', count: r.emails,
       });
     } else {
-      step('read', { label: 'No websites to read', detail: onMap ? `${onMap} published an address on the map` : 'None of these list a website', state: 'skipped', badge: 'Websites' });
+      step('read', {
+        label: 'No websites to read',
+        detail: fromLibrary ? 'Every one came with an email address' : onMap ? `${onMap} published an address on the map` : 'None of these list a website',
+        state: 'skipped', badge: 'Websites',
+      });
     }
 
     const emails = [...new Set(list.flatMap(p => addressesOf(p, fresh)))];
@@ -357,6 +390,18 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
   const loadMore = useCallback(async () => {
     if (!searched || !nextPage) return;
     setMore(true); setMoreError('');
+    /* A library page is asked by the last id shown; a directory page by its token. */
+    if (nextPage.startsWith('ld:')) {
+      const lib = await searchLibraryProspects(searched.trade, searched.place, Number(nextPage.slice(3)) || 0);
+      setMore(false);
+      if (lib.error) { setMoreError(lib.error); setNextPage(''); return; }
+      setResults(prev => {
+        const have = new Set((prev ?? []).map(p => p.ref));
+        return [...(prev ?? []), ...lib.prospects.filter(p => !have.has(p.ref))];
+      });
+      setNextPage(lib.more ? `ld:${lib.after}` : '');
+      return;
+    }
     const r = await searchProspects({ ...searched, pageToken: nextPage, fresh: live });
     setMore(false);
     if (r.error) { setMoreError(r.error); setNextPage(''); return; }

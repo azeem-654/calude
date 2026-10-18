@@ -167,3 +167,37 @@ export async function importMany(
   await Promise.all(Array.from({ length: Math.max(1, Math.min(parallel, files.length)) }, worker));
   return { done, already, skipped, failed, paused: signal.aborted, full };
 }
+
+/**
+ * The install owner's own AI Prospecting searches ask their Lead library first
+ * (useProspectSearch `ask`): the same `search` the Lead library screen uses,
+ * narrowed to people with an email address — a lead with no address is not
+ * one the owner can write to. Owner-only on the server (403 `not_owner` for
+ * anybody else), so a customer's search never reaches here and never sees the
+ * library; the hook does not even ask for them.
+ */
+export async function searchLibraryProspects(trade: string, place: string, after = 0): Promise<{
+  prospects: import('./prospects').Prospect[]; more: boolean; after: number; fetchedAt: string; error: string; note: string;
+}> {
+  const r = await dirCall('search', { industry: trade, place, hasEmail: true, after });
+  const fetchedAt = String(r.fetchedAt ?? new Date().toISOString());
+  if (!r.success) return { prospects: [], more: false, after, fetchedAt, error: r.error ?? 'The lead library could not be searched.', note: '' };
+  const people = (Array.isArray(r.people) ? r.people : []) as DirPerson[];
+  const prospects = people.filter(p => p.email).map(p => ({
+    ref: `ld:${p.id}`,
+    source: 'free' as const,
+    library: true,
+    name: p.company || p.name,
+    phone: p.phone ?? '',
+    website: p.website || (p.domain ? `https://${p.domain}` : ''),
+    email: p.email,
+    address: [p.address, p.city, p.state, p.country].filter(Boolean).join(', '),
+    category: p.industry ?? '',
+    lat: 0, lon: 0,
+    /* The person behind the address goes on as the one to write to, the
+       way the company register's director does (prospectRows). */
+    ...(p.name && p.company && p.name !== p.company ? { officers: [{ name: p.name, role: p.title ?? '' }] } : {}),
+    foundAt: fetchedAt,
+  }));
+  return { prospects, more: r.more === true, after: Number(r.after) || after, fetchedAt, error: '', note: String(r.note ?? '') };
+}

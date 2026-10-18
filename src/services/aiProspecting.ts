@@ -81,6 +81,7 @@ const GOOGLE_WORDS: RegExp[] = [
   /\b(?:top|highly|well|best)[\s-]rated\b/gi,
 ];
 
+const INDUSTRY = /\b(?:(?:who|that|which)\s+)?(?:(?:belongs?|works?|are|is)\s+)?(?:to|in)\s+the\s+([\p{L}&' -]{2,40}?)\s+(?:industry|sector|field|trade|business)\b/iu;
 const squash = (t: string) => t.replace(/\(\s*\)/g, ' ').replace(/\s+/g, ' ').trim();
 
 /**
@@ -104,6 +105,16 @@ export function readAsk(text: string): Ask {
   for (const q of QUALIFIERS) {
     if (q.re.test(t)) { want[q.key] = true; t = squash(t.replace(q.re, ' ')); }
   }
+  /* "… who belong to the real estate industry", "in the dental sector": the
+     industry is the trade, wherever it sits in the sentence — read before the
+     split, or "Texas who belong to the real estate industry" became the place. */
+  let industry = '';
+  const ind = INDUSTRY.exec(t);
+  if (ind) { industry = ind[1]; t = squash(t.replace(ind[0], ' ')); }
+  /* "people based in Texas", "companies located in Leeds": the people-word and
+     "based" are not a kind of business. */
+  t = t.replace(/\b(?:people|persons|contacts|leads|businesses|companies|firms|professionals|owners)\s+(?:who\s+are\s+|that\s+are\s+)?(?:based|located|operating|working)\s+(?=(?:in|near|around|across|within)\b)/i, '')
+    .replace(/\s+(?:based|located|operating)\s+(?=(?:in|near|around|across|within)\b)/i, ' ');
   t = t.replace(LEAD_IN, '').replace(/^[\s:;,\-–—()]+/, '')
     .replace(/^(?:(?:businesses|companies|firms)\s+)?(?:(?:that|which|who)\s+(?:are|is)\s+)?/i, '').trim();
   const clean = (x: string) => x.replace(/^[\s:;,\-–—()]+|[\s:;,\-–—()]+$/g, '').trim();
@@ -113,6 +124,11 @@ export function readAsk(text: string): Ask {
   const m = /^(.+)\s+(?:in|near|around|across|within)\s+(.+?)$/i.exec(t);
   if (only) place = only[1];
   else if (m) { trade = m[1]; place = m[2]; } else trade = t;
+  if (industry) {
+    /* With the industry named, whatever stood where the trade goes was the
+       people-word ("people", "anyone"): the industry is what to search. */
+    trade = industry;
+  }
   trade = clean(trade.replace(/\b(?:local|nearby)\b/gi, '').replace(/\s+/g, ' '));
   place = clean(place.replace(/\b(?:area|region|city centre|city center)\b$/i, ''));
   return { trade: trade.slice(0, 80), place: place.slice(0, 80), want, source };

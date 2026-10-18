@@ -371,6 +371,23 @@ ok('…and the load says so', a2.imports.find(i => i.id === s3i.import.id)?.stat
   await done();
 }
 
+/* ── The owner's AI Prospecting asks their library first ── */
+{
+  const { page, done } = await signIn(OWNER, OPW, 1280);
+  const asked = [];
+  page.on('request', r => { if (/leaddir\.php|prospects\.php/.test(r.url())) asked.push(`${r.url().split('/').pop()}:${JSON.parse(r.postData() || '{}').action}`); });
+  await page.goto(`${B}/prospecting`, { waitUntil: 'networkidle' });
+  await page.getByLabel('Who to look for').fill('find people based in texas who belong to the real estate industry');
+  await page.keyboard.press('Enter');
+  await page.getByText(/Searched your lead library for real estate in texas/i).waitFor({ timeout: 30_000 }).catch(() => {});
+  const body = await page.innerText('body');
+  ok('the owner\'s sentence searches their lead library first', /Searched your lead library for real estate in texas/i.test(body) && asked.includes('leaddir.php:search'), asked.join(','));
+  ok('…not the business directories, which it did not need', !asked.some(a => a.startsWith('prospects.php:search')), asked.join(','));
+  ok('…with an email address on every row it found', /with an email address/.test(body) && /pat\d+@realty\d+\.example/.test(body), body.slice(0, 400));
+  ok('…and no website reads: every one came with its address', /Every one came with an email address/.test(body));
+  await done();
+}
+
 /* ── A customer's lists, inside Contacts ── */
 for (const width of [1280, 390]) {
   const { page, done } = await signIn(CE, CPW, width);

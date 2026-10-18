@@ -56,6 +56,8 @@ export interface Prospect {
   officers?: { name: string; role: string }[];
   /** When this row was fetched from its source — stamped on the client from the answer's `fetchedAt`. */
   foundAt?: string;
+  /** From the install owner's own Lead library (their licensed files), not a directory search. */
+  library?: boolean;
 }
 
 export interface Contactable {
