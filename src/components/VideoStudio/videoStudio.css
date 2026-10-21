@@ -270,7 +270,9 @@ button.vse-block { border-width: 1px; border-style: solid; }
    second after another covers that one's end handle, and the drag went to the wrong Short. */
 .vse-block.short.on { background: rgba(236, 72, 153, .45); z-index: 3; }
 .vse-block.music { background: linear-gradient(90deg, rgba(45, 212, 191, .25), rgba(34, 211, 238, .25)); border: 1px solid rgba(45, 212, 191, .45); }
-.vse-cutzone { position: absolute; top: 0; bottom: 0; pointer-events: none; background: repeating-linear-gradient(-45deg, rgba(240, 93, 108, .55) 0 5px, rgba(240, 93, 108, .2) 5px 10px); border-left: 1px solid #f05d6c; border-right: 1px solid #f05d6c; }
+/* A cut on the filmstrip is shaded pink over the frames; on the sound the bars under it are faded (Timeline's canvas) with a faint tint. */
+.vse-cutzone { position: absolute; top: 0; bottom: 0; pointer-events: none; background: rgba(236, 72, 153, .42); border-left: 1px solid #ec4899; border-right: 1px solid #ec4899; mix-blend-mode: normal; }
+.vse-cutzone.wave { background: rgba(236, 72, 153, .1); border-color: rgba(236, 72, 153, .5); }
 .vse-cutzone.prop { background: repeating-linear-gradient(-45deg, rgba(251, 191, 36, .45) 0 5px, rgba(251, 191, 36, .12) 5px 10px); border-color: #fbbf24; }
 .vse-protect { position: absolute; top: 0; bottom: 0; pointer-events: none; background: rgba(45, 212, 191, .18); border-left: 1px solid var(--keep); border-right: 1px solid var(--keep); }
 .vse-selzone { position: absolute; top: 0; bottom: 0; background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .5); border-radius: 4px; pointer-events: none; }
@@ -299,7 +301,27 @@ button.vse-block { border-width: 1px; border-style: solid; }
 .vs-tr p[dir="rtl"] { text-align: right; font-family: 'Noto Naskh Arabic', 'Noto Sans', serif; }
 .vs-w { border-radius: 4px; padding: 1px 1px; cursor: pointer; }
 .vs-w:hover { background: rgba(255, 255, 255, .08); }
-.vs-w.cut { text-decoration: line-through; text-decoration-color: var(--cut); color: #6e717e; }
+/* A cut word stays on the page, struck through in red on a red tint — as in Descript. */
+.vs-w.cut { text-decoration: line-through 2px; text-decoration-color: #f05d6c; color: #9a8f96; background: rgba(240, 93, 108, .13); }
+.vs-tr:focus { outline: none; }
+.vs-tr:focus-visible { box-shadow: 0 0 0 2px rgba(155, 140, 255, .45); border-radius: 8px; }
+/* The text cursor: a bar before the word it stands at. */
+.vs-w.caret { box-shadow: inset 2px 0 0 #f472b6; }
+.vs-tr:focus .vs-w.caret { box-shadow: inset 2px 0 0 #fff; }
+@media (prefers-reduced-motion: no-preference) {
+  .vs-tr:focus .vs-w.caret { animation: vs-caret 1.06s steps(1) infinite; }
+  @keyframes vs-caret { 50% { box-shadow: inset 2px 0 0 transparent; } }
+}
+.vs-spk { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .02em; margin-right: 8px; text-transform: uppercase; user-select: none; }
+.vs-chipin { display: inline-flex; align-items: center; gap: 2px; margin: 0 3px; padding: 0 2px 0 6px; border-radius: 99px; font-size: 10.5px; line-height: 18px; vertical-align: 1px; user-select: none; white-space: nowrap;
+  background: rgba(251, 191, 36, .16); color: #fcd34d; border: 1px solid rgba(251, 191, 36, .45); }
+.vs-chipin.done { background: rgba(240, 93, 108, .12); color: #f9a8b4; border-color: rgba(240, 93, 108, .4); text-decoration: line-through; }
+.vs-chipin .k { display: inline-flex; align-items: center; gap: 3px; }
+.vs-chipin button { all: unset; cursor: pointer; display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; color: inherit; }
+.vs-chipin button:hover, .vs-chipin button:focus-visible { background: rgba(255, 255, 255, .16); }
+.vs-keys { display: grid; gap: 3px; font-size: 12px; color: var(--muted); background: rgba(255, 255, 255, .04); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.vs-keys kbd { font: inherit; font-size: 11px; padding: 0 5px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, .2); background: rgba(255, 255, 255, .06); color: #eee; margin: 0 1px; }
+.vs-fill-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px solid rgba(255, 255, 255, .05); }
 .vs-w.prop { background: rgba(251, 191, 36, .16); box-shadow: inset 0 -2px 0 #fbbf24; }
 .vs-w.prot { background: rgba(45, 212, 191, .16); }
 .vs-w.low { text-decoration: underline dotted #8b8e9a; text-underline-offset: 4px; }

@@ -292,7 +292,8 @@ ok('…and a quiz written from what the recording says, each question with the m
 
 /* ── 5 · The transcript ── */
 await page.reload({ waitUntil: 'networkidle' });
-ok('the editor is laid out as designed: media, player, inspector, assistant, timeline', (await page.getByTestId('vs-media').count()) === 1 && (await page.getByTestId('vs-preview').count()) === 1 && (await page.getByTestId('vs-assistant').count()) === 1 && (await page.getByTestId('vs-timeline').count()) === 1);
+ok('the editor opens on the transcript — the main way to edit — beside the player, inspector, assistant and timeline', (await page.getByTestId('vs-transcript').count()) === 1 && (await page.getByTestId('vs-preview').count()) === 1 && (await page.getByTestId('vs-assistant').count()) === 1 && (await page.getByTestId('vs-timeline').count()) === 1);
+await page.locator('[data-panel="media"]').click();
 ok('…the media list holds the long video and every Short', (await page.locator('[data-media]').count()) >= 5, await page.getByTestId('vs-media').innerText());
 ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and the music', (await page.locator('.vse-frame').count()) > 5 && (await page.locator('.vse-block.cap').count()) > 20 && (await page.locator('.vse-block.short').count()) === 4 && (await page.locator('.vse-block.music').count()) >= 1);
 
@@ -375,6 +376,53 @@ await page.getByTestId('vs-search').fill('pipeline');
 await page.waitForTimeout(400);
 ok('…and can be searched', (await page.locator('.vs-w.hit').count()) > 3);
 await page.getByTestId('vs-search').fill('');
+
+/* ── Editing the video by editing the text ── */
+{
+  const at = async () => (await v('get', { projectId: PID }));
+  const before = await at();
+  const word = page.locator('.vs-w:not(.cut):not(.prop)').nth(40);
+  const wi = Number(await word.getAttribute('data-i'));
+  await word.click();
+  await page.keyboard.press('Delete');
+  let d1;
+  for (let i = 0; i < 20; i++) { d1 = await at(); if (d1.docVersion > before.docVersion) break; await sleep(300); }
+  let w = '';
+  for (let i = 0; i < 20 && !/\bcut\b/.test(w); i++) { w = (await page.locator(`.vs-w[data-i="${wi}"]`).getAttribute('class')) ?? ''; await sleep(200); }
+  const cut = d1.doc.cuts.find(c => c.by === 'you' && c.state === 'approved' && c.reason.startsWith('Removed'));
+  ok('click a word, press Delete: it is cut from the video — still on the page, struck through', !!cut && d1.docVersion === before.docVersion + 1 && /\bcut\b/.test(w), { cut, w, v: [before.docVersion, d1.docVersion] });
+  ok('…and the timeline shades what is cut on the filmstrip', (await page.locator('.vse-cutzone.video').count()) > 0);
+  await page.locator(`.vs-w[data-i="${wi}"]`).click();
+  await page.keyboard.press('r');
+  let d2;
+  for (let i = 0; i < 20; i++) { d2 = await at(); if (d2.docVersion > d1.docVersion) break; await sleep(300); }
+  ok('select the struck word, press R: it is restored', !d2.doc.cuts.some(c => c.state === 'approved' && c.s < cut.e && c.e > cut.s && c.by === 'you'), d2.doc.cuts.filter(c => c.by === 'you').slice(-3));
+  /* Keyboard: Shift + → twice selects three words, Backspace cuts them as one. */
+  await page.locator(`.vs-w[data-i="${wi + 2}"]`).click();
+  await page.keyboard.down('Shift'); await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowRight'); await page.keyboard.up('Shift');
+  const selected = await page.locator('.vs-w.sel').count();
+  await page.keyboard.press('Backspace');
+  let d3;
+  for (let i = 0; i < 20; i++) { d3 = await at(); if (d3.docVersion > d2.docVersion) break; await sleep(300); }
+  const three = d3.doc.cuts.find(c => c.by === 'you' && c.state === 'approved' && /^Removed “.+ .+ .+”/.test(c.reason));
+  ok('Shift + arrows select words, Backspace cuts them as one cut', selected === 3 && !!three, { selected, three });
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+  let d4;
+  for (let i = 0; i < 20; i++) { d4 = await at(); if (d4.docVersion < d3.docVersion) break; await sleep(300); }
+  ok('…and Ctrl+Z undoes it through the version history', d4.docVersion === d3.docVersion - 1 && !d4.doc.cuts.some(c => c.id === three?.id), [d3.docVersion, d4.docVersion]);
+  ok('the text cursor stands in the transcript (the word it is at is marked)', (await page.locator('.vs-w.caret').count()) === 1);
+  const chips = page.locator('.vs-chipin.prop');
+  const nChips = await chips.count();
+  const chipId = await chips.first().getAttribute('data-chip');
+  await chips.first().locator('[data-act="chip-ignore"]').click();
+  let d5;
+  for (let i = 0; i < 20; i++) { d5 = await at(); if (d5.doc.cuts.find(c => c.id === chipId)?.state === 'rejected') break; await sleep(300); }
+  ok('suggestions sit in the text as chips — ignoring one keeps it', nChips > 0 && d5.doc.cuts.find(c => c.id === chipId)?.state === 'rejected', { nChips, chipId });
+  await v('edit', { projectId: PID, baseVersion: d5.docVersion, ops: [{ op: 'cut.set', id: chipId, state: 'proposed' }], note: 'test: back to proposed' });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.locator('[data-panel="transcript"]').click();
+  await page.getByTestId('vs-transcript').waitFor({ timeout: 20_000 });
+}
 
 /* ── 6 · Cleanup suggestions ── */
 await page.locator('[data-panel="cleanup"]').click();
