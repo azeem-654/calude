@@ -973,10 +973,9 @@ const facesAt = (file, t, crop) => {
   return JSON.parse(String(execFileSync('python3', ['media/engine/track.py', '--image', png, ...(fs.existsSync(MODEL) ? ['--model', MODEL] : [])]))).faces.filter(f => f.score >= 0.6);
 };
 const meanRgb = (file, t, crop) => [...execFileSync('ffmpeg', ['-v', 'error', '-ss', String(t), '-i', file, '-frames:v', '1', '-vf', `crop=${crop},scale=1:1:flags=area`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'])];
-const halvesDiffer = (file, t) => {
-  const top = meanRgb(file, t, 'iw:ih/2:0:0'), bottom = meanRgb(file, t, 'iw:ih/2:0:ih/2');
-  return Math.abs(top[0] - bottom[0]) + Math.abs(top[1] - bottom[1]) + Math.abs(top[2] - bottom[2]);
-};
+/* How different the two halves are pixel by pixel (mean absolute difference of luma, 0–255) — two crops of the same portrait have the same average colour, but not the same pixels. */
+const halvesDiffer = (file, t) => Number(String(execFileSync('sh', ['-c',
+  `ffmpeg -hide_banner -ss ${t} -i "${file}" -frames:v 1 -filter_complex "[0:v]split[x][y];[x]crop=iw:ih/2:0:0[a];[y]crop=iw:ih/2:0:ih/2[b];[a][b]blend=all_mode=difference,signalstats,metadata=print" -f null - 2>&1 | grep YAVG | head -1`])).split('=').pop());
 
 /* ── Studio Sound: a noisy room, cleaned in the render, measured ── */
 {
@@ -1051,7 +1050,7 @@ const halvesDiffer = (file, t) => {
   const f2 = await download(r2.o.downloadUrl, 'layout-two.mp4');
   const p2 = probe(f2.file).streams.find(x => x.codec_type === 'video');
   const top = facesAt(f2.file, 5, 'iw:ih/2:0:0'), bottom = facesAt(f2.file, 5, 'iw:ih/2:0:ih/2'), diff2 = halvesDiffer(f2.file, 5);
-  ok('the two-person Short renders at 1080×1920 with a face in each half — the two halves differ', p2.width === 1080 && p2.height === 1920 && top.length >= 1 && bottom.length >= 1 && diff2 > 3, { w: p2.width, h: p2.height, top: top.length, bottom: bottom.length, diff2 });
+  ok('the two-person Short renders at 1080×1920 with a face in each half — the two halves differ', p2.width === 1080 && p2.height === 1920 && top.length >= 1 && bottom.length >= 1 && diff2 > 8, { w: p2.width, h: p2.height, top: top.length, bottom: bottom.length, diff2 });
 }
 
 /* ── Green screen: a real key ── */
