@@ -212,7 +212,10 @@ for (const width of [1280, 1440, 1655, 1900]) {
   const s1 = await api('leaddir.php', { token: ET, accountId: ERIN.acct, action: 'search', industry: 'business owners', place: 'australia' });
   ok('opened, a customer\'s search finds people with an email, and no totals', s1.success === true && s1.people.length === 20 && s1.people.every(p => p.email && !('keywords' in p)) && s1.total === undefined, JSON.stringify(s1).slice(0, 300));
   ok('…but never its facets', (await api('leaddir.php', { token: ET, accountId: ERIN.acct, action: 'facets' })).code === 'not_owner');
-  ok('…nor another workspace\'s', (await api('leaddir.php', { token: ET, accountId: OWNER_ACCT, action: 'search', industry: 'business owners', place: 'australia' })).success !== true);
+  /* Dana's: a workspace somebody owns. (An id nobody owns would be Erin's new
+     workspace being claimed, which is allowed.) */
+  const foreign = await api('leaddir.php', { token: ET, accountId: dReg.user?.accountId, action: 'search', industry: 'business owners', place: 'australia' });
+  ok('…nor another workspace\'s', foreign.success !== true && foreign.code === 'not_yours', JSON.stringify(foreign).slice(0, 200));
   const own = await api('leaddir.php', { token: T, accountId: OWNER_ACCT, action: 'search', industry: 'business owners', place: 'australia' });
   ok('…the owner can: "business owners" in "australia" finds the 20 owners', own.success && own.total === 20, JSON.stringify(own).slice(0, 300));
   const ctx = await br.newContext({ viewport: { width: 1280, height: 900 } });
