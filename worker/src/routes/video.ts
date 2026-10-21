@@ -37,7 +37,7 @@ import { cleanOembed, parseYoutubeUrl, youtubeThumb, YOUTUBE_WAY_FORWARD } from 
 import {
   advanceProject, cancelProject, enqueue, originOf, outputsOf, parse, readTranscript, renderSpec, stagesOf, syncOutputs, queueAfterEdit,
   recreditOutputs, type Extras, type JobRow, type OutputRow, type ProjectRow, type Source, type Thumb,
-  cleanThumbSpec, thumbWords,
+  cleanThumbSpec, thumbWords, readWave, cleanupOptionsOf,
 } from '../lib/video/pipeline';
 
 interface Req {
@@ -51,6 +51,8 @@ interface Req {
   patch?: Record<string, unknown>; kit?: Record<string, unknown>; file?: string; probe?: boolean; light?: boolean; knownVersion?: number;
   q?: string; page?: number; trackId?: string; key?: string; title?: string; rightsConfirmed?: boolean; applyTo?: string;
   posts?: number; blog?: boolean; email?: boolean;
+  /** Cleanup options: the filler kinds ticked, and the longest pause kept (null: the level's own). */
+  fillers?: unknown; maxPause?: number | null;
   /** Start from the customer's own YouTube video instead of an upload (create, youtube_info). */
   youtubeUrl?: string;
   want?: { repurpose?: { posts?: number; blog?: boolean; email?: boolean }; quiz?: boolean; denoise?: string; voice?: boolean; music?: string };
@@ -597,8 +599,13 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       const tr = await readTranscript(env, p);
       if (!tr) return fail('The transcript is not ready yet.');
       const src = parse<Source>(p.source, {});
-      const cuts = proposeCleanup(tr.words, src.silences ?? null, preset as 'balanced', src.probe?.duration ?? tr.duration);
-      const r = await saveEdit(env, p, d.baseVersion, [{ op: 'cleanup.preset', preset: preset as 'balanced', cuts }], `Cleanup: ${preset}`, user.email);
+      /* The options panel's choices (which filler kinds, the longest pause
+         kept) come with the request; absent, the ones already on the edit. */
+      const cur = cleanupOptionsOf(parse<VideoDoc>(p.doc, null as unknown as VideoDoc));
+      const fillers = d.fillers !== undefined ? cleanFillerKinds(d.fillers) : cur.fillers;
+      const maxPause = d.maxPause === null || d.maxPause === 0 ? null : d.maxPause !== undefined ? Math.min(3, Math.max(0.15, Number(d.maxPause) || 0.5)) : cur.maxPause;
+      const cuts = proposeCleanup(tr.words, src.silences ?? null, preset as 'balanced', src.probe?.duration ?? tr.duration, { fillers, maxPause, wave: await readWave(env, src) });
+      const r = await saveEdit(env, p, d.baseVersion, [{ op: 'cleanup.preset', preset: preset as 'balanced', cuts, ...(fillers ? { fillers } : {}), maxPause }], `Cleanup: ${preset}`, user.email);
       if (!r.ok) return json({ success: false, conflict: true, error: 'This project changed in another window.', doc: r.doc, docVersion: r.version });
       return json({ success: true, doc: r.doc, docVersion: r.version });
     }

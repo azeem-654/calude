@@ -58,6 +58,8 @@ export interface Cut {
   reason: string;
   conf: number;
   by: 'rule' | 'ai' | 'you';
+  /** A filler's kind (cleanup.ts FILLER_KINDS), so the options panel can count and preview each. */
+  sub?: string;
 }
 
 export interface Protect { id: string; s: number; e: number; note: string }
@@ -199,7 +201,8 @@ export const trackingOf = (doc: Pick<VideoDoc, 'tracking'>, kind: 'long' | 'shor
 
 export interface VideoDoc {
   v: 1;
-  cleanup: { preset: CleanupPreset; ran: boolean };
+  /** `fillers`: the kinds the customer ticked (absent: the defaults); `maxPause`: "shorten word gaps" to this many seconds (absent: the level's own). */
+  cleanup: { preset: CleanupPreset; ran: boolean; fillers?: string[]; maxPause?: number | null };
   cuts: Cut[];
   protects: Protect[];
   /** Word index → caption text. '' hides the word in captions only. */
@@ -481,7 +484,7 @@ export type Op =
   | { op: 'clip.duplicate'; id: string }
   | { op: 'thumbnail.headline'; target: string; text: string }
   | { op: 'shorts.set'; patch: Partial<VideoDoc['shorts']> }
-  | { op: 'cleanup.preset'; preset: CleanupPreset; cuts: Cut[] };
+  | { op: 'cleanup.preset'; preset: CleanupPreset; cuts: Cut[]; fillers?: string[]; maxPause?: number | null };
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const clamp = (n: unknown, lo: number, hi: number, d: number) => { const x = Number(n); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d; };
@@ -717,7 +720,9 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
         const decided = new Map(d.cuts.filter(c => c.by !== 'you').map(c => [c.id, c.state]));
         const fresh = (o.cuts ?? []).map(c => ({ ...c, state: decided.get(c.id) && decided.get(c.id) !== 'proposed' ? decided.get(c.id)! : c.state }));
         d.cuts = [...d.cuts.filter(c => c.by === 'you'), ...fresh];
-        d.cleanup = { preset: o.preset, ran: true };
+        const fillers = Array.isArray(o.fillers) ? o.fillers.filter(k => typeof k === 'string' && /^[a-z_]{1,12}$/.test(k)).slice(0, 12) : d.cleanup.fillers;
+        const maxPause = o.maxPause === null ? null : o.maxPause !== undefined ? Math.round(clamp(o.maxPause, 0.15, 3, 0.5) * 100) / 100 : d.cleanup.maxPause;
+        d.cleanup = { preset: o.preset, ran: true, ...(fillers ? { fillers } : {}), ...(maxPause ? { maxPause } : {}) };
         break;
       }
       default:

@@ -435,6 +435,22 @@ const propId = await firstProp.getAttribute('data-cut');
 await firstProp.locator('[data-act="approve"]').click();
 await page.waitForTimeout(1200);
 ok('…a suggestion can be approved', (await v('get', { projectId: PID })).doc.cuts.find(c => c.id === propId)?.state === 'approved');
+{
+  await page.locator('[data-act="cleanup-options"]').click();
+  const opts = page.getByTestId('vs-filler-options');
+  const kinds = await opts.locator('[data-filler]').count();
+  const umCount = Number(await opts.locator('[data-filler="um"] .vs-count').innerText());
+  ok('cleanup options: eight kinds of filler to tick, each with how many there are, and "shorten word gaps"', kinds === 8 && umCount > 5 && (await opts.locator('[data-field="video.maxPause"]').count()) === 1, { kinds, umCount });
+  const v0 = (await v('get', { projectId: PID })).docVersion;
+  await opts.locator('[data-field="video.maxPause"]').check();
+  let g;
+  for (let i = 0; i < 30; i++) { g = await v('get', { projectId: PID }); if (g.docVersion > v0) break; await sleep(400); }
+  ok('…ticking "shorten word gaps" re-reads the recording with every quiet pause cut down to the chosen length', g.doc.cleanup.maxPause > 0 && g.doc.cuts.some(c => c.kind === 'gap' && c.state === 'approved'), g.doc.cleanup);
+  await page.waitForTimeout(800);
+  await opts.locator('[data-field="video.maxPause"]').uncheck();
+  for (let i = 0; i < 30; i++) { g = await v('get', { projectId: PID }); if (!g.doc.cleanup.maxPause) break; await sleep(400); }
+  ok('…and unticking it puts the level\'s own pauses back, decisions kept', !g.doc.cleanup.maxPause && g.doc.cuts.find(c => c.id === propId)?.state === 'approved');
+}
 
 /* ── 7 · Four distinct Shorts ── */
 S = await v('get', { projectId: PID });

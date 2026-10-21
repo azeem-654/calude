@@ -12,11 +12,11 @@
  * to keep.
  */
 import { askConfirm } from '../shared/ConfirmDialog';
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Scissors, RotateCcw, Shield, Film, Type, Play, Search, Check, X, ChevronUp, ChevronDown, Wand2, Sparkles, Trash2, Clapperboard } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { RotateCcw, Shield, Film, Type, Play, Check, X, ChevronUp, ChevronDown, Wand2, Sparkles, Trash2, Clapperboard, SlidersHorizontal } from 'lucide-react';
 import {
-  clock, cleanupSummary, effectiveCuts, isRtl, keepRanges, keptLength, runCleanup, videoCommand, renderOutputs, CAPTION_PRESETS,
-  type CaptionStyle, type CleanupPreset, type Cut, type Sentence, type Word, type CaptionPreset,
+  clock, cleanupSummary, keepRanges, keptLength, runCleanup, videoCommand, renderOutputs, CAPTION_PRESETS, findFillers, fillerCounts, FILLER_KINDS, FILLER_INFO, DEFAULT_FILLERS,
+  type CaptionStyle, type CleanupPreset, type Cut, type Sentence, type CaptionPreset, type FillerKind,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
 
@@ -49,20 +49,44 @@ export function CleanupPanel({ ctx }: { ctx: EditorCtx }) {
   const { doc } = ctx;
   const [more, setMore] = useState(false);
   const [running, setRunning] = useState(false);
+  const [showOpts, setShowOpts] = useState(false);
+  const [previewAt, setPreviewAt] = useState<Record<string, number>>({});
+  const [gapDraft, setGapDraft] = useState<number | null>(null);
+  const words = useMemo(() => ctx.transcript?.words ?? [], [ctx.transcript]);
+  const found = useMemo(() => findFillers(words), [words]);
+  const counts = useMemo(() => fillerCounts(words), [words]);
   const summary = cleanupSummary(doc.cuts);
   const proposed = doc.cuts.filter(c => c.state === 'proposed');
   const approved = doc.cuts.filter(c => c.state === 'approved');
   const rejected = doc.cuts.filter(c => c.state === 'rejected');
+  const retakes = doc.cuts.filter(c => c.kind === 'retake');
   const before = ctx.duration, after = keptLength(keepRanges(ctx.duration, doc));
-  const preset = async (p: CleanupPreset) => {
+  const ticked = new Set<string>(doc.cleanup.fillers ?? DEFAULT_FILLERS);
+  const maxPause = doc.cleanup.maxPause ?? null;
+  const rerun = async (p: CleanupPreset, opts: { fillers?: string[]; maxPause?: number | null } = {}) => {
     setRunning(true);
-    const r = await runCleanup(ctx.view.project.id, ctx.version, p);
+    const r = await runCleanup(ctx.view.project.id, ctx.version, p, opts);
     setRunning(false);
     if (r.success) await ctx.refresh();
     else ctx.say({ who: 'ai', text: r.error ?? 'Cleanup could not run.' });
   };
+  const preset = (p: CleanupPreset) => rerun(p);
+  const tick = (k: FillerKind, on: boolean) => {
+    const next = FILLER_KINDS.filter(x => (x === k ? on : ticked.has(x)));
+    void rerun(doc.cleanup.preset, { fillers: next });
+  };
+  /* Hear one: a second and a half before it, the next one each press. */
+  const preview = (k: FillerKind) => {
+    const all = found.filter(h => h.kind === k);
+    if (!all.length) return;
+    const n = (previewAt[k] ?? 0) % all.length;
+    setPreviewAt(m => ({ ...m, [k]: n + 1 }));
+    ctx.seek(Math.max(0, words[all[n].j0].s - 1.5));
+    window.dispatchEvent(new Event('vs-play'));
+  };
   if (!ctx.transcript) return <p className="vs-sub">Cleanup suggestions appear once the recording is transcribed.</p>;
   const shown = more ? approved : approved.slice(0, 40);
+  const gapShown = gapDraft ?? maxPause ?? 0.4;
   return (
     <div className="vs-col" data-testid="vs-cleanup">
       <div className="vs-row" role="radiogroup" aria-label="Cleanup level">
@@ -74,11 +98,40 @@ export function CleanupPanel({ ctx }: { ctx: EditorCtx }) {
         {running && <span className="vs-kbd">Re-reading…</span>}
       </div>
       <p className="vs-kbd" style={{ margin: 0 }}>
-        Pauses are shortened, never removed, and only where the sound is quiet too. Fillers standing alone and pauses start applied; anything that changes what is said — repeats, false starts — waits for you. Numbers, prices, dates and “not” are never cut.
+        Pauses are shortened, never removed, and only where the sound is quiet too. Hesitations (um, uh) standing alone and pauses start applied; filler words, repeats, false starts and retakes wait for you. Numbers, prices, dates and “not” are never cut.
       </p>
       <div className="vs-note ok" data-testid="vs-cleanup-summary">
         <Sparkles size={15} /> <span>{clock(before)} → {clock(after)} with what is approved now. {summary.map(s => `${s.n} ${KIND_LABEL[s.kind]?.toLowerCase() ?? s.kind}${s.n === 1 ? '' : 's'} (${s.approved} applied)`).join(' · ') || 'Nothing to clean up.'}</span>
       </div>
+      <button type="button" className="vs-btn sm" style={{ justifySelf: 'start' }} aria-expanded={showOpts} onClick={() => setShowOpts(o => !o)} data-act="cleanup-options"><SlidersHorizontal size={13} /> Filler words and gaps</button>
+      {showOpts && (
+        <div className="vs-group" data-testid="vs-filler-options">
+          <b>Filler words to look for</b>
+          {FILLER_KINDS.map(k => (
+            <div key={k} className="vs-fill-row" data-filler={k}>
+              <label className="vs-row" style={{ gap: 8, flex: 1, minWidth: 0 }}>
+                <input type="checkbox" checked={ticked.has(k)} disabled={running} onChange={e => tick(k, e.target.checked)} data-field={`video.filler.${k}`} />
+                <span style={{ minWidth: 0 }}><b style={{ fontSize: 13 }}>{FILLER_INFO[k].label}</b> <span className="vs-count">{counts[k]}</span><br /><small className="vs-kbd">{FILLER_INFO[k].keeps}</small></span>
+              </label>
+              <button type="button" className="vs-btn ghost sm" disabled={!counts[k]} aria-label={`Hear the next “${FILLER_INFO[k].label}”`} onClick={() => preview(k)} data-act="filler-preview"><Play size={12} /></button>
+            </div>
+          ))}
+          <span className="vs-kbd">Ticking a kind proposes each one found, to accept or ignore in the list below or in the transcript; only um and uh standing alone are applied without asking.</span>
+          <b style={{ marginTop: 6 }}>Shorten word gaps</b>
+          <label className="vs-row" style={{ gap: 8, fontSize: 13 }}>
+            <input type="checkbox" checked={maxPause !== null} disabled={running} onChange={e => void rerun(doc.cleanup.preset, { maxPause: e.target.checked ? gapShown : null })} data-field="video.maxPause" />
+            <span>Cut every quiet pause down to at most <b>{gapShown.toFixed(2)} s</b></span>
+          </label>
+          <input type="range" min={0.15} max={1.5} step={0.05} value={gapShown} disabled={running} aria-label="Longest pause kept"
+            onChange={e => setGapDraft(Number(e.target.value))}
+            onPointerUp={() => { if (gapDraft !== null && maxPause !== null && gapDraft !== maxPause) void rerun(doc.cleanup.preset, { maxPause: gapDraft }); setGapDraft(null); }}
+            onKeyUp={() => { if (gapDraft !== null && maxPause !== null && gapDraft !== maxPause) void rerun(doc.cleanup.preset, { maxPause: gapDraft }); setGapDraft(null); }} />
+          <span className="vs-kbd">Applied where the sound is quiet too — a gap with music or a demo in it is left alone.</span>
+        </div>
+      )}
+      {retakes.length > 0 && (
+        <div className="vs-note" data-testid="vs-retakes"><Film size={15} /> <span>{retakes.length} retake{retakes.length === 1 ? '' : 's'} found — each suggestion names the take it keeps and why (complete, louder, livelier, fewer fillers). Nothing is cut until you approve it.</span></div>
+      )}
       {proposed.length > 0 && (
         <>
           <div className="vs-row">

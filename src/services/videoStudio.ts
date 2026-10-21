@@ -15,8 +15,9 @@ import type { VideoMeta } from '../../worker/src/lib/video/shorts';
 
 export * from '../../worker/src/lib/video/edit';
 export { cuesOf, isRtl, type Cue } from '../../worker/src/lib/video/captions';
-export { cleanupSummary, isFiller } from '../../worker/src/lib/video/cleanup';
-export { cameraPath, cutTimes, punchSpans, overlaySpan, trackAt, cssLook, type TrackFile, type TrackRow } from '../../worker/src/lib/video/motion';
+export { cleanupSummary, isFiller, findFillers, fillerCounts, FILLER_KINDS, FILLER_INFO, DEFAULT_FILLERS, type FillerKind } from '../../worker/src/lib/video/cleanup';
+export { cameraPath, cutTimes, punchSpans, overlaySpan, trackAt, cssLook, cssEffects, type TrackFile, type TrackRow } from '../../worker/src/lib/video/motion';
+export { layoutOptions, layoutPlan, LAYOUT_LABEL, type LayoutPlan, type LayoutOption } from '../../worker/src/lib/video/layouts';
 export { toXmeml, editorialScore } from '../../worker/src/lib/video/xml';
 export type { VideoMeta } from '../../worker/src/lib/video/shorts';
 export { parseYoutubeUrl, youtubeThumb, YOUTUBE_WAY_FORWARD, type YoutubeLink } from '../../worker/src/lib/video/youtube';
@@ -145,7 +146,8 @@ export const editVideo = (projectId: string, baseVersion: number, ops: Op[], not
   call<{ doc: VideoDoc; docVersion: number; refused?: string[]; note?: string }>('edit', { projectId, baseVersion, ops, note });
 export const gotoVersion = (projectId: string, version: number) => call<{ doc: VideoDoc; docVersion: number }>('goto_version', { projectId, version });
 export const listVersions = (projectId: string) => call<{ versions: { version: number; note: string; created_by: string; created_at: string }[]; current: number }>('versions', { projectId });
-export const runCleanup = (projectId: string, baseVersion: number, preset: CleanupPreset) => call<{ doc: VideoDoc; docVersion: number }>('cleanup', { projectId, baseVersion, preset });
+export const runCleanup = (projectId: string, baseVersion: number, preset: CleanupPreset, opts: { fillers?: string[]; maxPause?: number | null } = {}) =>
+  call<{ doc: VideoDoc; docVersion: number }>('cleanup', { projectId, baseVersion, preset, ...opts });
 export const videoCommand = (projectId: string, baseVersion: number, text: string, selection: { s: number; e: number } | null, clipId: string | null, playhead?: number) =>
   call<{ reply: string; understood: boolean; undo: boolean; redo: boolean; doc?: VideoDoc; docVersion?: number }>('command', { projectId, baseVersion, text, selection, clipId, playhead });
 export const renderOutputs = (projectId: string, outputIds?: string[]) => call<{ queued: number }>('render', { projectId, outputIds });

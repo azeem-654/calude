@@ -12,7 +12,7 @@ import {
   type Word, type VideoDoc,
 } from '../worker/src/lib/video/edit';
 import { cuesOf, toAss, toSrt, toVtt, thumbAss, isRtl } from '../worker/src/lib/video/captions';
-import { proposeCleanup, isFiller, meaningful } from '../worker/src/lib/video/cleanup';
+import { proposeCleanup, isFiller, meaningful, findFillers, fillerCounts, cleanFillerKinds, scoreTakes, FILLER_KINDS } from '../worker/src/lib/video/cleanup';
 import { validatePicks, fallbackPicks, findSection, cleanMeta, fallbackMeta, distinctMeta, transcriptForAi, withMusicCredit, cleanQuiz } from '../worker/src/lib/video/shorts';
 import { looksLikeAudio, licenseLabel, musicQuery } from '../worker/src/lib/video/music';
 import { parseVideoCommand } from '../worker/src/lib/video/commands';
@@ -151,6 +151,78 @@ console.log('\nCleanup');
   ok('a rejected suggestion stays rejected when cleanup runs again', again.cuts.find(c => c.id === fillers[0].id)?.state === 'rejected');
   const opening = proposeCleanup(talk('Hello there.', 6), [[0, 5.9]], 'balanced', 10);
   ok('a 6 s silence before the first word is cut to a moment', opening.some(c => c.id === 'gap--1' && c.state === 'approved' && c.e > 5), opening);
+}
+
+console.log('\nFiller words, by kind, in context');
+{
+  const quiet = (ws: Word[]): [number, number][] => [[0, ws[0].s - 0.02], ...ws.slice(1).map((w, j) => [ws[j].e + 0.02, w.s - 0.02] as [number, number]).filter(([a, b]) => b - a > 0.3)];
+  const words = talk('I like this tool. It was, like, amazing. You know, it works. Do you know what it costs? I mean, it is cheap. What I mean is simple. It is kind of hard. What kind of car is it? Basically, we win. It works, right? So / we start. That\'s right? We would like more.');
+  const hits = findFillers(words);
+  const at = (kind: string) => hits.filter(h => h.kind === kind).map(h => h.text);
+  ok('"like," as a filler is found; "I like", "would like" are not', JSON.stringify(at('like')) === '["like"]' && hits.find(h => h.kind === 'like')!.j0 === 6, hits);
+  ok('"You know," is a filler; "Do you know what…" is a question', JSON.stringify(at('you_know')) === '["you know"]', at('you_know'));
+  ok('"I mean," is a filler; "What I mean is" is not', JSON.stringify(at('i_mean')) === '["i mean"]', at('i_mean'));
+  ok('"kind of hard" is a hedge; "what kind of car" is not', JSON.stringify(at('hedge')) === '["kind of"]', at('hedge'));
+  ok('"Basically," set off by a comma is a filler', JSON.stringify(at('adverb')) === '["basically"]', at('adverb'));
+  ok('"…, right?" ending a sentence is a tag; "That\'s right?" is not', JSON.stringify(at('tag')) === '["right"]', at('tag'));
+  ok('"So" then a pause, starting a sentence, is a starter', JSON.stringify(at('starter')) === '["so"]', at('starter'));
+  const counts = fillerCounts(words);
+  ok('the options panel can count every kind, ticked or not', counts.like === 1 && counts.hedge === 1 && counts.adverb === 1 && counts.um === 0, counts);
+  const def = proposeCleanup(words, quiet(words), 'balanced', 60);
+  const wordFillers = def.filter(c => c.kind === 'filler');
+  ok('by default the hedges and adverbs are not looked for', !wordFillers.some(c => c.sub === 'hedge' || c.sub === 'adverb') && wordFillers.some(c => c.sub === 'like'), wordFillers.map(c => c.sub));
+  ok('…and a word filler is only ever proposed, never applied', wordFillers.length >= 5 && wordFillers.every(c => c.state === 'proposed'), wordFillers.map(c => [c.sub, c.state]));
+  const only = proposeCleanup(words, quiet(words), 'balanced', 60, { fillers: ['hedge'] });
+  ok('ticking only "sort of / kind of" proposes just that', only.filter(c => c.kind === 'filler').map(c => c.sub).join() === 'hedge', only.filter(c => c.kind === 'filler'));
+  ok('a two-word filler is cut as one, with its own stable id', only.some(c => c.id === `fil-hedge-${words.findIndex(w => w.w === 'kind')}` && c.e - c.s > 0.6));
+  const kinds = cleanFillerKinds(['like', 'nonsense', 'tag', 'like']);
+  ok('only known kinds are kept from a request', JSON.stringify(kinds) === '["like","tag"]', kinds);
+  const meaning = talk('Not like that. I would like 49 of them.');
+  ok('numbers and negation stay: no filler is found in meaning words', !proposeCleanup(meaning, quiet(meaning), 'aggressive', 20, { fillers: [...FILLER_KINDS] }).some(c => c.kind === 'filler'));
+}
+
+console.log('\nRetakes: the best take kept, and why');
+{
+  const words = talk('We launched the new plan last week. | We launched the new plan last week. | Thanks for watching.');
+  const dur = 30;
+  const wave = new Uint8Array(dur * 20).fill(2);
+  const sents = sentencesOf(words);
+  for (let i = Math.floor(sents[0].s * 20); i < sents[0].e * 20; i++) wave[i] = 45;
+  for (let i = Math.floor(sents[1].s * 20); i < sents[1].e * 20; i++) wave[i] = i % 2 ? 70 : 140;
+  const cuts = proposeCleanup(words, null, 'balanced', dur, { wave });
+  const ret = cuts.filter(c => c.kind === 'retake');
+  ok('a sentence said twice is a retake: the first take proposed for cutting, never applied', ret.length === 1 && ret[0].state === 'proposed' && ret[0].s < sents[0].s && ret[0].e > sents[0].e && ret[0].e < sents[1].s, ret);
+  ok('…and it says which take it kept and why: louder, livelier (from the waveform)', /kept take 2: .*louder.*livelier/.test(ret[0]?.reason ?? ''), ret[0]?.reason);
+  const flip = new Uint8Array(wave);
+  for (let i = Math.floor(sents[0].s * 20); i < sents[0].e * 20; i++) flip[i] = i % 2 ? 80 : 170;
+  for (let i = Math.floor(sents[1].s * 20); i < sents[1].e * 20; i++) flip[i] = 40;
+  const r2 = proposeCleanup(words, null, 'balanced', dur, { wave: flip }).filter(c => c.kind === 'retake');
+  ok('…when the first take is the livelier one, the second is the one proposed', r2.length === 1 && r2[0].s > sents[1].s - 0.1 && /kept take 1/.test(r2[0].reason), r2);
+  const fs = talk('So the first thing | So the first thing we do is plan the week.');
+  const f = proposeCleanup(fs, null, 'balanced', 20).filter(c => c.kind === 'retake');
+  ok('a sentence broken off and started again: the complete take is kept, saying so', f.length === 1 && f[0].s < fs[1].s && /kept take 2: complete, no false start/.test(f[0].reason), f);
+  const sig = scoreTakes([{ ws: fs.slice(0, 4), prefixOf: true }, { ws: fs.slice(4), prefixOf: false }], null);
+  ok('the take scores are measurable: complete, false start, pace, fillers', !sig[0].complete && sig[0].falseStart && sig[1].complete && sig[1].score > sig[0].score && sig[1].loud === null, sig);
+  const price = talk('It costs $49 a month. | It costs $49 a month, no setup fee.');
+  ok('a take holding a price is never proposed, even said twice', !proposeCleanup(price, null, 'aggressive', 20).some(c => c.kind === 'retake'));
+  ok('Conservative proposes no retakes', !proposeCleanup(words, null, 'conservative', dur, { wave }).some(c => c.kind === 'retake'));
+  const apart = talk('We launched the new plan last week. Then a lot happened. Prices went up. People called. We were busy. We launched the new plan last week.');
+  ok('the same sentence far apart is not a retake', !proposeCleanup(apart, null, 'balanced', 40).some(c => c.kind === 'retake'));
+}
+
+console.log('\nShorten word gaps');
+{
+  const words = talk('One two three. | Four five / six seven.');
+  const sil: [number, number][] = [[0, words[0].s - 0.02], ...words.slice(1).map((w, j) => [words[j].e + 0.02, w.s - 0.02] as [number, number]).filter(([a, b]) => b - a > 0.3)];
+  const cuts = proposeCleanup(words, sil, 'conservative', 20, { maxPause: 0.3 });
+  const gaps = cuts.filter(c => c.kind === 'gap' && c.id !== 'gap--1');
+  const left = (k: number) => { const a = words[k].e, b = words[k + 1].s; const g = gaps.find(c => c.s >= a - 0.01 && c.e <= b + 0.01); return g ? (b - a) - (g.e - g.s) : b - a; };
+  ok('every quiet pause longer than the chosen 0.3 s is cut down to it — and applied, the customer having set it', gaps.length === 2 && gaps.every(c => c.state === 'approved') && Math.abs(left(2) - 0.3) < 0.02 && Math.abs(left(4) - 0.3) < 0.02, { gaps, l2: left(2), l4: left(4) });
+  ok('…shorter pauses are left as they are', Math.abs(left(0) - 0.12) < 0.01);
+  const doc = applyOps(newDoc(parseRequest('x')), [{ op: 'cleanup.preset', preset: 'balanced', cuts, fillers: ['um', 'like'], maxPause: 0.3 }], 20).doc;
+  ok('the chosen kinds and the gap are kept on the edit', doc.cleanup.maxPause === 0.3 && doc.cleanup.fillers?.join() === 'um,like');
+  const off = applyOps(doc, [{ op: 'cleanup.preset', preset: 'balanced', cuts: [], maxPause: null }], 20).doc;
+  ok('…and the gap can be switched off again', !off.cleanup.maxPause && off.cleanup.fillers?.join() === 'um,like');
 }
 
 console.log('\nShorts');

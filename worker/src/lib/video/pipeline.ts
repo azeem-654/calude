@@ -32,12 +32,13 @@ import { nowIso } from '../db';
 import { aiBudget, askGeminiParts, extractJson, loadAiKey } from '../ai';
 import { recordAgentRun, repurposeRecording } from '../projectAgents';
 import {
-  dimsFor, hashOf, keepRanges, keptLength, retimeWords, sentencesOf, toOutput, clock, lookOf, motionOf, trackingOf,
-  type Clip, type Look, type Motion, type MusicTrack, type Overlay, type Sentence, type TrackMode, type Transcript, type VideoDoc, type Word,
+  dimsFor, hashOf, keepRanges, keptLength, retimeWords, sentencesOf, toOutput, clock, lookOf, motionOf, trackingOf, effectsOf, effectsOn,
+  type Clip, type Effects, type Look, type Motion, type MusicTrack, type Overlay, type Sentence, type TrackMode, type Transcript, type VideoDoc, type Word,
 } from './edit';
-import { cameraPath, cutTimes, overlayAss, overlaySpan, punchSpans, type TrackFile } from './motion';
+import { cameraPath, cutTimes, overlayAss, overlaySpan, punchSpans, skinBox, type TrackFile } from './motion';
+import { layoutPlan } from './layouts';
 import { cuesOf, toAss, toSrt, toVtt, thumbAss } from './captions';
-import { proposeCleanup } from './cleanup';
+import { proposeCleanup, cleanFillerKinds } from './cleanup';
 import { cleanMeta, cleanQuiz, distinctMeta, fallbackMeta, fallbackPicks, keywordsOf, transcriptForAi, validatePicks, withMusicCredit, type QuizQuestion, type RawPick, type VideoMeta } from './shorts';
 import { applyOps } from './edit';
 import { checkPng } from './png';
@@ -506,6 +507,23 @@ export async function readTranscript(env: Env, p: ProjectRow): Promise<Transcrip
   return o ? o.json<Transcript>() : null;
 }
 
+/** The engine's waveform (20 peaks a second) — what cleanup weighs retakes by. Null when there is none. */
+export async function readWave(env: Env, src: Source): Promise<Uint8Array | null> {
+  if (!src.wave || !env.VIDEO) return null;
+  try {
+    const o = await env.VIDEO.get(src.wave);
+    const w = o ? await o.json<{ peaks?: string }>() : null;
+    if (!w?.peaks) return null;
+    const bin = atob(w.peaks);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  } catch { return null; }
+}
+
+/** What the customer chose in the cleanup options, read back for a re-run. */
+export const cleanupOptionsOf = (doc: VideoDoc) => ({ fillers: cleanFillerKinds(doc.cleanup.fillers), maxPause: doc.cleanup.maxPause ?? null });
+
 /* ── Analysis: cleanup, Shorts, chapters ──────────────────────────────────── */
 
 async function aiKeyFor(env: Env, accountId: string): Promise<{ key: string | null; why: string }> {
@@ -547,7 +565,7 @@ async function analyzeStep(env: Env, origin: string, job: JobRow, p: ProjectRow)
   const notes: string[] = [];
 
   /* Cleanup proposals, by rule, against the measured silences. */
-  const cuts = proposeCleanup(tr.words, src.silences ?? null, doc.cleanup.preset, duration);
+  const cuts = proposeCleanup(tr.words, src.silences ?? null, doc.cleanup.preset, duration, { ...cleanupOptionsOf(doc), wave: await readWave(env, src) });
   doc = applyOps(doc, [{ op: 'cleanup.preset', preset: doc.cleanup.preset, cuts }], duration).doc;
 
   /* Shorts and chapters, by the AI; checked; topped up by rule if short. */
