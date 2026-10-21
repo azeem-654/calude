@@ -9,12 +9,13 @@
  * filters, a zoom, the words animated) and says where it is only close.
  */
 import { useState } from 'react';
-import { RotateCcw, Plus, Trash2, Play, ScanFace, Mic2, Loader, Type, Wand2, Clapperboard, Info } from 'lucide-react';
+import { RotateCcw, Plus, Trash2, Play, ScanFace, Mic2, Loader, Type, Wand2, Clapperboard, Info, SunMedium, Square, Pipette, Sparkles } from 'lucide-react';
 import {
-  lookOf, motionOf, trackingOf, cssLook, clock, renderOutputs, trackNow, FILTER_PRESETS,
-  type Look, type Motion, type Overlay, type TrackMode,
+  lookOf, motionOf, trackingOf, cssLook, clock, renderOutputs, trackNow, FILTER_PRESETS, effectsOf,
+  type Look, type Motion, type Overlay, type TrackMode, type EffectKey,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
+import EffectRow, { FxSlider } from './EffectRow';
 
 type Kind = 'long' | 'short';
 
@@ -182,6 +183,71 @@ export function TrackingPanel({ ctx }: { ctx: EditorCtx }) {
       </div>
       {mode !== 'off' && framing !== 'crop' && <div className="vs-note warn">Tracking moves a crop. These videos are framed as “{framing === 'fit' ? 'whole picture' : 'as recorded'}”, so there is nothing to move — choose Crop in the Video tab.</div>}
       <p className="vs-kbd" style={{ margin: 0 }}>The speaker is the face whose mouth moves while there is speech, held for two seconds before the frame cuts to them. It reads lips, not voices: two people talking at once, or someone turned away, are not told apart.</p>
+      <RenderHint ctx={ctx} />
+    </div>
+  );
+}
+
+/* ── Visual effects ───────────────────────────────────────────────────────── */
+
+const kelvinLabel = (k: number) => `${k.toLocaleString('en')} K${k < 6400 ? ' · warmer' : k > 6600 ? ' · cooler' : ''}`;
+
+/**
+ * The owner's reference, row by row: each effect a switch, its settings in a
+ * panel that opens under it, and "Remove effect". All of it is rendered by
+ * the engine; the preview shows colour and shadow closely and says where it
+ * cannot (the key, the skin smoothing).
+ */
+export function VisualEffectsPanel({ ctx }: { ctx: EditorCtx }) {
+  const [k, setK] = useTarget(ctx);
+  const fx = effectsOf(ctx.doc, k);
+  const set = (effect: EffectKey, patch: Record<string, unknown>, note: string) => void ctx.apply([{ op: 'effects.set', target: k, effect, patch }], note);
+  const remove = (effect: EffectKey, name: string) => void ctx.apply([{ op: 'effects.set', target: k, effect, patch: {}, remove: true }], `${name} removed`);
+  const toggle = (effect: EffectKey, name: string) => (on: boolean) => set(effect, { on }, `${name} ${on ? 'on' : 'off'}`);
+  const clip = ctx.activeClip ? ctx.doc.clips.find(c => c.id === ctx.activeClip) : null;
+  const framed = k === 'short' ? ((clip?.reframe.mode ?? ctx.doc.shorts.mode ?? 'crop') === 'fit' || clip?.layout === 'pip' || clip?.layout === 'screen') : ctx.doc.long.aspect !== 'source' && ctx.doc.long.reframe.mode === 'fit';
+  const faces = !!ctx.view.source.track?.ready && (ctx.view.source.track.summary?.faces ?? 0) > 0;
+  const c = fx.color, sh = fx.shadow, g = fx.green, ap = fx.appearance;
+  return (
+    <div className="vs-col" data-testid="vs-effects-panel">
+      <TargetChips k={k} set={setK} what="Effects" />
+      <div className="vs-group"><b>Visual effects</b>
+        <EffectRow id="color" icon={<SunMedium size={15} />} title="Color adjustments" on={c.on} onToggle={toggle('color', 'Color adjustments')} onRemove={() => remove('color', 'Color adjustments')}
+          summary={c.on ? `${kelvinLabel(c.kelvin)} · exposure ${c.exposure > 0 ? '+' : ''}${c.exposure}` : 'Exposure, contrast, highlights, shadows, saturation, temperature'}>
+          <FxSlider label="Exposure" value={c.exposure} min={-100} max={100} onSave={v => set('color', { exposure: v, on: true }, 'Exposure')} />
+          <FxSlider label="Contrast" value={c.contrast} min={-100} max={100} onSave={v => set('color', { contrast: v, on: true }, 'Contrast')} />
+          <FxSlider label="Highlights" value={c.highlights} min={-100} max={100} onSave={v => set('color', { highlights: v, on: true }, 'Highlights')} />
+          <FxSlider label="Shadows" value={c.shadows} min={-100} max={100} onSave={v => set('color', { shadows: v, on: true }, 'Shadows')} />
+          <FxSlider label="Saturation" value={c.saturation} min={-100} max={100} onSave={v => set('color', { saturation: v, on: true }, 'Saturation')} />
+          <FxSlider label="Temperature" value={c.kelvin} min={2000} max={12000} step={100} fmt={kelvinLabel} onSave={v => set('color', { kelvin: v, on: true }, `Temperature ${v} K`)} />
+          <small className="vs-kbd">6,500 K is neutral daylight; lower warms the picture, higher cools it.</small>
+        </EffectRow>
+        <EffectRow id="shadow" icon={<Square size={15} />} title="Shadow" on={sh.on} onToggle={toggle('shadow', 'Shadow')} onRemove={() => remove('shadow', 'Shadow')}
+          summary={sh.on ? (framed ? `${sh.opacity}% · blur ${sh.blur}` : 'On, but this framing fills the frame — nothing to cast it') : 'Under the picture where it sits in a frame'}>
+          <FxSlider label="X" value={sh.x} min={-80} max={80} unit=" px" onSave={v => set('shadow', { x: v, on: true }, 'Shadow X')} />
+          <FxSlider label="Y" value={sh.y} min={-80} max={80} unit=" px" onSave={v => set('shadow', { y: v, on: true }, 'Shadow Y')} />
+          <FxSlider label="Blur" value={sh.blur} min={0} max={80} unit=" px" onSave={v => set('shadow', { blur: v, on: true }, 'Shadow blur')} />
+          <FxSlider label="Opacity" value={sh.opacity} min={0} max={100} unit="%" onSave={v => set('shadow', { opacity: v, on: true }, 'Shadow opacity')} />
+          <label className="vs-row" style={{ gap: 8, fontSize: 13 }}>Colour <input type="color" value={sh.color} onChange={e => set('shadow', { color: e.target.value, on: true }, 'Shadow colour')} aria-label="Shadow colour" /></label>
+          <small className="vs-kbd">Shows where the video sits inside the frame: “whole picture” framing, or the camera bubble of a picture-in-picture Short. A video that fills its frame has nothing to cast a shadow on.</small>
+        </EffectRow>
+        <EffectRow id="green" icon={<Pipette size={15} />} title="Green screen" on={g.on} onToggle={toggle('green', 'Green screen')} onRemove={() => remove('green', 'Green screen')}
+          summary={g.on ? `Keying ${g.color} · similarity ${g.similarity}%` : 'Only for footage shot in front of a green or blue screen'}>
+          <label className="vs-row" style={{ gap: 8, fontSize: 13 }}>Screen colour <input type="color" value={g.color} onChange={e => set('green', { color: e.target.value, on: true }, 'Key colour')} aria-label="Screen colour" />
+            <button type="button" className="vs-chip" onClick={() => set('green', { color: '#00ff00', on: true }, 'Key: green')}>Green</button>
+            <button type="button" className="vs-chip" onClick={() => set('green', { color: '#0047bb', on: true }, 'Key: blue')}>Blue</button></label>
+          <FxSlider label="Similarity" value={g.similarity} min={1} max={60} unit="%" onSave={v => set('green', { similarity: v, on: true }, 'Key similarity')} />
+          <FxSlider label="Edge softness" value={g.blend} min={0} max={40} unit="%" onSave={v => set('green', { blend: v, on: true }, 'Key softness')} />
+          <label className="vs-row" style={{ gap: 8, fontSize: 13 }}>Background <input type="color" value={g.bg} onChange={e => set('green', { bg: e.target.value, on: true }, 'Key background')} aria-label="Background colour" /></label>
+          <small className="vs-kbd">A real chroma key: every pixel near the screen colour is replaced by the background colour, and green spill is taken off the edges. On ordinary footage it would cut holes in the picture — use it only for a green or blue screen. The preview shows the footage as recorded; the key is in the render.</small>
+        </EffectRow>
+        <EffectRow id="appearance" icon={<Sparkles size={15} />} title="Improve appearance" on={ap.on} onToggle={toggle('appearance', 'Improve appearance')} onRemove={() => remove('appearance', 'Improve appearance')}
+          summary={ap.on ? `Amount ${ap.amount}%${faces ? '' : ' · no face found, so no skin smoothing'}` : 'Smooths and evens the picture'}>
+          <FxSlider label="Amount" value={ap.amount} min={0} max={100} unit="%" onSave={v => set('appearance', { amount: v, on: true }, `Improve appearance ${v}%`)} />
+          <small className="vs-kbd">Smooths and evens the picture: a mild denoise, gentle automatic white balance and exposure, a light sharpen{faces ? ', and skin smoothed only inside the face the Tracking tab found (edges and eyes kept)' : '. Skin smoothing needs a face — find faces in the Tracking tab'}. It does not reshape anything. The preview shows it only roughly; the render is exact.</small>
+        </EffectRow>
+      </div>
+      <span className="vs-kbd">The preview shows colour and shadow closely, not exactly; green screen and skin smoothing are seen in the render.</span>
       <RenderHint ctx={ctx} />
     </div>
   );

@@ -96,6 +96,8 @@ export interface Clip {
   by: 'ai' | 'rules' | 'you';
   aspect: Exclude<Aspect, 'source' | '16:9'> | '16:9';
   reframe: Reframe;
+  /** The layout chosen for this Short (see ShortLayout); absent, its crop / fit. */
+  layout?: ShortLayout;
 }
 
 export type CleanupPreset = 'conservative' | 'balanced' | 'aggressive';
@@ -202,6 +204,57 @@ export interface Overlay {
 export const OVERLAY_STYLES: Overlay['style'][] = ['title', 'lower', 'cta', 'label', 'quote'];
 export const OVERLAY_ANIMS: Overlay['anim'][] = ['none', 'fade', 'pop', 'slide', 'reveal'];
 
+/**
+ * Visual effects, as the owner's reference lays them out — each one a row
+ * with a switch and its own settings, kept when switched off:
+ *   color       exposure, contrast, highlights, shadows, saturation (−100…100)
+ *               and the light's colour temperature in kelvin (6500 neutral;
+ *               lower is warmer, as FFmpeg's colortemperature means it)
+ *   shadow      a drop shadow under the picture where it sits in a frame
+ *               (whole-picture framing, picture-in-picture) — px at 1080 wide
+ *   green       a real chroma key (FFmpeg chromakey) for footage shot on a
+ *               green or blue screen, with a colour behind it
+ *   appearance  "Improve appearance": smooths and evens the picture — mild
+ *               denoise, gentle auto levels, a light sharpen, and skin
+ *               smoothing only inside the tracked face box
+ * The engine turns the numbers into filters it owns; nothing here is text.
+ */
+export interface ColorFx { on: boolean; exposure: number; contrast: number; highlights: number; shadows: number; saturation: number; kelvin: number }
+export interface ShadowFx { on: boolean; x: number; y: number; blur: number; color: string; opacity: number }
+export interface GreenFx { on: boolean; color: string; similarity: number; blend: number; bg: string }
+export interface AppearanceFx { on: boolean; amount: number }
+export interface Effects { color: ColorFx; shadow: ShadowFx; green: GreenFx; appearance: AppearanceFx }
+export type EffectKey = keyof Effects;
+export const EFFECTS_DEFAULT: Effects = {
+  color: { on: false, exposure: 0, contrast: 0, highlights: 0, shadows: 0, saturation: 0, kelvin: 6500 },
+  shadow: { on: false, x: 0, y: 18, blur: 30, color: '#000000', opacity: 55 },
+  green: { on: false, color: '#00ff00', similarity: 18, blend: 6, bg: '#101828' },
+  appearance: { on: false, amount: 50 },
+};
+export const effectsOf = (doc: Pick<VideoDoc, 'effects'>, kind: 'long' | 'short'): Effects => {
+  const e = doc.effects?.[kind];
+  return {
+    color: { ...EFFECTS_DEFAULT.color, ...(e?.color ?? {}) }, shadow: { ...EFFECTS_DEFAULT.shadow, ...(e?.shadow ?? {}) },
+    green: { ...EFFECTS_DEFAULT.green, ...(e?.green ?? {}) }, appearance: { ...EFFECTS_DEFAULT.appearance, ...(e?.appearance ?? {}) },
+  };
+};
+/** Only the effects switched on — what a render depends on. */
+export const effectsOn = (fx: Effects): Partial<Effects> =>
+  Object.fromEntries((Object.keys(fx) as EffectKey[]).filter(k => fx[k].on).map(k => [k, fx[k]])) as Partial<Effects>;
+
+/**
+ * How a Short is laid out in its frame (9:16 and the other shapes):
+ *   speaker  the speaker, cropped and followed (the face track)
+ *   screen   the whole recording, kept whole (fit, blurred fill)
+ *   split    a screen recording with a webcam bubble: the screen above, the
+ *            camera cropped to the face below
+ *   two      two people taking turns: one above, the other below
+ *   pip      the screen whole, the camera in a bubble in a corner
+ * Absent: the Short's own crop / fit (`reframe`), as before.
+ */
+export type ShortLayout = 'speaker' | 'screen' | 'split' | 'two' | 'pip';
+export const SHORT_LAYOUTS: ShortLayout[] = ['speaker', 'screen', 'split', 'two', 'pip'];
+
 export const lookOf = (doc: Pick<VideoDoc, 'look'>, kind: 'long' | 'short'): Look => ({ ...LOOK_DEFAULT, ...(doc.look?.[kind] ?? {}) });
 export const motionOf = (doc: Pick<VideoDoc, 'motion'>, kind: 'long' | 'short'): Motion => ({ ...MOTION_DEFAULT, ...(doc.motion?.[kind] ?? {}) });
 export const trackingOf = (doc: Pick<VideoDoc, 'tracking'>, kind: 'long' | 'short'): TrackMode => doc.tracking?.[kind] ?? 'off';
@@ -226,6 +279,7 @@ export interface VideoDoc {
   motion?: { long: Motion; short: Motion };
   tracking?: { long: TrackMode; short: TrackMode };
   overlays?: Overlay[];
+  effects?: { long: Effects; short: Effects };
 }
 
 /* ── The request, read from what somebody typed ─────────────────────────── */
@@ -475,7 +529,7 @@ export type Op =
   | { op: 'caption.style'; target: 'long' | 'short'; patch: Partial<CaptionStyle> }
   | { op: 'captions.set'; on?: boolean; burn?: boolean }
   | { op: 'clip.add'; s: number; e: number; title?: string; topic?: string; reason?: string }
-  | { op: 'clip.update'; id: string; patch: Partial<Pick<Clip, 's' | 'e' | 'title' | 'topic' | 'aspect'>> & { reframe?: Partial<Reframe> } }
+  | { op: 'clip.update'; id: string; patch: Partial<Pick<Clip, 's' | 'e' | 'title' | 'topic' | 'aspect'>> & { reframe?: Partial<Reframe>; layout?: ShortLayout | null } }
   | { op: 'clip.remove'; id: string }
   | { op: 'long.set'; patch: { on?: boolean; aspect?: Aspect; reframe?: Partial<Reframe> } }
   | { op: 'audio.set'; patch: Partial<VideoDoc['audio']> }
@@ -485,6 +539,7 @@ export type Op =
   | { op: 'look.set'; target: 'long' | 'short'; patch: Partial<Look>; reset?: boolean }
   | { op: 'motion.set'; target: 'long' | 'short'; patch: Partial<Motion> }
   | { op: 'tracking.set'; target: 'long' | 'short'; mode: TrackMode }
+  | { op: 'effects.set'; target: 'long' | 'short'; effect: EffectKey; patch: Record<string, unknown>; remove?: boolean }
   | { op: 'overlay.add'; s: number; e: number; text: string; style?: Overlay['style']; position?: Overlay['position']; anim?: Overlay['anim']; color?: string; bg?: string }
   | { op: 'overlay.update'; id: string; patch: Partial<Omit<Overlay, 'id'>> }
   | { op: 'overlay.remove'; id: string }
@@ -593,6 +648,14 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
           mode: p.reframe.mode && ['crop', 'fit', 'source'].includes(p.reframe.mode) ? p.reframe.mode : c.reframe.mode,
           x: clamp(p.reframe.x, 0, 1, c.reframe.x), y: clamp(p.reframe.y, 0, 1, c.reframe.y),
         };
+        if (p.layout === null) delete c.layout;
+        else if (p.layout !== undefined) {
+          if (!SHORT_LAYOUTS.includes(p.layout)) { refused.push('unknown layout'); break; }
+          c.layout = p.layout;
+          /* "Speaker" and "screen" are the crop and the fit, said as layouts — one framing, not two. */
+          if (p.layout === 'speaker') c.reframe = { ...c.reframe, mode: 'crop' };
+          if (p.layout === 'screen') c.reframe = { ...c.reframe, mode: 'fit' };
+        }
         break;
       }
       case 'clip.remove': d.clips = d.clips.filter(c => c.id !== o.id); break;
@@ -671,6 +734,32 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
         if (o.target !== 'long' && o.target !== 'short') { refused.push('tracking is for the long video or the Shorts'); break; }
         if (!['off', 'face', 'speaker'].includes(o.mode)) { refused.push('unknown tracking'); break; }
         d.tracking = { long: trackingOf(d, 'long'), short: trackingOf(d, 'short'), [o.target]: o.mode };
+        break;
+      }
+      case 'effects.set': {
+        if (o.target !== 'long' && o.target !== 'short') { refused.push('effects are for the long video or the Shorts'); break; }
+        if (!o.effect || !(o.effect in EFFECTS_DEFAULT)) { refused.push('unknown effect'); break; }
+        const all = effectsOf(d, o.target);
+        const p = o.patch ?? {};
+        const n = (v: unknown, lo: number, hi: number, cur: number) => (v === undefined ? cur : Math.round(clamp(v, lo, hi, cur)));
+        const hex = (v: unknown, cur: string) => (typeof v === 'string' && HEX.test(v) ? v.toLowerCase() : cur);
+        const on = (cur: boolean) => (typeof p.on === 'boolean' ? p.on : cur);
+        if (o.remove) { (all as unknown as Record<string, unknown>)[o.effect] = { ...EFFECTS_DEFAULT[o.effect] }; }
+        else if (o.effect === 'color') {
+          const c = all.color;
+          all.color = { on: on(c.on), exposure: n(p.exposure, -100, 100, c.exposure), contrast: n(p.contrast, -100, 100, c.contrast), highlights: n(p.highlights, -100, 100, c.highlights),
+            shadows: n(p.shadows, -100, 100, c.shadows), saturation: n(p.saturation, -100, 100, c.saturation), kelvin: Math.round(n(p.kelvin, 2000, 12000, c.kelvin) / 50) * 50 };
+        } else if (o.effect === 'shadow') {
+          const c = all.shadow;
+          all.shadow = { on: on(c.on), x: n(p.x, -80, 80, c.x), y: n(p.y, -80, 80, c.y), blur: n(p.blur, 0, 80, c.blur), color: hex(p.color, c.color), opacity: n(p.opacity, 0, 100, c.opacity) };
+        } else if (o.effect === 'green') {
+          const c = all.green;
+          all.green = { on: on(c.on), color: hex(p.color, c.color), similarity: n(p.similarity, 1, 60, c.similarity), blend: n(p.blend, 0, 40, c.blend), bg: hex(p.bg, c.bg) };
+        } else {
+          const c = all.appearance;
+          all.appearance = { on: on(c.on), amount: n(p.amount, 0, 100, c.amount) };
+        }
+        d.effects = { long: effectsOf(d, 'long'), short: effectsOf(d, 'short'), [o.target]: all };
         break;
       }
       case 'overlay.add': {

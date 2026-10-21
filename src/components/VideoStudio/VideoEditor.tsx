@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Undo2, Redo2, Loader, Bot, ShieldCheck, Trash2, RefreshCw, Upload, AlertCircle, Check, X, Search, Plus, History, Music2,
-  FileText, Scissors, Film, Clapperboard, Images, SlidersHorizontal, Sparkles, ScanFace, Type, AudioLines, Captions as CaptionsIcon, Share2, Download,
+  FileText, Scissors, Film, Clapperboard, Images, SlidersHorizontal, Sparkles, ScanFace, Type, AudioLines, Captions as CaptionsIcon, Share2, Download, Layers, Keyboard,
 } from 'lucide-react';
 import {
   getVideoProject, videoStatus, editVideo, gotoVersion, renameVideoProject, retryVideo, cancelVideo, deleteVideoProject, renderOutputs,
@@ -29,7 +29,7 @@ import {
 import { TranscriptPanel, CleanupPanel, ShortsPanel, CaptionsPanel } from './EditorPanels';
 import { VideoPanel, AudioPanel, MusicPanel } from './InspectorPanels';
 import OutputsBoard from './OutputsBoard';
-import { AdjustPanel, AnimationPanel, TrackingPanel, TextPanel } from './EffectsPanels';
+import { AdjustPanel, AnimationPanel, TrackingPanel, TextPanel, VisualEffectsPanel } from './EffectsPanels';
 import ReusePanel from './ReusePanel';
 import AssistantPanel, { type ChatMsg } from './AssistantPanel';
 import VersionsPanel from './VersionsPanel';
@@ -54,7 +54,7 @@ const LEFT: { key: LeftTab; label: string; icon: typeof Film }[] = [
 ];
 /* An icon rail, as in the owner's reference: every inspector tab one press away. */
 const RIGHT: { key: RightTab; label: string; icon: typeof Film }[] = [
-  { key: 'video', label: 'Video', icon: Film }, { key: 'adjust', label: 'Adjust', icon: SlidersHorizontal },
+  { key: 'video', label: 'Video', icon: Film }, { key: 'adjust', label: 'Adjust', icon: SlidersHorizontal }, { key: 'effects', label: 'Effects', icon: Layers },
   { key: 'animation', label: 'Animation', icon: Sparkles }, { key: 'tracking', label: 'Tracking', icon: ScanFace },
   { key: 'text', label: 'Text', icon: Type }, { key: 'audio', label: 'Audio', icon: AudioLines }, { key: 'music', label: 'Music', icon: Music2 },
   { key: 'captions', label: 'Captions', icon: CaptionsIcon }, { key: 'reuse', label: 'Reuse', icon: Share2 },
@@ -248,6 +248,7 @@ export default function VideoEditor({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const [caps, setCaps] = useState<Capability[] | null>(null);
   const [showCaps, setShowCaps] = useState(false);
+  const [showKeys, setShowKeys] = useState(false);
   const [showHistory, setShowHistory] = useState(asked === 'versions');
   const [name, setName] = useState('');
   const transcriptUrlSeen = useRef('');
@@ -380,12 +381,14 @@ export default function VideoEditor({ id }: { id: string }) {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       if (e.key === '?' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); setShowKeys(k => !k); return; }
+      /* While a save is on its way the version here is the one before it; an undo now would go back two. */
+      if ((e.metaKey || e.ctrlKey) && busy && /^[zy]$/i.test(e.key)) { e.preventDefault(); return; }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); void go(e.shiftKey ? version + 1 : version - 1); }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); void go(version + 1); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [go, version]);
+  }, [go, version, busy]);
 
   const duration = view?.source.probe?.duration ?? transcript?.duration ?? 0;
   const ctx = useMemo<EditorCtx | null>(() => view && doc ? {
@@ -469,6 +472,7 @@ export default function VideoEditor({ id }: { id: string }) {
               <div className="vse-scroll">
                 {right === 'video' && <VideoPanel ctx={ctx} />}
                 {right === 'adjust' && <AdjustPanel ctx={ctx} />}
+                {right === 'effects' && <VisualEffectsPanel ctx={ctx} />}
                 {right === 'animation' && <AnimationPanel ctx={ctx} />}
                 {right === 'tracking' && <TrackingPanel ctx={ctx} />}
                 {right === 'text' && <TextPanel ctx={ctx} />}
@@ -496,6 +500,19 @@ export default function VideoEditor({ id }: { id: string }) {
       {hasSource && duration > 0 && <section className="vse-time"><Timeline ctx={ctx} wave={wave} /></section>}
 
       {showCaps && caps && <CapabilityPanel caps={caps} usage={null} onClose={() => setShowCaps(false)} />}
+      {showKeys && (
+        <div className="vs-modal-back" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick={() => setShowKeys(false)}>
+          <div className="vs-modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()} data-testid="vs-shortcuts">
+            <div className="vs-row" style={{ marginBottom: 8 }}><h2 style={{ margin: 0, fontSize: 17 }}><Keyboard size={16} /> Keyboard shortcuts</h2><span className="vs-spacer" /><button type="button" className="vs-btn ghost sm" onClick={() => setShowKeys(false)} aria-label="Close"><X size={15} /></button></div>
+            {SHORTCUTS.map(([group, rows]) => (
+              <div key={group} className="vs-keys" style={{ marginBottom: 8 }}>
+                <b style={{ color: '#eee' }}>{group}</b>
+                {rows.map(([k, what]) => <span key={k}><kbd>{k}</kbd> {what}</span>)}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {showHistory && (
         <div className="vs-modal-back" role="dialog" aria-modal="true" aria-label="Version history" onClick={() => setShowHistory(false)}>
           <div className="vs-modal" style={{ maxWidth: 640 }} onClick={e => e.stopPropagation()}>

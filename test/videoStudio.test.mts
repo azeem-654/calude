@@ -8,7 +8,7 @@
  */
 import zlib from 'node:zlib';
 import {
-  applyOps, keepRanges, keptLength, newDoc, parseRequest, retimeWords, sentencesOf, toOutput, toSource, dimsFor, hashOf,
+  applyOps, keepRanges, keptLength, newDoc, parseRequest, retimeWords, sentencesOf, toOutput, toSource, dimsFor, hashOf, effectsOf,
   type Word, type VideoDoc,
 } from '../worker/src/lib/video/edit';
 import { cuesOf, toAss, toSrt, toVtt, thumbAss, isRtl } from '../worker/src/lib/video/captions';
@@ -17,9 +17,10 @@ import { validatePicks, fallbackPicks, findSection, cleanMeta, fallbackMeta, dis
 import { looksLikeAudio, licenseLabel, musicQuery } from '../worker/src/lib/video/music';
 import { parseVideoCommand } from '../worker/src/lib/video/commands';
 import { checkPng } from '../worker/src/lib/video/png';
-import { cameraPath, cutTimes, punchSpans, overlayAss, overlaySpan, trackAt, cssLook, type TrackRow } from '../worker/src/lib/video/motion';
+import { cameraPath, cutTimes, punchSpans, overlayAss, overlaySpan, trackAt, cssLook, cssEffects, skinBox, type TrackRow } from '../worker/src/lib/video/motion';
+import { layoutOptions, layoutPlan } from '../worker/src/lib/video/layouts';
 import { toXmeml, editorialScore } from '../worker/src/lib/video/xml';
-import { pickHighlight, thumbWords, cleanThumbSpec } from '../worker/src/lib/video/pipeline';
+import { pickHighlight, thumbWords, cleanThumbSpec, renderSpec } from '../worker/src/lib/video/pipeline';
 import { thumbPlan, normaliseSpec, lineRect, TREND_LAYOUTS, STICKERS } from '../media/engine/thumbLayout.mjs';
 import { parseYoutubeUrl, youtubeRefusal, cleanOembed, youtubeThumb, YOUTUBE_WAY_FORWARD } from '../worker/src/lib/video/youtube';
 
@@ -444,6 +445,61 @@ console.log('\nExports and scores');
   const sc = editorialScore({ hook: 5, clarity: 4, relevance: 4, completeness: 4 });
   ok('an editorial score out of 100 with four grades', sc!.total === 84 && sc!.grades.map(g => g.grade).join() === 'A,B+,B+,B+', sc);
   ok('…and none for a Short nobody scored', editorialScore(null) === null);
+}
+
+console.log('\nVisual effects and Shorts layouts');
+{
+  const doc0 = newDoc(parseRequest('make two shorts'));
+  const e1 = applyOps(doc0, [{ op: 'effects.set', target: 'short', effect: 'color', patch: { on: true, exposure: 400, kelvin: 3333, highlights: -20, color: 'x' } }], 60).doc;
+  const c = effectsOf(e1, 'short').color;
+  ok('colour adjustments are clamped and stepped: exposure to 100, kelvin to 50 K steps', c.on && c.exposure === 100 && c.kelvin === 3350 && c.highlights === -20, c);
+  ok('…the long video keeps its own (off)', !effectsOf(e1, 'long').color.on);
+  const e2 = applyOps(e1, [{ op: 'effects.set', target: 'short', effect: 'green', patch: { on: true, color: 'red', bg: '#112233', similarity: 99 } }], 60).doc;
+  const g = effectsOf(e2, 'short').green;
+  ok('green screen takes only a real colour and a similarity up to 60 %', g.on && g.color === '#00ff00' && g.bg === '#112233' && g.similarity === 60, g);
+  const e3 = applyOps(e2, [{ op: 'effects.set', target: 'short', effect: 'color', patch: {}, remove: true }], 60).doc;
+  ok('"Remove effect" turns it off and puts its settings back', JSON.stringify(effectsOf(e3, 'short').color) === JSON.stringify({ on: false, exposure: 0, contrast: 0, highlights: 0, shadows: 0, saturation: 0, kelvin: 6500 }));
+  ok('an unknown effect is refused', applyOps(doc0, [{ op: 'effects.set', target: 'short', effect: 'beauty' as never, patch: { on: true } }], 60).refused.length === 1);
+  ok('the preview approximates warm light with sepia, says nothing for an effect that is off', /sepia/.test(cssEffects({ color: c })) && cssEffects({}) === '');
+
+  /* What a render depends on: an effect switched on changes the hash; a setting of one that is off does not. */
+  const src = { key: 'v/a/p/source.mp4', probe: { duration: 60, width: 1280, height: 720, fps: 30, vcodec: 'h264', acodec: 'aac', hasAudio: true, format: 'mp4', rotation: 0 }, track: { key: 'v/a/p/prep/faces.json', at: 't' } };
+  const withClip = applyOps(doc0, [{ op: 'clip.add', s: 5, e: 40 }], 60).doc;
+  const out = { kind: 'short' as const, clip_id: withClip.clips[0].id };
+  const h0 = renderSpec(withClip, src, out, null)!.hash;
+  const offTweak = applyOps(withClip, [{ op: 'effects.set', target: 'short', effect: 'shadow', patch: { blur: 50 } }], 60).doc;
+  const onTurn = applyOps(withClip, [{ op: 'effects.set', target: 'short', effect: 'shadow', patch: { on: true } }], 60).doc;
+  ok('an effect switched on means "Edited — render again"; a setting of one that is off does not', renderSpec(offTweak, src, out, null)!.hash === h0 && renderSpec(onTurn, src, out, null)!.hash !== h0);
+  const studio = applyOps(withClip, [{ op: 'audio.set', patch: { studio: true, strength: 80 } }], 60).doc;
+  ok('Studio Sound and its strength are on the edit and in the hash', studio.audio.studio === true && studio.audio.strength === 80 && renderSpec(studio, src, out, null)!.hash !== h0);
+
+  const id = withClip.clips[0].id;
+  const sp = applyOps(withClip, [{ op: 'clip.update', id, patch: { layout: 'speaker' } }], 60).doc;
+  ok('the "speaker" layout is a crop that follows the speaker', sp.clips[0].layout === 'speaker' && sp.clips[0].reframe.mode === 'crop' && renderSpec(sp, src, out, null)!.tracking === 'speaker');
+  const split = applyOps(withClip, [{ op: 'clip.update', id, patch: { layout: 'split' } }], 60).doc;
+  const ss = renderSpec(split, src, out, null)!;
+  ok('a split layout is in the spec and the hash', ss.layout === 'split' && ss.hash !== h0);
+  ok('…and an unknown layout is refused', applyOps(withClip, [{ op: 'clip.update', id, patch: { layout: 'diagonal' as never } }], 60).refused.length === 1);
+  ok('…a layout can be cleared back to the crop', applyOps(split, [{ op: 'clip.update', id, patch: { layout: null } }], 60).doc.clips[0].layout === undefined);
+
+  const bubble = { detector: 'yunet', fps: 5, frames: 200, seen: 0.95, faces: 1, tracks: 1, switches: { speaker: 0, face: 0 }, speaker: [], face: [], people: [{ cx: 0.87, cy: 0.8, w: 0.08, h: 0.14, share: 0.95 }] };
+  const two = { ...bubble, faces: 2, tracks: 2, people: [{ cx: 0.233, cy: 0.442, w: 0.102, h: 0.23, share: 1 }, { cx: 0.746, cy: 0.424, w: 0.109, h: 0.258, share: 1 }] };
+  const host = { ...bubble, people: [{ cx: 0.5, cy: 0.4, w: 0.2, h: 0.4, share: 0.98 }] };
+  const opt = (tf: typeof bubble | null, k: string) => layoutOptions(tf).find(o => o.key === k)!;
+  ok('without the faces found, only "screen only" is offered — the rest say to find faces first', opt(null, 'screen').ok && !opt(null, 'split').ok && /Find faces first/.test(opt(null, 'split').why));
+  ok('a screen recording with a webcam bubble offers split and picture-in-picture, not two people', opt(bubble, 'split').ok && opt(bubble, 'pip').ok && !opt(bubble, 'two').ok && /one person/i.test(opt(bubble, 'two').why));
+  ok('two people taking turns offer "both people", not the webcam split', opt(two, 'two').ok && !opt(two, 'split').ok && /two people/.test(opt(two, 'split').why));
+  ok('a talking head (one big face in the middle) offers the speaker, not a webcam split', opt(host, 'speaker').ok && !opt(host, 'split').ok && !opt(host, 'pip').ok);
+  const pl = layoutPlan('split', bubble, 1280, 720, 1080, 1920)!;
+  const [bx, by, bw, bh] = pl.boxes[1];
+  ok('split: the screen whole above, the camera cropped round the face below, at the half\'s shape', JSON.stringify(pl.boxes[0]) === '[0,0,1280,720]' && Math.abs(bw / bh - 1080 / 960) < 0.02 && bx + bw <= 1280 && by + bh <= 720 && bx <= 0.87 * 1280 && bx + bw >= 0.87 * 1280, pl);
+  const pt = layoutPlan('two', two, 1280, 720, 1080, 1920)!;
+  ok('two people: the left one on top, each cropped round their own face', pt.boxes[0][0] < 400 && pt.boxes[1][0] + pt.boxes[1][2] > 900 && pt.boxes.every(b => b[0] >= 0 && b[0] + b[2] <= 1280 && b[1] + b[3] <= 720), pt.boxes);
+  const pp = layoutPlan('pip', bubble, 1280, 720, 1080, 1920)!;
+  ok('picture-in-picture: a square camera crop, the bubble on the webcam\'s side, inside the frame', pp.boxes[0][2] === pp.boxes[0][3] && pp.inset!.x > 540 && pp.inset!.x + pp.inset!.size <= 1080 && pp.inset!.y + pp.inset!.size <= 1920, pp);
+  ok('a layout the recording cannot carry has no plan', layoutPlan('two', bubble, 1280, 720, 1080, 1920) === null && layoutPlan('split', two, 1280, 720, 1080, 1920) === null);
+  const skin = skinBox({ ...two, face: [[0, 0.233, 0.44, 0.23, 1], [5, 0.24, 0.44, 0.23, 0]] }, [[0, 10]], 1280, 720);
+  ok('the skin-smoothing box is the face\'s size with a margin, following the face', !!skin && skin.w > 0.1 * 1280 && skin.h > 0.23 * 720 && skin.path.length >= 2, skin);
 }
 
 console.log('\nThumbnail words');

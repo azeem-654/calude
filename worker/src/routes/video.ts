@@ -22,7 +22,7 @@ import {
   applyOps, describeRequest, newDoc, parseRequest, sentencesOf, SHORTS_MAX, MUSIC_DEFAULTS,
   type MusicTrack, type Op, type VideoDoc, type VideoRequest,
 } from '../lib/video/edit';
-import { proposeCleanup } from '../lib/video/cleanup';
+import { proposeCleanup, cleanFillerKinds } from '../lib/video/cleanup';
 import { parseVideoCommand } from '../lib/video/commands';
 import { cleanMeta, type VideoMeta } from '../lib/video/shorts';
 import { engineHealth, engineMode } from '../lib/video/engine';
@@ -99,7 +99,10 @@ async function capabilities(env: Env, accountId: string, probe: boolean): Promis
     { key: 'thumb_edit', label: 'Thumbnail designer (trending layouts)', status: engine ? 'working' : 'needs_configuration', note: 'Face close-up with big outlined words, ring-and-arrow callout, cinematic, two moments, big number — words, colours, frame and zoom yours to change.' },
     { key: 'speakers', label: 'Speaker labels', status: 'unavailable', note: 'Needs a transcription provider with speaker detection.' },
     { key: 'audio_preview', label: 'Before/after audio preview in the browser', status: 'planned', note: 'Today: render, then listen to the finished file.' },
-    { key: 'eye_contact', label: 'Eye-contact correction', status: 'unavailable', note: 'Provider setup required.' },
+    /* Researched October 2026: FFmpeg cannot move a gaze; NVIDIA Maxine Eye Contact is a gRPC
+       streaming service (no HTTP route a Worker can call), and Sieve's eye-contact API is no longer
+       documented (its docs are gone). Nothing is faked: it stays unavailable until one is. */
+    { key: 'eye_contact', label: 'Eye-contact correction', status: 'unavailable', note: 'Provider setup required. No provider has a documented HTTP API this server can call yet (NVIDIA Maxine is gRPC-only), and video editing alone cannot move where someone looks.' },
     { key: 'bg_removal', label: 'Portrait background removal', status: 'unavailable', note: 'Provider setup required. A portrait can be used as it is.' },
     { key: 'publishing', label: 'Direct publishing to social platforms', status: 'unavailable', note: 'Ready to publish manually: download the video and PNG, copy the caption, description and hashtags.' },
     { key: 'youtube', label: 'Start from your own YouTube video', status: !engine || !storage ? 'needs_configuration' : health && health.youtube === false ? 'needs_configuration' : 'working',

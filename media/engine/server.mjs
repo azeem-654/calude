@@ -828,9 +828,13 @@ async function render(job, dir) {
   const sel = rel.map(([a, b]) => `between(t,${(a - 0.001).toFixed(4)},${(b - half).toFixed(4)})`).join('+');
 
   const cmds = [];
-  const mode = ['crop', 'fit', 'source'].includes(p.mode) ? p.mode : 'source';
+  const fx = cleanEffects(p.effects);
+  const layout = cleanLayout(p.layout, srcW, srcH, W, H);
+  const mode = layout ? 'layout' : ['crop', 'fit', 'source'].includes(p.mode) ? p.mode : 'source';
   let frame;
-  if (mode === 'crop') {
+  if (layout) {
+    frame = layoutFrame(layout, W, H, srcW, srcH, fx.shadow, fps);
+  } else if (mode === 'crop') {
     const cw = even(Math.min(srcW, srcH * W / H)), ch = even(Math.min(srcH, srcW * H / W));
     const place = (cx, cy) => [
       Math.round(Math.min(srcW - cw, Math.max(0, cx * srcW - cw / 2))),
@@ -857,8 +861,7 @@ async function render(job, dir) {
       }
     }
   } else if (mode === 'fit') {
-    frame = `split[f1][f2];[f1]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=24:2,eq=brightness=-0.08[bg];` +
-      `[f2]scale=${W}:${H}:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2`;
+    frame = fitFrame('f', W, H, srcW, srcH, fx.shadow, fps);
   } else {
     frame = `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=black`;
   }
@@ -886,6 +889,9 @@ async function render(job, dir) {
     }
     trans = ',eq@tr=brightness=0';
   }
+  /* Skin smoothing, only inside the face box, which moves with the face
+     (the same keyframes, ten times a second, as a crop that follows it). */
+  const skin = skinFilter(p.skin, fx.appearance, srcW, srcH, total, cmds);
   let send = '';
   if (cmds.length) {
     cmds.sort((a, b) => a[0] - b[0]);

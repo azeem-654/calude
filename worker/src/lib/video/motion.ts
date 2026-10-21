@@ -29,6 +29,8 @@ export interface TrackFile {
   switches: { speaker: number; face: number };
   speaker: TrackRow[];
   face: TrackRow[];
+  /** Each person's median place and face size, and their share of the frames (track.py); absent in older files. */
+  people?: { cx: number; cy: number; w: number; h: number; share: number }[];
 }
 
 /** The value of a track at a source time: the keyframe before it, eased towards the next unless the next is a cut. */
@@ -201,4 +203,43 @@ export function cssLook(l: { filter: string; temperature: number; tint: number; 
   if (l.hue) parts.push(`hue-rotate(${l.hue}deg)`);
   if (l.blur) parts.push(`blur(${(l.blur / 25).toFixed(2)}px)`);
   return parts.filter(Boolean).join(' ') || 'none';
+}
+
+/**
+ * The visual effects as CSS filters, for the preview — close, not exact (the
+ * screen says so): exposure and contrast and saturation as CSS has them, the
+ * light's temperature as a warm sepia or a cool hue turn, "Improve
+ * appearance" as a touch of evenness. Green screen and skin smoothing are not
+ * drawn: a browser cannot key or find a face here, and the panel says they
+ * show in the render.
+ */
+export function cssEffects(fx: { color?: { exposure: number; contrast: number; highlights: number; shadows: number; saturation: number; kelvin: number }; appearance?: { amount: number } }): string {
+  const parts: string[] = [];
+  const c = fx.color;
+  if (c) {
+    const b = Math.pow(2, c.exposure / 50) * (1 + (c.shadows + c.highlights) / 800);
+    if (Math.abs(b - 1) > 0.005) parts.push(`brightness(${b.toFixed(3)})`);
+    const con = 1 + c.contrast / 150 + (c.highlights - c.shadows) / 1000;
+    if (Math.abs(con - 1) > 0.005) parts.push(`contrast(${con.toFixed(3)})`);
+    if (c.saturation) parts.push(`saturate(${Math.max(0, 1 + c.saturation / 100).toFixed(3)})`);
+    if (c.kelvin < 6450) parts.push(`sepia(${Math.min(0.6, (6500 - c.kelvin) / 7000).toFixed(3)})`);
+    if (c.kelvin > 6550) parts.push(`hue-rotate(${(-Math.min(30, (c.kelvin - 6500) / 200)).toFixed(1)}deg)`, `saturate(${(1 + Math.min(0.2, (c.kelvin - 6500) / 30000)).toFixed(3)})`);
+  }
+  if (fx.appearance) parts.push(`contrast(${(1 + fx.appearance.amount / 2500).toFixed(3)})`, `brightness(${(1 + fx.appearance.amount / 3000).toFixed(3)})`);
+  return parts.join(' ');
+}
+
+/**
+ * The face box for "Improve appearance": a fixed size (the face's usual
+ * size, with a margin — the engine cannot resize a crop mid-stream) and
+ * where it goes, as the face track carried through the edit. Null without a
+ * face to smooth.
+ */
+export function skinBox(tf: TrackFile | null, keeps: [number, number][], srcW: number, srcH: number): { w: number; h: number; path: [number, number, number, number][] } | null {
+  const rows = (tf?.face ?? []).filter(r => r[3] > 0.02);
+  if (!rows.length) return null;
+  const hs = rows.map(r => r[3]).sort((a, b) => a - b);
+  const fh = hs[Math.floor(hs.length / 2)];
+  const fw = tf?.people?.[0]?.w ?? (fh * srcH * 0.8) / srcW;
+  return { w: Math.round(fw * srcW * 1.3), h: Math.round(fh * srcH * 1.35), path: cameraPath(rows, keeps) };
 }

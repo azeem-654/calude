@@ -146,7 +146,7 @@ def run_video(args):
                 motion = max(0.0, mm - 0.7 * em)
             best.update(box=f["box"], last=t, prev_m=m, prev_e=e)
             x, y, fw, fh = f["box"]
-            seen.append((best["id"], (x + fw / 2) / w, (y + fh / 2) / h, fh / h, motion))
+            seen.append((best["id"], (x + fw / 2) / w, (y + fh / 2) / h, fh / h, motion, fw / w))
         tracks = [tr for tr in tracks if t - tr["last"] <= 2.0]
         frames.append(seen)
         n += 1
@@ -162,13 +162,13 @@ def run_video(args):
             block = frames[i:i + win]
             visible = {}
             for fr in block:
-                for (tid, cx, cy, fh, mo) in fr:
+                for (tid, cx, cy, fh, mo, _fw) in fr:
                     v = visible.setdefault(tid, {"size": 0.0, "talk": 0.0, "n": 0})
                     v["size"] += fh
                     v["n"] += 1
             for j, fr in enumerate(block):
                 talking = (i + j) < len(speech) and speech[i + j]
-                for (tid, cx, cy, fh, mo) in fr:
+                for (tid, cx, cy, fh, mo, _fw) in fr:
                     if talking:
                         visible[tid]["talk"] += mo
             if not visible:
@@ -227,13 +227,41 @@ def run_video(args):
 
     sp, sp_sw = choose("speaker")
     fa, fa_sw = choose("face")
+    people = gather_people(frames)
     with_face = sum(1 for fr in frames if fr)
     most = max((len(fr) for fr in frames), default=0)
     print(json.dumps({
         "detector": kind, "fps": fps, "frames": len(frames), "seen": round(with_face / max(1, len(frames)), 3),
         "faces": most, "tracks": next_id, "switches": {"speaker": sp_sw, "face": fa_sw},
-        "speaker": path(sp), "face": path(fa),
+        "speaker": path(sp), "face": path(fa), "people": people,
     }, separators=(",", ":")))
+
+
+def gather_people(frames):
+    """The people on screen: each face track's median place and size, tracks
+    of the same person (lost for a moment, then found again in the same place)
+    joined, with the share of frames they are in. What the Shorts layouts read
+    to tell a webcam bubble on a screen recording from two people side by side."""
+    by = {}
+    for fr in frames:
+        for (tid, cx, cy, fh, _mo, fw) in fr:
+            by.setdefault(tid, []).append((cx, cy, fw, fh))
+    total = max(1, len(frames))
+    tracks = []
+    for tid, rows in by.items():
+        a = np.array(rows)
+        tracks.append({"cx": float(np.median(a[:, 0])), "cy": float(np.median(a[:, 1])), "w": float(np.median(a[:, 2])), "h": float(np.median(a[:, 3])), "n": len(rows)})
+    tracks.sort(key=lambda t: -t["n"])
+    people = []
+    for t in tracks:
+        same = next((p for p in people if abs(p["cx"] - t["cx"]) < 0.08 and abs(p["cy"] - t["cy"]) < 0.1), None)
+        if same:
+            same["n"] += t["n"]
+        else:
+            people.append(dict(t))
+    people.sort(key=lambda p: -p["n"])
+    return [{"cx": round(p["cx"], 3), "cy": round(p["cy"], 3), "w": round(p["w"], 3), "h": round(p["h"], 3), "share": round(min(1.0, p["n"] / total), 3)}
+            for p in people[:4] if p["n"] >= 3]
 
 
 def main():
