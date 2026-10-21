@@ -5,7 +5,7 @@
  *
  * Customers never browse the library (routes/leaddir.ts refuses them the
  * search). Opened, it feeds their projects' daily prospecting a few matching
- * people at a time, each labelled "Licensed business data" on the contact
+ * people at a time, each labelled "Business contacts database" on the contact
  * (prospectFinderTick.ts `libraryStep`); the owner searches it on
  * Workspace → Lead library.
  *
@@ -163,9 +163,9 @@ export default function LeadDirectoryAdmin() {
       <p style={{ fontSize: 13, color: MUTED, margin: 0, lineHeight: 1.6 }}>
         Load your own lead files — a CSV, a ZIP or .csv.gz, several files, or a whole folder with folders inside it, of any
         size. Everything is read here in your browser a piece at a time, so there is no upload limit, and several files go in at once. Before it loads you see which column became which field; columns it does not recognise are kept with each person under their own name. Only you
-        search them, on <strong>Workspace → Lead library</strong>. Customers never browse them: when you open the library,
-        the daily prospecting in their business workspaces may be given a few matching people each day — checked first, never twice, and
-        labelled <strong>“Licensed business data”</strong> on every contact.
+        browse them, on <strong>Workspace → Lead library</strong>. When you open the library, customers' AI Prospecting searches show
+        matching people with an email address first, and the daily prospecting in their business workspaces may be given a few each day — checked first, never twice, and
+        labelled <strong>“Business contacts database”</strong> on every contact.
       </p>
 
       {code === 'no_database' && (
@@ -352,13 +352,13 @@ export default function LeadDirectoryAdmin() {
 
           {/* ── Customers' projects ── */}
           <div style={{ border: `1px solid ${LINE}`, borderRadius: 14, padding: 14, display: 'grid', gap: 8 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>Let customers' business workspaces draw on it</div>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>Let customers find these leads</div>
             {a.shared ? (
               <>
                 <div style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.6 }}>
                   Open{a.attestedAt ? ` (you confirmed the right to share it on ${new Date(a.attestedAt).toLocaleDateString()})` : ''}: the daily prospecting in customers'
                   business workspaces may be given people whose industry and place match it — at most half of a day's leads, each
-                  address checked, labelled “Licensed business data”. Customers still cannot search it.
+                  address checked, labelled “Business contacts database”. Customers' AI Prospecting searches show matching people with an email address first, 50 at a time — never the library's size or the rest of it.
                 </div>
                 <button onClick={() => void share(false)} style={{ ...btn, justifySelf: 'start' }}>Close it</button>
               </>

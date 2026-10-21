@@ -55,7 +55,7 @@ export const SOURCE_POLICY: Record<SourceId, SourcePolicy> = {
  * details came from (GDPR Art. 14), and "found on the web" would be untrue.
  */
 export const LICENSED_SOURCE = {
-  label: 'Licensed business data',
+  label: 'Business contacts database',
   licence: 'records licensed to the operator of this app, who confirmed they may share them with customers',
 } as const;
 

@@ -298,7 +298,7 @@ export function industriesLike(q: string, facets: { value: string; n: number }[]
  * with their statement that they may), a project's daily finder may take a
  * few people from it whose industry matches one of the finder's kinds of
  * business and who are in one of its places — labelled on the contact as
- * "Licensed business data", never as something found on the web.
+ * "Business contacts database", never as something found on the web.
  */
 
 /**

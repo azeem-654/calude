@@ -19,7 +19,7 @@ import type { Contact } from '../types';
 import type { Prospect, ProspectSource, Contactable, Verdict } from './prospects';
 /* LICENSED in prospects.ts — written out, not imported: that module
    loads the API client, and this one stays pure for the tests. */
-const LICENSED = 'Licensed business data';
+const LICENSED = 'Business contacts database';
 import { bestAddress, personFor } from './aiProspecting';
 
 /** What the shown results were searched for, as the search form had it. */
@@ -96,7 +96,7 @@ export function prospectRows(
       status: 'prospect',
       /* Tagged with where and what, because a list of 40 businesses with no
          label is unusable a week later. */
-      tags: ['prospect search', p.category, emailTag(v), p.companyNumber ? 'company register' : '', p.library ? 'licensed business data' : ''].filter(Boolean),
+      tags: ['prospect search', p.category, emailTag(v), p.companyNumber ? 'company register' : '', p.library ? 'business contacts database' : ''].filter(Boolean),
       /* The stamp says what made the row, so a list full of found businesses
          can still be told apart from people who asked to hear from you — which
          is the distinction the sending rules turn on. */

@@ -14,16 +14,16 @@
  * they hold the right to share the records, because whoever sold them a list
  * usually licensed it to them alone.
  *
- * ── Customers do not search it ──
+ * ── Customers search it once it is open ──
  *
- * This product is not a lead seller or a data broker, and a screen where any
- * signed-up account can look people up by industry and place is exactly what
- * one looks like. So searching and revealing are the owner's alone (403
- * `not_owner` for everybody else, closed here and not only in the menu). What
- * reaches a customer is what a project's daily finder is given
- * (prospectFinderTick.ts `libraryStep`), labelled "Licensed business data" on
- * every contact. A customer's `status` says only whether it is open — not how
- * big it is or what is in it.
+ * The owner decided (2026-10-21) that customers' AI Prospecting searches get
+ * library results too. Only while the library is open (`settings` `shared`,
+ * which needs the owner's statement that they may share the records), only
+ * people with an email address, 50 a page, and only the columns a prospect
+ * row shows. Customers still get no `facets`, no `reveal` and no totals: a
+ * search answers who matches, never how big the library is or what else is
+ * in it. Every record they import is labelled "Business contacts database"
+ * — true of where it came from; never "found on the web", which it was not.
  *
  * REVEAL_BUDGET and `ld_reveals` stay: nothing spends them now, but a
  * directory that was searched before this keeps the record of who saw whom.
@@ -100,6 +100,9 @@ async function facetList(db: D1Database, kind: string, limit: number) {
 /* Only the owner searches, and it is their own data: shown in full. (Customers
    once saw these masked until they spent an allowance; they no longer search.) */
 const full = (r: Row): Row => ({ ...r, revealed: true });
+/* What a customer's prospect row needs and nothing more — not the keywords,
+   technologies, revenue or the loader's extra columns. */
+const CUSTOMER_SHOWN = 'id, name, title, company, website, domain, email, phone, industry, city, state, country, address';
 
 export async function handleLeadDir(req: Request, env: Env): Promise<Response> {
   const d = await body<Req>(req);
@@ -110,7 +113,7 @@ export async function handleLeadDir(req: Request, env: Env): Promise<Response> {
 
   /* Before anything else, so the answer is the same whether or not the
      library has a database: what is in it is never a customer's to ask. */
-  if (['facets', 'search', 'reveal'].includes(act) && !owner) {
+  if (['facets', 'reveal'].includes(act) && !owner) {
     return fail('Only the owner of this installation searches the lead library.', 403, { code: 'not_owner' });
   }
 
@@ -292,6 +295,10 @@ export async function handleLeadDir(req: Request, env: Env): Promise<Response> {
   }
 
   if (act === 'search') {
+    /* Closed, a customer's search is answered with nobody (and says why to
+       nobody but the code): AI Prospecting then searches the directories, as
+       it always did. */
+    if (!owner && !s.shared) return json({ success: true, people: [], more: false, after: 0, closed: true, fetchedAt: nowIso() });
     const where: string[] = [];
     const args: (string | number)[] = [];
     const industry = String(d.industry ?? '').trim().slice(0, 80);
@@ -330,13 +337,16 @@ export async function handleLeadDir(req: Request, env: Env): Promise<Response> {
     if (level) { where.push('lower(level) = ?'); args.push(level); }
     const size = key(String(d.companySize ?? ''));
     if (size) { where.push('lower(size) = ?'); args.push(size); }
-    if (d.hasEmail === true) where.push('has_email = 1');
+    if (d.hasEmail === true || !owner) where.push('has_email = 1');
     const cond = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const after = Math.max(0, Math.floor(Number(d.after) || 0));
-    const page = await db.prepare(`SELECT ${SHOWN} FROM ld_people ${cond ? `${cond} AND` : 'WHERE'} id > ? ORDER BY id LIMIT ?`).bind(...args, after, PAGE + 1).all<Row>();
+    const page = await db.prepare(`SELECT ${owner ? SHOWN : CUSTOMER_SHOWN} FROM ld_people ${cond ? `${cond} AND` : 'WHERE'} id > ? ORDER BY id LIMIT ?`).bind(...args, after, PAGE + 1).all<Row>();
     const list = page.results ?? [];
     const more = list.length > PAGE;
     const shown = list.slice(0, PAGE);
+    if (!owner) {
+      return json({ success: true, people: shown, more, after: shown.length ? Number(shown[shown.length - 1].id) : after, fetchedAt: nowIso() });
+    }
     /* Counted to 5,000 at most: past that the exact number costs a scan and says nothing more. */
     const total = after ? null : (await db.prepare(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM ld_people ${cond} LIMIT 5001)`).bind(...args).first<{ n: number }>())?.n ?? 0;
     return json({

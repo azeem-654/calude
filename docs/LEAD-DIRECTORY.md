@@ -5,13 +5,23 @@ your 3.3 GB ZIP (about 6 GB of CSV), loading more later, what customers get
 (and what they no longer get), what Leads.cm can and cannot do for you, and a
 note on data-broker rules.
 
+**What changed on 2026-10-21.** At your request, your customers' AI
+Prospecting searches now show people from your library first — once you have
+opened it (Settings → Platform services → Lead library → *Let customers find
+these leads*, with the statement that you may share the records). They see
+only people with an email address, 50 at a time, with no totals, labelled
+**"Business contacts database"**. Not "searched on public business websites":
+these records came from a file you bought, and saying otherwise would be a
+false claim to your customers (and to the people they email). The licence
+note in section 6 applies even more now — check it before you open it.
+
 **What changed on 2026-10-15.** Customers no longer search your leads. There
 is no "Lead Directory" under Customers any more: Protected Central finds leads
 live and is not a lead seller or a data broker, and a screen where any
 customer could look people up by industry and place is what one looks like.
 What you loaded is now your **Lead library** — searched by you alone — and,
 when you open it, a quiet extra source for your customers' projects' daily
-prospecting, labelled **"Licensed business data"** on every lead it supplies
+prospecting, labelled **"Business contacts database"** on every lead it supplies
 (section 4). Customers have their **lists in Contacts** instead: their *own*
 leads, a folder per AI Autopilot business workspace.
 
@@ -153,7 +163,7 @@ may be given a few people from it each step:
   anybody you removed; never anybody on that customer's suppression list or
   unsubscribed; never somebody already in their Contacts;
 - every address **checked first**; one that would bounce is turned away;
-- each lead is labelled **"Licensed business data"** — on the contact's source,
+- each lead is labelled **"Business contacts database"** — on the contact's source,
   its `provenance` (with the date) and a tag — never "found on the web".
   That is what lets your customer answer "where did you get my details?",
   which the law requires of a cold emailer in many places (GDPR Art. 14).
@@ -263,7 +273,7 @@ Things worth checking, plainly:
 - **GDPR / UK GDPR**, if any record is a person in the EU or UK. You and your
   customer would each be a controller with your own duties: a lawful basis to
   disclose, telling people where their data came from (Art. 14 — the
-  "Licensed business data" label and the provenance on each contact help your
+  "Business contacts database" label and the provenance on each contact help your
   customer do this), and passing on erasure requests to the recipients
   (Art. 19 — `passedTo` on a removal names them).
 

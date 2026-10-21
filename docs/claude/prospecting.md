@@ -160,20 +160,24 @@ pattern guess, and guesses are what prospects.ts refuses. `bestAddress` imports
 the first address no check said would bounce; the check, and a named person's
 name and role, go onto the contact (`customFields.emailStatus`, `firstName`,
 `jobTitle`). **AI Prospecting never searches LinkedIn, Apollo or bought
-data** — their terms forbid exactly this. **Nor does it show the owner's own
-lead files** (the Lead library): the panel that listed directory matches
-beside a search (`DirectoryMatches.tsx`, with a "See them all" link) is gone —
-the owner decided customers must not see a searchable directory of people; the
-platform finds businesses live, it is not a data broker. `test:isolation`
-checks a customer's search never asks `leaddir.php`. **The install owner's own
-search is the exception, by the owner's decision**: `ask` (useProspectSearch)
+data** — their terms forbid exactly this. The panel that listed directory
+matches beside a search (`DirectoryMatches.tsx`) is gone. **Every search asks
+the Lead library first — customers' too, by the owner's decision of
+2026-10-21** (it was the owner's alone before): `ask` (useProspectSearch)
 first calls `searchLibraryProspects` (services/leadDirectory.ts — `leaddir.php
 search` with the sentence's trade as the industry, its place, `hasEmail`), and
 only when the library has nobody (or cannot be asked, said in the source note)
-runs the directory search. Library rows carry `library: true`; imported, they
-are stamped "Licensed business data" (source, tag, `dataSource`). Pages load by
-`ld:<last id>`. The server answers `not_owner` to anybody else, and the hook
-does not ask for them.
+runs the directory search. A customer's search is answered only while the
+owner has opened the library (`shared`); closed, the server answers
+`closed: true` and nobody, and the directories are searched with nothing said.
+Customers get people with an email address only, the columns a prospect row
+shows (`CUSTOMER_SHOWN`), and no totals. The owner's steps say "your lead
+library", a customer's "our business contacts database". Library rows carry
+`library: true`; imported, they are stamped **"Business contacts database"**
+(source, tag `business contacts database`, `dataSource`) — true of where they
+came from. The owner asked for "searched on public business websites"; that is
+not where Leads.cm records come from, so it is not said. Pages load by
+`ld:<last id>`. `test:isolation` and `test:leaddir` check both sides.
 
 **Only businesses with an email address are shown by default**: the results'
 filter starts on "With email" (unless a phone or website was asked for); "All"
@@ -213,19 +217,19 @@ Contacts* and *Do not email* (suppression list). Every animation (orb, dots,
 shimmer on the cell being read or checked, scanning step, moving composer
 gradient) is tied to real work and stops under reduced motion.
 
-### The Lead library — the owner's own lead files (never a customer's search)
+### The Lead library — the owner's own lead files (customers search it once opened)
 
-**Protected Central is not a lead seller or a data broker, and no customer
-screen may look like one.** The people the install owner loads from their own
-files are the **Lead library**: searched by the owner alone on
+The people the install owner loads from their own files are the **Lead
+library**: browsed by the owner alone on
 `/lead-directory` (Workspace → Lead library, `ownerOnly` in navModel,
 `Prospecting/LeadDirectory.tsx`; anybody else is redirected to `/contacts`).
-On the server `facets`, `search` and `reveal` answer 403 `not_owner` to
-everybody but the install owner — checked before the database is, so the
-answer is the same with no `LEADS` binding — and a customer's `status` says
-only `shared`. Customers meet the library only as **"Licensed business data"**
-on leads their projects' daily prospecting is given (below), and never see the
-word "directory". `docs/LEAD-DIRECTORY.md` is the owner's guide (Leads.cm
+On the server `facets` and `reveal` answer 403 `not_owner` to everybody but
+the install owner — checked before the database is — and a customer's
+`status` says only `shared`. A customer's `search` is answered only while it
+is open (above, AI Prospecting). Customers meet the library as **"Business
+contacts database"** — in their AI Prospecting results and on leads their
+projects' daily prospecting is given (below) — and never see the words "lead
+library" or "directory". `docs/LEAD-DIRECTORY.md` is the owner's guide (Leads.cm
 findings, and a data-broker note: hiding the screen does not by itself change
 whether sharing licensed personal data is selling it).
 `routes/leaddir.ts` is the API; `lib/leadDir.ts` the rules (pure).
@@ -264,7 +268,7 @@ whether sharing licensed personal data is selling it).
   `ListHeader`: count, kind, the email checks, **Send to AI Autopilot**,
   Email this list (`/marketing?new=campaign&list=`), Export CSV (`toCsv`,
   "Where it came from"), edit, delete. The Source under a name is
-  `sourceOf` (old `Lead directory` imports read "Licensed business data").
+  `sourceOf` (old `Lead directory` imports read "Business contacts database").
   Ticked contacts can be sent to AI Autopilot or put on a new list.
   **Sending to a business workspace has one implementation**,
   `services/sendToWorkspace.ts` (Contacts' `SendToWorkspace.tsx` and AI
@@ -323,7 +327,7 @@ whether sharing licensed personal data is selling it).
   in full (`REVEAL_BUDGET`/`ld_reveals` are kept for the record but nothing
   spends them now). **Removed on request** (`ld_removed`) stays out of later
   loads. The owner's imports go to their Contacts on a `cold` list, source and
-  tag "Licensed business data", **with every address checked first** — the
+  tag "Business contacts database", **with every address checked first** — the
   same free check as AI Prospecting (`verifyEmails`, 20 at a time), its
   verdict on the contact (`emailStatus`/`emailCheck`/`emailCheckedAt`) and as
   a tag (`emailTag`). The file's own "verified" is shown as **list: verified**

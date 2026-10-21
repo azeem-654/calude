@@ -181,7 +181,7 @@ export function contactOf(r: PPRow, projectId: string, now = nowIso(), x: Contac
     /* Stable, so putting a prospect back after a stale browser save is the same contact, not a second one. */
     id: `pf-${r.id}`,
     name: r.name, email: r.email, phone: r.phone, status: 'prospect',
-    tags: [...new Set([licensed ? 'licensed business data' : 'prospect search', 'autopilot', r.category, EMAIL_TAG[r.email_status] ?? '', ...(x.tags ?? [])].filter(Boolean))],
+    tags: [...new Set([licensed ? 'business contacts database' : 'prospect search', 'autopilot', r.category, EMAIL_TAG[r.email_status] ?? '', ...(x.tags ?? [])].filter(Boolean))],
     ...(x.owner ? { assignedTo: x.owner } : {}),
     source: r.source === 'manual'
       ? 'AI Prospecting · added to a business workspace'
@@ -420,7 +420,7 @@ async function qualifyStep(env: Env, f: FinderRow, s: FinderState, conn: Connect
  * customer's own tested search with its own checks, so it is left to that.
  *
  * Customers never search the library and never see it named; the contact
- * says "Licensed business data" and the date.
+ * says "Business contacts database" and the date.
  */
 interface LibraryOutcome { detail: string; ready: number; quiet?: boolean }
 

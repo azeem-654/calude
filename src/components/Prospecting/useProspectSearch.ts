@@ -300,15 +300,18 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
        businesses, not for an account of the suppliers. Licences' credits stay
        on the card (Attribution); the loading messages say what is searched. */
     const where = 'Search';
-    /* The install owner's own searches ask their Lead library first — millions
-       of people they loaded, with email addresses — and go to the business
-       directories only when it has nobody to offer (or cannot be asked). A
-       customer's search never does: the library is the owner's, not a
-       directory customers may search (CLAUDE.md, the Lead library). */
+    /* Searches ask the Lead library first — millions of people the owner
+       loaded, with email addresses — and go to the business directories only
+       when it has nobody to offer (or cannot be asked). Customers' searches
+       too, by the owner's decision, once the owner has opened the library;
+       closed, the server answers nobody and the directories are searched as
+       before, with nothing said. */
     let list: Prospect[] | null = null;
     let fromLibrary = false;
     let libMore = false;
-    if (src === 'free' && !from && isInstallOwner()) {
+    if (src === 'free' && !from) {
+      const owner = isInstallOwner();
+      const libName = owner ? 'your lead library' : 'our business contacts database';
       setBusy(true); clear();
       setStartedAt(new Date().toISOString()); setPrevCount(null);
       const lib = await searchLibraryProspects(a.trade, a.place);
@@ -320,10 +323,10 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
         setSearched(q);
         setHistory(recordSearch({ ...q, count: lib.prospects.length }));
         list = lib.prospects; fromLibrary = true; libMore = lib.more;
-      } else {
-        setSourceNote(lib.error
-          ? `Your lead library could not be searched (${lib.error}), so this searched business directories instead.`
-          : `Nobody in your lead library matched ${a.trade} in ${a.place} with an email address, so this searched business directories instead.`);
+      } else if (lib.error) {
+        setSourceNote(`${owner ? 'Your lead library' : 'Our business contacts database'} could not be searched (${lib.error}), so this searched business directories instead.`);
+      } else if (!lib.closed) {
+        setSourceNote(`Nobody in ${libName} matched ${a.trade} in ${a.place} with an email address, so this searched business directories instead.`);
       }
     }
     if (!fromLibrary) list = await run({ source: src, trade: a.trade, place: a.place });
@@ -334,7 +337,7 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
     }
     const named = list.filter(p => p.officers?.length).length;
     step('search', {
-      label: fromLibrary ? `Searched your lead library for ${a.trade} in ${a.place}` : `Searched for ${a.trade} in ${a.place}`,
+      label: fromLibrary ? `Searched ${isInstallOwner() ? 'your lead library' : 'our business contacts database'} for ${a.trade} in ${a.place}` : `Searched for ${a.trade} in ${a.place}`,
       detail: fromLibrary ? `${list.length} with an email address${libMore ? ' — more to load' : ''}`
         : src === 'register' ? `${list.length} active compan${list.length === 1 ? 'y' : 'ies'}${named ? `, ${named} with their directors named` : ''}` : `${list.length} found`,
       state: 'done', badge: where, count: list.length,

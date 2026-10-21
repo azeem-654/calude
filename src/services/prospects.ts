@@ -29,7 +29,7 @@ export const SOURCE_NAME: Record<ProspectSource | 'library', string> = {
   osm: 'Business directories',
   register: 'Verified business directories',
   google: 'Google Maps',
-  library: 'Licensed business data',
+  library: 'Business contacts database',
 };
 
 export interface Prospect {

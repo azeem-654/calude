@@ -133,7 +133,7 @@ export default function LeadDirectory() {
       return {
         /* Named as the data it is, the same words a project's daily prospecting uses. */
         name: p.name, email: p.email, phone: p.phone, status: 'prospect', source: SOURCE_NAME.library,
-        tags: ['licensed business data', 'cold', ...(tag ? [tag] : [])], createdAt: at, lastActivity: at, value: 0,
+        tags: ['business contacts database', 'cold', ...(tag ? [tag] : [])], createdAt: at, lastActivity: at, value: 0,
         firstName, lastName: rest.join(' ') || undefined, company: p.company || undefined, jobTitle: p.title || undefined,
         website: p.website || undefined, linkedin: p.linkedin || undefined,
         address: [p.address, p.city, p.state, p.postal, p.country].filter(Boolean).join(', ') || undefined,
@@ -185,8 +185,8 @@ export default function LeadDirectory() {
       {st && (
         <div style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.55 }}>
           Only you see this screen. {st.shared
-            ? 'It is open: the daily prospecting in customers\' business workspaces may be given a few people from it who match their kinds of business and places, each checked first and labelled "Licensed business data" on the contact.'
-            : 'It is closed: no customer\'s business workspace draws on it. Open it on Settings → Platform services once you are sure your licence lets you share these records.'}
+            ? 'It is open: customers\' AI Prospecting searches show matching people with an email address first, and the daily prospecting in their business workspaces may be given a few each day — labelled "Business contacts database" on the contact.'
+            : 'It is closed: customers\' searches and business workspaces do not draw on it. Open it on Settings → Platform services once you are sure your licence lets you share these records.'}
         </div>
       )}
 

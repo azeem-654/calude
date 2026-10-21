@@ -9,7 +9,7 @@
  * finds leads live (AI Prospecting, a project's daily finder) and does not sell
  * a database of people to look up — the owner's licensed data reaches a
  * customer only through a project's daily prospecting, named on each contact
- * as "Licensed business data".
+ * as "Business contacts database".
  *
  * ── The folders ──
  *
@@ -83,7 +83,7 @@ export const LICENSED = SOURCE_NAME.library;
  */
 export function sourceOf(c: Contact): string {
   const s = (c.source ?? '').toLowerCase();
-  if (c.customFields?.dataSource === LICENSED || s.includes('licensed business data') || s === 'lead directory') return LICENSED;
+  if (c.customFields?.dataSource === LICENSED || s.includes('licensed business data') || s.includes('business contacts database') || s === 'lead directory') return LICENSED;
   if (s.includes('daily prospecting')) return 'Found by daily prospecting';
   if (s.startsWith('ai prospecting')) return 'AI Prospecting';
   if (s.startsWith('ai autopilot')) return 'AI Autopilot';

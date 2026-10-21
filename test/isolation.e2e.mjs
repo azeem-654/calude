@@ -194,10 +194,11 @@ for (const width of [1280, 1440, 1655, 1900]) {
   await page.goto('about:blank'); await ctx.close();
 }
 
-/* ── 5. The owner's lead library is not a customer's to search ──
-   It used to be: AI Prospecting showed its matches and Customers → Lead
-   Directory searched it. Now only the owner searches it (routes/leaddir.ts);
-   a customer reaches it only through a project's daily prospecting. */
+/* ── 5. Customers search the opened library through AI Prospecting only ──
+   By the owner's decision (2026-10-21) a customer's AI Prospecting search
+   asks the library first once it is open: people with an email address, a
+   prospect row's columns, no totals. Facets, reveal and the owner's screen
+   stay the owner's (routes/leaddir.ts). */
 {
   const rows = Array.from({ length: 30 }, (_, i) => ({
     name: `Owner Person${i}`, title: i % 3 ? 'Owner' : 'Managing Director', level: i % 3 ? 'Owner' : 'Director', industry: 'Construction',
@@ -209,7 +210,9 @@ for (const width of [1280, 1440, 1655, 1900]) {
   await api('leaddir.php', { token: T, action: 'settings', shared: true, attest: true });
   const ET = (await api('auth.php', { action: 'login', email: ERIN.email, password: ERIN.pw })).token;
   const s1 = await api('leaddir.php', { token: ET, accountId: ERIN.acct, action: 'search', industry: 'business owners', place: 'australia' });
-  ok('a customer cannot search the owner\'s library, even opened', s1.success !== true && s1.code === 'not_owner', JSON.stringify(s1).slice(0, 300));
+  ok('opened, a customer\'s search finds people with an email, and no totals', s1.success === true && s1.people.length === 20 && s1.people.every(p => p.email && !('keywords' in p)) && s1.total === undefined, JSON.stringify(s1).slice(0, 300));
+  ok('…but never its facets', (await api('leaddir.php', { token: ET, accountId: ERIN.acct, action: 'facets' })).code === 'not_owner');
+  ok('…nor another workspace\'s', (await api('leaddir.php', { token: ET, accountId: OWNER_ACCT, action: 'search', industry: 'business owners', place: 'australia' })).success !== true);
   const own = await api('leaddir.php', { token: T, accountId: OWNER_ACCT, action: 'search', industry: 'business owners', place: 'australia' });
   ok('…the owner can: "business owners" in "australia" finds the 20 owners', own.success && own.total === 20, JSON.stringify(own).slice(0, 300));
   const ctx = await br.newContext({ viewport: { width: 1280, height: 900 } });
@@ -221,11 +224,13 @@ for (const width of [1280, 1440, 1655, 1900]) {
   page.on('request', req => { if (/leaddir\.php/.test(req.url())) asked.push(req.postDataJSON()?.action); });
   await page.getByLabel('Who to look for').fill('business owners in australia');
   await page.keyboard.press('Enter');
-  await page.getByText(/Searched for business owners in australia/i).waitFor({ timeout: 30_000 }).catch(() => {});
+  await page.getByText(/Searched our business contacts database for business owners in australia/i).waitFor({ timeout: 30_000 }).catch(() => {});
   await page.waitForTimeout(1500);
   const body = await page.innerText('body');
-  ok('AI Prospecting shows nobody from the Lead Directory beside a search, and never asks it',
-    await page.getByTestId('directory-matches').count() === 0 && !/Owner Person/.test(body) && !/See them all/.test(body) && !asked.includes('search'), `${asked.join(',')} ${body.slice(0, 300)}`);
+  ok('AI Prospecting asks the business contacts database first and shows its people as results',
+    asked.includes('search') && /Searched our business contacts database/i.test(body) && /aussiebuild\d+\.example/.test(body), `${asked.join(',')} ${body.slice(0, 300)}`);
+  ok('…with no directory panel beside it, and never the words "lead library"',
+    await page.getByTestId('directory-matches').count() === 0 && !/See them all/.test(body) && !/lead library/i.test(body) && !asked.includes('facets') && !asked.includes('reveal'), body.slice(0, 300));
   await page.screenshot({ path: 'test-results/isolation-directory.png' });
   await page.goto(`${B}/lead-directory?industry=construction&place=australia`, { waitUntil: 'networkidle' });
   await page.getByTestId('cl-sidebar').waitFor({ timeout: 15_000 }).catch(() => {});

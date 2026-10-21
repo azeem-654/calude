@@ -190,7 +190,7 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
     const state: State = !env.LEADS ? 'off' : total > 0 ? 'ok' : 'unchecked';
     services.push({
       id: 'lead_directory', name: 'Lead library (your own leads)',
-      powers: 'Workspace → Lead library, searched by you alone; opened, a source for the daily prospecting in customers\' business workspaces, labelled "Licensed business data"',
+      powers: 'Workspace → Lead library, searched by you alone; opened, a source for the daily prospecting in customers\' business workspaces, labelled "Business contacts database"',
       state,
       detail: !env.LEADS
         ? 'No database yet — the next deploy creates it. Until then the Lead library says it is unavailable.'

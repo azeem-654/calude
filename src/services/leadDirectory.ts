@@ -178,6 +178,8 @@ export async function importMany(
  */
 export async function searchLibraryProspects(trade: string, place: string, after = 0): Promise<{
   prospects: import('./prospects').Prospect[]; more: boolean; after: number; fetchedAt: string; error: string; note: string;
+  /** The owner has not opened the library to customers: nobody, and nothing to say about it. */
+  closed?: boolean;
 }> {
   const r = await dirCall('search', { industry: trade, place, hasEmail: true, after });
   const fetchedAt = String(r.fetchedAt ?? new Date().toISOString());
@@ -199,5 +201,5 @@ export async function searchLibraryProspects(trade: string, place: string, after
     ...(p.name && p.company && p.name !== p.company ? { officers: [{ name: p.name, role: p.title ?? '' }] } : {}),
     foundAt: fetchedAt,
   }));
-  return { prospects, more: r.more === true, after: Number(r.after) || after, fetchedAt, error: '', note: String(r.note ?? '') };
+  return { prospects, more: r.more === true, after: Number(r.after) || after, fetchedAt, error: '', note: String(r.note ?? ''), closed: r.closed === true };
 }
