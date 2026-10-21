@@ -280,6 +280,10 @@ export interface VideoDoc {
   tracking?: { long: TrackMode; short: TrackMode };
   overlays?: Overlay[];
   effects?: { long: Effects; short: Effects };
+  /** Stretches whose sound is silenced (the picture stays): "Mute" on the timeline. Source time. */
+  mutes?: { id: string; s: number; e: number }[];
+  /** Where the customer split the recording into scenes ("Split" at the playhead); scene numbers on the timeline. Source time. */
+  splits?: number[];
 }
 
 /* ── The request, read from what somebody typed ─────────────────────────── */
@@ -448,6 +452,13 @@ export function keepRanges(duration: number, doc: Pick<VideoDoc, 'cuts' | 'prote
 
 export const keptLength = (keeps: [number, number][]) => keeps.reduce((n, [a, b]) => n + (b - a), 0);
 
+/** The muted stretches that fall inside what is kept, in source time — what the render silences and the preview turns down. */
+export function mutedIn(doc: Pick<VideoDoc, 'mutes'>, keeps: [number, number][]): [number, number][] {
+  const out: [number, number][] = [];
+  for (const m of doc.mutes ?? []) for (const [a, b] of keeps) { const s = Math.max(a, m.s), e = Math.min(b, m.e); if (e - s > 0.02) out.push([s, e]); }
+  return out.sort((x, y) => x[0] - y[0]);
+}
+
 /** Source time → output time, or null when that moment is cut. */
 export function toOutput(t: number, keeps: [number, number][]): number | null {
   let acc = 0;
@@ -546,7 +557,11 @@ export type Op =
   | { op: 'clip.duplicate'; id: string }
   | { op: 'thumbnail.headline'; target: string; text: string }
   | { op: 'shorts.set'; patch: Partial<VideoDoc['shorts']> }
-  | { op: 'cleanup.preset'; preset: CleanupPreset; cuts: Cut[]; fillers?: string[]; maxPause?: number | null };
+  | { op: 'cleanup.preset'; preset: CleanupPreset; cuts: Cut[]; fillers?: string[]; maxPause?: number | null }
+  | { op: 'mute.add'; s: number; e: number }
+  | { op: 'mute.restoreRange'; s: number; e: number }
+  | { op: 'scene.split'; t: number }
+  | { op: 'scene.join'; t: number };
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const clamp = (n: unknown, lo: number, hi: number, d: number) => { const x = Number(n); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d; };
@@ -612,6 +627,36 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
         break;
       }
       case 'protect.remove': d.protects = d.protects.filter(p => p.id !== o.id); break;
+      case 'mute.add': {
+        const r = range(o.s, o.e);
+        if (!r) { refused.push('a muted stretch needs a start before its end'); break; }
+        /* Merged with any it touches, so muting twice is one stretch. */
+        const all = [...(d.mutes ?? []), { id: newId('mu'), s: r[0], e: r[1] }].sort((a, b) => a.s - b.s);
+        const merged: { id: string; s: number; e: number }[] = [];
+        for (const m of all) { const last = merged[merged.length - 1]; if (last && m.s <= last.e + 0.01) last.e = Math.max(last.e, m.e); else merged.push({ ...m }); }
+        d.mutes = merged.slice(0, 500);
+        break;
+      }
+      case 'mute.restoreRange': {
+        const r = range(o.s, o.e);
+        if (!r) { refused.push('nothing to unmute'); break; }
+        const next: { id: string; s: number; e: number }[] = [];
+        for (const m of d.mutes ?? []) {
+          if (m.e <= r[0] || m.s >= r[1]) { next.push(m); continue; }
+          if (m.s < r[0] - 0.04) next.push({ id: m.id, s: m.s, e: r[0] });
+          if (m.e > r[1] + 0.04) next.push({ id: newId('mu'), s: r[1], e: m.e });
+        }
+        d.mutes = next;
+        break;
+      }
+      case 'scene.split': {
+        const t = clamp(o.t, 0.1, Math.max(0.1, duration - 0.1), NaN);
+        if (!Number.isFinite(t)) { refused.push('a split needs a moment inside the video'); break; }
+        const splits = (d.splits ?? []).filter(x => Math.abs(x - t) > 0.15);
+        d.splits = [...splits, Math.round(t * 100) / 100].sort((a, b) => a - b).slice(0, 1000);
+        break;
+      }
+      case 'scene.join': d.splits = (d.splits ?? []).filter(x => Math.abs(x - Number(o.t)) > 0.15); break;
       case 'caption.edit': {
         if (!Number.isInteger(o.i) || o.i < 0) { refused.push('caption edit names no word'); break; }
         d.captionEdits[String(o.i)] = text(o.text, 80);

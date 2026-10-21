@@ -1,33 +1,30 @@
 /**
- * A new video project: "What would you like AI to do with this video?"
+ * A new video project, upload first: one big place to drop the video, a
+ * "Choose a file" button, or a pasted link — and then a progress screen that
+ * stays with the video until it and its transcript are ready, when the
+ * editor opens. There is no prompt to write: the goal chosen on the welcome
+ * (or a template) is the request, and its choices are folded under Options.
  *
- * One large box (typed or spoken — the Autopilot voice engine), presets for
- * the common asks, the file, and what was understood said back before
- * anything runs. Advanced settings stay folded unless opened. The upload is
- * resumable and its bar is bytes the server confirmed.
+ * The video can come from:
+ *  - the customer's computer — a resumable upload in parts, its progress the
+ *    bytes that have really left the browser;
+ *  - a link to their own YouTube video — fetched by the media engine (the
+ *    rules in lib/video/youtube.ts), only after they tick that it is theirs;
+ *  - a direct link to a video file — fetched by the Worker, fenced like every
+ *    address somebody types (`import_link`).
  *
- * The video can come from the customer's computer or — because a recording
- * on a PC is often tens of gigabytes and the same video on their channel is
- * already uploaded — from a link to their own YouTube video, which the media
- * engine fetches. The link is checked here by the same rules the server
- * uses (lib/video/youtube.ts), its title asked of YouTube by the server, and
- * nothing starts until the customer ticks that the video is theirs to use.
+ * The progress screen (`ImportProgress`) reads only what is real — bytes,
+ * the engine's clock, pieces transcribed — and creeps between readings
+ * without passing the next one (progress.ts says how).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Upload, Wand2, ChevronDown, ChevronUp, Loader, Film, AlertCircle, Bot, SquarePlay, HardDrive } from 'lucide-react';
-import VoiceControl from '../Autopilot/voice/VoiceControl';
+import { UploadCloud, Loader, AlertCircle, Bot, SquarePlay, ArrowLeft, Check, X, Link2, SlidersHorizontal, ChevronDown, ChevronUp, Film } from 'lucide-react';
 import {
-  createVideoProject, parseRequest, describeRequest, uploadVideo, bytesLabel, SHORTS_MAX, parseYoutubeUrl, youtubeInfo, youtubeThumb,
-  type Template, type VideoRequest, type UploadProgress, type Want,
+  createVideoProject, parseRequest, describeRequest, uploadVideo, abortUpload, importVideoLink, bytesLabel, SHORTS_MAX, parseYoutubeUrl, youtubeInfo, youtubeThumb, videoStatus,
+  type Template, type VideoRequest, type UploadProgress, type Want, type Capability, type ProjectView,
 } from '../../services/videoStudio';
 import { fetchBoard, type Project } from '../../services/projects';
-
-const PRESETS: { label: string; text: string }[] = [
-  { label: 'Clean + long video + 4 Shorts', text: 'Clean this recording, remove filler words and long gaps, create one polished main video and four Shorts, add captions and create PNG thumbnails.' },
-  { label: '5 Shorts only', text: 'Create five 30–60 second Shorts from this video with captions and PNG thumbnails.' },
-  { label: 'Just clean it', text: 'Clean this recording: remove filler words and long gaps. Keep it natural. No Shorts.' },
-  { label: 'Captions + thumbnails', text: 'Add captions and create PNG thumbnails for this video. Light cleanup only.' },
-];
+import { bandsFor, readProgress, useCreep, useEta, etaWords, type Origin } from './progress';
 
 /** What the welcome wizard asked for beyond the video itself, said in words. */
 function wantWords(w: Want): string[] {
@@ -40,251 +37,298 @@ function wantWords(w: Want): string[] {
   ].filter(Boolean);
 }
 
-export default function NewVideoProject({ template, want, autopilotProjectId, onCancel, onCreated }: {
+const VIDEO_NAME = /\.(mp4|m4v|mov|mkv|webm)$/i;
+
+export default function NewVideoProject({ template, want, autopilotProjectId, transcription, options, onCancel, onCreated }: {
   template: Template | null;
   want?: Want;
   autopilotProjectId: string;
+  /** Whether transcription is set up on this install (from capabilities); null while unknown. */
+  transcription?: Capability | null;
+  /** The goal's choices, folded under "Options". */
+  options?: React.ReactNode;
   onCancel: () => void;
   onCreated: (id: string) => void;
 }) {
-  const [prompt, setPrompt] = useState(template?.prompt ?? '');
-  const [name, setName] = useState('');
-  const [file, setFile] = useState<File | null>(null);
-  const [over, setOver] = useState(false);
-  const [advanced, setAdvanced] = useState(false);
   const [settings, setSettings] = useState<Partial<VideoRequest> & { language?: string }>(template?.settings ?? {});
   const [apProjects, setApProjects] = useState<Project[]>([]);
   const [ap, setAp] = useState(autopilotProjectId);
-  const [busy, setBusy] = useState<'' | 'creating' | 'uploading'>('');
-  const [progress, setProgress] = useState<UploadProgress | null>(null);
+  const [over, setOver] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
   const [error, setError] = useState('');
-  const [listening, setListening] = useState(false);
+  const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  /* Where the video comes from: this computer, or the customer's own YouTube video. */
-  const [from, setFrom] = useState<'file' | 'youtube'>('file');
-  const [ytText, setYtText] = useState('');
-  const [ytShowErr, setYtShowErr] = useState(false);
+  /* A pasted link: YouTube (the engine fetches it) or a direct video file (the Worker does). */
+  const [link, setLink] = useState('');
+  const [linkErrShown, setLinkErrShown] = useState(false);
   const [ytInfo, setYtInfo] = useState<{ id: string; title: string; author: string; note: string } | null>(null);
   const [ytServerErr, setYtServerErr] = useState('');
-  const [ytLooking, setYtLooking] = useState(false);
   const [rights, setRights] = useState(false);
-  const yt = useMemo(() => parseYoutubeUrl(ytText), [ytText]);
-  const nameTouched = useRef(false);
-  const ytId = yt.ok ? yt.id : '';
+  const yt = useMemo(() => parseYoutubeUrl(link), [link]);
+  const isYoutube = /youtu\.?be/i.test(link);
+  const direct = !isYoutube && /^https?:\/\/\S+\.\S+/i.test(link.trim());
+  /* Once started: which project, from where, and the upload's real bytes. */
+  const [job, setJob] = useState<{ id: string; origin: Origin; name: string } | null>(null);
+  const [progress, setProgress] = useState<UploadProgress | null>(null);
+  const abort = useRef<AbortController | null>(null);
+
+  useEffect(() => { void fetchBoard().then(b => setApProjects(b.projects as Project[])); }, []);
+  useEffect(() => { if (template) setSettings(template.settings); }, [template]);
 
   /* The title, asked of YouTube by the server once the link names a video. */
+  const ytId = yt.ok ? yt.id : '';
   useEffect(() => {
     setYtServerErr('');
-    if (!ytId) { setYtInfo(null); setYtLooking(false); return; }
+    if (!ytId) { setYtInfo(null); return; }
     let gone = false;
-    setYtLooking(true);
     const t = setTimeout(() => {
       void youtubeInfo(`https://www.youtube.com/watch?v=${ytId}`).then(r => {
         if (gone) return;
-        setYtLooking(false);
         if (!r.success) { setYtServerErr(r.error ?? 'That link could not be checked.'); setYtInfo(null); return; }
         setYtInfo({ id: r.id, title: r.title, author: r.author, note: r.note });
-        if (r.title && !nameTouched.current) setName(r.title.slice(0, 80));
       });
     }, 350);
     return () => { gone = true; clearTimeout(t); };
   }, [ytId]);
-  /* A half-typed link is not an error yet: say what is wrong once they pause or leave the box. */
-  useEffect(() => { setYtShowErr(false); if (!ytText.trim()) return; const t = setTimeout(() => setYtShowErr(true), 900); return () => clearTimeout(t); }, [ytText]);
-  const ytError = ytServerErr || (ytShowErr && !yt.ok && ytText.trim() ? yt.error : '');
+  useEffect(() => { setLinkErrShown(false); if (!link.trim()) return; const t = setTimeout(() => setLinkErrShown(true), 900); return () => clearTimeout(t); }, [link]);
+  const linkError = ytServerErr || (linkErrShown && link.trim() && isYoutube && !yt.ok ? yt.error : linkErrShown && link.trim() && !isYoutube && !direct ? 'Paste a YouTube link or a direct link to a video file (https://…/video.mp4).' : '');
 
-  useEffect(() => { void fetchBoard().then(b => setApProjects(b.projects as Project[])); }, []);
-  useEffect(() => { if (template) { setPrompt(template.prompt); setSettings(template.settings); } }, [template]);
-
-  /* What will be made, from the words — the same reading the server does. */
+  /* What will be made — the goal's request read the way the server reads it. */
   const understood = useMemo(() => {
-    const r = { ...parseRequest(prompt || 'clean this recording and create three shorts', settings), ...settings } as VideoRequest;
+    const r = { ...parseRequest(template?.prompt || 'clean this recording and create three shorts', settings), ...settings } as VideoRequest;
     return { ...r, understood: describeRequest(r) };
-  }, [prompt, settings]);
+  }, [template, settings]);
 
-  const pick = (f: File | null | undefined) => {
-    if (!f) return;
+  const create = async (name: string, extra: Record<string, unknown> = {}) => createVideoProject({
+    name: name.slice(0, 120), prompt: template?.prompt ?? '', settings, autopilotProjectId: ap || undefined, want, ...extra,
+  });
+
+  const startFile = async (f: File | null | undefined) => {
+    if (!f || busy) return;
     setError('');
-    if (!/\.(mp4|m4v|mov|mkv|webm)$/i.test(f.name)) { setError('Choose an MP4, MOV, MKV or WebM video.'); return; }
-    setFile(f);
-    if (!name) setName(f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').slice(0, 80));
+    if (!VIDEO_NAME.test(f.name)) { setError('Choose an MP4, MOV, MKV or WebM video.'); return; }
+    setBusy(true);
+    const name = f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() || 'My video';
+    const c = await create(name);
+    if (!c.success) { setBusy(false); setError(c.error ?? 'The project could not be created.'); return; }
+    setJob({ id: c.id, origin: 'file', name });
+    abort.current = new AbortController();
+    const up = await uploadVideo(c.id, f, setProgress, abort.current.signal);
+    if (!up.ok) { setError(abort.current.signal.aborted ? '' : `${up.error} The project is saved — open it and choose the same file to resume.`); if (abort.current.signal.aborted) { setJob(null); setProgress(null); setBusy(false); } }
   };
 
-  const startYoutube = async () => {
-    setYtShowErr(true);
-    if (!yt.ok || ytServerErr) { setError(yt.ok ? ytServerErr : yt.error); return; }
+  const startLink = async () => {
+    setLinkErrShown(true);
+    if (busy) return;
+    if (isYoutube) {
+      if (!yt.ok || ytServerErr) { setError(yt.ok ? ytServerErr : yt.error); return; }
+      if (!rights) { setError('Tick the box to confirm this is your video, or that you have the rights to use it.'); return; }
+      setError(''); setBusy(true);
+      const name = ytInfo?.title || 'YouTube video';
+      const c = await create(name, { youtubeUrl: yt.url, rightsConfirmed: true, title: ytInfo?.title ?? '' });
+      if (!c.success) { setBusy(false); setError(c.error ?? 'The project could not be created.'); return; }
+      setJob({ id: c.id, origin: 'youtube', name });
+      return;
+    }
+    if (!direct) { setError('Paste a YouTube link or a direct link to a video file.'); return; }
     if (!rights) { setError('Tick the box to confirm this is your video, or that you have the rights to use it.'); return; }
-    setError('');
-    setBusy('creating');
-    const c = await createVideoProject({ name: name.trim() || ytInfo?.title || 'YouTube video', prompt: prompt.trim(), settings, autopilotProjectId: ap || undefined, want, youtubeUrl: yt.url, rightsConfirmed: true, title: ytInfo?.title ?? '' });
-    setBusy('');
-    if (!c.success) { setError(c.error ?? 'The project could not be created.'); return; }
-    onCreated(c.id);
+    setError(''); setBusy(true);
+    const name = decodeURIComponent(link.trim().split(/[?#]/)[0].split('/').pop() ?? '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() || 'Video from a link';
+    const c = await create(name);
+    if (!c.success) { setBusy(false); setError(c.error ?? 'The project could not be created.'); return; }
+    setJob({ id: c.id, origin: 'link', name });
+    const r = await importVideoLink(c.id, link.trim());
+    if (!r.success) setError(`${r.error ?? 'The video could not be fetched from that link.'} The project is saved — open it and upload the file instead.`);
   };
 
-  const start = async () => {
-    if (from === 'youtube') { await startYoutube(); return; }
-    if (!file) { setError('Choose the video first.'); return; }
-    setError('');
-    setBusy('creating');
-    const c = await createVideoProject({ name: name.trim() || file.name, prompt: prompt.trim(), settings, autopilotProjectId: ap || undefined, want });
-    if (!c.success) { setBusy(''); setError(c.error ?? 'The project could not be created.'); return; }
-    setBusy('uploading');
-    const up = await uploadVideo(c.id, file, setProgress);
-    setBusy('');
-    if (!up.ok) { setError(`${up.error} The project is saved — open it and choose the same file to resume.`); return; }
-    onCreated(c.id);
-  };
+  if (job) {
+    return (
+      <ImportProgress job={job} upload={progress} error={error} transcription={transcription ?? null}
+        onCancel={job.origin === 'file' && !progress?.total ? undefined : job.origin === 'file' ? () => { abort.current?.abort(); void abortUpload(job.id); } : undefined}
+        onReady={() => onCreated(job.id)} />
+    );
+  }
 
-  const set = (patch: Partial<VideoRequest> & { language?: string }) => setSettings(s => ({ ...s, ...patch }));
-  const pct = progress ? Math.round((progress.sent / Math.max(1, progress.total)) * 100) : 0;
-
+  const noTranscriber = transcription && transcription.status !== 'working';
   return (
-    <div className="vs-new" data-testid="vs-new-project">
-      <div className="vs-col">
-        {template && want && <div className="vs-steps"><span><i>1</i> Goal</span><span>›</span><span><i>2</i> Choices</span><span>›</span><span className="on"><i>3</i> Your video</span></div>}
-        <div className="vs-prompt">
-          <div className="vs-prompt-in">
-            <label htmlFor="vs-prompt" style={{ fontWeight: 800, fontSize: 17, display: 'flex', gap: 8, alignItems: 'center' }}>
-              <Wand2 size={18} color="#c084fc" /> {template && want ? template.name : 'What would you like AI to do with this video?'}
-            </label>
-            <textarea id="vs-prompt" data-field="video.prompt" value={prompt} disabled={listening || !!busy}
-              placeholder="Clean this recording, remove filler words and long gaps, create one polished main video and four Shorts, add captions and create PNG thumbnails."
-              onChange={e => setPrompt(e.target.value)} />
-            <div className="vs-row">
-              <VoiceControl compact onListening={setListening} onResult={r => setPrompt(p => (p ? `${p} ` : '') + r.text)} disabled={!!busy} />
-              <span className="vs-spacer" />
-              <span className="vs-kbd">Typed or spoken — it is put in the box for you to check, never sent on its own.</span>
-            </div>
-            <div className="vs-chips">
-              {PRESETS.map(p => <button key={p.label} type="button" className="vs-chip" aria-pressed={prompt === p.text} onClick={() => setPrompt(p.text)}>{p.label}</button>)}
-            </div>
-          </div>
+    <div className="vs-upload" data-testid="vs-new-project">
+      <div className="vs-row vs-upload-head">
+        <button type="button" className="vs-btn ghost sm" onClick={onCancel}><ArrowLeft size={14} /> Goals</button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <b className="vs-upload-goal">{template?.name ?? 'New video project'}</b>
+          <div className="vs-understood" data-testid="vs-understood">{understood.understood.map(u => <span key={u}>{u}</span>)}{want && wantWords(want).map(u => <span key={u} className="also">{u}</span>)}</div>
         </div>
-
-        <div className="vs-source-seg" role="tablist" aria-label="Where the video comes from" data-testid="vs-source">
-          <button type="button" role="tab" aria-selected={from === 'file'} onClick={() => { setFrom('file'); setError(''); }} disabled={!!busy} data-source="file"><HardDrive size={15} /> From my computer</button>
-          <button type="button" role="tab" aria-selected={from === 'youtube'} onClick={() => { setFrom('youtube'); setError(''); }} disabled={!!busy} data-source="youtube"><SquarePlay size={15} /> From a YouTube link</button>
-        </div>
-
-        {from === 'file' ? (
-        <div className={`vs-drop ${over ? 'over' : ''}`} role="button" tabIndex={0} data-field="video.file"
-          onClick={() => inputRef.current?.click()} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') inputRef.current?.click(); }}
-          onDragOver={e => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
-          onDrop={e => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files?.[0]); }}>
-          <input ref={inputRef} type="file" accept="video/mp4,video/quicktime,video/x-matroska,video/webm,.mp4,.mov,.m4v,.mkv,.webm" hidden data-testid="vs-file"
-            onChange={e => pick(e.target.files?.[0])} />
-          {file ? <Film size={28} color="#c084fc" /> : <Upload size={28} color="#c084fc" />}
-          <b>{file ? file.name : 'Upload your recording'}</b>
-          <span className="vs-sub" style={{ margin: 0 }}>{file ? bytesLabel(file.size) : 'MP4, MOV, MKV or WebM · up to 12 GB · 16:9, 9:16, 1:1 or 4:5. Your original is kept untouched.'}</span>
-          {!file && <span className="vs-kbd" style={{ margin: 0 }}>A huge file? <button type="button" className="vs-linkbtn" onClick={e => { e.stopPropagation(); setFrom('youtube'); }} data-act="to-youtube">Or paste a YouTube link</button> to a video already on your channel.</span>}
-        </div>
-        ) : (
-        <div className="vs-card vs-yt" data-testid="vs-youtube">
-          <label className="vs-label" htmlFor="vs-yt-url"><span className="vs-row" style={{ gap: 6 }}><SquarePlay size={14} /> The link to your video on YouTube</span>
-            <input id="vs-yt-url" className="vs-input" data-field="video.youtube" data-testid="vs-yt-url" value={ytText} disabled={!!busy} inputMode="url" autoComplete="off" spellCheck={false}
-              aria-invalid={!!ytError} aria-describedby={ytError ? 'vs-yt-err' : undefined}
-              placeholder="youtube.com/watch?v=… · youtu.be/… · /shorts/… · /live/…"
-              onChange={e => setYtText(e.target.value)} onBlur={() => setYtShowErr(true)} />
-          </label>
-          {ytError && <div className="vs-note bad" id="vs-yt-err" role="alert" data-testid="vs-yt-error"><AlertCircle size={15} /> {ytError}</div>}
-          {yt.ok && !ytServerErr && (
-            <div className="vs-yt-card" data-testid="vs-yt-card">
-              <img src={youtubeThumb(yt.id)} alt="" width={160} height={90} loading="lazy" referrerPolicy="no-referrer" />
-              <div className="vs-col" style={{ gap: 3, minWidth: 0 }}>
-                <b data-testid="vs-yt-title">{ytInfo?.title || (ytLooking ? 'Looking up the title…' : `YouTube video ${yt.id}`)}</b>
-                {ytInfo?.author && <span className="vs-kbd">{ytInfo.author}</span>}
-                <span className="vs-kbd">Fetched by our server at up to 1080p, then prepared like an upload.</span>
-                {ytInfo?.note && <span className="vs-kbd" style={{ color: '#fbbf24' }}>{ytInfo.note}</span>}
-              </div>
-            </div>
-          )}
-          <label className="vs-opt" data-field="video.youtubeRights">
-            <input type="checkbox" checked={rights} onChange={e => setRights(e.target.checked)} disabled={!!busy} data-testid="vs-yt-rights" />
-            <span><b>This is my video, or I have the rights to use it</b></span>
-          </label>
-          <span className="vs-kbd">YouTube's terms allow downloading only videos you own or have permission to use. YouTube also often refuses servers, and private, age-restricted and members-only videos need a sign-in — if it refuses, download the file from YouTube Studio and upload it instead.</span>
-        </div>
-        )}
-
-        {busy === 'uploading' && progress && (
-          <div className="vs-card" style={{ display: 'grid', gap: 8 }} data-testid="vs-upload-progress">
-            <div className="vs-row"><b>Uploading</b><span className="vs-spacer" /><span>{bytesLabel(progress.sent)} of {bytesLabel(progress.total)} · {pct}%</span></div>
-            <div className="vs-bar"><i style={{ width: `${pct}%` }} /></div>
-            <span className="vs-sub" style={{ margin: 0 }}>{progress.resumed ? 'Picked up where the last upload stopped. ' : ''}Keep this tab open until it finishes; if it stops, choose the same file again to resume.</span>
-          </div>
-        )}
-        {error && <div className="vs-note bad" role="alert"><AlertCircle size={16} /> {error}</div>}
+        <button type="button" className="vs-btn sm" onClick={() => setShowOptions(o => !o)} aria-expanded={showOptions} data-act="options">
+          <SlidersHorizontal size={14} /> Options {showOptions ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+        </button>
       </div>
 
-      <div className="vs-col">
-        <div className="vs-card" style={{ display: 'grid', gap: 10 }}>
-          <h2>What will be made</h2>
-          <div className="vs-understood" data-testid="vs-understood">{understood.understood.map(u => <span key={u}>{u}</span>)}{want && wantWords(want).map(u => <span key={u} className="also">{u}</span>)}</div>
-          <label className="vs-label">Project name
-            <input className="vs-input" data-field="video.name" value={name} onChange={e => { nameTouched.current = true; setName(e.target.value); }} placeholder="Weekly podcast — episode 12" />
-          </label>
-          <label className="vs-label"><span style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Bot size={13} /> Save into an AI Autopilot business workspace (optional)</span>
+      {showOptions && (
+        <div className="vs-col" data-testid="vs-options">
+          {options ?? <AdvancedSettings understood={understood} settings={settings} onSet={p => setSettings(s => ({ ...s, ...p }))} />}
+          <label className="vs-label" style={{ maxWidth: 520 }}><span style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Bot size={13} /> Save into an AI Autopilot business workspace (optional)</span>
             <select className="vs-select" data-field="video.autopilot" value={ap} onChange={e => setAp(e.target.value)}>
               <option value="">No — keep it in Video Studio</option>
               {apProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </label>
-          <button type="button" className="vs-btn ghost sm" style={{ justifySelf: 'start' }} onClick={() => setAdvanced(a => !a)} aria-expanded={advanced}>
-            {advanced ? <ChevronUp size={14} /> : <ChevronDown size={14} />} Advanced settings
-          </button>
-          {advanced && (
-            <div className="vs-col" data-testid="vs-advanced">
-              <div className="vs-row">
-                <label className="vs-label" style={{ flex: 1 }}>Shorts
-                  <input className="vs-input" type="number" min={0} max={SHORTS_MAX} value={understood.shorts} onChange={e => set({ shorts: Math.max(0, Math.min(SHORTS_MAX, Number(e.target.value))) })} />
-                </label>
-                <label className="vs-label" style={{ flex: 1 }}>Shortest (s)
-                  <input className="vs-input" type="number" min={10} max={170} value={understood.min} onChange={e => set({ min: Number(e.target.value) })} />
-                </label>
-                <label className="vs-label" style={{ flex: 1 }}>Longest (s)
-                  <input className="vs-input" type="number" min={15} max={180} value={understood.max} onChange={e => set({ max: Number(e.target.value) })} />
-                </label>
-              </div>
-              <div className="vs-row">
-                <label className="vs-label" style={{ flex: 1 }}>Cleanup
-                  <select className="vs-select" value={understood.cleanup} onChange={e => set({ cleanup: e.target.value as VideoRequest['cleanup'] })}>
-                    <option value="conservative">Conservative</option><option value="balanced">Balanced</option><option value="aggressive">Aggressive</option>
-                  </select>
-                </label>
-                <label className="vs-label" style={{ flex: 1 }}>Shorts shape
-                  <select className="vs-select" value={understood.aspect} onChange={e => set({ aspect: e.target.value as VideoRequest['aspect'] })}>
-                    <option value="9:16">9:16 vertical</option><option value="1:1">1:1 square</option><option value="4:5">4:5 portrait</option>
-                  </select>
-                </label>
-                <label className="vs-label" style={{ flex: 1 }}>Framing
-                  <select className="vs-select" value={understood.layout} onChange={e => set({ layout: e.target.value as 'crop' | 'fit' })}>
-                    <option value="crop">Crop to the speaker</option><option value="fit">Keep the whole screen</option>
-                  </select>
-                </label>
-              </div>
-              <div className="vs-row">
-                <label className="vs-label" style={{ flex: 1 }}>Language
-                  <select className="vs-select" value={settings.language ?? ''} onChange={e => set({ language: e.target.value || undefined })}>
-                    <option value="">Detect automatically</option><option value="en">English</option><option value="tr">Turkish</option><option value="ur">Urdu</option>
-                  </select>
-                </label>
-                <label className="vs-row" style={{ gap: 6, fontSize: 13 }}><input type="checkbox" checked={understood.long} onChange={e => set({ long: e.target.checked })} /> Long video</label>
-                <label className="vs-row" style={{ gap: 6, fontSize: 13 }}><input type="checkbox" checked={understood.captions} onChange={e => set({ captions: e.target.checked })} /> Captions</label>
-                <label className="vs-row" style={{ gap: 6, fontSize: 13 }}><input type="checkbox" checked={understood.thumbnails} onChange={e => set({ thumbnails: e.target.checked })} /> Thumbnails</label>
-              </div>
-            </div>
-          )}
-          <div className="vs-row" style={{ marginTop: 4 }}>
-            <button type="button" className="vs-btn ghost" onClick={onCancel} disabled={!!busy}>Cancel</button>
-            <span className="vs-spacer" />
-            <button type="button" className="vs-btn ai" onClick={() => void start()} disabled={!!busy || (from === 'file' ? !file : !yt.ok || !rights || !!ytServerErr)} data-testid="vs-start">
-              {busy ? <Loader size={15} className="spin" /> : <Wand2 size={15} />} {busy === 'creating' ? 'Creating…' : busy === 'uploading' ? `Uploading ${pct}%` : from === 'youtube' ? 'Fetch from YouTube and start' : 'Upload and start'}
-            </button>
-          </div>
-          <p className="vs-kbd" style={{ margin: 0 }}>Nothing is published anywhere. Cuts are proposed with reasons, and you can restore anything — the original is never changed.</p>
         </div>
+      )}
+
+      <div className={`vs-bigdrop ${over ? 'over' : ''}`} data-field="video.file" data-testid="vs-dropzone"
+        onDragOver={e => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
+        onDrop={e => { e.preventDefault(); setOver(false); void startFile(e.dataTransfer.files?.[0]); }}>
+        <input ref={inputRef} type="file" accept="video/mp4,video/quicktime,video/x-matroska,video/webm,.mp4,.mov,.m4v,.mkv,.webm" hidden data-testid="vs-file"
+          onChange={e => void startFile(e.target.files?.[0])} />
+        <UploadCloud size={58} strokeWidth={1.5} className="vs-bigdrop-ic" />
+        <h2 className="vs-bigdrop-title">Drag a video file here to upload</h2>
+        <button type="button" className="vs-btn primary vs-bigdrop-btn" onClick={() => inputRef.current?.click()} disabled={busy} data-testid="vs-choose">
+          {busy ? <Loader size={16} className="spin" /> : <Film size={16} />} Choose a file
+        </button>
+        <span className="vs-sub" style={{ margin: 0 }}>MP4, MOV, MKV or WebM · up to 12 GB · your original is kept untouched</span>
+        <div className="vs-or"><span>or paste a video link</span></div>
+        <div className="vs-linkrow" data-testid="vs-youtube">
+          <Link2 size={16} className="ic" />
+          <input className="vs-input" data-field="video.youtube" data-testid="vs-yt-url" value={link} disabled={busy} inputMode="url" autoComplete="off" spellCheck={false}
+            aria-label="A YouTube link or a direct link to a video file" aria-invalid={!!linkError}
+            placeholder="youtube.com/watch?v=…  or  https://…/video.mp4"
+            onChange={e => setLink(e.target.value)} onBlur={() => setLinkErrShown(true)} onKeyDown={e => { if (e.key === 'Enter') void startLink(); }} />
+          <button type="button" className="vs-btn ai" onClick={() => void startLink()} disabled={busy || !link.trim()} data-testid="vs-start">Import</button>
+        </div>
+        {linkError && <div className="vs-note bad" role="alert" data-testid="vs-yt-error"><AlertCircle size={15} /> {linkError}</div>}
+        {isYoutube && yt.ok && !ytServerErr && (
+          <div className="vs-yt-card" data-testid="vs-yt-card">
+            <img src={youtubeThumb(yt.id)} alt="" width={160} height={90} loading="lazy" referrerPolicy="no-referrer" />
+            <div className="vs-col" style={{ gap: 3, minWidth: 0 }}>
+              <b data-testid="vs-yt-title">{ytInfo?.title || `YouTube video ${yt.id}`}</b>
+              {ytInfo?.author && <span className="vs-kbd">{ytInfo.author}</span>}
+              <span className="vs-kbd">Fetched by our server at up to 1080p, then prepared like an upload.</span>
+              {ytInfo?.note && <span className="vs-kbd" style={{ color: '#b45309' }}>{ytInfo.note}</span>}
+            </div>
+          </div>
+        )}
+        {(isYoutube || direct) && link.trim() && (
+          <label className="vs-opt" data-field="video.youtubeRights">
+            <input type="checkbox" checked={rights} onChange={e => setRights(e.target.checked)} disabled={busy} data-testid="vs-yt-rights" />
+            <span><b>This is my video, or I have the rights to use it</b>{isYoutube ? ' — YouTube allows downloading only videos you own or may use. If it refuses our server, download the file from YouTube Studio and drop it here.' : ''}</span>
+          </label>
+        )}
       </div>
+
+      {noTranscriber && (
+        <div className="vs-note warn" data-testid="vs-no-transcriber"><AlertCircle size={15} /> <span><b>Transcription is not set up on this install</b> — {transcription!.note || 'the owner connects it in Cloudflare.'} Your video will be uploaded and prepared, but there will be no transcript: editing by text, filler removal and captions need it.</span></div>
+      )}
+      {error && <div className="vs-note bad" role="alert"><AlertCircle size={16} /> {error}</div>}
+      <p className="vs-kbd" style={{ margin: 0, textAlign: 'center' }}>Nothing is published anywhere. Cuts are proposed with reasons, and you can restore anything — the original is never changed.</p>
+    </div>
+  );
+}
+
+/** A template's settings (no goal): the few numbers a template sets, changeable. */
+function AdvancedSettings({ understood, settings, onSet }: { understood: VideoRequest; settings: Partial<VideoRequest> & { language?: string }; onSet: (p: Partial<VideoRequest> & { language?: string }) => void }) {
+  return (
+    <div className="vs-card vs-col" data-testid="vs-advanced">
+      <div className="vs-row">
+        <label className="vs-label" style={{ flex: 1 }}>Shorts<input className="vs-input" type="number" min={0} max={SHORTS_MAX} value={understood.shorts} onChange={e => onSet({ shorts: Math.max(0, Math.min(SHORTS_MAX, Number(e.target.value))) })} /></label>
+        <label className="vs-label" style={{ flex: 1 }}>Shortest (s)<input className="vs-input" type="number" min={10} max={170} value={understood.min} onChange={e => onSet({ min: Number(e.target.value) })} /></label>
+        <label className="vs-label" style={{ flex: 1 }}>Longest (s)<input className="vs-input" type="number" min={15} max={180} value={understood.max} onChange={e => onSet({ max: Number(e.target.value) })} /></label>
+      </div>
+      <div className="vs-row">
+        <label className="vs-label" style={{ flex: 1 }}>Cleanup
+          <select className="vs-select" value={understood.cleanup} onChange={e => onSet({ cleanup: e.target.value as VideoRequest['cleanup'] })}>
+            <option value="conservative">Conservative</option><option value="balanced">Balanced</option><option value="aggressive">Aggressive</option>
+          </select>
+        </label>
+        <label className="vs-label" style={{ flex: 1 }}>Language
+          <select className="vs-select" value={settings.language ?? ''} onChange={e => onSet({ language: e.target.value || undefined })}>
+            <option value="">Detect automatically</option><option value="en">English</option><option value="tr">Turkish</option><option value="ur">Urdu</option>
+          </select>
+        </label>
+      </div>
+      <div className="vs-row">
+        <label className="vs-row" style={{ gap: 6, fontSize: 13 }}><input type="checkbox" checked={understood.long} onChange={e => onSet({ long: e.target.checked })} /> Long video</label>
+        <label className="vs-row" style={{ gap: 6, fontSize: 13 }}><input type="checkbox" checked={understood.captions} onChange={e => onSet({ captions: e.target.checked })} /> Captions</label>
+        <label className="vs-row" style={{ gap: 6, fontSize: 13 }}><input type="checkbox" checked={understood.thumbnails} onChange={e => onSet({ thumbnails: e.target.checked })} /> Thumbnails</label>
+      </div>
+    </div>
+  );
+}
+
+/* ── The progress screen ─────────────────────────────────────────────────── */
+
+export function ImportProgress({ job, upload, error, transcription, onCancel, onReady }: {
+  job: { id: string; origin: Origin; name: string };
+  upload: UploadProgress | null;
+  error: string;
+  transcription: Capability | null;
+  onCancel?: () => void;
+  onReady: () => void;
+}) {
+  const bands = useMemo(() => bandsFor(job.origin), [job.origin]);
+  const [view, setView] = useState<ProjectView | null>(null);
+  const known = useRef(-1);
+  const opened = useRef(false);
+  /* The server's view, every couple of seconds — it is what moves the jobs on, too. */
+  useEffect(() => {
+    let alive = true, t = 0;
+    const tick = async () => {
+      const r = await videoStatus(job.id, known.current);
+      if (!alive) return;
+      if (r.success) { setView(r); if (typeof r.docVersion === 'number') known.current = r.docVersion; }
+      t = window.setTimeout(tick, 2000);
+    };
+    void tick();
+    return () => { alive = false; clearTimeout(t); };
+  }, [job.id]);
+
+  const reading = readProgress(bands, view, upload && job.origin === 'file' ? upload : null);
+  /* Transcription impossible (not set up, or it stopped): the video is still worth opening once it is prepared. */
+  const transcribeFailed = view?.stages.find(s => s.key === 'transcribe')?.state === 'failed';
+  const preparedOnly = !!view?.source.proxyUrl && (transcribeFailed || (transcription && transcription.status !== 'working'));
+  const done = reading.done;
+  const shown = useCreep(reading.value, reading.ceiling, done);
+  const band = bands[Math.min(reading.index, bands.length - 1)];
+  const stageBytes = job.origin === 'file' && reading.index === 0 && upload ? upload.sent : job.origin === 'link' && reading.index === 0 && view?.source.link ? view.source.link.got : null;
+  const stageTotal = job.origin === 'file' && upload ? upload.total : view?.source.link?.bytes ?? 0;
+  const eta = useEta(stageBytes ?? reading.stagePct, stageBytes !== null ? stageTotal : 100);
+  useEffect(() => { if (done && !opened.current) { opened.current = true; const t = setTimeout(onReady, 700); return () => clearTimeout(t); } }, [done, onReady]);
+
+  const failed = error || reading.failed;
+  return (
+    <div className="vs-progress-screen" data-testid="vs-upload-progress" data-pct={shown.toFixed(1)} data-stage={done ? 'ready' : band.key}>
+      <div className="vs-ps-name" title={job.name}>{job.name}</div>
+      <div className="vs-ps-pct" aria-live="off" data-testid="vs-progress-pct">{done ? '100' : shown.toFixed(1)}<small>%</small></div>
+      <div className="vs-ps-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor(shown)} aria-label="Getting your video ready"><i style={{ width: `${shown}%` }} /></div>
+      <div className="vs-ps-now" data-testid="vs-progress-stage">
+        {failed ? <><AlertCircle size={15} /> Stopped</> : done ? <><Check size={15} /> Ready — opening the editor</> : <><Loader size={15} className="spin" /> {band.label}…</>}
+      </div>
+      <div className="vs-ps-detail">
+        {stageBytes !== null && stageTotal > 0 && <span data-testid="vs-progress-bytes">{bytesLabel(stageBytes)} of {bytesLabel(stageTotal)}</span>}
+        {reading.stagePct !== null && stageBytes === null && reading.index > 0 && !done && <span>{band.label}: {Math.floor(reading.stagePct)}%</span>}
+        {eta !== null && !done && !failed && <span data-testid="vs-progress-eta">{etaWords(eta)}{reading.index > 0 ? ' in this step' : ''}</span>}
+        {upload?.resumed && reading.index === 0 && <span>picked up where the last upload stopped</span>}
+      </div>
+      <ol className="vs-ps-steps">
+        {bands.map((b, i) => {
+          const state = reading.skipped.includes(b.key) ? 'skipped' : i < reading.index ? 'done' : i === reading.index ? (failed ? 'failed' : 'active') : 'waiting';
+          return (
+            <li key={b.key} data-state={state} data-step={b.key}>
+              <span className="dot">{state === 'done' ? <Check size={12} /> : state === 'failed' ? <X size={12} /> : state === 'active' ? <Loader size={12} className="spin" /> : null}</span>
+              {b.label}{state === 'skipped' ? ' — not needed' : ''}
+            </li>
+          );
+        })}
+        <li data-state={done ? 'done' : 'waiting'} data-step="ready"><span className="dot">{done ? <Check size={12} /> : null}</span>Ready</li>
+      </ol>
+      {transcription && transcription.status !== 'working' && (
+        <div className="vs-note warn"><AlertCircle size={15} /> <span>Transcription is not set up on this install, so there will be no transcript — the editor opens once the video is prepared.</span></div>
+      )}
+      {failed && <div className="vs-note bad" role="alert" data-testid="vs-progress-error"><AlertCircle size={15} /> <span>{failed}</span></div>}
+      <div className="vs-row" style={{ justifyContent: 'center' }}>
+        {(failed || preparedOnly) && <button type="button" className="vs-btn primary" onClick={onReady} data-act="open-anyway">Open the editor</button>}
+        {!failed && !done && reading.index === 0 && onCancel && <button type="button" className="vs-btn ghost sm" onClick={onCancel}>Cancel upload</button>}
+      </div>
+      {!failed && !done && <p className="vs-kbd" style={{ margin: 0, textAlign: 'center' }}>{reading.index === 0 && job.origin === 'file' ? 'Keep this tab open while it uploads; if it stops, choose the same file again to resume.' : 'You can leave this page — the work carries on and the project waits in Video Studio.'}</p>}
     </div>
   );
 }

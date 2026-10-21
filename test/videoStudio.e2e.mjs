@@ -32,9 +32,10 @@ import { execSync, execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import http from 'node:http';
 import { makeRecording, makeTwoFaces, startWhisperMock, startGeminiMock, startOpenverseMock } from './videoStudioMock.mjs';
 
-const PORT = 8953, INSPECT = 9353, ENG = 8873, WH = 8874, GM = 8875, OV = 8876;
+const PORT = 8953, INSPECT = 9353, ENG = 8873, WH = 8874, GM = 8875, OV = 8876, LK = 8877;
 const B = `http://localhost:${PORT}`;
 const SECRET = 'engine-test-secret-7f3a';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -61,6 +62,13 @@ let whisper = await startWhisperMock(WH, LONG.script);
 const gemini = await startGeminiMock(GM);
 const openverse = await startOpenverseMock(OV, path.join(state, 'fixtures', 'music'));
 
+/* Somebody's own site, for "paste a video link": a video file, a web page, a redirect. `*.test` hosts are read from here (SITE_TEST_ORIGIN). */
+const linkSite = http.createServer((q, r) => {
+  if (q.url === '/talk.mp4') { const b = fs.readFileSync(SHORT.file); r.writeHead(200, { 'content-type': 'video/mp4', 'content-length': b.length }); r.end(b); return; }
+  if (q.url === '/go') { r.writeHead(302, { location: 'https://videos.test/talk.mp4' }); r.end(); return; }
+  if (q.url === '/private') { r.writeHead(302, { location: 'http://169.254.169.254/latest' }); r.end(); return; }
+  r.writeHead(200, { 'content-type': 'text/html' }); r.end('<html><body>not a video</body></html>');
+}).listen(LK);
 let engine;
 /* The face detector the engine image carries (YuNet), fetched once for the
    local engine; without it track.py falls back to OpenCV's Haar cascade. */
@@ -88,7 +96,7 @@ execSync(`npx wrangler d1 migrations apply crmpro --local --persist-to ${persist
    is reported, never hidden. */
 const WR_ARGS = ['wrangler', 'dev', '--local', '--port', String(PORT), '--inspector-port', String(INSPECT), '--persist-to', persist,
   '--var', `APP_ORIGIN:${B}`, '--var', `GEMINI_BASE:http://127.0.0.1:${GM}`, '--var', `AI_API_KEY:AIzaVIDEO${'x'.repeat(30)}`,
-  '--var', `MEDIA_ENGINE_URL:http://127.0.0.1:${ENG}`, '--var', `MEDIA_ENGINE_SECRET:${SECRET}`, '--var', `WORKERS_AI_BASE:http://127.0.0.1:${WH}`, '--var', `OPENVERSE_BASE:http://127.0.0.1:${OV}`];
+  '--var', `MEDIA_ENGINE_URL:http://127.0.0.1:${ENG}`, '--var', `MEDIA_ENGINE_SECRET:${SECRET}`, '--var', `WORKERS_AI_BASE:http://127.0.0.1:${WH}`, '--var', `OPENVERSE_BASE:http://127.0.0.1:${OV}`, '--var', `SITE_TEST_ORIGIN:http://127.0.0.1:${LK}`];
 let wlog = '', stopping = false, restarts = 0;
 const wfile = fs.createWriteStream(path.join(state, 'wrangler.log'));
 let wr;
@@ -105,7 +113,7 @@ const startWrangler = () => {
 };
 startWrangler();
 let br = null;
-const stop = () => { stopping = true; try { process.kill(-wr.pid, 'SIGTERM'); } catch { /* gone */ } try { engine.kill(); } catch { /* gone */ } whisper.server.close(); gemini.server.close(); openverse.server.close(); };
+const stop = () => { stopping = true; try { process.kill(-wr.pid, 'SIGTERM'); } catch { /* gone */ } try { engine.kill(); } catch { /* gone */ } whisper.server.close(); gemini.server.close(); openverse.server.close(); linkSite.close(); };
 process.on('exit', stop);
 process.on('uncaughtException', async e => { console.log(e); console.log(wlog.replace(/.*workerd@.*\n/g, '').slice(-3000)); try { await br?.close(); } catch { /* */ } stop(); process.exit(1); });
 for (let i = 0; i < 90; i++) { try { const r = await fetch(`${B}/api/data.php`, { method: 'POST', headers: { Connection: 'close' }, body: '{"action":"ping"}' }); if (r.ok) break; } catch { /* starting */ } await sleep(1000); }
@@ -170,6 +178,22 @@ ok('(an Autopilot project with a "Recording to Shorts" workflow)', !!AP && wf.su
   ok('"Run now" on it says it runs on upload, and writes no posts', !run.success || /uploaded|upload/i.test(JSON.stringify(run)), JSON.stringify(run).slice(0, 300));
 }
 
+/* ── A direct link to a video file ── */
+{
+  const c = await v('create', { name: 'From a link', prompt: 'clean this recording' });
+  const page = await v('import_link', { projectId: c.id, url: 'https://videos.test/page.html' });
+  ok('a link to a web page is refused, on the link box', !page.success && page.field === 'video.youtube' && /web page/.test(page.error), page);
+  const ip = await v('import_link', { projectId: c.id, url: 'http://169.254.169.254/latest' });
+  ok('…a link to an IP address is refused before anything is asked of it', !ip.success && /IP address/.test(ip.error), ip);
+  const sneaky = await v('import_link', { projectId: c.id, url: 'https://videos.test/private' });
+  ok('…and so is a redirect to one', !sneaky.success && /will not fetch from/.test(sneaky.error), sneaky);
+  const got = await v('import_link', { projectId: c.id, url: 'https://videos.test/go' });
+  const st = await v('status', { projectId: c.id, knownVersion: -1 });
+  ok('a direct link to a video file (after a redirect) is fetched by the server into the project, which then prepares it', got.success && got.bytes === fs.statSync(SHORT.file).size && st.source.link?.got === got.bytes && ['processing', 'ready'].includes(st.project.status) && st.stages[0].key === 'fetch_link', { got, link: st.source.link, status: st.project.status });
+  await v('cancel', { projectId: c.id });
+  await v('delete', { projectId: c.id });
+}
+
 /* ── A non-video, and an upload that resumes (API) ── */
 {
   const c = await v('create', { name: 'Not a video', prompt: 'make 2 shorts' });
@@ -226,6 +250,18 @@ const steady = p => {
 };
 ctx.on('page', steady);
 const page = steady(await ctx.newPage());
+/* The editor's panels sit behind a rail (Project, AI Tools, Properties,
+   Elements, Captions, Media), each with its own tabs; the script is always
+   on screen, and Export scrolls to the videos. */
+const RAIL_OF = { media: 'media', video: 'properties', adjust: 'properties', effects: 'properties', animation: 'properties', tracking: 'properties', audio: 'properties', text: 'elements', music: 'elements', captions: 'captions', cleanup: 'ai', tools: 'ai', shorts: 'project', reuse: 'project' };
+const openPanel = async (p, k) => {
+  if (k === 'transcript') return;
+  if (k === 'exports') { await p.locator('[data-act="export"]').click(); return; }
+  const rail = p.locator(`[data-rail="${RAIL_OF[k]}"]`);
+  if ((await rail.getAttribute('aria-pressed')) !== 'true') await rail.click();
+  const tab = p.locator(`.vse-panel [data-panel="${k}"]`);
+  if (await tab.count()) await tab.click();
+};
 page.on('pageerror', e => errs.push(`desktop: ${e}`));
 await signIn(page, OWNER);
 
@@ -242,37 +278,45 @@ await page.keyboard.press('Escape'); await page.locator('.vs-modal-back').click(
 /* ── 2–4 · A 20-minute recording, the request, the upload ── */
 await page.getByTestId('vs-new').click();
 await page.locator('[data-goal="both"]').click();
+await page.getByTestId('vs-dropzone').waitFor({ timeout: 5000 });
+const drop = await page.getByTestId('vs-dropzone').innerText();
+ok('a goal goes straight to a big upload screen — no prompt box: drag here, Choose a file, or paste a link', (await page.locator('#vs-prompt, [data-testid="vs-new-project"] textarea').count()) === 0 && /Drag a video file here to upload/.test(drop) && (await page.getByTestId('vs-choose').count()) === 1 && /or paste a video link/i.test(drop), drop.slice(0, 300));
+await page.locator('[data-act="options"]').click();
 await page.getByTestId('vs-wizard-options').waitFor({ timeout: 5000 });
 const opts = await page.getByTestId('vs-wizard-options').innerText();
-ok('the wizard asks only what this goal needs: Shorts, cleanup, sound, music, a quiz', /How many/.test(opts) && /Background noise/.test(opts) && /Background music/.test(opts) && /A quiz/.test(opts), opts.slice(0, 300));
+ok('the goal\'s choices are folded under Options: Shorts, cleanup, sound, music, a quiz', /How many/.test(opts) && /Background noise/.test(opts) && /Background music/.test(opts) && /A quiz/.test(opts), opts.slice(0, 300));
 await page.getByTestId('vs-wiz-music').selectOption('calm');
 await page.getByTestId('vs-wiz-quiz').check();
-await page.getByTestId('vs-wiz-next').click();
-const preset = await page.locator('#vs-prompt').inputValue();
-ok('…and writes the request out for you to check', /4 Shorts/.test(preset) && /background noise/i.test(preset) && /calm royalty-free/i.test(preset), preset);
-const PROMPT = 'Clean this recording, remove filler words and long gaps, create one polished main video and four Shorts, add captions and create PNG thumbnails.';
-await page.locator('#vs-prompt').fill(PROMPT);
+await page.waitForTimeout(300);
 const understood = await page.getByTestId('vs-understood').innerText();
-ok('3 · the request is read back: long video, 4 Shorts, captions, PNG thumbnails, balanced', /one cleaned long video/.test(understood) && /4 Shorts/.test(understood) && /PNG thumbnails/.test(understood) && /balanced cleanup/.test(understood), understood);
-ok('…with the wizard\'s choices beside it: noise reduction, a clearer voice, calm music, a quiz', /medium noise reduction/.test(understood) && /clearer voice/.test(understood) && /calm royalty-free music/.test(understood) && /a quiz/.test(understood), understood);
+ok('3 · what will be made is read back: long video, 4 Shorts, captions, PNG thumbnails, balanced', /one cleaned long video/.test(understood) && /4 Shorts/.test(understood) && /PNG thumbnails/.test(understood) && /balanced cleanup/.test(understood), understood);
+ok('…with the choices beside it: noise reduction, a clearer voice, calm music, a quiz', /medium noise reduction/.test(understood) && /clearer voice/.test(understood) && /calm royalty-free music/.test(understood) && /a quiz/.test(understood), understood);
 await page.locator('[data-field="video.autopilot"]').selectOption(AP);
+/* Choosing the file starts it — no second button. Then one screen follows it
+   until the video and its transcript are ready, sampled every 150 ms. */
 await page.getByTestId('vs-file').setInputFiles(LONG.file);
-await page.locator('[data-field="video.name"]').fill('Weekly growth show — episode 12');
-await page.getByTestId('vs-start').click();
-let sawBar = '';
-for (let i = 0; i < 80 && !/[\d.]+ (KB|MB) of [\d.]+ MB · \d+%/.test(sawBar); i++) { sawBar = await page.getByTestId('vs-upload-progress').innerText().catch(() => sawBar); await sleep(250); }
-ok('2 · the upload shows real bytes sent', /[\d.]+ (KB|MB) of [\d.]+ MB · \d+%/.test(sawBar), sawBar);
-await page.waitForURL(/\/video-studio\/vp-/, { timeout: 180_000 });
-const PID = page.url().match(/video-studio\/(vp-[\w-]+)/)[1];
-ok('4 · the upload completes and the editor opens', !!PID);
-await page.getByTestId('vs-stages').waitFor({ timeout: 20_000 });
-let sawPct = false, sawStage = '';
-for (let i = 0; i < 60 && !sawPct; i++) {
-  const t = await page.getByTestId('vs-stages').innerText().catch(() => '');
-  if (/\d+%/.test(t)) { sawPct = true; sawStage = t; }
-  await sleep(1000);
+const prog = [];
+const tP0 = Date.now();
+for (let i = 0; i < 12_000 && !/\/video-studio\/vp-/.test(page.url()); i++) {
+  const x = await page.evaluate(() => { const el = document.querySelector('[data-testid="vs-upload-progress"]'); return el ? { pct: Number(el.getAttribute('data-pct')), stage: el.getAttribute('data-stage'), text: el.innerText, shown: el.querySelector('[data-testid="vs-progress-pct"]')?.textContent ?? '' } : null; }).catch(() => null);
+  if (x) prog.push({ ...x, t: Date.now() - tP0 });
+  await sleep(150);
 }
-ok('…and shows real stages with a counted percentage', sawPct && /Preparing video/.test(sawStage) && /Transcribing/.test(sawStage), sawStage);
+await page.waitForURL(/\/video-studio\/vp-/, { timeout: 60_000 });
+const PID = page.url().match(/video-studio\/(vp-[\w-]+)/)[1];
+const upl = prog.filter(x => x.stage === 'upload');
+ok('2 · the upload shows real bytes sent, and time left once it can be told', upl.some(x => /[\d.]+ (KB|MB) of [\d.]+ MB/.test(x.text)), upl.slice(-1)[0]?.text);
+const stagesSeen = [...new Set(prog.map(x => x.stage))];
+ok('…then one screen names each stage in turn: uploading, preparing, transcribing, finding fillers and retakes, ready', ['upload', 'prepare', 'transcribe', 'analyze', 'ready'].every(k => stagesSeen.includes(k)), stagesSeen);
+const ups = prog.slice(1).filter((x, i) => x.pct < prog[i].pct - 0.001);
+ok('…its percentage only ever goes up, with decimals (16.1 → 16.2 …), and never says 100% before it is ready', ups.length === 0 && prog.some(x => /^\d+\.[1-9]$/.test(x.shown)) && prog.filter(x => x.stage !== 'ready').every(x => x.pct < 100), { ups: ups.slice(0, 3), sample: prog.filter((_, i) => i % 40 === 0).map(x => `${x.stage}:${x.shown}`).slice(0, 30) });
+/* Never frozen: while it works, the number on screen changes at least every few seconds. */
+let still = 0, stillAt = '';
+for (let i = 1, since = prog[0]?.t ?? 0; i < prog.length; i++) { if (prog[i].shown !== prog[i - 1].shown) { if (prog[i].t - since > still) { still = prog[i].t - since; stillAt = `${prog[i].stage} ${prog[i].shown}`; } since = prog[i].t; } }
+ok('…and never looks frozen: the number moves at least every 6 seconds', still < 6000, { still, stillAt });
+console.log(`  (progress screen: ${prog.length} samples over ${Math.round((Date.now() - tP0) / 1000)} s, longest still ${still} ms at ${stillAt})`);
+await page.getByTestId('vs-editor').waitFor({ timeout: 30_000 });
+ok('4 · the editor opens when the video and its transcript are ready', (await page.locator('.vs-w').count()) > 50 || (await page.getByTestId('vs-transcript').count()) === 1);
 
 /* Wait for the whole package. The open page polls, which advances the jobs. */
 const waitReady = async (pid, who, label, maxS = 1500) => {
@@ -297,7 +341,7 @@ ok('…and a quiz written from what the recording says, each question with the m
 /* ── 5 · The transcript ── */
 await page.reload({ waitUntil: 'networkidle' });
 ok('the editor opens on the transcript — the main way to edit — beside the player, inspector, assistant and timeline', (await page.getByTestId('vs-transcript').count()) === 1 && (await page.getByTestId('vs-preview').count()) === 1 && (await page.getByTestId('vs-assistant').count()) === 1 && (await page.getByTestId('vs-timeline').count()) === 1);
-await page.locator('[data-panel="media"]').click();
+await openPanel(page, 'media');
 ok('…the media list holds the long video and every Short', (await page.locator('[data-media]').count()) >= 5, await page.getByTestId('vs-media').innerText());
 ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and the music', (await page.locator('.vse-frame').count()) > 5 && (await page.locator('.vse-block.cap').count()) > 20 && (await page.locator('.vse-block.short').count()) === 4 && (await page.locator('.vse-block.music').count()) >= 1);
 
@@ -386,14 +430,14 @@ ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and 
   ok('…without a stall: the picture never waits for data and no two frames are more than 250 ms apart', meter.waiting === 0 && long.length === 0 && meter.frames.length > 400, { waiting: meter.waiting, long: long.map(Math.round).slice(0, 8), frames: meter.frames.length });
   ok('…and never shows what was cut (the opening silence, the fillers, the twenty words)', inCut.length === 0 && samples[2].t > 2, { inCut: inCut.slice(0, 3), first: samples.slice(0, 3) });
   const label = await page.getByTestId('vs-time').innerText();
-  ok('…with the edited video\'s clock on the controls', /^\d+:\d\d \/ \d+:\d\d$/.test(label.trim()), label);
+  ok('…with the edited video\'s clock on the transport, to a tenth of a second (00:12.3 / 18:40.0)', /^\d\d:\d\d\.\d \/ \d\d:\d\d\.\d$/.test(label.trim()), label);
   await page.getByTestId('vs-play').click();
   ok('(the proxy is put back as it was)', await putProxy(fs.readFileSync(proxyFile), 'video/mp4'));
   await v('goto_version', { projectId: PID, version: base0.docVersion });
   await page.reload({ waitUntil: 'networkidle' });
 }
 if (process.env.STOP_AFTER === 'player') { await br.close(); console.log(`\n${out.filter(l => l.startsWith('PASS')).length} passed, ${failures} failed`); stop(); process.exit(failures ? 1 : 0); }
-await page.locator('[data-panel="transcript"]').click();
+await openPanel(page, 'transcript');
 await page.getByTestId('vs-transcript').waitFor({ timeout: 20_000 });
 const words = await page.locator('.vs-w').count();
 ok('5 · the transcript appears, word by word', words > 1500, String(words));
@@ -447,12 +491,100 @@ await page.getByTestId('vs-search').fill('');
   ok('suggestions sit in the text as chips — ignoring one keeps it', nChips > 0 && d5.doc.cuts.find(c => c.id === chipId)?.state === 'rejected', { nChips, chipId });
   await v('edit', { projectId: PID, baseVersion: d5.docVersion, ops: [{ op: 'cut.set', id: chipId, state: 'proposed' }], note: 'test: back to proposed' });
   await page.reload({ waitUntil: 'networkidle' });
-  await page.locator('[data-panel="transcript"]').click();
+  await openPanel(page, 'transcript');
+  await page.getByTestId('vs-transcript').waitFor({ timeout: 20_000 });
+}
+
+/* ── Descript's layout: compositions, and blocks on the timeline ── */
+{
+  const at = async () => (await v('get', { projectId: PID }));
+  ok('the editor is laid out as Descript: a breadcrumb with the composition, the script, the preview with Layout and Background, the transport and the rail',
+    /Video Studio/.test(await page.locator('.vse-crumbs').innerText()) && (await page.getByTestId('vs-composition').count()) === 1 && (await page.getByTestId('vs-under').innerText()).includes('Layout') && /Background/.test(await page.getByTestId('vs-under').innerText())
+    && (await page.locator('[data-testid="vs-transport"] [data-testid="vs-play"]').count()) === 1 && /Record/.test(await page.getByTestId('vs-transport').innerText()) && /Split/.test(await page.getByTestId('vs-transport').innerText()) && /\d+%/.test(await page.getByTestId('vs-zoom').innerText()));
+  ok('…the script names Speaker 1 and shows a frame at each scene\'s start', (await page.locator('.vs-spk').first().innerText()) === 'Speaker 1' && (await page.locator('.vs-scene-th').count()) > 3);
+  await page.getByTestId('vs-composition').click();
+  const menu = await page.getByTestId('vs-composition-menu').innerText();
+  const S0 = await at();
+  ok('the composition dropdown lists the long video and every Short, and "New short composition"', /Long video/.test(menu) && S0.doc.clips.every((c, i) => menu.includes(`Short ${i + 1}`)) && /New short composition/.test(menu), menu.slice(0, 300));
+  const c1 = S0.doc.clips[0];
+  await page.locator(`[data-comp="${c1.id}"]`).click();
+  await page.waitForTimeout(600);
+  const head = await page.locator('.vse-script-head h2').innerText();
+  const firstWord = Number(await page.locator('.vs-w').first().getAttribute('data-i'));
+  ok('…choosing a Short opens it on the same screen: its title over its own script, the timeline on its stretch', head === c1.title && (await page.locator('.vs-w').count()) < 400 && (await page.getByTestId('vs-composition').innerText()).includes('Short 1'), { head, words: await page.locator('.vs-w').count(), firstWord });
+  await page.getByTestId('vs-composition').click();
+  await page.locator('[data-comp="long"]').click();
+  await page.waitForTimeout(400);
+  await page.locator('.vs-w').nth(300).click();
+  await page.getByTestId('vs-composition').click();
+  await page.locator('[data-act="new-short"]').click();
+  let S1;
+  for (let i = 0; i < 30; i++) { S1 = await at(); if (S1.doc.clips.length > S0.doc.clips.length) break; await sleep(300); }
+  const added = S1.doc.clips.find(c => !S0.doc.clips.some(x => x.id === c.id));
+  await page.waitForTimeout(800);
+  ok('…"New short composition" makes a Short from the selection and opens it', !!added && (await page.getByTestId('vs-composition').innerText()).includes(`Short ${S1.doc.clips.length}`), { added, label: await page.getByTestId('vs-composition').innerText() });
+  await v('edit', { projectId: PID, baseVersion: S1.docVersion, ops: [{ op: 'clip.remove', id: added.id }], note: 'test: remove the new composition' });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByTestId('vs-timeline').waitFor({ timeout: 20_000 });
+
+  /* Blocks: every phrase and every gap can be selected. */
+  for (let i = 0; i < 8; i++) await page.locator('[aria-label="Zoom the timeline in"]').click();
+  await page.waitForTimeout(300);
+  const phrases = page.locator('[data-block="phrase"]'), gaps = page.locator('[data-block="gap"]');
+  ok('the timeline has a block for every phrase and a "…" block for every gap between them', (await phrases.count()) > 100 && (await gaps.count()) > 20, { phrases: await phrases.count(), gaps: await gaps.count() });
+  const ph = phrases.nth(6);
+  await ph.scrollIntoViewIfNeeded();
+  await ph.click();
+  await page.waitForTimeout(300);
+  const acts = await page.getByTestId('vs-block-actions').innerText();
+  ok('clicking a phrase selects exactly that block, lights its words in the script and offers what to do with it',
+    (await page.locator('[data-block][aria-pressed="true"]').count()) === 1 && (await ph.getAttribute('aria-pressed')) === 'true' && (await page.locator('.vs-w.sel').count()) > 0
+    && ['Remove this section', 'Select everything before', 'Select everything after', 'Split here', 'Mute'].every(w => acts.includes(w)), acts);
+  await phrases.nth(8).click({ modifiers: ['Shift'] });
+  await page.waitForTimeout(200);
+  ok('…Shift-click extends the selection over the blocks between', (await page.locator('[data-block][aria-pressed="true"]').count()) >= 3);
+  const G = await page.evaluate(() => { const b = [...document.querySelectorAll('[data-block="gap"]')].find(x => Number(x.dataset.e) - Number(x.dataset.s) > 0.6 && !x.classList.contains('cut') && x.getBoundingClientRect().width > 6); return b ? Number(b.dataset.i) : -1; });
+  const gap = page.locator(`[data-block="gap"][data-i="${G}"]`);
+  await gap.scrollIntoViewIfNeeded();
+  await gap.click();
+  await page.waitForTimeout(300);
+  const gActs = await page.getByTestId('vs-block-actions').innerText();
+  ok('…a silence can be selected too, and offers "Shorten gap"', G >= 0 && (await gap.getAttribute('aria-pressed')) === 'true' && /Gap · [\d.]+ s/.test(gActs) && /Shorten gap/.test(gActs), gActs);
+  const gs = Number(await gap.getAttribute('data-s')), ge = Number(await gap.getAttribute('data-e'));
+  const B0 = await at();
+  await page.locator('[data-act="block-shorten"]').click();
+  let B1;
+  for (let i = 0; i < 30; i++) { B1 = await at(); if (B1.docVersion > B0.docVersion) break; await sleep(300); }
+  const shortened = B1.doc.cuts.find(c => c.by === 'you' && /shortened to 0\.3 s/.test(c.reason));
+  ok('"Shorten gap" leaves 0.3 s of it', !!shortened && Math.abs((ge - gs) - (shortened.e - shortened.s) - 0.3) < 0.02, { shortened, gs, ge });
+  await ph.click();
+  await page.locator('[data-act="block-mute"]').click();
+  let B2;
+  for (let i = 0; i < 30; i++) { B2 = await at(); if ((B2.doc.mutes ?? []).length) break; await sleep(300); }
+  ok('"Mute" silences that phrase (the picture stays)', (B2.doc.mutes ?? []).length === 1 && !B2.doc.cuts.some(c => c.by === 'you' && c.s <= B2.doc.mutes[0].s && c.e >= B2.doc.mutes[0].e), B2.doc.mutes);
+  await page.waitForTimeout(600);
+  await ph.click();
+  await page.locator('[data-act="block-restore"]').click();
+  let B3;
+  for (let i = 0; i < 30; i++) { B3 = await at(); if (!(B3.doc.mutes ?? []).length) break; await sleep(300); }
+  ok('"Restore" takes the mute back off', !(B3.doc.mutes ?? []).length);
+  await ph.click();
+  await page.locator('[data-act="block-split"]').click();
+  let B4;
+  for (let i = 0; i < 30; i++) { B4 = await at(); if ((B4.doc.splits ?? []).length) break; await sleep(300); }
+  ok('"Split here" starts a new scene there (numbered on the scenes track)', (B4.doc.splits ?? []).length === 1 && (await page.locator('.vse-scene.split').count()) >= 1);
+  await phrases.nth(10).click();
+  await page.locator('[data-act="block-remove"]').click();
+  let B5;
+  for (let i = 0; i < 30; i++) { B5 = await at(); if (B5.docVersion > B4.docVersion) break; await sleep(300); }
+  ok('"Remove this section" cuts that phrase from the video', B5.doc.cuts.some(c => c.by === 'you' && /^Removed “/.test(c.reason) && c.state === 'approved'));
+  await v('goto_version', { projectId: PID, version: B0.docVersion });
+  await page.reload({ waitUntil: 'networkidle' });
   await page.getByTestId('vs-transcript').waitFor({ timeout: 20_000 });
 }
 
 /* ── 6 · Cleanup suggestions ── */
-await page.locator('[data-panel="cleanup"]').click();
+await openPanel(page, 'cleanup');
 const summary = await page.getByTestId('vs-cleanup-summary').innerText();
 const doc = S.doc;
 ok('6 · cleanup is suggested: fillers, pauses, repeats, each with a reason and confidence', /filler/.test(summary) && /pause/.test(summary) && doc.cuts.some(c => c.kind === 'repeat' && c.state === 'proposed') && doc.cuts.every(c => c.reason && c.conf > 0), summary);
@@ -487,7 +619,7 @@ ok('7 · four Shorts', clips.length === 4, clips.map(c => c.title));
 ok('…on four different topics', new Set(clips.map(c => c.topic.toLowerCase())).size === 4, clips.map(c => c.topic));
 ok('…sharing no footage', clips.every((a, i) => clips.every((b, j) => i === j || overlap(a, b) <= 1)), clips.map(c => [c.s, c.e]));
 ok('…each 30–65 s, with a title, a reason and editorial scores', clips.every(c => c.e - c.s >= 25 && c.e - c.s <= 65 && c.title && c.reason) && clips.filter(c => c.by === 'ai').every(c => c.scores && c.scores.hook >= 1));
-await page.locator('[data-panel="shorts"]').click();
+await openPanel(page, 'shorts');
 ok('…shown with timestamps, topics and reasons', (await page.getByTestId('vs-clip').count()) === 4 && /Topic:/.test(await page.getByTestId('vs-shorts').innerText()));
 
 /* ── 8 · Edit one Short ── */
@@ -537,7 +669,7 @@ ok('…and renders again', reOut.version > outBefore.version && !reOut.stale, re
   const t0x = await download(all[0].t.downloadUrl, 'thumb.png');
   execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', t0x.file, decode]);
   ok('…and decodes', fs.statSync(decode).size > 1000);
-  await page.locator('[data-panel="exports"]').click();
+  await openPanel(page, 'exports');
   const long = page.locator('[data-kind="long"][data-testid="vs-board-row"]');
   await long.locator('[data-act="board-more-thumbs"]').click();
   for (let i = 0; i < 60; i++) { S = await v('status', { projectId: PID, knownVersion: -1 }); if (S.outputs.find(o => o.kind === 'long').thumbs.some(t => t.set === 2)) break; await sleep(2000); }
@@ -711,14 +843,14 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
 
 /* ── The Audio and Music panels ── */
 {
-  await page.locator('[data-panel="audio"]').click();
+  await openPanel(page, 'audio');
   const audio = await page.getByTestId('vs-audio-panel').innerText();
   ok('the Audio panel shows the noise level chosen, voice clarity and loudness — and says they are heard in the render', /Strong/.test(audio) && /Voice clarity/.test(audio) && /Even loudness/.test(audio) && /applied when the videos render/.test(audio));
   ok('…with Audio effects as rows: Studio Sound, and "Lower audio of other layers" (the music is ducked under speech)', /Studio Sound/.test(audio) && /Lower audio of other layers/.test(audio) && (await page.locator('[data-effect="duck"] [role="switch"]').getAttribute('aria-checked')) === 'true', audio.slice(0, 400));
   await page.locator('[data-denoise="light"]').click();
   await page.waitForTimeout(1200);
   ok('…a level can be picked there', (await v('get', { projectId: PID })).doc.audio.denoise === 'light');
-  await page.locator('[data-panel="music"]').click();
+  await openPanel(page, 'music');
   await page.getByTestId('vs-music-q').fill('calm');
   await page.getByTestId('vs-music-search').click();
   await page.getByTestId('vs-music-results').waitFor({ timeout: 10_000 });
@@ -750,7 +882,7 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
 /* ── Reuse: posts, an article and emails; the quiz on screen ── */
 {
   await page.reload({ waitUntil: 'networkidle' });
-  await page.locator('[data-panel="reuse"]').click();
+  await openPanel(page, 'reuse');
   await page.getByTestId('vs-reuse').waitFor({ timeout: 10_000 });
   ok('the quiz is on the Reuse tab, downloadable', (await page.getByTestId('vs-quiz').locator(':scope > li').count()) === 5 && (await page.locator('[data-act="quiz-csv"]').count()) === 1);
   await page.locator('[data-act="repurpose"]').click();
@@ -799,8 +931,8 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   const lastEnd = (([h, m, s2]) => h * 3600 + m * 60 + s2)(srt.trim().split('\n\n').pop().split('\n')[1].split(' --> ')[1].replace(',', '.').split(':').map(Number));
   ok('…and its captions re-timed to the new speed (they end with the video)', lastEnd <= d + 0.5 && lastEnd > d - 3, { lastEnd, d });
   await page.goto(`${B}/video-studio/${PID}`, { waitUntil: 'networkidle' });
-  ok('the inspector is an icon rail: Video, Adjust, Effects, Animation, Tracking, Text, Audio, Music, Captions, Reuse, Export', (await page.locator('.vse-rail-btn').count()) === 11);
-  await page.locator('[data-panel="effects"]').click();
+  ok('the panels are an icon rail, as in Descript: Project, AI Tools, Properties, Elements, Captions, Media', (await page.locator('.vse-rail-btn').count()) === 6 && /Project[\s\S]*AI Tools[\s\S]*Properties[\s\S]*Elements[\s\S]*Captions[\s\S]*Media/.test(await page.locator('.vse-rail').innerText()));
+  await openPanel(page, 'effects');
   const fxText = await page.getByTestId('vs-effects-panel').innerText();
   ok('Effects lists the visual effects as rows: Color adjustments, Shadow, Green screen, Improve appearance — each with a switch', /Color adjustments[\s\S]*Shadow[\s\S]*Green screen[\s\S]*Improve appearance/.test(fxText) && (await page.locator('[data-testid="vs-effects-panel"] [role="switch"]').count()) === 4, fxText.slice(0, 300));
   await page.locator('[data-effect="color"] [data-act="fx-settings"]').click();
@@ -808,13 +940,13 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   await page.locator('[data-effect="color"] [role="switch"]').click();
   await page.waitForTimeout(1500);
   ok('…and its switch turns it on in the edit', (await v('get', { projectId: PID })).doc.effects?.short?.color?.on === true || (await v('get', { projectId: PID })).doc.effects?.long?.color?.on === true);
-  await page.locator('[data-panel="adjust"]').click();
+  await openPanel(page, 'adjust');
   ok('Adjust offers ten filters and the colour sliders', (await page.locator('.vs-filter').count()) === 10 && /Temperature[\s\S]*Exposure[\s\S]*Vignette/.test(await page.getByTestId('vs-adjust-panel').innerText()));
-  await page.locator('[data-panel="tracking"]').click();
+  await openPanel(page, 'tracking');
   ok('Tracking says what it found in this recording — no faces in a test picture, so nothing to follow', /No faces found/.test(await page.getByTestId('vs-tracking-panel').innerText()), await page.getByTestId('vs-tracking-panel').innerText());
-  await page.locator('[data-panel="text"]').click();
+  await openPanel(page, 'text');
   ok('Text lists the words on screen with their times', /Watch this/.test(await page.getByTestId('vs-text-panel').innerHTML()));
-  await page.locator('[data-panel="media"]').click();
+  await openPanel(page, 'media');
   await page.locator('[data-media="' + target.id + '"]').click();
   await page.waitForTimeout(500);
   ok('the preview shows the look (black and white) and the speed on the Short', (await page.getByTestId('vs-video').getAttribute('data-look')) === 'bw' && /1\.25×/.test(await page.getByTestId('vs-preview').innerText()));
@@ -1040,9 +1172,9 @@ const halvesDiffer = (file, t) => Number(String(execFileSync('sh', ['-c',
   const clip = e1.doc.clips[e1.doc.clips.length - 1];
   /* The picker, on screen: what this recording can carry, and why not the rest. */
   await page.goto(`${B}/video-studio/${pid}`, { waitUntil: 'networkidle' });
-  await page.locator('[data-panel="media"]').click();
+  await openPanel(page, 'media');
   await page.locator(`[data-media="${clip.id}"]`).click();
-  await page.locator('[data-panel="video"]').first().click();
+  await openPanel(page, 'video');
   await page.getByTestId('vs-layouts').waitFor({ timeout: 15_000 });
   const opts = Object.fromEntries(await Promise.all(['speaker', 'screen', 'split', 'two', 'pip'].map(async k => [k, await page.locator(`[data-layout-opt="${k}"]`).isEnabled()])));
   const whyTwo = await page.locator('[data-layout-opt="two"]').innerText();

@@ -27,7 +27,8 @@
  * transcript from redrawing sixty times a second.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Pause, Rewind, FastForward, Volume2, VolumeX, Maximize2, Music2, Gauge } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, Music2, Gauge, Circle, Scissors, Minus, Plus, MousePointer2, Hand } from 'lucide-react';
 import {
   keepRanges, keptLength, retimeWords, cuesOf, toOutput, toSource, clock, isRtl, lookOf, motionOf, trackingOf, cssLook, punchSpans, cutTimes, trackAt, overlaySpan, sentencesOf,
   effectsOf, effectsOn, cssEffects, layoutPlan, dimsFor, LAYOUT_LABEL, type LayoutPlan,
@@ -46,6 +47,14 @@ function useHeldSrc(latest: string) {
   return { src, fail: () => { failed.current = true; } };
 }
 
+
+/** The transport's clock: minutes, seconds and a tenth — "01:16.4" (hours when there are any). */
+export function tc(t: number): string {
+  const x = Math.max(0, t), h = Math.floor(x / 3600), m = Math.floor((x % 3600) / 60), sec = x % 60;
+  const ss = sec.toFixed(1).padStart(4, '0');
+  return `${h ? `${h}:` : ''}${String(m).padStart(2, '0')}:${ss === '60.0' ? '59.9' : ss}`;
+}
+const RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 const hexA = (hex: string, a: number) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a.toFixed(2)})`; };
 
@@ -95,7 +104,12 @@ function drawLayout(c: HTMLCanvasElement, v: HTMLVideoElement, plan: LayoutPlan,
   g.restore();
 }
 
-export default function Player({ ctx }: { ctx: EditorCtx }) {
+export default function Player({ ctx, transport, below }: {
+  ctx: EditorCtx;
+  /** Where the transport bar is drawn (the editor's own row under the panels); without one it sits under the picture. */
+  transport?: HTMLElement | null;
+  below?: React.ReactNode;
+}) {
   const { view, doc, transcript, duration } = ctx;
   const clip = ctx.activeClip ? doc.clips.find(c => c.id === ctx.activeClip) ?? null : null;
   const aRef = useRef<HTMLVideoElement>(null);
@@ -114,6 +128,10 @@ export default function Player({ ctx }: { ctx: EditorCtx }) {
   const resume = useRef<{ at: number; play: boolean } | null>(null);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
+  /* The preview's own speed (Descript's "1x") — how fast it plays here, never the edit's speed. */
+  const [rate, setRate] = useState(1);
+  const [zoomPct, setZoomPct] = useState(100);
+  const [tool, setTool] = useState<'select' | 'scrub'>('select');
   const [frameH, setFrameH] = useState(360);
   const video = useHeldSrc(view.source.proxyUrl);
   const music = useHeldSrc(view.musicUrl);
@@ -165,8 +183,10 @@ export default function Player({ ctx }: { ctx: EditorCtx }) {
     const out = dimsFor(clip.aspect, probe.width, probe.height);
     return layoutPlan(clip.layout, ctx.track, probe.width, probe.height, out.width, out.height);
   }, [clip?.layout, clip?.aspect, probe, ctx.track]); // eslint-disable-line react-hooks/exhaustive-deps
-  const live = useRef({ keeps, total, speed, motion, spans, cuts, followRows, objPos, report, plan, shadow: fx.shadow ?? null });
-  live.current = { keeps, total, speed, motion, spans, cuts, followRows, objPos, report, plan, shadow: fx.shadow ?? null };
+  /* Stretches muted on the timeline: the preview turns its sound off there, as the render does. */
+  const mutes = doc.mutes ?? [];
+  const live = useRef({ keeps, total, speed, motion, spans, cuts, followRows, objPos, report, plan, shadow: fx.shadow ?? null, mutes, muted });
+  live.current = { keeps, total, speed, motion, spans, cuts, followRows, objPos, report, plan, shadow: fx.shadow ?? null, mutes, muted };
 
   /* The deck: two elements swapped at each cut (deck.ts says why). It is made
      once; the edit, the speed and the sound reach it below. Everything that
@@ -174,14 +194,16 @@ export default function Player({ ctx }: { ctx: EditorCtx }) {
   useEffect(() => {
     const a = aRef.current, b = bRef.current, wrap = deckRef.current;
     if (!a || !b || !wrap) return;
-    let last = -1, lastAt = 0;
+    let last = -1, lastAt = 0, hush = false;
     const paint = (t: number) => {
       const L = live.current;
+      const inMute = L.mutes.some(m => t >= m.s && t < m.e);
+      if (inMute !== hush) { hush = inMute; deck.current?.setMuted(L.muted || inMute); }
       const o = toOutput(t, L.keeps) ?? 0;
       const pct = L.total ? Math.min(100, (o / L.total) * 100) : 0;
       if (fillRef.current) fillRef.current.style.width = `${pct}%`;
       if (knobRef.current) knobRef.current.style.left = `${pct}%`;
-      if (clockRef.current) clockRef.current.textContent = `${clock(o / L.speed)} / ${clock(L.total / L.speed)}`;
+      if (clockRef.current) clockRef.current.textContent = `${tc(o / L.speed)} / ${tc(L.total / L.speed)}`;
       if (barRef.current) barRef.current.style.width = `${pct}%`;
       /* The zoom and the tracked crop. */
       let z = 1;
@@ -226,7 +248,13 @@ export default function Player({ ctx }: { ctx: EditorCtx }) {
   useEffect(() => { deck.current?.setKeeps(keeps); }, [keeps]);
   useEffect(() => { const d = deck.current, c = layoutRef.current; if (d && c && plan) drawLayout(c, d.active, plan, fx.shadow ?? null); }, [plan, fx.shadow, frameH]); // eslint-disable-line react-hooks/exhaustive-deps
   /* The speed, as the render will play it. */
-  useEffect(() => { deck.current?.setRate(speed); }, [speed, video.src]);
+  useEffect(() => { deck.current?.setRate(speed * rate); }, [speed, rate, video.src]);
+  /* The timeline says how far it is zoomed; the transport shows it. */
+  useEffect(() => {
+    const on = (e: Event) => setZoomPct(Math.round((e as CustomEvent<number>).detail));
+    window.addEventListener('vs-tl-zoomed', on);
+    return () => window.removeEventListener('vs-tl-zoomed', on);
+  }, []);
   useEffect(() => { deck.current?.setMuted(muted); }, [muted]);
 
   /* The music follows the picture: started, stopped and placed on the
@@ -300,7 +328,7 @@ export default function Player({ ctx }: { ctx: EditorCtx }) {
 
   return (
     <div className="vse-player" ref={shellRef} data-testid="vs-preview">
-      <div className="vse-screen">
+      <div className="vse-screen" data-noinvert="">
         <div ref={frameRef} className={`vs-frame ${fit ? 'fit' : ''}`}
           style={{ aspectRatio: String(ratio), width: `min(100%, calc(var(--vse-screen-h, 56vh) * ${ratio.toFixed(4)}))`,
             backgroundImage: fit && view.source.posterUrl ? `url("${view.source.posterUrl}")` : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }}>
@@ -364,20 +392,45 @@ export default function Player({ ctx }: { ctx: EditorCtx }) {
         </div>
         {track && music.src && <audio ref={audioRef} src={music.src} preload="auto" muted={muted} loop={track.loop} onError={() => { music.fail(); void ctx.refresh(); }} />}
       </div>
-      <div className="vse-hud">
-        <button type="button" className="vs-btn skip" onClick={() => step(-5)} aria-label="Back 5 seconds" disabled={!video.src}><Rewind size={15} /></button>
-        <button type="button" className="vs-btn play" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'} disabled={!video.src} data-testid="vs-play">{playing ? <Pause size={16} /> : <Play size={16} />}</button>
-        <button type="button" className="vs-btn skip" onClick={() => step(5)} aria-label="Forward 5 seconds" disabled={!video.src}><FastForward size={15} /></button>
-        <span className="vse-time-label" data-testid="vs-time" ref={clockRef}>{clock((out ?? 0) / speed)} / {clock(total / speed)}</span>
-        <div className="vse-scrub" role="slider" aria-label="Position in the edited video" aria-valuemin={0} aria-valuemax={Math.round(total)} aria-valuenow={Math.round(out ?? 0)} tabIndex={0}
-          onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); scrubAt(e); }}
-          onPointerMove={e => { if (e.buttons === 1) scrubAt(e); }}
-          onKeyDown={e => { if (e.key === 'ArrowLeft') { e.preventDefault(); step(-5); } if (e.key === 'ArrowRight') { e.preventDefault(); step(5); } }}>
-          <div className="rail" /><div className="fill" ref={fillRef} /><div className="knob" ref={knobRef} />
-        </div>
-        <button type="button" className="vs-btn" onClick={() => setMuted(m => !m)} aria-label={muted ? 'Sound on' : 'Mute'}>{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>
-        <button type="button" className="vs-btn" onClick={() => { const el = shellRef.current; if (!el) return; if (document.fullscreenElement) void document.exitFullscreen(); else void el.requestFullscreen?.().catch(() => {}); }} aria-label="Full screen"><Maximize2 size={15} /></button>
-      </div>
+      {below}
+      {(() => {
+        const hud = (
+          <div className="vse-hud" data-testid="vs-hud">
+            <div className="vse-scrub" role="slider" aria-label="Position in the edited video" aria-valuemin={0} aria-valuemax={Math.round(total)} aria-valuenow={Math.round(out ?? 0)} tabIndex={0}
+              onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); scrubAt(e); }}
+              onPointerMove={e => { if (e.buttons === 1) scrubAt(e); }}
+              onKeyDown={e => { if (e.key === 'ArrowLeft') { e.preventDefault(); step(-5); } if (e.key === 'ArrowRight') { e.preventDefault(); step(5); } }}>
+              <div className="rail" /><div className="fill" ref={fillRef} /><div className="knob" ref={knobRef} />
+            </div>
+            <div className="vse-hud-row">
+              <button type="button" className="vs-btn ghost sm skip" onClick={() => step(-5)} aria-label="Back 5 seconds" title="Back 5 seconds (J)" disabled={!video.src}><SkipBack size={16} /></button>
+              <button type="button" className="vs-btn ghost sm skip" onClick={() => step(5)} aria-label="Forward 5 seconds" title="On 5 seconds (L)" disabled={!video.src}><SkipForward size={16} /></button>
+              <span className="vse-time-label" data-testid="vs-time" ref={clockRef}>{tc((out ?? 0) / speed)} / {tc(total / speed)}</span>
+              <span className="vs-spacer vse-hide-sm" />
+              <button type="button" className="vs-btn ghost sm vse-rec" disabled aria-label="Record" title="Recording in the browser is not available here yet — record with your camera or screen recorder and upload the file."><Circle size={14} fill="currentColor" /> <span className="vse-hide-sm">Record</span></button>
+              <button type="button" className="vs-btn play" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'} disabled={!video.src} data-testid="vs-play">{playing ? <Pause size={18} /> : <Play size={18} />}</button>
+              <select className="vse-rate" value={rate} onChange={e => setRate(Number(e.target.value))} aria-label="Preview speed" title="How fast the preview plays (the video's own speed is under Properties → Animation)">
+                {RATES.map(r => <option key={r} value={r}>{r}x</option>)}
+              </select>
+              <button type="button" className="vs-btn ghost sm" onClick={() => window.dispatchEvent(new Event('vs-split'))} data-act="split" title="Split the scene at the playhead"><Scissors size={14} /> <span className="vse-hide-sm">Split</span></button>
+              <span className="vs-spacer vse-hide-sm" />
+              <span className="vse-zoom" role="group" aria-label="Timeline zoom">
+                <button type="button" className="vs-btn ghost sm" onClick={() => window.dispatchEvent(new CustomEvent('vs-tl-zoom', { detail: 'out' }))} aria-label="Zoom the timeline out"><Minus size={14} /></button>
+                <button type="button" className="vse-zoom-pct" onClick={() => window.dispatchEvent(new CustomEvent('vs-tl-zoom', { detail: 'fit' }))} title="Fit the whole composition" data-testid="vs-zoom">{zoomPct}%</button>
+                <button type="button" className="vs-btn ghost sm" onClick={() => window.dispatchEvent(new CustomEvent('vs-tl-zoom', { detail: 'in' }))} aria-label="Zoom the timeline in"><Plus size={14} /></button>
+              </span>
+              <button type="button" className="vs-btn ghost sm" aria-pressed={tool === 'select'} data-act="select-tool"
+                title={tool === 'select' ? 'Selection tool: drag on the timeline to mark a stretch (press for the hand: drag to move the playhead)' : 'Hand: drag on the timeline to move the playhead (press for the selection tool)'}
+                onClick={() => { const t = tool === 'select' ? 'scrub' : 'select'; setTool(t); window.dispatchEvent(new CustomEvent('vs-tool', { detail: t })); }}>
+                {tool === 'select' ? <MousePointer2 size={14} /> : <Hand size={14} />}
+              </button>
+              <button type="button" className="vs-btn ghost sm" onClick={() => setMuted(m => !m)} aria-label={muted ? 'Sound on' : 'Mute'}>{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>
+              <button type="button" className="vs-btn ghost sm vse-hide-sm" onClick={() => { const el = shellRef.current; if (!el) return; if (document.fullscreenElement) void document.exitFullscreen(); else void el.requestFullscreen?.().catch(() => {}); }} aria-label="Full screen"><Maximize2 size={15} /></button>
+            </div>
+          </div>
+        );
+        return transport ? createPortal(hud, transport) : hud;
+      })()}
     </div>
   );
 }

@@ -88,7 +88,9 @@ export interface ProjectView {
     filmstrip?: { url: string; every: number; tiles: number; w: number; h: number } | null;
     track?: TrackStatus | null; trackUrl?: string;
     /** Started from the customer's own YouTube video (fetched: the bytes arrived and were checked). */
-    youtube?: { id: string; url: string; title: string; channel: string; thumb: string; fetched: boolean } | null };
+    youtube?: { id: string; url: string; title: string; channel: string; thumb: string; fetched: boolean } | null;
+    /** Fetched from a direct link to a video file: how far it has got. */
+    link?: { url: string; bytes: number; got: number } | null };
   extras: Extras;
   musicUrl: string;
   transcriptUrl: string;
@@ -228,10 +230,29 @@ export async function loadWave(url: string): Promise<Uint8Array | null> {
 export interface UploadProgress { sent: number; total: number; parts: number; partsDone: number; resumed: boolean }
 
 /**
+ * One part, PUT with XMLHttpRequest rather than fetch: only XHR reports the
+ * bytes of a request body as they leave, which is what lets the progress
+ * screen move with the real upload instead of jumping 16 MB at a time.
+ */
+function putPart(url: string, blob: Blob, onBytes: (n: number) => void, signal?: AbortSignal): Promise<{ status: number; body: { success?: boolean; error?: string; code?: string } }> {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open('PUT', url);
+    x.upload.onprogress = e => onBytes(e.loaded);
+    x.onload = () => { let body = {}; try { body = JSON.parse(x.responseText); } catch { /* not JSON */ } resolve({ status: x.status, body }); };
+    x.onerror = () => reject(new Error('The connection dropped.'));
+    x.onabort = () => reject(new Error('Upload paused.'));
+    signal?.addEventListener('abort', () => x.abort(), { once: true });
+    x.send(blob);
+  });
+}
+
+/**
  * Upload a file in 16 MB parts, three at a time, each retried with back-off.
  * Choosing the same file again (same name, size and modified time) resumes:
- * the server remembers which parts arrived. Progress is bytes the server
- * confirmed — never a timer.
+ * the server remembers which parts arrived. Progress is bytes that have
+ * really left the browser (parts the server confirmed plus the bytes of the
+ * parts on their way) — never a timer.
  */
 export async function uploadVideo(projectId: string, file: File, onProgress: (p: UploadProgress) => void, signal?: AbortSignal): Promise<{ ok: true } | { ok: false; error: string; code?: string }> {
   const start = await call<{ uploadId: string; partSize: number; parts: number; done: number[]; partUrl: string }>('upload_start', {
@@ -240,8 +261,9 @@ export async function uploadVideo(projectId: string, file: File, onProgress: (p:
   if (!start.success) return { ok: false, error: start.error ?? 'The upload could not start.', code: start.code };
   const done = new Set(start.done);
   const size = (n: number) => Math.min(start.partSize, file.size - (n - 1) * start.partSize);
-  let sent = [...done].reduce((n, p) => n + size(p), 0);
-  const report = () => onProgress({ sent, total: file.size, parts: start.parts, partsDone: done.size, resumed: start.done.length > 0 });
+  let confirmed = [...done].reduce((n, p) => n + size(p), 0);
+  const flying = new Map<number, number>();
+  const report = () => onProgress({ sent: Math.min(file.size, confirmed + [...flying.values()].reduce((a, b) => a + b, 0)), total: file.size, parts: start.parts, partsDone: done.size, resumed: start.done.length > 0 });
   report();
   const queue = Array.from({ length: start.parts }, (_, i) => i + 1).filter(n => !done.has(n));
   let failure = '';
@@ -253,12 +275,13 @@ export async function uploadVideo(projectId: string, file: File, onProgress: (p:
       let lastErr = '';
       for (let attempt = 0; attempt < 5; attempt++) {
         try {
-          const r = await fetch(`${start.partUrl}&part=${n}`, { method: 'PUT', body: blob, signal });
-          const d = await r.json().catch(() => ({})) as { success?: boolean; error?: string; code?: string };
-          if (d.success) { done.add(n); sent += size(n); report(); lastErr = ''; break; }
-          lastErr = d.error ?? `part ${n} was refused (${r.status})`;
-          if (r.status === 415 || r.status === 410 || r.status === 403) { failure = lastErr; return; }
+          const r = await putPart(`${start.partUrl}&part=${n}`, blob, b => { flying.set(n, b); report(); }, signal);
+          flying.delete(n);
+          if (r.body.success) { done.add(n); confirmed += size(n); report(); lastErr = ''; break; }
+          lastErr = r.body.error ?? `part ${n} was refused (${r.status})`;
+          if (r.status === 415 || r.status === 410 || r.status === 403) { failure = lastErr; report(); return; }
         } catch (e) {
+          flying.delete(n); report();
           if (signal?.aborted) { failure = 'Upload paused.'; return; }
           lastErr = String((e as Error).message ?? e);
         }
@@ -272,6 +295,14 @@ export async function uploadVideo(projectId: string, file: File, onProgress: (p:
   const fin = await call('upload_complete', { projectId, uploadId: start.uploadId });
   return fin.success ? { ok: true } : { ok: false, error: fin.error ?? 'The upload could not be finished.' };
 }
+
+/**
+ * A direct link to a video file (…/talk.mp4 on the customer's own site or
+ * storage): the Worker fetches it into the project — fenced like every
+ * address somebody types — and answers when it is stored. The bytes it has
+ * fetched so far are on `status` (`source.link`).
+ */
+export const importVideoLink = (projectId: string, url: string) => call<{ bytes: number }>('import_link', { projectId, url });
 
 export const abortUpload = (projectId: string) => call('upload_abort', { projectId });
 

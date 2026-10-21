@@ -27,7 +27,8 @@ import { parseVideoCommand } from '../lib/video/commands';
 import { cleanMeta, type VideoMeta } from '../lib/video/shorts';
 import { engineHealth, engineMode } from '../lib/video/engine';
 import { transcriberMode } from '../lib/video/transcribe';
-import { fileUrl, projectPrefix, workspacePrefix, sign, deletePrefix } from '../lib/video/store';
+import { fileUrl, projectPrefix, workspacePrefix, sign, deletePrefix, looksLikeVideo } from '../lib/video/store';
+import { adoptSiteTestOrigin, urlProblem, wireUrl } from '../lib/readSite';
 import { allowance, refusal } from '../lib/video/usage';
 import { check as allowanceCheck, counted as countedAllowance, record as recordAllowance, refusalBody } from '../lib/allowanceStore';
 import { searchMusic, trackById, storeTrack, musicQuery, looksLikeAudio } from '../lib/video/music';
@@ -51,6 +52,8 @@ interface Req {
   patch?: Record<string, unknown>; kit?: Record<string, unknown>; file?: string; probe?: boolean; light?: boolean; knownVersion?: number;
   q?: string; page?: number; trackId?: string; key?: string; title?: string; rightsConfirmed?: boolean; applyTo?: string;
   posts?: number; blog?: boolean; email?: boolean;
+  /** A direct link to a video file (import_link). */
+  url?: string;
   /** Cleanup options: the filler kinds ticked, and the longest pause kept (null: the level's own). */
   fillers?: unknown; maxPause?: number | null;
   /** Start from the customer's own YouTube video instead of an upload (create, youtube_info). */
@@ -179,6 +182,7 @@ async function projectView(env: Env, origin: string, p: ProjectRow, opts: { ligh
     source: {
       name: src.name ?? '', bytes: src.bytes ?? 0, probe: src.probe ?? null,
       youtube: src.youtube ? { id: src.youtube.id, url: src.youtube.url, title: src.youtube.title, channel: src.youtube.channel, thumb: youtubeThumb(src.youtube.id), fetched: !!src.key } : null,
+      link: src.link ? { url: src.link.url, bytes: src.link.bytes, got: src.link.got } : null,
       proxyUrl: src.proxy ? await fileUrl(env, origin, p.account_id, src.proxy, 4 * 3600, '', true) : '',
       track: src.track ? { ready: !!src.track.key, summary: src.track.summary ?? null, error: src.track.error ?? '', at: src.track.at } : null,
       trackUrl: src.track?.key && sendDoc ? await fileUrl(env, origin, p.account_id, src.track.key, 4 * 3600) : '',
@@ -555,6 +559,86 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       await enqueue(env, { accountId, projectId: p.id, kind: 'prepare', idem: `prepare:${p.id}:${row.r2_key}` });
       kick(p.id);
       return json({ success: true });
+    }
+
+    /*
+     * A direct link to a video file, fetched by the Worker into the project.
+     * The address is fenced like every one somebody types (readSite.ts: no
+     * literal IPs, no internal names, every redirect checked again); the
+     * answer must say it is a video and how big it is, the first bytes must
+     * be a video container, and it streams into R2 in one piece of exactly
+     * that length — never held in memory. The browser waits on this request;
+     * what has arrived so far is written to `source.link` for its progress.
+     */
+    case 'import_link': {
+      if (!env.VIDEO) return fail('Video storage is not set up yet, so nothing can be fetched. The owner enables R2 in Cloudflare; the next deploy creates the bucket.', 503, { code: 'no_storage' });
+      adoptSiteTestOrigin(env);
+      const raw = s(d.url, 2000);
+      if (parseYoutubeUrl(raw).ok) return fail('That is a YouTube link — paste it as one and it is fetched from YouTube instead.', 200, { field: 'video.youtube' });
+      const bad = urlProblem(raw);
+      if (bad) return fail(bad.replace('web pages', 'video files').replace('a website', 'a video file'), 200, { field: 'video.youtube' });
+      const src0 = parse<Source>(p.source, {});
+      if (src0.key) return fail('This project already has its video. Start a new project for another recording.', 200, { code: 'has_source' });
+      let url = raw, res: Response | null = null;
+      for (let hop = 0; hop < 4; hop++) {
+        res = await fetch(wireUrl(url), { redirect: 'manual', headers: { 'user-agent': 'ProtectedCentral-VideoStudio/1.0 (+fetches a video you linked)' } }).catch(() => null);
+        const loc = res && res.status >= 300 && res.status < 400 ? res.headers.get('location') : null;
+        if (!loc) break;
+        await res!.body?.cancel().catch(() => {});
+        url = new URL(loc, url).toString();
+        const again = urlProblem(url);
+        if (again) return fail(`That link sends us somewhere we will not fetch from: ${again}`, 200, { field: 'video.youtube' });
+        if (hop === 3) return fail('That link redirects too many times. Download the video and upload the file instead.', 200, { field: 'video.youtube' });
+      }
+      if (!res) return fail('That link could not be reached. Check it opens in your browser, or download the video and upload the file.', 200, { field: 'video.youtube' });
+      if (!res.ok || !res.body) { await res.body?.cancel().catch(() => {}); return fail(`That link answered ${res.status}${res.status === 403 || res.status === 401 ? ' (it needs a sign-in)' : ''}. Download the video and upload the file instead.`, 200, { field: 'video.youtube' }); }
+      const type = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+      const len = Number(res.headers.get('content-length') ?? '');
+      const fileName = decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '').slice(0, 120);
+      const isVideo = type.startsWith('video/') || ((type === 'application/octet-stream' || type === 'binary/octet-stream') && VIDEO_EXT.test(fileName));
+      if (!isVideo) { await res.body.cancel().catch(() => {}); return fail(type.includes('html') ? 'That link is a web page, not a video file. Paste a link that ends in .mp4, .mov, .mkv or .webm — or a YouTube link.' : 'That link is not a video file (MP4, MOV, MKV or WebM).', 200, { field: 'video.youtube', code: 'not_video' }); }
+      if (!Number.isFinite(len) || len <= 0) { await res.body.cancel().catch(() => {}); return fail('That link does not say how big the video is, so it cannot be fetched safely. Download it and upload the file instead.', 200, { field: 'video.youtube' }); }
+      /* One R2 write takes up to 5 GB; bigger files go through the resumable upload. */
+      if (len > Math.min(MAX_BYTES, 5e9)) { await res.body.cancel().catch(() => {}); return fail('Links to videos up to 5 GB can be fetched. Download larger ones and upload the file — that upload resumes if it stops.', 200, { field: 'video.youtube' }); }
+      const no = await refusal(env, accountId, { bytes: len });
+      if (no) { await res.body.cancel().catch(() => {}); return fail(no, 402, { code: 'allowance' }); }
+      if (!await countedAllowance(env, accountId, 'long_videos', `long:${p.id}`)) {
+        const room = await allowanceCheck(env, accountId, 'long_videos');
+        if (!room.ok) { await res.body.cancel().catch(() => {}); return fail(room.message, 402, refusalBody(room)); }
+      }
+      const ext = (fileName.match(VIDEO_EXT)?.[1] ?? (type === 'video/webm' ? 'webm' : type === 'video/quicktime' ? 'mov' : type === 'video/x-matroska' ? 'mkv' : 'mp4')).toLowerCase();
+      const key = `${projectPrefix(accountId, p.id)}source/original.${ext}`;
+      const link = { url: url.slice(0, 500), bytes: len, got: 0 };
+      await env.DB.prepare(`UPDATE crm_video_projects SET source = ?, status = 'uploading', stage = 'fetch_link', error = '', updated_at = ? WHERE id = ?`).bind(JSON.stringify({ ...src0, link }), nowIso(), p.id).run();
+      let got = 0, head = new Uint8Array(0), sniffed = false, lastSave = Date.now();
+      const tap = new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, c) {
+          if (!sniffed) {
+            const both = new Uint8Array(head.length + chunk.length); both.set(head); both.set(chunk, head.length); head = both.slice(0, 64);
+            if (head.length >= 12) { sniffed = true; if (!looksLikeVideo(head)) throw new Error('not_video'); }
+          }
+          got += chunk.length;
+          if (Date.now() - lastSave > 2000) {
+            lastSave = Date.now();
+            ctx.waitUntil(env.DB.prepare(`UPDATE crm_video_projects SET source = json_set(source, '$.link.got', ?), updated_at = ? WHERE id = ? AND json_extract(source, '$.key') IS NULL`).bind(got, nowIso(), p.id).run().catch(() => null));
+          }
+          c.enqueue(chunk);
+        },
+      });
+      const stored = await env.VIDEO.put(key, res.body.pipeThrough(tap).pipeThrough(new FixedLengthStream(len)), { httpMetadata: { contentType: type.startsWith('video/') ? type : 'video/mp4' }, customMetadata: { name: fileName || 'video' } })
+        .then(() => '', (e: unknown) => String((e as Error)?.message ?? e));
+      if (stored) {
+        await env.VIDEO.delete(key).catch(() => null);
+        const why = /not_video/.test(stored) ? 'What that link sent is not a video Video Studio can read (MP4, MOV, MKV or WebM).' : `The video stopped arriving after ${Math.round(got / 1e6)} MB of ${Math.round(len / 1e6)} MB.`;
+        await env.DB.prepare(`UPDATE crm_video_projects SET status = 'draft', stage = '', error = ?, source = ?, updated_at = ? WHERE id = ?`).bind(why, JSON.stringify(src0), nowIso(), p.id).run();
+        return fail(`${why} Download it and upload the file instead.`, 200, { field: 'video.youtube' });
+      }
+      const src: Source = { ...src0, key, name: fileName || 'Video from a link', bytes: len, type: type.startsWith('video/') ? type : 'video/mp4', link: { ...link, got: len } };
+      await env.DB.prepare(`UPDATE crm_video_projects SET source = ?, status = 'processing', stage = 'prepare', error = '', updated_at = ? WHERE id = ?`).bind(JSON.stringify(src), nowIso(), p.id).run();
+      await recordAllowance(env, accountId, 'long_videos', `long:${p.id}`);
+      await enqueue(env, { accountId, projectId: p.id, kind: 'prepare', idem: `prepare:${p.id}:${key}` });
+      kick(p.id);
+      return json({ success: true, bytes: len });
     }
 
     case 'upload_abort': {

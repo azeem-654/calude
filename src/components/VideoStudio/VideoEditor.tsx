@@ -1,25 +1,35 @@
 /**
- * The Video Studio editor, laid out after the owner's concept:
+ * The Video Studio editor, laid out after Descript (the owner's reference):
  *
- *   top      back · name · undo/redo · render changes · history · what works
- *   left     Media (the long video and every Short, searchable) · Transcript
- *            · Cleanup · Shorts
- *   centre   the player — the proxy played through the canonical edit
- *   right    the inspector (Video · Audio · Music · Captions · Export ·
- *            Reuse) with the AI assistant under it
- *   bottom   the timeline: picture, text, Shorts, sound, music
+ *   top        home · undo/redo · Video Studio / <project> / <composition ▾>
+ *              · history · keys · what works · render · Export
+ *   left       the script: the composition's transcript — the main way to
+ *              edit — with its speaker and a frame at each scene's start
+ *   centre     the preview, with Layout and Background under it
+ *   right      the open panel beside an icon rail: Project · AI Tools ·
+ *              Properties · Elements · Captions · Media
+ *   transport  back/on · timecode · Record · play · speed · Split · zoom ·
+ *              selection tool
+ *   bottom     the timeline: scenes, captions, phrases and gaps over the
+ *              waveform, Shorts, music
+ *   below      your videos (the outputs board), then publishing
+ *
+ * A composition is the long video or one Short made from it; the dropdown
+ * switches between them on the same screen (the script, the preview and the
+ * timeline all follow), and "New short composition" adds one.
  *
  * Every change is an operation on the document, saved as a new version
  * against the version it was made on; undo and redo walk the versions. The
  * screen polls while anything is processing and reports only what the
- * server's jobs say.
+ * server's jobs say. At phone width the panels stack and the rail becomes a
+ * bar along the bottom of the screen.
  */
 import { askConfirm } from '../shared/ConfirmDialog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowLeft, Undo2, Redo2, Loader, Bot, ShieldCheck, Trash2, RefreshCw, Upload, AlertCircle, Check, X, Search, Plus, History, Music2,
-  FileText, Scissors, Film, Clapperboard, Images, SlidersHorizontal, Sparkles, ScanFace, Type, AudioLines, Captions as CaptionsIcon, Share2, Download, Layers, Keyboard,
+  Home, Undo2, Redo2, Loader, Bot, ShieldCheck, Trash2, RefreshCw, Upload, AlertCircle, Check, X, Search, Plus, History, Music2, ChevronDown,
+  FolderOpen, Sparkles, SlidersHorizontal, Shapes, Captions as CaptionsIcon, Images, Clapperboard, Download, Keyboard, LayoutGrid, PaintBucket, Film,
 } from 'lucide-react';
 import {
   getVideoProject, videoStatus, editVideo, gotoVersion, renameVideoProject, retryVideo, cancelVideo, deleteVideoProject, renderOutputs,
@@ -37,30 +47,30 @@ import Player from './Player';
 import Timeline from './Timeline';
 import { CapabilityPanel } from './VideoStudio';
 
-type LeftTab = 'media' | 'transcript' | 'cleanup' | 'shorts';
 /** Every key the editor answers, in one sheet (press ? anywhere outside a text box). */
 const SHORTCUTS: [string, [string, string][]][] = [
   ['Anywhere', [['Space / K', 'play or pause'], ['← → / J L', 'back or on five seconds'], ['Ctrl/⌘ + Z', 'undo'], ['Ctrl/⌘ + Y', 'redo (or Ctrl/⌘ + Shift + Z)'], ['?', 'this sheet']]],
-  ['Transcript', [['← →', 'a word'], ['Ctrl/⌘ + ← →', 'to the start of a sentence'], ['↑ ↓', 'the same place in the sentence before or after'], ['Shift + arrows', 'select words'], ['Delete / Backspace', 'cut the selected words'], ['R', 'restore struck words'], ['Esc', 'clear the selection']]],
-  ['Timeline', [['I / O', 'mark the start or end of a stretch'], ['X', 'cut the marked stretch'], ['P', 'protect it'], ['M', 'make a Short of it'], ['Ctrl/⌘ + scroll', 'zoom']]],
+  ['Script', [['← →', 'a word'], ['Ctrl/⌘ + ← →', 'to the start of a sentence'], ['↑ ↓', 'the same place in the sentence before or after'], ['Shift + arrows', 'select words'], ['Delete / Backspace', 'cut the selected words'], ['R', 'restore struck words'], ['Esc', 'clear the selection']]],
+  ['Timeline', [['Click a block', 'select that phrase or gap (Shift extends)'], ['I / O', 'mark the start or end of a stretch'], ['X', 'cut the marked stretch'], ['P', 'protect it'], ['M', 'make a Short of it'], ['Ctrl/⌘ + scroll', 'zoom']]],
 ];
-type RightTab = 'video' | 'adjust' | 'effects' | 'animation' | 'tracking' | 'text' | 'audio' | 'music' | 'captions' | 'reuse';
-export type PanelTab = LeftTab | RightTab | 'assistant' | 'versions' | 'exports';
-const LEFT: { key: LeftTab; label: string; icon: typeof Film }[] = [
-  { key: 'media', label: 'Media', icon: Images },
-  { key: 'transcript', label: 'Transcript', icon: FileText },
-  { key: 'cleanup', label: 'Cleanup', icon: Scissors },
-  { key: 'shorts', label: 'Shorts', icon: Film },
+
+/** The rail's groups (Descript's): each opens its panel beside the rail. */
+export type Group = 'project' | 'ai' | 'properties' | 'elements' | 'captions' | 'media';
+type Sub = 'shorts' | 'reuse' | 'tools' | 'cleanup' | 'video' | 'adjust' | 'effects' | 'animation' | 'tracking' | 'audio' | 'text' | 'music' | 'captions' | 'media';
+export type PanelTab = Sub | 'transcript' | 'assistant' | 'versions' | 'exports';
+const RAIL: { key: Group; label: string; icon: typeof Film }[] = [
+  { key: 'project', label: 'Project', icon: FolderOpen }, { key: 'ai', label: 'AI Tools', icon: Sparkles }, { key: 'properties', label: 'Properties', icon: SlidersHorizontal },
+  { key: 'elements', label: 'Elements', icon: Shapes }, { key: 'captions', label: 'Captions', icon: CaptionsIcon }, { key: 'media', label: 'Media', icon: Images },
 ];
-/* An icon rail, as in the owner's reference: every inspector tab one press away. */
-const RIGHT: { key: RightTab; label: string; icon: typeof Film }[] = [
-  { key: 'video', label: 'Video', icon: Film }, { key: 'adjust', label: 'Adjust', icon: SlidersHorizontal }, { key: 'effects', label: 'Effects', icon: Layers },
-  { key: 'animation', label: 'Animation', icon: Sparkles }, { key: 'tracking', label: 'Tracking', icon: ScanFace },
-  { key: 'text', label: 'Text', icon: Type }, { key: 'audio', label: 'Audio', icon: AudioLines }, { key: 'music', label: 'Music', icon: Music2 },
-  { key: 'captions', label: 'Captions', icon: CaptionsIcon }, { key: 'reuse', label: 'Reuse', icon: Share2 },
-];
-const isLeft = (t: string): t is LeftTab => LEFT.some(x => x.key === t);
-const isRight = (t: string): t is RightTab => RIGHT.some(x => x.key === t);
+const SUBS: Record<Group, { key: Sub; label: string }[]> = {
+  project: [{ key: 'shorts', label: 'Compositions' }, { key: 'reuse', label: 'Reuse' }],
+  ai: [{ key: 'tools', label: 'AI Tools' }, { key: 'cleanup', label: 'Cleanup' }],
+  properties: [{ key: 'video', label: 'Video' }, { key: 'adjust', label: 'Adjust' }, { key: 'effects', label: 'Effects' }, { key: 'animation', label: 'Animation' }, { key: 'tracking', label: 'Tracking' }, { key: 'audio', label: 'Audio' }],
+  elements: [{ key: 'text', label: 'Text' }, { key: 'music', label: 'Music' }],
+  captions: [{ key: 'captions', label: 'Captions' }],
+  media: [{ key: 'media', label: 'Media' }],
+};
+const groupOf = (t: string): Group | null => (Object.keys(SUBS) as Group[]).find(g => SUBS[g].some(x => x.key === t)) ?? null;
 
 export interface EditorCtx {
   view: ProjectView;
@@ -225,6 +235,123 @@ function MediaPanel({ ctx }: { ctx: EditorCtx }) {
   );
 }
 
+/* ── The composition dropdown ─────────────────────────────────────────────── */
+
+/**
+ * "Video Studio / <project> / <composition> ▾": the long video and each Short
+ * made from it are compositions of the same recording, switched here on the
+ * same screen. A new short composition is the stretch selected in the script
+ * or on the timeline, or — with nothing selected — the sentences from the
+ * playhead for about half a minute (a clip like any other: trim it on the
+ * timeline).
+ */
+function CompositionMenu({ ctx }: { ctx: EditorCtx }) {
+  const { doc, duration } = ctx;
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const off = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('mousedown', off); window.addEventListener('keydown', esc);
+    return () => { window.removeEventListener('mousedown', off); window.removeEventListener('keydown', esc); };
+  }, [open]);
+  const clip = ctx.activeClip ? doc.clips.find(c => c.id === ctx.activeClip) : null;
+  const n = clip ? doc.clips.indexOf(clip) + 1 : 0;
+  const label = clip ? `Short ${n} · ${clip.title}` : 'Long video';
+  const words = ctx.transcript?.words ?? [];
+  const newShort = async () => {
+    setOpen(false);
+    let s: number, e: number;
+    if (ctx.selection && words.length) {
+      s = words[Math.min(ctx.selection.i0, ctx.selection.i1)].s; e = words[Math.max(ctx.selection.i0, ctx.selection.i1)].e;
+    } else {
+      const sents = sentencesOf(words);
+      const from = sents.find(x => x.e > ctx.time) ?? sents[0];
+      if (from) {
+        s = from.s; e = from.e;
+        for (const x of sents) if (x.s >= from.s && x.e - s <= 45) e = x.e;
+      } else { s = Math.max(0, ctx.time); e = Math.min(duration, s + 30); }
+    }
+    if (e - s < 5) e = Math.min(duration, s + 15);
+    const before = new Set(doc.clips.map(c => c.id));
+    const ok = await ctx.apply([{ op: 'clip.add', s, e, title: `Short from ${clock(s)}`, reason: 'A new short composition' }], 'New short composition');
+    if (!ok) return;
+    window.setTimeout(() => window.dispatchEvent(new CustomEvent('vs-new-clip', { detail: [...before] })), 0);
+  };
+  return (
+    <div className="vse-comp" ref={box}>
+      <button type="button" className="vse-comp-btn" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(o => !o)} data-testid="vs-composition" title={label}>
+        <span>{label}</span><ChevronDown size={14} />
+      </button>
+      {open && (
+        <div className="vse-comp-menu" role="menu" data-testid="vs-composition-menu">
+          <button type="button" role="menuitemradio" aria-checked={!clip} data-comp="long" onClick={() => { ctx.setActiveClip(null); setOpen(false); }}>
+            <Clapperboard size={14} /><span><b>Long video</b><small>{clock(keptLength(keepRanges(duration, doc)))} after cuts</small></span>{!clip && <Check size={14} />}
+          </button>
+          {doc.clips.map((c, i) => (
+            <button key={c.id} type="button" role="menuitemradio" aria-checked={clip?.id === c.id} data-comp={c.id} onClick={() => { ctx.setActiveClip(c.id); ctx.seek(c.s); setOpen(false); }}>
+              <Film size={14} /><span><b>Short {i + 1} · {c.title}</b><small>{c.aspect} · {clock(keptLength(keepRanges(duration, doc, [c.s, c.e])))}</small></span>{clip?.id === c.id && <Check size={14} />}
+            </button>
+          ))}
+          <hr />
+          <button type="button" role="menuitem" onClick={() => void newShort()} data-act="new-short" disabled={!duration}>
+            <Plus size={14} /><span><b>New short composition</b><small>{ctx.selection ? 'From your selection' : 'From the playhead, about half a minute'}</small></span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── The panel beside the rail ────────────────────────────────────────────── */
+
+function SidePanel({ ctx, group, sub, setSub, onClose, messages, commandRef }: {
+  ctx: EditorCtx; group: Group; sub: Sub; setSub: (s: Sub) => void; onClose: () => void; messages: ChatMsg[]; commandRef: React.RefObject<HTMLInputElement | null>;
+}) {
+  const subs = SUBS[group];
+  const sentences = useMemo(() => ctx.transcript ? sentencesOf(ctx.transcript.words) : [], [ctx.transcript]);
+  return (
+    <section className="vse-panel" aria-label={RAIL.find(r => r.key === group)?.label} data-group={group}>
+      <div className="vse-panel-head">
+        <b>{RAIL.find(r => r.key === group)?.label}</b>
+        <span className="vs-spacer" />
+        <button type="button" className="vs-btn ghost sm" onClick={onClose} aria-label="Close the panel"><X size={15} /></button>
+      </div>
+      {subs.length > 1 && (
+        <div className="vs-ptabs" role="tablist">
+          {subs.map(x => <button key={x.key} type="button" role="tab" className="vs-ptab" aria-selected={sub === x.key} onClick={() => setSub(x.key)} data-panel={x.key}>{x.label}</button>)}
+        </div>
+      )}
+      <div className="vse-scroll">
+        {sub === 'shorts' && <ShortsPanel ctx={ctx} sentences={sentences} />}
+        {sub === 'reuse' && <ReusePanel ctx={ctx} />}
+        {sub === 'tools' && (
+          <div className="vs-col">
+            <div className="vse-improve" data-testid="vs-improve">
+              <span className="vs-mark" style={{ width: 34, height: 34, borderRadius: 11 }}><Sparkles size={17} /></span>
+              <div><b>Improve this video</b><small>Let AI plan your edits: the cleanup it found, waiting for your yes or no.</small></div>
+              <button type="button" className="vs-btn ai sm" onClick={() => setSub('cleanup')}>Review</button>
+            </div>
+            <AssistantPanel ctx={ctx} messages={messages} inputRef={commandRef} />
+          </div>
+        )}
+        {sub === 'cleanup' && <CleanupPanel ctx={ctx} />}
+        {sub === 'video' && <VideoPanel ctx={ctx} />}
+        {sub === 'adjust' && <AdjustPanel ctx={ctx} />}
+        {sub === 'effects' && <VisualEffectsPanel ctx={ctx} />}
+        {sub === 'animation' && <AnimationPanel ctx={ctx} />}
+        {sub === 'tracking' && <TrackingPanel ctx={ctx} />}
+        {sub === 'audio' && <AudioPanel ctx={ctx} />}
+        {sub === 'text' && <TextPanel ctx={ctx} />}
+        {sub === 'music' && <MusicPanel ctx={ctx} />}
+        {sub === 'captions' && <CaptionsPanel ctx={ctx} />}
+        {sub === 'media' && <MediaPanel ctx={ctx} />}
+      </div>
+    </section>
+  );
+}
+
 /* ── The editor ───────────────────────────────────────────────────────────── */
 
 export default function VideoEditor({ id }: { id: string }) {
@@ -239,8 +366,9 @@ export default function VideoEditor({ id }: { id: string }) {
   const trackUrlSeen = useRef(false);
   const [error, setError] = useState('');
   const asked = params.get('tab') ?? '';
-  const [left, setLeft] = useState<LeftTab>(isLeft(asked) ? asked : 'transcript');
-  const [right, setRight] = useState<RightTab>(isRight(asked) ? asked : 'video');
+  const narrow = () => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches;
+  const [group, setGroup] = useState<Group | null>(() => groupOf(asked) ?? (narrow() ? null : 'ai'));
+  const [sub, setSub] = useState<Sub>(() => (groupOf(asked) ? asked as Sub : 'tools'));
   const [time, setTime] = useState(0);
   const [selection, setSelection] = useState<{ i0: number; i1: number } | null>(null);
   const [activeClip, setActiveClip] = useState<string | null>(null);
@@ -251,6 +379,7 @@ export default function VideoEditor({ id }: { id: string }) {
   const [showKeys, setShowKeys] = useState(false);
   const [showHistory, setShowHistory] = useState(asked === 'versions');
   const [name, setName] = useState('');
+  const [transportEl, setTransportEl] = useState<HTMLDivElement | null>(null);
   const transcriptUrlSeen = useRef('');
   const prev = useRef<ProjectView | null>(null);
   const versionRef = useRef(0);
@@ -258,14 +387,15 @@ export default function VideoEditor({ id }: { id: string }) {
   versionRef.current = version;
 
   const say = useCallback((m: ChatMsg) => setMessages(ms => [...ms, m].slice(-80)), []);
+  const openGroup = useCallback((g: Group, s?: Sub) => { setGroup(g); setSub(s ?? SUBS[g][0].key); }, []);
   const setTab = useCallback((t: PanelTab) => {
-    if (isLeft(t)) setLeft(t);
-    else if (isRight(t)) setRight(t);
-    else if (t === 'versions') setShowHistory(true);
-    else if (t === 'exports') { document.getElementById('vs-outputs-board')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
-    else if (t === 'assistant') { commandRef.current?.focus(); return; }
-    setParams(t === 'transcript' || t === 'video' ? {} : { tab: t }, { replace: true });
-  }, [setParams]);
+    const g = groupOf(t);
+    if (g) { openGroup(g, t as Sub); setParams(t === 'tools' ? {} : { tab: t }, { replace: true }); return; }
+    if (t === 'versions') setShowHistory(true);
+    else if (t === 'exports') document.getElementById('vs-outputs-board')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else if (t === 'assistant') { openGroup('ai', 'tools'); setTimeout(() => commandRef.current?.focus(), 50); }
+    else if (t === 'transcript') document.querySelector<HTMLElement>('[data-testid="vs-tr-text"]')?.focus();
+  }, [setParams, openGroup]);
 
   /* What the jobs did since the last look, said in the assistant — only real events. */
   const narrate = useCallback((before: ProjectView | null, now: ProjectView, d: VideoDoc | null) => {
@@ -287,7 +417,7 @@ export default function VideoEditor({ id }: { id: string }) {
       if (b && b.thumbs.length === 0 && o.thumbs.length > 0) say({ who: 'sys', text: `Thumbnails for “${o.title.slice(0, 40)}” are ready — ${o.thumbs.filter(t => t.verified).length} checked PNGs.` });
     });
     if (!before.extras?.repurposed && now.extras?.repurposed) say({ who: 'sys', text: `Drafts written from this recording: ${now.extras.repurposed.links.map(l => l.label).join(', ')}.` });
-    if (!before.extras?.quiz && now.extras?.quiz) say({ who: 'sys', text: `A ${now.extras.quiz.questions.length}-question quiz is ready (Reuse tab).` });
+    if (!before.extras?.quiz && now.extras?.quiz) say({ who: 'sys', text: `A ${now.extras.quiz.questions.length}-question quiz is ready (Project → Reuse).` });
     if (before.project.status !== 'failed' && now.project.status === 'failed') say({ who: 'sys', text: `Processing stopped: ${now.project.error}` });
   }, [say]);
 
@@ -375,6 +505,15 @@ export default function VideoEditor({ id }: { id: string }) {
     window.dispatchEvent(new CustomEvent('vs-seek', { detail: t }));
   }, []);
 
+  /* A new short composition is opened as soon as the save brings it back. */
+  useEffect(() => {
+    const on = (e: Event) => { const before = new Set((e as CustomEvent<string[]>).detail); const c = doc?.clips.find(x => !before.has(x.id)); if (c) { setActiveClip(c.id); seek(c.s); } };
+    window.addEventListener('vs-new-clip', on);
+    return () => window.removeEventListener('vs-new-clip', on);
+  }, [doc, seek]);
+  /* A composition that was deleted is left for the long video. */
+  useEffect(() => { if (activeClip && doc && !doc.clips.some(c => c.id === activeClip)) setActiveClip(null); }, [doc, activeClip]);
+
   /* Undo / redo from the keyboard, outside text boxes. */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -404,98 +543,83 @@ export default function VideoEditor({ id }: { id: string }) {
   /* Started from YouTube, stopped before any video arrived. */
   const ytStopped = !!view.source.youtube && !view.source.probe && st === 'failed' && !view.upload;
   const stale = view.outputs.filter(o => o.stale);
-  const working = st !== 'ready' || view.jobs.some(j => j.state === 'queued' || j.state === 'running' || j.state === 'failed');
+  /* The stages card stays while anything moves or stopped — not once every stage is done. */
+  const working = (st !== 'ready' || view.jobs.some(j => j.state === 'queued' || j.state === 'running' || j.state === 'failed')) && view.stages.some(x => x.state !== 'done' && x.state !== 'skipped');
   const proposed = doc.cuts.filter(c => c.state === 'proposed').length;
+  const clip = activeClip ? doc.clips.find(c => c.id === activeClip) ?? null : null;
+  const railClick = (g: Group) => { if (group === g) setGroup(null); else openGroup(g); };
 
   return (
     <>
-    <div className="vse" data-testid="vs-editor" data-status={st}>
-      <div className="vse-top">
-        <Link to="/video-studio" className="vs-btn ghost sm" aria-label="Back to Video Studio"><ArrowLeft size={16} /></Link>
-        <input className="vse-name" aria-label="Project name" value={name} onChange={e => setName(e.target.value)}
-          onBlur={() => { if (name.trim() && name !== view.project.name) void renameVideoProject(id, name.trim()); }} />
+    <div className={`vse ${group ? 'with-panel' : ''}`} data-testid="vs-editor" data-status={st}>
+      <header className="vse-top">
+        <Link to="/video-studio" className="vs-btn ghost sm" aria-label="Back to Video Studio" title="Video Studio"><Home size={16} /></Link>
+        <button type="button" className="vs-btn ghost sm" disabled={version <= 1} onClick={() => void go(version - 1)} aria-label="Undo" title="Undo (Ctrl+Z)"><Undo2 size={15} /></button>
+        <button type="button" className="vs-btn ghost sm" disabled={version >= view.maxVersion} onClick={() => void go(version + 1)} aria-label="Redo" title="Redo (Ctrl+Y or Ctrl+Shift+Z)"><Redo2 size={15} /></button>
+        {busy && <Loader size={14} className="spin" />}
+        <nav className="vse-crumbs" aria-label="Where you are">
+          <Link to="/video-studio" className="crumb">Video Studio</Link><span className="sep">/</span>
+          <input className="vse-name" aria-label="Project name" value={name} onChange={e => setName(e.target.value)} size={Math.max(8, Math.min(36, name.length + 1))}
+            onBlur={() => { if (name.trim() && name !== view.project.name) void renameVideoProject(id, name.trim()); }} />
+          <span className="sep">/</span>
+          <CompositionMenu ctx={ctx} />
+        </nav>
         <span className="vs-kbd vse-src">
           {view.source.probe ? `${clock(view.source.probe.duration)} · ${view.source.probe.width}×${view.source.probe.height}` : view.source.name || 'No video yet'}{view.project.language ? ` · ${view.project.language.toUpperCase()}` : ''}
         </span>
         {view.project.autopilotProjectId && <Link className="vs-aplink vs-kbd" to={`/autopilot?project=${view.project.autopilotProjectId}&tab=assets`}><Bot size={12} /> {view.project.autopilotProjectName || 'AI Autopilot business workspace'}</Link>}
         <span className="vs-spacer" />
-        {busy && <Loader size={14} className="spin" />}
-        <button type="button" className="vs-btn sm" disabled={version <= 1} onClick={() => void go(version - 1)} aria-label="Undo" title="Undo (Ctrl+Z)"><Undo2 size={14} /></button>
-        <button type="button" className="vs-btn sm" disabled={version >= view.maxVersion} onClick={() => void go(version + 1)} aria-label="Redo" title="Redo (Ctrl+Y or Ctrl+Shift+Z)"><Redo2 size={14} /></button>
-        <button type="button" className="vs-btn sm" onClick={() => setShowHistory(true)} aria-label="Version history"><History size={14} /></button>
-        <button type="button" className="vs-btn sm" onClick={() => setShowKeys(true)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" data-act="shortcuts"><Keyboard size={14} /></button>
-        <button type="button" className="vs-btn sm" onClick={() => setShowCaps(true)}><ShieldCheck size={14} /> What works</button>
+        <button type="button" className="vs-btn ghost sm" onClick={() => setShowHistory(true)} aria-label="Version history"><History size={15} /></button>
+        <button type="button" className="vs-btn ghost sm" onClick={() => setShowKeys(true)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" data-act="shortcuts"><Keyboard size={15} /></button>
+        <button type="button" className="vs-btn ghost sm" onClick={() => setShowCaps(true)}><ShieldCheck size={14} /> <span className="vse-hide-sm">What works</span></button>
         {stale.length > 0 && (
-          <button type="button" className="vs-btn ai sm" data-testid="vs-render-changes" onClick={() => void renderOutputs(id, stale.map(o => o.id)).then(r => { if (!r.success) say({ who: 'ai', text: r.error ?? 'Could not render.' }); void refresh(); })}>
+          <button type="button" className="vs-btn sm" data-testid="vs-render-changes" onClick={() => void renderOutputs(id, stale.map(o => o.id)).then(r => { if (!r.success) say({ who: 'ai', text: r.error ?? 'Could not render.' }); void refresh(); })}>
             <Clapperboard size={14} /> Render {stale.length} change{stale.length === 1 ? '' : 's'}
           </button>
         )}
         <button type="button" className="vs-btn ghost sm danger" aria-label="Delete project" onClick={async () => {
           if (await askConfirm({ title: 'Delete this project?', message: 'Its source video and everything made from it are deleted. This cannot be undone.', confirmLabel: 'Delete project', danger: true })) void deleteVideoProject(id).then(() => navigate('/video-studio'));
         }}><Trash2 size={14} /></button>
-      </div>
+        <button type="button" className="vs-btn primary sm" onClick={() => setTab('exports')} data-act="export"><Download size={14} /> Export</button>
+      </header>
 
-      <aside className="vse-left">
-        <div className="vse-pane">
-          <div className="vs-ptabs" role="tablist" aria-label="Project">
-            {LEFT.map(p => (
-              <button key={p.key} type="button" role="tab" className="vs-ptab" aria-selected={left === p.key} onClick={() => setTab(p.key)} data-panel={p.key} title={p.label}>
-                <p.icon size={14} /> <span className="lbl">{p.label}</span>
-                {p.key === 'cleanup' && proposed ? <span className="vs-count warn">{proposed}</span> : null}
-                {p.key === 'shorts' && doc.clips.length ? <span className="vs-count">{doc.clips.length}</span> : null}
-              </button>
-            ))}
-          </div>
-          <div className="vse-scroll">
-            {left === 'media' && <MediaPanel ctx={ctx} />}
-            {left === 'transcript' && <TranscriptPanel ctx={ctx} sentences={sentences} />}
-            {left === 'cleanup' && <CleanupPanel ctx={ctx} />}
-            {left === 'shorts' && <ShortsPanel ctx={ctx} sentences={sentences} />}
-          </div>
+      <section className="vse-script" aria-label="Script">
+        <div className="vse-script-head">
+          <h2 title={clip ? clip.title : view.project.name}>{clip ? clip.title : view.project.name}</h2>
+          {proposed > 0 && <button type="button" className="vs-badge needs_review" onClick={() => setTab('cleanup')} data-act="open-cleanup">{proposed} suggestion{proposed === 1 ? '' : 's'}</button>}
         </div>
-      </aside>
+        <div className="vse-scroll"><TranscriptPanel ctx={ctx} sentences={sentences} /></div>
+      </section>
 
       <main className="vse-stage">
         {ytStopped ? <YoutubeStopped view={view} onRetry={() => void retryVideo(id).then(refresh)} onDone={() => void refresh()} />
           : !hasSource && (st === 'draft' || st === 'uploading') ? <ResumeUpload view={view} onDone={() => void refresh()} />
-          : view.source.proxyUrl ? <Player ctx={ctx} /> : (
-            <div className="vse-player"><div className="vse-screen" style={{ minHeight: 280 }}><span className="vs-kbd"><Loader size={14} className="spin" /> The preview appears when the video is prepared.</span></div></div>
+          : view.source.proxyUrl ? (
+            <Player ctx={ctx} transport={transportEl} below={(
+              <div className="vse-under" data-testid="vs-under">
+                <button type="button" className="vs-btn sm" onClick={() => setTab('video')} data-act="layout"><LayoutGrid size={14} /> Layout</button>
+                <button type="button" className="vs-btn sm" onClick={() => setTab('effects')} data-act="background"><PaintBucket size={14} /> Background</button>
+              </div>
+            )} />
+          ) : (
+            <div className="vse-player"><div className="vse-screen" style={{ minHeight: 240 }}><span className="vs-kbd"><Loader size={14} className="spin" /> The preview appears when the video is prepared.</span></div></div>
           )}
         {working && hasSource && <StagesCard view={view} onRetry={() => void retryVideo(id).then(refresh)} onCancel={() => void cancelVideo(id).then(refresh)} />}
       </main>
 
-      <aside className="vse-right">
-        <div className="vse-pane inspector">
-          <div className="vse-insp">
-            <div className="vse-panel-body">
-              <div className="vse-panel-head"><b>{RIGHT.find(r => r.key === right)?.label}</b></div>
-              <div className="vse-scroll">
-                {right === 'video' && <VideoPanel ctx={ctx} />}
-                {right === 'adjust' && <AdjustPanel ctx={ctx} />}
-                {right === 'effects' && <VisualEffectsPanel ctx={ctx} />}
-                {right === 'animation' && <AnimationPanel ctx={ctx} />}
-                {right === 'tracking' && <TrackingPanel ctx={ctx} />}
-                {right === 'text' && <TextPanel ctx={ctx} />}
-                {right === 'audio' && <AudioPanel ctx={ctx} />}
-                {right === 'music' && <MusicPanel ctx={ctx} />}
-                {right === 'captions' && <CaptionsPanel ctx={ctx} />}
-                {right === 'reuse' && <ReusePanel ctx={ctx} />}
-              </div>
-            </div>
-            <nav className="vse-rail" role="tablist" aria-label="Inspector">
-              {RIGHT.map(p => (
-                <button key={p.key} type="button" role="tab" className="vse-rail-btn" aria-selected={right === p.key} onClick={() => setTab(p.key)} data-panel={p.key} title={p.label}>
-                  <p.icon size={17} /><span>{p.label}</span>
-                </button>
-              ))}
-              <button type="button" className="vse-rail-btn" onClick={() => setTab('exports')} data-panel="exports" title="Your videos, below">
-                <Download size={17} /><span>Export</span>{stale.length ? <i className="dot" /> : null}
-              </button>
-            </nav>
-          </div>
-        </div>
-        <AssistantPanel ctx={ctx} messages={messages} inputRef={commandRef} />
+      <aside className="vse-side">
+        {group && <SidePanel ctx={ctx} group={group} sub={SUBS[group].some(x => x.key === sub) ? sub : SUBS[group][0].key} setSub={s => setTab(s)} onClose={() => setGroup(null)} messages={messages} commandRef={commandRef} />}
+        <nav className="vse-rail" aria-label="Panels">
+          {RAIL.map(r => (
+            <button key={r.key} type="button" className="vse-rail-btn" aria-pressed={group === r.key} onClick={() => railClick(r.key)} data-rail={r.key} title={r.label}>
+              <r.icon size={18} /><span>{r.label}</span>
+              {r.key === 'ai' && proposed ? <i className="dot" /> : null}
+            </button>
+          ))}
+        </nav>
       </aside>
+
+      <div className="vse-transport" ref={setTransportEl} data-testid="vs-transport" />
 
       {hasSource && duration > 0 && <section className="vse-time"><Timeline ctx={ctx} wave={wave} /></section>}
 
@@ -504,9 +628,9 @@ export default function VideoEditor({ id }: { id: string }) {
         <div className="vs-modal-back" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick={() => setShowKeys(false)}>
           <div className="vs-modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()} data-testid="vs-shortcuts">
             <div className="vs-row" style={{ marginBottom: 8 }}><h2 style={{ margin: 0, fontSize: 17 }}><Keyboard size={16} /> Keyboard shortcuts</h2><span className="vs-spacer" /><button type="button" className="vs-btn ghost sm" onClick={() => setShowKeys(false)} aria-label="Close"><X size={15} /></button></div>
-            {SHORTCUTS.map(([group, rows]) => (
-              <div key={group} className="vs-keys" style={{ marginBottom: 8 }}>
-                <b style={{ color: '#eee' }}>{group}</b>
+            {SHORTCUTS.map(([g, rows]) => (
+              <div key={g} className="vs-keys" style={{ marginBottom: 8 }}>
+                <b>{g}</b>
                 {rows.map(([k, what]) => <span key={k}><kbd>{k}</kbd> {what}</span>)}
               </div>
             ))}

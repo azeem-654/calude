@@ -32,7 +32,7 @@ import { nowIso } from '../db';
 import { aiBudget, askGeminiParts, extractJson, loadAiKey } from '../ai';
 import { recordAgentRun, repurposeRecording } from '../projectAgents';
 import {
-  dimsFor, hashOf, keepRanges, keptLength, retimeWords, sentencesOf, toOutput, clock, lookOf, motionOf, trackingOf, effectsOf, effectsOn,
+  dimsFor, hashOf, keepRanges, keptLength, mutedIn, retimeWords, sentencesOf, toOutput, clock, lookOf, motionOf, trackingOf, effectsOf, effectsOn,
   type Clip, type Effects, type Look, type Motion, type MusicTrack, type Overlay, type Sentence, type TrackMode, type Transcript, type VideoDoc, type Word,
 } from './edit';
 import { cameraPath, cutTimes, overlayAss, overlaySpan, punchSpans, skinBox, type TrackFile } from './motion';
@@ -96,6 +96,8 @@ export interface Source {
    * engine has fetched real bytes and they were checked here.
    */
   youtube?: { id: string; url: string; title: string; channel: string; rightsBy: string; rightsAt: string };
+  /** Fetched by the Worker from a direct link to a video file: where, how big, how much has arrived. */
+  link?: { url: string; bytes: number; got: number };
 }
 /**
  * What a thumbnail was made from, so it can be opened again in the editor and
@@ -651,6 +653,8 @@ export interface RenderSpec {
   effects: Partial<Effects>;
   /** A Short's split / two / picture-in-picture layout, built from the face track; null otherwise. */
   layout: 'split' | 'two' | 'pip' | null;
+  /** Stretches muted on the timeline, inside what is kept (source time). */
+  mutes: [number, number][];
 }
 
 /** The music that goes under this kind of video, if any. */
@@ -693,8 +697,9 @@ export function renderSpec(doc: VideoDoc, src: Source, out: Pick<OutputRow, 'kin
     ...(Object.keys(effects).length ? { fx: effects, ...(effects.appearance && tracked ? { tk: src.track?.key } : {}) } : {}),
     ...(layout ? { layout, tk: src.track?.key } : {}),
   };
-  const hash = hashOf({ keeps, width, height, mode, x: reframe.x, y: reframe.y, captionsKey, audio: doc.audio, ...(musicKey ? { musicKey } : {}), ...extra, v: 1 });
-  return { hash, keeps, width, height, mode, x: reframe.x, y: reframe.y, kind, clip, music, look, motion, tracking, overlays, effects, layout };
+  const mutes = mutedIn(doc, keeps);
+  const hash = hashOf({ keeps, width, height, mode, x: reframe.x, y: reframe.y, captionsKey, audio: doc.audio, ...(musicKey ? { musicKey } : {}), ...extra, ...(mutes.length ? { mutes } : {}), v: 1 });
+  return { hash, keeps, width, height, mode, x: reframe.x, y: reframe.y, kind, clip, music, look, motion, tracking, overlays, effects, layout, mutes };
 }
 
 /**
@@ -884,7 +889,7 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
     return {
       op: 'render' as const,
       params: {
-        keeps: spec.keeps, width: spec.width, height: spec.height, srcWidth: src.probe!.width, srcHeight: src.probe!.height,
+        keeps: spec.keeps, mutes: spec.mutes, width: spec.width, height: spec.height, srcWidth: src.probe!.width, srcHeight: src.probe!.height,
         mode: layout ? 'fit' : spec.layout ? 'fit' : spec.mode, cropX: spec.x, cropY: spec.y, ass, audio: doc.audio, hasAudio: src.probe!.hasAudio, fps: 30, name: 'video.mp4',
         effects: spec.effects, layout, skin,
         music: spec.music ? { volume: spec.music.volume, fadeIn: spec.music.fadeIn, fadeOut: spec.music.fadeOut, loop: spec.music.loop, duck: spec.music.duck } : null,
@@ -1141,6 +1146,7 @@ export function stagesOf(p: ProjectRow, jobs: JobRow[], outs: OutputRow[], uploa
     /* From YouTube, the first stage is the fetch, with the engine's own byte count. */
     src.youtube && (fetches.length || !src.key)
       ? { key: 'fetch_url', label: 'Fetching your video from YouTube', state: src.key ? 'done' : st(fetches), pct: pctOf(fetches), note: noteOf(fetches) || src.youtube.title }
+      : src.link ? { key: 'fetch_link', label: 'Fetching your video from the link', state: src.key ? 'done' : p.status === 'uploading' ? 'active' : 'waiting', pct: src.link.bytes ? Math.floor((src.link.got / src.link.bytes) * 100) : null, note: src.link.url }
       : { key: 'upload', label: 'Uploading source', state: src.key ? 'done' : upload ? 'active' : 'waiting', pct: null, note: src.name ?? '' },
     { key: 'prepare', label: 'Preparing video', state: st(of('prepare')), pct: pctOf(of('prepare')), note: noteOf(of('prepare')) },
     { key: 'transcribe', label: 'Transcribing', state: src.probe && !src.probe.hasAudio ? 'skipped' : st(of('transcribe')), pct: pctOf(of('transcribe')), note: noteOf(of('transcribe')) },

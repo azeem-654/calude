@@ -7,8 +7,10 @@
  *                               do?") over the projects, then Quick Shorts,
  *                               Repurpose, Media Library, Brand Kit, Exports,
  *                               Ready to Publish, Templates
- * /video-studio?new=1&project=  a new project: goal → choices → upload
- *                               (optionally for an Autopilot project)
+ * /video-studio?new=1&project=  a new project: goal → a big upload screen (the
+ *                               goal's choices folded under Options) → the
+ *                               progress screen → the editor (optionally for
+ *                               an Autopilot project)
  * /video-studio?tab=quick-shorts  the older AI Shorts maker (a Short from a
  *                               topic, link or script — no recording needed)
  * /video-studio?tab=repurpose   the older Repurposing module (one video idea
@@ -17,7 +19,7 @@
  *
  * The two older modules were separate pages (/ai-shorts, /social-automation,
  * which now lead here). They are kept whole and drawn outside the studio's
- * dark frame, in the app's own theme, because they were built for it.
+ * frame, because they were built for the app's own page.
  *
  * Everything shown is read from the server; nothing here advances on a timer
  * or claims a step happened that did not.
@@ -30,7 +32,7 @@ import {
   type Capability, type ProjectSummary, type Usage, type Template,
 } from '../../services/videoStudio';
 import NewVideoProject from './NewVideoProject';
-import WelcomeWizard, { type WizardResult } from './WelcomeWizard';
+import { GoalGrid, GoalOptions, defaultResult, type GoalKey, type WizardResult } from './WelcomeWizard';
 import VideoEditor from './VideoEditor';
 import { MediaLibrary, ExportsList, ReadyToPublish } from './VideoLibrary';
 import BrandKit from './BrandKit';
@@ -127,6 +129,7 @@ export default function VideoStudio() {
   const [showCaps, setShowCaps] = useState(false);
   const [template, setTemplate] = useState<Template | null>(null);
   const [plan, setPlan] = useState<WizardResult | null>(null);
+  const [goal, setGoal] = useState<GoalKey | null>(null);
   const creating = params.get('new') === '1';
   useEffect(() => { const t = params.get('tab') as Tab | null; if (t && TABS.some(x => x.key === t)) setTab(t); }, [params]);
 
@@ -141,17 +144,20 @@ export default function VideoStudio() {
 
   const missing = useMemo(() => caps.filter(c => ['storage', 'engine', 'transcription'].includes(c.key) && c.status !== 'working'), [caps]);
 
-  if (id) return <div className="vs vs-editing" data-noinvert=""><VideoEditor id={id} /></div>;
+  if (id) return <div className="vs vs-editing"><VideoEditor id={id} /></div>;
 
-  const go = (t: Tab) => { setTab(t); setPlan(null); setTemplate(null); setParams(t === 'projects' ? {} : { tab: t }, { replace: true }); };
-  const startNew = (t: Template | null = null) => { setTemplate(t); setPlan(null); setParams({ new: '1', ...(params.get('project') ? { project: params.get('project')! } : {}) }); };
-  const cancelNew = () => { setTemplate(null); setPlan(null); setParams({}); };
+  const go = (t: Tab) => { setTab(t); setPlan(null); setGoal(null); setTemplate(null); setParams(t === 'projects' ? {} : { tab: t }, { replace: true }); };
+  const startNew = (t: Template | null = null) => { setTemplate(t); setPlan(null); setGoal(null); setParams({ new: '1', ...(params.get('project') ? { project: params.get('project')! } : {}) }); };
+  const cancelNew = () => { setTemplate(null); setPlan(null); setGoal(null); setParams({}); };
+  /* A goal goes straight to the upload screen with its defaults. */
+  const pickGoal = (g: GoalKey) => { setGoal(g); setPlan(defaultResult(g)); setTemplate(null); setParams({ new: '1', ...(params.get('project') ? { project: params.get('project')! } : {}) }); };
+  const transcription = caps.find(c => c.key === 'transcription') ?? null;
   const embedded = !creating && (tab === 'quick-shorts' || tab === 'repurpose');
 
   const fallback = <p style={{ padding: 30, display: 'flex', gap: 8, alignItems: 'center', color: '#6b7280' }}><Loader size={16} className="spin" /> Opening…</p>;
   return (
     <>
-    <div className="vs" data-testid="video-studio" data-noinvert="">
+    <div className="vs" data-testid="video-studio">
       <div className="vs-head">
         <span className="vs-mark"><Clapperboard size={22} /></span>
         <div className="vs-grow">
@@ -172,15 +178,18 @@ export default function VideoStudio() {
       {creating ? (
         template || plan ? (
           <NewVideoProject
+            key={goal ?? template?.key ?? 'new'}
             template={plan?.template ?? template}
             want={plan?.want}
             autopilotProjectId={params.get('project') ?? ''}
-            onCancel={cancelNew}
+            transcription={transcription}
+            options={goal ? <GoalOptions goal={goal} onChange={setPlan} /> : undefined}
+            onCancel={() => { setPlan(null); setGoal(null); setTemplate(null); }}
             onCreated={pid => navigate(`/video-studio/${pid}`)}
           />
         ) : (
           <div className="vs-col" style={{ gap: 12 }}>
-            <WelcomeWizard onTab={t => go(t)} onReady={r => setPlan(r)} />
+            <GoalGrid onTab={t => go(t)} onPick={pickGoal} />
             <div><button type="button" className="vs-btn ghost sm" onClick={cancelNew}><X size={14} /> Cancel</button></div>
           </div>
         )
@@ -200,7 +209,7 @@ export default function VideoStudio() {
                 : (
                   <div className="vs-col" style={{ gap: 22 }}>
                     <div className="vs-card" style={{ background: 'linear-gradient(135deg, rgba(139,92,246,.12), rgba(236,72,153,.06) 60%, transparent)' }}>
-                      <WelcomeWizard onTab={t => go(t)} onReady={r => { setPlan(r); setParams({ new: '1', ...(params.get('project') ? { project: params.get('project')! } : {}) }); }} />
+                      <GoalGrid onTab={t => go(t)} onPick={pickGoal} />
                     </div>
                     {projects.length > 0 && (
                       <div className="vs-col">

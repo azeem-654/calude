@@ -51,13 +51,19 @@ function Chip({ c, onSet }: { c: Cut; onSet: (c: Cut, state: Cut['state']) => vo
   );
 }
 
-const Para = memo(function Para({ words, states, prot, edits, low, nowI, caret, sel, hits, rtl, chips, speaker, onChip }: {
+const Para = memo(function Para({ words, states, prot, edits, low, nowI, caret, sel, hits, rtl, chips, speaker, guessed, thumb, onChip }: {
   words: Word[]; states: WordState[]; prot: boolean[]; edits: Record<string, string>; low: boolean[]; nowI: number; caret: number; sel: [number, number] | null;
   hits: Set<number>; rtl: boolean; chips: Map<number, Cut[]> | null; speaker: number | null; onChip: (c: Cut, state: Cut['state']) => void;
+  /** No speaker detection: everyone is "Speaker 1", and the label says so when asked. */
+  guessed?: boolean;
+  /** The frame where this scene starts (a tile of the filmstrip). */
+  thumb?: React.CSSProperties | null;
 }) {
   return (
     <p dir={rtl ? 'rtl' : undefined}>
-      {speaker !== null && <span className="vs-spk" contentEditable={false} style={{ color: SPEAKER_COLORS[speaker % SPEAKER_COLORS.length] }} data-speaker={speaker}>Speaker {speaker + 1}</span>}
+      {thumb && <span className="vs-scene-th" style={thumb} contentEditable={false} aria-hidden="true" />}
+      {speaker !== null && <span className="vs-spk" contentEditable={false} style={{ color: SPEAKER_COLORS[speaker % SPEAKER_COLORS.length] }} data-speaker={speaker}
+        title={guessed ? 'Speaker labels need a transcription provider with speaker detection — until then everything is Speaker 1.' : undefined}>Speaker {speaker + 1}</span>}
       <span className="vs-time-tag" contentEditable={false}>{clock(words[0]?.s ?? 0)}</span>
       {words.map(w => {
         const edited = Object.prototype.hasOwnProperty.call(edits, String(w.i));
@@ -123,12 +129,15 @@ export function TranscriptPanel({ ctx, sentences }: { ctx: EditorCtx; sentences:
   }, [words, doc.cuts]);
 
   const speakers = !!transcript?.speakers || words.some(w => typeof w.sp === 'number');
+  /* A Short is a composition of its own: its script is its own stretch of the recording. */
+  const clip = ctx.activeClip ? doc.clips.find(c => c.id === ctx.activeClip) ?? null : null;
   const paras = useMemo(() => {
     const out: Word[][] = [];
     let cur: Word[] = [];
     let n = 0;
     for (const s of sentences) {
-      const ws = words.slice(s.w0, s.w1 + 1);
+      const ws = words.slice(s.w0, s.w1 + 1).filter(w => !clip || (w.e > clip.s + 0.01 && w.s < clip.e - 0.01));
+      if (!ws.length) continue;
       const gap = cur.length ? s.s - cur[cur.length - 1].e : 0;
       const turn = speakers && cur.length && ws[0]?.sp !== cur[cur.length - 1].sp;
       if (cur.length && (n >= 5 || gap > 2.5 || turn)) { out.push(cur); cur = []; n = 0; }
@@ -136,7 +145,14 @@ export function TranscriptPanel({ ctx, sentences }: { ctx: EditorCtx; sentences:
     }
     if (cur.length) out.push(cur);
     return out;
-  }, [sentences, words, speakers]);
+  }, [sentences, words, speakers, clip?.s, clip?.e]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* A small frame at each scene's start, from the filmstrip the engine made. */
+  const strip = ctx.view.source.filmstrip;
+  const thumbAt = (t: number): React.CSSProperties | null => {
+    if (!strip) return null;
+    const k = Math.min(strip.tiles - 1, Math.max(0, Math.floor(t / strip.every)));
+    return { backgroundImage: `url("${strip.url}")`, backgroundSize: `${strip.tiles * 100}% 100%`, backgroundPosition: `${strip.tiles > 1 ? (k / (strip.tiles - 1)) * 100 : 0}% 0`, aspectRatio: `${strip.w} / ${strip.h}` };
+  };
 
   const hits = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -272,7 +288,7 @@ export function TranscriptPanel({ ctx, sentences }: { ctx: EditorCtx; sentences:
       </div>
       <p className="vs-kbd" style={{ margin: 0 }}>
         Edit the video by editing the text: select words and press <b>Delete</b> to cut them (they stay here, struck through), select struck words and press <b>R</b> to restore. Click a word to move the playhead there.
-        {transcript.language ? ` ${transcript.language.toUpperCase()}` : ''}{transcript.confidence !== null ? ` · confidence ${Math.round(transcript.confidence * 100)}%` : ''}{speakers ? '' : ' · speaker labels need a transcription provider with speaker detection'}.
+        {transcript.language ? ` ${transcript.language.toUpperCase()}` : ''}{transcript.confidence !== null ? ` · confidence ${Math.round(transcript.confidence * 100)}%` : ''}{speakers ? '' : ' · speaker labels need a transcription provider with speaker detection'}{clip ? ` · this Short's own stretch, ${clock(clip.s)}–${clock(clip.e)}` : ''}.
       </p>
       {help && (
         <div className="vs-keys" data-testid="vs-tr-keys" role="note">
@@ -315,9 +331,9 @@ export function TranscriptPanel({ ctx, sentences }: { ctx: EditorCtx; sentences:
         role="textbox" aria-multiline="true" aria-readonly="true" aria-label="Transcript — select words and press Delete to cut them from the video">
         {paras.map((ws, k) => {
           const inside = (i: number) => ws[0].i <= i && i <= ws[ws.length - 1].i;
-          const sp = speakers && typeof ws[0].sp === 'number' && (k === 0 || paras[k - 1][0].sp !== ws[0].sp) ? ws[0].sp! : null;
+          const sp = speakers ? (typeof ws[0].sp === 'number' && (k === 0 || paras[k - 1][0].sp !== ws[0].sp) ? ws[0].sp! : null) : k === 0 ? 0 : null;
           return (
-            <Para key={k} words={ws} states={states} prot={prot} edits={doc.captionEdits} low={low} rtl={rtl} speaker={sp}
+            <Para key={`${k}:${ws[0].i}`} words={ws} states={states} prot={prot} edits={doc.captionEdits} low={low} rtl={rtl} speaker={sp} guessed={!speakers} thumb={thumbAt(ws[0].s)}
               nowI={inside(nowI) ? nowI : -1} caret={inside(caret) ? caret : -1} sel={sel && sel[0] <= ws[ws.length - 1].i && sel[1] >= ws[0].i ? sel : null}
               hits={ws.some(w => hitSet.has(w.i)) ? hitSet : EMPTY} chips={ws.some(w => chips.has(w.i)) ? chips : null} onChip={onChip} />
           );
