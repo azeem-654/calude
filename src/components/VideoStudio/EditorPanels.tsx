@@ -12,167 +12,16 @@
  * to keep.
  */
 import { askConfirm } from '../shared/ConfirmDialog';
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Scissors, RotateCcw, Shield, Film, Type, Play, Search, Check, X, ChevronUp, ChevronDown, Wand2, Sparkles, Trash2, Clapperboard } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { RotateCcw, Shield, Film, Type, Play, Check, X, ChevronUp, ChevronDown, Wand2, Sparkles, Trash2, Clapperboard, SlidersHorizontal } from 'lucide-react';
 import {
-  clock, cleanupSummary, effectiveCuts, isRtl, keepRanges, keptLength, runCleanup, videoCommand, renderOutputs, CAPTION_PRESETS,
-  type CaptionStyle, type CleanupPreset, type Cut, type Sentence, type Word, type CaptionPreset,
+  clock, cleanupSummary, keepRanges, keptLength, runCleanup, videoCommand, renderOutputs, CAPTION_PRESETS, findFillers, fillerCounts, FILLER_KINDS, FILLER_INFO, DEFAULT_FILLERS,
+  type CaptionStyle, type CleanupPreset, type Cut, type Sentence, type CaptionPreset, type FillerKind,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
 
-/* ── Transcript ───────────────────────────────────────────────────────────── */
-
-type WordState = '' | 'cut' | 'prop';
-
-const Para = memo(function Para({ words, states, prot, edits, low, nowI, sel, hits, rtl }: {
-  words: Word[]; states: WordState[]; prot: boolean[]; edits: Record<string, string>; low: boolean[]; nowI: number; sel: [number, number] | null; hits: Set<number>; rtl: boolean;
-}) {
-  return (
-    <p dir={rtl ? 'rtl' : undefined}>
-      <span className="vs-time-tag">{clock(words[0]?.s ?? 0)}</span>
-      {words.map(w => {
-        const edited = Object.prototype.hasOwnProperty.call(edits, String(w.i));
-        const cls = ['vs-w', states[w.i], prot[w.i] ? 'prot' : '', low[w.i] ? 'low' : '', w.i === nowI ? 'now' : '',
-          sel && w.i >= sel[0] && w.i <= sel[1] ? 'sel' : '', hits.has(w.i) ? 'hit' : '', edited ? 'edited' : ''].filter(Boolean).join(' ');
-        return <span key={w.i} className={cls} data-i={w.i} title={edited ? `Caption reads: “${edits[String(w.i)] || '(hidden)'}”` : undefined}>{w.w} </span>;
-      })}
-    </p>
-  );
-});
-
-export function TranscriptPanel({ ctx, sentences }: { ctx: EditorCtx; sentences: Sentence[] }) {
-  const { transcript, doc } = ctx;
-  const box = useRef<HTMLDivElement>(null);
-  const [query, setQuery] = useState('');
-  const [hitAt, setHitAt] = useState(0);
-  const [captionDraft, setCaptionDraft] = useState<string | null>(null);
-  const words = transcript?.words ?? [];
-
-  /* Per word: cut / suggested / protected / unsure — one pass over the cuts. */
-  const { states, prot, low } = useMemo(() => {
-    const states: WordState[] = new Array(words.length).fill('');
-    const prot: boolean[] = new Array(words.length).fill(false);
-    const low: boolean[] = words.map(w => typeof w.c === 'number' && w.c < 0.6);
-    const mark = (s: number, e: number, v: WordState) => {
-      for (const w of words) { if (w.e <= s + 0.02) continue; if (w.s >= e - 0.02) break; if (v === 'cut' || !states[w.i]) states[w.i] = v; }
-    };
-    for (const [s, e] of effectiveCuts(doc)) mark(s, e, 'cut');
-    for (const c of doc.cuts) if (c.state === 'proposed') mark(c.s, c.e, 'prop');
-    for (const p of doc.protects) for (const w of words) if (w.s < p.e && w.e > p.s) prot[w.i] = true;
-    return { states, prot, low };
-  }, [words, doc.cuts, doc.protects]);
-
-  const paras = useMemo(() => {
-    const out: Word[][] = [];
-    let cur: Word[] = [];
-    let n = 0;
-    for (const s of sentences) {
-      const ws = words.slice(s.w0, s.w1 + 1);
-      const gap = cur.length ? s.s - cur[cur.length - 1].e : 0;
-      if (cur.length && (n >= 5 || gap > 2.5)) { out.push(cur); cur = []; n = 0; }
-      cur.push(...ws); n++;
-    }
-    if (cur.length) out.push(cur);
-    return out;
-  }, [sentences, words]);
-
-  const hits = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (q.length < 2) return [] as number[];
-    const terms = q.split(/\s+/);
-    const found: number[] = [];
-    for (let i = 0; i + terms.length <= words.length; i++) {
-      if (terms.every((t, k) => words[i + k].w.toLowerCase().replace(/[^\p{L}\p{N}$%]/gu, '').includes(t.replace(/[^\p{L}\p{N}$%]/gu, '')))) found.push(i);
-    }
-    return found;
-  }, [query, words]);
-  const hitSet = useMemo(() => { const s = new Set<number>(); const n = query.trim().split(/\s+/).length; for (const h of hits) for (let k = 0; k < n; k++) s.add(h + k); return s; }, [hits, query]);
-
-  const nowI = useMemo(() => { const w = words.find(x => ctx.time >= x.s && ctx.time < x.e + 0.1); return w ? w.i : -1; }, [words, ctx.time]);
-  const sel = ctx.selection ? [Math.min(ctx.selection.i0, ctx.selection.i1), Math.max(ctx.selection.i0, ctx.selection.i1)] as [number, number] : null;
-
-  useEffect(() => { if (hits.length) box.current?.querySelector(`[data-i="${hits[hitAt % hits.length]}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, [hits, hitAt]);
-
-  if (!transcript) return <p className="vs-sub">The transcript appears here when transcription finishes — each word timed, so you can edit the video by editing the text.</p>;
-  if (!words.length) return <div className="vs-note">No spoken words were found in this video, so there is nothing to transcribe or caption.</div>;
-
-  const pick = (e: React.MouseEvent) => {
-    const s = window.getSelection();
-    const at = (n: Node | null) => (n instanceof Element ? n : n?.parentElement)?.closest('[data-i]')?.getAttribute('data-i');
-    if (s && !s.isCollapsed) {
-      const a = at(s.anchorNode), b = at(s.focusNode);
-      if (a && b) { ctx.setSelection({ i0: Number(a), i1: Number(b) }); return; }
-    }
-    const i = at(e.target as Node);
-    if (!i) return;
-    const n = Number(i);
-    if (e.shiftKey && ctx.selection) ctx.setSelection({ i0: ctx.selection.i0, i1: n });
-    else { ctx.setSelection({ i0: n, i1: n }); ctx.seek(words[n].s); }
-  };
-
-  const range = sel ? { s: words[sel[0]].s, e: words[sel[1]].e } : null;
-  const selText = sel ? words.slice(sel[0], sel[1] + 1).map(w => w.w).join(' ') : '';
-  const prevEnd = sel && sel[0] > 0 ? words[sel[0] - 1].e : 0;
-  const nextStart = sel && sel[1] + 1 < words.length ? words[sel[1] + 1].s : ctx.duration;
-  const cutRange = range ? { s: Math.max(prevEnd + 0.02, range.s - 0.06), e: Math.min(nextStart - 0.02, range.e + 0.06) } : null;
-  const selCut = sel ? states.slice(sel[0], sel[1] + 1).some(x => x === 'cut') : false;
-  const rtl = isRtl(words.slice(0, 40).map(w => w.w).join(' '));
-
-  return (
-    <div className="vs-col" data-testid="vs-transcript">
-      <div className="vs-row">
-        <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
-          <Search size={14} style={{ position: 'absolute', left: 10, top: 11, color: '#9aa0a8' }} />
-          <input className="vs-input" style={{ paddingLeft: 30 }} placeholder="Search the transcript" value={query} data-testid="vs-search"
-            onChange={e => { setQuery(e.target.value); setHitAt(0); }} onKeyDown={e => { if (e.key === 'Enter') setHitAt(h => h + 1); }} />
-        </div>
-        {query.trim().length > 1 && <span className="vs-kbd">{hits.length ? `${(hitAt % hits.length) + 1} of ${hits.length}` : 'Not found'}</span>}
-        <span className="vs-kbd">{transcript.language ? transcript.language.toUpperCase() : ''}{transcript.confidence !== null ? ` · confidence ${Math.round(transcript.confidence * 100)}%` : ''}</span>
-      </div>
-      <p className="vs-kbd" style={{ margin: 0 }}>
-        Select words, then <b>Remove from video</b> to cut them, or <b>Fix caption text</b> to correct only what the captions say. <span style={{ textDecoration: 'underline dotted' }}>Dotted</span> words are ones the transcriber was unsure of. {transcript.speakers ? '' : 'Speaker labels need a provider with speaker detection.'}
-      </p>
-      {sel && range && (
-        <div className="vs-selbar" data-testid="vs-selbar">
-          <small>{sel[1] - sel[0] + 1} word{sel[1] === sel[0] ? '' : 's'} · {clock(range.s)}–{clock(range.e)}</small>
-          {captionDraft === null ? (
-            <>
-              <button type="button" className="vs-btn sm" onClick={() => ctx.seek(range.s)}><Play size={13} /> Play</button>
-              {selCut
-                ? <button type="button" className="vs-btn sm" data-testid="vs-restore" onClick={() => void ctx.apply([{ op: 'cut.restoreRange', s: range.s - 0.05, e: range.e + 0.05 }], `Restored “${selText.slice(0, 50)}”`)}><RotateCcw size={13} /> Restore</button>
-                : <button type="button" className="vs-btn sm" data-testid="vs-remove" onClick={() => cutRange && void ctx.apply([{ op: 'cut.add', s: cutRange.s, e: cutRange.e, reason: `Removed “${selText.slice(0, 60)}”` }], `Removed “${selText.slice(0, 50)}”`)}><Scissors size={13} /> Remove from video</button>}
-              <button type="button" className="vs-btn sm" onClick={() => void ctx.apply([{ op: 'protect.add', s: range.s - 0.05, e: range.e + 0.05, note: 'Protected in the transcript' }, { op: 'cut.restoreRange', s: range.s, e: range.e }], 'Protected a section')}><Shield size={13} /> Keep (protect)</button>
-              <button type="button" className="vs-btn sm" data-testid="vs-fix-caption" onClick={() => setCaptionDraft(selText)}><Type size={13} /> Fix caption text</button>
-              <button type="button" className="vs-btn sm" onClick={() => void ctx.apply([{ op: 'clip.add', s: range.s, e: range.e, title: selText.split(' ').slice(0, 8).join(' '), reason: 'Chosen by you in the transcript' }], 'New Short from the transcript').then(ok => ok && ctx.setTab('shorts'))}><Film size={13} /> Make a Short</button>
-              <span className="vs-spacer" />
-              <button type="button" className="vs-btn sm" aria-label="Clear selection" onClick={() => ctx.setSelection(null)}><X size={13} /></button>
-            </>
-          ) : (
-            <>
-              <input className="vs-input" style={{ flex: 1, minWidth: 160, background: '#fff' }} value={captionDraft} onChange={e => setCaptionDraft(e.target.value)} data-testid="vs-caption-input" aria-label="Caption text" autoFocus />
-              <button type="button" className="vs-btn sm" data-testid="vs-caption-save" onClick={() => {
-                /* The new words go on the first word of the selection; the rest
-                   are hidden from the captions only. The video is not touched. */
-                const ops = [{ op: 'caption.edit' as const, i: sel[0], text: captionDraft }, ...Array.from({ length: sel[1] - sel[0] }, (_, k) => ({ op: 'caption.edit' as const, i: sel[0] + k + 1, text: '' }))];
-                void ctx.apply(ops, 'Caption text corrected').then(() => setCaptionDraft(null));
-              }}><Check size={13} /> Save caption text</button>
-              <button type="button" className="vs-btn sm" onClick={() => setCaptionDraft(null)}>Cancel</button>
-              <small style={{ width: '100%' }}>Only the captions change. The video and its sound stay exactly as they are.</small>
-            </>
-          )}
-        </div>
-      )}
-      <div className="vs-tr" ref={box} onMouseUp={pick} dir={rtl ? 'rtl' : undefined}>
-        {paras.map((ws, k) => (
-          <Para key={k} words={ws} states={states} prot={prot} edits={doc.captionEdits} low={low} rtl={rtl}
-            nowI={ws.some(w => w.i === nowI) ? nowI : -1} sel={sel && ws.some(w => w.i >= sel[0] && w.i <= sel[1]) ? sel : null}
-            hits={ws.some(w => hitSet.has(w.i)) ? hitSet : EMPTY} />
-        ))}
-      </div>
-    </div>
-  );
-}
-const EMPTY = new Set<number>();
+/* The transcript editor lives in TranscriptEditor.tsx. */
+export { TranscriptPanel } from './TranscriptEditor';
 
 /* ── Cleanup ──────────────────────────────────────────────────────────────── */
 
@@ -200,20 +49,44 @@ export function CleanupPanel({ ctx }: { ctx: EditorCtx }) {
   const { doc } = ctx;
   const [more, setMore] = useState(false);
   const [running, setRunning] = useState(false);
+  const [showOpts, setShowOpts] = useState(false);
+  const [previewAt, setPreviewAt] = useState<Record<string, number>>({});
+  const [gapDraft, setGapDraft] = useState<number | null>(null);
+  const words = useMemo(() => ctx.transcript?.words ?? [], [ctx.transcript]);
+  const found = useMemo(() => findFillers(words), [words]);
+  const counts = useMemo(() => fillerCounts(words), [words]);
   const summary = cleanupSummary(doc.cuts);
   const proposed = doc.cuts.filter(c => c.state === 'proposed');
   const approved = doc.cuts.filter(c => c.state === 'approved');
   const rejected = doc.cuts.filter(c => c.state === 'rejected');
+  const retakes = doc.cuts.filter(c => c.kind === 'retake');
   const before = ctx.duration, after = keptLength(keepRanges(ctx.duration, doc));
-  const preset = async (p: CleanupPreset) => {
+  const ticked = new Set<string>(doc.cleanup.fillers ?? DEFAULT_FILLERS);
+  const maxPause = doc.cleanup.maxPause ?? null;
+  const rerun = async (p: CleanupPreset, opts: { fillers?: string[]; maxPause?: number | null } = {}) => {
     setRunning(true);
-    const r = await runCleanup(ctx.view.project.id, ctx.version, p);
+    const r = await runCleanup(ctx.view.project.id, ctx.version, p, opts);
     setRunning(false);
     if (r.success) await ctx.refresh();
     else ctx.say({ who: 'ai', text: r.error ?? 'Cleanup could not run.' });
   };
+  const preset = (p: CleanupPreset) => rerun(p);
+  const tick = (k: FillerKind, on: boolean) => {
+    const next = FILLER_KINDS.filter(x => (x === k ? on : ticked.has(x)));
+    void rerun(doc.cleanup.preset, { fillers: next });
+  };
+  /* Hear one: a second and a half before it, the next one each press. */
+  const preview = (k: FillerKind) => {
+    const all = found.filter(h => h.kind === k);
+    if (!all.length) return;
+    const n = (previewAt[k] ?? 0) % all.length;
+    setPreviewAt(m => ({ ...m, [k]: n + 1 }));
+    ctx.seek(Math.max(0, words[all[n].j0].s - 1.5));
+    window.dispatchEvent(new Event('vs-play'));
+  };
   if (!ctx.transcript) return <p className="vs-sub">Cleanup suggestions appear once the recording is transcribed.</p>;
   const shown = more ? approved : approved.slice(0, 40);
+  const gapShown = gapDraft ?? maxPause ?? 0.4;
   return (
     <div className="vs-col" data-testid="vs-cleanup">
       <div className="vs-row" role="radiogroup" aria-label="Cleanup level">
@@ -225,11 +98,40 @@ export function CleanupPanel({ ctx }: { ctx: EditorCtx }) {
         {running && <span className="vs-kbd">Re-reading…</span>}
       </div>
       <p className="vs-kbd" style={{ margin: 0 }}>
-        Pauses are shortened, never removed, and only where the sound is quiet too. Fillers standing alone and pauses start applied; anything that changes what is said — repeats, false starts — waits for you. Numbers, prices, dates and “not” are never cut.
+        Pauses are shortened, never removed, and only where the sound is quiet too. Hesitations (um, uh) standing alone and pauses start applied; filler words, repeats, false starts and retakes wait for you. Numbers, prices, dates and “not” are never cut.
       </p>
       <div className="vs-note ok" data-testid="vs-cleanup-summary">
         <Sparkles size={15} /> <span>{clock(before)} → {clock(after)} with what is approved now. {summary.map(s => `${s.n} ${KIND_LABEL[s.kind]?.toLowerCase() ?? s.kind}${s.n === 1 ? '' : 's'} (${s.approved} applied)`).join(' · ') || 'Nothing to clean up.'}</span>
       </div>
+      <button type="button" className="vs-btn sm" style={{ justifySelf: 'start' }} aria-expanded={showOpts} onClick={() => setShowOpts(o => !o)} data-act="cleanup-options"><SlidersHorizontal size={13} /> Filler words and gaps</button>
+      {showOpts && (
+        <div className="vs-group" data-testid="vs-filler-options">
+          <b>Filler words to look for</b>
+          {FILLER_KINDS.map(k => (
+            <div key={k} className="vs-fill-row" data-filler={k}>
+              <label className="vs-row" style={{ gap: 8, flex: 1, minWidth: 0 }}>
+                <input type="checkbox" checked={ticked.has(k)} disabled={running} onChange={e => tick(k, e.target.checked)} data-field={`video.filler.${k}`} />
+                <span style={{ minWidth: 0 }}><b style={{ fontSize: 13 }}>{FILLER_INFO[k].label}</b> <span className="vs-count">{counts[k]}</span><br /><small className="vs-kbd">{FILLER_INFO[k].keeps}</small></span>
+              </label>
+              <button type="button" className="vs-btn ghost sm" disabled={!counts[k]} aria-label={`Hear the next “${FILLER_INFO[k].label}”`} onClick={() => preview(k)} data-act="filler-preview"><Play size={12} /></button>
+            </div>
+          ))}
+          <span className="vs-kbd">Ticking a kind proposes each one found, to accept or ignore in the list below or in the transcript; only um and uh standing alone are applied without asking.</span>
+          <b style={{ marginTop: 6 }}>Shorten word gaps</b>
+          <label className="vs-row" style={{ gap: 8, fontSize: 13 }}>
+            <input type="checkbox" checked={maxPause !== null} disabled={running} onChange={e => void rerun(doc.cleanup.preset, { maxPause: e.target.checked ? gapShown : null })} data-field="video.maxPause" />
+            <span>Cut every quiet pause down to at most <b>{gapShown.toFixed(2)} s</b></span>
+          </label>
+          <input type="range" min={0.15} max={1.5} step={0.05} value={gapShown} disabled={running} aria-label="Longest pause kept"
+            onChange={e => setGapDraft(Number(e.target.value))}
+            onPointerUp={() => { if (gapDraft !== null && maxPause !== null && gapDraft !== maxPause) void rerun(doc.cleanup.preset, { maxPause: gapDraft }); setGapDraft(null); }}
+            onKeyUp={() => { if (gapDraft !== null && maxPause !== null && gapDraft !== maxPause) void rerun(doc.cleanup.preset, { maxPause: gapDraft }); setGapDraft(null); }} />
+          <span className="vs-kbd">Applied where the sound is quiet too — a gap with music or a demo in it is left alone.</span>
+        </div>
+      )}
+      {retakes.length > 0 && (
+        <div className="vs-note" data-testid="vs-retakes"><Film size={15} /> <span>{retakes.length} retake{retakes.length === 1 ? '' : 's'} found — each suggestion names the take it keeps and why (complete, louder, livelier, fewer fillers). Nothing is cut until you approve it.</span></div>
+      )}
       {proposed.length > 0 && (
         <>
           <div className="vs-row">

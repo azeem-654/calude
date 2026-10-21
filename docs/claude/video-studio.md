@@ -142,9 +142,45 @@ export is a canvas recording; Video Studio is the real one.
   chapters, downloads at the size made, Export XML (`toXmeml`, Premiere/Resolve),
   duplicate. The inspector is an icon rail; the playhead moves per frame from
   the player's loop (`vs-frame` event), not React state.
-- **Honest gaps**, shown on the **What works** panel: speaker labels, eye contact,
-  background removal (no provider), before/after audio preview (planned),
-  publishing (none — "Ready to publish manually").
+- **The player is a deck** (`deck.ts`): two `<video>` elements on the proxy; the
+  standby is seeked (paused) to the next kept stretch and swapped in on the
+  playing one's last kept frame (`requestVideoFrameCallback`, rAF fallback). Never
+  set `currentTime` on the playing element at a cut — that seek is what stalled
+  the old player at every cut (e2e: 10 `waiting` in 11 cuts → 0). A stretch too
+  short to prepare holds its last frame, never shows the cut. `data-swaps` /
+  `data-waits` on `[data-testid=vs-video]` (the deck wrapper).
+- **Text-based editing** (`TranscriptEditor.tsx`, `data-keys="own"` — the player
+  and timeline ignore keys inside it): Delete/Backspace cut the selection
+  (`cut.add`), R restores (`cut.restoreRange`), arrows/Shift move and select,
+  Space plays (`vs-toggle`), Ctrl/⌘+Z/Y walk versions; cleanup suggestions are
+  inline chips (`cut.set`). No second edit model. Timeline: cuts shaded pink on
+  the filmstrip, waveform faded under them.
+- **Cleanup v2** (`cleanup.ts`): filler *kinds* (`FILLER_KINDS`, context rules;
+  only `um` auto-applies), `doc.cleanup.fillers` / `maxPause` ("shorten word
+  gaps", applied where quiet), retakes grouped by sentence similarity with the
+  kept take chosen by measured signals (complete, false start, loudness and
+  liveliness from the waveform, fillers, pace) and named in the reason. Server
+  reads `wave.json` (`readWave`). Proposed only; numbers/negation never cut.
+- **Studio Sound** (`doc.audio.studio`, `strength`): engine `voiceChain` —
+  high-pass, `arnndn` (pinned RNNoise model, `RNNOISE_MODEL`; FFT fallback, said
+  in `/health` `rnnoise`), de-esser, EQ, compressor; loudness −16 LUFS in **two
+  passes** (`measureLoudness`). "Lower audio of other layers" = `music.duck`.
+- **Visual effects** (`doc.effects.{long,short}`, op `effects.set`, Effects tab,
+  `EffectRow.tsx`): color (kelvin via `lutrgb`, curves, eq), shadow (framed /
+  PiP only), green screen (`chromakey` + `despill`, colour behind), Improve
+  appearance (hqdn3d, normalize, unsharp, bilateral skin smoothing inside the
+  tracked face box only — `skinBox`, sendcmd). Only effects switched on are
+  hashed. Preview: `cssEffects`, shadow div; key and skin say "in the render".
+- **Shorts layouts** (`clip.layout`, `layouts.ts`): speaker/screen/split/two/pip
+  offered from `faces.json` `people` (track.py) — `layoutOptions` says why not;
+  `layoutPlan` boxes (numbers only) → engine `layoutFrame`; preview drawn on a
+  canvas with the same boxes.
+- **Honest gaps**, shown on the **What works** panel: speaker labels, eye contact
+  (researched 2026-10: NVIDIA Maxine is gRPC-only, Sieve's API no longer
+  documented — no adapter), background removal (no provider), before/after audio
+  preview (planned), publishing (none — "Ready to publish manually").
+- **Don't edit `worker/` while `test:videoe2e` runs** — its wrangler rebuilds on
+  change and the run dies. `STOP_AFTER=player` ends it after the player check.
 - `npm run test:videoe2e` (self-contained: engine :8873, Whisper mock :8874, Gemini
   mock :8875, Openverse mock :8876, wrangler :8953, `.wrangler-video`, needs ffmpeg +
   a `VITE_BASE=/` build; recordings are generated and cached there) drives the
@@ -153,5 +189,9 @@ export is a canvas recording; Video Studio is the real one.
   sentence, music really in the rendered sound, reuse and the quiz, the board and
   XML, a designed thumbnail, a Short with every effect (black and white, 1.25×),
   two people taking turns followed in 9:16 (`makeTwoFaces`, needs Python + OpenCV),
+  the player across 10+ cuts with no `waiting` and no frame gap over 250 ms, editing
+  by text (Delete, R, Shift+arrows, Ctrl+Z, chips), cleanup options, Studio Sound
+  measured (speech-to-noise, −16 LUFS), effects rows, a split and a two-person
+  Short (faces found in each half), a real green-screen key,
   isolation, a forged link, a killed engine and a failed transcriber (one charge,
   one file), and a phone.

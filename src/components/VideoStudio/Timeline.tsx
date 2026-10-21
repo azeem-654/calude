@@ -82,7 +82,9 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
     return () => el.removeEventListener('wheel', onWheel);
   }, [pps, width, dur]);
 
-  /* The waveform, drawn at most 16k pixels wide and stretched beyond. */
+  const applied = useMemo(() => effectiveCuts(doc), [doc]);
+  /* The waveform, drawn at most 16k pixels wide and stretched beyond; what
+     is cut is drawn faded, so the sound that is left reads at a glance. */
   useEffect(() => {
     const c = canvas.current;
     if (!c) return;
@@ -98,17 +100,23 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
     g.fillStyle = grad;
     const rate = 20;
     const bar = Math.max(1, Math.round(1.5 * dpr)), stepPx = bar + Math.max(1, Math.round(dpr));
+    let ci = 0;
     for (let px = 0; px < w; px += stepPx) {
       const t0 = (px / w) * dur, t1 = ((px + stepPx) / w) * dur;
       let v = 0;
       for (let i = Math.floor(t0 * rate); i <= Math.floor(t1 * rate); i++) v = Math.max(v, wave[i] ?? 0);
       const bh = Math.max(1, (v / 255) * h * 0.92);
+      const mid = (t0 + t1) / 2;
+      while (ci < applied.length && applied[ci][1] < mid) ci++;
+      const cut = ci < applied.length && applied[ci][0] <= mid;
+      g.globalAlpha = cut ? 0.2 : 1;
+      g.fillStyle = cut ? '#b8a1b0' : grad;
       g.fillRect(px, (h - bh) / 2, bar, bh);
     }
-  }, [wave, W, dur]);
+    g.globalAlpha = 1;
+  }, [wave, W, dur, applied]);
 
   const sentences = useMemo(() => ctx.transcript ? sentencesOf(ctx.transcript.words) : [], [ctx.transcript]);
-  const applied = useMemo(() => effectiveCuts(doc), [doc]);
   const proposed = doc.cuts.filter(c => c.state === 'proposed');
 
   /* The transcript's selection, shown here too. */
@@ -144,9 +152,9 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
   const tiles = strip ? Array.from({ length: Math.ceil(W / tileW) }, (_, i) => i) : [];
   const clipOut = (id: string) => view.outputs.find(o => o.kind === 'short' && o.clipId === id);
 
-  const overlays = (
+  const overlays = (lane: 'video' | 'wave') => (
     <>
-      {applied.map(([s, e], i) => <div key={`a${i}`} className="vse-cutzone" style={{ left: x(s), width: Math.max(2, x(e) - x(s)) }} />)}
+      {applied.map(([s, e], i) => <div key={`a${i}`} className={`vse-cutzone ${lane}`} style={{ left: x(s), width: Math.max(2, x(e) - x(s)) }} data-cutzone="" />)}
       {proposed.map(c => <div key={c.id} className="vse-cutzone prop" style={{ left: x(c.s), width: Math.max(2, x(c.e) - x(c.s)) }} title={c.reason} />)}
       {doc.protects.map(p => <div key={p.id} className="vse-protect" style={{ left: x(p.s), width: Math.max(2, x(p.e) - x(p.s)) }} title="Protected" />)}
       {range && <div className="vse-selzone" style={{ left: x(range.s), width: Math.max(2, x(range.e) - x(range.s)) }} />}
@@ -193,7 +201,7 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(el?.tagName) || el?.isContentEditable || e.metaKey || e.ctrlKey) return;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(el?.tagName) || el?.isContentEditable || el?.closest?.('[data-keys="own"]') || e.metaKey || e.ctrlKey) return;
       const t = ctx.time;
       if (e.key === 'i') setSel(s => ({ s: t, e: Math.max(t + 0.5, s?.e ?? t + 2) }));
       else if (e.key === 'o') setSel(s => ({ s: Math.min(s?.s ?? Math.max(0, t - 2), t - 0.5), e: t }));
@@ -215,7 +223,7 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
         <span className="vs-kbd">{clock(dur)} · press to move the playhead, drag to mark (or I / O), then X cut · P protect · M make a Short · drag a Short's edges to trim · Ctrl+scroll to zoom</span>
         <span className="vs-spacer" />
         <div className="vse-legend">
-          <span><i style={{ background: '#f05d6c' }} />Cut</span><span><i style={{ background: '#fbbf24' }} />Suggested</span><span><i style={{ background: '#2dd4bf' }} />Protected</span>
+          <span><i style={{ background: '#ec4899' }} />Cut</span><span><i style={{ background: '#fbbf24' }} />Suggested</span><span><i style={{ background: '#2dd4bf' }} />Protected</span>
         </div>
         <button type="button" className="vs-btn sm" onClick={() => setZoom(z => Math.max(1, z / 1.6))} disabled={zoom <= 1} aria-label="Zoom out"><ZoomOut size={14} /></button>
         <button type="button" className="vs-btn sm" onClick={() => setZoom(1)} disabled={zoom === 1} aria-label="Fit the whole video"><Maximize size={14} /></button>
@@ -237,7 +245,7 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
                 const k = Math.min(strip.tiles - 1, Math.floor(t / strip.every));
                 return <div key={i} className="vse-frame" style={{ left: i * tileW, width: tileW, backgroundImage: `url("${strip.url}")`, backgroundSize: `${strip.tiles * tileW}px ${ROW.video}px`, backgroundPosition: `${-k * tileW}px 0` }} />;
               }) : view.source.posterUrl ? <div className="vse-frame" style={{ left: 0, width: W, backgroundImage: `url("${view.source.posterUrl}")`, backgroundSize: `auto ${ROW.video}px`, backgroundRepeat: 'repeat-x' }} /> : null}
-              {overlays}
+              {overlays('video')}
             </div>
           </div>
           <div className="vse-tl-row" style={{ height: ROW.words }}>
@@ -287,8 +295,8 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
           <div className="vse-tl-row" style={{ height: ROW.wave }}>
             <div className="vse-tl-name">Audio</div>
             <div className="vse-lane wave" style={{ width: W, height: ROW.wave }} onPointerDown={down} onPointerMove={move} onPointerUp={up} data-testid="vs-wave">
-              <canvas ref={canvas} style={{ width: W, height: ROW.wave }} aria-label="Waveform" />
-              {overlays}
+              <canvas ref={canvas} style={{ width: W, height: ROW.wave }} aria-label="Waveform — what is cut is faded" />
+              {overlays('wave')}
             </div>
           </div>
           <div className="vse-tl-row" style={{ height: ROW.music }}>

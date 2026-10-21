@@ -32,12 +32,13 @@ import { nowIso } from '../db';
 import { aiBudget, askGeminiParts, extractJson, loadAiKey } from '../ai';
 import { recordAgentRun, repurposeRecording } from '../projectAgents';
 import {
-  dimsFor, hashOf, keepRanges, keptLength, retimeWords, sentencesOf, toOutput, clock, lookOf, motionOf, trackingOf,
-  type Clip, type Look, type Motion, type MusicTrack, type Overlay, type Sentence, type TrackMode, type Transcript, type VideoDoc, type Word,
+  dimsFor, hashOf, keepRanges, keptLength, retimeWords, sentencesOf, toOutput, clock, lookOf, motionOf, trackingOf, effectsOf, effectsOn,
+  type Clip, type Effects, type Look, type Motion, type MusicTrack, type Overlay, type Sentence, type TrackMode, type Transcript, type VideoDoc, type Word,
 } from './edit';
-import { cameraPath, cutTimes, overlayAss, overlaySpan, punchSpans, type TrackFile } from './motion';
+import { cameraPath, cutTimes, overlayAss, overlaySpan, punchSpans, skinBox, type TrackFile } from './motion';
+import { layoutPlan } from './layouts';
 import { cuesOf, toAss, toSrt, toVtt, thumbAss } from './captions';
-import { proposeCleanup } from './cleanup';
+import { proposeCleanup, cleanFillerKinds } from './cleanup';
 import { cleanMeta, cleanQuiz, distinctMeta, fallbackMeta, fallbackPicks, keywordsOf, transcriptForAi, validatePicks, withMusicCredit, type QuizQuestion, type RawPick, type VideoMeta } from './shorts';
 import { applyOps } from './edit';
 import { checkPng } from './png';
@@ -506,6 +507,23 @@ export async function readTranscript(env: Env, p: ProjectRow): Promise<Transcrip
   return o ? o.json<Transcript>() : null;
 }
 
+/** The engine's waveform (20 peaks a second) — what cleanup weighs retakes by. Null when there is none. */
+export async function readWave(env: Env, src: Source): Promise<Uint8Array | null> {
+  if (!src.wave || !env.VIDEO) return null;
+  try {
+    const o = await env.VIDEO.get(src.wave);
+    const w = o ? await o.json<{ peaks?: string }>() : null;
+    if (!w?.peaks) return null;
+    const bin = atob(w.peaks);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  } catch { return null; }
+}
+
+/** What the customer chose in the cleanup options, read back for a re-run. */
+export const cleanupOptionsOf = (doc: VideoDoc) => ({ fillers: cleanFillerKinds(doc.cleanup.fillers), maxPause: doc.cleanup.maxPause ?? null });
+
 /* ── Analysis: cleanup, Shorts, chapters ──────────────────────────────────── */
 
 async function aiKeyFor(env: Env, accountId: string): Promise<{ key: string | null; why: string }> {
@@ -547,7 +565,7 @@ async function analyzeStep(env: Env, origin: string, job: JobRow, p: ProjectRow)
   const notes: string[] = [];
 
   /* Cleanup proposals, by rule, against the measured silences. */
-  const cuts = proposeCleanup(tr.words, src.silences ?? null, doc.cleanup.preset, duration);
+  const cuts = proposeCleanup(tr.words, src.silences ?? null, doc.cleanup.preset, duration, { ...cleanupOptionsOf(doc), wave: await readWave(env, src) });
   doc = applyOps(doc, [{ op: 'cleanup.preset', preset: doc.cleanup.preset, cuts }], duration).doc;
 
   /* Shorts and chapters, by the AI; checked; topped up by rule if short. */
@@ -629,6 +647,10 @@ export async function syncOutputs(env: Env, p: ProjectRow, doc: VideoDoc): Promi
 export interface RenderSpec {
   hash: string; keeps: [number, number][]; width: number; height: number; mode: 'crop' | 'fit' | 'source'; x: number; y: number; kind: 'long' | 'short'; clip?: Clip; music: MusicTrack | null;
   look: Look; motion: Motion; tracking: TrackMode; overlays: Overlay[];
+  /** The visual effects switched on for this kind of video. */
+  effects: Partial<Effects>;
+  /** A Short's split / two / picture-in-picture layout, built from the face track; null otherwise. */
+  layout: 'split' | 'two' | 'pip' | null;
 }
 
 /** The music that goes under this kind of video, if any. */
@@ -656,17 +678,23 @@ export function renderSpec(doc: VideoDoc, src: Source, out: Pick<OutputRow, 'kin
   const music = musicFor(doc, kind);
   const musicKey = music ? { k: music.key, v: music.volume, i: music.fadeIn, o: music.fadeOut, l: music.loop, d: music.duck } : null;
   const look = lookOf(doc, kind), motion = motionOf(doc, kind);
-  /* Following a face only means something where the picture is cropped, and only once the faces are known. */
-  const tracking: TrackMode = mode === 'crop' && src.track?.key ? trackingOf(doc, kind) : 'off';
+  /* Following a face only means something where the picture is cropped, and only once the faces are known.
+     A Short laid out as "speaker" follows the speaker whatever the Shorts' own tracking says. */
+  const tracked = !!src.track?.key;
+  const tracking: TrackMode = mode === 'crop' && tracked ? (clip?.layout === 'speaker' ? 'speaker' : trackingOf(doc, kind)) : 'off';
+  const layout = clip?.layout === 'split' || clip?.layout === 'two' || clip?.layout === 'pip' ? (tracked ? clip.layout : null) : null;
   const overlays = (doc.overlays ?? []).filter(ov => overlaySpan(ov, keeps));
+  const effects = effectsOn(effectsOf(doc, kind));
   const extra = {
     ...(JSON.stringify(look) !== JSON.stringify(lookOf({}, kind)) ? { look } : {}),
     ...(JSON.stringify(motion) !== JSON.stringify(motionOf({}, kind)) ? { motion } : {}),
     ...(tracking !== 'off' ? { tracking, tk: src.track?.key } : {}),
     ...(overlays.length ? { overlays } : {}),
+    ...(Object.keys(effects).length ? { fx: effects, ...(effects.appearance && tracked ? { tk: src.track?.key } : {}) } : {}),
+    ...(layout ? { layout, tk: src.track?.key } : {}),
   };
   const hash = hashOf({ keeps, width, height, mode, x: reframe.x, y: reframe.y, captionsKey, audio: doc.audio, ...(musicKey ? { musicKey } : {}), ...extra, v: 1 });
-  return { hash, keeps, width, height, mode, x: reframe.x, y: reframe.y, kind, clip, music, look, motion, tracking, overlays };
+  return { hash, keeps, width, height, mode, x: reframe.x, y: reframe.y, kind, clip, music, look, motion, tracking, overlays, effects, layout };
 }
 
 /**
@@ -839,13 +867,17 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
         ass = toAss(cues, doc.captions[spec.kind], spec.width, spec.height, spec.kind, (meta.keywords ?? keywordsOf(words.map(w => w.w).join(' '), 4)).slice(0, 8));
       }
     }
-    /* The face or the speaker, followed through the edit. */
+    /* The face or the speaker, followed through the edit; a layout's boxes; the face box for skin smoothing. */
     let camera: [number, number, number, number][] = [];
-    if (spec.tracking !== 'off' && src.track?.key) {
+    let tf: TrackFile | null = null;
+    if ((spec.tracking !== 'off' || spec.layout || spec.effects.appearance) && src.track?.key) {
       const obj = await env.VIDEO!.get(src.track.key);
-      const tf = obj ? parse<TrackFile | null>(await obj.text(), null) : null;
-      if (tf?.[spec.tracking]?.length) camera = cameraPath(tf[spec.tracking], spec.keeps);
+      tf = obj ? parse<TrackFile | null>(await obj.text(), null) : null;
     }
+    if (spec.tracking !== 'off' && tf?.[spec.tracking]?.length) camera = cameraPath(tf[spec.tracking], spec.keeps);
+    const srcW = src.probe!.width, srcH = src.probe!.height;
+    const layout = spec.layout ? layoutPlan(spec.layout, tf, srcW, srcH, spec.width, spec.height) : null;
+    const skin = spec.effects.appearance ? skinBox(tf, spec.keeps, srcW, srcH) : null;
     const m = spec.motion;
     const zoom = m.zoom === 'slow' ? { kind: 'slow', amount: m.zoomAmount }
       : m.zoom === 'punch' && tr ? { kind: 'punch', amount: m.zoomAmount, spans: punchSpans(sentencesOf(tr.words), spec.keeps) } : null;
@@ -853,7 +885,8 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
       op: 'render' as const,
       params: {
         keeps: spec.keeps, width: spec.width, height: spec.height, srcWidth: src.probe!.width, srcHeight: src.probe!.height,
-        mode: spec.mode, cropX: spec.x, cropY: spec.y, ass, audio: doc.audio, hasAudio: src.probe!.hasAudio, fps: 30, name: 'video.mp4',
+        mode: layout ? 'fit' : spec.layout ? 'fit' : spec.mode, cropX: spec.x, cropY: spec.y, ass, audio: doc.audio, hasAudio: src.probe!.hasAudio, fps: 30, name: 'video.mp4',
+        effects: spec.effects, layout, skin,
         music: spec.music ? { volume: spec.music.volume, fadeIn: spec.music.fadeIn, fadeOut: spec.music.fadeOut, loop: spec.music.loop, duck: spec.music.duck } : null,
         preset: spec.kind === 'long' && keptLength(spec.keeps) > 1800 ? 'faster' : 'veryfast',
         camera, look: spec.look, zoom, speed,

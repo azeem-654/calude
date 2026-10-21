@@ -17,10 +17,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Search, Play, Pause, Music2, Upload, Trash2, Loader, ExternalLink, Check, Wand2, Volume2, Mic, Sparkles, Clapperboard } from 'lucide-react';
 import {
-  searchMusic, chooseMusic, uploadMusic, renderOutputs, clock,
-  type FoundTrack, type Denoise, type Aspect, type Op,
+  searchMusic, chooseMusic, uploadMusic, renderOutputs, clock, layoutOptions,
+  type FoundTrack, type Denoise, type Aspect, type Op, type ShortLayout,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
+import EffectRow, { FxSlider } from './EffectRow';
 
 function RenderHint({ ctx }: { ctx: EditorCtx }) {
   const stale = ctx.view.outputs.filter(o => o.stale);
@@ -35,6 +36,17 @@ function RenderHint({ ctx }: { ctx: EditorCtx }) {
 }
 
 /* ── Video: shape and framing of what is selected ─────────────────────────── */
+
+/** A small drawing of each Shorts layout (a 9:16 frame). */
+function LayoutIcon({ kind }: { kind: ShortLayout }) {
+  const box = (x: number, y: number, w: number, h: number, k: string, r = 1.5) => <rect key={k} x={x} y={y} width={w} height={h} rx={r} />;
+  const parts = kind === 'speaker' ? [box(2, 2, 14, 26, 'a'), <circle key="f" cx={9} cy={11} r={3.2} className="f" />]
+    : kind === 'screen' ? [box(2, 9, 14, 9, 'a')]
+    : kind === 'split' ? [box(2, 2, 14, 12, 'a'), box(2, 16, 14, 12, 'b'), <circle key="f" cx={9} cy={21} r={2.6} className="f" />]
+    : kind === 'two' ? [box(2, 2, 14, 12, 'a'), box(2, 16, 14, 12, 'b'), <circle key="f1" cx={9} cy={7.5} r={2.4} className="f" />, <circle key="f2" cx={9} cy={21.5} r={2.4} className="f" />]
+    : [box(2, 2, 14, 26, 'a'), <circle key="p" cx={12} cy={22} r={3.4} className="f" />];
+  return <svg className="vs-layout-ic" viewBox="0 0 18 30" width={18} height={30} aria-hidden="true">{parts}</svg>;
+}
 
 export function VideoPanel({ ctx }: { ctx: EditorCtx }) {
   const { doc } = ctx;
@@ -53,13 +65,24 @@ export function VideoPanel({ ctx }: { ctx: EditorCtx }) {
         <div className="vs-label">Shape
           <div className="vs-chips">{(['9:16', '1:1', '4:5', '16:9'] as const).map(a => <button key={a} type="button" className="vs-chip" aria-pressed={clip.aspect === a} onClick={() => set({ aspect: a }, `Short ${n}: ${a}`)}>{a}</button>)}</div>
         </div>
-        <div className="vs-label">Framing
-          <div className="vs-chips">
-            <button type="button" className="vs-chip" aria-pressed={clip.reframe.mode === 'crop'} onClick={() => set({ reframe: { mode: 'crop' } }, 'Crop to the speaker')}>Crop to the speaker</button>
-            <button type="button" className="vs-chip" aria-pressed={clip.reframe.mode === 'fit'} onClick={() => set({ reframe: { mode: 'fit' } }, 'Keep the whole screen')}>Whole screen</button>
+        <div className="vs-label" data-testid="vs-layouts">Layout
+          <div className="vs-layouts" role="radiogroup" aria-label="Layout">
+            {layoutOptions(ctx.track).map(o => (
+              <button key={o.key} type="button" role="radio" aria-checked={clip.layout === o.key} className="vs-layout-opt" disabled={!o.ok} data-layout-opt={o.key}
+                title={o.ok ? o.label : o.why} onClick={() => set({ layout: o.key }, `Short ${n}: ${o.label.toLowerCase()}`)}>
+                <LayoutIcon kind={o.key} /><span><b>{o.label}</b>{!o.ok && <small>{o.why}</small>}</span>
+              </button>
+            ))}
           </div>
+          <small className="vs-kbd" style={{ fontWeight: 500 }}>Worked out from the faces in the recording; only the layouts it can carry are offered. The preview shows the layout; the render builds the same boxes.</small>
         </div>
-        {clip.reframe.mode === 'crop' && (
+        {(!clip.layout || clip.layout === 'speaker' || clip.layout === 'screen') && <div className="vs-label">Framing
+          <div className="vs-chips">
+            <button type="button" className="vs-chip" aria-pressed={clip.reframe.mode === 'crop'} onClick={() => set({ reframe: { mode: 'crop' }, layout: null }, 'Crop to the speaker')}>Crop to the speaker</button>
+            <button type="button" className="vs-chip" aria-pressed={clip.reframe.mode === 'fit'} onClick={() => set({ reframe: { mode: 'fit' }, layout: null }, 'Keep the whole screen')}>Whole screen</button>
+          </div>
+        </div>}
+        {clip.reframe.mode === 'crop' && !clip.layout && (
           <label className="vs-label">Crop position · {Math.round(clip.reframe.x * 100)}%
             <input type="range" min={0} max={100} defaultValue={Math.round(clip.reframe.x * 100)} key={`${clip.id}:${clip.reframe.x}`} aria-label="Crop position"
               onPointerUp={e => set({ reframe: { x: Number((e.target as HTMLInputElement).value) / 100 } }, 'Moved the crop')}
@@ -112,22 +135,36 @@ export function AudioPanel({ ctx }: { ctx: EditorCtx }) {
   const a = ctx.doc.audio;
   const set = (patch: Partial<typeof a>, note: string) => void ctx.apply([{ op: 'audio.set', patch }], note);
   const vol = Math.round((a.volume ?? 1) * 100);
+  const studio = !!a.studio;
+  const music = ctx.doc.music;
   return (
     <div className="vs-col" data-testid="vs-audio-panel">
-      <div className="vs-label">Background noise reduction
+      <div className="vs-group"><b>Audio effects</b>
+        <EffectRow id="studio" icon={<Wand2 size={15} />} title="Studio Sound" on={studio} onToggle={on => set({ studio: on }, on ? 'Studio Sound on' : 'Studio Sound off')}
+          summary={studio ? `Strength ${a.strength ?? 60}% · noise out, voice lifted, −16 LUFS` : 'Makes a room recording sound close to a studio one'}
+          onRemove={() => set({ studio: false, strength: 60 }, 'Studio Sound removed')}>
+          <FxSlider label="Strength" value={a.strength ?? 60} min={0} max={100} unit="%" onSave={v => set({ strength: v, studio: true }, `Studio Sound strength ${v}%`)} />
+          <small className="vs-kbd">A high-pass for rumble, speech denoising (RNNoise), a de-esser, less boom and more presence, gentle compression, then loudness to −16 LUFS measured over the whole video. Higher strength takes out more noise and evens the voice more. It cannot rebuild a word that clipped or dropped out.</small>
+        </EffectRow>
+        <EffectRow id="duck" icon={<Volume2 size={15} />} title="Lower audio of other layers" on={!!music && music.duck} disabled={!music}
+          why="Add music first — this lowers it whenever someone speaks."
+          summary={music ? (music.duck ? `“${music.title.slice(0, 28)}” dips under speech` : 'The music plays at its own level throughout') : undefined}
+          onToggle={on => void ctx.apply([{ op: 'music.patch', patch: { duck: on } }], on ? 'Music lowered under speech' : 'Music at its own level')} />
+      </div>
+      <div className={`vs-label ${studio ? 'vs-dim' : ''}`}>Background noise reduction
         <div className="vs-chips" role="radiogroup" aria-label="Noise reduction">
           {NOISE.map(n => <button key={n.key} type="button" role="radio" aria-checked={a.denoise === n.key} className="vs-chip" aria-pressed={a.denoise === n.key} data-denoise={n.key} onClick={() => set({ denoise: n.key }, `Noise reduction: ${n.label.toLowerCase()}`)}>{n.label}</button>)}
         </div>
-        <span className="vs-kbd" style={{ fontWeight: 500 }}>{NOISE.find(n => n.key === a.denoise)?.note} Steady noise is what it removes; a dog barking or a door is not.</span>
+        <span className="vs-kbd" style={{ fontWeight: 500 }}>{studio ? 'Studio Sound is on and does this itself — these levels are used when it is off. ' : ''}{NOISE.find(n => n.key === a.denoise)?.note} Steady noise is what it removes; a dog barking or a door is not.</span>
       </div>
-      <label className="vs-opt"><input type="checkbox" checked={!!a.voice} onChange={e => set({ voice: e.target.checked }, e.target.checked ? 'Voice clarity on' : 'Voice clarity off')} />
-        <span><Mic size={13} /> <b>Voice clarity</b><br /><small className="vs-kbd">Presence lifted, harsh “s” sounds softened, levels evened out.</small></span></label>
+      <label className={`vs-opt ${studio ? 'vs-dim' : ''}`}><input type="checkbox" checked={!!a.voice} onChange={e => set({ voice: e.target.checked }, e.target.checked ? 'Voice clarity on' : 'Voice clarity off')} />
+        <span><Mic size={13} /> <b>Voice clarity</b><br /><small className="vs-kbd">Presence lifted, harsh “s” sounds softened, levels evened out.{studio ? ' Part of Studio Sound while it is on.' : ''}</small></span></label>
       <label className="vs-label"><span><Volume2 size={13} /> Voice level · {vol}%</span>
         <input type="range" min={50} max={150} step={5} defaultValue={vol} key={vol} aria-label="Voice level"
           onPointerUp={e => set({ volume: Number((e.target as HTMLInputElement).value) / 100 }, 'Voice level')} onKeyUp={e => set({ volume: Number((e.target as HTMLInputElement).value) / 100 }, 'Voice level')} />
       </label>
-      <label className="vs-opt"><input type="checkbox" checked={a.loudnorm} onChange={e => set({ loudnorm: e.target.checked }, e.target.checked ? 'Loudness evened out' : 'Loudness as recorded')} />
-        <span><b>Even loudness</b><br /><small className="vs-kbd">Every video at the level the platforms expect (−14 LUFS).</small></span></label>
+      <label className="vs-opt"><input type="checkbox" checked={a.loudnorm || studio} disabled={studio} onChange={e => set({ loudnorm: e.target.checked }, e.target.checked ? 'Loudness evened out' : 'Loudness as recorded')} />
+        <span><b>Even loudness</b><br /><small className="vs-kbd">Every video at −16 LUFS (true peak −1.5 dB), measured over the whole edit and then applied — the level podcasts and the platforms play at.{studio ? ' Always on with Studio Sound.' : ''}</small></span></label>
       <div className="vs-note"><Sparkles size={15} /> <span>These are applied when the videos render — the preview plays the recording's own sound. Or just ask the assistant: “remove the background noise in all the videos”.</span></div>
       <RenderHint ctx={ctx} />
     </div>

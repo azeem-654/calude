@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Undo2, Redo2, Loader, Bot, ShieldCheck, Trash2, RefreshCw, Upload, AlertCircle, Check, X, Search, Plus, History, Music2,
-  FileText, Scissors, Film, Clapperboard, Images, SlidersHorizontal, Sparkles, ScanFace, Type, AudioLines, Captions as CaptionsIcon, Share2, Download,
+  FileText, Scissors, Film, Clapperboard, Images, SlidersHorizontal, Sparkles, ScanFace, Type, AudioLines, Captions as CaptionsIcon, Share2, Download, Layers, Keyboard,
 } from 'lucide-react';
 import {
   getVideoProject, videoStatus, editVideo, gotoVersion, renameVideoProject, retryVideo, cancelVideo, deleteVideoProject, renderOutputs,
@@ -29,7 +29,7 @@ import {
 import { TranscriptPanel, CleanupPanel, ShortsPanel, CaptionsPanel } from './EditorPanels';
 import { VideoPanel, AudioPanel, MusicPanel } from './InspectorPanels';
 import OutputsBoard from './OutputsBoard';
-import { AdjustPanel, AnimationPanel, TrackingPanel, TextPanel } from './EffectsPanels';
+import { AdjustPanel, AnimationPanel, TrackingPanel, TextPanel, VisualEffectsPanel } from './EffectsPanels';
 import ReusePanel from './ReusePanel';
 import AssistantPanel, { type ChatMsg } from './AssistantPanel';
 import VersionsPanel from './VersionsPanel';
@@ -38,7 +38,13 @@ import Timeline from './Timeline';
 import { CapabilityPanel } from './VideoStudio';
 
 type LeftTab = 'media' | 'transcript' | 'cleanup' | 'shorts';
-type RightTab = 'video' | 'adjust' | 'animation' | 'tracking' | 'text' | 'audio' | 'music' | 'captions' | 'reuse';
+/** Every key the editor answers, in one sheet (press ? anywhere outside a text box). */
+const SHORTCUTS: [string, [string, string][]][] = [
+  ['Anywhere', [['Space / K', 'play or pause'], ['← → / J L', 'back or on five seconds'], ['Ctrl/⌘ + Z', 'undo'], ['Ctrl/⌘ + Y', 'redo (or Ctrl/⌘ + Shift + Z)'], ['?', 'this sheet']]],
+  ['Transcript', [['← →', 'a word'], ['Ctrl/⌘ + ← →', 'to the start of a sentence'], ['↑ ↓', 'the same place in the sentence before or after'], ['Shift + arrows', 'select words'], ['Delete / Backspace', 'cut the selected words'], ['R', 'restore struck words'], ['Esc', 'clear the selection']]],
+  ['Timeline', [['I / O', 'mark the start or end of a stretch'], ['X', 'cut the marked stretch'], ['P', 'protect it'], ['M', 'make a Short of it'], ['Ctrl/⌘ + scroll', 'zoom']]],
+];
+type RightTab = 'video' | 'adjust' | 'effects' | 'animation' | 'tracking' | 'text' | 'audio' | 'music' | 'captions' | 'reuse';
 export type PanelTab = LeftTab | RightTab | 'assistant' | 'versions' | 'exports';
 const LEFT: { key: LeftTab; label: string; icon: typeof Film }[] = [
   { key: 'media', label: 'Media', icon: Images },
@@ -48,7 +54,7 @@ const LEFT: { key: LeftTab; label: string; icon: typeof Film }[] = [
 ];
 /* An icon rail, as in the owner's reference: every inspector tab one press away. */
 const RIGHT: { key: RightTab; label: string; icon: typeof Film }[] = [
-  { key: 'video', label: 'Video', icon: Film }, { key: 'adjust', label: 'Adjust', icon: SlidersHorizontal },
+  { key: 'video', label: 'Video', icon: Film }, { key: 'adjust', label: 'Adjust', icon: SlidersHorizontal }, { key: 'effects', label: 'Effects', icon: Layers },
   { key: 'animation', label: 'Animation', icon: Sparkles }, { key: 'tracking', label: 'Tracking', icon: ScanFace },
   { key: 'text', label: 'Text', icon: Type }, { key: 'audio', label: 'Audio', icon: AudioLines }, { key: 'music', label: 'Music', icon: Music2 },
   { key: 'captions', label: 'Captions', icon: CaptionsIcon }, { key: 'reuse', label: 'Reuse', icon: Share2 },
@@ -233,7 +239,7 @@ export default function VideoEditor({ id }: { id: string }) {
   const trackUrlSeen = useRef(false);
   const [error, setError] = useState('');
   const asked = params.get('tab') ?? '';
-  const [left, setLeft] = useState<LeftTab>(isLeft(asked) ? asked : 'media');
+  const [left, setLeft] = useState<LeftTab>(isLeft(asked) ? asked : 'transcript');
   const [right, setRight] = useState<RightTab>(isRight(asked) ? asked : 'video');
   const [time, setTime] = useState(0);
   const [selection, setSelection] = useState<{ i0: number; i1: number } | null>(null);
@@ -242,6 +248,7 @@ export default function VideoEditor({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const [caps, setCaps] = useState<Capability[] | null>(null);
   const [showCaps, setShowCaps] = useState(false);
+  const [showKeys, setShowKeys] = useState(false);
   const [showHistory, setShowHistory] = useState(asked === 'versions');
   const [name, setName] = useState('');
   const transcriptUrlSeen = useRef('');
@@ -257,7 +264,7 @@ export default function VideoEditor({ id }: { id: string }) {
     else if (t === 'versions') setShowHistory(true);
     else if (t === 'exports') { document.getElementById('vs-outputs-board')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     else if (t === 'assistant') { commandRef.current?.focus(); return; }
-    setParams(t === 'media' || t === 'video' ? {} : { tab: t }, { replace: true });
+    setParams(t === 'transcript' || t === 'video' ? {} : { tab: t }, { replace: true });
   }, [setParams]);
 
   /* What the jobs did since the last look, said in the assistant — only real events. */
@@ -284,9 +291,15 @@ export default function VideoEditor({ id }: { id: string }) {
     if (before.project.status !== 'failed' && now.project.status === 'failed') say({ who: 'sys', text: `Processing stopped: ${now.project.error}` });
   }, [say]);
 
-  const absorb = useCallback(async (v: ProjectView) => {
+  /* Every edit made here (an operation, undo/redo, an assistant command)
+     moves this on. A poll asked before it answers with the document as it was
+     then; taking that doc would put back what was just changed — Undo then
+     went back two versions. So a poll's doc is taken only if nothing changed
+     here while it was on its way. */
+  const epoch = useRef(0);
+  const absorb = useCallback(async (v: ProjectView, asked = epoch.current) => {
     let d = doc;
-    if (v.doc) { d = v.doc; setDoc(v.doc); setVersion(v.docVersion); }
+    if (v.doc && asked === epoch.current) { d = v.doc; setDoc(v.doc); setVersion(v.docVersion); }
     narrate(prev.current, v, d);
     prev.current = v;
     setView(v);
@@ -314,18 +327,21 @@ export default function VideoEditor({ id }: { id: string }) {
   useEffect(() => {
     if (!view) return;
     const t = setTimeout(async () => {
+      const asked = epoch.current;
       const r = await videoStatus(id, versionRef.current);
-      if (r.success) await absorb(r);
+      if (r.success) await absorb(r, asked);
     }, moving ? 2500 : 15_000);
     return () => clearTimeout(t);
   }, [view, moving, id, absorb]);
 
-  const refresh = useCallback(async () => { const r = await videoStatus(id, -1); if (r.success) await absorb(r); }, [id, absorb]);
+  const refresh = useCallback(async () => { const asked = epoch.current; const r = await videoStatus(id, -1); if (r.success) await absorb(r, asked); }, [id, absorb]);
 
   const apply = useCallback(async (ops: Op[], note: string) => {
     if (!ops.length) return false;
     setBusy(true);
+    epoch.current++;
     const r = await editVideo(id, versionRef.current, ops, note);
+    epoch.current++;
     setBusy(false);
     if (r.success) {
       setDoc(r.doc); setVersion(r.docVersion);
@@ -342,12 +358,14 @@ export default function VideoEditor({ id }: { id: string }) {
   const go = useCallback(async (v: number) => {
     if (!view || v < 1 || v > view.maxVersion) return;
     setBusy(true);
+    epoch.current++;
     const r = await gotoVersion(id, v);
     setBusy(false);
+    epoch.current++;
     if (r.success) { setDoc(r.doc); setVersion(r.docVersion); void refresh(); }
   }, [id, view, refresh]);
 
-  const adopt = useCallback((d: VideoDoc, v: number) => { setDoc(d); setVersion(v); }, []);
+  const adopt = useCallback((d: VideoDoc, v: number) => { epoch.current++; setDoc(d); setVersion(v); }, []);
 
   const seek = useCallback((t: number) => {
     /* Negative numbers are the player telling us where it is (−1 − time);
@@ -362,11 +380,15 @@ export default function VideoEditor({ id }: { id: string }) {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.key === '?' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); setShowKeys(k => !k); return; }
+      /* While a save is on its way the version here is the one before it; an undo now would go back two. */
+      if ((e.metaKey || e.ctrlKey) && busy && /^[zy]$/i.test(e.key)) { e.preventDefault(); return; }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); void go(e.shiftKey ? version + 1 : version - 1); }
+      else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); void go(version + 1); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [go, version]);
+  }, [go, version, busy]);
 
   const duration = view?.source.probe?.duration ?? transcript?.duration ?? 0;
   const ctx = useMemo<EditorCtx | null>(() => view && doc ? {
@@ -399,8 +421,9 @@ export default function VideoEditor({ id }: { id: string }) {
         <span className="vs-spacer" />
         {busy && <Loader size={14} className="spin" />}
         <button type="button" className="vs-btn sm" disabled={version <= 1} onClick={() => void go(version - 1)} aria-label="Undo" title="Undo (Ctrl+Z)"><Undo2 size={14} /></button>
-        <button type="button" className="vs-btn sm" disabled={version >= view.maxVersion} onClick={() => void go(version + 1)} aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><Redo2 size={14} /></button>
+        <button type="button" className="vs-btn sm" disabled={version >= view.maxVersion} onClick={() => void go(version + 1)} aria-label="Redo" title="Redo (Ctrl+Y or Ctrl+Shift+Z)"><Redo2 size={14} /></button>
         <button type="button" className="vs-btn sm" onClick={() => setShowHistory(true)} aria-label="Version history"><History size={14} /></button>
+        <button type="button" className="vs-btn sm" onClick={() => setShowKeys(true)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" data-act="shortcuts"><Keyboard size={14} /></button>
         <button type="button" className="vs-btn sm" onClick={() => setShowCaps(true)}><ShieldCheck size={14} /> What works</button>
         {stale.length > 0 && (
           <button type="button" className="vs-btn ai sm" data-testid="vs-render-changes" onClick={() => void renderOutputs(id, stale.map(o => o.id)).then(r => { if (!r.success) say({ who: 'ai', text: r.error ?? 'Could not render.' }); void refresh(); })}>
@@ -449,6 +472,7 @@ export default function VideoEditor({ id }: { id: string }) {
               <div className="vse-scroll">
                 {right === 'video' && <VideoPanel ctx={ctx} />}
                 {right === 'adjust' && <AdjustPanel ctx={ctx} />}
+                {right === 'effects' && <VisualEffectsPanel ctx={ctx} />}
                 {right === 'animation' && <AnimationPanel ctx={ctx} />}
                 {right === 'tracking' && <TrackingPanel ctx={ctx} />}
                 {right === 'text' && <TextPanel ctx={ctx} />}
@@ -476,6 +500,19 @@ export default function VideoEditor({ id }: { id: string }) {
       {hasSource && duration > 0 && <section className="vse-time"><Timeline ctx={ctx} wave={wave} /></section>}
 
       {showCaps && caps && <CapabilityPanel caps={caps} usage={null} onClose={() => setShowCaps(false)} />}
+      {showKeys && (
+        <div className="vs-modal-back" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick={() => setShowKeys(false)}>
+          <div className="vs-modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()} data-testid="vs-shortcuts">
+            <div className="vs-row" style={{ marginBottom: 8 }}><h2 style={{ margin: 0, fontSize: 17 }}><Keyboard size={16} /> Keyboard shortcuts</h2><span className="vs-spacer" /><button type="button" className="vs-btn ghost sm" onClick={() => setShowKeys(false)} aria-label="Close"><X size={15} /></button></div>
+            {SHORTCUTS.map(([group, rows]) => (
+              <div key={group} className="vs-keys" style={{ marginBottom: 8 }}>
+                <b style={{ color: '#eee' }}>{group}</b>
+                {rows.map(([k, what]) => <span key={k}><kbd>{k}</kbd> {what}</span>)}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {showHistory && (
         <div className="vs-modal-back" role="dialog" aria-modal="true" aria-label="Version history" onClick={() => setShowHistory(false)}>
           <div className="vs-modal" style={{ maxWidth: 640 }} onClick={e => e.stopPropagation()}>

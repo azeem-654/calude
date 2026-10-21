@@ -22,7 +22,7 @@ import {
   applyOps, describeRequest, newDoc, parseRequest, sentencesOf, SHORTS_MAX, MUSIC_DEFAULTS,
   type MusicTrack, type Op, type VideoDoc, type VideoRequest,
 } from '../lib/video/edit';
-import { proposeCleanup } from '../lib/video/cleanup';
+import { proposeCleanup, cleanFillerKinds } from '../lib/video/cleanup';
 import { parseVideoCommand } from '../lib/video/commands';
 import { cleanMeta, type VideoMeta } from '../lib/video/shorts';
 import { engineHealth, engineMode } from '../lib/video/engine';
@@ -37,7 +37,7 @@ import { cleanOembed, parseYoutubeUrl, youtubeThumb, YOUTUBE_WAY_FORWARD } from 
 import {
   advanceProject, cancelProject, enqueue, originOf, outputsOf, parse, readTranscript, renderSpec, stagesOf, syncOutputs, queueAfterEdit,
   recreditOutputs, type Extras, type JobRow, type OutputRow, type ProjectRow, type Source, type Thumb,
-  cleanThumbSpec, thumbWords,
+  cleanThumbSpec, thumbWords, readWave, cleanupOptionsOf,
 } from '../lib/video/pipeline';
 
 interface Req {
@@ -51,6 +51,8 @@ interface Req {
   patch?: Record<string, unknown>; kit?: Record<string, unknown>; file?: string; probe?: boolean; light?: boolean; knownVersion?: number;
   q?: string; page?: number; trackId?: string; key?: string; title?: string; rightsConfirmed?: boolean; applyTo?: string;
   posts?: number; blog?: boolean; email?: boolean;
+  /** Cleanup options: the filler kinds ticked, and the longest pause kept (null: the level's own). */
+  fillers?: unknown; maxPause?: number | null;
   /** Start from the customer's own YouTube video instead of an upload (create, youtube_info). */
   youtubeUrl?: string;
   want?: { repurpose?: { posts?: number; blog?: boolean; email?: boolean }; quiz?: boolean; denoise?: string; voice?: boolean; music?: string };
@@ -85,7 +87,7 @@ async function capabilities(env: Env, accountId: string, probe: boolean): Promis
     { key: 'captions', label: 'Captions: burned in, SRT, VTT', status: engine ? 'working' : 'needs_configuration', note: 'Word-timed, re-timed after every cut. Turkish and Urdu (right to left) set correctly.' },
     { key: 'reframe', label: '16:9, 9:16, 1:1, 4:5', status: engine ? 'working' : 'needs_configuration', note: 'Crop with a position you choose, or fit with a blurred fill to keep slides and screens whole.' },
     { key: 'thumbnails', label: 'PNG thumbnails', status: engine ? 'working' : 'needs_configuration', note: 'Exact headline text, brand colours and logo; every file checked to be a real PNG.' },
-    { key: 'audio', label: 'Background noise reduction (light, medium, strong), voice clarity, loudness', status: engine ? 'working' : 'needs_configuration', note: 'Steady noise — fans, hum, hiss — is taken out. Distorted or cut-out speech cannot be rebuilt, and is not claimed to be.' },
+    { key: 'audio', label: 'Studio Sound, noise reduction, voice clarity, loudness', status: engine ? 'working' : 'needs_configuration', note: `Heard in the render: a high-pass, ${health && health.rnnoise === false ? 'an FFT denoiser (this engine was built without the RNNoise model — the next engine deploy adds it)' : 'RNNoise speech denoising'}, a de-esser, presence EQ, compression and two-pass loudness to −16 LUFS; music ducked under speech. Steady noise — fans, hum, hiss — is taken out. Distorted or cut-out speech cannot be rebuilt, and is not claimed to be.` },
     { key: 'music', label: 'Background music: royalty-free library and your own tracks', status: engine && storage ? 'working' : 'needs_configuration', note: 'Openverse tracks under CC0, public domain or CC BY only (credit added to descriptions), or your own upload with your rights confirmed. Ducked under speech, faded in and out.' },
     { key: 'repurpose', label: 'Repurpose: posts, an article and emails from the recording', status: ai ? 'working' : 'needs_configuration', note: 'Drafts in the Graphics Designer & Editor, Blog and Campaigns — nothing is published or sent.' },
     { key: 'quiz', label: 'Quiz from a training recording', status: ai ? 'working' : 'needs_configuration', note: 'Multiple-choice questions about what is actually said, each linked to its moment.' },
@@ -97,7 +99,10 @@ async function capabilities(env: Env, accountId: string, probe: boolean): Promis
     { key: 'thumb_edit', label: 'Thumbnail designer (trending layouts)', status: engine ? 'working' : 'needs_configuration', note: 'Face close-up with big outlined words, ring-and-arrow callout, cinematic, two moments, big number — words, colours, frame and zoom yours to change.' },
     { key: 'speakers', label: 'Speaker labels', status: 'unavailable', note: 'Needs a transcription provider with speaker detection.' },
     { key: 'audio_preview', label: 'Before/after audio preview in the browser', status: 'planned', note: 'Today: render, then listen to the finished file.' },
-    { key: 'eye_contact', label: 'Eye-contact correction', status: 'unavailable', note: 'Provider setup required.' },
+    /* Researched October 2026: FFmpeg cannot move a gaze; NVIDIA Maxine Eye Contact is a gRPC
+       streaming service (no HTTP route a Worker can call), and Sieve's eye-contact API is no longer
+       documented (its docs are gone). Nothing is faked: it stays unavailable until one is. */
+    { key: 'eye_contact', label: 'Eye-contact correction', status: 'unavailable', note: 'Provider setup required. No provider has a documented HTTP API this server can call yet (NVIDIA Maxine is gRPC-only), and video editing alone cannot move where someone looks.' },
     { key: 'bg_removal', label: 'Portrait background removal', status: 'unavailable', note: 'Provider setup required. A portrait can be used as it is.' },
     { key: 'publishing', label: 'Direct publishing to social platforms', status: 'unavailable', note: 'Ready to publish manually: download the video and PNG, copy the caption, description and hashtags.' },
     { key: 'youtube', label: 'Start from your own YouTube video', status: !engine || !storage ? 'needs_configuration' : health && health.youtube === false ? 'needs_configuration' : 'working',
@@ -597,8 +602,13 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       const tr = await readTranscript(env, p);
       if (!tr) return fail('The transcript is not ready yet.');
       const src = parse<Source>(p.source, {});
-      const cuts = proposeCleanup(tr.words, src.silences ?? null, preset as 'balanced', src.probe?.duration ?? tr.duration);
-      const r = await saveEdit(env, p, d.baseVersion, [{ op: 'cleanup.preset', preset: preset as 'balanced', cuts }], `Cleanup: ${preset}`, user.email);
+      /* The options panel's choices (which filler kinds, the longest pause
+         kept) come with the request; absent, the ones already on the edit. */
+      const cur = cleanupOptionsOf(parse<VideoDoc>(p.doc, null as unknown as VideoDoc));
+      const fillers = d.fillers !== undefined ? cleanFillerKinds(d.fillers) : cur.fillers;
+      const maxPause = d.maxPause === null || d.maxPause === 0 ? null : d.maxPause !== undefined ? Math.min(3, Math.max(0.15, Number(d.maxPause) || 0.5)) : cur.maxPause;
+      const cuts = proposeCleanup(tr.words, src.silences ?? null, preset as 'balanced', src.probe?.duration ?? tr.duration, { fillers, maxPause, wave: await readWave(env, src) });
+      const r = await saveEdit(env, p, d.baseVersion, [{ op: 'cleanup.preset', preset: preset as 'balanced', cuts, ...(fillers ? { fillers } : {}), maxPause }], `Cleanup: ${preset}`, user.email);
       if (!r.ok) return json({ success: false, conflict: true, error: 'This project changed in another window.', doc: r.doc, docVersion: r.version });
       return json({ success: true, doc: r.doc, docVersion: r.version });
     }

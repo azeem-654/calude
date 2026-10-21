@@ -65,9 +65,12 @@ let engine;
    local engine; without it track.py falls back to OpenCV's Haar cascade. */
 const MODEL = path.join(state, 'fixtures', 'face_detection_yunet.onnx');
 if (!fs.existsSync(MODEL)) { try { execFileSync('curl', ['-fsSL', '-o', MODEL, 'https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx'], { stdio: 'ignore' }); } catch { /* Haar then */ } }
+/* The RNNoise model Studio Sound uses — the same pinned file the engine image carries (media/Dockerfile). Without it the engine uses its FFT denoiser and says so. */
+const RNN = path.join(state, 'fixtures', 'rnnoise-std.rnnn');
+if (!fs.existsSync(RNN)) { try { execFileSync('curl', ['-fsSL', '-o', RNN, 'https://raw.githubusercontent.com/richardpl/arnndn-models/0fda24c46d78f0207d820bb970fbe85c1971b39c/std.rnnn'], { stdio: 'ignore' }); } catch { /* FFT then */ } }
 const startEngine = () => {
   engine = spawn('node', [path.resolve('media/engine/server.mjs')], {
-    env: { ...process.env, PORT: String(ENG), MEDIA_ENGINE_SECRET: SECRET, ALLOW_HTTP_INPUTS: '1', WORK_DIR: path.join(state, 'engine-work'), MAX_RUNNING: '2', FACE_MODEL: MODEL },
+    env: { ...process.env, PORT: String(ENG), MEDIA_ENGINE_SECRET: SECRET, ALLOW_HTTP_INPUTS: '1', WORK_DIR: path.join(state, 'engine-work'), MAX_RUNNING: '2', FACE_MODEL: MODEL, RNNOISE_MODEL: RNN },
     stdio: ['ignore', 'ignore', 'pipe'],
   });
   engine.stderr.on('data', d => { if (process.env.DEBUG) process.stderr.write(d); });
@@ -232,7 +235,7 @@ ok('1 · AI Video Studio opens, with its tabs — Quick Shorts and Repurpose amo
 ok('…and opens on a welcome: what would you like to do?', (await page.getByTestId('vs-welcome').count()) === 1 && (await page.locator('.vs-goal').count()) === 8 && /Quiz from a training video/.test(await page.getByTestId('vs-welcome').innerText()));
 await page.getByRole('button', { name: /What works/ }).click();
 const caps = await page.getByTestId('vs-capabilities').innerText();
-ok('…and says honestly what works: transcription working, eye contact and publishing unavailable', /Transcription with word timings\s*Whisper[\s\S]*?Working/.test(caps) && /Eye-contact correction\s*Provider setup required\.?\s*Unavailable/.test(caps) && /Direct publishing[\s\S]*?Unavailable/.test(caps), caps.slice(0, 800));
+ok('…and says honestly what works: transcription working, eye contact and publishing unavailable', /Transcription with word timings\s*Whisper[\s\S]*?Working/.test(caps) && /Eye-contact correction\s*Provider setup required\.[^\n]*\s*Unavailable/.test(caps) && /Direct publishing[\s\S]*?Unavailable/.test(caps), caps.slice(0, 800));
 await page.keyboard.press('Escape'); await page.locator('.vs-modal-back').click({ position: { x: 5, y: 5 } }).catch(() => {});
 
 /* ── 2–4 · A 20-minute recording, the request, the upload ── */
@@ -292,7 +295,8 @@ ok('…and a quiz written from what the recording says, each question with the m
 
 /* ── 5 · The transcript ── */
 await page.reload({ waitUntil: 'networkidle' });
-ok('the editor is laid out as designed: media, player, inspector, assistant, timeline', (await page.getByTestId('vs-media').count()) === 1 && (await page.getByTestId('vs-preview').count()) === 1 && (await page.getByTestId('vs-assistant').count()) === 1 && (await page.getByTestId('vs-timeline').count()) === 1);
+ok('the editor opens on the transcript — the main way to edit — beside the player, inspector, assistant and timeline', (await page.getByTestId('vs-transcript').count()) === 1 && (await page.getByTestId('vs-preview').count()) === 1 && (await page.getByTestId('vs-assistant').count()) === 1 && (await page.getByTestId('vs-timeline').count()) === 1);
+await page.locator('[data-panel="media"]').click();
 ok('…the media list holds the long video and every Short', (await page.locator('[data-media]').count()) >= 5, await page.getByTestId('vs-media').innerText());
 ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and the music', (await page.locator('.vse-frame').count()) > 5 && (await page.locator('.vse-block.cap').count()) > 20 && (await page.locator('.vse-block.short').count()) === 4 && (await page.locator('.vse-block.music').count()) >= 1);
 
@@ -308,28 +312,65 @@ ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and 
   if (!fs.existsSync(webm)) execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', proxyFile, '-t', '120', '-vf', 'scale=320:-2', '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '200k', '-c:a', 'libopus', '-b:a', '48k', webm]);
   const body = fs.readFileSync(webm);
   const src0 = await page.getByTestId('vs-video').getAttribute('data-src');
-  await page.route(u => u.href === src0, async route => {
+  /* The proxy, by its key — the same signed address after a reload within the hour, but matched by what it names. */
+  const isProxy = u => { try { const t = new URL(u).searchParams.get('t'); return !!t && JSON.parse(Buffer.from(t.split('.')[0].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString()).k?.endsWith('/proxy.mp4'); } catch { return false; } };
+  await page.route(u => u.href.startsWith(`${B}/api/video-file.php`) && isProxy(u.href), async route => {
     const range = route.request().headers().range;
     const m = range && /bytes=(\d+)-(\d*)/.exec(range);
     if (!m) return route.fulfill({ status: 200, body, headers: { 'content-type': 'video/webm', 'accept-ranges': 'bytes', 'content-length': String(body.length) } });
     const a = Number(m[1]), b = m[2] ? Math.min(Number(m[2]), body.length - 1) : body.length - 1;
     return route.fulfill({ status: 206, body: body.subarray(a, b + 1), headers: { 'content-type': 'video/webm', 'accept-ranges': 'bytes', 'content-range': `bytes ${a}-${b}/${body.length}`, 'content-length': String(b - a + 1) } });
   });
-  await page.evaluate(() => { const vEl = document.querySelector('[data-testid="vs-video"]'); vEl.load(); });
-  await page.waitForTimeout(800);
+  /* A cleaned recording has a cut every few seconds. Twenty more — the
+     second word of every sentence in the first minute and a half — so the
+     preview has to cross well over ten cuts while it is watched. */
+  const base0 = await v('get', { projectId: PID });
+  const extra = LONG.script.sentences.filter(x => x.s > 5 && x.s < 95).map(x => LONG.script.words.find(w => w.s > x.s + 0.05 && w.s < x.e)).filter(Boolean)
+    .map(w => ({ op: 'cut.add', s: Math.round((w.s - 0.04) * 100) / 100, e: Math.round((w.e + 0.04) * 100) / 100, reason: 'Many cuts (test)' }));
+  const many = await v('edit', { projectId: PID, baseVersion: base0.docVersion, ops: extra, note: 'many cuts' });
+  ok('(twenty more cuts in the first minute and a half)', many.success && extra.length >= 15, { n: extra.length, many: many.error });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByTestId('vs-play').waitFor({ timeout: 15_000 });
+  await page.waitForTimeout(1500);
+  /* What a viewer would notice: the element on screen waiting for data, or
+     a gap between two frames it presented, while it is meant to be playing. */
+  await page.evaluate(() => {
+    const vids = [...document.querySelectorAll('[data-testid="vs-video"] video, video[data-testid="vs-video"]')];
+    const shown = el => vids.length === 1 || el.classList.contains('on');
+    const m = window.__vsm = { waiting: 0, frames: [], on: false };
+    for (const el of vids) {
+      el.addEventListener('waiting', () => { if (m.on && shown(el)) m.waiting++; });
+      const cb = (now, meta) => { if (m.on && shown(el)) m.frames.push([now, meta.mediaTime]); el.requestVideoFrameCallback(cb); };
+      el.requestVideoFrameCallback(cb);
+    }
+  });
+  const shownTime = () => page.evaluate(() => { const d = document.querySelector('[data-testid="vs-video"]'); const e = d.matches('video') ? d : d.querySelector('video.on'); return { t: e.currentTime, paused: e.paused, src: d.dataset.src }; });
+  await page.evaluate(() => { window.__vsm.on = true; window.__vsm.t0 = performance.now(); });
   await page.getByTestId('vs-play').click();
   const cuts = (await v('get', { projectId: PID })).doc.cuts.filter(c => c.state === 'approved');
   const samples = [];
-  for (let i = 0; i < 70; i++) { samples.push(await page.evaluate(() => { const e = document.querySelector('[data-testid="vs-video"]'); return { t: e.currentTime, paused: e.paused, src: e.dataset.src }; })); await sleep(250); }
+  for (let i = 0; i < 160; i++) { samples.push(await shownTime()); await sleep(250); }
+  const meter = await page.evaluate(() => { const m = window.__vsm; m.on = false; const d = document.querySelector('[data-testid="vs-video"]'); return { waiting: m.waiting, frames: m.frames, swaps: d.dataset.swaps ?? '-', waits: d.dataset.waits ?? '-' }; });
   const last = samples[samples.length - 1];
   const inCut = samples.filter(x => !x.paused && cuts.some(c => x.t > c.s + 0.2 && x.t < c.e - 0.2));
-  ok('the preview plays on for seventeen seconds — through more than one poll — without stopping', !last.paused && last.t > 12 && samples.every(x => x.src === src0), { t: last.t, paused: last.paused, srcs: new Set(samples.map(x => x.src)).size });
-  ok('…and never shows what was cut (the opening silence, the fillers)', inCut.length === 0 && samples[2].t > 2, { inCut: inCut.slice(0, 3), first: samples.slice(0, 3) });
+  const crossed = cuts.filter(c => c.s > samples[0].t && c.e < last.t).length;
+  const gaps = meter.frames.slice(1).map((f, i) => f[0] - meter.frames[i][0]);
+  const long = gaps.filter(g => g > 250);
+  /* Measured on the old one-element player (a seek at every cut), the same
+     forty seconds: 11 cuts, 10 `waiting` events — a stall at nearly every cut. */
+  console.log(`  (player: ${crossed} cuts crossed in ${(last.t - samples[0].t).toFixed(1)} s of source, ${meter.frames.length} frames, ${meter.waiting} waiting, gaps over 100 ms: ${gaps.filter(g => g > 100).length}, longest ${Math.round(Math.max(0, ...gaps))} ms, swaps ${meter.swaps}, held for a standby ${meter.waits})`);
+  ok('the preview plays on for forty seconds — through many polls — without stopping', !last.paused && last.t > 35 && samples.every(x => x.src === src0), { t: last.t, paused: last.paused, srcs: new Set(samples.map(x => x.src)).size });
+  ok('…crossing more than ten cuts', crossed >= 10, crossed);
+  ok('…without a stall: the picture never waits for data and no two frames are more than 250 ms apart', meter.waiting === 0 && long.length === 0 && meter.frames.length > 400, { waiting: meter.waiting, long: long.map(Math.round).slice(0, 8), frames: meter.frames.length });
+  ok('…and never shows what was cut (the opening silence, the fillers, the twenty words)', inCut.length === 0 && samples[2].t > 2, { inCut: inCut.slice(0, 3), first: samples.slice(0, 3) });
   const label = await page.getByTestId('vs-time').innerText();
   ok('…with the edited video\'s clock on the controls', /^\d+:\d\d \/ \d+:\d\d$/.test(label.trim()), label);
   await page.getByTestId('vs-play').click();
-  await page.unroute(u => u.href === src0);
+  await page.unroute(u => u.href.startsWith(`${B}/api/video-file.php`) && isProxy(u.href));
+  await v('goto_version', { projectId: PID, version: base0.docVersion });
+  await page.reload({ waitUntil: 'networkidle' });
 }
+if (process.env.STOP_AFTER === 'player') { await br.close(); console.log(`\n${out.filter(l => l.startsWith('PASS')).length} passed, ${failures} failed`); stop(); process.exit(failures ? 1 : 0); }
 await page.locator('[data-panel="transcript"]').click();
 await page.getByTestId('vs-transcript').waitFor({ timeout: 20_000 });
 const words = await page.locator('.vs-w').count();
@@ -338,6 +379,55 @@ await page.getByTestId('vs-search').fill('pipeline');
 await page.waitForTimeout(400);
 ok('…and can be searched', (await page.locator('.vs-w.hit').count()) > 3);
 await page.getByTestId('vs-search').fill('');
+
+/* ── Editing the video by editing the text ── */
+{
+  const at = async () => (await v('get', { projectId: PID }));
+  const before = await at();
+  const word = page.locator('.vs-w:not(.cut):not(.prop)').nth(40);
+  const wi = Number(await word.getAttribute('data-i'));
+  await word.click();
+  await page.keyboard.press('Delete');
+  let d1;
+  for (let i = 0; i < 20; i++) { d1 = await at(); if (d1.docVersion > before.docVersion) break; await sleep(300); }
+  let w = '';
+  for (let i = 0; i < 20 && !/\bcut\b/.test(w); i++) { w = (await page.locator(`.vs-w[data-i="${wi}"]`).getAttribute('class')) ?? ''; await sleep(200); }
+  const cut = d1.doc.cuts.find(c => c.by === 'you' && c.state === 'approved' && c.reason.startsWith('Removed'));
+  ok('click a word, press Delete: it is cut from the video — still on the page, struck through', !!cut && d1.docVersion === before.docVersion + 1 && /\bcut\b/.test(w), { cut, w, v: [before.docVersion, d1.docVersion] });
+  ok('…and the timeline shades what is cut on the filmstrip', (await page.locator('.vse-cutzone.video').count()) > 0);
+  await page.locator(`.vs-w[data-i="${wi}"]`).click();
+  await page.keyboard.press('r');
+  let d2;
+  for (let i = 0; i < 20; i++) { d2 = await at(); if (d2.docVersion > d1.docVersion) break; await sleep(300); }
+  ok('select the struck word, press R: it is restored', !d2.doc.cuts.some(c => c.state === 'approved' && c.s < cut.e && c.e > cut.s && c.by === 'you'), d2.doc.cuts.filter(c => c.by === 'you').slice(-3));
+  /* Keyboard: Shift + → twice selects three words, Backspace cuts them as one. */
+  await page.locator(`.vs-w[data-i="${wi + 2}"]`).click();
+  await page.keyboard.down('Shift'); await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowRight'); await page.keyboard.up('Shift');
+  const selected = await page.locator('.vs-w.sel').count();
+  await page.keyboard.press('Backspace');
+  let d3;
+  for (let i = 0; i < 20; i++) { d3 = await at(); if (d3.docVersion > d2.docVersion) break; await sleep(300); }
+  const three = d3.doc.cuts.find(c => c.by === 'you' && c.state === 'approved' && /^Removed “.+ .+ .+”/.test(c.reason));
+  ok('Shift + arrows select words, Backspace cuts them as one cut', selected === 3 && !!three, { selected, three });
+  /* Only once the page shows the three words struck has it the new version; an undo pressed while the save is on its way goes back from the one before. */
+  for (let i = 0; i < 150 && (!/\bcut\b/.test((await page.locator(`.vs-w[data-i="${wi + 4}"]`).getAttribute('class')) ?? '') || (await page.locator('.vse-top .spin').count()) > 0); i++) await sleep(200);
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+  let d4;
+  for (let i = 0; i < 20; i++) { d4 = await at(); if (d4.docVersion < d3.docVersion) break; await sleep(300); }
+  ok('…and Ctrl+Z undoes it through the version history', d4.docVersion === d3.docVersion - 1 && !d4.doc.cuts.some(c => c.id === three?.id), [d3.docVersion, d4.docVersion]);
+  ok('the text cursor stands in the transcript (the word it is at is marked)', (await page.locator('.vs-w.caret').count()) === 1);
+  const chips = page.locator('.vs-chipin.prop');
+  const nChips = await chips.count();
+  const chipId = await chips.first().getAttribute('data-chip');
+  await chips.first().locator('[data-act="chip-ignore"]').click();
+  let d5;
+  for (let i = 0; i < 20; i++) { d5 = await at(); if (d5.doc.cuts.find(c => c.id === chipId)?.state === 'rejected') break; await sleep(300); }
+  ok('suggestions sit in the text as chips — ignoring one keeps it', nChips > 0 && d5.doc.cuts.find(c => c.id === chipId)?.state === 'rejected', { nChips, chipId });
+  await v('edit', { projectId: PID, baseVersion: d5.docVersion, ops: [{ op: 'cut.set', id: chipId, state: 'proposed' }], note: 'test: back to proposed' });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.locator('[data-panel="transcript"]').click();
+  await page.getByTestId('vs-transcript').waitFor({ timeout: 20_000 });
+}
 
 /* ── 6 · Cleanup suggestions ── */
 await page.locator('[data-panel="cleanup"]').click();
@@ -350,6 +440,22 @@ const propId = await firstProp.getAttribute('data-cut');
 await firstProp.locator('[data-act="approve"]').click();
 await page.waitForTimeout(1200);
 ok('…a suggestion can be approved', (await v('get', { projectId: PID })).doc.cuts.find(c => c.id === propId)?.state === 'approved');
+{
+  await page.locator('[data-act="cleanup-options"]').click();
+  const opts = page.getByTestId('vs-filler-options');
+  const kinds = await opts.locator('[data-filler]').count();
+  const umCount = Number(await opts.locator('[data-filler="um"] .vs-count').innerText());
+  ok('cleanup options: eight kinds of filler to tick, each with how many there are, and "shorten word gaps"', kinds === 8 && umCount > 5 && (await opts.locator('[data-field="video.maxPause"]').count()) === 1, { kinds, umCount });
+  const v0 = (await v('get', { projectId: PID })).docVersion;
+  await opts.locator('[data-field="video.maxPause"]').click();
+  let g;
+  for (let i = 0; i < 30; i++) { g = await v('get', { projectId: PID }); if (g.docVersion > v0) break; await sleep(400); }
+  ok('…ticking "shorten word gaps" re-reads the recording with every quiet pause cut down to the chosen length', g.doc.cleanup.maxPause > 0 && g.doc.cuts.some(c => c.kind === 'gap' && c.state === 'approved'), g.doc.cleanup);
+  await page.waitForTimeout(800);
+  await opts.locator('[data-field="video.maxPause"]').click();
+  for (let i = 0; i < 30; i++) { g = await v('get', { projectId: PID }); if (!g.doc.cleanup.maxPause) break; await sleep(400); }
+  ok('…and unticking it puts the level\'s own pauses back, decisions kept', !g.doc.cleanup.maxPause && g.doc.cuts.find(c => c.id === propId)?.state === 'approved');
+}
 
 /* ── 7 · Four distinct Shorts ── */
 S = await v('get', { projectId: PID });
@@ -586,6 +692,7 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   await page.locator('[data-panel="audio"]').click();
   const audio = await page.getByTestId('vs-audio-panel').innerText();
   ok('the Audio panel shows the noise level chosen, voice clarity and loudness — and says they are heard in the render', /Strong/.test(audio) && /Voice clarity/.test(audio) && /Even loudness/.test(audio) && /applied when the videos render/.test(audio));
+  ok('…with Audio effects as rows: Studio Sound, and "Lower audio of other layers" (the music is ducked under speech)', /Studio Sound/.test(audio) && /Lower audio of other layers/.test(audio) && (await page.locator('[data-effect="duck"] [role="switch"]').getAttribute('aria-checked')) === 'true', audio.slice(0, 400));
   await page.locator('[data-denoise="light"]').click();
   await page.waitForTimeout(1200);
   ok('…a level can be picked there', (await v('get', { projectId: PID })).doc.audio.denoise === 'light');
@@ -670,13 +777,22 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   const lastEnd = (([h, m, s2]) => h * 3600 + m * 60 + s2)(srt.trim().split('\n\n').pop().split('\n')[1].split(' --> ')[1].replace(',', '.').split(':').map(Number));
   ok('…and its captions re-timed to the new speed (they end with the video)', lastEnd <= d + 0.5 && lastEnd > d - 3, { lastEnd, d });
   await page.goto(`${B}/video-studio/${PID}`, { waitUntil: 'networkidle' });
-  ok('the inspector is an icon rail: Video, Adjust, Animation, Tracking, Text, Audio, Music, Captions, Reuse, Export', (await page.locator('.vse-rail-btn').count()) === 10);
+  ok('the inspector is an icon rail: Video, Adjust, Effects, Animation, Tracking, Text, Audio, Music, Captions, Reuse, Export', (await page.locator('.vse-rail-btn').count()) === 11);
+  await page.locator('[data-panel="effects"]').click();
+  const fxText = await page.getByTestId('vs-effects-panel').innerText();
+  ok('Effects lists the visual effects as rows: Color adjustments, Shadow, Green screen, Improve appearance — each with a switch', /Color adjustments[\s\S]*Shadow[\s\S]*Green screen[\s\S]*Improve appearance/.test(fxText) && (await page.locator('[data-testid="vs-effects-panel"] [role="switch"]').count()) === 4, fxText.slice(0, 300));
+  await page.locator('[data-effect="color"] [data-act="fx-settings"]').click();
+  ok('…a row\'s settings open with its sliders (Temperature in kelvin) and "Remove effect"', /Temperature[\s\S]*6,500 K/.test(await page.getByTestId('vs-fx-pop-color').innerText()) && (await page.locator('[data-effect="color"] [data-act="fx-remove"]').count()) === 1);
+  await page.locator('[data-effect="color"] [role="switch"]').click();
+  await page.waitForTimeout(1500);
+  ok('…and its switch turns it on in the edit', (await v('get', { projectId: PID })).doc.effects?.short?.color?.on === true || (await v('get', { projectId: PID })).doc.effects?.long?.color?.on === true);
   await page.locator('[data-panel="adjust"]').click();
   ok('Adjust offers ten filters and the colour sliders', (await page.locator('.vs-filter').count()) === 10 && /Temperature[\s\S]*Exposure[\s\S]*Vignette/.test(await page.getByTestId('vs-adjust-panel').innerText()));
   await page.locator('[data-panel="tracking"]').click();
   ok('Tracking says what it found in this recording — no faces in a test picture, so nothing to follow', /No faces found/.test(await page.getByTestId('vs-tracking-panel').innerText()), await page.getByTestId('vs-tracking-panel').innerText());
   await page.locator('[data-panel="text"]').click();
   ok('Text lists the words on screen with their times', /Watch this/.test(await page.getByTestId('vs-text-panel').innerHTML()));
+  await page.locator('[data-panel="media"]').click();
   await page.locator('[data-media="' + target.id + '"]').click();
   await page.waitForTimeout(500);
   ok('the preview shows the look (black and white) and the speed on the Short', (await page.getByTestId('vs-video').getAttribute('data-look')) === 'bw' && /1\.25×/.test(await page.getByTestId('vs-preview').innerText()));
@@ -777,11 +893,13 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
 }
 
 /* ── Faces and the speaker: two people taking turns ── */
+let TWO_PID = '';
 {
   const TWO = path.join(state, 'fixtures', 'two-faces.mp4');
   const two = fs.existsSync(TWO) ? { turns: [[0, 14, 'L'], [14, 28, 'R'], [28, 40, 'L']] } : makeTwoFaces(TWO, 40);
   void two;
   const c = await v('create', { name: 'Two speakers', prompt: 'Clean this recording and make one 30-40 second Short' });
+  TWO_PID = c.id;
   const buf = fs.readFileSync(TWO);
   const st = await v('upload_start', { projectId: c.id, name: 'two.mp4', size: buf.length, type: 'video/mp4', fileKey: `two|${buf.length}` });
   for (let n = 1; n <= st.parts; n++) await fetch(`${st.partUrl}&part=${n}`, { method: 'PUT', body: buf.subarray((n - 1) * st.partSize, n * st.partSize), headers: { Connection: 'close' } });
@@ -816,13 +934,148 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   ok('…and it is the person talking each time: left, then right (the larger face), then left again', b.h > a.h * 1.06 && b.h > d2.h * 1.06, { a: a?.h, b: b?.h, c: d2?.h });
 }
 
+/* ── Helpers for the projects below: upload a file as a new project, render one output ── */
+const uploadProject = async (name, prompt, file) => {
+  const c = await v('create', { name, prompt });
+  const buf = fs.readFileSync(file);
+  const st = await v('upload_start', { projectId: c.id, name: path.basename(file), size: buf.length, type: 'video/mp4', fileKey: `${name}|${buf.length}` });
+  for (let n = 1; n <= st.parts; n++) await fetch(`${st.partUrl}&part=${n}`, { method: 'PUT', body: buf.subarray((n - 1) * st.partSize, n * st.partSize), headers: { Connection: 'close' } });
+  await v('upload_complete', { projectId: c.id, uploadId: st.uploadId });
+  return c.id;
+};
+const renderOut = async (pid, outId, maxS = 900) => {
+  const t0 = Date.now();
+  let R, o;
+  for (;;) {
+    R = await v('status', { projectId: pid, knownVersion: -1 });
+    o = R.outputs.find(x => x.id === outId);
+    if (o?.stale && !R.jobs.some(j => j.target === o.id && (j.state === 'queued' || j.state === 'running'))) await v('render', { projectId: pid, outputIds: [o.id] });
+    if (o?.rendered && !o.stale && !R.jobs.some(j => j.target === o.id && (j.state === 'queued' || j.state === 'running'))) return { R, o };
+    if ((Date.now() - t0) / 1000 > maxS) return { R, o };
+    await sleep(2500);
+  }
+};
+const waitTrack = async pid => { let s; for (let i = 0; i < 200; i++) { s = await v('status', { projectId: pid, knownVersion: -1 }); if (s.source.track?.ready || s.source.track?.error) break; await sleep(2000); } return s; };
+/* The loudness of the quiet and the loud tenths of a file, 100 ms at a time: the noise floor and the speech. */
+const soundOf = file => {
+  const raw = execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-ac', '1', '-ar', '8000', '-f', 's16le', '-'], { maxBuffer: 1 << 28 });
+  const n = raw.length / 2, win = 800, dbs = [];
+  for (let i = 0; i + win <= n; i += win) { let sum = 0; for (let k = 0; k < win; k++) { const x = raw.readInt16LE((i + k) * 2) / 32768; sum += x * x; } dbs.push(10 * Math.log10(sum / win + 1e-12)); }
+  dbs.sort((a, b) => a - b);
+  const q = p => dbs[Math.floor(p * (dbs.length - 1))];
+  const lufs = Number(String(execFileSync('sh', ['-c', `ffmpeg -hide_banner -nostats -i "${file}" -af ebur128 -f null - 2>&1 | grep -E "^ +I:" | tail -1`])).trim().split(/\s+/)[1]);
+  return { floor: +q(0.1).toFixed(1), speech: +q(0.9).toFixed(1), snr: +(q(0.9) - q(0.1)).toFixed(1), lufs };
+};
+/* One frame, cropped: its faces (the engine's own detector), and its mean colour. */
+const facesAt = (file, t, crop) => {
+  const png = path.join(state, `face-${Math.random().toString(36).slice(2, 8)}.png`);
+  execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-ss', String(t), '-i', file, '-frames:v', '1', ...(crop ? ['-vf', `crop=${crop}`] : []), png]);
+  return JSON.parse(String(execFileSync('python3', ['media/engine/track.py', '--image', png, ...(fs.existsSync(MODEL) ? ['--model', MODEL] : [])]))).faces.filter(f => f.score >= 0.6);
+};
+const meanRgb = (file, t, crop) => [...execFileSync('ffmpeg', ['-v', 'error', '-ss', String(t), '-i', file, '-frames:v', '1', '-vf', `crop=${crop},scale=1:1:flags=area`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'])];
+/* How different the two halves are pixel by pixel (mean absolute difference of luma, 0–255) — two crops of the same portrait have the same average colour, but not the same pixels. */
+const halvesDiffer = (file, t) => Number(String(execFileSync('sh', ['-c',
+  `ffmpeg -hide_banner -ss ${t} -i "${file}" -frames:v 1 -filter_complex "[0:v]split[x][y];[x]crop=iw:ih/2:0:0[a];[y]crop=iw:ih/2:0:ih/2[b];[a][b]blend=all_mode=difference,signalstats,metadata=print" -f null - 2>&1 | grep YAVG | head -1`])).split('=').pop());
+
+/* ── Studio Sound: a noisy room, cleaned in the render, measured ── */
+{
+  const NOISY = path.join(state, 'fixtures', 'noisy-room.mp4');
+  if (!fs.existsSync(NOISY)) execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', SHORT.file, '-f', 'lavfi', '-i', 'anoisesrc=c=pink:a=0.05:seed=7', '-t', '30',
+    '-filter_complex', '[0:a]volume=0.6[s];[s][1:a]amix=inputs=2:duration=first:normalize=0[a]', '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', NOISY]);
+  const pid = await uploadProject('Noisy room', 'Clean this recording', NOISY);
+  const R = await waitReady(pid, { T, A }, 'noisy', 600);
+  const longOut = R.outputs.find(o => o.kind === 'long');
+  const ed = await v('edit', { projectId: pid, baseVersion: R.docVersion, ops: [{ op: 'audio.set', patch: { studio: true, strength: 60 } }, { op: 'effects.set', target: 'long', effect: 'color', patch: { on: true, kelvin: 3200 } }], note: 'Studio Sound, warmer' });
+  const after = await v('get', { projectId: pid });
+  ok('Studio Sound is switched on in the edit, and the long video says it needs rendering again', ed.success && ed.doc.audio.studio === true && after.outputs.find(o => o.id === longOut.id)?.stale === true, { ok: ed.success, stale: after.outputs.map(o => o.stale) });
+  const { o } = await renderOut(pid, longOut.id);
+  const f = await download(o.downloadUrl, 'studio-sound.mp4');
+  const before = soundOf(NOISY), made = soundOf(f.file);
+  const rnn = fs.existsSync(RNN);
+  console.log(`  (Studio Sound: before ${JSON.stringify(before)} → after ${JSON.stringify(made)}, ${rnn ? 'RNNoise' : 'FFT denoiser'})`);
+  ok(`Studio Sound takes the room noise down: speech stands ${rnn ? '8' : '2'}+ dB further above the noise floor (measured, ${rnn ? 'RNNoise' : 'the FFT fallback'})`, made.snr - before.snr >= (rnn ? 8 : 2), { before, made });
+  ok('…and the render is at −16 LUFS (EBU R128, ±1 LU), from two-pass loudness normalisation', Math.abs(made.lufs + 16) <= 1, { lufs: made.lufs, source: before.lufs });
+  const [sr, , sb] = meanRgb(NOISY, 10, 'iw:ih:0:0'), [or, , ob] = meanRgb(f.file, 10, 'iw:ih:0:0');
+  ok('Color adjustments at 3,200 K render warmer light: red up against blue', (or - ob) - (sr - sb) > 10, { source: [sr, sb], render: [or, ob] });
+}
+
+/* ── Shorts layouts: a screen recording with a webcam bubble, and two people ── */
+{
+  const SCREEN = path.join(state, 'fixtures', 'screen-webcam.mp4');
+  if (!fs.existsSync(SCREEN)) {
+    /* A "screen" (the test picture, moving) with the same public-domain portrait the two-faces fixture uses, small, in a round-cornered bubble bottom right, mouth moving while a tone plays. */
+    const face = path.resolve('test/fixtures/faces/lincoln-1863.jpg');
+    execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=24', '-loop', '1', '-i', face,
+      '-f', 'lavfi', '-i', 'sine=frequency=220:sample_rate=48000:duration=24',
+      '-filter_complex', '[1:v]scale=220:220,split=2[f0][fs];[fs]crop=58:30:76:110[fm];[f0][fm]overlay=76:\'110+4*sin(t*15)\'[fb];[0:v][fb]overlay=1030:470:shortest=1[v]',
+      '-map', '[v]', '-map', '2:a', '-t', '24', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '64k', SCREEN]);
+  }
+  const pid = await uploadProject('Screen with webcam', 'Clean this recording and make one Short', SCREEN);
+  const S1 = await waitTrack(pid);
+  ok('a screen recording with a webcam: one small face, near the corner', S1.source.track?.ready && S1.source.track.summary?.faces === 1, S1.source.track);
+  const R1 = await waitReady(pid, { T, A }, 'screen', 600);
+  const e1 = await v('edit', { projectId: pid, baseVersion: R1.docVersion, ops: [{ op: 'clip.add', s: 1, e: 21, title: 'Screen and camera' }] });
+  const clip = e1.doc.clips[e1.doc.clips.length - 1];
+  /* The picker, on screen: what this recording can carry, and why not the rest. */
+  await page.goto(`${B}/video-studio/${pid}`, { waitUntil: 'networkidle' });
+  await page.locator('[data-panel="media"]').click();
+  await page.locator(`[data-media="${clip.id}"]`).click();
+  await page.locator('[data-panel="video"]').first().click();
+  await page.getByTestId('vs-layouts').waitFor({ timeout: 15_000 });
+  const opts = Object.fromEntries(await Promise.all(['speaker', 'screen', 'split', 'two', 'pip'].map(async k => [k, await page.locator(`[data-layout-opt="${k}"]`).isEnabled()])));
+  const whyTwo = await page.locator('[data-layout-opt="two"]').innerText();
+  ok('the layout picker offers split and picture-in-picture for it — not "both people", saying why', opts.split && opts.pip && opts.screen && !opts.two && /one person/i.test(whyTwo), { opts, whyTwo });
+  await page.locator('[data-layout-opt="split"]').click();
+  await page.getByTestId('vs-layout-preview').waitFor({ timeout: 10_000 });
+  ok('…choosing "split" shows it in the preview', (await page.getByTestId('vs-layout-preview').getAttribute('data-layout')) === 'split');
+  let D = await v('get', { projectId: pid });
+  ok('…and saves it on the Short', D.doc.clips.find(c => c.id === clip.id)?.layout === 'split');
+  const out1 = D.outputs.find(o => o.clipId === clip.id);
+  const r1 = await renderOut(pid, out1.id);
+  const f1 = await download(r1.o.downloadUrl, 'layout-split.mp4');
+  const p1 = probe(f1.file).streams.find(x => x.codec_type === 'video');
+  const below = facesAt(f1.file, 8, 'iw:ih/2:0:ih/2'), diff1 = halvesDiffer(f1.file, 8);
+  ok('the split Short renders at 1080×1920: the screen above, the camera — a face, big — below', p1.width === 1080 && p1.height === 1920 && below.length >= 1 && below[0].h > 0.25 && diff1 > 20, { w: p1.width, h: p1.height, below, diff1 });
+
+  /* Two people taking turns, one above the other. */
+  const T2 = await v('get', { projectId: TWO_PID });
+  const short2 = T2.doc.clips[T2.doc.clips.length - 1];
+  const e2 = await v('edit', { projectId: TWO_PID, baseVersion: T2.docVersion, ops: [
+    { op: 'clip.update', id: short2.id, patch: { layout: 'two' } },
+    { op: 'effects.set', target: 'short', effect: 'appearance', patch: { on: true, amount: 60 } },
+  ], note: 'two people, improved' });
+  ok('two people: the "both people" layout and Improve appearance (skin smoothed in the face boxes) are saved together', e2.success && e2.doc.clips.find(c => c.id === short2.id)?.layout === 'two' && e2.doc.effects?.short?.appearance?.on === true, e2.error);
+  const out2 = (await v('get', { projectId: TWO_PID })).outputs.find(o => o.clipId === short2.id);
+  const r2 = await renderOut(TWO_PID, out2.id);
+  const f2 = await download(r2.o.downloadUrl, 'layout-two.mp4');
+  const p2 = probe(f2.file).streams.find(x => x.codec_type === 'video');
+  const top = facesAt(f2.file, 5, 'iw:ih/2:0:0'), bottom = facesAt(f2.file, 5, 'iw:ih/2:0:ih/2'), diff2 = halvesDiffer(f2.file, 5);
+  ok('the two-person Short renders at 1080×1920 with a face in each half — the two halves differ', p2.width === 1080 && p2.height === 1920 && top.length >= 1 && bottom.length >= 1 && diff2 > 8, { w: p2.width, h: p2.height, top: top.length, bottom: bottom.length, diff2 });
+}
+
+/* ── Green screen: a real key ── */
+{
+  const GREEN = path.join(state, 'fixtures', 'green-screen.mp4');
+  if (!fs.existsSync(GREEN)) execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=0x00ff00:s=640x360:r=30:d=12', '-f', 'lavfi', '-i', 'testsrc2=s=240x240:r=30:d=12',
+    '-f', 'lavfi', '-i', 'sine=frequency=220:sample_rate=48000:duration=12', '-filter_complex', '[0:v][1:v]overlay=200:60:shortest=1[v]', '-map', '[v]', '-map', '2:a', '-t', '12',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', GREEN]);
+  const pid = await uploadProject('Green screen', 'Clean this recording', GREEN);
+  const R = await waitReady(pid, { T, A }, 'green', 600);
+  const longOut = R.outputs.find(o => o.kind === 'long');
+  await v('edit', { projectId: pid, baseVersion: R.docVersion, ops: [{ op: 'effects.set', target: 'long', effect: 'green', patch: { on: true, color: '#00ff00', similarity: 20, bg: '#ff00ff' } }], note: 'green screen' });
+  const { o } = await renderOut(pid, longOut.id);
+  const f = await download(o.downloadUrl, 'green.mp4');
+  const corner = meanRgb(f.file, 4, 'iw/8:ih/8:0:0'), middle = meanRgb(f.file, 4, 'iw/8:ih/8:iw*7/16:ih*7/16');
+  ok('green screen: the green is keyed out and the colour chosen is behind (magenta in the corner), the subject kept', corner[0] > 200 && corner[1] < 60 && corner[2] > 200 && !(middle[0] > 200 && middle[1] < 60 && middle[2] > 200), { corner, middle });
+}
+
 /* ── A phone ── */
 {
   const m = await br.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const mp = steady(await m.newPage());
   mp.on('pageerror', e => errs.push(`phone: ${e}`));
   await signIn(mp, OWNER);
-  for (const url of [`/video-studio`, `/video-studio/${PID}`, `/video-studio/${PID}?tab=shorts`, `/video-studio/${PID}?tab=exports`, `/video-studio/${PID}?tab=music`, `/video-studio?new=1`, `/video-studio?tab=quick-shorts`, `/video-studio?tab=repurpose`]) {
+  for (const url of [`/video-studio`, `/video-studio/${PID}`, `/video-studio/${PID}?tab=shorts`, `/video-studio/${PID}?tab=exports`, `/video-studio/${PID}?tab=music`, `/video-studio/${PID}?tab=effects`, `/video-studio/${PID}?tab=transcript`, `/video-studio/${PID}?tab=cleanup`, `/video-studio?new=1`, `/video-studio?tab=quick-shorts`, `/video-studio?tab=repurpose`]) {
     await mp.goto(`${B}${url}`, { waitUntil: 'networkidle' });
     await mp.waitForTimeout(1200);
     const over = await mp.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

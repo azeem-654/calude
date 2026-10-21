@@ -139,7 +139,7 @@ are checked before any work.
 | Transcription | Workers AI Whisper large-v3-turbo | adapter interface in `lib/video/transcribe.ts` (OpenAI-compatible, AssemblyAI for speakers) |
 | Analysis / metadata | the operator's Gemini pool | — |
 | Speaker labels | **not available** with Whisper — shown as "needs a provider" | AssemblyAI / Deepgram (diarisation) |
-| Eye contact | **not available** — "Provider setup required" | NVIDIA Maxine (needs GPU host + licence), Sieve |
+| Eye contact | **not available** — "Provider setup required" (researched 2026-10, §15) | NVIDIA Maxine (gRPC only — no HTTP route for the Worker), Sieve (API no longer documented) |
 | Background removal for portraits | **not available** in Phase 1 | a segmentation model on Workers AI or a provider |
 | Music | customer's own upload (Phase 2) | licensed library integrations |
 | Publishing | **none** — "Ready to publish manually" | official APIs (YouTube Data, TikTok Content Posting, Meta Graph) |
@@ -566,3 +566,51 @@ upload instead, too long, over the month's minutes, a fetch prepared and
 metered like an upload, every layout a checked PNG, the designer preview,
 the round trip through the Graphics Designer & Editor, a forged PNG and a
 foreign key refused).
+
+## 15. Editing like Descript: gapless preview, text-based editing, Studio Sound, effects, Shorts layouts (2026-10-21)
+
+The owner's reference is Descript: the transcript as the editor, a player
+that plays through every cut with flow, and a property panel of effects,
+each a row with a switch and its settings.
+
+### What works now
+
+| Feature | Status | Where |
+|---|---|---|
+| Preview plays through cuts without stalling | Working — measured in the e2e: 40 s across 11+ cuts, 0 `waiting` (the old player: 10 in 11) | `deck.ts`, `Player.tsx` |
+| Text-based editing: select words (drag, shift-click, Shift+arrows), Delete cuts them (struck through in red, kept on the page), R restores, a text cursor that moves the playhead and follows playback, Ctrl/⌘+Z/Y | Working | `TranscriptEditor.tsx` (same `Op`s as every other panel) |
+| Pauses, fillers and retakes inline in the transcript as chips (accept / ignore / put back) | Working | `TranscriptEditor.tsx` |
+| Speaker labels in colour | Shown when a transcript has speakers — Whisper does not, so not yet | — |
+| Timeline: cuts shaded pink on the filmstrip, the waveform faded under them | Working | `Timeline.tsx` |
+| Filler words by kind (um/uh, "like", "you know", "I mean", "sort of / kind of", "basically / actually / literally", "right?", "so / and" + pause) with context rules, ticked in an options panel with counts and a preview of each | Working; only um/uh standing alone start applied | `cleanup.ts findFillers` |
+| Retakes: the best take kept, saying why (complete, no false start, louder, livelier, fewer fillers, brisker) | Working — proposed, never applied without you | `cleanup.ts proposeRetakes` |
+| Shorten word gaps to a chosen length | Working (where the sound is quiet) | `doc.cleanup.maxPause` |
+| Studio Sound: high-pass, RNNoise speech denoising, de-esser, presence EQ, compression, two-pass loudness to −16 LUFS; strength 0–100 | Working in the render — measured in the e2e (noise floor down, speech-to-noise +8 dB or more with RNNoise, −16 ±1 LUFS) | engine `voiceChain`, `measureLoudness` |
+| Lower audio of other layers (music ducked under speech) | Working | `music.duck`, sidechaincompress |
+| Color adjustments: exposure, contrast, highlights, shadows, saturation, temperature in kelvin | Working; the preview is close (CSS) | engine `colorFilters` |
+| Shadow (X, Y, blur, colour, opacity) | Working where the picture sits in a frame (whole-picture framing, the picture-in-picture bubble) | engine `shadowUnder` |
+| Green screen: a real chroma key with despill and a colour behind | Working — only for footage shot on a green or blue screen; preview shows the footage as recorded | engine `greenFilter` |
+| Improve appearance: mild denoise, gentle auto levels, light sharpen, skin smoothed inside the tracked face box only | Working; skin smoothing needs faces found | engine `appearanceFilters`, `skinFilter` |
+| Shorts layouts: speaker (tracked), screen only, split screen + camera, both people top and bottom, picture-in-picture — offered only where the face track supports them, with the reason otherwise; live preview | Working — e2e renders split and two-person Shorts at 1080×1920 and finds the faces in the halves | `layouts.ts`, engine `layoutFrame` |
+| Eye contact | Unavailable — see below | — |
+| Picture behind a green screen (instead of a colour) | Not built | — |
+| Scenes / layout per section, export presets | Not built | — |
+
+### Eye contact, researched
+
+FFmpeg cannot redirect a gaze. NVIDIA Maxine Eye Contact (NIM, hosted on
+NVCF) is documented only as a **gRPC** service (`grpc.nvcf.nvidia.com:443`,
+streamed file chunks) — there is no HTTP route a Worker can call, and every
+third-party call here is made from the Worker. Sieve announced an
+eye-contact API in 2024 (10¢ a minute), but its documentation is no longer
+published (the docs host does not resolve; the blog post is gone), so there
+is no contract to build and test an adapter against. It stays on the gaps
+list as "Provider setup required" and the assistant says so; nothing fakes it.
+
+### Unverified
+
+The engine image cannot be built here. The Dockerfile now downloads the
+RNNoise model pinned by commit and SHA-256; Debian bookworm's FFmpeg 5.1 has
+`arnndn`, `deesser`, `chromakey`, `despill`, `bilateral`, `normalize` and
+`hqdn3d`, but the image itself is untested. Everything else ran against the
+real engine with FFmpeg 6.1.
