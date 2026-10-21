@@ -179,7 +179,7 @@ async function projectView(env: Env, origin: string, p: ProjectRow, opts: { ligh
     source: {
       name: src.name ?? '', bytes: src.bytes ?? 0, probe: src.probe ?? null,
       youtube: src.youtube ? { id: src.youtube.id, url: src.youtube.url, title: src.youtube.title, channel: src.youtube.channel, thumb: youtubeThumb(src.youtube.id), fetched: !!src.key } : null,
-      proxyUrl: src.proxy ? await fileUrl(env, origin, p.account_id, src.proxy, 4 * 3600) : '',
+      proxyUrl: src.proxy ? await fileUrl(env, origin, p.account_id, src.proxy, 4 * 3600, '', true) : '',
       track: src.track ? { ready: !!src.track.key, summary: src.track.summary ?? null, error: src.track.error ?? '', at: src.track.at } : null,
       trackUrl: src.track?.key && sendDoc ? await fileUrl(env, origin, p.account_id, src.track.key, 4 * 3600) : '',
       posterUrl: src.poster ? await fileUrl(env, origin, p.account_id, src.poster, 4 * 3600) : '',

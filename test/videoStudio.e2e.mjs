@@ -31,6 +31,7 @@ import pw from '/opt/node22/lib/node_modules/playwright/index.js';
 import { execSync, execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { makeRecording, makeTwoFaces, startWhisperMock, startGeminiMock, startOpenverseMock } from './videoStudioMock.mjs';
 
 const PORT = 8953, INSPECT = 9353, ENG = 8873, WH = 8874, GM = 8875, OV = 8876;
@@ -305,22 +306,36 @@ ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and 
   S = await v('get', { projectId: PID });
   const again = await v('status', { projectId: PID, knownVersion: -1 });
   ok('the proxy\'s link is the same from one poll to the next (it used to change every few seconds and restart the player)', S.source.proxyUrl === again.source.proxyUrl);
-  /* This Chromium cannot decode H.264, so the player is handed the first two
-     minutes of the same proxy as VP9 — same clock, same cuts. */
+  /* This Chromium cannot decode H.264, so the proxy's bytes in R2 are
+     replaced by the first two minutes of the same proxy as VP9 — same clock,
+     same cuts — written the way the engine writes an output (a signed `put`
+     link). The browser then reads it through the real Worker, with its
+     range answers, exactly as in production; the old check served it from
+     the test itself and so could never see the Worker's part in a stop. */
   const proxyFile = (await download(S.source.proxyUrl, 'proxy.mp4')).file;
-  const webm = path.join(state, 'proxy-head.webm');
-  if (!fs.existsSync(webm)) execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', proxyFile, '-t', '120', '-vf', 'scale=320:-2', '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '200k', '-c:a', 'libopus', '-b:a', '48k', webm]);
-  const body = fs.readFileSync(webm);
+  const webm = path.join(state, 'proxy-head-v2.webm');
+  if (!fs.existsSync(webm)) execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', proxyFile, '-t', '120', '-vf', 'scale=480:-2', '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '1200k', '-g', '30', '-c:a', 'libopus', '-b:a', '64k', webm]);
+  const proxyKey = JSON.parse(Buffer.from(new URL(S.source.proxyUrl).searchParams.get('t').split('.')[0], 'base64url').toString()).k;
+  const secret = JSON.parse(execSync(`npx wrangler d1 execute crmpro --local --persist-to ${persist} --json --command ${JSON.stringify("SELECT v FROM crm_meta WHERE k = 'video_url'")}`, { env: { ...process.env, CI: '1' } }).toString())[0].results[0].v;
+  const putLink = prefix => {
+    const body = Buffer.from(JSON.stringify({ a: proxyKey.split('/')[1], k: prefix, m: 'put', x: Math.ceil(Date.now() / 3_600_000 + 2) * 3600 })).toString('base64url');
+    return `${B}/api/video-file.php?t=${body}.${crypto.createHmac('sha256', Buffer.from(secret, 'hex')).update(body).digest('base64url').slice(0, 43)}`;
+  };
+  /* As the engine does: one PUT up to 16 MB, R2 multipart above. */
+  const putProxy = async (buf, type) => {
+    const u = `${putLink(proxyKey.slice(0, proxyKey.lastIndexOf('/') + 1))}&name=${proxyKey.slice(proxyKey.lastIndexOf('/') + 1)}&type=${encodeURIComponent(type)}`;
+    const PART = 16 * 1024 * 1024;
+    if (buf.length <= PART) return (await fetch(u, { method: 'PUT', body: buf, headers: { Connection: 'close' } })).ok;
+    const { uploadId } = await (await fetch(`${u}&op=mpu-start`, { method: 'POST' })).json();
+    const parts = [];
+    for (let n = 1, off = 0; off < buf.length; n++, off += PART) parts.push({ partNumber: n, etag: (await (await fetch(`${u}&op=mpu-part&uploadId=${encodeURIComponent(uploadId)}&part=${n}`, { method: 'PUT', body: buf.subarray(off, off + PART) })).json()).etag });
+    return (await fetch(`${u}&op=mpu-complete&uploadId=${encodeURIComponent(uploadId)}`, { method: 'POST', body: JSON.stringify({ parts }) })).ok;
+  };
+  ok('(the proxy in R2 is now the same picture as VP9, written through the Worker like an engine output)', await putProxy(fs.readFileSync(webm), 'video/webm'));
   const src0 = await page.getByTestId('vs-video').getAttribute('data-src');
-  /* The proxy, by its key — the same signed address after a reload within the hour, but matched by what it names. */
-  const isProxy = u => { try { const t = new URL(u).searchParams.get('t'); return !!t && JSON.parse(Buffer.from(t.split('.')[0].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString()).k?.endsWith('/proxy.mp4'); } catch { return false; } };
-  await page.route(u => u.href.startsWith(`${B}/api/video-file.php`) && isProxy(u.href), async route => {
-    const range = route.request().headers().range;
-    const m = range && /bytes=(\d+)-(\d*)/.exec(range);
-    if (!m) return route.fulfill({ status: 200, body, headers: { 'content-type': 'video/webm', 'accept-ranges': 'bytes', 'content-length': String(body.length) } });
-    const a = Number(m[1]), b = m[2] ? Math.min(Number(m[2]), body.length - 1) : body.length - 1;
-    return route.fulfill({ status: 206, body: body.subarray(a, b + 1), headers: { 'content-type': 'video/webm', 'accept-ranges': 'bytes', 'content-range': `bytes ${a}-${b}/${body.length}`, 'content-length': String(b - a + 1) } });
-  });
+  /* What the Worker answered for the proxy while it played. */
+  const answers = [];
+  page.on('response', r => { if (r.url() === src0 && r.request().headers().range) answers.push({ status: r.status(), range: r.headers()['content-range'] ?? '' }); });
   /* A cleaned recording has a cut every few seconds. Twenty more — the
      second word of every sentence in the first minute and a half — so the
      preview has to cross well over ten cuts while it is watched. */
@@ -360,13 +375,20 @@ ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and 
      forty seconds: 11 cuts, 10 `waiting` events — a stall at nearly every cut. */
   console.log(`  (player: ${crossed} cuts crossed in ${(last.t - samples[0].t).toFixed(1)} s of source, ${meter.frames.length} frames, ${meter.waiting} waiting, gaps over 100 ms: ${gaps.filter(g => g > 100).length}, longest ${Math.round(Math.max(0, ...gaps))} ms, swaps ${meter.swaps}, held for a standby ${meter.waits})`);
   ok('the preview plays on for forty seconds — through many polls — without stopping', !last.paused && last.t > 35 && samples.every(x => x.src === src0), { t: last.t, paused: last.paused, srcs: new Set(samples.map(x => x.src)).size });
+  /* The owner's report: "plays three or four seconds and stops". Every quarter
+     second of the forty, the picture's clock has moved on — not one stop. */
+  const still = samples.slice(4).map((x, i) => [i + 4, x.t - samples[i + 3].t]).filter(([, d]) => d < 0.05);
+  ok('…its clock moves on in every quarter second of the forty (never a stop, never a freeze)', still.length === 0, still.slice(0, 6));
+  const capped = answers.filter(a => a.status === 206 && /^bytes \d+-\d+\/\d+$/.test(a.range));
+  const sizes = capped.map(a => { const [, x, y] = /bytes (\d+)-(\d+)/.exec(a.range); return Number(y) - Number(x) + 1; });
+  ok('…read through the real Worker in short range answers (206, at most 4 MB each, never the whole file held open)', capped.length >= 2 && sizes.every(n => n <= 4 * 1024 * 1024) && answers.every(a => a.status === 206), answers.slice(0, 8));
   ok('…crossing more than ten cuts', crossed >= 10, crossed);
   ok('…without a stall: the picture never waits for data and no two frames are more than 250 ms apart', meter.waiting === 0 && long.length === 0 && meter.frames.length > 400, { waiting: meter.waiting, long: long.map(Math.round).slice(0, 8), frames: meter.frames.length });
   ok('…and never shows what was cut (the opening silence, the fillers, the twenty words)', inCut.length === 0 && samples[2].t > 2, { inCut: inCut.slice(0, 3), first: samples.slice(0, 3) });
   const label = await page.getByTestId('vs-time').innerText();
   ok('…with the edited video\'s clock on the controls', /^\d+:\d\d \/ \d+:\d\d$/.test(label.trim()), label);
   await page.getByTestId('vs-play').click();
-  await page.unroute(u => u.href.startsWith(`${B}/api/video-file.php`) && isProxy(u.href));
+  ok('(the proxy is put back as it was)', await putProxy(fs.readFileSync(proxyFile), 'video/mp4'));
   await v('goto_version', { projectId: PID, version: base0.docVersion });
   await page.reload({ waitUntil: 'networkidle' });
 }

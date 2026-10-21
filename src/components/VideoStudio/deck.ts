@@ -28,6 +28,28 @@
  * cuts) cannot be ready in time; then the playing element holds its last
  * frame until the standby is ready — a wait, counted in `stats` — rather
  * than showing what was cut.
+ *
+ * ── Why it never stops on its own ──
+ *
+ * The preview used to play a stretch or two and stop for good in some
+ * browsers. Each way that happened is now caught here:
+ *
+ *  - **The standby was never allowed to play.** Safari (and any browser
+ *    without sticky activation) lets an element play with sound only if
+ *    `play()` was first called on *it* inside a user gesture. The first
+ *    press of Play now calls it on both elements (`unlock`); a standby whose
+ *    `play()` is still refused hands over to seeking the element that is
+ *    allowed (`single`), which stalls a little at each cut but plays on.
+ *  - **The standby never finished seeking** (a range request that failed
+ *    or was cut off). A hold lasts at most `HOLD_MS`; then the element on
+ *    screen seeks to the next stretch itself.
+ *  - **An element errored or was paused under us.** The loop resumes a
+ *    playing element the browser paused, and nudges one that has not moved
+ *    for `STUCK_MS` (a re-seek re-requests its data); an errored standby is
+ *    reloaded by the player and re-planned on `loadedmetadata`.
+ *  - **Every poll re-planned the standby.** `setKeeps` with the same
+ *    stretches is now a no-op, so a poll's new (but equal) edit no longer
+ *    re-seeks the standby while it is about to be needed.
  */
 export type Range = [number, number];
 
@@ -35,8 +57,12 @@ type VFC = (now: number, meta: { mediaTime: number }) => void;
 type WithVfc = HTMLVideoElement & { requestVideoFrameCallback?: (cb: VFC) => number; cancelVideoFrameCallback?: (h: number) => void };
 
 const FRAME = 1 / 30;
+/** Longest the picture waits for a standby before the playing element seeks itself. */
+const HOLD_MS = 900;
+/** A playing element whose clock has not moved this long is nudged. */
+const STUCK_MS = 2500;
 
-export interface DeckStats { swaps: number; waits: number; stalls: number }
+export interface DeckStats { swaps: number; waits: number; stalls: number; fallbacks: number; nudges: number }
 
 export class Deck extends EventTarget {
   private els: [WithVfc, WithVfc];
@@ -56,8 +82,17 @@ export class Deck extends EventTarget {
   private vfcEl: WithVfc | null = null;
   private timer = 0;
   private dead = false;
-  readonly stats: DeckStats = { swaps: 0, waits: 0, stalls: 0 };
+  readonly stats: DeckStats = { swaps: 0, waits: 0, stalls: 0, fallbacks: 0, nudges: 0 };
   private offs: (() => void)[] = [];
+  /** Which elements have had `play()` inside a user gesture (Safari's rule for sound). */
+  private unlocked = [false, false];
+  /** The standby cannot be played (refused by the browser): cuts are crossed by seeking the one on screen. */
+  private single = false;
+  private holdTimer = 0;
+  /** Where the playing element's clock was, and when it last moved (the stall watchdog). */
+  private lastT = -1;
+  private lastMoved = 0;
+  private pausedSince = 0;
 
   private onFrame: (t: number) => void;
 
@@ -71,7 +106,7 @@ export class Deck extends EventTarget {
       const seeked = () => this.seeked(i);
       const waiting = () => { if (i === this.on && this.want && !this.holding) this.stats.stalls++; };
       const ended = () => { if (i === this.on && this.want) this.finish(); };
-      const meta = () => { el.playbackRate = this.rate; if (i !== this.on) { this.prep = -1; this.plan(); } };
+      const meta = () => { el.playbackRate = this.rate; if (i !== this.on) { this.prep = -1; this.ready = false; this.plan(); } };
       el.addEventListener('seeked', seeked);
       el.addEventListener('waiting', waiting);
       el.addEventListener('ended', ended);
@@ -88,12 +123,15 @@ export class Deck extends EventTarget {
   destroy() {
     this.dead = true;
     this.stopLoop();
+    clearTimeout(this.holdTimer);
     for (const off of this.offs) off();
     for (const el of this.els) el.pause();
   }
 
   /** The edit changed: find where the playing element is in the new stretches and get the next one ready. */
   setKeeps(keeps: Range[]) {
+    /* A poll hands over an equal edit as a new array; re-planning on it re-seeked the standby just before it was needed. */
+    if (keeps.length === this.keeps.length && keeps.every((r, i) => r[0] === this.keeps[i][0] && r[1] === this.keeps[i][1])) { this.keeps = keeps; return; }
     this.keeps = keeps;
     this.k = this.find(this.time);
     this.prep = -1;
@@ -126,7 +164,10 @@ export class Deck extends EventTarget {
     this.want = true;
     this.active.muted = this.mute;
     this.active.playbackRate = this.rate;
-    void this.active.play().catch(() => { this.want = false; this.dispatchEvent(new Event('pause')); });
+    this.unlocked[this.on] = true;
+    const el = this.active;
+    void el.play().catch(() => { if (el === this.active && this.want) { this.want = false; this.stopLoop(); this.dispatchEvent(new Event('pause')); } });
+    this.unlock();
     this.plan();
     this.startLoop();
     this.dispatchEvent(new Event('play'));
@@ -135,6 +176,7 @@ export class Deck extends EventTarget {
   pause() {
     this.want = false;
     this.holding = false;
+    clearTimeout(this.holdTimer);
     this.stopLoop();
     for (const el of this.els) el.pause();
     this.emitFrame();
@@ -154,6 +196,7 @@ export class Deck extends EventTarget {
     }
     this.k = k;
     this.holding = false;
+    clearTimeout(this.holdTimer);
     /* If the standby already holds exactly this moment (a seek to the next
        stretch's start), show it instead of seeking the one on screen. */
     if (this.prep === k && this.ready && Math.abs(this.standby.currentTime - t) < 0.02) this.flip();
@@ -174,8 +217,22 @@ export class Deck extends EventTarget {
     this.els.forEach((el, i) => { el.classList.toggle('on', i === this.on); el.setAttribute('aria-hidden', i === this.on ? 'false' : 'true'); });
   }
 
+  /**
+   * Inside the press of Play: let the standby play later too. `play()` then
+   * `pause()` in the same task never shows or sounds a frame, but it is the
+   * user gesture Safari wants on each element before it plays with sound.
+   */
+  private unlock() {
+    const i = 1 - this.on, s = this.els[i];
+    if (this.unlocked[i]) return;
+    this.unlocked[i] = true;
+    const was = s.muted;
+    try { const p = s.play(); s.pause(); s.muted = was; void p?.catch(() => {}); } catch { /* an element with no source yet */ }
+  }
+
   /** Seek the standby to the start of the stretch after the playing one. */
   private plan() {
+    if (this.single) return;
     const want = this.k + 1;
     if (want < 1 || want >= this.keeps.length) return;
     if (this.prep === want) return;
@@ -205,16 +262,38 @@ export class Deck extends EventTarget {
     clearTimeout(this.timer); this.timer = 0;
     const next = this.k + 1;
     if (next >= this.keeps.length) { this.finish(); return; }
+    if (this.single) { this.jump(next); return; }
     if (this.prep !== next) this.plan();
     if (!this.ready) {
-      /* Not decoded yet: hold the last kept frame rather than show the cut. */
-      if (!this.holding) { this.holding = true; this.stats.waits++; this.tell(); this.active.pause(); }
+      /* Not decoded yet: hold the last kept frame rather than show the cut —
+         but never for long: a standby that cannot get there (its range
+         request failed) must not stop the preview. */
+      if (!this.holding) {
+        this.holding = true; this.stats.waits++; this.tell(); this.active.pause();
+        clearTimeout(this.holdTimer);
+        this.holdTimer = window.setTimeout(() => { if (this.holding && this.want && !this.dead) { this.holding = false; this.stats.fallbacks++; this.jump(this.k + 1); } }, HOLD_MS);
+      }
       return;
     }
+    clearTimeout(this.holdTimer);
+    this.holding = false;
     const old = this.active, s = this.standby;
     s.playbackRate = this.rate;
     s.muted = this.mute;
-    if (this.want) void s.play().catch(() => {});
+    if (this.want) {
+      void s.play().catch((e: unknown) => {
+        /* The browser will not let the standby play (no user gesture on it):
+           from here on, cuts are crossed by seeking the element it allows. */
+        if ((e as { name?: string })?.name !== 'NotAllowedError' || this.dead || !this.want || s !== this.active) return;
+        this.single = true; this.stats.fallbacks++;
+        const at = s.currentTime;
+        this.on = 1 - this.on; this.show();
+        s.muted = true; s.pause();
+        this.active.currentTime = at;
+        this.active.muted = this.mute;
+        void this.active.play().catch(() => { this.pause(); });
+      });
+    }
     this.on = 1 - this.on;
     this.show();
     old.muted = true;
@@ -222,6 +301,20 @@ export class Deck extends EventTarget {
     this.k = next;
     this.prep = -1;
     this.stats.swaps++; this.tell();
+    this.plan();
+    if (this.want) this.armVfc();
+  }
+
+  /** Cross a cut on the element on screen (the fallback: a seek, which may stall briefly, but plays on). */
+  private jump(next: number) {
+    if (next >= this.keeps.length) { this.finish(); return; }
+    const el = this.active;
+    el.currentTime = this.keeps[next][0];
+    this.k = next;
+    this.prep = -1;
+    this.lastMoved = performance.now();
+    if (this.want) { el.muted = this.mute; void el.play().catch(() => {}); }
+    this.tell();
     this.plan();
     if (this.want) this.armVfc();
   }
@@ -249,13 +342,34 @@ export class Deck extends EventTarget {
   private emitFrame() { this.onFrame(this.time); }
 
   /** What the deck did, on its wrapper — read by the end-to-end test, and handy in devtools. */
-  private tell() { const p = this.active.parentElement; if (p) { p.dataset.swaps = String(this.stats.swaps); p.dataset.waits = String(this.stats.waits); } }
+  private tell() { const p = this.active.parentElement; if (p) { p.dataset.swaps = String(this.stats.swaps); p.dataset.waits = String(this.stats.waits); p.dataset.fallbacks = String(this.stats.fallbacks); p.dataset.nudges = String(this.stats.nudges); } }
+
+  /**
+   * The watchdog, every animation frame while playing: an element the
+   * browser paused under us is resumed; one whose clock has not moved for
+   * STUCK_MS is re-seeked where it is, which asks for its data again.
+   */
+  private guard(t: number) {
+    const el = this.active, now = performance.now();
+    if (this.holding) { this.lastMoved = now; this.pausedSince = 0; return; }
+    if (el.paused && !el.ended) {
+      if (!this.pausedSince) this.pausedSince = now;
+      else if (now - this.pausedSince > 400) { this.pausedSince = now; el.muted = this.mute; void el.play().catch(() => {}); }
+    } else this.pausedSince = 0;
+    if (Math.abs(t - this.lastT) > 0.001) { this.lastT = t; this.lastMoved = now; return; }
+    if (now - this.lastMoved > STUCK_MS) {
+      this.lastMoved = now; this.stats.nudges++; this.tell();
+      if (!el.seeking) el.currentTime = t + 0.001;
+    }
+  }
 
   private startLoop() {
     this.stopLoop();
+    this.lastT = -1; this.lastMoved = performance.now(); this.pausedSince = 0;
     const tick = () => {
       if (!this.want || this.dead) return;
       const t = this.time;
+      this.guard(t);
       const cur = this.keeps[this.k];
       if (!cur || t < cur[0] - 0.25 || t > cur[1] + 0.25) this.k = this.find(t);
       const end = this.keeps[this.k]?.[1];

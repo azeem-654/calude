@@ -118,7 +118,12 @@ export default function Player({ ctx }: { ctx: EditorCtx }) {
   const video = useHeldSrc(view.source.proxyUrl);
   const music = useHeldSrc(view.musicUrl);
 
-  const keeps = useMemo(() => keepRanges(duration, doc, clip ? [clip.s, clip.e] : undefined), [duration, doc, clip]);
+  /* Kept by value: every poll hands over the same edit as a new object, and a
+     new `keeps` each time re-ran the music and re-planned the deck mid-play. */
+  const keepsNow = useMemo(() => keepRanges(duration, doc, clip ? [clip.s, clip.e] : undefined), [duration, doc, clip]);
+  const keepsKey = keepsNow.map(([a, b]) => `${a},${b}`).join(';');
+  const keeps = useMemo(() => keepsNow, [keepsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const errors = useRef(0);
   const kind = clip ? 'short' as const : 'long' as const;
   const look = lookOf(doc, kind), motion = motionOf(doc, kind);
   /* A Short laid out as "speaker" follows the speaker, as its render will. */
@@ -309,10 +314,22 @@ export default function Player({ ctx }: { ctx: EditorCtx }) {
             {[aRef, bRef].map((r, i) => (
               <video key={i} ref={r} src={video.src || undefined} poster={view.source.posterUrl || undefined} playsInline preload="auto"
                 style={{ objectFit: fit || aspect === 'source' ? 'contain' : 'cover', objectPosition: cropping ? objPos(reframe.x, reframe.y) : 'center' }}
-                onError={() => { const d = deck.current; resume.current = { at: d?.time ?? 0, play: !!d?.playing }; video.fail(); void ctx.refresh(); }}
+                onError={e => {
+                  /* An expired link gets the newest one; a link that is still
+                     good (a range request cut off) is loaded again — an
+                     element left in its error state never plays or seeks, so
+                     the deck waited on it for ever. A few tries, then the
+                     error stands. */
+                  const el = e.currentTarget, d = deck.current;
+                  if (d && el === d.active) resume.current = { at: d.time, play: d.playing };
+                  video.fail();
+                  if (errors.current++ > 6) return;
+                  void ctx.refresh().then(() => setTimeout(() => { if (el.error) el.load(); }, 400));
+                }}
                 onLoadedMetadata={e => {
                   const d = deck.current, r0 = resume.current;
                   if (d && r0 && e.currentTarget === d.active) { resume.current = null; d.seek(r0.at); if (r0.play) d.play(); }
+                  if (d && e.currentTarget === d.active) errors.current = 0;
                 }} />
             ))}
           </div>

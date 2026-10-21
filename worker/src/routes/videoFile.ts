@@ -32,6 +32,8 @@ import { listenTo } from '../lib/video/music';
 const OUT_TYPES = new Set(['video/mp4', 'video/webm', 'video/x-matroska', 'audio/mpeg', 'audio/mp4', 'audio/ogg', 'audio/wav', 'audio/flac', 'image/png', 'image/jpeg', 'application/json', 'text/plain', 'text/vtt']);
 const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
 const MAX_PART = 16 * 1024 * 1024;
+/** The most one range answer carries (the reading section says why). */
+const RANGE_CAP = 4 * 1024 * 1024;
 
 /* The container sniff lives in store.ts, shared with a fetch from YouTube. */
 export { looksLikeVideo };
@@ -63,7 +65,31 @@ export async function handleVideoFile(req: Request, env: Env, ctx: ExecutionCont
   /* ── Reading ── */
   if (g.m === 'get') {
     if (req.method !== 'GET' && req.method !== 'HEAD') return json({ success: false, error: 'GET only' }, 405);
-    const obj = await env.VIDEO.get(g.k, { range: req.headers, onlyIf: req.headers });
+    /* An open range ("bytes=N-", what every video element asks for) is
+       answered with at most RANGE_CAP bytes, and the player asks again as it
+       needs more. Answered whole, each element held a stream of the rest of a
+       several-hundred-MB proxy open through the Worker; the preview's two
+       elements (and every seek) left several such streams parked, and the
+       picture stopped after a few seconds once the connection's flow
+       control filled. Short answers are what range requests allow (206
+       with the real Content-Range) and every browser follows them. */
+    const asked = /^bytes=(\d+)-(\d*)$/.exec(req.headers.get('range') ?? '');
+    let range: R2Range | Headers = req.headers;
+    /* Only on a link made for the editor's player (`c`) — a browser asks for
+       "bytes=N-" or "bytes=N-<end of file>" and follows a shorter answer;
+       FFmpeg reading a link would take a short answer for the end of the
+       file, and the engine reads the source in exact 16 MB pieces. */
+    if (asked && g.c) {
+      const from = Number(asked[1]);
+      const to = asked[2] ? Number(asked[2]) : Infinity;
+      if (to - from + 1 > RANGE_CAP) {
+        const head = await env.VIDEO.head(g.k);
+        if (!head) return new Response('Not found', { status: 404 });
+        if (from >= head.size) return new Response(null, { status: 416, headers: { 'content-range': `bytes */${head.size}` } });
+        range = { offset: from, length: Math.min(RANGE_CAP, head.size - from, to - from + 1) };
+      }
+    }
+    const obj = await env.VIDEO.get(g.k, { range, onlyIf: req.headers });
     if (!obj) return new Response('Not found', { status: 404 });
     const headers = new Headers();
     obj.writeHttpMetadata(headers);

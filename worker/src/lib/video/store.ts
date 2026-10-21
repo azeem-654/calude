@@ -34,6 +34,8 @@ export interface Grant {
   d?: string;
   /** Project (poke). */
   p?: string;
+  /** Open ranges answered in short pieces (the editor's player only — see videoFile.ts). */
+  c?: 1;
 }
 
 const enc = new TextEncoder();
@@ -102,8 +104,8 @@ const safe = (s: string) => s.replace(/[^A-Za-z0-9_-]/g, '');
 export const projectPrefix = (accountId: string, projectId: string) => `v/${safe(accountId)}/${safe(projectId)}/`;
 export const workspacePrefix = (accountId: string) => `v/${safe(accountId)}/`;
 
-export async function fileUrl(env: Env, origin: string, accountId: string, key: string, seconds = 7200, download = ''): Promise<string> {
-  const t = await sign(env, { a: safe(accountId), k: key, m: 'get', ...(download ? { d: download.replace(/[^\w. -]/g, '').slice(0, 80) } : {}) }, seconds);
+export async function fileUrl(env: Env, origin: string, accountId: string, key: string, seconds = 7200, download = '', player = false): Promise<string> {
+  const t = await sign(env, { a: safe(accountId), k: key, m: 'get', ...(download ? { d: download.replace(/[^\w. -]/g, '').slice(0, 80) } : {}), ...(player ? { c: 1 as const } : {}) }, seconds);
   return `${origin}/api/video-file.php?t=${t}`;
 }
 
