@@ -178,6 +178,8 @@ const askFor = async (page, line) => {
   if (!(await page.getByLabel('Who to look for').count())) await page.getByRole('button', { name: 'Start a new search' }).first().click();
   await page.getByLabel('Who to look for').fill(line);
   await page.keyboard.press('Enter');
+  /* Results open on "With email"; these walks tick rows of every kind. */
+  await page.locator('button[aria-pressed]', { hasText: /^All$/ }).first().click({ timeout: 30_000 }).catch(() => {});
 };
 /* On the results screen the searches and lists are a drawer. */
 const openDrawer = async page => {
@@ -283,6 +285,8 @@ let listId = '';
     /saved search, found/.test(reopened) && /\b6[03] found/.test(reopened) && !asked.some(a => a === 'search' || a === 'contacts' || a === 'verify')
     && await page.getByRole('button', { name: 'Search again, live' }).count() === 1, `${asked.join(',')} ${reopened.slice(0, 400)}`);
   await page.getByRole('button', { name: 'Close the panel' }).first().click().catch(() => {});
+  /* A reopened search also opens on "With email"; the rest of this walk needs every row. */
+  await page.locator('button[aria-pressed]', { hasText: /^All$/ }).first().click();
   ok('the results screen: progress done, the five figures, the rail',
     /100%/.test(await page.getByRole('region', { name: 'Progress' }).innerText()) && /Fetched live at|Saved search · found/.test(await page.getByRole('region', { name: 'Progress' }).innerText())
     && /63\s*Businesses found/.test(await page.innerText('body')) && /What was searched/.test(await page.innerText('body')) && /Business type breakdown/.test(await page.innerText('body')),
@@ -430,6 +434,7 @@ for (const width of [390, 1280]) {
     await page.getByRole('button', { name: /dentists in Leeds/ }).first().click();
     await page.locator('table').getByText('Leeds Dental 1', { exact: true }).first().waitFor({ timeout: 15_000 });
     ok('@390: a search from history runs and its results fit the phone', (await overflow(page)) <= 0, String(await overflow(page)));
+    await page.locator('button[aria-pressed]', { hasText: /^All$/ }).first().click();
     await page.getByRole('checkbox', { name: 'Tick Leeds Dental 8', exact: true }).check();
     ok('@390: the import controls are on screen', await page.getByRole('button', { name: /Add 1 to a new list/ }).isVisible());
     await page.locator('table').getByText('Leeds Dental 1', { exact: true }).first().scrollIntoViewIfNeeded();
