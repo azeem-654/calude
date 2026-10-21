@@ -308,28 +308,65 @@ ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and 
   if (!fs.existsSync(webm)) execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', proxyFile, '-t', '120', '-vf', 'scale=320:-2', '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '200k', '-c:a', 'libopus', '-b:a', '48k', webm]);
   const body = fs.readFileSync(webm);
   const src0 = await page.getByTestId('vs-video').getAttribute('data-src');
-  await page.route(u => u.href === src0, async route => {
+  /* The proxy, by its key — the same signed address after a reload within the hour, but matched by what it names. */
+  const isProxy = u => { try { const t = new URL(u).searchParams.get('t'); return !!t && JSON.parse(Buffer.from(t.split('.')[0].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString()).k?.endsWith('/proxy.mp4'); } catch { return false; } };
+  await page.route(u => u.href.startsWith(`${B}/api/video-file.php`) && isProxy(u.href), async route => {
     const range = route.request().headers().range;
     const m = range && /bytes=(\d+)-(\d*)/.exec(range);
     if (!m) return route.fulfill({ status: 200, body, headers: { 'content-type': 'video/webm', 'accept-ranges': 'bytes', 'content-length': String(body.length) } });
     const a = Number(m[1]), b = m[2] ? Math.min(Number(m[2]), body.length - 1) : body.length - 1;
     return route.fulfill({ status: 206, body: body.subarray(a, b + 1), headers: { 'content-type': 'video/webm', 'accept-ranges': 'bytes', 'content-range': `bytes ${a}-${b}/${body.length}`, 'content-length': String(b - a + 1) } });
   });
-  await page.evaluate(() => { const vEl = document.querySelector('[data-testid="vs-video"]'); vEl.load(); });
-  await page.waitForTimeout(800);
+  /* A cleaned recording has a cut every few seconds. Twenty more — the
+     second word of every sentence in the first minute and a half — so the
+     preview has to cross well over ten cuts while it is watched. */
+  const base0 = await v('get', { projectId: PID });
+  const extra = LONG.script.sentences.filter(x => x.s > 5 && x.s < 95).map(x => LONG.script.words.find(w => w.s > x.s + 0.05 && w.s < x.e)).filter(Boolean)
+    .map(w => ({ op: 'cut.add', s: Math.round((w.s - 0.04) * 100) / 100, e: Math.round((w.e + 0.04) * 100) / 100, reason: 'Many cuts (test)' }));
+  const many = await v('edit', { projectId: PID, baseVersion: base0.docVersion, ops: extra, note: 'many cuts' });
+  ok('(twenty more cuts in the first minute and a half)', many.success && extra.length >= 15, { n: extra.length, many: many.error });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByTestId('vs-play').waitFor({ timeout: 15_000 });
+  await page.waitForTimeout(1500);
+  /* What a viewer would notice: the element on screen waiting for data, or
+     a gap between two frames it presented, while it is meant to be playing. */
+  await page.evaluate(() => {
+    const vids = [...document.querySelectorAll('[data-testid="vs-video"] video, video[data-testid="vs-video"]')];
+    const shown = el => vids.length === 1 || el.classList.contains('on');
+    const m = window.__vsm = { waiting: 0, frames: [], on: false };
+    for (const el of vids) {
+      el.addEventListener('waiting', () => { if (m.on && shown(el)) m.waiting++; });
+      const cb = (now, meta) => { if (m.on && shown(el)) m.frames.push([now, meta.mediaTime]); el.requestVideoFrameCallback(cb); };
+      el.requestVideoFrameCallback(cb);
+    }
+  });
+  const shownTime = () => page.evaluate(() => { const d = document.querySelector('[data-testid="vs-video"]'); const e = d.matches('video') ? d : d.querySelector('video.on'); return { t: e.currentTime, paused: e.paused, src: d.dataset.src }; });
+  await page.evaluate(() => { window.__vsm.on = true; window.__vsm.t0 = performance.now(); });
   await page.getByTestId('vs-play').click();
   const cuts = (await v('get', { projectId: PID })).doc.cuts.filter(c => c.state === 'approved');
   const samples = [];
-  for (let i = 0; i < 70; i++) { samples.push(await page.evaluate(() => { const e = document.querySelector('[data-testid="vs-video"]'); return { t: e.currentTime, paused: e.paused, src: e.dataset.src }; })); await sleep(250); }
+  for (let i = 0; i < 160; i++) { samples.push(await shownTime()); await sleep(250); }
+  const meter = await page.evaluate(() => { const m = window.__vsm; m.on = false; const d = document.querySelector('[data-testid="vs-video"]'); return { waiting: m.waiting, frames: m.frames, swaps: d.dataset.swaps ?? '-', waits: d.dataset.waits ?? '-' }; });
   const last = samples[samples.length - 1];
   const inCut = samples.filter(x => !x.paused && cuts.some(c => x.t > c.s + 0.2 && x.t < c.e - 0.2));
-  ok('the preview plays on for seventeen seconds — through more than one poll — without stopping', !last.paused && last.t > 12 && samples.every(x => x.src === src0), { t: last.t, paused: last.paused, srcs: new Set(samples.map(x => x.src)).size });
-  ok('…and never shows what was cut (the opening silence, the fillers)', inCut.length === 0 && samples[2].t > 2, { inCut: inCut.slice(0, 3), first: samples.slice(0, 3) });
+  const crossed = cuts.filter(c => c.s > samples[0].t && c.e < last.t).length;
+  const gaps = meter.frames.slice(1).map((f, i) => f[0] - meter.frames[i][0]);
+  const long = gaps.filter(g => g > 250);
+  /* Measured on the old one-element player (a seek at every cut), the same
+     forty seconds: 11 cuts, 10 `waiting` events — a stall at nearly every cut. */
+  console.log(`  (player: ${crossed} cuts crossed in ${(last.t - samples[0].t).toFixed(1)} s of source, ${meter.frames.length} frames, ${meter.waiting} waiting, gaps over 100 ms: ${gaps.filter(g => g > 100).length}, longest ${Math.round(Math.max(0, ...gaps))} ms, swaps ${meter.swaps}, held for a standby ${meter.waits})`);
+  ok('the preview plays on for forty seconds — through many polls — without stopping', !last.paused && last.t > 35 && samples.every(x => x.src === src0), { t: last.t, paused: last.paused, srcs: new Set(samples.map(x => x.src)).size });
+  ok('…crossing more than ten cuts', crossed >= 10, crossed);
+  ok('…without a stall: the picture never waits for data and no two frames are more than 250 ms apart', meter.waiting === 0 && long.length === 0 && meter.frames.length > 400, { waiting: meter.waiting, long: long.map(Math.round).slice(0, 8), frames: meter.frames.length });
+  ok('…and never shows what was cut (the opening silence, the fillers, the twenty words)', inCut.length === 0 && samples[2].t > 2, { inCut: inCut.slice(0, 3), first: samples.slice(0, 3) });
   const label = await page.getByTestId('vs-time').innerText();
   ok('…with the edited video\'s clock on the controls', /^\d+:\d\d \/ \d+:\d\d$/.test(label.trim()), label);
   await page.getByTestId('vs-play').click();
-  await page.unroute(u => u.href === src0);
+  await page.unroute(u => u.href.startsWith(`${B}/api/video-file.php`) && isProxy(u.href));
+  await v('goto_version', { projectId: PID, version: base0.docVersion });
+  await page.reload({ waitUntil: 'networkidle' });
 }
+if (process.env.STOP_AFTER === 'player') { await br.close(); console.log(`\n${out.filter(l => l.startsWith('PASS')).length} passed, ${failures} failed`); stop(); process.exit(failures ? 1 : 0); }
 await page.locator('[data-panel="transcript"]').click();
 await page.getByTestId('vs-transcript').waitFor({ timeout: 20_000 });
 const words = await page.locator('.vs-w').count();

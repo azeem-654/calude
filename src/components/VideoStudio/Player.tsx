@@ -32,6 +32,7 @@ import {
   keepRanges, keptLength, retimeWords, cuesOf, toOutput, toSource, clock, isRtl, lookOf, motionOf, trackingOf, cssLook, punchSpans, cutTimes, trackAt, overlaySpan, sentencesOf,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
+import { Deck } from './deck';
 
 /** Hold a signed address until it fails; then take the newest one. */
 function useHeldSrc(latest: string) {
@@ -47,7 +48,10 @@ function useHeldSrc(latest: string) {
 export default function Player({ ctx }: { ctx: EditorCtx }) {
   const { view, doc, transcript, duration } = ctx;
   const clip = ctx.activeClip ? doc.clips.find(c => c.id === ctx.activeClip) ?? null : null;
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const aRef = useRef<HTMLVideoElement>(null);
+  const bRef = useRef<HTMLVideoElement>(null);
+  const deckRef = useRef<HTMLDivElement>(null);
+  const deck = useRef<Deck | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -92,88 +96,94 @@ export default function Player({ ctx }: { ctx: EditorCtx }) {
   };
   const followRows = cropping && tracking !== 'off' ? ctx.track?.[tracking] ?? null : null;
 
-  /* One loop: skip what is cut, and move everything that moves every frame. */
+  /* Everything the frame painter reads, kept current without re-subscribing it. */
   const report = ctx.seek;
+  const live = useRef({ keeps, total, speed, motion, spans, cuts, followRows, objPos, report });
+  live.current = { keeps, total, speed, motion, spans, cuts, followRows, objPos, report };
+
+  /* The deck: two elements swapped at each cut (deck.ts says why). It is made
+     once; the edit, the speed and the sound reach it below. Everything that
+     moves every frame is written straight to the elements from its loop. */
   useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    let raf = 0, last = -1, lastAt = 0;
-    const paint = () => {
-      const t = v.currentTime;
-      const o = toOutput(t, keeps) ?? 0;
-      const pct = total ? Math.min(100, (o / total) * 100) : 0;
+    const a = aRef.current, b = bRef.current, wrap = deckRef.current;
+    if (!a || !b || !wrap) return;
+    let last = -1, lastAt = 0;
+    const paint = (t: number) => {
+      const L = live.current;
+      const o = toOutput(t, L.keeps) ?? 0;
+      const pct = L.total ? Math.min(100, (o / L.total) * 100) : 0;
       if (fillRef.current) fillRef.current.style.width = `${pct}%`;
       if (knobRef.current) knobRef.current.style.left = `${pct}%`;
-      if (clockRef.current) clockRef.current.textContent = `${clock(o / speed)} / ${clock(total / speed)}`;
+      if (clockRef.current) clockRef.current.textContent = `${clock(o / L.speed)} / ${clock(L.total / L.speed)}`;
       if (barRef.current) barRef.current.style.width = `${pct}%`;
       /* The zoom and the tracked crop. */
       let z = 1;
-      if (motion.zoom === 'slow') z = 1 + (motion.zoomAmount - 1) * Math.min(1, o / Math.max(1, total));
-      else if (motion.zoom === 'punch' && spans.some(([a, b]) => o >= a && o < b)) z = motion.zoomAmount;
-      v.style.transform = z !== 1 ? `scale(${z.toFixed(3)})` : '';
-      if (followRows) { const [cx, cy] = trackAt(followRows, t); v.style.objectPosition = objPos(cx, cy, 0.42); }
+      const m = L.motion;
+      if (m.zoom === 'slow') z = 1 + (m.zoomAmount - 1) * Math.min(1, o / Math.max(1, L.total));
+      else if (m.zoom === 'punch' && L.spans.some(([s0, e0]) => o >= s0 && o < e0)) z = m.zoomAmount;
+      wrap.style.transform = z !== 1 ? `scale(${z.toFixed(3)})` : '';
+      if (L.followRows) { const [cx, cy] = trackAt(L.followRows, t); const pos = L.objPos(cx, cy, 0.42); a.style.objectPosition = pos; b.style.objectPosition = pos; }
       /* Fades, and a flash or dip at each jump cut. */
       if (shadeRef.current) {
-        const ft = o / speed, end = total / speed;
+        const ft = o / L.speed, end = L.total / L.speed;
         let black = 0, white = 0;
-        if (motion.fadeIn && ft < motion.fadeIn) black = 1 - ft / motion.fadeIn;
-        if (motion.fadeOut && ft > end - motion.fadeOut) black = Math.max(black, 1 - (end - ft) / motion.fadeOut);
-        if (cuts.length && cuts.some(c => Math.abs(o - c) < 0.07)) { if (motion.transition === 'flash') white = 0.35; else black = Math.max(black, 0.55); }
+        if (m.fadeIn && ft < m.fadeIn) black = 1 - ft / m.fadeIn;
+        if (m.fadeOut && ft > end - m.fadeOut) black = Math.max(black, 1 - (end - ft) / m.fadeOut);
+        if (L.cuts.length && L.cuts.some(c => Math.abs(o - c) < 0.07)) { if (m.transition === 'flash') white = 0.35; else black = Math.max(black, 0.55); }
         shadeRef.current.style.background = white ? `rgba(255,255,255,${white})` : `rgba(0,0,0,${black.toFixed(3)})`;
       }
       window.dispatchEvent(new CustomEvent('vs-frame', { detail: t }));
       const now = performance.now();
-      if (Math.abs(t - last) > 0.04 && now - lastAt > 90) { last = t; lastAt = now; report(-1 - t); }
+      if (Math.abs(t - last) > 0.04 && now - lastAt > 90) { last = t; lastAt = now; L.report(-1 - t); }
     };
-    const tick = () => {
-      const t = v.currentTime;
-      const inside = keeps.find(([a, b]) => t >= a - 0.01 && t < b);
-      if (!inside) {
-        const next = keeps.find(([a]) => a > t);
-        if (next) v.currentTime = next[0];
-        else { v.pause(); v.currentTime = keeps[0]?.[0] ?? 0; paint(); report(-1 - v.currentTime); return; }
-      }
-      paint();
-      if (!v.paused) raf = requestAnimationFrame(tick);
-    };
-    const onPlay = () => { setPlaying(true); cancelAnimationFrame(raf); raf = requestAnimationFrame(tick); };
-    const onPause = () => { setPlaying(false); cancelAnimationFrame(raf); paint(); report(-1 - v.currentTime); };
-    const onSeeked = () => { paint(); report(-1 - v.currentTime); };
-    v.addEventListener('play', onPlay);
-    v.addEventListener('pause', onPause);
-    v.addEventListener('seeked', onSeeked);
-    paint();
-    if (!v.paused) raf = requestAnimationFrame(tick);
-    return () => { cancelAnimationFrame(raf); v.removeEventListener('play', onPlay); v.removeEventListener('pause', onPause); v.removeEventListener('seeked', onSeeked); };
-  }, [keeps, report, video.src, total, speed, motion.zoom, motion.zoomAmount, motion.fadeIn, motion.fadeOut, motion.transition, spans, cuts, followRows]); // eslint-disable-line react-hooks/exhaustive-deps
+    const d = new Deck(a, b, paint);
+    deck.current = d;
+    d.setKeeps(live.current.keeps);
+    d.setRate(live.current.speed);
+    /* The transcript follows the playhead while the video plays, and its Space key plays and pauses. */
+    const said = (on: boolean) => window.dispatchEvent(new CustomEvent('vs-play-state', { detail: on }));
+    const onPlay = () => { setPlaying(true); said(true); };
+    const onPause = () => { setPlaying(false); said(false); live.current.report(-1 - d.time); };
+    const onToggle = () => d.toggle();
+    const onPlayAsk = () => { if (!d.playing) d.play(); };
+    window.addEventListener('vs-toggle', onToggle);
+    window.addEventListener('vs-play', onPlayAsk);
+    const onSeeked = () => live.current.report(-1 - d.time);
+    d.addEventListener('play', onPlay);
+    d.addEventListener('pause', onPause);
+    d.addEventListener('seeked', onSeeked);
+    return () => { window.removeEventListener('vs-toggle', onToggle); window.removeEventListener('vs-play', onPlayAsk); said(false); d.removeEventListener('play', onPlay); d.removeEventListener('pause', onPause); d.removeEventListener('seeked', onSeeked); d.destroy(); deck.current = null; };
+  }, []);
 
+  useEffect(() => { deck.current?.setKeeps(keeps); }, [keeps]);
   /* The speed, as the render will play it. */
-  useEffect(() => { const v = videoRef.current; if (v) { v.playbackRate = speed; v.preservesPitch = true; } }, [speed, video.src]);
+  useEffect(() => { deck.current?.setRate(speed); }, [speed, video.src]);
+  useEffect(() => { deck.current?.setMuted(muted); }, [muted]);
 
   /* The music follows the picture: started, stopped and placed on the
      output's clock (looped as the render loops it), checked once a second. */
   useEffect(() => {
-    const v = videoRef.current, a = audioRef.current;
-    if (!v || !a || !track) return;
+    const d = deck.current, a = audioRef.current;
+    if (!d || !a || !track) return;
     a.volume = Math.min(1, track.volume);
     const place = () => {
-      const o = (toOutput(v.currentTime, keeps) ?? 0) / speed;
-      const d = a.duration;
-      const want = d && Number.isFinite(d) ? (track.loop ? o % d : Math.min(o, d)) : o;
+      const o = (toOutput(d.time, keeps) ?? 0) / speed;
+      const dur = a.duration;
+      const want = dur && Number.isFinite(dur) ? (track.loop ? o % dur : Math.min(o, dur)) : o;
       if (Math.abs(a.currentTime - want) > 0.35) a.currentTime = want;
     };
     const play = () => { place(); void a.play().catch(() => {}); };
     const stop = () => a.pause();
-    v.addEventListener('play', play);
-    v.addEventListener('pause', stop);
-    v.addEventListener('seeked', place);
-    const t = setInterval(() => { if (!v.paused) place(); }, 1000);
-    if (!v.paused) play();
-    return () => { clearInterval(t); v.removeEventListener('play', play); v.removeEventListener('pause', stop); v.removeEventListener('seeked', place); a.pause(); };
+    d.addEventListener('play', play);
+    d.addEventListener('pause', stop);
+    d.addEventListener('seeked', place);
+    const t = setInterval(() => { if (d.playing) place(); }, 1000);
+    if (d.playing) play();
+    return () => { clearInterval(t); d.removeEventListener('play', play); d.removeEventListener('pause', stop); d.removeEventListener('seeked', place); a.pause(); };
   }, [track, keeps, music.src, speed]);
 
   /* A Short opens at its own start. */
-  useEffect(() => { const v = videoRef.current; if (v && clip) v.currentTime = keeps[0]?.[0] ?? clip.s; }, [clip?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const d = deck.current; if (d && clip) { d.setKeeps(keeps); d.seek(keeps[0]?.[0] ?? clip.s); } }, [clip?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const el = frameRef.current;
@@ -185,7 +195,7 @@ export default function Player({ ctx }: { ctx: EditorCtx }) {
 
   /* Seeks asked for by the panels and the timeline. */
   useEffect(() => {
-    const onSeek = (e: Event) => { const v = videoRef.current; if (v) v.currentTime = (e as CustomEvent<number>).detail; };
+    const onSeek = (e: Event) => { deck.current?.seek((e as CustomEvent<number>).detail); };
     window.addEventListener('vs-seek', onSeek);
     return () => window.removeEventListener('vs-seek', onSeek);
   }, []);
@@ -194,7 +204,8 @@ export default function Player({ ctx }: { ctx: EditorCtx }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(el?.tagName) || el?.isContentEditable) return;
+      /* The transcript editor owns its keys (arrows move its text cursor). */
+      if (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(el?.tagName) || el?.isContentEditable || el?.closest?.('[data-keys="own"]')) return;
       if (e.key === ' ' || e.key === 'k') { e.preventDefault(); toggle(); }
       else if ((e.key === 'ArrowLeft' || e.key === 'j') && !e.metaKey && !e.ctrlKey) step(-5);
       else if ((e.key === 'ArrowRight' || e.key === 'l') && !e.metaKey && !e.ctrlKey) step(5);
@@ -205,9 +216,9 @@ export default function Player({ ctx }: { ctx: EditorCtx }) {
 
   const base = kind === 'short' ? (88 / 1920) * frameH : 0.05 * frameH;
 
-  function toggle() { const v = videoRef.current; if (!v) return; if (v.paused) void v.play().catch(() => {}); else v.pause(); }
-  function seekOut(o: number) { const v = videoRef.current; if (!v) return; v.currentTime = toSource(Math.max(0, Math.min(total - 0.05, o)), keeps); }
-  function step(d: number) { seekOut((toOutput(videoRef.current?.currentTime ?? 0, keeps) ?? 0) + d * speed); }
+  function toggle() { deck.current?.toggle(); }
+  function seekOut(o: number) { deck.current?.seek(toSource(Math.max(0, Math.min(total - 0.05, o)), keeps)); }
+  function step(d: number) { seekOut((toOutput(deck.current?.time ?? 0, keeps) ?? 0) + d * speed); }
 
   const scrubAt = (e: React.PointerEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -222,12 +233,18 @@ export default function Player({ ctx }: { ctx: EditorCtx }) {
           style={{ aspectRatio: String(ratio), width: `min(100%, calc(var(--vse-screen-h, 56vh) * ${ratio.toFixed(4)}))`,
             backgroundImage: fit && view.source.posterUrl ? `url("${view.source.posterUrl}")` : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }}>
           {fit && <div style={{ position: 'absolute', inset: 0, backdropFilter: 'blur(18px) brightness(.75)', WebkitBackdropFilter: 'blur(18px) brightness(.75)' }} />}
-          <video ref={videoRef} src={video.src || undefined} poster={view.source.posterUrl || undefined} playsInline preload="auto" muted={muted}
-            style={{ objectFit: fit || aspect === 'source' ? 'contain' : 'cover', objectPosition: cropping ? objPos(reframe.x, reframe.y) : 'center', position: fit ? 'absolute' : 'relative', inset: 0, height: '100%',
-              filter: filter === 'none' ? undefined : filter, transformOrigin: '50% 40%', transition: 'transform .18s ease-out, object-position .25s linear' }}
-            onClick={toggle} data-testid="vs-video" data-src={video.src} data-look={look.filter}
-            onError={() => { const v = videoRef.current; resume.current = { at: v?.currentTime ?? 0, play: !!v && !v.paused }; video.fail(); void ctx.refresh(); }}
-            onLoadedMetadata={() => { const v = videoRef.current, r = resume.current; if (v) { v.playbackRate = speed; } if (v && r) { resume.current = null; v.currentTime = r.at; if (r.play) void v.play().catch(() => {}); } }} />
+          <div ref={deckRef} className="vs-deck" onClick={toggle} data-testid="vs-video" data-src={video.src} data-look={look.filter}
+            style={{ filter: filter === 'none' ? undefined : filter, transformOrigin: '50% 40%' }}>
+            {[aRef, bRef].map((r, i) => (
+              <video key={i} ref={r} src={video.src || undefined} poster={view.source.posterUrl || undefined} playsInline preload="auto"
+                style={{ objectFit: fit || aspect === 'source' ? 'contain' : 'cover', objectPosition: cropping ? objPos(reframe.x, reframe.y) : 'center' }}
+                onError={() => { const d = deck.current; resume.current = { at: d?.time ?? 0, play: !!d?.playing }; video.fail(); void ctx.refresh(); }}
+                onLoadedMetadata={e => {
+                  const d = deck.current, r0 = resume.current;
+                  if (d && r0 && e.currentTarget === d.active) { resume.current = null; d.seek(r0.at); if (r0.play) d.play(); }
+                }} />
+            ))}
+          </div>
           <div ref={shadeRef} className="vse-shade" />
           {words.map(({ o, span }) => out !== null && out >= span![0] && out < span![1] && (
             <div key={o.id} className={`vse-ov ${o.style} pos-${o.position} anim-${o.anim}`} data-testid="vs-overlay"

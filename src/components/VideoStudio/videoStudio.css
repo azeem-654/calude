@@ -213,6 +213,12 @@ html[data-theme="dark"] .vs img, html[data-theme="dark"] .vs video, html[data-th
 .vs-frame { position: relative; margin: 0 auto; background: #000; overflow: hidden; }
 .vs-frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .vs-frame.fit video { object-fit: contain; position: absolute; inset: 0; }
+/* The deck's two elements (deck.ts): the one playing is shown, the standby
+   waits underneath at the next kept moment. No fade between them — a cut is a cut. */
+.vs-deck { position: absolute; inset: 0; z-index: 0; cursor: pointer; }
+.vs-deck video { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; }
+.vs-deck video.on { opacity: 1; z-index: 1; }
+@media (prefers-reduced-motion: no-preference) { .vs-deck { transition: transform .18s ease-out; } .vs-deck video { transition: object-position .25s linear; } }
 .vs-cap {
   position: absolute; left: 6%; right: 6%; text-align: center; pointer-events: none; font-weight: 800; color: #fff; line-height: 1.15;
   text-shadow: 0 0 3px #000, 0 2px 0 #000, 0 0 8px rgba(0, 0, 0, .6); font-family: 'Noto Sans', system-ui, sans-serif; white-space: pre-line;
