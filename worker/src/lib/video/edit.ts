@@ -109,6 +109,13 @@ export interface AudioSettings {
   voice?: boolean;
   /** The voice's own level, 0.5–1.5. */
   volume?: number;
+  /**
+   * Studio Sound: the engine's studio chain (high-pass, RNNoise, de-esser,
+   * presence EQ, compression) and loudness to −16 LUFS in two passes. When on
+   * it replaces `denoise` and `voice`; `strength` 0–100 scales it.
+   */
+  studio?: boolean;
+  strength?: number;
 }
 
 /**
@@ -605,6 +612,8 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
         if (p.denoise && ['off', 'light', 'medium', 'strong'].includes(p.denoise)) d.audio.denoise = p.denoise;
         if (typeof p.voice === 'boolean') d.audio.voice = p.voice;
         if (p.volume !== undefined) d.audio.volume = Math.round(clamp(p.volume, 0.5, 1.5, 1) * 100) / 100;
+        if (typeof p.studio === 'boolean') d.audio.studio = p.studio;
+        if (p.strength !== undefined) d.audio.strength = Math.round(clamp(p.strength, 0, 100, 60));
         break;
       }
       case 'music.set': {

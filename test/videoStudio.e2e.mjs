@@ -65,9 +65,12 @@ let engine;
    local engine; without it track.py falls back to OpenCV's Haar cascade. */
 const MODEL = path.join(state, 'fixtures', 'face_detection_yunet.onnx');
 if (!fs.existsSync(MODEL)) { try { execFileSync('curl', ['-fsSL', '-o', MODEL, 'https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx'], { stdio: 'ignore' }); } catch { /* Haar then */ } }
+/* The RNNoise model Studio Sound uses — the same pinned file the engine image carries (media/Dockerfile). Without it the engine uses its FFT denoiser and says so. */
+const RNN = path.join(state, 'fixtures', 'rnnoise-std.rnnn');
+if (!fs.existsSync(RNN)) { try { execFileSync('curl', ['-fsSL', '-o', RNN, 'https://raw.githubusercontent.com/richardpl/arnndn-models/0fda24c46d78f0207d820bb970fbe85c1971b39c/std.rnnn'], { stdio: 'ignore' }); } catch { /* FFT then */ } }
 const startEngine = () => {
   engine = spawn('node', [path.resolve('media/engine/server.mjs')], {
-    env: { ...process.env, PORT: String(ENG), MEDIA_ENGINE_SECRET: SECRET, ALLOW_HTTP_INPUTS: '1', WORK_DIR: path.join(state, 'engine-work'), MAX_RUNNING: '2', FACE_MODEL: MODEL },
+    env: { ...process.env, PORT: String(ENG), MEDIA_ENGINE_SECRET: SECRET, ALLOW_HTTP_INPUTS: '1', WORK_DIR: path.join(state, 'engine-work'), MAX_RUNNING: '2', FACE_MODEL: MODEL, RNNOISE_MODEL: RNN },
     stdio: ['ignore', 'ignore', 'pipe'],
   });
   engine.stderr.on('data', d => { if (process.env.DEBUG) process.stderr.write(d); });
@@ -687,6 +690,7 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   await page.locator('[data-panel="audio"]').click();
   const audio = await page.getByTestId('vs-audio-panel').innerText();
   ok('the Audio panel shows the noise level chosen, voice clarity and loudness — and says they are heard in the render', /Strong/.test(audio) && /Voice clarity/.test(audio) && /Even loudness/.test(audio) && /applied when the videos render/.test(audio));
+  ok('…with Audio effects as rows: Studio Sound, and "Lower audio of other layers" (the music is ducked under speech)', /Studio Sound/.test(audio) && /Lower audio of other layers/.test(audio) && (await page.locator('[data-effect="duck"] [role="switch"]').getAttribute('aria-checked')) === 'true', audio.slice(0, 400));
   await page.locator('[data-denoise="light"]').click();
   await page.waitForTimeout(1200);
   ok('…a level can be picked there', (await v('get', { projectId: PID })).doc.audio.denoise === 'light');

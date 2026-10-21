@@ -74,12 +74,12 @@ export async function engineCancel(env: Env, id: string): Promise<void> {
 }
 
 /** Is the engine answering right now, and what is it? — for the capabilities panel. */
-export async function engineHealth(env: Env): Promise<{ ok: boolean; detail: string; track?: boolean; youtube?: boolean }> {
+export async function engineHealth(env: Env): Promise<{ ok: boolean; detail: string; track?: boolean; youtube?: boolean; rnnoise?: boolean }> {
   if (engineMode(env) === 'none') return { ok: false, detail: 'not configured' };
   try {
     const r = await call(env, 'GET', '/health', undefined, 25_000);
-    const d = await r.json<{ ok?: boolean; ffmpeg?: string; features?: { track?: boolean; youtube?: boolean } }>();
-    return { ok: !!d.ok, detail: d.ffmpeg ?? '', track: d.features?.track === true, youtube: d.features?.youtube === true };
+    const d = await r.json<{ ok?: boolean; ffmpeg?: string; features?: { track?: boolean; youtube?: boolean; rnnoise?: boolean } }>();
+    return { ok: !!d.ok, detail: d.ffmpeg ?? '', track: d.features?.track === true, youtube: d.features?.youtube === true, rnnoise: d.features?.rnnoise === true };
   } catch (e) {
     return { ok: false, detail: String((e as Error).message ?? e).slice(0, 160) };
   }

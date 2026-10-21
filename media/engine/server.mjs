@@ -101,7 +101,7 @@ const server = http.createServer(async (req, res) => {
   for await (const c of req) { chunks.push(c); if (chunks.reduce((n, x) => n + x.length, 0) > 4 * 1024 * 1024) return send(res, 413, { error: 'too large' }); }
   const body = Buffer.concat(chunks);
   const url = new URL(req.url, 'http://engine');
-  if (url.pathname === '/health') return send(res, 200, { ok: true, ffmpeg: await ffmpegVersion(), busy: running + queue.length, features: { track: await canTrack(), youtube: !!(await canFetch()) } });
+  if (url.pathname === '/health') return send(res, 200, { ok: true, ffmpeg: await ffmpegVersion(), busy: running + queue.length, features: { track: await canTrack(), youtube: !!(await canFetch()), rnnoise: hasRnn() } });
   if (url.pathname === '/busy') return send(res, 200, { busy: running + queue.length });
   if (!signedOk(req, body)) return send(res, 401, { error: 'unsigned' });
 
@@ -589,6 +589,215 @@ function lookFilters(l) {
   return f;
 }
 
+/* ── The voice ────────────────────────────────────────────────────────────── */
+
+/* RNNoise (arnndn) is a small neural network trained on speech in noise; it
+   takes out far more than an FFT denoiser before the voice starts to sound
+   thin. Its model file is pinned in the image (Dockerfile); without it the
+   FFT denoiser is used and /health says so. */
+const RNN_MODEL = process.env.RNNOISE_MODEL || path.join(path.dirname(new URL(import.meta.url).pathname), 'rnnoise.rnnn');
+const hasRnn = () => /^[\w./-]+$/.test(RNN_MODEL) && fs.existsSync(RNN_MODEL);
+
+/**
+ * The speech chain. Studio Sound, when on, is a studio's order of work: a
+ * high-pass for rumble and handling noise; the strongest denoiser there is;
+ * a de-esser; a little less mud (250 Hz) and a little more presence
+ * (3.5 kHz); a gentle compressor so quiet words come up — strength (0–100)
+ * scales each. Loudness (−16 LUFS, two passes) is applied after the mix.
+ * Without it, the older noise levels and "voice clarity" as before. Nothing
+ * here can rebuild a voice that clipped or dropped out — the screen says so.
+ */
+function voiceChain(audio) {
+  if (audio.studio) {
+    const k = num(audio.strength, 60, 0, 100) / 100;
+    return [
+      'highpass=f=80:poles=2',
+      hasRnn() ? `arnndn=m=${RNN_MODEL}:mix=${(0.5 + 0.5 * k).toFixed(2)}` : `afftdn=nr=${(10 + 16 * k).toFixed(1)}:nf=-40:tn=1`,
+      `deesser=i=${(0.25 + 0.3 * k).toFixed(2)}`,
+      `equalizer=f=250:t=q:w=1.1:g=${(-1 - 2 * k).toFixed(1)}`,
+      `equalizer=f=3500:t=q:w=1.4:g=${(1 + 2.5 * k).toFixed(1)}`,
+      `acompressor=threshold=${(0.14 - 0.06 * k).toFixed(3)}:ratio=${(2 + 2 * k).toFixed(1)}:attack=6:release=120:knee=3:makeup=${(1.2 + 0.6 * k).toFixed(2)}`,
+    ];
+  }
+  /* Natural first: each level removes more steady noise (fans, hum, hiss) and
+     the strongest also takes off the top end where hiss lives. */
+  const DENOISE = { light: 'afftdn=nr=10:nf=-42', medium: 'afftdn=nr=18:nf=-38:tn=1', strong: 'afftdn=nr=26:nf=-34:tn=1,lowpass=f=11000' };
+  const voice = ['highpass=f=70'];
+  if (DENOISE[audio.denoise]) voice.push(DENOISE[audio.denoise]);
+  if (audio.voice) voice.push('equalizer=f=3200:t=q:w=1.2:g=2.5', 'deesser=i=0.35', 'acompressor=threshold=0.08:ratio=3:attack=8:release=120:makeup=1.5');
+  return voice;
+}
+
+/** Pass one of loudness normalisation: the edited sound, measured by loudnorm itself. Null when it cannot be read. */
+async function measureLoudness(job, dir, src, s0, end, musicIn, soundGraph, outTotal) {
+  const file = path.join(dir, 'measure.txt');
+  await fsp.writeFile(file, soundGraph);
+  try {
+    const { stderr } = await exec(FFMPEG, ['-hide_banner', '-nostdin', '-y', '-loglevel', 'info', '-ss', String(s0), '-t', String(end - s0 + 0.05), ...inVideo(src), ...musicIn,
+      '-filter_complex_script', file, '-map', '[a]', '-t', outTotal.toFixed(3), '-f', 'null', '-progress', 'pipe:1', '-nostats', '-'], job, { onLine: progressTo(job, 'loudness', outTotal) });
+    const m = stderr.match(/\{[^{}]*"input_i"[^{}]*\}/g);
+    if (!m) return null;
+    const j = JSON.parse(m[m.length - 1]);
+    const n = v => { const x = Number(v); return Number.isFinite(x) ? Math.round(x * 100) / 100 : null; };
+    const r = { i: n(j.input_i), lra: n(j.input_lra), tp: n(j.input_tp), thresh: n(j.input_thresh), offset: n(j.target_offset) };
+    /* Silence measures as −inf; there is nothing to normalise then. */
+    return Object.values(r).every(v => v !== null) && r.i > -70 ? r : null;
+  } catch { return null; }
+}
+
+/* ── Visual effects and Shorts layouts: numbers in, filters the engine owns out ── */
+
+const hexOr = (v, d) => (HEX.test(String(v)) ? String(v).replace('#', '0x').toLowerCase() : d);
+
+/** Only the effects switched on, each value clamped; anything else is ignored. */
+function cleanEffects(e) {
+  const o = e && typeof e === 'object' ? e : {};
+  const on = k => (o[k] && typeof o[k] === 'object' && o[k].on === true ? o[k] : null);
+  const c = on('color'), sh = on('shadow'), g = on('green'), a = on('appearance');
+  const key = g ? hexOr(g.color, '0x00ff00') : '';
+  return {
+    color: c ? { exposure: num(c.exposure, 0, -100, 100), contrast: num(c.contrast, 0, -100, 100), highlights: num(c.highlights, 0, -100, 100), shadows: num(c.shadows, 0, -100, 100), saturation: num(c.saturation, 0, -100, 100), kelvin: num(c.kelvin, 6500, 2000, 12000) } : null,
+    shadow: sh ? { x: num(sh.x, 0, -80, 80), y: num(sh.y, 18, -80, 80), blur: num(sh.blur, 30, 0, 80), color: hexOr(sh.color, '0x000000'), opacity: num(sh.opacity, 55, 0, 100) / 100 } : null,
+    /* A blue screen is despilled as blue: the key's blue above its green. */
+    green: g ? { color: key, similarity: num(g.similarity, 18, 1, 60) / 100, blend: num(g.blend, 6, 0, 40) / 100, bg: hexOr(g.bg, '0x101828'), blue: parseInt(key.slice(6, 8), 16) > parseInt(key.slice(4, 6), 16) } : null,
+    appearance: a ? { amount: num(a.amount, 50, 0, 100) / 100 } : null,
+  };
+}
+
+/** The colour of light at a temperature (Tanner Helland's fit), 0–1 per channel. */
+function kelvinRgb(k) {
+  const t = k / 100;
+  const r = t <= 66 ? 255 : 329.698727446 * Math.pow(t - 60, -0.1332047592);
+  const g = t <= 66 ? 99.4708025861 * Math.log(t) - 161.1195681661 : 288.1221695283 * Math.pow(t - 60, -0.0755148492);
+  const b = t >= 66 ? 255 : t <= 19 ? 0 : 138.5177312231 * Math.log(t - 10) - 305.0447927307;
+  return [r, g, b].map(v => Math.min(255, Math.max(0, v)) / 255);
+}
+
+/**
+ * Colour adjustments: one lookup for exposure and the light's temperature
+ * (relative to 6500 K, lower warmer, as FFmpeg's colortemperature means it —
+ * a per-pixel table is several times faster at 1080×1920), a curve for
+ * highlights and shadows, and eq for contrast and saturation.
+ */
+function colorFilters(c) {
+  if (!c) return [];
+  const f = [];
+  const ev = Math.pow(2, c.exposure / 50);
+  const [kr, kg, kb] = kelvinRgb(c.kelvin), [nr, ng, nb] = kelvinRgb(6500);
+  let gr = kr / nr, gg = kg / ng, gb = kb / nb;
+  const lum = 0.2126 * gr + 0.7152 * gg + 0.0722 * gb;
+  gr = (gr / lum) * ev; gg = (gg / lum) * ev; gb = (gb / lum) * ev;
+  if (Math.abs(gr - 1) > 0.002 || Math.abs(gg - 1) > 0.002 || Math.abs(gb - 1) > 0.002) f.push(`lutrgb=r='clip(val*${gr.toFixed(4)},0,255)':g='clip(val*${gg.toFixed(4)},0,255)':b='clip(val*${gb.toFixed(4)},0,255)'`);
+  if (c.highlights || c.shadows) {
+    const lo = Math.min(0.45, Math.max(0.05, 0.25 + (c.shadows / 100) * 0.12)), hi = Math.min(0.95, Math.max(0.55, 0.75 + (c.highlights / 100) * 0.12));
+    f.push(`curves=all='0/0 0.25/${lo.toFixed(3)} 0.75/${hi.toFixed(3)} 1/1'`);
+  }
+  const con = 1 + c.contrast / 150, sat = Math.max(0, 1 + c.saturation / 100);
+  if (con !== 1 || sat !== 1) f.push(`eq=contrast=${con.toFixed(3)}:saturation=${sat.toFixed(3)}`);
+  return f;
+}
+
+/** Improve appearance, the whole picture: mild denoise, gentle auto levels (white balance and exposure), a light sharpen. */
+function appearanceFilters(a) {
+  if (!a) return [];
+  const k = a.amount;
+  return [
+    `hqdn3d=${(1 + 2 * k).toFixed(2)}:${(1 + 1.5 * k).toFixed(2)}:${(2 + 4 * k).toFixed(2)}:${(2 + 3 * k).toFixed(2)}`,
+    `normalize=blackpt=black:whitept=white:smoothing=60:independence=0.35:strength=${(0.1 + 0.3 * k).toFixed(2)}`,
+    `unsharp=5:5:${(0.25 + 0.45 * k).toFixed(2)}:5:5:0`,
+  ];
+}
+
+/**
+ * Skin smoothing inside the face box only: the box cut out, an
+ * edge-preserving blur (bilateral — skin evens out, eyes and edges stay),
+ * a soft oval edge so no line shows, put back where it was. The box keeps its
+ * size (a crop that changes size stalls FFmpeg); only where it sits moves,
+ * through sendcmd, ten times a second, as a crop that follows a face does.
+ */
+function skinFilter(sk, a, srcW, srcH, total, cmds) {
+  if (!a || !sk || typeof sk !== 'object') return '';
+  const bw = even(num(sk.w, 0, 0, srcW)), bh = even(num(sk.h, 0, 0, srcH));
+  if (bw < 24 || bh < 24 || bw > srcW || bh > srcH) return '';
+  const pth = (Array.isArray(sk.path) ? sk.path : []).slice(0, 40000)
+    .map(r => [num(r[0], 0, 0, 1e6), num(r[1], 0.5, 0, 1), num(r[2], 0.45, 0, 1), r[3] ? 1 : 0]).sort((x, y) => x[0] - y[0]);
+  if (!pth.length) return '';
+  const at = (cx, cy) => [Math.round(Math.min(srcW - bw, Math.max(0, cx * srcW - bw / 2)) / 2) * 2, Math.round(Math.min(srcH - bh, Math.max(0, cy * srcH - bh / 2)) / 2) * 2];
+  const [x0, y0] = at(pth[0][1], pth[0][2]);
+  let last = [x0, y0];
+  for (let i = 0; i < pth.length; i++) {
+    const [t, cx, cy] = pth[i];
+    const next = pth[i + 1];
+    const stop = next ? next[0] : total;
+    for (let u = t; u < stop - 1e-6; u += 0.1) {
+      const k = next && !next[3] ? (u - t) / Math.max(1e-6, next[0] - t) : 0;
+      const [px, py] = at(cx + (next && !next[3] ? (next[1] - cx) * k : 0), cy + (next && !next[3] ? (next[2] - cy) * k : 0));
+      if (px !== last[0] || py !== last[1]) { cmds.push([u, `crop@skin x ${px}, crop@skin y ${py}, overlay@skin x ${px}, overlay@skin y ${py}`]); last = [px, py]; }
+    }
+  }
+  const k = a.amount;
+  return `split[sk0][sk1];[sk1]crop@skin=${bw}:${bh}:${x0}:${y0},bilateral=sigmaS=${(3 + 7 * k).toFixed(1)}:sigmaR=${(0.05 + 0.07 * k).toFixed(3)},format=yuva420p,` +
+    `geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='255*clip((1-hypot(2*X/W-1,2*Y/H-1))*3,0,1)'[sk2];[sk0][sk2]overlay@skin=${x0}:${y0},format=yuv420p,`;
+}
+
+/** A shadow under a picture of w×h placed at (x, y) of the output (round for a bubble): one blurred frame, made once and repeated. */
+function shadowUnder(tag, sh, w, h, x, y, W, fps, round = false) {
+  const k = W / 1080, b = Math.max(1, Math.round(sh.blur * k)), pad = b * 2;
+  const ox = Math.round(x - pad + sh.x * k), oy = Math.round(y - pad + sh.y * k);
+  const shape = round ? `geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='255*${sh.opacity.toFixed(2)}*lte(hypot(X-W/2,Y-H/2),W/2)'` : `colorchannelmixer=aa=${sh.opacity.toFixed(2)}`;
+  return `color=c=${sh.color}:s=${w}x${h}:r=${fps}:d=0.1,format=rgba,${shape},pad=${w + 2 * pad}:${h + 2 * pad}:${pad}:${pad}:color=black@0,` +
+    `gblur=sigma=${(b / 2).toFixed(1)},trim=end_frame=1,loop=loop=-1:size=1:start=0,setpts=N/${fps}/TB[${tag}s];[${tag}bg][${tag}s]overlay=x=${ox}:y=${oy}:shortest=1[${tag}bs]`;
+}
+
+/** The whole picture inside the frame on a blurred, darkened copy of itself — with a shadow under it when asked. */
+function fitFrame(tag, W, H, srcW, srcH, sh, fps, label = '') {
+  const k = Math.min(W / srcW, H / srcH), fw = even(srcW * k), fh = even(srcH * k);
+  const x = Math.round((W - fw) / 2), y = Math.round((H - fh) / 2);
+  const bg = `split[${tag}1][${tag}2];[${tag}1]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=24:2,eq=brightness=-0.08[${tag}bg];[${tag}2]scale=${fw}:${fh},setsar=1[${tag}fg];`;
+  return sh
+    ? `${bg}${shadowUnder(tag, sh, fw, fh, x, y, W, fps)};[${tag}bs][${tag}fg]overlay=${x}:${y}${label}`
+    : `${bg}[${tag}bg][${tag}fg]overlay=${x}:${y}${label}`;
+}
+
+/** A layout's boxes, clamped to the recording; null when there is nothing sound to build. */
+function cleanLayout(l, srcW, srcH, W, H) {
+  if (!l || typeof l !== 'object' || !['split', 'two', 'pip'].includes(l.kind)) return null;
+  const boxes = (Array.isArray(l.boxes) ? l.boxes : []).slice(0, 2).map(b => {
+    const w = even(num(b?.[2], 0, 0, srcW)), h = even(num(b?.[3], 0, 0, srcH));
+    return [Math.round(num(b?.[0], 0, 0, Math.max(0, srcW - w))), Math.round(num(b?.[1], 0, 0, Math.max(0, srcH - h))), Math.min(w, srcW - (srcW % 2)), Math.min(h, srcH - (srcH % 2))];
+  });
+  if (boxes.length !== (l.kind === 'pip' ? 1 : 2) || boxes.some(b => b[2] < 16 || b[3] < 16)) return null;
+  const size = even(num(l.inset?.size, W * 0.38, 64, Math.min(W, H)));
+  const inset = l.kind === 'pip' ? { x: Math.round(num(l.inset?.x, W - size - 40, 0, W - size)), y: Math.round(num(l.inset?.y, H * 0.62, 0, H - size)), size } : null;
+  return { kind: l.kind, boxes, inset };
+}
+
+/**
+ * The Shorts layouts, built from boxes:
+ *   split  the screen whole in the top half, the camera's crop in the bottom
+ *   two    one person's crop on top, the other's below
+ *   pip    the screen whole, the camera in a round bubble (with the shadow, if on)
+ */
+function layoutFrame(l, W, H, srcW, srcH, sh, fps) {
+  const H2 = even(H / 2);
+  const crop = (b, w, h) => `crop=${b[2]}:${b[3]}:${b[0]}:${b[1]},scale=${w}:${h},setsar=1`;
+  if (l.kind === 'split') return `split[l1][l2];[l1]${fitFrame('lt', W, H2, srcW, srcH, null, fps, '[lt]')};[l2]${crop(l.boxes[1], W, H - H2)}[lb];[lt][lb]vstack`;
+  if (l.kind === 'two') return `split[l1][l2];[l1]${crop(l.boxes[0], W, H2)}[lt];[l2]${crop(l.boxes[1], W, H - H2)}[lb];[lt][lb]vstack`;
+  const { x, y, size } = l.inset;
+  const edge = (size / 2 / 3).toFixed(1);
+  const round = `format=yuva420p,geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='255*clip((1-hypot(2*X/W-1,2*Y/H-1))*${edge},0,1)'`;
+  const main = fitFrame('pm', W, H, srcW, srcH, null, fps, '[pmain]');
+  const base = sh ? `[pmain]null[pibg];${shadowUnder('pi', sh, size, size, x, y, W, fps, true)};[pibs]` : '[pmain]';
+  return `split[l1][l2];[l1]${main};[l2]${crop(l.boxes[0], size, size)},${round}[pin];${base}[pin]overlay=${x}:${y}`;
+}
+
+/** Green screen: a real chroma key on the colour chosen, the spill taken off the edges, a colour behind. */
+function greenFilter(g, W, H, fps) {
+  if (!g) return '';
+  return `,chromakey=color=${g.color}:similarity=${g.similarity.toFixed(3)}:blend=${g.blend.toFixed(3)},despill=type=${g.blue ? 'blue' : 'green'}:mix=0.6,format=yuva420p[gk];` +
+    `color=c=${g.bg}:s=${W}x${H}:r=${fps}[gb];[gb][gk]overlay=0:0:shortest=1`;
+}
+
 /**
  * Cuts are applied by selecting frames rather than splicing pieces: one
  * decode, one encode, whatever the number of cuts. Every boundary is on the
@@ -696,46 +905,59 @@ async function render(job, dir) {
   const fades = `${fadeIn ? `,fade=t=in:st=0:d=${fadeIn}` : ''}${fadeOut ? `,fade=t=out:st=${Math.max(0, outTotal - fadeOut).toFixed(3)}:d=${fadeOut}` : ''}`;
   const bar = p.progressBar ? `,drawbox=x=0:y=ih-${Math.max(6, Math.round(H * 0.008))}:w='iw*t/${outTotal.toFixed(3)}':h=${Math.max(6, Math.round(H * 0.008))}:color=${HEX.test(String(p.accent)) ? String(p.accent).replace('#', '0x') : '0xa855f7'}:t=fill` : '';
   const pace = speed !== 1 ? `,setpts=PTS/${speed},fps=${fps}` : '';
-  const graph = [`[0:v]setpts=PTS-STARTPTS,fps=${fps},select='${sel}',setpts=N/${fps}/TB,${send}${frame}${zoom}${look.length ? `,${look.join(',')}` : ''}${trans}${pace}${subs}${fades}${bar},format=yuv420p[v]`];
+  const after = [...look, ...colorFilters(fx.color), ...appearanceFilters(fx.appearance)];
+  const graph = [`[0:v]setpts=PTS-STARTPTS,fps=${fps},select='${sel}',setpts=N/${fps}/TB,${send}${skin}${frame}${greenFilter(fx.green, W, H, fps)}${zoom}${after.length ? `,${after.join(',')}` : ''}${trans}${pace}${subs}${fades}${bar},format=yuv420p[v]`];
   const hasAudio = p.hasAudio !== false;
   const audio = p.audio ?? {};
-  /* Natural first: each level removes more steady noise (fans, hum, hiss) and
-     the strongest also takes off the top end where hiss lives. Nothing here
-     can rebuild a voice that clipped or dropped out — the screen says so. */
-  const DENOISE = { light: 'afftdn=nr=10:nf=-42', medium: 'afftdn=nr=18:nf=-38:tn=1', strong: 'afftdn=nr=26:nf=-34:tn=1,lowpass=f=11000' };
-  const voice = ['highpass=f=70'];
-  if (DENOISE[audio.denoise]) voice.push(DENOISE[audio.denoise]);
-  if (audio.voice) voice.push('equalizer=f=3200:t=q:w=1.2:g=2.5', 'deesser=i=0.35', 'acompressor=threshold=0.08:ratio=3:attack=8:release=120:makeup=1.5');
+  const voice = voiceChain(audio);
   const gain = num(audio.volume, 1, 0.3, 2);
   if (gain !== 1) voice.push(`volume=${gain}`);
   if (speed !== 1) voice.push(`atempo=${speed}`);
   const stereo = 'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo';
   const afades = `${fadeIn ? `,afade=t=in:st=0:d=${fadeIn}` : ''}${fadeOut ? `,afade=t=out:st=${Math.max(0, outTotal - fadeOut).toFixed(3)}:d=${fadeOut}` : ''}`;
-  const level = `${audio.loudnorm !== false ? ',loudnorm=I=-16:LRA=11:TP=-1.5,aresample=48000' : ''}${afades}`;
+  /* Studio Sound always ends at −16 LUFS; otherwise it is the customer's "even loudness" box. */
+  const levelled = audio.loudnorm !== false || !!audio.studio;
   const music = p.music && job.inputs.music ? p.music : null;
+  const sound = [];
   if (hasAudio) {
-    graph.push(`[0:a]asetpts=PTS-STARTPTS,aresample=48000,asetnsamples=n=${48000 / fps}:p=0,aselect='${sel}',asetpts=N/SR/TB,${voice.join(',')},${stereo}[sp]`);
+    sound.push(`[0:a]asetpts=PTS-STARTPTS,aresample=48000,asetnsamples=n=${48000 / fps}:p=0,aselect='${sel}',asetpts=N/SR/TB,${voice.join(',')},${stereo}[sp]`);
   }
+  /* `@LEVEL@` is where the loudness filter goes: measuring it first (pass one)
+     and then applying exactly what was measured (pass two). */
   if (music) {
     /* The track under the voice: its own volume, faded in and out, cut to the
-       video's length; ducked under speech so words stay clear. */
+       video's length; "lower audio of other layers" ducks it under speech so
+       the words stay clear — a sidechain on the voice itself. */
     const mv = num(music.volume, 0.18, 0, 1), fi = num(music.fadeIn, 1.5, 0, 10), fo = num(music.fadeOut, 2.5, 0, 15);
-    graph.push(`[1:a]aresample=48000,${stereo},volume=${mv},atrim=0:${outTotal.toFixed(3)},asetpts=PTS-STARTPTS` +
+    sound.push(`[1:a]aresample=48000,${stereo},volume=${mv},atrim=0:${outTotal.toFixed(3)},asetpts=PTS-STARTPTS` +
       `${fi > 0 ? `,afade=t=in:st=0:d=${fi}` : ''}${fo > 0 ? `,afade=t=out:st=${Math.max(0, outTotal - fo).toFixed(3)}:d=${fo}` : ''}[m]`);
     if (hasAudio && music.duck !== false) {
-      graph.push('[sp]asplit=2[sp1][sp2]', '[m][sp2]sidechaincompress=threshold=0.02:ratio=8:attack=15:release=350[md]', `[sp1][md]amix=inputs=2:duration=first:normalize=0${level}[a]`);
+      sound.push('[sp]asplit=2[sp1][sp2]', '[m][sp2]sidechaincompress=threshold=0.025:ratio=8:attack=20:release=400:knee=4[md]', '[sp1][md]amix=inputs=2:duration=first:normalize=0@LEVEL@[a]');
     } else if (hasAudio) {
-      graph.push(`[sp][m]amix=inputs=2:duration=first:normalize=0${level}[a]`);
+      sound.push('[sp][m]amix=inputs=2:duration=first:normalize=0@LEVEL@[a]');
     } else {
-      graph.push(`[m]anull${level}[a]`);
+      sound.push('[m]anull@LEVEL@[a]');
     }
   } else if (hasAudio) {
-    graph.push(`[sp]anull${level}[a]`);
+    sound.push('[sp]anull@LEVEL@[a]');
   }
   const withAudio = hasAudio || !!music;
+  const musicIn = music ? [...(music.loop !== false ? ['-stream_loop', '-1'] : []), '-protocol_whitelist', PROTOCOLS, '-format_whitelist', AUDIO_FORMATS, '-i', job.inputs.music] : [];
+  const LN = 'loudnorm=I=-16:LRA=11:TP=-1.5';
+  let level = '';
+  if (withAudio && levelled) {
+    /* Two passes, as EBU R128 normalisation should be done: the whole edited
+       sound is measured first, then corrected linearly by exactly that — one
+       pass guesses as it goes and pumps on speech that starts quietly. If the
+       measurement cannot be read, the one-pass filter is used instead. */
+    const measured = await measureLoudness(job, dir, src, s0, end, musicIn, sound.join(';').replace(/@LEVEL@/g, `,${LN}:print_format=json`), outTotal);
+    level = measured
+      ? `,${LN}:measured_I=${measured.i}:measured_LRA=${measured.lra}:measured_TP=${measured.tp}:measured_thresh=${measured.thresh}:offset=${measured.offset}:linear=true,aresample=48000`
+      : `,${LN},aresample=48000`;
+  }
+  graph.push(...sound.map(g => g.replace(/@LEVEL@/g, `${level}${afades}`)));
   await fsp.writeFile(path.join(dir, 'graph.txt'), graph.join(';'));
   const out = path.join(dir, 'out.mp4');
-  const musicIn = music ? [...(music.loop !== false ? ['-stream_loop', '-1'] : []), '-protocol_whitelist', PROTOCOLS, '-format_whitelist', AUDIO_FORMATS, '-i', job.inputs.music] : [];
   await exec(FFMPEG, [...base, '-ss', String(s0), '-t', String(end - s0 + 0.05), ...inVideo(src), ...musicIn,
     '-filter_complex_script', path.join(dir, 'graph.txt'), '-map', '[v]', ...(withAudio ? ['-map', '[a]'] : []),
     '-c:v', 'libx264', '-preset', String(p.preset ?? 'veryfast').replace(/[^a-z]/g, '') || 'veryfast', '-crf', String(num(p.crf, 21, 14, 32)),
