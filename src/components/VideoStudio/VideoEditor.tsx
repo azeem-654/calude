@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 import {
   getVideoProject, videoStatus, editVideo, applyOps, gotoVersion, renameVideoProject, retryVideo, cancelVideo, deleteVideoProject, renderOutputs,
-  loadTranscript, loadWave, loadTrack, uploadVideo, sentencesOf, clock, bytesLabel, keepRanges, keptLength, STATUS_LABEL,
+  loadTranscript, loadWave, loadTrack, uploadVideo, sentencesOf, clock, bytesLabel, keepRanges, clipKeeps, keptLength, STATUS_LABEL,
   type ProjectView, type Transcript, type VideoDoc, type Op, type Clip, type UploadProgress, type Capability, type TrackFile,
 } from '../../services/videoStudio';
 import { TranscriptPanel, CleanupPanel, ShortsPanel, CaptionsPanel } from './EditorPanels';
@@ -42,6 +42,8 @@ import OutputsBoard from './OutputsBoard';
 import { AdjustPanel, AnimationPanel, TrackingPanel, TextPanel, VisualEffectsPanel } from './EffectsPanels';
 import ReusePanel from './ReusePanel';
 import AssistantPanel, { type ChatMsg } from './AssistantPanel';
+import AiTools from './AiTools';
+import PublishPanel from './PublishPanel';
 import VersionsPanel from './VersionsPanel';
 import Player from './Player';
 import Timeline from './Timeline';
@@ -93,6 +95,8 @@ export interface EditorCtx {
   /** A version the server just saved (an assistant command), taken at once —
    *  waiting for the next refresh left a window where Undo went back two. */
   adopt: (doc: VideoDoc, version: number) => void;
+  /** What this install can do (capabilities) — the AI Tools grey out what is not set up. */
+  caps: Capability[] | null;
 }
 
 /* ── Stages ───────────────────────────────────────────────────────────────── */
@@ -217,7 +221,7 @@ function MediaPanel({ ctx }: { ctx: EditorCtx }) {
           if (!match(`short ${n + 1} ${c.title} ${c.topic}`)) return null;
           return (
             <button key={c.id} type="button" className="vs-media-item" aria-pressed={ctx.activeClip === c.id} onClick={() => { ctx.setActiveClip(c.id); ctx.seek(c.s); }} data-media={c.id}>
-              <div className="th" style={th ? { backgroundImage: `url("${th.url}")` } : frameAt(c.s + 1)}><span>{clock(keptLength(keepRanges(duration, doc, [c.s, c.e])))}</span></div>
+              <div className="th" style={th ? { backgroundImage: `url("${th.url}")` } : frameAt(c.s + 1)}><span>{clock(keptLength(clipKeeps(duration, doc, c)))}</span></div>
               <div style={{ minWidth: 0 }}><b title={c.title}>Short {n + 1} · {c.title}</b><small>{c.aspect} · from {clock(c.s)}</small><div style={{ marginTop: 3 }}>{badge(o?.id)}</div></div>
             </button>
           );
@@ -276,8 +280,7 @@ function CompositionMenu({ ctx }: { ctx: EditorCtx }) {
     if (e - s < 5) e = Math.min(duration, s + 15);
     const before = new Set(doc.clips.map(c => c.id));
     const ok = await ctx.apply([{ op: 'clip.add', s, e, title: `Short from ${clock(s)}`, reason: 'A new short composition' }], 'New short composition');
-    if (!ok) return;
-    window.setTimeout(() => window.dispatchEvent(new CustomEvent('vs-new-clip', { detail: [...before] })), 0);
+    if (ok) window.dispatchEvent(new CustomEvent('vs-new-clip', { detail: [...before] }));
   };
   return (
     <div className="vse-comp" ref={box}>
@@ -291,7 +294,7 @@ function CompositionMenu({ ctx }: { ctx: EditorCtx }) {
           </button>
           {doc.clips.map((c, i) => (
             <button key={c.id} type="button" role="menuitemradio" aria-checked={clip?.id === c.id} data-comp={c.id} onClick={() => { ctx.setActiveClip(c.id); ctx.seek(c.s); setOpen(false); }}>
-              <Film size={14} /><span><b>Short {i + 1} · {c.title}</b><small>{c.aspect} · {clock(keptLength(keepRanges(duration, doc, [c.s, c.e])))}</small></span>{clip?.id === c.id && <Check size={14} />}
+              <Film size={14} /><span><b>Short {i + 1} · {c.title}</b><small>{c.aspect} · {clock(keptLength(clipKeeps(duration, doc, c)))}</small></span>{clip?.id === c.id && <Check size={14} />}
             </button>
           ))}
           <hr />
@@ -328,11 +331,7 @@ function SidePanel({ ctx, group, sub, setSub, onClose, messages, commandRef }: {
         {sub === 'reuse' && <ReusePanel ctx={ctx} />}
         {sub === 'tools' && (
           <div className="vs-col">
-            <div className="vse-improve" data-testid="vs-improve">
-              <span className="vs-mark" style={{ width: 34, height: 34, borderRadius: 11 }}><Sparkles size={17} /></span>
-              <div><b>Improve this video</b><small>Let AI plan your edits: the cleanup it found, waiting for your yes or no.</small></div>
-              <button type="button" className="vs-btn ai sm" onClick={() => setSub('cleanup')}>Review</button>
-            </div>
+            <AiTools ctx={ctx} onCleanup={() => setSub('cleanup')} />
             <AssistantPanel ctx={ctx} messages={messages} inputRef={commandRef} />
           </div>
         )}
@@ -541,14 +540,22 @@ export default function VideoEditor({ id }: { id: string }) {
     window.dispatchEvent(new CustomEvent('vs-seek', { detail: t }));
   }, []);
 
-  /* A new short composition is opened as soon as the save brings it back. */
+  /* A new short composition is opened once the save brings it back with the
+     server's own id (the one shown at once has a local id until then). */
+  const [pendingNew, setPendingNew] = useState<Set<string> | null>(null);
   useEffect(() => {
-    const on = (e: Event) => { const before = new Set((e as CustomEvent<string[]>).detail); const c = doc?.clips.find(x => !before.has(x.id)); if (c) { setActiveClip(c.id); seek(c.s); } };
+    const on = (e: Event) => setPendingNew(new Set((e as CustomEvent<string[]>).detail));
     window.addEventListener('vs-new-clip', on);
     return () => window.removeEventListener('vs-new-clip', on);
-  }, [doc, seek]);
-  /* A composition that was deleted is left for the long video. */
-  useEffect(() => { if (activeClip && doc && !doc.clips.some(c => c.id === activeClip)) setActiveClip(null); }, [doc, activeClip]);
+  }, []);
+  useEffect(() => {
+    if (!pendingNew || !doc || busy) return;
+    const c = doc.clips.find(x => !pendingNew.has(x.id));
+    setPendingNew(null);
+    if (c) { setActiveClip(c.id); seek(c.s); }
+  }, [doc, pendingNew, busy, seek]);
+  /* A composition that was deleted is left for the long video (not while a save is on its way: its ids are about to change). */
+  useEffect(() => { if (!busy && activeClip && doc && !doc.clips.some(c => c.id === activeClip)) setActiveClip(null); }, [doc, activeClip, busy]);
 
   /* Undo / redo from the keyboard, outside text boxes. */
   useEffect(() => {
@@ -568,8 +575,8 @@ export default function VideoEditor({ id }: { id: string }) {
   const duration = view?.source.probe?.duration ?? transcript?.duration ?? 0;
   durationRef.current = duration;
   const ctx = useMemo<EditorCtx | null>(() => view && doc ? {
-    view, doc, version, transcript, duration, apply, seek, time, selection, setSelection, activeClip, setActiveClip, refresh, setTab, say, adopt, track,
-  } : null, [view, doc, version, transcript, duration, apply, seek, time, selection, activeClip, refresh, setTab, say, adopt, track]);
+    view, doc, version, transcript, duration, apply, seek, time, selection, setSelection, activeClip, setActiveClip, refresh, setTab, say, adopt, track, caps,
+  } : null, [view, doc, version, transcript, duration, apply, seek, time, selection, activeClip, refresh, setTab, say, adopt, track, caps]);
   const sentences = useMemo(() => transcript ? sentencesOf(transcript.words) : [], [transcript]);
 
   if (error) return <div className="vs-note bad" role="alert"><AlertCircle size={16} /> {error} <Link to="/video-studio">Back to Video Studio</Link></div>;
@@ -683,6 +690,7 @@ export default function VideoEditor({ id }: { id: string }) {
         </div>
       )}
     </div>
+    {hasSource && <PublishPanel ctx={ctx} />}
     {hasSource && <OutputsBoard ctx={ctx} />}
     </>
   );

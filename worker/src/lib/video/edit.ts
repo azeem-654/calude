@@ -98,6 +98,8 @@ export interface Clip {
   reframe: Reframe;
   /** The layout chosen for this Short (see ShortLayout); absent, its crop / fit. */
   layout?: ShortLayout;
+  /** A highlight reel: the stretches it is made of, in order (inside s–e). Absent: the whole of s–e. */
+  parts?: [number, number][];
 }
 
 export type CleanupPreset = 'conservative' | 'balanced' | 'aggressive';
@@ -172,7 +174,8 @@ export const LOOK_DEFAULT: Look = { filter: 'none', temperature: 0, tint: 0, bri
 export interface Motion {
   zoom: 'off' | 'punch' | 'slow';
   zoomAmount: number;
-  transition: 'none' | 'flash' | 'dip';
+  /** 'smooth' — a short blend across each jump cut ("Smooth jump cuts"). */
+  transition: 'none' | 'flash' | 'dip' | 'smooth';
   fadeIn: number;
   fadeOut: number;
   speed: number;
@@ -452,6 +455,13 @@ export function keepRanges(duration: number, doc: Pick<VideoDoc, 'cuts' | 'prote
 
 export const keptLength = (keeps: [number, number][]) => keeps.reduce((n, [a, b]) => n + (b - a), 0);
 
+/** What a Short keeps: its stretch, or — a highlight reel — each of its parts in turn. */
+export function clipKeeps(duration: number, doc: Pick<VideoDoc, 'cuts' | 'protects'>, clip: Pick<Clip, 's' | 'e' | 'parts'> | null | undefined): [number, number][] {
+  if (!clip) return keepRanges(duration, doc);
+  if (clip.parts?.length) return clip.parts.flatMap(pt => keepRanges(duration, doc, pt));
+  return keepRanges(duration, doc, [clip.s, clip.e]);
+}
+
 /** The muted stretches that fall inside what is kept, in source time — what the render silences and the preview turns down. */
 export function mutedIn(doc: Pick<VideoDoc, 'mutes'>, keeps: [number, number][]): [number, number][] {
   const out: [number, number][] = [];
@@ -539,7 +549,8 @@ export type Op =
   | { op: 'caption.edit'; i: number; text: string }
   | { op: 'caption.style'; target: 'long' | 'short'; patch: Partial<CaptionStyle> }
   | { op: 'captions.set'; on?: boolean; burn?: boolean }
-  | { op: 'clip.add'; s: number; e: number; title?: string; topic?: string; reason?: string }
+  | { op: 'clip.add'; s: number; e: number; title?: string; topic?: string; reason?: string; parts?: [number, number][] }
+  | { op: 'chapters.set'; list: { s: number; title: string }[] }
   | { op: 'clip.update'; id: string; patch: Partial<Pick<Clip, 's' | 'e' | 'title' | 'topic' | 'aspect'>> & { reframe?: Partial<Reframe>; layout?: ShortLayout | null } }
   | { op: 'clip.remove'; id: string }
   | { op: 'long.set'; patch: { on?: boolean; aspect?: Aspect; reframe?: Partial<Reframe> } }
@@ -671,7 +682,29 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
         if (typeof o.on === 'boolean') d.captions.on = o.on;
         if (typeof o.burn === 'boolean') d.captions.burn = o.burn;
         break;
+      case 'chapters.set': {
+        /* YouTube's rule: the first at 0:00, at least three, each at least ten seconds long. */
+        const list = (Array.isArray(o.list) ? o.list : []).map(c => ({ s: Math.round(clamp(c?.s, 0, duration, NaN) * 10) / 10, title: text(c?.title, 80) }))
+          .filter(c => Number.isFinite(c.s) && c.title).sort((a, b) => a.s - b.s);
+        const kept: { s: number; title: string }[] = [];
+        for (const c of list) if (!kept.length || c.s - kept[kept.length - 1].s >= 10) kept.push(c);
+        if (kept.length) kept[0].s = 0;
+        if (kept.length && kept.length < 3) { refused.push('chapters need at least three, each ten seconds or longer'); break; }
+        d.long.chapters = kept.slice(0, 60);
+        break;
+      }
       case 'clip.add': {
+        if (Array.isArray(o.parts) && o.parts.length) {
+          /* A highlight reel: its stretches in order, none overlapping, together three seconds to three minutes. */
+          const parts = o.parts.slice(0, 40).map(pt => range(pt?.[0], pt?.[1])).filter((pt): pt is [number, number] => !!pt && pt[1] - pt[0] >= 1).sort((a, b) => a[0] - b[0]);
+          const clean: [number, number][] = [];
+          for (const pt of parts) { const last = clean[clean.length - 1]; if (last && pt[0] < last[1]) last[1] = Math.max(last[1], pt[1]); else clean.push([...pt] as [number, number]); }
+          const total = clean.reduce((n, [a, b]) => n + b - a, 0);
+          if (total < 3 || total > 180) { refused.push('a highlight reel is between three seconds and three minutes'); break; }
+          d.clips.push({ id: newId('cl'), title: text(o.title, 100) || 'Highlight reel', topic: text(o.topic, 80), reason: text(o.reason, 240) || 'Highlights chosen by you',
+            s: clean[0][0], e: clean[clean.length - 1][1], parts: clean, scores: null, by: 'you', aspect: d.shorts.aspect, reframe: { mode: d.shorts.mode ?? 'crop', x: 0.5, y: 0.5 } });
+          break;
+        }
         const r = range(o.s, o.e);
         if (!r || r[1] - r[0] < 3) { refused.push('a Short needs at least three seconds'); break; }
         if (r[1] - r[0] > 180) { refused.push('a Short is at most three minutes'); break; }
@@ -684,8 +717,9 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
         if (!c) { refused.push('no such Short'); break; }
         const p = o.patch ?? {};
         const r = range(p.s ?? c.s, p.e ?? c.e);
-        if (!r || r[1] - r[0] < 3 || r[1] - r[0] > 180) { refused.push('a Short is between three seconds and three minutes'); break; }
+        if (!r || r[1] - r[0] < 3 || (!c.parts && r[1] - r[0] > 180)) { refused.push('a Short is between three seconds and three minutes'); break; }
         [c.s, c.e] = r;
+        if (c.parts) { c.parts = c.parts.map(([a, b]) => [Math.max(a, r[0]), Math.min(b, r[1])] as [number, number]).filter(([a, b]) => b - a >= 0.5); if (!c.parts.length) delete c.parts; }
         if (p.title !== undefined) c.title = text(p.title, 100) || c.title;
         if (p.topic !== undefined) c.topic = text(p.topic, 80);
         if (p.aspect && ['9:16', '1:1', '4:5', '16:9'].includes(p.aspect)) c.aspect = p.aspect;
@@ -767,7 +801,7 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
         const p = o.patch ?? {};
         if (p.zoom && ['off', 'punch', 'slow'].includes(p.zoom)) cur.zoom = p.zoom;
         if (p.zoomAmount !== undefined) cur.zoomAmount = Math.round(clamp(p.zoomAmount, 1.03, 1.35, cur.zoomAmount) * 100) / 100;
-        if (p.transition && ['none', 'flash', 'dip'].includes(p.transition)) cur.transition = p.transition;
+        if (p.transition && ['none', 'flash', 'dip', 'smooth'].includes(p.transition)) cur.transition = p.transition;
         if (p.fadeIn !== undefined) cur.fadeIn = Math.round(clamp(p.fadeIn, 0, 5, cur.fadeIn) * 10) / 10;
         if (p.fadeOut !== undefined) cur.fadeOut = Math.round(clamp(p.fadeOut, 0, 5, cur.fadeOut) * 10) / 10;
         if (p.speed !== undefined) cur.speed = Math.round(clamp(p.speed, 0.5, 2, cur.speed) * 100) / 100;

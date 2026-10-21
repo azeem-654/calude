@@ -54,6 +54,8 @@ interface Req {
   posts?: number; blog?: boolean; email?: boolean;
   /** A direct link to a video file (import_link). */
   url?: string;
+  /** publish_save: which composition, and its texts; translation_save: the language and its cues. */
+  fields?: unknown; platformPosts?: unknown; language?: string; cues?: { s?: unknown; e?: unknown; text?: unknown }[];
   /** Cleanup options: the filler kinds ticked, and the longest pause kept (null: the level's own). */
   fillers?: unknown; maxPause?: number | null;
   /** Start from the customer's own YouTube video instead of an upload (create, youtube_info). */
@@ -790,6 +792,36 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       if (!want.posts && !want.blog && !want.email) return fail('Choose at least one thing to write.');
       await enqueue(env, { accountId, projectId: p.id, kind: 'repurpose', idem: `repurpose:${p.id}:${Date.now()}`, input: want });
       kick(p.id);
+      return json({ success: true });
+    }
+
+    /* The publishing texts for one composition, kept with the video (extras.publish). */
+    case 'publish_save': {
+      const key = s(d.key, 80);
+      if (key !== 'long' && !parse<VideoDoc>(p.doc, null as unknown as VideoDoc)?.clips.some(c => c.id === key)) return fail('That video is not in this project.', 404, { code: 'not_found' });
+      const FIELDS = new Set(['title', 'description', 'marketing', 'hashtags', 'shownotes', 'summary', 'chapters', 'blog', 'write']);
+      const PLATFORMS = new Set(['youtube', 'linkedin', 'instagram', 'facebook', 'pinterest', 'reddit', 'tiktok', 'x']);
+      const ex = parse<Extras>(p.extras, {});
+      const cur = ex.publish?.[key] ?? { fields: {}, posts: {}, at: '' };
+      const clean = (v: unknown) => String(v ?? '').replace(/\u0000/g, '').slice(0, 20_000);
+      for (const [k, v] of Object.entries((d.fields ?? {}) as Record<string, unknown>)) if (FIELDS.has(k)) cur.fields[k] = clean(v);
+      for (const [k, v] of Object.entries((d.platformPosts ?? {}) as Record<string, unknown>)) if (PLATFORMS.has(k)) cur.posts[k] = clean(v);
+      cur.at = nowIso();
+      const publish = { ...(ex.publish ?? {}), [key]: cur };
+      if (JSON.stringify(publish).length > 400_000) return fail('That is more text than one video keeps — shorten the longest pieces.', 200);
+      await env.DB.prepare(`UPDATE crm_video_projects SET extras = json_set(COALESCE(NULLIF(extras, ''), '{}'), '$.publish', json(?)), updated_at = ? WHERE id = ?`).bind(JSON.stringify(publish), nowIso(), p.id).run();
+      return json({ success: true, publish: cur });
+    }
+
+    /* Captions translated in the editor, kept with the video (extras.translations). */
+    case 'translation_save': {
+      const lang = s(d.language, 40);
+      const cues = (Array.isArray(d.cues) ? d.cues : []).slice(0, 5000).map(c => ({ s: Number(c?.s), e: Number(c?.e), text: String(c?.text ?? '').slice(0, 300) }))
+        .filter(c => Number.isFinite(c.s) && Number.isFinite(c.e) && c.e > c.s);
+      if (!lang || !cues.length) return fail('Nothing to save: a language and its captions are needed.', 200);
+      const ex = parse<Extras>(p.extras, {});
+      const translations = { ...(ex.translations ?? {}), [lang]: { at: nowIso(), cues } };
+      await env.DB.prepare(`UPDATE crm_video_projects SET extras = json_set(COALESCE(NULLIF(extras, ''), '{}'), '$.translations', json(?)), updated_at = ? WHERE id = ?`).bind(JSON.stringify(translations), nowIso(), p.id).run();
       return json({ success: true });
     }
 

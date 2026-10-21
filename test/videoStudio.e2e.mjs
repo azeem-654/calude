@@ -307,7 +307,8 @@ const PID = page.url().match(/video-studio\/(vp-[\w-]+)/)[1];
 const upl = prog.filter(x => x.stage === 'upload');
 ok('2 · the upload shows real bytes sent, and time left once it can be told', upl.some(x => /[\d.]+ (KB|MB) of [\d.]+ MB/.test(x.text)), upl.slice(-1)[0]?.text);
 const stagesSeen = [...new Set(prog.map(x => x.stage))];
-ok('…then one screen names each stage in turn: uploading, preparing, transcribing, finding fillers and retakes, ready', ['upload', 'prepare', 'transcribe', 'analyze', 'ready'].every(k => stagesSeen.includes(k)), stagesSeen);
+const stepsText = prog.find(x => /Transcribing/.test(x.text))?.text ?? '';
+ok('…then one screen follows it through its stages — uploading, preparing, transcribing, finding fillers and retakes, ready', ['upload', 'prepare', 'ready'].every(k => stagesSeen.includes(k)) && /Uploading[\s\S]*Preparing the video[\s\S]*Transcribing[\s\S]*Finding fillers and retakes[\s\S]*Ready/.test(stepsText), { stagesSeen, stepsText: stepsText.slice(0, 300) });
 const ups = prog.slice(1).filter((x, i) => x.pct < prog[i].pct - 0.001);
 ok('…its percentage only ever goes up, with decimals (16.1 → 16.2 …), and never says 100% before it is ready', ups.length === 0 && prog.some(x => /^\d+\.[1-9]$/.test(x.shown)) && prog.filter(x => x.stage !== 'ready').every(x => x.pct < 100), { ups: ups.slice(0, 3), sample: prog.filter((_, i) => i % 40 === 0).map(x => `${x.stage}:${x.shown}`).slice(0, 30) });
 /* Never frozen: while it works, the number on screen changes at least every few seconds. */
@@ -388,6 +389,8 @@ ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and 
     .map(w => ({ op: 'cut.add', s: Math.round((w.s - 0.04) * 100) / 100, e: Math.round((w.e + 0.04) * 100) / 100, reason: 'Many cuts (test)' }));
   const many = await v('edit', { projectId: PID, baseVersion: base0.docVersion, ops: extra, note: 'many cuts' });
   ok('(twenty more cuts in the first minute and a half)', many.success && extra.length >= 15, { n: extra.length, many: many.error });
+  /* The browser kept the first megabyte of the H.264 proxy from earlier visits (the same signed link within the hour); the bytes changed under it only because this test changed them. */
+  { const cdp = await ctx.newCDPSession(page); await cdp.send('Network.clearBrowserCache'); await cdp.detach(); }
   await page.reload({ waitUntil: 'networkidle' });
   await page.getByTestId('vs-play').waitFor({ timeout: 15_000 });
   await page.waitForTimeout(1500);
@@ -557,7 +560,10 @@ await page.getByTestId('vs-search').fill('');
   await page.waitForTimeout(300);
   const phrases = page.locator('[data-block="phrase"]'), gaps = page.locator('[data-block="gap"]');
   ok('the timeline has a block for every phrase and a "…" block for every gap between them', (await phrases.count()) > 100 && (await gaps.count()) > 20, { phrases: await phrases.count(), gaps: await gaps.count() });
-  const ph = phrases.nth(6);
+  /* Blocks wide enough to press at this zoom, not already cut. */
+  const wide = await page.evaluate(() => [...document.querySelectorAll('[data-block="phrase"]')].filter(b => b.getBoundingClientRect().width > 30 && !b.classList.contains('cut')).map(b => Number(b.dataset.i)));
+  const blockAt = i => page.locator(`[data-block][data-i="${i}"]`);
+  const ph = blockAt(wide[2]);
   await ph.scrollIntoViewIfNeeded();
   await ph.click();
   await page.waitForTimeout(300);
@@ -565,7 +571,8 @@ await page.getByTestId('vs-search').fill('');
   ok('clicking a phrase selects exactly that block, lights its words in the script and offers what to do with it',
     (await page.locator('[data-block][aria-pressed="true"]').count()) === 1 && (await ph.getAttribute('aria-pressed')) === 'true' && (await page.locator('.vs-w.sel').count()) > 0
     && ['Remove this section', 'Select everything before', 'Select everything after', 'Split here', 'Mute'].every(w => acts.includes(w)), acts);
-  await phrases.nth(8).click({ modifiers: ['Shift'] });
+  await blockAt(wide[4]).scrollIntoViewIfNeeded();
+  await blockAt(wide[4]).click({ modifiers: ['Shift'] });
   await page.waitForTimeout(200);
   ok('…Shift-click extends the selection over the blocks between', (await page.locator('[data-block][aria-pressed="true"]').count()) >= 3);
   const G = await page.evaluate(() => { const b = [...document.querySelectorAll('[data-block="gap"]')].find(x => Number(x.dataset.e) - Number(x.dataset.s) > 0.6 && !x.classList.contains('cut') && x.getBoundingClientRect().width > 6); return b ? Number(b.dataset.i) : -1; });
@@ -598,12 +605,70 @@ await page.getByTestId('vs-search').fill('');
   let B4;
   for (let i = 0; i < 30; i++) { B4 = await at(); if ((B4.doc.splits ?? []).length) break; await sleep(300); }
   ok('"Split here" starts a new scene there (numbered on the scenes track)', (B4.doc.splits ?? []).length === 1 && (await page.locator('.vse-scene.split').count()) >= 1);
-  await phrases.nth(10).click();
+  await blockAt(wide[6]).scrollIntoViewIfNeeded();
+  await blockAt(wide[6]).click();
   await page.locator('[data-act="block-remove"]').click();
   let B5;
   for (let i = 0; i < 30; i++) { B5 = await at(); if (B5.docVersion > B4.docVersion) break; await sleep(300); }
   ok('"Remove this section" cuts that phrase from the video', B5.doc.cuts.some(c => c.by === 'you' && /^Removed “/.test(c.reason) && c.state === 'approved'));
   await v('goto_version', { projectId: PID, version: B0.docVersion });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.getByTestId('vs-transcript').waitFor({ timeout: 20_000 });
+}
+
+/* ── AI Tools, and publishing under the editor ── */
+{
+  const at = async () => (await v('get', { projectId: PID }));
+  const V0 = (await at()).docVersion;
+  await openPanel(page, 'tools');
+  const tools = await page.getByTestId('vs-ai-tools').innerText();
+  ok('AI Tools has Descript\'s groups: Sound good, Look good, Repurpose, Publish, Write — "Improve this video" on top',
+    /Improve this video/.test(tools) && ['Edit for clarity', 'Studio Sound', 'Remove filler words', 'Generate audio', 'Remove retakes', 'Shorten word gaps', 'Add chapters', 'Quick design', 'Smooth jump cuts', 'Eye Contact', 'Center active speaker', 'Green screen', 'Skin smoothing', 'Automatic multicam', 'Generate visuals', 'Blur speaker background', 'Create clips', 'Create highlight reel', 'Find highlights', 'Translate', 'Draft YouTube description', 'Generate YouTube thumbnail', 'Draft show notes', 'Draft a title', 'Summarize', 'Draft a social post', 'Draft a blog post', 'Brainstorm', 'Write a script', 'Write an outline', 'Rewrite'].every(t => tools.includes(t)), tools.slice(0, 400));
+  const greyed = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('[data-tool]')].map(b => [b.dataset.tool, b.disabled ? b.title : ''])));
+  ok('…what has no provider is greyed with the honest reason: eye contact, multicam with one camera, generated audio and visuals, background blur, quick design',
+    /HTTP API/.test(greyed.eyes) && /two or more camera angles/.test(greyed.multicam) && /text-to-speech/.test(greyed.tts) && /image-generation/.test(greyed.visuals) && /segmentation/.test(greyed.blurbg) && /Not available/.test(greyed.quick) && !greyed.chapters && !greyed.smooth, greyed);
+  ok('…and "Center active speaker" says why not when the recording has no faces', /No faces were found|not been looked for/.test(greyed.speaker), greyed.speaker);
+  await page.locator('[data-tool="chapters"]').click();
+  let A1;
+  for (let i = 0; i < 40; i++) { A1 = await at(); if (A1.doc.long.chapters.length >= 3 && A1.docVersion > V0) break; await sleep(400); }
+  ok('"Add chapters" writes chapters from the transcript — the first at 0:00, ten seconds apart', A1.doc.long.chapters.length >= 3 && A1.doc.long.chapters[0].s === 0 && A1.doc.long.chapters.every((c, i, a) => !i || c.s - a[i - 1].s >= 10), A1.doc.long.chapters);
+  await page.locator('[data-tool="smooth"]').click();
+  let A2;
+  for (let i = 0; i < 30; i++) { A2 = await at(); if (A2.doc.motion?.long?.transition === 'smooth') break; await sleep(300); }
+  ok('"Smooth jump cuts" turns on a short blend at every cut (the preview blends its two players)', A2.doc.motion?.long?.transition === 'smooth' && (await page.locator('.vs-deck.smooth').count()) === 1);
+  await page.locator('[data-tool="highlights"]').click();
+  await page.getByTestId('vs-highlights').waitFor({ timeout: 20_000 });
+  const hl = await page.getByTestId('vs-highlights').locator('.vs-item').count();
+  const C0 = (await at()).doc.clips.length;
+  await page.locator('[data-act="reel-from-list"]').click();
+  let A3;
+  for (let i = 0; i < 30; i++) { A3 = await at(); if (A3.doc.clips.length > C0) break; await sleep(300); }
+  const reelClip = A3.doc.clips[A3.doc.clips.length - 1];
+  ok('"Find highlights" lists whole-sentence moments, and they become a highlight reel — one Short made of its parts', hl >= 2 && reelClip?.parts?.length === hl && reelClip.title === 'Highlight reel', { hl, reelClip });
+  await page.locator('[data-tool="translate"]').click();
+  await page.getByTestId('vs-translate-lang').selectOption('Spanish');
+  await page.locator('[data-act="translate"]').click();
+  await page.getByTestId('vs-translations').waitFor({ timeout: 30_000 });
+  const tr = (await at()).extras?.translations?.Spanish;
+  const srtHref = await page.getByTestId('vs-translations').locator('a', { hasText: 'SRT' }).getAttribute('href');
+  ok('"Translate" turns the captions into Spanish, kept with the video, as SRT and VTT to download', tr?.cues?.length > 50 && tr.cues.every(c => c.text.startsWith('[es] ')) && /^blob:/.test(srtHref ?? ''), { n: tr?.cues?.length });
+  /* Publishing: a Publish item scrolls to the section and writes that piece. */
+  await page.locator('[data-tool="title"]').click();
+  const titleBox = page.locator('[data-pub="title"] textarea');
+  for (let i = 0; i < 40 && !/Written from the video/.test(await titleBox.inputValue()); i++) await sleep(300);
+  ok('"Draft a title" scrolls to Publishing under the editor and writes the title there', /Written from the video/.test(await titleBox.inputValue()) && await page.locator('#vs-publish').isVisible());
+  for (const k of ['pinterest', 'reddit']) await page.locator(`[data-platform="${k}"]`).check();
+  await page.locator('[data-act="write-posts"]').click();
+  const xBox = page.locator('[data-post="x"] textarea');
+  for (let i = 0; i < 40 && !(await xBox.inputValue()); i++) await sleep(300);
+  const postsNow = Object.fromEntries(await Promise.all(['youtube', 'linkedin', 'instagram', 'x', 'pinterest', 'reddit'].map(async k => [k, await page.locator(`[data-post="${k}"] textarea`).inputValue()])));
+  ok('ticked platforms each get their own post — separate text per platform, X within 280 characters', Object.values(postsNow).every(Boolean) && new Set(Object.values(postsNow)).size >= 2 && postsNow.x.length <= 280, postsNow);
+  await page.locator('[data-pub="summary"] textarea').fill('My own summary, typed by hand.');
+  await page.waitForTimeout(1600);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.locator('#vs-publish').scrollIntoViewIfNeeded();
+  ok('…and everything written is kept with the video: there after a reload', /Written from the video/.test(await page.locator('[data-pub="title"] textarea').inputValue()) && (await page.locator('[data-pub="summary"] textarea').inputValue()) === 'My own summary, typed by hand.' && !!(await page.locator('[data-post="x"] textarea').inputValue()));
+  await v('goto_version', { projectId: PID, version: V0 });
   await page.reload({ waitUntil: 'networkidle' });
   await page.getByTestId('vs-transcript').waitFor({ timeout: 20_000 });
 }

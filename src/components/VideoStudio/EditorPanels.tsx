@@ -15,7 +15,7 @@ import { askConfirm } from '../shared/ConfirmDialog';
 import { useMemo, useState } from 'react';
 import { RotateCcw, Shield, Film, Type, Play, Check, X, ChevronUp, ChevronDown, Wand2, Sparkles, Trash2, Clapperboard, SlidersHorizontal } from 'lucide-react';
 import {
-  clock, cleanupSummary, keepRanges, keptLength, runCleanup, videoCommand, renderOutputs, CAPTION_PRESETS, findFillers, fillerCounts, FILLER_KINDS, FILLER_INFO, DEFAULT_FILLERS,
+  clock, cleanupSummary, keepRanges, clipKeeps, keptLength, runCleanup, videoCommand, renderOutputs, CAPTION_PRESETS, findFillers, fillerCounts, FILLER_KINDS, FILLER_INFO, DEFAULT_FILLERS,
   type CaptionStyle, type CleanupPreset, type Cut, type Sentence, type CaptionPreset, type FillerKind,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
@@ -201,7 +201,7 @@ export function ShortsPanel({ ctx, sentences }: { ctx: EditorCtx; sentences: Sen
       {doc.clips.map((c, n) => {
         const o = outFor(c.id);
         const job = o ? jobFor(o.id) : undefined;
-        const kept = keptLength(keepRanges(ctx.duration, doc, [c.s, c.e]));
+        const kept = keptLength(clipKeeps(ctx.duration, doc, c));
         return (
           <div key={c.id} className="vs-item" data-testid="vs-clip" data-clip={c.id} style={ctx.activeClip === c.id ? { borderColor: '#5b46e5' } : undefined}>
             <div className="vs-row">

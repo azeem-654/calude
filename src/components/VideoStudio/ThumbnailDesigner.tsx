@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Wand2, Loader, Check, Crosshair } from 'lucide-react';
 import {
-  designThumb, videoStatus, clock, keepRanges, thumbPlan, normaliseSpec, EM, CONDENSE, HALO, STICKERS,
+  designThumb, videoStatus, clock, keepRanges, clipKeeps, thumbPlan, normaliseSpec, EM, CONDENSE, HALO, STICKERS,
   type OutputView, type ThumbSpec, type ThumbPlan, type TrackRow,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
@@ -189,7 +189,7 @@ function Seg<T extends string>({ value, options, onChange, label, disabled }: { 
 export default function ThumbnailDesigner({ ctx, o, onClose }: { ctx: EditorCtx; o: OutputView; onClose: () => void }) {
   const { view, doc, duration } = ctx;
   const clip = o.kind === 'short' ? doc.clips.find(c => c.id === o.clipId) : undefined;
-  const keeps = useMemo(() => keepRanges(duration, doc, clip ? [clip.s, clip.e] : undefined), [duration, doc, clip]);
+  const keeps = useMemo(() => clipKeeps(duration, doc, clip), [duration, doc, clip]);
   const from = keeps[0]?.[0] ?? 0, to = keeps[keeps.length - 1]?.[1] ?? duration;
   const start = (o.thumbs[o.chosenThumb] ?? o.thumbs[0])?.spec;
   const words0 = (o.meta as { titles?: string[] }).titles?.[0] ?? o.title;

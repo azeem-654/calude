@@ -203,7 +203,23 @@ export function startGeminiMock(port) {
     if (state.fail) return send(res, 500, { error: { code: 500, message: 'model unavailable (test)' } });
     let answer;
     const lineList = () => [...prompt.matchAll(/^\[(\d+)\] \((\d+):(\d+)\) (.*)$/gm)].map(m => ({ i: Number(m[1]), t: Number(m[2]) * 60 + Number(m[3]), text: m[4] }));
-    if (/multiple-choice quiz/.test(prompt)) {
+    /* The editor's own asks (services/videoAi.ts): numbered, timed sentences in a fence. */
+    const fenced = () => [...prompt.matchAll(/^(\d+)\. \[(\d+):(\d+)\] (.*)$/gm)].map(m => ({ n: Number(m[1]), t: Number(m[2]) * 60 + Number(m[3]), text: m[4] }));
+    if (/Divide this video into chapters/.test(prompt)) {
+      const ls = fenced(), step = Math.max(1, Math.floor(ls.length / 4));
+      answer = { chapters: [0, 1, 2, 3].map(k => ls[k * step]).filter(Boolean).map((l, k) => ({ sentence: l.n, title: ['Welcome', 'Finding customers', 'Following up', 'Pricing and wrap-up'][k] })) };
+    } else if (/strongest moments in this video/.test(prompt)) {
+      const ls = fenced();
+      answer = { highlights: [4, 12, 20].filter(k => ls[k + 1]).map(k => ({ from: ls[k].n, to: ls[k + 1].n, title: ls[k].text.split(' ').slice(0, 4).join(' '), why: 'A clear, self-contained point.' })) };
+    } else if (/Translate these on-screen captions/.test(prompt)) {
+      const arr = JSON.parse(prompt.match(/^(\[[\s\S]*?\])$/m)?.[1] ?? '[]');
+      answer = { captions: arr.map(x => `[es] ${x}`) };
+    } else if (/Write one post for each platform/.test(prompt)) {
+      const keys = [...prompt.matchAll(/^- "(\w+)":/gm)].map(m => m[1]);
+      answer = Object.fromEntries(keys.map(k => [k, k === 'x' ? 'Four ways to win customers this week — the short version. #growth' : `A ${k} post about winning customers: prospecting, the pipeline, follow-up and pricing. #growth`]));
+    } else if (/Answer only JSON: \{"text":"…"\}/.test(prompt)) {
+      answer = { text: `Written from the video: ${(fenced()[1]?.text ?? 'the talk')}` };
+    } else if (/multiple-choice quiz/.test(prompt)) {
       const lines = lineList();
       const questions = KEYWORDS.map(k => ({ k, at: lines.find(l => k.re.test(l.text)) })).filter(x => x.at).map(({ k, at }) => ({
         question: `What does the show say about ${k.topic.toLowerCase()}?`,

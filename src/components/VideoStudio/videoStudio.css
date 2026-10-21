@@ -863,3 +863,27 @@ html[data-theme="dark"] .vs canvas.vse-layout { filter: none; }
 @media (max-width: 900px) { .vse-side .vse-rail { order: 0; } }
 @media (max-width: 760px) { .ob-score { display: flex; flex-wrap: wrap; gap: 6px 12px; } }
 .vse-crumbs .vse-name { field-sizing: content; }
+/* "Smooth jump cuts": the deck's two elements blend for a tenth of a second at each cut, as the render does with tmix. */
+@media (prefers-reduced-motion: no-preference) { .vs-deck.smooth video { transition: opacity .1s linear, object-position .25s linear; } }
+.vs-ps-clock { color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ── Publishing, under the editor ── */
+.vs-publish { margin-top: 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 16px; scroll-margin-top: 80px; }
+.vs-pub-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
+.vs-pub { display: grid; gap: 8px; align-content: start; padding: 12px; }
+.vs-pub.wide { grid-column: 1 / -1; }
+.vs-pub .vs-textarea { resize: vertical; font-size: 13.5px; line-height: 1.5; min-width: 0; }
+.vs-kbd.over { color: var(--bad); font-weight: 700; }
+.vs-textarea { width: 100%; border: 1px solid var(--line2); border-radius: 10px; padding: 9px 11px; font: inherit; color: var(--ink); background: #fff; }
+/* AI Tools */
+.vs-tools-group { display: grid; gap: 4px; }
+.vs-tools-group > b { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 6px 0 2px; }
+.vs-tool { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 8px; align-items: center; text-align: left; border: 1px solid transparent; background: none; color: var(--ink); border-radius: 10px; padding: 6px 8px; cursor: pointer; font: inherit; }
+.vs-tool:hover:not(:disabled) { background: var(--soft); border-color: var(--line); }
+.vs-tool i { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-style: normal; }
+.vs-tool b { font-size: 13px; display: block; }
+.vs-tool small { font-size: 11.5px; color: var(--muted); display: block; line-height: 1.35; }
+.vs-tool:disabled { cursor: not-allowed; }
+.vs-tool:disabled i { background: var(--soft); color: var(--faint); }
+.vs-tool:disabled b { color: var(--faint); }
+.vs-tool.on i { background: var(--ok-soft); color: var(--ok); }

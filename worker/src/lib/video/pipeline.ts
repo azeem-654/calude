@@ -32,7 +32,7 @@ import { nowIso } from '../db';
 import { aiBudget, askGeminiParts, extractJson, loadAiKey } from '../ai';
 import { recordAgentRun, repurposeRecording } from '../projectAgents';
 import {
-  dimsFor, hashOf, keepRanges, keptLength, mutedIn, retimeWords, sentencesOf, toOutput, clock, lookOf, motionOf, trackingOf, effectsOf, effectsOn,
+  dimsFor, hashOf, keepRanges, keptLength, mutedIn, clipKeeps, retimeWords, sentencesOf, toOutput, clock, lookOf, motionOf, trackingOf, effectsOf, effectsOn,
   type Clip, type Effects, type Look, type Motion, type MusicTrack, type Overlay, type Sentence, type TrackMode, type Transcript, type VideoDoc, type Word,
 } from './edit';
 import { cameraPath, cutTimes, overlayAss, overlaySpan, punchSpans, skinBox, type TrackFile } from './motion';
@@ -67,7 +67,16 @@ export interface Extras {
   repurposed?: { at: string; links: { kind: string; id: string; label: string; route: string }[]; notes: string[] };
   quiz?: { at: string; questions: QuizQuestion[]; by: 'ai' };
   quizNote?: string;
+  /**
+   * The publishing texts written for each composition ('long' or a Short's
+   * id): title, description, hashtags, show notes… and one post per platform.
+   * Written with AI in the editor, edited by the customer, kept with the video.
+   */
+  publish?: Record<string, PublishTexts>;
+  /** Captions translated into another language (by language name): the cues on the long video's clock. */
+  translations?: Record<string, { at: string; cues: { s: number; e: number; text: string }[] }>;
 }
+export interface PublishTexts { fields: Record<string, string>; posts: Record<string, string>; at: string }
 export interface JobRow {
   id: string; account_id: string; project_id: string; kind: string; target: string; idem: string; state: string;
   attempts: number; max_attempts: number; step: number; steps: number; progress: number | null; stage: string;
@@ -667,7 +676,7 @@ export function renderSpec(doc: VideoDoc, src: Source, out: Pick<OutputRow, 'kin
   if (!probe) return null;
   const clip = out.kind === 'short' ? doc.clips.find(c => c.id === out.clip_id) : undefined;
   if (out.kind === 'short' && !clip) return null;
-  const keeps = keepRanges(probe.duration, doc, clip ? [clip.s, clip.e] : undefined);
+  const keeps = clipKeeps(probe.duration, doc, clip);
   const aspect = clip ? clip.aspect : doc.long.aspect;
   const { width, height } = dimsFor(aspect, probe.width, probe.height);
   const reframe = clip ? clip.reframe : doc.long.reframe;
@@ -991,7 +1000,7 @@ async function thumbnailJob(env: Env, origin: string, job: JobRow, p: ProjectRow
   const duration = src.probe?.duration ?? 0;
   /* A frame from inside what is kept, a little way in: past the opening
      greeting, never on a cut. Each set picks a different moment. */
-  const keeps = keepRanges(duration, doc, clip ? [clip.s, clip.e] : undefined);
+  const keeps = clipKeeps(duration, doc, clip);
   const span = keptLength(keeps);
   const momentAt = (share: number) => {
     const want = span * Math.min(0.9, share);

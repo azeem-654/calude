@@ -30,7 +30,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, Music2, Gauge, Circle, Scissors, Minus, Plus, MousePointer2, Hand } from 'lucide-react';
 import {
-  keepRanges, keptLength, retimeWords, cuesOf, toOutput, toSource, clock, isRtl, lookOf, motionOf, trackingOf, cssLook, punchSpans, cutTimes, trackAt, overlaySpan, sentencesOf,
+  keepRanges, clipKeeps, keptLength, retimeWords, cuesOf, toOutput, toSource, clock, isRtl, lookOf, motionOf, trackingOf, cssLook, punchSpans, cutTimes, trackAt, overlaySpan, sentencesOf,
   effectsOf, effectsOn, cssEffects, layoutPlan, dimsFor, LAYOUT_LABEL, type LayoutPlan,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
@@ -138,7 +138,7 @@ export default function Player({ ctx, transport, below }: {
 
   /* Kept by value: every poll hands over the same edit as a new object, and a
      new `keeps` each time re-ran the music and re-planned the deck mid-play. */
-  const keepsNow = useMemo(() => keepRanges(duration, doc, clip ? [clip.s, clip.e] : undefined), [duration, doc, clip]);
+  const keepsNow = useMemo(() => clipKeeps(duration, doc, clip), [duration, doc, clip]);
   const keepsKey = keepsNow.map(([a, b]) => `${a},${b}`).join(';');
   const keeps = useMemo(() => keepsNow, [keepsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const errors = useRef(0);
@@ -219,7 +219,7 @@ export default function Player({ ctx, transport, below }: {
         let black = 0, white = 0;
         if (m.fadeIn && ft < m.fadeIn) black = 1 - ft / m.fadeIn;
         if (m.fadeOut && ft > end - m.fadeOut) black = Math.max(black, 1 - (end - ft) / m.fadeOut);
-        if (L.cuts.length && L.cuts.some(c => Math.abs(o - c) < 0.07)) { if (m.transition === 'flash') white = 0.35; else black = Math.max(black, 0.55); }
+        if (m.transition !== 'smooth' && L.cuts.length && L.cuts.some(c => Math.abs(o - c) < 0.07)) { if (m.transition === 'flash') white = 0.35; else black = Math.max(black, 0.55); }
         shadeRef.current.style.background = white ? `rgba(255,255,255,${white})` : `rgba(0,0,0,${black.toFixed(3)})`;
       }
       window.dispatchEvent(new CustomEvent('vs-frame', { detail: t }));
@@ -337,7 +337,7 @@ export default function Player({ ctx, transport, below }: {
             <div className="vse-fxshadow" data-testid="vs-shadow-preview" style={{ left: `${(1 - inner.w) * 50}%`, top: `${(1 - inner.h) * 50}%`, width: `${inner.w * 100}%`, height: `${inner.h * 100}%`,
               boxShadow: `${(sh.x * frameH / 1920).toFixed(1)}px ${(sh.y * frameH / 1920).toFixed(1)}px ${(sh.blur * frameH / 1920).toFixed(1)}px ${hexA(sh.color, sh.opacity / 100)}` }} />
           )}
-          <div ref={deckRef} className="vs-deck" onClick={toggle} data-testid="vs-video" data-src={video.src} data-look={look.filter}
+          <div ref={deckRef} className={`vs-deck ${motion.transition === 'smooth' ? 'smooth' : ''}`} onClick={toggle} data-testid="vs-video" data-src={video.src} data-look={look.filter}
             style={{ filter: filter === 'none' ? undefined : filter, transformOrigin: '50% 40%' }}>
             {[aRef, bRef].map((r, i) => (
               <video key={i} ref={r} src={video.src || undefined} poster={view.source.posterUrl || undefined} playsInline preload="auto"

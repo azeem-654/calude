@@ -128,7 +128,13 @@ export interface Extras {
   repurposed?: { at: string; links: { kind: string; id: string; label: string; route: string }[]; notes: string[] };
   quiz?: { at: string; questions: QuizQuestion[]; by: 'ai' };
   quizNote?: string;
+  publish?: Record<string, PublishTexts>;
+  translations?: Record<string, { at: string; cues: { s: number; e: number; text: string }[] }>;
 }
+export interface PublishTexts { fields: Record<string, string>; posts: Record<string, string>; at: string }
+export const savePublish = (projectId: string, key: string, fields: Record<string, string>, platformPosts: Record<string, string> = {}) =>
+  call<{ publish: PublishTexts }>('publish_save', { projectId, key, fields, platformPosts });
+export const saveTranslation = (projectId: string, language: string, cues: { s: number; e: number; text: string }[]) => call('translation_save', { projectId, language, cues });
 export interface FoundTrack {
   id: string; title: string; artist: string; license: string; licenseCode: string; licenseUrl: string; attribution: string;
   duration: number; previewUrl: string; pageUrl: string; provider: string; genres: string[];

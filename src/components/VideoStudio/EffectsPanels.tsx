@@ -124,7 +124,7 @@ export function AnimationPanel({ ctx }: { ctx: EditorCtx }) {
       </div>
       <div className="vs-group"><b>At jump cuts</b>
         <div className="vs-chips" role="radiogroup" aria-label="Transition">
-          {([['none', 'Straight cut'], ['flash', 'White flash'], ['dip', 'Dip to black']] as const).map(([v, t]) => <button key={v} type="button" role="radio" aria-checked={m.transition === v} className="vs-chip" aria-pressed={m.transition === v} data-transition={v} onClick={() => set({ transition: v }, `Transition: ${t.toLowerCase()}`)}>{t}</button>)}
+          {([['none', 'Straight cut'], ['smooth', 'Smooth (blend)'], ['flash', 'White flash'], ['dip', 'Dip to black']] as const).map(([v, t]) => <button key={v} type="button" role="radio" aria-checked={m.transition === v} className="vs-chip" aria-pressed={m.transition === v} data-transition={v} onClick={() => set({ transition: v }, `Transition: ${t.toLowerCase()}`)}>{t}</button>)}
         </div>
       </div>
       <div className="vs-group"><b>Fades</b>

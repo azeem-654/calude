@@ -21,12 +21,21 @@ export interface Band { key: string; label: string; from: number; to: number }
 export function bandsFor(origin: Origin): Band[] {
   const first = origin === 'file' ? { key: 'upload', label: 'Uploading' } : origin === 'youtube' ? { key: 'fetch_url', label: 'Fetching from YouTube' } : { key: 'fetch_link', label: 'Fetching from the link' };
   return [
-    { ...first, from: 0, to: 35 },
-    { key: 'prepare', label: 'Preparing the video', from: 35, to: 52 },
-    { key: 'transcribe', label: 'Transcribing', from: 52, to: 88 },
-    { key: 'analyze', label: 'Finding fillers and retakes', from: 88, to: 99.6 },
+    { ...first, from: 0, to: 30 },
+    { key: 'prepare', label: 'Preparing the video', from: 30, to: 60 },
+    { key: 'transcribe', label: 'Transcribing', from: 60, to: 85 },
+    { key: 'analyze', label: 'Finding fillers and retakes', from: 85, to: 99.6 },
   ];
 }
+
+/**
+ * A stage's own percentage fills three quarters of its band: what a stage
+ * measures (FFmpeg's clock, pieces transcribed) is not all it does — the
+ * proxy is followed by the poster, the filmstrip and the uploads. The last
+ * quarter is room for the creep, so the number keeps moving through the
+ * part nothing measures.
+ */
+const MEASURED = 0.75;
 
 export interface Reading {
   /** Where the bar really is, 0–100. */
@@ -66,7 +75,7 @@ export function readProgress(bands: Band[], v: ProjectView | null, upload: { sen
     if (st?.state === 'failed') failed = st.note || v?.project.error || `${b.label} stopped.`;
     if (!finished) {
       const p = pct === null ? 0 : Math.max(0, Math.min(100, pct));
-      return { value: b.from + ((b.to - b.from) * p) / 100, index: i, ceiling: b.to - 0.3, stagePct: pct, done: false, failed: failed || (v?.project.status === 'failed' ? v.project.error : ''), skipped };
+      return { value: b.from + ((b.to - b.from) * MEASURED * p) / 100, index: i, ceiling: b.to - 0.3, stagePct: pct, done: false, failed: failed || (v?.project.status === 'failed' ? v.project.error : ''), skipped };
     }
   }
   return { value: 100, index: bands.length, ceiling: 100, stagePct: 100, done: true, failed: '', skipped };
@@ -97,10 +106,11 @@ export function useCreep(real: number, ceiling: number, done: boolean): number {
       if (s.d < s.real) s.d = Math.min(s.real, s.d + Math.max(0.1, (s.real - s.d) * 0.35));
       else {
         const room = ceiling - s.d;
-        if (room > 0.05) {
-          /* Most of the pace real readings have shown, at least a slow tick — and never more than a small share of what is left. */
-          const pace = Math.max(0.08, Math.min(s.rate * 0.85, 2.5));
-          s.d += Math.min(pace * dt, room * 0.045 * dt);
+        if (room > 0.02) {
+          /* Most of the pace real readings have shown, at least a slow tick (0.1 every 2.5 s), slowing only
+             when little is left — so it keeps moving for minutes and still never reaches the stage's end. */
+          const pace = Math.max(0.04, Math.min(s.rate * 0.85, 2.5));
+          s.d += Math.min(pace, room * 0.008 + 0.0005) * dt;
         }
       }
       setShown(Math.min(done ? 100 : 99.9, s.d));

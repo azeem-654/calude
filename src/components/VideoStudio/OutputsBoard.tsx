@@ -26,7 +26,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { thumbAsDesign } from './designerHandoff';
 import {
-  clock, keepRanges, keptLength, toXmeml, editorialScore, renderOutputs, setOutputStatus, chooseThumb, moreThumbnails, STATUS_LABEL,
+  clock, keepRanges, clipKeeps, keptLength, toXmeml, editorialScore, renderOutputs, setOutputStatus, chooseThumb, moreThumbnails, STATUS_LABEL,
   type OutputView, type VideoMeta, type ThumbView,
 } from '../../services/videoStudio';
 import { MetaEditor } from './OutputsPanel';
@@ -73,7 +73,7 @@ function Row({ ctx, o, n, onDesign, onWords }: { ctx: EditorCtx; o: OutputView; 
   const thumbJob = view.jobs.some(j => j.target === o.id && j.kind === 'thumbnails' && (j.state === 'queued' || j.state === 'running'));
   const chosen = o.thumbs[o.chosenThumb] ?? o.thumbs[0];
   const [from, to] = clip ? [clip.s, clip.e] : [0, duration];
-  const keeps = useMemo(() => keepRanges(duration, doc, clip ? [clip.s, clip.e] : undefined), [duration, doc, clip]);
+  const keeps = useMemo(() => clipKeeps(duration, doc, clip), [duration, doc, clip]);
   const words = useMemo(() => transcript ? transcript.words.filter(w => w.s >= from - 0.05 && w.e <= to + 0.05).map(w => w.w).join(' ') : '', [transcript, from, to]);
   const text = mode === 'description' ? (meta.description || 'The description is written once the video is analysed.') : words || 'No words in this part.';
   const caption = [meta.titles?.[0] ?? o.title, (meta.hashtags ?? []).join(' ')].filter(Boolean).join('\n\n');

@@ -294,13 +294,19 @@ export function ImportProgress({ job, upload, error, transcription, onCancel, on
   useEffect(() => { if (done && !opened.current) { opened.current = true; const t = setTimeout(onReady, 700); return () => clearTimeout(t); } }, [done, onReady]);
 
   const failed = error || reading.failed;
+  /* How long the step in hand has taken — a clock that always moves. */
+  const [stepSince, setStepSince] = useState(() => Date.now());
+  const [, tick] = useState(0);
+  useEffect(() => { setStepSince(Date.now()); }, [reading.index]);
+  useEffect(() => { const t = window.setInterval(() => tick(n => n + 1), 1000); return () => clearInterval(t); }, []);
+  const stepFor = Math.max(0, Math.floor((Date.now() - stepSince) / 1000));
   return (
     <div className="vs-progress-screen" data-testid="vs-upload-progress" data-pct={shown.toFixed(1)} data-stage={done ? 'ready' : band.key}>
       <div className="vs-ps-name" title={job.name}>{job.name}</div>
       <div className="vs-ps-pct" aria-live="off" data-testid="vs-progress-pct">{done ? '100' : shown.toFixed(1)}<small>%</small></div>
       <div className="vs-ps-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor(shown)} aria-label="Getting your video ready"><i style={{ width: `${shown}%` }} /></div>
       <div className="vs-ps-now" data-testid="vs-progress-stage">
-        {failed ? <><AlertCircle size={15} /> Stopped</> : done ? <><Check size={15} /> Ready — opening the editor</> : <><Loader size={15} className="spin" /> {band.label}…</>}
+        {failed ? <><AlertCircle size={15} /> Stopped</> : done ? <><Check size={15} /> Ready — opening the editor</> : <><Loader size={15} className="spin" /> {band.label}… <span className="vs-ps-clock" data-testid="vs-progress-clock">{Math.floor(stepFor / 60)}:{String(stepFor % 60).padStart(2, '0')}</span></>}
       </div>
       <div className="vs-ps-detail">
         {stageBytes !== null && stageTotal > 0 && <span data-testid="vs-progress-bytes">{bytesLabel(stageBytes)} of {bytesLabel(stageTotal)}</span>}
