@@ -260,6 +260,9 @@ let listId = '';
     await page.getByRole('button', { name: /Verify mailboxes — needs a verifier/ }).isDisabled() && await page.getByRole('button', { name: /Search the web for named people/ }).count() === 0);
   ok('…as a table with phone, website and published email', await page.locator('table[aria-label="Businesses found"] th', { hasText: 'Email' }).count() === 1
     && /0113 555 1001/.test(body) && /hello@leedsdental1\.example/.test(body));
+  /* Results open on "With email"; every row is one chip away. */
+  ok('results start on businesses with an email address', await page.locator('button[aria-pressed="true"]', { hasText: /^With email$/ }).count() === 1);
+  await page.locator('button[aria-pressed]', { hasText: /^All$/ }).first().click();
   await page.getByRole('button', { name: /More results/ }).click();
   await page.locator('table').getByText('Leeds Dental 63', { exact: true }).waitFor({ timeout: 15_000 });
   ok('"More results" fetches the next page', /63 found/.test(await page.innerText('body')));
