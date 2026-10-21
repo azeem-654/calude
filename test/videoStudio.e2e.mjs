@@ -410,7 +410,7 @@ await page.getByTestId('vs-search').fill('');
   const three = d3.doc.cuts.find(c => c.by === 'you' && c.state === 'approved' && /^Removed “.+ .+ .+”/.test(c.reason));
   ok('Shift + arrows select words, Backspace cuts them as one cut', selected === 3 && !!three, { selected, three });
   /* Only once the page shows the three words struck has it the new version; an undo pressed while the save is on its way goes back from the one before. */
-  for (let i = 0; i < 25 && !/\bcut\b/.test((await page.locator(`.vs-w[data-i="${wi + 4}"]`).getAttribute('class')) ?? ''); i++) await sleep(200);
+  for (let i = 0; i < 150 && (!/\bcut\b/.test((await page.locator(`.vs-w[data-i="${wi + 4}"]`).getAttribute('class')) ?? '') || (await page.locator('.vse-top .spin').count()) > 0); i++) await sleep(200);
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
   let d4;
   for (let i = 0; i < 20; i++) { d4 = await at(); if (d4.docVersion < d3.docVersion) break; await sleep(300); }
