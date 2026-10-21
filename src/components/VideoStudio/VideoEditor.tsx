@@ -32,7 +32,7 @@ import {
   FolderOpen, Sparkles, SlidersHorizontal, Shapes, Captions as CaptionsIcon, Images, Clapperboard, Download, Keyboard, LayoutGrid, PaintBucket, Film,
 } from 'lucide-react';
 import {
-  getVideoProject, videoStatus, editVideo, gotoVersion, renameVideoProject, retryVideo, cancelVideo, deleteVideoProject, renderOutputs,
+  getVideoProject, videoStatus, editVideo, applyOps, gotoVersion, renameVideoProject, retryVideo, cancelVideo, deleteVideoProject, renderOutputs,
   loadTranscript, loadWave, loadTrack, uploadVideo, sentencesOf, clock, bytesLabel, keepRanges, keptLength, STATUS_LABEL,
   type ProjectView, type Transcript, type VideoDoc, type Op, type Clip, type UploadProgress, type Capability, type TrackFile,
 } from '../../services/videoStudio';
@@ -466,23 +466,59 @@ export default function VideoEditor({ id }: { id: string }) {
 
   const refresh = useCallback(async () => { const asked = epoch.current; const r = await videoStatus(id, -1); if (r.success) await absorb(r, asked); }, [id, absorb]);
 
+  /*
+   * ── An edit shows at once; the save follows ──
+   *
+   * Approving a suggestion used to wait for the server (and the re-processing
+   * it starts) before the transcript, the timeline or the preview changed —
+   * five to seven seconds. Now the same operations are applied here first
+   * with the same pure function the server uses (`applyOps`), so the screen
+   * and the playback change on the press; the saves go one after another in
+   * the background, each on the version the one before it made. When a save
+   * fails, the screen goes back to what the server has (plus any edits still
+   * on their way) and says why.
+   */
+  const docRef = useRef<VideoDoc | null>(null);
+  docRef.current = doc;
+  const confirmed = useRef<VideoDoc | null>(null);
+  const queue = useRef<{ ops: Op[]; note: string }[]>([]);
+  const chain = useRef<Promise<unknown>>(Promise.resolve());
+  const durationRef = useRef(0);
   const apply = useCallback(async (ops: Op[], note: string) => {
-    if (!ops.length) return false;
+    if (!ops.length || !docRef.current) return false;
+    if (!queue.current.length) confirmed.current = docRef.current;
+    const item = { ops, note };
+    queue.current.push(item);
+    const local = applyOps(docRef.current, ops, durationRef.current).doc;
+    epoch.current++;
+    docRef.current = local;
+    setDoc(local);
     setBusy(true);
-    epoch.current++;
-    const r = await editVideo(id, versionRef.current, ops, note);
-    epoch.current++;
-    setBusy(false);
-    if (r.success) {
-      setDoc(r.doc); setVersion(r.docVersion);
-      if (r.refused?.length) say({ who: 'ai', text: `Not done: ${r.refused.join('; ')}.` });
-      if (r.note) say({ who: 'ai', text: r.note });
-      void refresh();
-      return true;
-    }
-    if (r.conflict && r.doc) { setDoc(r.doc as VideoDoc); setVersion(Number((r as { docVersion?: number }).docVersion) || versionRef.current); }
-    say({ who: 'ai', text: r.error ?? 'That change could not be saved.' });
-    return false;
+    const run = chain.current.then(async () => {
+      const r = await editVideo(id, versionRef.current, ops, note);
+      epoch.current++;
+      queue.current = queue.current.filter(x => x !== item);
+      if (r.success) {
+        confirmed.current = r.doc;
+        versionRef.current = r.docVersion;
+        setVersion(r.docVersion);
+        /* The server's document is the truth (its ids, its clamping) — with any edits still on their way laid over it. */
+        const shown = queue.current.reduce((d, q) => applyOps(d, q.ops, durationRef.current).doc, r.doc);
+        docRef.current = shown; setDoc(shown);
+        if (r.refused?.length) say({ who: 'ai', text: `Not done: ${r.refused.join('; ')}.` });
+        if (r.note) say({ who: 'ai', text: r.note });
+        if (!queue.current.length) { setBusy(false); void refresh(); }
+        return true;
+      }
+      const base = r.conflict && r.doc ? r.doc as VideoDoc : confirmed.current;
+      if (r.conflict && r.doc) { confirmed.current = base; const v = Number((r as { docVersion?: number }).docVersion); if (v) { versionRef.current = v; setVersion(v); } }
+      if (base) { const shown = queue.current.reduce((d, q) => applyOps(d, q.ops, durationRef.current).doc, base); docRef.current = shown; setDoc(shown); }
+      if (!queue.current.length) setBusy(false);
+      say({ who: 'ai', text: `${r.error ?? 'That change could not be saved.'} It has been undone on screen.` });
+      return false;
+    });
+    chain.current = run.catch(() => false);
+    return run;
   }, [id, refresh, say]);
 
   const go = useCallback(async (v: number) => {
@@ -530,6 +566,7 @@ export default function VideoEditor({ id }: { id: string }) {
   }, [go, version, busy]);
 
   const duration = view?.source.probe?.duration ?? transcript?.duration ?? 0;
+  durationRef.current = duration;
   const ctx = useMemo<EditorCtx | null>(() => view && doc ? {
     view, doc, version, transcript, duration, apply, seek, time, selection, setSelection, activeClip, setActiveClip, refresh, setTab, say, adopt, track,
   } : null, [view, doc, version, transcript, duration, apply, seek, time, selection, activeClip, refresh, setTab, say, adopt, track]);

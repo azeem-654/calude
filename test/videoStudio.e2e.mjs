@@ -489,7 +489,32 @@ await page.getByTestId('vs-search').fill('');
   let d5;
   for (let i = 0; i < 20; i++) { d5 = await at(); if (d5.doc.cuts.find(c => c.id === chipId)?.state === 'rejected') break; await sleep(300); }
   ok('suggestions sit in the text as chips — ignoring one keeps it', nChips > 0 && d5.doc.cuts.find(c => c.id === chipId)?.state === 'rejected', { nChips, chipId });
-  await v('edit', { projectId: PID, baseVersion: d5.docVersion, ops: [{ op: 'cut.set', id: chipId, state: 'proposed' }], note: 'test: back to proposed' });
+  /* Approving a suggestion shows at once — the save follows in the background. */
+  const chip2 = chips.first();
+  const c2 = await chip2.getAttribute('data-chip');
+  const t2 = Date.now();
+  await chip2.locator('[data-act="chip-accept"]').click();
+  await page.locator(`[data-chip="${c2}"].done, [data-chip="${c2}"]:not(.prop)`).first().waitFor({ timeout: 5000 }).catch(() => {});
+  const wordCut = await page.evaluate(id => !document.querySelector(`[data-chip="${id}"].prop`), c2);
+  const shownIn = Date.now() - t2;
+  let d6;
+  for (let i = 0; i < 40; i++) { d6 = await at(); if (d6.doc.cuts.find(c => c.id === c2)?.state === 'approved') break; await sleep(300); }
+  ok('approving a suggestion changes the transcript at once (under half a second), and is saved behind it', wordCut && shownIn < 500 && d6.doc.cuts.find(c => c.id === c2)?.state === 'approved', { shownIn, wordCut });
+  /* A save the server refuses is taken back on screen, with a word why. */
+  await page.route(u => u.href.endsWith('/api/video.php'), async route => {
+    const b = JSON.parse(route.request().postData() || '{}');
+    if (b.action === 'edit') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: false, error: 'Saving is switched off for this test.' }) });
+    return route.continue();
+  });
+  const chip3 = page.locator('.vs-chipin.prop').first();
+  const c3 = await chip3.getAttribute('data-chip');
+  await chip3.locator('[data-act="chip-accept"]').click();
+  const gone = await page.evaluate(id => !document.querySelector(`[data-chip="${id}"].prop`), c3);
+  await page.getByTestId('vs-assistant').getByText('It has been undone on screen').waitFor({ timeout: 8000 }).catch(() => {});
+  const back = await page.evaluate(id => !!document.querySelector(`[data-chip="${id}"].prop`), c3);
+  ok('…and a save that fails is rolled back on screen with a message', gone && back && /Saving is switched off for this test\. It has been undone on screen/.test(await page.getByTestId('vs-assistant').innerText()), { gone, back });
+  await page.unroute(u => u.href.endsWith('/api/video.php'));
+  await v('edit', { projectId: PID, baseVersion: d6.docVersion, ops: [{ op: 'cut.set', id: chipId, state: 'proposed' }, { op: 'cut.set', id: c2, state: 'proposed' }], note: 'test: back to proposed' });
   await page.reload({ waitUntil: 'networkidle' });
   await openPanel(page, 'transcript');
   await page.getByTestId('vs-transcript').waitFor({ timeout: 20_000 });
