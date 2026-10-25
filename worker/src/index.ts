@@ -94,6 +94,8 @@ import { runHousekeeping } from './lib/housekeeping';
 import { handleLogo } from './lib/brandLogo';
 import { handleWidgetAvatar } from './lib/widgetAvatar';
 import { handleUserAvatar } from './routes/userAvatar';
+import { industryFor, isSiteHost, robotsTxt, sitemapXml, speaksAsUs } from './lib/industryPages';
+import { rewriteIndustryHead } from './lib/industryHead';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -295,6 +297,22 @@ export default {
           },
         })
         .transform(res);
+    }
+
+    /* The trade pages' head, for crawlers and link previews (lib/industryPages.ts). */
+    const trade = industryFor(url.pathname);
+    if (trade) {
+      const res = await env.ASSETS.fetch(req);
+      const html = (res.headers.get('content-type') ?? '').includes('text/html');
+      return html && speaksAsUs(url.hostname) ? rewriteIndustryHead(res, trade) : res;
+    }
+    /* Only the public site has pages to list. Elsewhere these fall through to
+       the platform, as they always did. */
+    if ((url.pathname === '/sitemap.xml' || url.pathname === '/robots.txt') && isSiteHost(url.hostname)) {
+      const xml = url.pathname === '/sitemap.xml';
+      return new Response(xml ? sitemapXml() : robotsTxt(), {
+        headers: { 'Content-Type': xml ? 'application/xml; charset=utf-8' : 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
+      });
     }
 
     if (!url.pathname.startsWith('/api/')) {

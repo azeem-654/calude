@@ -30,7 +30,7 @@ import {
   BarChart3, Building2, Lock, Palette, ShieldCheck, Mail, MessageSquare,
   Image as ImageIcon, FileText, LayoutTemplate, Wand2, Globe, Search, Rss,
   PlaySquare, Mic, GitBranch, PenLine, Bot, ClipboardList, Calendar, KeyRound, Eye,
-  Workflow, CalendarCheck,
+  Workflow, CalendarCheck, Thermometer, Home,
 } from 'lucide-react';
 import { LogoMark } from '../shared/Logo';
 import { appHref, isCrossOrigin } from '../../services/hosts';
@@ -53,7 +53,9 @@ import FaqSection from './FaqSection';
 import PricingSection from './PricingSection';
 import { track } from '../../services/funnel';
 import { motionReduced } from '../../services/motion';
+import { INDUSTRY_PAGES } from '../../../worker/src/lib/industryPages';
 import './site.css';
+import './industry.css';
 
 type Reel = keyof typeof REELS;
 
@@ -289,7 +291,7 @@ const cross = (href: string) => (isCrossOrigin(href) ? { rel: 'noopener' as cons
  * The audit found seven different labels for this one act; a visitor reading
  * "Create your account" after "Try it free" wonders whether they differ.
  */
-function StartFree({ size = '', where = '' }: { size?: '' | 'lg' | 'sm'; where?: 'hero' | '' }) {
+export function StartFree({ size = '', where = '' }: { size?: '' | 'lg' | 'sm'; where?: 'hero' | '' }) {
   const href = appHref('/signup');
   return (
     <a className={`dc-btn dc-btn-primary${size ? ` dc-btn-${size}` : ''}`} href={href} {...cross(href)}
@@ -300,7 +302,7 @@ function StartFree({ size = '', where = '' }: { size?: '' | 'lg' | 'sm'; where?:
 }
 
 /** What starting costs, said beside every button that starts it. */
-const TrialNote = ({ light = false }: { light?: boolean }) => (
+export const TrialNote = ({ light = false }: { light?: boolean }) => (
   <p className={`dc-trial-note${light ? ' light' : ''}`}>
     {['7 days free', 'No card required', 'Nothing sends until you approve it'].map(t => <span key={t}><Check size={13} /> {t}</span>)}
   </p>
@@ -460,6 +462,7 @@ export default function SiteHome() {
         </a>
         <nav className="dc-links" aria-label="Sections">
           <a href="#solutions">Solutions</a>
+          <a href="#industries" className="ind-nav-link">Industries</a>
           <a href="#autopilot">How it works</a>
           {featureReady('prospects') && <a href="#prospecting">AI Prospecting</a>}
           <a href="#scale">Agencies</a>
@@ -556,6 +559,31 @@ export default function SiteHome() {
              under it, each with "Build this" — straight after the proof that
              the product is real, before the tour of how it works. ── */}
       <SolutionsSection find={find} onBuild={k => openWizard(k)} />
+
+      {/* ── The trades with a page of their own ──
+             Straight after the recipes: a visitor who runs an HVAC or roofing
+             firm finds the page written for them before the general tour. ── */}
+      <section className="ind-strip" id="industries" aria-label="Industries">
+        <div className="dc-chapter-head">
+          <span className="dc-eyebrow">Industries</span>
+          <h2>Written for <em>your trade.</em></h2>
+          <p>The same platform, explained with the enquiries, estimates and seasons of the business you run.</p>
+        </div>
+        <div className="ind-strip-cards">
+          <a className="ind-strip-card" href={INDUSTRY_PAGES.hvac.path}>
+            <span className="dc-tile-icon"><Thermometer size={16} /></span>
+            <b>HVAC</b>
+            <span>Enquiries, estimate follow-up and seasonal reactivation for heating and cooling businesses.</span>
+            <i>See the HVAC page <ArrowRight size={13} /></i>
+          </a>
+          <a className="ind-strip-card" href={INDUSTRY_PAGES.roofing.path}>
+            <span className="dc-tile-icon"><Home size={16} /></span>
+            <b>Roofing</b>
+            <span>Inquiries, inspections and estimate follow-up for roofing contractors.</span>
+            <i>See the roofing page <ArrowRight size={13} /></i>
+          </a>
+        </div>
+      </section>
 
       {/* ── AI Autopilot ──
              First, because it is what the rest is now driven by, and because
@@ -746,6 +774,11 @@ export default function SiteHome() {
             <h5>Sell</h5>
             <a href="#scale">Sub-accounts</a><a href="#scale">White-label</a>
             <a href="#scale">Analytics</a><a href="#pricing">Pricing</a>
+          </div>
+          <div>
+            <h5>Industries</h5>
+            <a href={INDUSTRY_PAGES.hvac.path}>HVAC</a>
+            <a href={INDUSTRY_PAGES.roofing.path}>Roofing</a>
           </div>
           <div>
             <h5>Account</h5>

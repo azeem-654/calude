@@ -157,7 +157,17 @@ export default function PricingPage() {
   );
 }
 
-function EnquiryForm() {
+/**
+ * The Custom form, which is also the trade pages' "Discuss your business".
+ *
+ * `context` says where it was sent from ("HVAC page"), so the owner reading
+ * Custom plan enquiries knows what the visitor was looking at. It is put in
+ * front of the message only once the message is long enough to be accepted —
+ * otherwise the prefix alone would pass the server's ten-character check and
+ * an empty enquiry would go through. `needs={false}` drops the checklist,
+ * which is about plans, for somebody who is asking about their business.
+ */
+export function EnquiryForm({ context = '', needs: showNeeds = true, placeholder }: { context?: string; needs?: boolean; placeholder?: string } = {}) {
   const [f, setF] = useState({ name: '', email: '', company: '', message: '', url: '' });
   const [needs, setNeeds] = useState<EnquiryNeed[]>([]);
   const [busy, setBusy] = useState(false);
@@ -168,7 +178,9 @@ function EnquiryForm() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true); setError(null);
-    const r = await sendEnquiry({ ...f, needs });
+    const text = f.message.trim();
+    const message = context && text.length >= 10 ? `[${context}] ${text}` : f.message;
+    const r = await sendEnquiry({ ...f, message, needs: showNeeds ? needs : ['other'] });
     setBusy(false);
     if (r.success) { setSent(f.email); return; }
     setError({ text: r.error || 'That could not be sent. Try again in a moment.', field: r.field });
@@ -190,7 +202,7 @@ function EnquiryForm() {
         <label><span>Email</span><input data-field="enquiry.email" type="email" value={f.email} onChange={set('email')} autoComplete="email" required /></label>
       </div>
       <label><span>Company <i>(optional)</i></span><input value={f.company} onChange={set('company')} autoComplete="organization" /></label>
-      <fieldset>
+      {showNeeds && <fieldset>
         <legend>What do you need?</legend>
         <div className="pcp-needs">
           {NEEDS.map(n => (
@@ -200,8 +212,8 @@ function EnquiryForm() {
             </label>
           ))}
         </div>
-      </fieldset>
-      <label><span>Tell us about it</span><textarea data-field="enquiry.message" rows={5} value={f.message} onChange={set('message')} placeholder="How many clients, which allowances, what you would like built…" required /></label>
+      </fieldset>}
+      <label><span>Tell us about it</span><textarea data-field="enquiry.message" rows={5} value={f.message} onChange={set('message')} placeholder={placeholder ?? 'How many clients, which allowances, what you would like built…'} required /></label>
       {/* For scripts only: a person never sees this box. */}
       <label className="pcp-hp" aria-hidden="true"><span>Website</span><input tabIndex={-1} autoComplete="off" value={f.url} onChange={set('url')} /></label>
       {error && <p role="alert" className="pcp-error">{error.text}</p>}

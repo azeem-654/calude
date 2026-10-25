@@ -8,7 +8,8 @@ import { attributeIfPending } from './services/referral';
 import { pendingPlan } from './services/sitePlan';
 import { trackKnown } from './services/funnel';
 import { getActiveAccountId, setActiveAccountId, activeBranding } from './services/tenancy';
-import { isAppHost, isMarketingHost, markWhiteLabelHost } from './services/hosts';
+import { isAppHost, isMarketingHost, isWhiteLabelHost, markWhiteLabelHost } from './services/hosts';
+import { industryFor, speaksAsUs } from '../worker/src/lib/industryPages';
 import { cachedHost, resolveHost, type ResolvedHost } from './services/whitelabel';
 import { initCloudSync, startCloudRefresh } from './services/serverData';
 import { retireBrowserTwilio } from './services/legacyTwilio';
@@ -55,6 +56,7 @@ import ReviewQueue from './components/Moderation/ReviewQueue';
 import PolicyPage from './components/Site/PolicyPage';
 import TrustCenter from './components/Site/TrustCenter';
 import PricingPage from './components/Site/PricingPage';
+import IndustryPage from './components/Site/IndustryPage';
 import LegalPage from './components/Site/LegalPage';
 import StandingBanner from './components/shared/StandingBanner';
 import StagingBanner from './components/shared/StagingBanner';
@@ -457,6 +459,21 @@ export default function App() {
    */
   if (window.location.pathname === `${base}/auth/google`) {
     return <GoogleCallback onAuthed={signedIn} />;
+  }
+  /*
+   * The trade pages, /hvac and /roofing — public, signed in or not, like
+   * /pricing, so the owner can read them on the testing site too. Only where
+   * the address speaks as Protected Central: a reseller's own domain (or free
+   * subdomain of ours) keeps its login at every path, because a page there
+   * advertising the platform would undo their white label.
+   */
+  const trade = industryFor(window.location.pathname.slice(base.length));
+  if (trade && speaksAsUs(window.location.hostname) && !isWhiteLabelHost()) {
+    return (
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
+        <IndustryPage slug={trade.slug} />
+      </BrowserRouter>
+    );
   }
   if (!session && isPublicReport) {
     return (

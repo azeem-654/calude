@@ -27,7 +27,10 @@
     // card a messenger draws comes from og: tags in the served HTML. A crawler
     // runs no JavaScript, so the page cannot fix its own preview — the Worker
     // has to rewrite it before it leaves. Hence this one extra path.
-    "run_worker_first": ["/api/*", "/p/*"],
+    // The trade pages are the same: their title, description and structured
+    // data must be in the HTML a crawler reads (lib/industryPages.ts). And the
+    // sitemap and robots.txt are written by the Worker, for the public site only.
+    "run_worker_first": ["/api/*", "/p/*", "/hvac", "/hvac/", "/roofing", "/roofing/", "/sitemap.xml", "/robots.txt"],
     "binding": "ASSETS"
   },
 

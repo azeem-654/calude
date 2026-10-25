@@ -1058,7 +1058,7 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 
 .dc-foot-cols {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.4fr) repeat(5, minmax(0, 1fr));
   gap: 28px;
   max-width: 1240px;
   margin: 0 auto;

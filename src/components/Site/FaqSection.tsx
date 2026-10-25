@@ -4,9 +4,12 @@
  * (lib/trial.ts), drafts and approvals (Autopilot guardrails), where prospects
  * come from (AI Prospecting), and security (docs/SECURITY.md §7 wording).
  */
+import type { ReactNode } from 'react';
 import { Plus } from 'lucide-react';
 
-const FAQ: { q: string; a: string }[] = [
+export interface FaqItem { q: string; a: string }
+
+const FAQ: FaqItem[] = [
   {
     q: 'What happens after I sign up?',
     a: 'If you made a plan with Find my solution, your AI Autopilot business workspace is built straight away from your answers — its workflows, schedules and first outputs — and you land in it, not on an empty dashboard. Otherwise you describe what you want in one sentence and it is built the same way.',
@@ -45,15 +48,16 @@ const FAQ: { q: string; a: string }[] = [
   },
 ];
 
-export default function FaqSection() {
+/** `items` and `title`: a trade page asks its own questions, in the same section. */
+export default function FaqSection({ items = FAQ, title }: { items?: FaqItem[]; title?: ReactNode } = {}) {
   return (
     <section className="dc-faq" id="faq" aria-label="Questions">
       <div className="dc-chapter-head">
         <span className="dc-eyebrow">Questions</span>
-        <h2>Before you <em>start.</em></h2>
+        <h2>{title ?? <>Before you <em>start.</em></>}</h2>
       </div>
       <div className="dc-faq-list">
-        {FAQ.map(f => (
+        {items.map(f => (
           <details key={f.q} className="dc-faq-item">
             <summary><span>{f.q}</span><Plus size={18} aria-hidden="true" /></summary>
             <p>{f.a}</p>

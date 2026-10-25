@@ -1,0 +1,114 @@
+/*
+ * The trade pages (IndustryPage.tsx) and the home page's "Written for your
+ * trade" strip. Everything else on those pages is site.css: the same tokens,
+ * cards and sections, so a trade page is the site, not a second design.
+ */
+
+/* ── The home page's strip ── */
+.ind-strip { max-width: 1240px; margin: 0 auto; padding: clamp(56px, 8vw, 100px) clamp(16px, 4vw, 44px) clamp(20px, 3vw, 40px); scroll-margin-top: var(--dc-nav-h); }
+.ind-strip-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: 900px; margin: 0 auto; }
+.dc .ind-strip-card {
+  display: flex; flex-direction: column; gap: 10px; padding: 22px; border-radius: 20px;
+  background: var(--glass); border: 1px solid var(--edge); color: var(--text);
+  transition: border-color 0.25s ease, background 0.25s ease, transform 0.25s ease;
+}
+.dc .ind-strip-card:hover { border-color: rgba(200, 242, 77, 0.45); background: var(--glass-2); transform: translateY(-2px); }
+.ind-strip-card .dc-tile-icon { background: rgba(200, 242, 77, 0.14); color: var(--lime); }
+.ind-strip-card b { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
+.ind-strip-card span:not(.dc-tile-icon) { color: var(--muted); font-size: 14px; line-height: 1.6; }
+.ind-strip-card i { font-style: normal; font-weight: 700; font-size: 13.5px; color: var(--lime); display: inline-flex; align-items: center; gap: 6px; margin-top: auto; }
+@media (max-width: 600px) { .ind-strip-cards { grid-template-columns: 1fr; } }
+
+/* ── A trade page ── */
+.ind section[id], .ind div[id] { scroll-margin-top: var(--dc-nav-h); }
+
+.ind-hero { position: relative; padding: calc(var(--dc-nav-h) + clamp(40px, 7vh, 90px)) clamp(16px, 3vw, 40px) clamp(30px, 4vw, 50px); overflow: hidden; }
+.ind-hero-copy { position: relative; max-width: 900px; margin: 0 auto; text-align: center; }
+.ind-crumbs { display: flex; justify-content: center; gap: 8px; font-size: 12.5px; color: var(--muted); margin-bottom: 16px; }
+.dc .ind-crumbs a { color: var(--muted); }
+.dc .ind-crumbs a:hover { color: var(--lime); }
+.ind-crumbs [aria-current] { color: var(--text); font-weight: 700; }
+.ind-h1 { margin: 18px 0 0; font-size: clamp(32px, 5.4vw, 66px); font-weight: 800; letter-spacing: -0.045em; line-height: 1.04; }
+.ind-h1 span, .ind-h1 em { display: block; }
+.ind-h1 em {
+  font-style: normal;
+  background: linear-gradient(100deg, var(--lime), var(--mint) 55%, var(--lime-lt));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.ind-sub { margin: 20px auto 0; max-width: 720px; color: var(--muted); font-size: clamp(15px, 1.3vw, 18px); line-height: 1.65; }
+.ind-hero .dc-trial-note { justify-content: center; }
+.ind-hero-shot { margin-top: clamp(34px, 5vw, 56px); }
+
+.ind-sec { max-width: 1240px; margin: 0 auto; padding: clamp(60px, 8vw, 110px) clamp(16px, 4vw, 44px) clamp(20px, 3vw, 40px); }
+
+/* The problems: what goes wrong, then what the product does about it. */
+/* Three across, and a card left alone on the last row takes the row, so seven
+   problems end on a full line rather than one card and two holes. */
+.ind-problems { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.ind-problem:last-child:nth-child(3n + 1) { grid-column: 1 / -1; }
+@media (max-width: 1000px) {
+  .ind-problems { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ind-problem:last-child:nth-child(3n + 1) { grid-column: auto; }
+  .ind-problem:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) { .ind-problems { grid-template-columns: 1fr; } }
+.ind-problem { min-width: 0; padding: 22px; border-radius: 20px; background: var(--glass); border: 1px solid var(--edge); display: flex; flex-direction: column; gap: 10px; }
+.ind-problem .dc-tile-icon { background: rgba(255, 138, 87, 0.14); color: #ff9a6a; }
+.ind-problem h3 { margin: 4px 0 0; font-size: 16.5px; font-weight: 800; letter-spacing: -0.02em; }
+.ind-pain { color: var(--muted); font-size: 14px; line-height: 1.6; }
+.ind-fix { display: flex; gap: 8px; align-items: flex-start; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--edge); font-size: 13.5px; line-height: 1.6; }
+.ind-fix svg { flex-shrink: 0; margin-top: 4px; color: var(--lime); }
+.ind-fix b { color: var(--lime); font-weight: 700; }
+
+/* The example stages under the pipeline section's heading. */
+.ind-stages { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; margin-top: 18px; }
+.ind-stage-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px;
+  border: 1px solid rgba(200, 242, 77, 0.28); background: rgba(200, 242, 77, 0.07); font-size: 12.5px; font-weight: 700;
+}
+.ind-stage-chip svg { color: var(--lime); }
+.ind-stages small { flex-basis: 100%; text-align: center; color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+/* The workflows, read from the template library. */
+.ind-flows { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: 14px; }
+.ind-flow { min-width: 0; padding: 20px; border-radius: 18px; background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.08); display: flex; flex-direction: column; gap: 8px; }
+.ind-flow h3 { font-size: 15.5px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+.ind-flow-why { color: var(--text); font-size: 13.5px; line-height: 1.55; }
+.ind-flow-what { color: var(--muted); font-size: 13px; line-height: 1.55; }
+.ind-flow-needs { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--edge); }
+.ind-flow-needs b { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--lime); margin-bottom: 6px; }
+.ind-flow-needs ul { display: grid; gap: 4px; padding: 0; margin: 0; list-style: none; }
+.ind-flow-needs li { font-size: 12.5px; line-height: 1.5; color: var(--muted); padding-left: 12px; position: relative; }
+.ind-flow-needs li::before { content: ''; position: absolute; left: 0; top: 0.65em; width: 5px; height: 5px; border-radius: 50%; background: rgba(200, 242, 77, 0.6); }
+
+/* What it supports, beside what it does not do. */
+.ind-outcomes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.ind-outcome-card { padding: 24px; border-radius: 20px; background: var(--glass); border: 1px solid var(--edge); }
+.ind-outcome-card h3 { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 800; margin: 0 0 14px; color: var(--lime); }
+.ind-limits h3 { color: #ff9a6a; }
+.ind-outcome-card ul { display: grid; gap: 10px; padding: 0; margin: 0; list-style: none; }
+.ind-outcome-card li { display: flex; gap: 9px; align-items: flex-start; font-size: 14px; line-height: 1.6; }
+.ind-outcome-card li svg { flex-shrink: 0; margin-top: 4px; color: var(--lime); }
+.ind-limits li svg { color: #ff9a6a; }
+.ind-limits li { color: var(--muted); }
+@media (max-width: 760px) { .ind-outcomes { grid-template-columns: 1fr; } }
+
+/* What the price does and does not cover. */
+.ind-terms { max-width: 1240px; margin: 18px auto 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.ind-terms > div { padding: 18px; border-radius: 16px; background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.08); }
+.ind-terms h3 { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--lime); margin: 0 0 8px; font-weight: 800; }
+.ind-terms p { font-size: 13.5px; line-height: 1.6; color: var(--muted); margin: 0; }
+@media (max-width: 1000px) { .ind-terms { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .ind-terms { grid-template-columns: 1fr; } }
+
+.ind-talk-form { max-width: 760px; margin: 0 auto; }
+.ind-cta-space { height: clamp(56px, 8vw, 96px); }
+
+@media (max-width: 760px) {
+  .ind-problem, .ind-flow, .ind-outcome-card { text-align: left; }
+}
+
+/* The home nav's "Industries" link is the one that makes the line too long
+   on a small tablet (761–900px, where the links still show). The strip it
+   points to is on the page either way, so the link gives way first. */
+@media (max-width: 900px) { .dc-links .ind-nav-link { display: none; } }

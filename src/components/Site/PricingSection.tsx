@@ -6,11 +6,16 @@
  * enforces, so the page cannot promise a number nothing holds anybody to.
  * What is the same on every plan is said once, under the cards.
  */
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ArrowRight, Check } from 'lucide-react';
 import { BillingToggle, PlanCards, usePlanTable } from './PricingParts';
 
-export default function PricingSection() {
+/**
+ * `intro` replaces the paragraph under the heading and `after` adds a block
+ * under the cards — the trade pages say what the price does and does not
+ * cover for their reader. The cards and the numbers are the same everywhere.
+ */
+export default function PricingSection({ intro, after }: { intro?: ReactNode; after?: ReactNode } = {}) {
   const table = usePlanTable();
   const [yearly, setYearly] = useState(false);
 
@@ -19,11 +24,13 @@ export default function PricingSection() {
       <div className="dc-chapter-head">
         <span className="dc-eyebrow">Pricing</span>
         <h2>Three plans, <em>or one built around you.</em></h2>
-        <p>
-          Every plan starts with 7 days free, and no card is asked for until you choose one. Each says exactly
-          how much it makes for you a month — business workspaces, posts, Shorts, prospects — and your Usage page shows
-          what is left. Every plan is white-label: your name, logo and colours.
-        </p>
+        {intro ?? (
+          <p>
+            Every plan starts with 7 days free, and no card is asked for until you choose one. Each says exactly
+            how much it makes for you a month — business workspaces, posts, Shorts, prospects — and your Usage page shows
+            what is left. Every plan is white-label: your name, logo and colours.
+          </p>
+        )}
       </div>
 
       <BillingToggle yearly={yearly} onChange={setYearly} />
@@ -39,6 +46,7 @@ export default function PricingSection() {
         </p>
         <a className="dc-btn dc-btn-outline dc-plan-all" href="/pricing">Compare every plan in detail <ArrowRight size={14} /></a>
       </div>
+      {after}
     </section>
   );
 }
