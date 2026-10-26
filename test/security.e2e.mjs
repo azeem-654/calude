@@ -110,7 +110,10 @@ console.log("\nThe owner's lead library — never a customer's to search");
    being allowed in the workspace is not being allowed into the library. */
 for (const action of ['facets', 'search', 'reveal']) {
   const r = await api('leaddir.php', { action, token: B.token, accountId: B.acct, industry: 'real estate', place: 'Florida', ids: [1, 2, 3] });
-  check(`B cannot ${action} the lead library (403 not_owner)`, r.status === 403 && r.data.code === 'not_owner' && !r.data.people, JSON.stringify(r.data).slice(0, 160));
+  /* Since 95dd1be a customer's search of the closed library is answered "nobody, closed" so
+     AI Prospecting falls through to the directories; it must still return nobody. */
+  const closedEmpty = action === 'search' && r.data.closed === true && Array.isArray(r.data.people) && r.data.people.length === 0;
+  check(`B cannot ${action} the lead library (403 not_owner, or nobody while closed)`, closedEmpty || (r.status === 403 && r.data.code === 'not_owner' && !r.data.people), JSON.stringify(r.data).slice(0, 160));
 }
 const ldStatus = await api('leaddir.php', { action: 'status', token: B.token, accountId: B.acct });
 check("B's status says nothing of what is in the library", ldStatus.data.total === undefined && ldStatus.data.industries === undefined && ldStatus.data.states === undefined, JSON.stringify(ldStatus.data).slice(0, 160));
@@ -158,6 +161,25 @@ for (const act of ['note', 'cancel', 'reschedule', 'set_status']) {
 }
 const scGuest = await api('strategy-call.php', { action: 'manage_get', id: 'sc_anything', key: 'guess' });
 check('a guessed strategy-call id and key show nothing', !scGuest.ok && !scGuest.data.booking, JSON.stringify(scGuest.data).slice(0, 120));
+/* The lead-to-revenue ledger (routes/leadRevenue.ts): B reaches nothing of A's by naming
+   A's workspace or by naming A's ids from B's own; and no customer acts as the owner. */
+const lrLead = await api('lead-revenue.php', { action: 'lead_create', token: A.token, accountId: A.acct, lead: { name: 'A homeowner', channel: 'service_ads' } });
+const lrPay = await api('lead-revenue.php', { action: 'payment_add', token: A.token, accountId: A.acct, leadId: lrLead.data.lead?.id, kind: 'payment', amount: '100', receivedOn: new Date().toISOString().slice(0, 10) });
+check('A can keep its own lead-to-revenue ledger', lrLead.ok && lrPay.ok, JSON.stringify([lrLead.data.error, lrPay.data.error]));
+const lrO = await api('lead-revenue.php', { action: 'overview', token: B.token, accountId: A.acct });
+check("B cannot read A's jobs and revenue", lrO.status === 403 && !lrO.data.leads, JSON.stringify(lrO.data).slice(0, 120));
+for (const [act, extra] of [['lead_get', { id: lrLead.data.lead?.id }], ['lead_update', { id: lrLead.data.lead?.id, patch: { name: 'Forged' } }], ['stage', { id: lrLead.data.lead?.id, to: 'qualified' }],
+  ['confirm_completion', { id: lrLead.data.lead?.id, finalAmount: '1' }], ['payment_confirm', { id: lrPay.data.payment?.id }], ['payment_void', { id: lrPay.data.payment?.id, reason: 'forged' }],
+  ['payment_add', { leadId: lrLead.data.lead?.id, kind: 'payment', amount: '1', receivedOn: '2026-01-01' }]]) {
+  const viaA = await api('lead-revenue.php', { action: act, token: B.token, accountId: A.acct, ...extra });
+  const viaB = await api('lead-revenue.php', { action: act, token: B.token, accountId: B.acct, ...extra });
+  check(`B cannot ${act} A's ledger by id`, !viaA.ok && viaA.status === 403 && !viaB.ok, JSON.stringify([viaA.data, viaB.data]).slice(0, 160));
+}
+for (const act of ['customers', 'terms_add', 'agreement_draft', 'statement_compute', 'statement_approve', 'attribution_fix', 'approval_request', 'call_log']) {
+  const r = await api('lead-revenue.php', { action: act, token: B.token, accountId: B.acct, id: 'x', effectiveFrom: '2030-01-01', terms: {} });
+  check(`B cannot ${act} (owner only)`, r.status === 403 && !r.ok, JSON.stringify(r.data).slice(0, 120));
+}
+check("A's lead is untouched", d1rows(`SELECT name, stage FROM crm_rev_leads WHERE id = '${lrLead.data.lead?.id}'`)[0]?.name === 'A homeowner');
 const repS = await api('reputation.php', { action: 'status', token: B.token, accountId: A.acct });
 check("B cannot read A's review source", !repS.ok, JSON.stringify(repS.data).slice(0, 120));
 const repR = await api('reputation.php', { action: 'reviews', token: B.token, accountId: A.acct });

@@ -24,6 +24,8 @@
     "test:industry": "npx --yes tsx test/industryPages.test.mts",
     "test:strategycall": "npx --yes tsx test/strategyCall.test.mts",
     "test:strategycalle2e": "node test/strategyCall.e2e.mjs",
+    "test:leadrevenue": "npx --yes tsx test/leadRevenue.test.mts",
+    "test:leadrevenuee2e": "node test/leadRevenue.e2e.mjs",
     "test:plan": "npx --yes tsx test/sendingPlan.test.mts",
     "test:launch": "npx --yes tsx test/launchPlan.test.mts",
     "test:checkout": "npx --yes tsx worker/test/checkout.test.mts",

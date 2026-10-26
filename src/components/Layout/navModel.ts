@@ -20,7 +20,7 @@ import {
   BarChart3, Building2, Calendar, CalendarClock, CreditCard,
   Globe, Inbox, LayoutDashboard, LayoutTemplate, Newspaper, Palette, Rocket,
   Send, Settings as SettingsIcon, ShieldAlert, Star, TrendingUp, Users,
-  type LucideIcon, Package, UserPlus, BadgePercent, Crosshair, BookUser, Clapperboard } from 'lucide-react';
+  type LucideIcon, Package, UserPlus, BadgePercent, Crosshair, BookUser, Clapperboard, Receipt, Handshake } from 'lucide-react';
 
 export interface NavItem {
   path: string;
@@ -92,6 +92,9 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Sales',
     items: [
       { path: '/pipelines', label: 'Deals', desc: 'Move opportunities through to won', icon: TrendingUp, aka: ['pipeline', 'pipelines', 'opportunities', 'kanban'] },
+      /* The server ledger behind the growth service's performance fee, and a
+         lead-to-revenue tracker for any contractor without one. */
+      { path: '/jobs', label: 'Jobs & revenue', desc: 'Every inquiry followed to the job and the money collected — quotes, payments and fee statements', icon: Receipt, aka: ['jobs', 'revenue', 'quotes', 'estimates', 'invoices', 'payments', 'performance fee', 'lead to revenue', 'attribution', 'do not call', 'call log'] },
       { path: '/calendar', label: 'Calendar', desc: 'Meetings, bookings and your own time on one grid', icon: Calendar, aka: ['diary', 'schedule', 'appointments'] },
       { path: '/scheduling', label: 'Booking pages', desc: 'Let people book you without the email chain', icon: CalendarClock, aka: ['scheduling', 'calendly', 'availability', 'event types'] },
       /* ── Why the shop sits under Sales ──
@@ -136,6 +139,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { path: '/billing', label: 'Plan & billing', desc: 'Your subscription, invoices and usage', icon: CreditCard, aka: ['invoice', 'subscription', 'payment'] },
       { path: '/affiliate', label: 'Affiliate program', desc: 'Earn 40% of every payment from customers you refer, for as long as they pay', icon: BadgePercent, aka: ['affiliate', 'referral', 'commission', 'partner', 'earn', 'refer'] },
       { path: '/agency', label: 'Agency & clients', desc: 'Every sub-account you run, in one place', icon: Building2, aka: ['sub-accounts', 'white label', 'clients'], agencyOnly: true },
+      { path: '/growth', label: 'Growth service', desc: 'Agreements, each customer’s lead-to-revenue ledger and performance-fee statements', icon: Handshake, aka: ['growth service', 'agreements', 'performance fee', 'statements', 'hvac', 'roofing', 'commercial terms'], ownerOnly: true },
       { path: '/signups', label: 'Sign-ups & trials', desc: 'Who signed up, how far they got, and a message or a kickoff call for them', icon: UserPlus, aka: ['signups', 'trial', 'customers', 'onboarding', 'kickoff', 'new users'], ownerOnly: true },
       /* The owner's own lead files. Searched by the owner alone (the server
          refuses anybody else); customers meet them only as "Licensed business

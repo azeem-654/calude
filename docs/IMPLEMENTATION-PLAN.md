@@ -41,7 +41,7 @@ owner) can pick up where the last phase stopped.
      tokenised manage links, honest email status, owner list/notes/cancel/
      reschedule; every site CTA built by one link builder carrying the source
      site and UTM.
-2. **Lead-to-revenue and the performance fee**
+2. **Lead-to-revenue and the performance fee** — **done 2026-10-26** (`test:leadrevenue`, `test:leadrevenuee2e`, `test:security` additions; notes in `docs/claude/money.md`). Built: migration 0077, `lib/leadRevenue.ts`, `/api/lead-revenue.php`, Sales → Jobs & revenue, Workspace → Growth service. Not built: any payment integration (all payments are entered and confirmed by hand) and a national DNC registry lookup — both said on screen.
    - Server tables for inquiry → qualified → opportunity → appointment →
      quote → accepted/rejected → job won → in progress → completed → final
      amount → invoice → payments → refunds/disputes → fee, each transition

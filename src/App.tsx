@@ -68,6 +68,8 @@ import HelpLauncher from './components/shared/HelpLauncher';
 import TrialBar from './components/shared/TrialBar';
 import CornerHelp from './components/shared/CornerHelp';
 import Signups from './components/Agency/Signups';
+import GrowthService from './components/Agency/GrowthService';
+import JobsRevenue from './components/Jobs/JobsRevenue';
 import Affiliate from './components/Affiliate/Affiliate';
 
 /**
@@ -268,6 +270,9 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/moderation" element={<ReviewQueue />} />
           {/* The owner's list of who signed up; the server refuses anybody else. */}
           <Route path="/signups" element={<Signups />} />
+          {/* The owner's growth-service desk; the server refuses anybody else. */}
+          <Route path="/growth" element={<GrowthService />} />
+          <Route path="/jobs" element={<JobsRevenue />} />
           <Route path="/affiliate" element={<Affiliate />} />
           <Route path="/terms" element={<PolicyPage />} />
           <Route path="/security" element={<TrustCenter />} />

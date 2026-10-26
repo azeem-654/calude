@@ -195,3 +195,51 @@ something fails on a screen (`signalTrouble` in `services/fieldGuard.ts` — a
 screen, once per screen per day. It offers only what works: chat and screen
 sharing if the house widget has them (`ProtectedCentralChat.features()`), a call
 if a kickoff link is set.
+
+## Lead-to-revenue and the performance fee — a fourth thing, never charged
+
+The growth service (HVAC/roofing, `lib/offers.ts`) earns a percentage of what
+a contractor collects on jobs it brought in. That is **not one of the three
+pots**: nothing here touches a processor. A fee is computed, reviewed with the
+contractor, approved by the install owner, and invoiced outside the app.
+
+- **Rules are `lib/leadRevenue.ts`** (pure, the browser imports it):
+  `leadVerdict`/`paymentVerdict` say why each payment counts, is *held* (will
+  count later: not won, not confirmed complete, unconfirmed, disputed, closes
+  after the statement) or is *left out* (contractor's own source, existing
+  customer, before the agreement, outside the attribution window);
+  `buildStatement` sums confirmed eligible payments not yet on an approved
+  statement, less agreed exclusions (per payment) and refunds/chargebacks,
+  plus a negative balance carried from the last approved statement, and takes
+  `feeOn` once on the total. `callCheck` is the pre-call gate (do-not-call,
+  consent, 08:00–21:00 in the called person's zone, an approved script).
+- **The ledger is `routes/leadRevenue.ts`** → `/api/lead-revenue.php`, tables
+  `crm_growth_terms`, `crm_growth_agreements`, `crm_rev_*` (migration 0077).
+  Every change writes `crm_rev_events` (append-only, who and in which role).
+- **Two parties, not interchangeable.** The contractor (`workspaceAccess`)
+  alone confirms a job complete with its final amount, confirms payments,
+  marks an existing customer, approves scripts/budgets/expenses, removes a
+  number from do-not-call and queries a statement line. The install owner
+  reaches a customer's workspace **without claiming it** (`knownWorkspace`,
+  never `workspaceAccess` for them on someone else's) and records inquiries
+  and calls, reports payments (they wait as `reported`), corrects attribution
+  with a reason, keeps terms and agreements, and computes/sends/approves
+  statements. `__agency__` is keyed by `storageWorkspace`, like `crm_data`.
+- **First touch is written once** (channel, detail, time, agreement in force);
+  leads are logged within a month of first contact; corrections are events.
+- **Fixed by the database, not only the route**: a signed agreement's terms
+  (`trg_growth_agreement_fixed`) and a payment on an approved statement
+  (`trg_rev_payment_counted`). New terms are effective-dated, never backdated,
+  and reach only agreements drafted after them.
+- **Approval re-checks**: a statement must have been sent for review, have no
+  open questions, and still compute to the same lines and fee — otherwise
+  `stale`, recalculate. Approval stamps each payment's `statement_id`, so
+  nothing is counted twice; corrections go on the next statement.
+- No payment integration exists: `integration_verified` is a state only the
+  server could set, and the screens say none is connected. No call is placed
+  by the software; the national DNC registry is not connected.
+- Screens: **Sales → Jobs & revenue** (`/jobs`, `Jobs/JobsRevenue.tsx`
+  `Ledger`) and the owner's **Workspace → Growth service** (`/growth`,
+  `Agency/GrowthService.tsx`, the same `Ledger` with owner powers).
+  `npm run test:leadrevenue` (pure), `npm run test:leadrevenuee2e`
+  (wrangler :8873, fresh D1, needs a `VITE_BASE=/` build), `test:security`.

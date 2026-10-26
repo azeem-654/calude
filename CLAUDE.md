@@ -53,7 +53,7 @@ campaign sends → digests). A scheduled run has no origin: absolute URLs read
 |---|---|
 | The cron, "live in the cloud", what runs without a browser | `docs/claude/architecture.md` |
 | AI Autopilot (planner, guardrails, business workspaces, the wizard, workflows canvas) | `docs/claude/autopilot.md` |
-| Payments, plans and allowances, affiliates, revenue, trials | `docs/claude/money.md` |
+| Payments, plans and allowances, affiliates, revenue, trials, lead-to-revenue and the performance fee (Jobs & revenue, Growth service) | `docs/claude/money.md` |
 | Sending email, Platform services, support widget/live help, phone apps | `docs/claude/platform.md` |
 | Reputation, the booking page, the owner's strategy call | `docs/claude/reputation-booking.md` |
 | Prospect search, AI Prospecting, Lead library, daily finders, connected searches, contact lists | `docs/claude/prospecting.md` |
