@@ -191,6 +191,32 @@ check('B cannot list every workspace (owner only)', snW.status === 403 && !snW.d
 const snBucket = await api('snapshots.php', { action: 'install', token: B.token, accountId: '__agency__', snapshotId: 'hvac' });
 check('no snapshot installs into an agency bucket', !snBucket.ok && snBucket.status === 400, JSON.stringify(snBucket.data).slice(0, 120));
 check("A's pipelines carry no snapshot B tried to install", !(d1rows(`SELECT v FROM crm_data WHERE account_id = '${A.acct}' AND k = 'crm_pipelines'`)[0]?.v ?? '').includes('snap-hvac'));
+/* Medical billing (routes/rcm.ts): a practice's claims, remittances, notes and access log are
+   its own and the billing team's; B reaches none of it by naming A's workspace or A's ids, a
+   practice login does no billing work, and no customer touches the owner's launch checklist. */
+const rcmClaim = `rc_sec_${run}`, rcmNote = `rn_sec_${run}`;
+d1rows(`INSERT INTO crm_rcm_claims (id, account_id, claim_no, practice_id, provider_id, payer_id, patient_ref, service_from, service_to, work_status, created_by, created_at, updated_at)
+  VALUES ('${rcmClaim}', '${A.acct}', 'C900001', 'p', 'v', 'y', 'SYN-SEC', '2026-10-01', '2026-10-01', 'draft', 'test', '2026-10-01', '2026-10-01')`);
+d1rows(`INSERT INTO crm_rcm_notes (id, account_id, claim_id, visibility, kind, body, by_email, by_role, at) VALUES ('${rcmNote}', '${A.acct}', '${rcmClaim}', 'internal', 'note', 'SECRET-INTERNAL', 'owner', 'biller', '2026-10-01')`);
+const rcmO = await api('rcm.php', { action: 'overview', token: B.token, accountId: A.acct });
+check("B cannot open A's medical billing", rcmO.status === 403 && !rcmO.data.claims, JSON.stringify(rcmO.data).slice(0, 120));
+for (const [act, extra] of [['claim_get', { id: rcmClaim }], ['audit', {}], ['remit_get', { id: 'rr_x' }], ['note_add', { claimId: rcmClaim, body: 'forged' }]]) {
+  const viaA = await api('rcm.php', { action: act, token: B.token, accountId: A.acct, ...extra });
+  const viaB = await api('rcm.php', { action: act, token: B.token, accountId: B.acct, ...extra });
+  /* From B's own workspace, B may read B's own (empty) log — but nothing of A's. */
+  check(`B cannot ${act} on A's medical billing`, !viaA.ok && viaA.status === 403 && (!viaB.ok || (act === 'audit' && !JSON.stringify(viaB.data).includes(rcmClaim))), JSON.stringify([viaA.data, viaB.data]).slice(0, 160));
+}
+const rcmOwnA = await api('rcm.php', { action: 'overview', token: A.token, accountId: A.acct });
+check("A's own practice portal never carries an internal note", rcmOwnA.ok && !JSON.stringify(rcmOwnA.data).includes('SECRET-INTERNAL'), JSON.stringify(rcmOwnA.data).slice(0, 120));
+for (const act of ['claim_update', 'ch_record', 'payer_record', 'remit_import', 'synthetic_purge', 'go_live']) {
+  const r = await api('rcm.php', { action: act, token: A.token, accountId: A.acct, id: rcmClaim, to: 'submitted', csv: 'claim_no,code,paid\nC900001,99213,1', claim: {} });
+  check(`a practice login cannot ${act} (billing team only)`, r.status === 403 && !r.ok, JSON.stringify(r.data).slice(0, 120));
+}
+for (const act of ['blockers', 'blocker_set', 'practices_all']) {
+  const r = await api('rcm.php', { action: act, token: B.token, key: 'baa_template', done: true, note: 'forged' });
+  check(`B cannot ${act} (owner only)`, r.status === 403 && !r.ok, JSON.stringify(r.data).slice(0, 120));
+}
+check('no launch blocker was signed off by a customer', d1rows("SELECT COUNT(*) AS n FROM crm_rcm_blockers WHERE note = 'forged'")[0]?.n === 0);
 const repS = await api('reputation.php', { action: 'status', token: B.token, accountId: A.acct });
 check("B cannot read A's review source", !repS.ok, JSON.stringify(repS.data).slice(0, 120));
 const repR = await api('reputation.php', { action: 'reviews', token: B.token, accountId: A.acct });

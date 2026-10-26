@@ -142,10 +142,24 @@
         { "binding": "LEADS", "database_name": "crmpro-staging-leads", "database_id": "STAGING_LEADS_DB_ID_SET_BY_CI" }
       ],
 
+      /* Every request runs the Worker first on staging, static files included,
+         so the testing site's lock (lib/stagingGate.ts) stands in front of the
+         bundle too. Live keeps the list above: its files need no Worker. */
+      "assets": {
+        "directory": "./dist",
+        "not_found_handling": "single-page-application",
+        "run_worker_first": true,
+        "binding": "ASSETS"
+      },
+
       // Not inherited either. Unset, the cron would read the live app's own
       // address and post staging's payment links and digests at production.
       "vars": {
         "APP_ORIGIN": "https://testing.protectedcentral.com",
+
+        /* The lock's hash — never the password. Change the password with the
+           secret STAGING_GATE ("user:password") on crmpro-staging. */
+        "STAGING_GATE_HASH": "48fc9bca4043e6ceaa83ac3ba55baa98491a2d9be838cbfa731563b339f7e9e1",
 
         // ── One account, and no way to make a second ──
         //

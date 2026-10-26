@@ -111,6 +111,11 @@ jobs:
       - name: Test the host rules
         run: npm run test:hosts
 
+      # The testing site's password lock. An open one looks exactly like a
+      # working one, so the decision is checked before every staging deploy.
+      - name: Test the testing site's lock
+        run: npm run test:gate
+
       # The arithmetic behind a recommendation that costs real money: too few
       # mailboxes and a domain gets filtered, too many and somebody has paid
       # for infrastructure they will never fill.
@@ -191,6 +196,12 @@ jobs:
       - name: Test industry snapshots
         run: npm run test:snapshots
 
+      # Medical billing: the two claim statuses, remittance parsing and the
+      # no-double-posting key, the leakage audit's one-finding-per-line, and
+      # that the launch blockers match docs/HIPAA-LAUNCH-BLOCKERS.md.
+      - name: Test medical billing rules
+        run: npm run test:rcm
+
       - name: Build
         run: npm run build
         env:
@@ -238,6 +249,19 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # The lock is the Worker's, so it is only real once deployed: ask the
+      # address a stranger would, and make the run red if it answered.
+      - name: Check the testing site is locked
+        run: |
+          sleep 5
+          code=$(curl -s -o /dev/null -w '%{http_code}' https://testing.protectedcentral.com/assets/ || true)
+          root=$(curl -s -o /dev/null -w '%{http_code}' https://testing.protectedcentral.com/ || true)
+          echo "Without the password: / answered $root, /assets/ answered $code"
+          if [ "$root" != "401" ] || [ "$code" != "401" ]; then
+            echo "::error title=The testing site is open::Expected 401 without the password."
+            exit 1
+          fi
 
       - name: Where it went
         run: |

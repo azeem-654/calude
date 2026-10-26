@@ -56,12 +56,13 @@ campaign sends → digests). A scheduled run has no origin: absolute URLs read
 | Payments, plans and allowances, affiliates, revenue, trials, lead-to-revenue and the performance fee (Jobs & revenue, Growth service) | `docs/claude/money.md` |
 | Sending email, Platform services, support widget/live help, phone apps | `docs/claude/platform.md` |
 | Reputation, the booking page, the owner's strategy call | `docs/claude/reputation-booking.md` |
+| Medical billing / RCM (claims, remittances, denials, A/R, prior auth, the practice portal, synthetic vs live patient data) | `docs/claude/rcm.md` |
 | Prospect search, AI Prospecting, Lead library, daily finders, connected searches, contact lists | `docs/claude/prospecting.md` |
 | Security, multi-tenancy, secrets, form refusals (`data-field`) | `docs/claude/security.md` |
 | Top bar, dashboard, industry snapshots (`/snapshots`, sign-up industry) | `docs/claude/app-ui.md` |
 | Public site, industry microsites, service pricing (`lib/offers.ts`), its funnel, logo strip | `docs/claude/site.md` |
 | AI Video Studio | `docs/claude/video-studio.md` |
-| Commands, deploying, staging and live | `docs/claude/deploying.md` |
+| Commands, deploying, staging and live, the testing site's password lock | `docs/claude/deploying.md` |
 | Verifying a change, site reels, test traps | `docs/claude/testing.md` |
 
 Longer owner-facing guides stay in `docs/` (`SECURITY.md`, `PRICING.md`,

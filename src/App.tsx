@@ -72,6 +72,7 @@ import GrowthService from './components/Agency/GrowthService';
 import Snapshots from './components/Agency/Snapshots';
 import { claimIndustryIfPending } from './services/industrySetup';
 import JobsRevenue from './components/Jobs/JobsRevenue';
+import MedicalBilling from './components/Rcm/MedicalBilling';
 import Affiliate from './components/Affiliate/Affiliate';
 
 /**
@@ -277,6 +278,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/growth" element={<GrowthService />} />
           <Route path="/snapshots" element={<Snapshots />} />
           <Route path="/jobs" element={<JobsRevenue />} />
+          <Route path="/rcm" element={<MedicalBilling />} />
           <Route path="/affiliate" element={<Affiliate />} />
           <Route path="/terms" element={<PolicyPage />} />
           <Route path="/security" element={<TrustCenter />} />

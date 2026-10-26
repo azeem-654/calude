@@ -77,6 +77,7 @@ import { handleBooking } from './routes/booking';
 import { handleBookingMedia } from './routes/bookingMedia';
 import { handleStrategyCall, strategyReminders } from './routes/strategyCall';
 import { handleLeadRevenue } from './routes/leadRevenue';
+import { handleRcm } from './routes/rcm';
 import { handleSnapshots } from './routes/snapshots';
 import { handleYtThumb, handleImgProxy } from './routes/proxies';
 import { handleStripeConfig, handleStripeCheckout, handleStripePortal, handleStripeWebhook } from './routes/stripe';
@@ -98,6 +99,7 @@ import { handleLogo } from './lib/brandLogo';
 import { handleWidgetAvatar } from './lib/widgetAvatar';
 import { handleUserAvatar } from './routes/userAvatar';
 import { industryFor, isSiteHost, robotsTxt, sitemapXml, speaksAsUs } from './lib/industryPages';
+import { markGated, stagingGate } from './lib/stagingGate';
 import { rewriteIndustryHead } from './lib/industryHead';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
@@ -214,6 +216,8 @@ const ROUTES: Record<string, Handler> = {
   /* The install owner's own strategy call — public booking, owner-only settings. */
   '/api/strategy-call.php': handleStrategyCall,
   '/api/lead-revenue.php': handleLeadRevenue,
+  /* Medical billing / RCM (phase 4): claims, remittances, denials, A/R, prior auth. Synthetic until the launch blockers clear. */
+  '/api/rcm.php': handleRcm,
   '/api/snapshots.php': handleSnapshots,
   '/api/deliverability.php': handleDeliverability,
   '/api/placement.php': handlePlacement,
@@ -255,113 +259,120 @@ const ROUTES: Record<string, Handler> = {
   '/api/install.php': async () => handleInstall(),
 };
 
+async function serve(req: Request, env: Env, ctx: ExecutionContext, url: URL): Promise<Response> {
+  /*
+   * A client report's link preview.
+   *
+   * The page itself already titles its own tab, but a messenger drawing a
+   * preview card runs no JavaScript — it reads the og: tags out of the served
+   * HTML, which name this platform. On a link whose whole purpose is being
+   * pasted to somebody else's client, that preview is the white label falling
+   * over at the last step.
+   *
+   * So the asset is fetched and rewritten on the way out. The client's name
+   * comes from the token, which means a pasted link previews as their own
+   * business rather than as anything of ours.
+   */
+  if (url.pathname.startsWith('/p/')) {
+    const res = await env.ASSETS.fetch(req);
+    const token = url.pathname.slice(3).split('/')[0].toLowerCase();
+    let client = '';
+    if (token.length >= 24) {
+      const row = await env.DB.prepare(
+        `SELECT COALESCE(f.name, '') AS name FROM crm_client_portals p
+         LEFT JOIN crm_portfolios f ON f.id = p.portfolio_id
+         WHERE p.token = ? AND p.enabled = 1`,
+      ).bind(token).first<{ name: string }>().catch(() => null);
+      client = row?.name ?? '';
+    }
+    /* A dead or unknown link gets a neutral title rather than ours — it still
+       must not advertise the platform, and it must not confirm that the token
+       was ever real. */
+    const title = client ? `${client} — progress` : 'Progress report';
+    return new HTMLRewriter()
+      .on('title', { element(el) { el.setInnerContent(title); } })
+      .on('meta[property^="og:"], meta[name^="twitter:"]', {
+        element(el) {
+          const key = el.getAttribute('property') ?? el.getAttribute('name') ?? '';
+          if (key.endsWith(':title')) el.setAttribute('content', title);
+          else if (key.endsWith(':site_name')) el.setAttribute('content', client || 'Progress report');
+          else if (key.endsWith(':description')) el.setAttribute('content', 'A read-only summary of work in progress.');
+          /* Images and URLs are ours and are removed rather than replaced:
+             there is no per-client image to put there, and our logo in a
+             preview card is the same leak in a different shape. */
+          else if (key.endsWith(':image') || key.endsWith(':url')) el.remove();
+        },
+      })
+      .transform(res);
+  }
+
+  /* The trade pages' head, for crawlers and link previews (lib/industryPages.ts). */
+  const trade = industryFor(url.pathname);
+  if (trade) {
+    const res = await env.ASSETS.fetch(req);
+    const html = (res.headers.get('content-type') ?? '').includes('text/html');
+    return html && speaksAsUs(url.hostname) ? rewriteIndustryHead(res, trade) : res;
+  }
+  /* Only the public site has pages to list. Elsewhere these fall through to
+     the platform, as they always did. */
+  if ((url.pathname === '/sitemap.xml' || url.pathname === '/robots.txt') && isSiteHost(url.hostname)) {
+    const xml = url.pathname === '/sitemap.xml';
+    return new Response(xml ? sitemapXml() : robotsTxt(), {
+      headers: { 'Content-Type': xml ? 'application/xml; charset=utf-8' : 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
+    });
+  }
+
+  if (!url.pathname.startsWith('/api/')) {
+    /* Not ours: static assets and the SPA fallback are the platform's job. */
+    return env.ASSETS.fetch(req);
+  }
+
+  const pre = preflight(req);
+  if (pre) return pre;
+
+  const handler = ROUTES[url.pathname];
+  if (!handler) {
+    return json({ success: false, error: `No endpoint at ${url.pathname}`, message: `No endpoint at ${url.pathname}` }, 404);
+  }
+
+  try {
+    /* The session cookie stands in for the token the page no longer holds
+       (lib/session.ts). Webhooks are signed over their raw bodies and carry
+       no cookie, so they are left exactly as they arrived. */
+    const webhook = /webhook|sms-inbound/.test(url.pathname);
+    const inbound = webhook ? req : await withCookieToken(req);
+    if (url.pathname === '/api/auth.php') {
+      let action = '';
+      try { action = String((JSON.parse(await inbound.clone().text()) as { action?: string }).action ?? ''); } catch { action = ''; }
+      return await withSessionCookie(inbound, await handler(inbound, env, ctx), action);
+    }
+    return await handler(inbound, env, ctx);
+  } catch (e) {
+    /* A thrown error must not become a 500 with a stack trace in it: the
+       client shows `message` to the customer, and a database error string is
+       not something they can act on or should see. */
+    /* A reference the customer can quote, and the same one in the log beside
+       the real error — so support can find what happened without the
+       customer ever being shown a stack, a query or a path. */
+    const ref = `PC-${[...crypto.getRandomValues(new Uint8Array(3))].map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
+    console.error(`[${ref}] ${url.pathname} failed:`, e);
+    const msg = `Something went wrong while processing your request. Please try again. If it keeps happening, quote reference ${ref}.`;
+    return new Response(JSON.stringify({ success: false, error: msg, message: msg, ref }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+    });
+  }
+}
+
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     await useWrapKey(env);
     const url = new URL(req.url);
-
-    /*
-     * A client report's link preview.
-     *
-     * The page itself already titles its own tab, but a messenger drawing a
-     * preview card runs no JavaScript — it reads the og: tags out of the served
-     * HTML, which name this platform. On a link whose whole purpose is being
-     * pasted to somebody else's client, that preview is the white label falling
-     * over at the last step.
-     *
-     * So the asset is fetched and rewritten on the way out. The client's name
-     * comes from the token, which means a pasted link previews as their own
-     * business rather than as anything of ours.
-     */
-    if (url.pathname.startsWith('/p/')) {
-      const res = await env.ASSETS.fetch(req);
-      const token = url.pathname.slice(3).split('/')[0].toLowerCase();
-      let client = '';
-      if (token.length >= 24) {
-        const row = await env.DB.prepare(
-          `SELECT COALESCE(f.name, '') AS name FROM crm_client_portals p
-           LEFT JOIN crm_portfolios f ON f.id = p.portfolio_id
-           WHERE p.token = ? AND p.enabled = 1`,
-        ).bind(token).first<{ name: string }>().catch(() => null);
-        client = row?.name ?? '';
-      }
-      /* A dead or unknown link gets a neutral title rather than ours — it still
-         must not advertise the platform, and it must not confirm that the token
-         was ever real. */
-      const title = client ? `${client} — progress` : 'Progress report';
-      return new HTMLRewriter()
-        .on('title', { element(el) { el.setInnerContent(title); } })
-        .on('meta[property^="og:"], meta[name^="twitter:"]', {
-          element(el) {
-            const key = el.getAttribute('property') ?? el.getAttribute('name') ?? '';
-            if (key.endsWith(':title')) el.setAttribute('content', title);
-            else if (key.endsWith(':site_name')) el.setAttribute('content', client || 'Progress report');
-            else if (key.endsWith(':description')) el.setAttribute('content', 'A read-only summary of work in progress.');
-            /* Images and URLs are ours and are removed rather than replaced:
-               there is no per-client image to put there, and our logo in a
-               preview card is the same leak in a different shape. */
-            else if (key.endsWith(':image') || key.endsWith(':url')) el.remove();
-          },
-        })
-        .transform(res);
-    }
-
-    /* The trade pages' head, for crawlers and link previews (lib/industryPages.ts). */
-    const trade = industryFor(url.pathname);
-    if (trade) {
-      const res = await env.ASSETS.fetch(req);
-      const html = (res.headers.get('content-type') ?? '').includes('text/html');
-      return html && speaksAsUs(url.hostname) ? rewriteIndustryHead(res, trade) : res;
-    }
-    /* Only the public site has pages to list. Elsewhere these fall through to
-       the platform, as they always did. */
-    if ((url.pathname === '/sitemap.xml' || url.pathname === '/robots.txt') && isSiteHost(url.hostname)) {
-      const xml = url.pathname === '/sitemap.xml';
-      return new Response(xml ? sitemapXml() : robotsTxt(), {
-        headers: { 'Content-Type': xml ? 'application/xml; charset=utf-8' : 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
-      });
-    }
-
-    if (!url.pathname.startsWith('/api/')) {
-      /* Not ours: static assets and the SPA fallback are the platform's job. */
-      return env.ASSETS.fetch(req);
-    }
-
-    const pre = preflight(req);
-    if (pre) return pre;
-
-    const handler = ROUTES[url.pathname];
-    if (!handler) {
-      return json({ success: false, error: `No endpoint at ${url.pathname}`, message: `No endpoint at ${url.pathname}` }, 404);
-    }
-
-    try {
-      /* The session cookie stands in for the token the page no longer holds
-         (lib/session.ts). Webhooks are signed over their raw bodies and carry
-         no cookie, so they are left exactly as they arrived. */
-      const webhook = /webhook|sms-inbound/.test(url.pathname);
-      const inbound = webhook ? req : await withCookieToken(req);
-      if (url.pathname === '/api/auth.php') {
-        let action = '';
-        try { action = String((JSON.parse(await inbound.clone().text()) as { action?: string }).action ?? ''); } catch { action = ''; }
-        return await withSessionCookie(inbound, await handler(inbound, env, ctx), action);
-      }
-      return await handler(inbound, env, ctx);
-    } catch (e) {
-      /* A thrown error must not become a 500 with a stack trace in it: the
-         client shows `message` to the customer, and a database error string is
-         not something they can act on or should see. */
-      /* A reference the customer can quote, and the same one in the log beside
-         the real error — so support can find what happened without the
-         customer ever being shown a stack, a query or a path. */
-      const ref = `PC-${[...crypto.getRandomValues(new Uint8Array(3))].map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase()}`;
-      console.error(`[${ref}] ${url.pathname} failed:`, e);
-      const msg = `Something went wrong while processing your request. Please try again. If it keeps happening, quote reference ${ref}.`;
-      return new Response(JSON.stringify({ success: false, error: msg, message: msg, ref }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders() },
-      });
-    }
+    /* The testing site's lock, before anything is served (lib/stagingGate.ts). Live has none. */
+    const gate = await stagingGate(req, env, url);
+    if (gate && 'stop' in gate) return gate.stop;
+    const res = await serve(req, env, ctx, url);
+    return gate ? markGated(res, gate.setCookie) : res;
   },
   /**
    * The cron tick.

@@ -52,6 +52,9 @@ export interface Env {
    * Stripe will not take a relative return address. Set in wrangler.jsonc.
    */
   APP_ORIGIN?: string;
+  /** The testing site's lock (lib/stagingGate.ts): a committed hash, or a `user:password` secret that wins over it. Live sets neither. */
+  STAGING_GATE_HASH?: string;
+  STAGING_GATE?: string;
   /**
    * The operator's AI key, when they would rather keep it in Cloudflare's
    * secret store than in the database. Last of the three places `loadAiKey`

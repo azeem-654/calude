@@ -19,9 +19,12 @@ export async function closeWorkspace(env: Env, target: string): Promise<void> {
    * So: every table with an `account_id` is found, not listed, so a table
    * added next month is covered without anybody remembering this. What is
    * kept is the operator's own record of what was bought on its accounts
-   * (domains, set-up orders) and the moderation history.
+   * (domains, set-up orders) and the moderation history — and the medical
+   * billing access log, which HIPAA expects kept for six years, holds claim
+   * numbers rather than patient details, and refuses deletion by trigger
+   * (migration 0080): naming it here would abort the whole batch.
    */
-  const KEEP = new Set(['crm_workspaces', 'crm_users', 'crm_managed_purchases', 'crm_owned_domains', 'crm_setup_orders', 'crm_account_standing', 'crm_content_reviews']);
+  const KEEP = new Set(['crm_workspaces', 'crm_users', 'crm_managed_purchases', 'crm_owned_domains', 'crm_setup_orders', 'crm_account_standing', 'crm_content_reviews', 'crm_rcm_events']);
   let tables: string[] = [];
   try {
     const { results } = await env.DB.prepare(

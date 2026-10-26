@@ -59,7 +59,7 @@ owner) can pick up where the last phase stopped.
    - Signup carries the industry from the microsite; the server validates and
      records it; provisioning is idempotent; upgrades preview and never
      overwrite customer changes.
-4. **Medical billing / RCM module and release checks**
+4. **Medical billing / RCM module and release checks** — **done 2026-10-26** (`test:rcm`, `test:rcme2e`, `test:security` additions; notes in `docs/claude/rcm.md`). Built: migration 0080, `lib/rcm.ts`, `/api/rcm.php`, Sales → Medical billing (`/rcm`), the owner's launch checklist. Not built: any clearinghouse, eligibility or payer integration (answers recorded by hand, remittances imported as CSV), and patient payment tracking — both said on screen. Real patient data is blocked until `docs/HIPAA-LAUNCH-BLOCKERS.md` is cleared.
    - Practices, providers, payers; claims workbench with distinct
      clearinghouse vs payer states; denials/appeals; leakage audit with
      evidence and no double counting; CSV remittance import and
@@ -69,3 +69,17 @@ owner) can pick up where the last phase stopped.
 
 Each phase ends with typecheck, its tests, a push to the branch and to
 `staging`, and a short report; the next starts only when the owner says so.
+
+## Completion report (2026-10-26)
+
+All four phases are built, on `staging` and promoted to live at the owner's
+request. The final run: typecheck (app and Worker); the 27 unit suites the
+staging workflow runs plus `test:rcm` and `test:gate`; `test:rcme2e` (116
+checks), `test:security` (164), and the phase 2 and 3 end-to-end suites.
+
+What stands between this and selling each offer is the owner's, and is in
+`docs/OWNER-CHECKLIST.md`: a lawyer on the growth-service terms (33, approved
+by the owner), the medical billing compensation model and BAA (34, 38), and —
+the largest — a hosting BAA before any patient data (Cloudflare signs one only
+on Enterprise; `docs/HIPAA-LAUNCH-BLOCKERS.md`). Medical billing runs on
+synthetic data until then, and says so on every screen.

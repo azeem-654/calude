@@ -20,7 +20,7 @@ import {
   BarChart3, Building2, Calendar, CalendarClock, CreditCard,
   Globe, Inbox, LayoutDashboard, LayoutTemplate, Newspaper, Palette, Rocket,
   Send, Settings as SettingsIcon, ShieldAlert, Star, TrendingUp, Users,
-  type LucideIcon, Package, UserPlus, BadgePercent, Crosshair, BookUser, Clapperboard, Receipt, Handshake, Layers } from 'lucide-react';
+  type LucideIcon, Package, UserPlus, BadgePercent, Crosshair, BookUser, Clapperboard, Receipt, Handshake, Layers, Stethoscope } from 'lucide-react';
 
 export interface NavItem {
   path: string;
@@ -95,6 +95,10 @@ export const NAV_GROUPS: NavGroup[] = [
       /* The server ledger behind the growth service's performance fee, and a
          lead-to-revenue tracker for any contractor without one. */
       { path: '/jobs', label: 'Jobs & revenue', desc: 'Every inquiry followed to the job and the money collected — quotes, payments and fee statements', icon: Receipt, aka: ['jobs', 'revenue', 'quotes', 'estimates', 'invoices', 'payments', 'performance fee', 'lead to revenue', 'attribution', 'do not call', 'call log'] },
+      /* The medical billing service's workbench, and the practice portal beside
+         it. A practice reads its own claims here; for anybody else it says what
+         it is and that nothing is set up. */
+      { path: '/rcm', label: 'Medical billing', desc: 'Claims, remittances, denials and appeals, A/R aging and prior authorizations — for practices whose billing we run', icon: Stethoscope, aka: ['rcm', 'revenue cycle', 'claims', 'medical billing', 'remittance', '835', 'era', 'denials', 'appeals', 'a/r', 'accounts receivable', 'aging', 'prior authorization', 'coding', 'clearinghouse', 'practice portal'] },
       { path: '/calendar', label: 'Calendar', desc: 'Meetings, bookings and your own time on one grid', icon: Calendar, aka: ['diary', 'schedule', 'appointments'] },
       { path: '/scheduling', label: 'Booking pages', desc: 'Let people book you without the email chain', icon: CalendarClock, aka: ['scheduling', 'calendly', 'availability', 'event types'] },
       /* ── Why the shop sits under Sales ──

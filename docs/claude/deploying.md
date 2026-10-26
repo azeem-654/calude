@@ -49,6 +49,18 @@ has commits `staging` does not, rather than discarding them. Pushing straight
 to `main` still works and still deploys — it is for a hotfix, and the next
 promotion will refuse until you have merged it back into `staging`.
 
+**testing.protectedcentral.com is locked** (since 2026-10-26,
+`lib/stagingGate.ts`): every request to the staging Worker — page, static file
+or API — needs HTTP Basic credentials first, then a 30-day `pc_gate` cookie
+stands in for them. Staging sets `assets.run_worker_first: true` so the lock
+covers the bundle too; live keeps its short list and has no lock. Only a hash
+is committed (`STAGING_GATE_HASH`); the owner's `STAGING_GATE` secret
+(`user:password`) overrides it. `robots.txt` answers `Disallow: /`, every
+answer carries `X-Robots-Tag: noindex`, and signed webhooks pass. A test or
+script against the *deployed* testing site must send the credentials; local
+`wrangler dev` without `--env staging` has no lock. `npm run test:gate`, and the
+staging workflow checks the deployed site answers 401.
+
 **testing.protectedcentral.com's root is the staging copy of the public
 site** (`siteAtRoot()`, since 2026-10-26, so the owner has an address to see
 site changes on): signed out, `/` is `SiteHome` with the TESTING bar pinned to
