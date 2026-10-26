@@ -1,0 +1,136 @@
+<!doctype html>
+<!--
+  One industry film, drawn at 1920×1080 and stepped frame by frame by make.mts
+  (window.seek(t), then a screenshot). The timeline is window.FILM, written
+  by make.mts from src/components/Site/industryDemos.ts and the narration's
+  measured lengths; the screens are the site's own pictures
+  (public/site/reel/<file>.webp), zoomed to where marketing/industry-films/
+  focus.json says the part worth reading is.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #070a0e; font-family: Inter, system-ui, sans-serif; color: #eef2f6; -webkit-font-smoothing: antialiased; }
+  :root { --lime: #c8f24d; --mint: #8fd9c4; --pain: #ff9a6a; --muted: #9aa6b2; --edge: rgba(255,255,255,0.10); }
+  .scene { position: absolute; inset: 0; opacity: 0; }
+  .bg { position: absolute; inset: 0; background: radial-gradient(1200px 700px at 78% 20%, rgba(200,242,77,0.10), transparent 60%), radial-gradient(900px 700px at 10% 90%, rgba(143,217,196,0.10), transparent 60%), #070a0e; }
+  .ghost { position: absolute; inset: -40px; background-size: cover; background-position: top center; filter: blur(16px) saturate(0.35) brightness(0.2); transform: scale(1.06); }
+  .brand { position: absolute; left: 110px; top: 44px; display: flex; align-items: center; gap: 14px; font-weight: 800; font-size: 26px; letter-spacing: -0.02em; }
+  .brand i { width: 38px; height: 38px; border-radius: 11px; background: linear-gradient(135deg, var(--lime), var(--mint)); display: block; box-shadow: 0 6px 24px rgba(200,242,77,0.25); }
+  .brand small { font-weight: 600; font-size: 20px; color: var(--muted); margin-left: 6px; }
+  .count { position: absolute; right: 110px; top: 50px; font-size: 20px; font-weight: 700; color: var(--muted); }
+
+  /* Title and closing cards */
+  .card { position: absolute; left: 160px; right: 160px; top: 50%; transform: translateY(-50%); }
+  .eyebrow { display: inline-flex; gap: 10px; align-items: center; font-size: 22px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--lime); }
+  .card h1 { font-size: 96px; line-height: 1.02; letter-spacing: -0.045em; font-weight: 800; margin-top: 22px; }
+  .card h1 em { font-style: normal; background: linear-gradient(95deg, var(--lime), var(--mint)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .card p { margin-top: 30px; font-size: 34px; line-height: 1.45; color: #c9d2db; max-width: 1350px; }
+  .cta { display: inline-flex; margin-top: 44px; padding: 22px 36px; border-radius: 999px; background: var(--lime); color: #0b0f14; font-size: 32px; font-weight: 800; }
+  .url { margin-top: 22px; font-size: 30px; color: var(--mint); font-weight: 700; }
+
+  /* The problem */
+  .ptag { display: inline-flex; align-items: center; gap: 16px; font-size: 24px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--pain); }
+  .ptag b { display: inline-grid; place-items: center; width: 54px; height: 54px; border-radius: 50%; background: rgba(255,138,87,0.18); font-size: 26px; letter-spacing: 0; }
+  .problem h1 { font-size: 88px; }
+  .problem p { color: #d7dee6; }
+
+  /* The screen */
+  .win { position: absolute; left: 110px; top: 118px; width: 1700px; height: 742px; border-radius: 20px; overflow: hidden; background: #e9ebef; border: 1px solid rgba(255,255,255,0.14); box-shadow: 0 30px 90px rgba(0,0,0,0.55); }
+  .win img { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+  .hl { position: absolute; border: 4px solid var(--lime); border-radius: 14px; box-shadow: 0 0 0 9999px rgba(7,10,14,0.28), 0 0 40px rgba(200,242,77,0.45); pointer-events: none; }
+  .label { position: absolute; left: 110px; top: 48px; display: flex; gap: 14px; align-items: center; font-size: 22px; font-weight: 800; }
+  .label .fix { color: var(--lime); text-transform: uppercase; letter-spacing: 0.08em; }
+  .label .mod { padding: 7px 16px; border-radius: 999px; border: 1px solid var(--edge); background: rgba(255,255,255,0.06); color: #fff; font-size: 20px; }
+  .sample { position: absolute; right: 110px; top: 54px; font-size: 18px; color: var(--muted); font-weight: 600; }
+  .lower { position: absolute; left: 110px; right: 110px; top: 884px; height: 160px; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+  .lower h2 { font-size: 42px; line-height: 1.15; letter-spacing: -0.025em; font-weight: 800; }
+  .lower p { font-size: 26px; color: #c9d2db; line-height: 1.35; }
+  .bar { position: absolute; left: 0; bottom: 0; height: 6px; background: linear-gradient(90deg, var(--lime), var(--mint)); }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+const F = window.FILM;
+const stage = document.getElementById('stage');
+const ease = x => (x <= 0 ? 0 : x >= 1 ? 1 : x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const lerp = (a, b, k) => a + (b - a) * k;
+const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const brand = `<div class="brand"><i></i>Protected Central<small>${esc(F.tag)}</small></div>`;
+
+/* Every scene is built once; seek(t) only sets opacity and transforms. */
+const els = F.scenes.map((s, i) => {
+  const el = document.createElement('div');
+  el.className = 'scene';
+  const ghost = s.ghost ? `<div class="ghost" style="background-image:url('${s.ghost}')"></div>` : '';
+  if (s.type === 'title' || s.type === 'outro') {
+    el.innerHTML = `<div class="bg"></div>${ghost}${brand}<div class="card"><span class="eyebrow">${esc(s.eyebrow)}</span><h1>${s.html}</h1><p>${esc(s.text)}</p>${s.cta ? `<div class="cta">${esc(s.cta)}</div><div class="url">${esc(s.url)}</div>` : ''}</div>`;
+  } else if (s.type === 'problem') {
+    el.innerHTML = `<div class="bg"></div>${ghost}${brand}<div class="count">Problem ${s.n} of ${s.total}</div><div class="card problem"><span class="ptag"><b>${s.n}</b> The problem</span><h1>${esc(s.pain)}</h1><p>${esc(s.problem)}</p></div>`;
+  } else {
+    el.innerHTML = `<div class="bg"></div><div class="label"><span class="fix">✓ In Protected Central</span><span class="mod">${esc(s.module)}</span></div><div class="sample">${esc(F.sample)}</div>
+      <div class="win"><img src="${s.img}" width="${s.iw}" height="${s.ih}"><div class="hl"></div></div>
+      <div class="lower"><h2>${esc(s.caption)}</h2><p>${esc(s.note)}</p></div>`;
+  }
+  if (s.type !== 'title') el.insertAdjacentHTML('beforeend', '<div class="bar"></div>');
+  stage.appendChild(el);
+  return el;
+});
+
+const W = 1700, H = 742;
+/* Where the camera is at `k` (0…1 of the scene) on a screen: the page fitted to the window's width at its top, then into the part worth reading. */
+function camera(s, k, dur) {
+  const s0 = W / s.iw;
+  const t = k * dur;
+  if (!s.focus) {
+    const travel = Math.max(0, s.ih * s0 - H);
+    const y = -travel * ease(Math.max(0, (t - 1.2) / Math.max(1, dur - 2.4)));
+    return { sc: s0, x: 0, y };
+  }
+  const f = s.focus;
+  let s1 = Math.min((W * 0.86) / f.w, (H * 0.8) / f.h, s0 * 2.1);
+  s1 = Math.max(s1, s0);
+  const clampX = (x, sc) => Math.min(0, Math.max(W - s.iw * sc, x));
+  const clampY = (y, sc) => (s.ih * sc <= H ? 0 : Math.min(0, Math.max(H - s.ih * sc, y)));
+  const x1 = clampX(W / 2 - (f.x + f.w / 2) * s1, s1);
+  const y1 = clampY(H / 2 - (f.y + f.h / 2) * s1, s1);
+  const z = ease(Math.min(1, Math.max(0, (t - 1.1) / 1.9)));
+  const sc = lerp(s0, s1, z);
+  return { sc, x: clampX(lerp(0, x1, z), sc), y: clampY(lerp(0, y1, z), sc), z };
+}
+
+window.seek = t => {
+  F.scenes.forEach((s, i) => {
+    const el = els[i];
+    const on = t >= s.t0 - 0.001 && t < s.t1;
+    if (!on) { el.style.opacity = 0; el.style.display = 'none'; return; }
+    el.style.display = 'block';
+    const dur = s.t1 - s.t0, local = t - s.t0;
+    const fade = Math.min(1, local / 0.45, (s.t1 - t) / 0.45);
+    el.style.opacity = s.last ? Math.min(1, local / 0.45) : fade;
+    const bar = el.querySelector('.bar');
+    if (bar) bar.style.width = `${(100 * t) / F.duration}%`;
+    if (s.type === 'screen') {
+      const c = camera(s, local / dur, dur);
+      el.querySelector('img').style.transform = `translate(${c.x}px, ${c.y}px) scale(${c.sc})`;
+      const hl = el.querySelector('.hl');
+      if (s.focus && c.z > 0.98) {
+        const a = Math.min(1, (local - 3.0) / 0.5);
+        const pad = 10;
+        hl.style.opacity = Math.max(0, a);
+        hl.style.left = `${c.x + s.focus.x * c.sc - pad}px`; hl.style.top = `${c.y + s.focus.y * c.sc - pad}px`;
+        hl.style.width = `${s.focus.w * c.sc + pad * 2}px`; hl.style.height = `${s.focus.h * c.sc + pad * 2}px`;
+      } else hl.style.opacity = 0;
+    } else {
+      const card = el.querySelector('.card');
+      if (card) card.style.transform = `translateY(calc(-50% + ${(1 - ease(Math.min(1, local / 0.8))) * 26}px))`;
+    }
+  });
+};
+window.ready = Promise.all([...document.images].map(i => i.decode().catch(() => null)));
+</script>
+</body>
+</html>

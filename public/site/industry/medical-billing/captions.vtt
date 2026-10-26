@@ -1,0 +1,61 @@
+WEBVTT
+
+00:00:00.500 --> 00:00:14.838
+Most practices do not lose revenue in one big failure. They lose it in claims nobody followed, denials nobody appealed, and payments nobody checked. Here is the workspace our billing team runs, shown on a synthetic practice with no real patient data.
+
+00:00:16.738 --> 00:00:21.586
+Billing companies report claims as sent. Whether the payer ever answered is a different question.
+
+00:00:23.186 --> 00:00:28.654
+Here every claim carries two statuses that are never merged: what the clearinghouse said, and what the payer said.
+
+00:00:30.754 --> 00:00:35.346
+A rejected claim never reaches the payer. If nobody corrects it, nobody pays it.
+
+00:00:36.946 --> 00:00:44.452
+Open any claim to see its lines, its statuses and the next action. A rejection stays open until it is corrected and resubmitted.
+
+00:00:46.552 --> 00:00:50.406
+Coding problems are usually found when the denial arrives, weeks later.
+
+00:00:52.006 --> 00:00:57.863
+Here claims wait in coding review before they go out. Software flags, and a qualified person decides.
+
+00:00:59.963 --> 00:01:05.037
+Denials pile up, the appeal window closes, and balances are adjusted off without a word.
+
+00:01:06.637 --> 00:01:12.721
+Here each denial is classified by reason, its appeal deadline in view, and a write-off needs a written reason.
+
+00:01:14.821 --> 00:01:19.824
+Remittances post in bulk, underpayments slip through, and deposits never quite match.
+
+00:01:21.424 --> 00:01:28.727
+Here each remittance row is matched to its claim line, duplicates are refused, and anything unmatched becomes an exception somebody owns.
+
+00:01:30.827 --> 00:01:35.924
+Balances drift past ninety and a hundred and twenty days, because nobody owns the follow-up.
+
+00:01:37.524 --> 00:01:41.947
+Here A/R is shown by age and by payer, with the counting rule written underneath.
+
+00:01:44.524 --> 00:01:49.238
+A service is delivered before the authorization comes back, and the claim is denied.
+
+00:01:50.838 --> 00:01:57.664
+Here every prior authorization is tracked from needed, to requested, to approved, with its number and dates, before the visit.
+
+00:01:59.764 --> 00:02:05.430
+Unsubmitted claims, passed filing limits and underpayments are small amounts nobody adds up.
+
+00:02:07.030 --> 00:02:13.044
+The leakage audit lists each claim line once, under its most serious finding, with the evidence written beside it.
+
+00:02:15.144 --> 00:02:19.393
+A monthly PDF, slow replies, and no way to see who touched your claims.
+
+00:02:20.993 --> 00:02:28.958
+The practice gets its own portal, with requests and answers in one place, and an access log of every view and change that nobody can edit.
+
+00:02:34.993 --> 00:02:46.539
+Every claim followed to payment, every denial worked to an outcome, every payment reconciled, and a portal that shows you all of it. Book a medical billing assessment at protectedcentral.com/medical-billing.

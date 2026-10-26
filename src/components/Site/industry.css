@@ -243,3 +243,61 @@
 .med-points li { display: flex; gap: 9px; align-items: flex-start; font-size: 14.5px; line-height: 1.6; }
 .med-points svg { color: var(--mint); margin-top: 5px; flex-shrink: 0; }
 .med-factors { max-width: 760px; margin: 0 auto; }
+
+/* ── "See it working" (IndustryDemo.tsx): a problem, then the screen that handles it ── */
+.idm section[id], .idm article[id] { scroll-margin-top: var(--dc-nav-h); }
+.idm-intro { padding-bottom: 0; }
+.idm-film { margin: 0 auto; max-width: 1100px; }
+.idm-film video, .idm-film-start { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 20px; border: 1px solid var(--edge); background: #05070a; overflow: hidden; }
+.dc .idm-film-start { position: relative; padding: 0; cursor: pointer; }
+.idm-film-start img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.4s ease, filter 0.4s ease; }
+.idm-film-start:hover img { transform: scale(1.015); filter: brightness(1.06); }
+.idm-film-play {
+  /* Right of centre: the poster's title sits on the left half. */
+  position: absolute; left: 76%; top: 50%; transform: translate(-50%, -50%);
+  width: clamp(54px, 7vw, 78px); height: clamp(54px, 7vw, 78px); border-radius: 50%; display: grid; place-items: center;
+  background: var(--lime); color: #0b0f14; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+}
+.idm-film-play svg { margin-left: 4px; }
+.idm-film-start:focus-visible { outline: 2px solid var(--lime); outline-offset: 4px; }
+.dc .idm-film figcaption { margin: 10px auto 0; max-width: 760px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.dc .idm-index { list-style: none; padding: 0; margin: clamp(26px, 3.5vw, 40px) auto 0; max-width: 1100px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.dc .idm-index a { display: inline-flex; align-items: center; gap: 8px; padding: 7px 13px 7px 8px; border-radius: 999px; border: 1px solid var(--edge); background: var(--glass); color: var(--text); font-size: 13px; font-weight: 600; }
+.dc .idm-index a:hover { border-color: rgba(255, 138, 87, 0.5); }
+.idm-index b { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(255, 138, 87, 0.16); color: #ff9a6a; font-size: 11.5px; }
+.idm-sample { max-width: 760px; margin-left: auto; margin-right: auto; }
+
+.idm-step { padding-top: clamp(50px, 6vw, 84px); }
+.idm-step-head { max-width: 1240px; margin: 0 auto clamp(22px, 3vw, 34px); display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: clamp(14px, 2.4vw, 30px); align-items: stretch; }
+.idm-pain, .idm-fix { min-width: 0; padding: clamp(18px, 2vw, 26px); border-radius: 20px; border: 1px solid var(--edge); background: var(--glass); display: flex; flex-direction: column; gap: 10px; }
+.idm-pain { border-color: rgba(255, 138, 87, 0.28); background: linear-gradient(160deg, rgba(255, 138, 87, 0.09), var(--glass) 60%); }
+.idm-fix { border-color: rgba(200, 242, 77, 0.3); background: linear-gradient(160deg, rgba(200, 242, 77, 0.08), var(--glass) 60%); justify-content: center; }
+.dc .idm-step h3 { margin: 0; font-size: clamp(20px, 2.1vw, 28px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; }
+.dc .idm-pain p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.65; }
+.dc .idm-fix p { margin: 0; color: var(--text); font-size: 15.5px; line-height: 1.65; }
+.idm-tag { display: inline-flex; align-items: center; gap: 7px; align-self: flex-start; font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.idm-tag-pain { color: #ff9a6a; }
+.idm-tag-pain b { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(255, 138, 87, 0.16); font-size: 11.5px; letter-spacing: 0; }
+.idm-tag-fix { color: var(--lime); }
+.idm-arrow { align-self: center; color: var(--lime); transform: rotate(-90deg); }
+@media (max-width: 860px) {
+  .idm-step-head { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .idm-arrow { transform: none; justify-self: center; }
+}
+.ind[data-microsite='medical-billing'] .idm-fix { border-color: rgba(143, 217, 196, 0.35); background: linear-gradient(160deg, rgba(143, 217, 196, 0.09), var(--glass) 60%); }
+.ind[data-microsite='medical-billing'] .idm-tag-fix, .ind[data-microsite='medical-billing'] .idm-arrow { color: var(--mint); }
+
+/* ── Medical billing: why practices change billing company, and what to ask theirs ── */
+.med-switch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 760px) { .med-switch { grid-template-columns: minmax(0, 1fr); } }
+.med-switch-card { min-width: 0; padding: 22px; border-radius: 20px; background: var(--glass); border: 1px solid var(--edge); display: flex; flex-direction: column; gap: 10px; }
+.med-switch-card .dc-tile-icon { background: rgba(255, 138, 87, 0.14); color: #ff9a6a; }
+.dc .med-switch-card h3 { margin: 4px 0 0; font-size: 16.5px; font-weight: 800; letter-spacing: -0.02em; }
+.dc .med-switch-card .ind-pain { margin: 0; }
+.med-switch-card .ind-fix svg, .med-switch-card .ind-fix b { color: var(--mint); }
+.med-ask { text-align: left; max-width: 900px; margin: clamp(26px, 3.5vw, 40px) auto 0; }
+.dc .med-ask h3 { margin: 0 0 12px; font-size: 17px; font-weight: 800; }
+.dc .med-ask ol { list-style: decimal; text-align: left; margin: 0; padding-left: 22px; display: grid; gap: 9px; color: var(--text); font-size: 14.5px; line-height: 1.6; }
+.med-specialties { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 1000px) { .med-specialties { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .med-specialties { grid-template-columns: minmax(0, 1fr); } }

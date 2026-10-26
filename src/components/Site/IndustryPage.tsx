@@ -2,7 +2,8 @@
  * A trade microsite — /hvac, /roofing.
  *
  * Each sells the growth service (lib/offers.ts) to one kind of business, in
- * the order an owner decides: their problems, what the service does and how it
+ * the order an owner decides: their problems, each shown solved in the running
+ * software (IndustryDemo, with its film), what the service does and how it
  * runs, how every opportunity is tracked to a collected payment, the software
  * underneath (the real screens), what it does not do, the price and what it is
  * taken of, the questions they would ask, and two ways to go on — book a
@@ -17,7 +18,7 @@
  * The head a crawler reads is written by the Worker (lib/industryPages.ts);
  * this titles the tab with the same words.
  */
-import { ArrowRight, Check, Minus } from 'lucide-react';
+import { ArrowRight, Check, Minus, Play } from 'lucide-react';
 import { appHref, isCrossOrigin } from '../../services/hosts';
 import { featureReady } from '../../services/features';
 import { usePageTitle } from '../../services/pageTitle';
@@ -30,6 +31,7 @@ import { REELS, type ReelShot } from './reels';
 import ShotReel from './ShotReel';
 import FeatureStage from './FeatureStage';
 import FaqSection from './FaqSection';
+import IndustryDemo from './IndustryDemo';
 import GrowthPricing from './GrowthPricing';
 import { EnquiryForm } from './PricingPage';
 import MicrositeLayout, { BookCall } from './Microsite';
@@ -75,7 +77,7 @@ export default function IndustryPage({ slug }: { slug: TradeSlug }) {
           <p className="ind-sub">{ind.hero.sub}</p>
           <div className="dc-hero-cta">
             <BookCall size="lg" testid="hero-book" />
-            <a className="dc-btn dc-btn-outline dc-btn-lg" href="#pricing">See pricing <ArrowRight size={15} /></a>
+            <a className="dc-btn dc-btn-outline dc-btn-lg" href="#see-it-work"><Play size={15} /> See it working</a>
           </div>
           <p className="ind-offer-line" data-testid="offer-line">{growthLine()}. Advertising budget and approved third-party charges are paid separately.</p>
         </div>
@@ -104,6 +106,9 @@ export default function IndustryPage({ slug }: { slug: TradeSlug }) {
           ))}
         </div>
       </section>
+
+      {/* ── Each problem, then the real screen that handles it, and the film of both ── */}
+      <IndustryDemo slug={slug} />
 
       {/* ── The service and how it runs ── */}
       <section className="ind-sec" id="service" aria-label="The service">

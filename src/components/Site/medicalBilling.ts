@@ -13,6 +13,7 @@
  */
 import type { ReactNode } from 'react';
 import {
+  EyeOff, Trash2, PhoneOff, Files, ArrowDownUp, Clock3, ShieldOff,
   FileX, FileWarning, Scale, Hourglass, CalendarClock, ShieldQuestion, ClipboardList, Eye, Banknote, SearchCheck,
   Stethoscope, Users, Building2, Activity, Sparkles, HeartPulse, ListChecks, Gavel, Wallet, Lock, KeyRound,
   FileSearch, Handshake, Database, UserCheck,
@@ -26,9 +27,10 @@ export const MEDICAL_SITE: MicrositeConfig = {
   root: '/medical-billing',
   tag: 'Medical Billing',
   nav: [
+    { href: '#see-it-work', label: 'Demo' },
     { href: '#audit', label: 'Audit' },
     { href: '#claims', label: 'Claims' },
-    { href: '#ar', label: 'Payments & A/R' },
+    { href: '#ar', label: 'A/R' },
     { href: '#reporting', label: 'Reporting' },
     { href: '#security', label: 'Security' },
     { href: '#process', label: 'Process' },
@@ -70,6 +72,44 @@ export const MED_PROBLEMS: { icon: Icon; title: string; body: string }[] = [
   { icon: Eye, title: 'No view of claims or cash', body: 'No single place that says what was billed, what was paid, what is pending and why.' },
   { icon: Banknote, title: 'Reports that do not reconcile', body: 'Practice-management reports and payer remittances that never quite agree.' },
   { icon: SearchCheck, title: 'Leakage you cannot see', body: 'Charges that were never captured, and small adjustments that add up unnoticed.' },
+];
+
+/*
+ * Why a practice changes billing company. Written as what goes wrong in the
+ * relationship, not as a claim about any named company, and each paired with
+ * how this service works instead — every "instead" is a screen in the RCM
+ * workspace (industryDemos.ts shows it). No figures: we have no customer data
+ * to base one on.
+ */
+export const MED_SWITCH: { icon: Icon; title: string; pain: string; instead: string }[] = [
+  { icon: EyeOff, title: 'You only find out once a month', pain: 'A summary arrives weeks after the month closed. Between reports there is no way to see a claim, a denial or a balance without emailing and waiting.', instead: 'Your practice portal shows the same claims, denials, remittances and A/R our billing team works from, as they change.' },
+  { icon: Trash2, title: 'Denials quietly written off', pain: 'Denied claims are adjusted off instead of appealed, and the first sign is revenue that never arrived.', instead: 'Every denial is classified by reason with its appeal deadline in view. A write-off needs a written reason, and you can see it.' },
+  { icon: ArrowDownUp, title: 'The easy claims get worked, the hard ones wait', pain: 'Clean claims go out; small balances, old A/R and complicated denials sit at the bottom of the pile because they take longer.', instead: 'Every open claim has an owner and a next action. Aging, deadlines and the leakage audit put the old and awkward ones in front of somebody.' },
+  { icon: PhoneOff, title: 'Slow answers, a different person every time', pain: 'A question about one claim takes days, and nobody seems to know its history.', instead: 'Requests and answers sit in Messages on the claim itself, with named people on our side and the history beside them.' },
+  { icon: Files, title: 'Reports that never match the bank', pain: 'The billing report, the payer remittances and the deposits all say slightly different things, and nobody explains why.', instead: 'Remittances are matched row by row to claim lines and to deposits. Each number on the report says how it was counted and from what.' },
+  { icon: Clock3, title: 'Deadlines missed without anyone noticing', pain: 'A claim goes out after the payer’s filing limit, or an appeal window closes, and the money is simply gone.', instead: 'Filing limits and appeal dates are tracked per claim and payer; claims close to a limit are flagged before it passes.' },
+  { icon: Scale, title: 'Underpayments nobody checks', pain: 'The payer pays a little below what your contract says, line after line, and it is posted as paid.', instead: 'With your fee schedule entered per payer, a payment below the contracted rate is flagged on the line it happened.' },
+  { icon: ShieldOff, title: 'No record of who touched your claims', pain: 'You cannot tell who viewed or changed a claim, or when, and nobody can show you.', instead: 'An append-only access log records every view and change on your practice’s claims, and nobody can edit it — including us.' },
+];
+
+/** Questions a practice can put to its current billing company today — the answers say whether to switch. */
+export const MED_ASK: string[] = [
+  'Which of our claims are older than 90 days, by payer — and who is working each one?',
+  'Which denials were written off last quarter, and what was the reason for each?',
+  'Which claims are close to their timely-filing limit right now?',
+  'Which payments came in below our contracted rate?',
+  'Can we see our claims, denials and A/R ourselves, any day, without asking?',
+  'Who accessed our claims this month, and what did they change?',
+];
+
+/* Where each kind of practice tends to lose claims, and what the work looks like. Plain statements, no figures. */
+export const MED_SPECIALTIES: { icon: Icon; title: string; body: string }[] = [
+  { icon: Activity, title: 'Physical therapy and rehabilitation', body: 'Authorizations and visit limits tied to a plan of care, re-evaluations, and many timed units per visit. The prior-auth queue tracks each authorization’s number, dates and what it covers, before the visit.' },
+  { icon: HeartPulse, title: 'Dermatology', body: 'Medical and cosmetic services on the same day, procedures billed alongside a visit, and pathology to follow up. Coding review holds those claims for a person before they go out.' },
+  { icon: Sparkles, title: 'Medical spas', body: 'Cash-pay cosmetic work beside insurance-billed medical services. Only the medical services are billed to a payer, and each needs the documentation that supports it.' },
+  { icon: Stethoscope, title: 'Independent physicians', body: 'The same people run the front desk and the billing, so follow-up waits for a quiet afternoon that never comes. Every claim gets an owner and a next action.' },
+  { icon: Users, title: 'Multi-provider practices', body: 'Each provider enrolled with each payer, claims split by rendering provider, and one practice-wide view of what is open, each claim carrying its rendering provider.' },
+  { icon: Building2, title: 'Other outpatient practices', body: 'We confirm during the assessment whether we can support your specialty’s coding and payer rules well — and say so if we cannot.' },
 ];
 
 export const MED_AUDIT = {

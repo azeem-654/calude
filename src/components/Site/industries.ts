@@ -107,6 +107,7 @@ const LEADS_FEATURES = (enquiry: string) => [
 /* Both trade microsites have the same sections, so the same menu. */
 const SITE_NAV = [
   { href: '#problems', label: 'Problems' },
+  { href: '#see-it-work', label: 'Demo' },
   { href: '#service', label: 'The service' },
   { href: '#tracking', label: 'Lead to revenue' },
   { href: '#pricing', label: 'Pricing' },

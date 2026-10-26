@@ -59,6 +59,7 @@ test-results/
 # Agents' temporary working copies (git worktrees); never part of the project.
 .claude/worktrees/
 .wrangler-reels/
+.wrangler-demos/
 .wrangler-video/
 .wrangler-ytvideo/
 __pycache__/

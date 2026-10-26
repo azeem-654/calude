@@ -1,0 +1,218 @@
+{
+ "ind-hvac-jobs": {
+  "x": 429,
+  "y": 319,
+  "width": 1124,
+  "height": 228,
+  "pageW": 1920,
+  "pageH": 1289
+ },
+ "ind-hvac-speed": {
+  "x": 174,
+  "y": 110,
+  "width": 245,
+  "height": 20,
+  "pageW": 1920,
+  "pageH": 2386
+ },
+ "ind-hvac-pipeline": {
+  "x": 710,
+  "y": 458,
+  "width": 84,
+  "height": 20,
+  "pageW": 1920,
+  "pageH": 1450
+ },
+ "ind-hvac-quote": {
+  "x": 174,
+  "y": 110,
+  "width": 192,
+  "height": 20,
+  "pageW": 1920,
+  "pageH": 1885
+ },
+ "ind-hvac-calendar": {
+  "x": 380,
+  "y": 394,
+  "width": 53,
+  "height": 12,
+  "pageW": 1920,
+  "pageH": 1287
+ },
+ "ind-hvac-reminder": {
+  "x": 174,
+  "y": 110,
+  "width": 237,
+  "height": 20,
+  "pageW": 1920,
+  "pageH": 1554
+ },
+ "ind-hvac-lead": {
+  "x": 430,
+  "y": 170,
+  "width": 1122,
+  "height": 978,
+  "pageW": 1920,
+  "pageH": 1545
+ },
+ "ind-hvac-contacts": {
+  "x": 359,
+  "y": 316,
+  "width": 2104,
+  "height": 900,
+  "pageW": 1920,
+  "pageH": 1293
+ },
+ "ind-hvac-winback": {
+  "x": 174,
+  "y": 678,
+  "width": 241,
+  "height": 20,
+  "pageW": 1920,
+  "pageH": 1200
+ },
+ "ind-roof-jobs": {
+  "x": 429,
+  "y": 319,
+  "width": 1124,
+  "height": 228,
+  "pageW": 1920,
+  "pageH": 1289
+ },
+ "ind-roof-speed": {
+  "x": 174,
+  "y": 110,
+  "width": 245,
+  "height": 20,
+  "pageW": 1920,
+  "pageH": 2556
+ },
+ "ind-roof-calendar": {
+  "x": 380,
+  "y": 519,
+  "width": 153,
+  "height": 12,
+  "pageW": 1920,
+  "pageH": 1287
+ },
+ "ind-roof-reminder": {
+  "x": 174,
+  "y": 110,
+  "width": 237,
+  "height": 20,
+  "pageW": 1920,
+  "pageH": 2055
+ },
+ "ind-roof-pipeline": {
+  "x": 1004,
+  "y": 458,
+  "width": 98,
+  "height": 20,
+  "pageW": 1920,
+  "pageH": 1419
+ },
+ "ind-roof-quote": {
+  "x": 174,
+  "y": 110,
+  "width": 192,
+  "height": 20,
+  "pageW": 1920,
+  "pageH": 1760
+ },
+ "ind-roof-lead": {
+  "x": 430,
+  "y": 170,
+  "width": 1122,
+  "height": 978,
+  "pageW": 1920,
+  "pageH": 1545
+ },
+ "ind-roof-reviews": {
+  "x": 174,
+  "y": 383,
+  "width": 231,
+  "height": 20,
+  "pageW": 1920,
+  "pageH": 1200
+ },
+ "ind-med-claims": {
+  "x": 429,
+  "y": 565,
+  "width": 1124,
+  "height": 51,
+  "pageW": 1920,
+  "pageH": 1214
+ },
+ "ind-med-claim": {
+  "x": 430,
+  "y": 314,
+  "width": 1122,
+  "height": 490,
+  "pageW": 1920,
+  "pageH": 1200
+ },
+ "ind-med-review": {
+  "x": 429,
+  "y": 519,
+  "width": 1124,
+  "height": 159,
+  "pageW": 1920,
+  "pageH": 1214
+ },
+ "ind-med-denials": {
+  "x": 429,
+  "y": 589,
+  "width": 1124,
+  "height": 155,
+  "pageW": 1920,
+  "pageH": 1214
+ },
+ "ind-med-remits": {
+  "x": 430,
+  "y": 730,
+  "width": 1122,
+  "height": 321,
+  "pageW": 1920,
+  "pageH": 1214
+ },
+ "ind-med-aging": {
+  "x": 429,
+  "y": 519,
+  "width": 1124,
+  "height": 199,
+  "pageW": 1920,
+  "pageH": 1214
+ },
+ "ind-med-auths": {
+  "x": 429,
+  "y": 519,
+  "width": 210,
+  "height": 35,
+  "pageW": 1920,
+  "pageH": 1214
+ },
+ "ind-med-leakage": {
+  "x": 429,
+  "y": 519,
+  "width": 1124,
+  "height": 935,
+  "pageW": 1920,
+  "pageH": 1481
+ },
+ "ind-med-audit": {
+  "x": 429,
+  "y": 519,
+  "width": 1124,
+  "height": 544,
+  "pageW": 1920,
+  "pageH": 1214
+ },
+ "ind-med-messages": {
+  "x": 450,
+  "y": 887,
+  "width": 1082,
+  "height": 21,
+  "pageW": 1920,
+  "pageH": 1214
+ }
+}

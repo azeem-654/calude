@@ -8,20 +8,23 @@
  * onboarding works, how it is priced (after an assessment — there is no
  * figure), questions, and the call to book an assessment.
  *
- * No screens: there is no sample RCM workspace to photograph yet, and a
- * drawing of one would be a mock-up. No figures of any kind (medicalBilling.ts
- * says what may never be claimed). The frame is MicrositeLayout, so nothing
+ * Why practices leave their current billing company comes straight after the
+ * problems, each reason paired with how this service works instead; then the
+ * RCM workspace itself, problem by problem (IndustryDemo — real screens of the
+ * synthetic practice, labelled so, and the narrated film made from them). No
+ * figures of any kind (medicalBilling.ts says what may never be claimed). The frame is MicrositeLayout, so nothing
  * here links to the general home page or to another industry.
  */
-import { Check } from 'lucide-react';
+import { Check, Play } from 'lucide-react';
 import { usePageTitle } from '../../services/pageTitle';
 import { INDUSTRY_PAGES } from '../../../worker/src/lib/industryPages';
 import { MEDICAL_BILLING_OFFER } from '../../../worker/src/lib/offers';
 import {
-  MED_AR, MED_AUDIENCE, MED_AUDIT, MED_CLAIMS, MED_FAQ, MED_HERO, MED_PROBLEMS, MED_PROCESS, MED_REPORTING,
+  MED_AR, MED_ASK, MED_AUDIENCE, MED_SPECIALTIES, MED_SWITCH, MED_AUDIT, MED_CLAIMS, MED_FAQ, MED_HERO, MED_PROBLEMS, MED_PROCESS, MED_REPORTING,
   MED_SECURITY, MED_SITE_ICON, MED_SOFTWARE, MEDICAL_SITE,
 } from './medicalBilling';
 import FaqSection from './FaqSection';
+import IndustryDemo from './IndustryDemo';
 import { EnquiryForm } from './PricingPage';
 import MicrositeLayout, { BookCall } from './Microsite';
 import { useRevealGroup } from './useReveal';
@@ -46,6 +49,7 @@ export default function MedicalBillingPage() {
   const meta = INDUSTRY_PAGES['medical-billing'];
   usePageTitle(meta.title);
   const problems = useRevealGroup<HTMLDivElement>('.ind-problem');
+  const switching = useRevealGroup<HTMLDivElement>('.med-switch-card');
 
   return (
     <MicrositeLayout site={MEDICAL_SITE}>
@@ -58,7 +62,7 @@ export default function MedicalBillingPage() {
           <p className="ind-sub">{MED_HERO.sub}</p>
           <div className="dc-hero-cta">
             <BookCall size="lg" testid="hero-book" />
-            <a className="dc-btn dc-btn-outline dc-btn-lg" href="#request">Request Medical Billing Assessment</a>
+            <a className="dc-btn dc-btn-outline dc-btn-lg" href="#see-it-work"><Play size={15} /> See it working</a>
           </div>
           <ul className="med-audience" aria-label="Who it is for">
             {MED_AUDIENCE.map(a => <li key={a.label}><a.icon size={14} /> {a.label}</li>)}
@@ -83,6 +87,33 @@ export default function MedicalBillingPage() {
           ))}
         </div>
       </section>
+
+      {/* ── Why practices change billing company, and what to ask theirs ── */}
+      <section className="ind-sec" id="switching" aria-label="Changing billing company">
+        <div className="dc-chapter-head">
+          <span className="dc-eyebrow">Unhappy with your billing company?</span>
+          <h2>Why practices change billing company — <em>and how we work instead.</em></h2>
+          <p>Most of it is not one disaster. It is not being able to see what is happening to your claims until the money is already late.</p>
+        </div>
+        <div className="med-switch stagger" ref={switching}>
+          {MED_SWITCH.map(p => (
+            <article key={p.title} className="med-switch-card">
+              <span className="dc-tile-icon"><p.icon size={16} /></span>
+              <h3>{p.title}</h3>
+              <p className="ind-pain">{p.pain}</p>
+              <p className="ind-fix"><Check size={13} aria-hidden="true" /><span><b>Instead: </b>{p.instead}</span></p>
+            </article>
+          ))}
+        </div>
+        <div className="ind-outcome-card med-ask">
+          <h3>Six questions to ask your billing company this week</h3>
+          <ol>{MED_ASK.map(q => <li key={q}>{q}</li>)}</ol>
+          <p className="ind-note">If the answers take days, or do not come, that is the problem this service is built to fix. Each one is a screen below.</p>
+        </div>
+      </section>
+
+      {/* ── The RCM workspace, problem by problem: the synthetic practice and the film ── */}
+      <IndustryDemo slug="medical-billing" />
 
       {/* ── 3. Revenue-leakage audit ── */}
       <section className="ind-sec" id="audit" aria-label="Revenue-leakage audit">
@@ -132,6 +163,24 @@ export default function MedicalBillingPage() {
           <p>{MED_REPORTING.body}</p>
         </div>
         <ul className="med-points">{MED_REPORTING.points.map(p => <li key={p}><Check size={13} aria-hidden="true" /> {p}</li>)}</ul>
+      </section>
+
+      {/* ── Specialties: where each kind of practice tends to lose claims ── */}
+      <section className="ind-sec" id="specialties" aria-label="Specialties">
+        <div className="dc-chapter-head">
+          <span className="dc-eyebrow">Your specialty</span>
+          <h2>Where your kind of practice <em>loses claims.</em></h2>
+          <p>Payer and coding rules differ by specialty. This is where the work usually is — we confirm what applies to you during the assessment.</p>
+        </div>
+        <div className="med-features med-specialties">
+          {MED_SPECIALTIES.map(f => (
+            <article key={f.title} className="med-feature">
+              <span className="dc-tile-icon"><f.icon size={16} /></span>
+              <h3>{f.title}</h3>
+              <p>{f.body}</p>
+            </article>
+          ))}
+        </div>
       </section>
 
       {/* ── 7. The internal RCM software ── */}

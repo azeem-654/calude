@@ -97,9 +97,29 @@ path check. `npm run test:industry` fails if a menu entry leaves the site;
   "Prefer to write?" (the Custom `EnquiryForm`, `[HVAC page] …`) → closing
   call; "Start the software free" is a quiet link to `/signup?industry=<slug>`.
 - **Medical billing** (`Site/MedicalBillingPage.tsx` from
-  `Site/medicalBilling.ts`): its own sections, mint accent, no screens (there
-  is no RCM sample to photograph), **no figure of any kind**, no "HIPAA
-  compliant/certified", no testimonials; priced after an assessment.
+  `Site/medicalBilling.ts`): its own sections, mint accent, **no figure of any
+  kind**, no "HIPAA compliant/certified", no testimonials; priced after an
+  assessment. After the problems: **why practices change billing company**
+  (`MED_SWITCH`, each reason paired with how we work instead — never a claim
+  about a named company), six questions to ask theirs (`MED_ASK`), then the
+  demo below; specialties (`MED_SPECIALTIES`) after reporting.
+- **"See it working"** (`Site/IndustryDemo.tsx` from `Site/industryDemos.ts`,
+  `#see-it-work`, "Demo" in each menu) on all three sites: the industry's
+  problems one at a time, each a *problem* card, the *in Protected Central*
+  card, then a ShotReel of the module that handles it — and above them the
+  site's narrated film (`public/site/industry/<slug>/demo.mp4`, poster,
+  captions; nothing loads until Play). The pictures are **not** the sample
+  agency: `npx tsx scripts/industry-demos.mts` (after a `VITE_BASE=/` build)
+  seeds a fresh D1 with an HVAC firm and a roofer set up as the growth
+  service sets one up (the snapshot, template workflows, the Jobs & revenue
+  ledger through the real API) and the synthetic practice in the owner's own
+  workspace, then photographs `ind-*` into `public/site/reel/` (desktop, -sm,
+  -m) and writes `marketing/industry-films/focus.json`. The films are
+  `npx tsx marketing/industry-films/make.mts` (Piper `en_US-ryan-high`,
+  `PIPER_MODEL=`; ffmpeg) from the same steps, so page and film cannot
+  disagree. Every `solved` line and note says only what its screen shows —
+  check the picture before changing the words. A step whose picture has no
+  recipe stops the capture.
 - **Prices are `worker/src/lib/offers.ts`** — `TRADE_GROWTH_OFFER` ($300 setup,
   $87/month, 500 bps of eligible collections from qualifying jobs; ad budget and
   approved third-party expenses separate) with its approved headline, labels,
@@ -143,5 +163,5 @@ path check. `npm run test:industry` fails if a menu entry leaves the site;
   or not, on our hosts and not on white-label ones.
 - **`.dc p { margin: 0 }` out-ranks a single class** — a centred paragraph on
   these pages needs `.dc .x { margin: … auto }`, or it sits left.
-- **Screens are the sample agency, not a trade.** Trade-specific pictures need
-  an HVAC/roofing seed and recipes in `scripts/site-reels.mts`.
+- **The microsites' module sections still show the sample agency**; the
+  trade- and practice-specific pictures are the "See it working" ones above.
