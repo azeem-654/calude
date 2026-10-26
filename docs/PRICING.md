@@ -3,6 +3,12 @@
 What Protected Central sells, what each package allows, why those numbers, and
 where the market sits. Written 2026-10-14.
 
+> **Since 2026-10-26 the public home page prices the managed growth service
+> instead** — $300 setup + $87/month + 5% performance fee on eligible collected
+> revenue from qualifying jobs (`worker/src/lib/offers.ts`, `docs/claude/site.md`).
+> The software plans below are unchanged and still sold and billed; they are
+> shown on `/pricing` but no longer as cards on the home page.
+
 The packages live in **one file**, `worker/src/lib/allowances.ts` (`PLAN_DEFS`,
 `TRIAL_LIMITS`). The server enforces them and checkout charges from them, and
 the public site's price cards, Plan & billing and the AI Autopilot board's meter

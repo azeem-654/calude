@@ -101,12 +101,28 @@ path check. `npm run test:industry` fails if a menu entry leaves the site;
   is no RCM sample to photograph), **no figure of any kind**, no "HIPAA
   compliant/certified", no testimonials; priced after an assessment.
 - **Prices are `worker/src/lib/offers.ts`** — `TRADE_GROWTH_OFFER` ($300 setup,
-  $87/month, 500 bps of eligible attributed collections; ad budget and
-  approved third-party charges separate) and `MEDICAL_BILLING_OFFER` (no
-  figure). Pages, the home page's `ServiceOffers` and the structured data all
-  read it; never type a figure into a page. `feeOn()` is the fee arithmetic
-  (integer cents, half-up once). The software plans stay in allowances.ts and
-  on the home page under "Software plans".
+  $87/month, 500 bps of eligible collections from qualifying jobs; ad budget and
+  approved third-party expenses separate) with its approved headline, labels,
+  scope, `costDisclosure`, `feeDisclosure` and worked example
+  (`growthExample()`: $6,000 → $300, computed by `feeOn`), and
+  `MEDICAL_BILLING_OFFER` (no figure). Never type a figure into a page;
+  `test:industry` fails if one of the site components does. `feeOn()` is the
+  fee arithmetic (integer cents, half-up once).
+- **One block draws the price** — `Site/GrowthOfferBlock.tsx`, no props, on the
+  home page (`HomePricing`, `#pricing`) and on /hvac and /roofing
+  (`GrowthPricing`). `test:strategycalle2e` compares its text on the three
+  pages word for word at 1280 and 390.
+- **The home page no longer shows the software plans' cards** ($49/$97/$197,
+  owner's decision 2026-10-26). They remain in allowances.ts, on `/pricing`
+  (titled "Software plans", reached from Plan & billing, with a note quoting
+  the growth service) and on every subscription already sold. Do not put them
+  back on the home page unless the owner asks.
+- **Booking buttons follow the owner's switch** (`useBookingState`/`useCallLink`
+  in `services/strategyCall.ts`, one `config` call per page): while bookings
+  are closed, `BookCall`, the microsite nav/menu/footer and the home button
+  lead to the page's own inquiry form (`writeHref`: `#talk`, `#request`, the
+  home page's `#enquire`) in words that do not say "Book"; the closed booking
+  page sends main-site visitors to `/#enquire`.
 - **Every booking button is `strategyCallHref(site)`** (`services/strategyCall.ts`):
   `/book/strategy-call?src=<site>` plus the visit's UTM tags and click ids,
   remembered on arrival (`rememberArrival`). `BookCall` uses the microsite's

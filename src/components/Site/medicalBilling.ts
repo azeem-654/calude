@@ -37,6 +37,8 @@ export const MEDICAL_SITE: MicrositeConfig = {
   ],
   bookLabel: 'Book a Medical Billing Assessment',
   bookShort: 'Book an assessment',
+  writeHref: '#request',
+  writeLabel: 'Request an assessment in writing',
   footerLine: 'Medical billing and revenue-cycle management for outpatient practices.',
   signIn: false,
 };

@@ -16,6 +16,9 @@ export interface MicrositeConfig {
   /** The booking button's words on this site. */
   bookLabel: string;
   bookShort: string;
+  /** The page's own inquiry form, and its words — where the booking buttons go while bookings are closed. */
+  writeHref: string;
+  writeLabel: string;
   footerLine: string;
   /** Show "Sign in" (the trade sites sell an app login; the RCM site does not yet). */
   signIn: boolean;

@@ -158,10 +158,16 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   const ctx = await br.newContext({ viewport: { width: w, height: h } });
   const page = await ctx.newPage();
   page.on('pageerror', e => errs.push(`site ${w}: ${e}`));
+  /* The home page prices the growth service and no longer shows the plans' cards (owner, 2026-10-26); they live on /pricing. */
   await page.goto(`${B}/`, { waitUntil: 'networkidle' });
-  const sec = page.locator('#pricing');
+  const home = page.locator('#pricing');
+  await home.scrollIntoViewIfNeeded();
+  ok(`site ${w}: the home page's pricing is the growth service, with no plan cards`, (await home.locator('[data-plan]').count()) === 0 && /\$300 setup \+ \$87\/month \+ 5% performance fee/.test(await home.innerText()));
+  await page.goto(`${B}/pricing`, { waitUntil: 'networkidle' });
+  const sec = page.locator('#plans');
   await sec.scrollIntoViewIfNeeded();
   await page.waitForTimeout(800);
+  ok(`/pricing ${w}: says it is the software and quotes the growth service from the same offer`, /Software plans/i.test(await page.locator('.pcp-head').innerText()) && /\$300 setup \+ \$87\/month \+ 5% performance fee/.test(await page.getByTestId('pricing-service-note').innerText()));
   const cards = sec.locator('[data-plan]');
   ok(`site ${w}: three priced plans and Custom`, (await cards.count()) === 4 && (await sec.locator('[data-plan="custom"]').count()) === 1 && (await sec.locator('[data-plan="agency"]').count()) === 0);
   const text = await sec.innerText();
@@ -175,15 +181,13 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   await pro.getByRole('button', { name: 'Show full details' }).click();
   const details = await pro.locator('.dc-plan-details').innerText().catch(() => '');
   ok(`site ${w}: "Show full details" opens the plan's whole list`, /Branded login addresses/.test(details) && /25/.test(details) && /Charge clients on your own Stripe or Creem/.test(details), details.slice(0, 300));
-  ok(`site ${w}: …and a link to the full page`, (await sec.getByRole('link', { name: /Compare every plan in detail/ }).getAttribute('href')) === '/pricing');
-  ok(`site ${w}: Custom's button goes to the form`, (await sec.locator('[data-plan="custom"] a').getAttribute('href')) === '/pricing#custom');
+  ok(`site ${w}: Custom's button goes to the form`, /#custom$/.test(await sec.locator('[data-plan="custom"] a').getAttribute('href')));
   ok(`site ${w}: nothing is wider than the window`, (await overflow(page)) <= 0, await overflow(page));
   const outside = await cards.evaluateAll(els => els.filter(e => { const r = e.getBoundingClientRect(); return r.left < -1 || r.right > window.innerWidth + 1; }).length);
   ok(`site ${w}: every card inside the window`, outside === 0, outside);
   await sec.screenshot({ path: `.wrangler-allowances/pricing-${w}.png` });
 
   /* ── /pricing ── */
-  await page.goto(`${B}/pricing`, { waitUntil: 'networkidle' });
   ok(`/pricing ${w}: its own page, titled`, /Pricing/.test(await page.title()) && (await page.locator('#compare [data-compare]').count()) === 1);
   const cmp = page.locator('[data-compare]');
   if (w >= 1000) {

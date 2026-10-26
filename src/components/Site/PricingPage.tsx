@@ -1,5 +1,10 @@
 /**
- * /pricing — the full pricing page on the public site.
+ * /pricing — the software plans, in full.
+ *
+ * Since 2026-10-26 the home page prices the growth service instead and no
+ * longer shows these cards to new prospects; this page stays because existing
+ * subscribers reach it from Plan & billing, and it says at the top that the
+ * service is a different offer, quoting it from lib/offers.ts.
  *
  * The cards and the comparison are PricingParts.tsx, generated from the plan
  * table the server enforces (worker/src/lib/allowances.ts). The white-label
@@ -12,7 +17,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, Loader } from 'lucide-react';
 import { LogoMark } from '../shared/Logo';
-import { appHref, isCrossOrigin } from '../../services/hosts';
+import { appHref, isCrossOrigin, siteOrigin } from '../../services/hosts';
+import { TRADE_GROWTH_OFFER, growthLine } from '../../../worker/src/lib/offers';
 import { usePageTitle } from '../../services/pageTitle';
 import { CARD_PLANS, isUnlimited, sendEnquiry, type EnquiryNeed } from '../../services/allowances';
 import { BillingToggle, ComparisonTable, PlanCards, usePlanTable } from './PricingParts';
@@ -66,13 +72,18 @@ export default function PricingPage() {
       <main className="pcp-main">
         <a className="tc-back" href={home}><ArrowLeft size={14} /> Back to the site</a>
         <div className="dc-chapter-head pcp-head">
-          <span className="dc-eyebrow">Pricing</span>
+          <span className="dc-eyebrow">Software plans</span>
           <h1 className="tc-h1">Three plans. <em>Or one built around you.</em></h1>
           <p>
             Every number below is what the product holds you to — not an estimate — and every plan is white-label.
             7 days free, no card required.
           </p>
         </div>
+        <p className="pcp-service" data-testid="pricing-service-note">
+          These are self-serve software subscriptions. Looking for the managed growth service for your business?
+          It is <b>{growthLine()}</b> — {TRADE_GROWTH_OFFER.costDisclosure.charAt(0).toLowerCase() + TRADE_GROWTH_OFFER.costDisclosure.slice(1)}
+          {' '}<a href={`${siteOrigin()}/#pricing`}>See the growth service <ArrowRight size={13} /></a>
+        </p>
         <nav className="tc-toc pcp-toc" aria-label="On this page">
           <a href="#plans">Plans</a><a href="#compare">Compare every feature</a><a href="#white-label">White-label</a>
           <a href="#billing">Billing questions</a><a href="#custom">Custom plans</a>

@@ -209,16 +209,24 @@ for (const width of [1280, 390]) {
   page.on('pageerror', e => errs.push(`@${width} ${page.url()}: ${e}`));
 
   await page.goto(`${B}/`, { waitUntil: 'networkidle' });
-  const services = page.locator('#services');
-  await services.scrollIntoViewIfNeeded();
-  const st = await services.innerText();
-  ok(`home @${width}: the services section shows $300, $87 and 5%`, /\$300/.test(st) && /\$87/.test(st) && /5%/.test(st), st.slice(0, 300));
-  ok(`home @${width}: ad budget and third-party charges are separate`, /advertising budget/i.test(st) && /third-party/i.test(st));
+  const pricing = page.locator('#pricing');
+  await pricing.scrollIntoViewIfNeeded();
+  const pt = await pricing.innerText();
+  ok(`home @${width}: pricing leads with the approved heading and line`, /Turn More Leads Into Paying Customers/i.test(pt) && /pricing aligned to measurable results/.test(pt) && (await page.getByTestId('growth-line').innerText()) === '$300 setup + $87/month + 5% performance fee', pt.slice(0, 300));
+  ok(`home @${width}: setup, monthly and performance fees are labelled apart`, /One-time setup fee/i.test(pt) && /Recurring platform and agreed service fee/i.test(pt) && /Performance fee on eligible revenue collected/i.test(pt));
+  ok(`home @${width}: the cost and fee disclosures and the $6,000 example`, /advertising budget/.test(pt) && /third-party expenses/.test(pt) && /unaccepted quotations/.test(pt) && /\$6,000 in eligible collected revenue.*is \$300/.test(pt));
+  const homeMain = await page.locator('body').innerText();
+  ok(`home @${width}: no $49, $97 or $197 software-plan cards`, !/\$49\b|\$97\b|\$197\b/.test(homeMain), (homeMain.match(/.{30}\$(49|97|197)\b.{20}/) ?? [''])[0]);
+  const st = await page.locator('#services').innerText();
   ok(`home @${width}: medical billing is by assessment`, /By assessment/.test(st) && /does not apply/.test(st));
   ok(`home @${width}: links to all three microsites`, await page.locator('a[href="/hvac"]').count() > 0 && await page.locator('a[href="/roofing"]').count() > 0 && await page.locator('a[href="/medical-billing"]').count() > 0);
-  ok(`home @${width}: the booking button carries src=main`, /\/book\/strategy-call\?src=main/.test(await page.getByTestId('home-book').getAttribute('href')));
-  ok(`home @${width}: the software plans keep their own section`, /Software plans/i.test(await page.locator('#pricing').innerText()));
+  await page.waitForSelector('[data-testid="home-book"][data-booking="open"]', { timeout: 10_000 });
+  ok(`home @${width}: bookings open — the button books, carrying src=main`, /\/book\/strategy-call\?src=main/.test(await page.getByTestId('home-book').getAttribute('href')));
+  await page.getByTestId('home-write').click();
+  ok(`home @${width}: "Prefer to write?" opens the inquiry form`, await page.getByTestId('home-enquire').isVisible());
+  const homeBlock = { line: await page.getByTestId('growth-line').innerText(), cost: await page.getByTestId('cost-disclosure').innerText(), fee: await page.getByTestId('fee-disclosure').innerText(), figs: await page.getByTestId('growth-figures').innerText() };
   ok(`home @${width}: no sideways scroll`, (await overflow(page)) <= 0, String(await overflow(page)));
+  await pricing.screenshot({ path: `test-results/home-pricing-${width}.png` });
 
   for (const id of MICRO) {
     await page.goto(`${B}/${id}?utm_source=newsletter&utm_campaign=autumn`, { waitUntil: 'networkidle' });
@@ -234,7 +242,10 @@ for (const width of [1280, 390]) {
       ok(`${id} @${width}: no price, no percentage`, !/\$\s?\d/.test(body) && !/\d\s?%/.test(body), (body.match(/.{30}(\$\s?\d|\d\s?%).{20}/) ?? [''])[0]);
       ok(`${id} @${width}: says it is priced after an assessment`, /after an assessment/.test(body));
     } else {
-      ok(`${id} @${width}: the growth offer is shown`, /\$300/.test(body) && /\$87/.test(body) && /5%/.test(body) && /eligible attributed collections/.test(body));
+      ok(`${id} @${width}: the growth offer is shown`, /\$300/.test(body) && /\$87/.test(body) && /5%/.test(body));
+      const block = { line: await page.getByTestId('growth-line').innerText(), cost: await page.getByTestId('cost-disclosure').innerText(), fee: await page.getByTestId('fee-disclosure').innerText(), figs: await page.getByTestId('growth-figures').innerText() };
+      ok(`${id} @${width}: price, figures and disclosures match the home page word for word`, JSON.stringify(block) === JSON.stringify(homeBlock), JSON.stringify(block).slice(0, 300));
+      ok(`${id} @${width}: no $49, $97 or $197 plan`, !/\$49\b|\$97\b|\$197\b/.test(body));
       ok(`${id} @${width}: no $45 or $2,200 offer`, !/\$45\b|\$2,200/.test(body));
     }
     ok(`${id} @${width}: no sideways scroll`, (await overflow(page)) <= 0, String(await overflow(page)));
@@ -289,6 +300,40 @@ for (const width of [1280, 390]) {
   ok(`booking @${width}: the guest cancels from their link`, /Cancelled/.test(await page.getByTestId('sc-status').innerText()));
   await ctx.close();
 }
+
+/* Bookings closed: no button promises a booking; each leads to a working inquiry form. */
+r = await sc({ action: 'settings_save', token: T, settings: { ...settings, enabled: false } });
+ok('the owner closes bookings', r.d.success && r.d.settings.enabled === false, JSON.stringify(r.d));
+for (const width of [1280, 390]) {
+  const ctx = await br.newContext({ viewport: { width, height: 860 } });
+  const page = await ctx.newPage();
+  page.on('pageerror', e => errs.push(`closed @${width} ${page.url()}: ${e}`));
+  await page.goto(`${B}/`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('[data-testid="home-book"][data-booking="closed"]', { timeout: 10_000 });
+  ok(`closed home @${width}: the button no longer says "Book"`, !/Book/.test(await page.getByTestId('home-book').innerText()));
+  ok(`closed home @${width}: the inquiry form is already open and says why`, await page.getByTestId('home-enquire').isVisible() && /not being booked/.test(await page.locator('#pricing').innerText()));
+  const form = page.getByTestId('home-enquire');
+  await form.locator('[data-field="enquiry.name"]').fill(`Closed ${width}`);
+  await form.locator('[data-field="enquiry.email"]').fill(`closed${width}@prospect.test`);
+  await form.locator('[data-field="enquiry.message"]').fill('We run four HVAC vans and want more maintenance contracts.');
+  await form.getByRole('button', { name: /Send to the team/ }).click();
+  await page.waitForSelector('[data-enquiry-sent]', { timeout: 15_000 });
+  ok(`closed home @${width}: the inquiry is sent and stored`, sql(`SELECT COUNT(*) AS n FROM crm_enquiries WHERE email = 'closed${width}@prospect.test'`)[0].n === 1);
+  ok(`closed home @${width}: no sideways scroll`, (await overflow(page)) <= 0, String(await overflow(page)));
+  await page.screenshot({ path: `test-results/home-closed-${width}.png` });
+  for (const id of MICRO) {
+    await page.goto(`${B}/${id}`, { waitUntil: 'networkidle' });
+    await page.waitForSelector('[data-testid="hero-book"][data-booking="closed"]', { timeout: 10_000 });
+    const want = id === 'medical-billing' ? '#request' : '#talk';
+    const hrefs = await page.$$eval('a', as => as.map(a => a.getAttribute('href') ?? ''));
+    ok(`closed ${id} @${width}: buttons go to the page's own form, none to the booking page`, (await page.getByTestId('hero-book').getAttribute('href')) === want && !hrefs.some(h => h.includes('/book/strategy-call')) && await page.locator(want).count() === 1, hrefs.filter(h => h.includes('strategy')).join());
+  }
+  await page.goto(`${B}/book/strategy-call?src=main`, { waitUntil: 'networkidle' });
+  ok(`closed booking page @${width}: "write to us" leads to the home page's form`, (await page.locator('[data-testid="sc-closed"] a').getAttribute('href')) === '/#enquire');
+  await ctx.close();
+}
+r = await sc({ action: 'settings_save', token: T, settings });
+ok('…and opens them again', r.d.success && r.d.settings.enabled === true);
 
 /* The owner's screen, and the customer's absence of it. */
 const signIn = async (email, password, width) => {

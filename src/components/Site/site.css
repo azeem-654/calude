@@ -2636,7 +2636,7 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 .dc .dc-btn-sm { padding: 9px 15px; font-size: 13.5px; }
 .dc-plan-note { display: block; margin-top: 8px; text-align: center; font-size: 12px; color: var(--muted); }
 
-/* Pricing (PricingSection.tsx): four packages, a monthly/yearly switch, and
+/* Plan cards (PricingParts.tsx, on /pricing): four packages, a monthly/yearly switch, and
    what every plan includes said once under them. Four across from 1180px,
    two across on a tablet, one on a phone — never three and a straggler. */
 .dc-plans-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
@@ -2757,6 +2757,9 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 .pcp { min-height: 100vh; }
 .pcp-main { max-width: 1240px; margin: 0 auto; padding: 110px clamp(16px, 4vw, 44px) 80px; position: relative; }
 .pcp-head { margin-bottom: 18px; }
+.dc .pcp-service { max-width: 860px; margin: 0 0 18px; padding: 14px 16px; border-radius: 14px; border: 1px solid rgba(200, 242, 77, 0.32); background: rgba(200, 242, 77, 0.06); font-size: 14px; line-height: 1.6; color: var(--muted); }
+.dc .pcp-service b { color: var(--text); }
+.dc .pcp-service a { color: var(--lime); font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
 .pcp-head .tc-h1 em { font-style: normal; color: var(--lime); }
 .pcp-toc { justify-content: center; }
 .pcp-sec { scroll-margin-top: 80px; margin-top: clamp(40px, 6vw, 72px); }

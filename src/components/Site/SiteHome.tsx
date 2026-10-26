@@ -50,7 +50,7 @@ import CloudSection from './CloudSection';
 import { useFilmStep } from './useFilmStep';
 import SolutionsSection, { type FindRequest } from './SolutionsSection';
 import FaqSection from './FaqSection';
-import PricingSection from './PricingSection';
+import HomePricing from './HomePricing';
 import ServiceOffers from './ServiceOffers';
 import { rememberArrival, strategyCallHref } from '../../services/strategyCall';
 import { track } from '../../services/funnel';
@@ -742,9 +742,9 @@ export default function SiteHome() {
         </div>
       </section>
 
-      {/* ── Services, then the software plans: two different things, side by side but never merged ── */}
+      {/* ── Pricing is the growth service; the software plans' cards are no longer shown to new prospects (HomePricing.tsx) ── */}
+      <HomePricing />
       <ServiceOffers />
-      <PricingSection eyebrow="Software plans" />
 
       {/* ── Questions ── */}
       <FaqSection />

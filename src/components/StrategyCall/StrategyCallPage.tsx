@@ -36,7 +36,7 @@ const call = async <T,>(action: string, extra: Record<string, unknown> = {}): Pr
 
 const INDUSTRY_OF: Record<SiteSource, string> = { main: '', hvac: 'HVAC', roofing: 'Roofing', 'medical-billing': 'Medical practice' };
 /* Where "write to us instead" goes on each site — its own form, never another site's. */
-const WRITE_TO: Record<SiteSource, string> = { main: '/pricing#custom', hvac: '/hvac#talk', roofing: '/roofing#talk', 'medical-billing': '/medical-billing#request' };
+const WRITE_TO: Record<SiteSource, string> = { main: '/#enquire', hvac: '/hvac#talk', roofing: '/roofing#talk', 'medical-billing': '/medical-billing#request' };
 
 const newRequestId = () => {
   try { return crypto.randomUUID(); } catch { return `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`; }

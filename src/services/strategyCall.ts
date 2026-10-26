@@ -12,7 +12,9 @@
  * The page and the server re-check all of it (`cleanSource`): this is a
  * convenience for attribution, not something trusted.
  */
+import { useEffect, useState } from 'react';
 import { STRATEGY_CALL_PATH, type SiteSource } from '../../worker/src/lib/strategyCall';
+import { API_BASE } from './apiBase';
 
 const KEY = 'pc_arrival_utm';
 const UTM = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
@@ -60,4 +62,37 @@ export function sourceFromLocation(): { site: string; utm: Record<string, string
   const clickIds: Record<string, string> = {};
   for (const k of CLICK) { const v = q.get(k) ?? a[k]; if (v) clickIds[k] = v; }
   return { site: q.get('src') ?? 'main', utm, clickIds, referrer: a.ref ?? (document.referrer || '') };
+}
+
+/*
+ * Whether the owner is taking bookings, asked once per page load and shared by
+ * every button on it. A "Book a Strategy Call" that opens a page saying
+ * bookings are closed is a broken promise, so while they are closed the
+ * buttons lead to the page's own inquiry form instead. Until the answer comes
+ * (or if the server cannot be reached) the button keeps the booking link: the
+ * booking page has its own closed state and its own way to write to us.
+ */
+export type BookingState = 'unknown' | 'open' | 'closed';
+let asked: Promise<BookingState> | null = null;
+function askBooking(): Promise<BookingState> {
+  asked ??= fetch(`${API_BASE}/api/strategy-call.php`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'config' }) })
+    .then(r => r.json() as Promise<{ success?: boolean; settings?: { enabled?: boolean } }>)
+    .then(d => (d.success ? (d.settings?.enabled ? 'open' : 'closed') : 'unknown') as BookingState)
+    .catch(() => 'unknown' as BookingState);
+  return asked;
+}
+
+export function useBookingState(): BookingState {
+  const [state, setState] = useState<BookingState>('unknown');
+  useEffect(() => { let live = true; void askBooking().then(s => { if (live) setState(s); }); return () => { live = false; }; }, []);
+  return state;
+}
+
+/**
+ * Where a "book a call" button on `site` should go: the booking page, or —
+ * when bookings are closed — `writeHref`, the inquiry form on the same page.
+ */
+export function useCallLink(site: SiteSource, writeHref: string): { href: string; closed: boolean } {
+  const closed = useBookingState() === 'closed';
+  return { href: closed ? writeHref : strategyCallHref(site), closed };
 }

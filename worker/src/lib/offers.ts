@@ -34,6 +34,17 @@ export interface GrowthOffer {
   performanceBps: number;
   /** What the percentage is taken of, in one sentence a customer can hold us to. */
   feeBasis: string;
+  /** The home page's heading, sub-heading and paragraph about the service. */
+  headline: string;
+  subhead: string;
+  summary: string;
+  /** What each of the three figures is, said the same way on every page. */
+  labels: { setup: string; monthly: string; performance: string };
+  /** The two disclosures every page that quotes the price carries, word for word. */
+  costDisclosure: string;
+  feeDisclosure: string;
+  /** The worked example's eligible collected amount; the fee is computed by feeOn, never typed. */
+  exampleCents: number;
   /** Paid by the customer, never part of our fees. */
   separate: { title: string; body: string }[];
   /** What the service covers, by the delivery that exists. */
@@ -64,20 +75,32 @@ export const TRADE_GROWTH_OFFER: GrowthOffer = {
   monthlyCents: 8_700,
   performanceBps: 500,
   feeBasis: 'Payments you actually collect for completed jobs that came from the agreed service, after refunds, credits and any amounts your agreement excludes (such as sales tax). Not your existing customers, not your other work, and not quotes or unpaid invoices.',
+  headline: 'Turn More Leads Into Paying Customers',
+  subhead: 'Your business growth system, with pricing aligned to measurable results.',
+  summary: 'Protected Central helps businesses generate and qualify leads through agreed marketing campaigns and prospect outreach, manage opportunities, track quotations, and measure results from initial inquiry through completed job and collected payment.',
+  labels: {
+    setup: 'One-time setup fee',
+    monthly: 'Recurring platform and agreed service fee',
+    performance: 'Performance fee on eligible revenue collected from qualifying jobs',
+  },
+  costDisclosure: 'You are responsible for your advertising budget and any approved third-party expenses. These costs are not included in the setup fee or the monthly fee.',
+  feeDisclosure: 'The performance fee applies only to eligible collections from qualifying jobs attributable to Protected Central, according to your agreement. It does not apply automatically to your entire business revenue, existing unrelated customers, unaccepted quotations, or amounts that have not been collected.',
+  exampleCents: 600_000,
   separate: [
     { title: 'Advertising budget', body: 'Paid by you, straight to the ad platform, and set by you. It is never part of our fees and we never mark it up.' },
     { title: 'Approved third-party charges', body: 'Services you approve in advance — an SMS provider, a call-tracking number, a directory listing — are billed to you by that provider at their price.' },
   ],
+  /* The approved scope, in the owner's words. The pages say beside the list
+     that it is subject to the service scope actually agreed. */
   includes: [
-    'An industry-specific CRM and pipeline, set up for you',
-    'Lead capture with the source of every inquiry recorded',
-    'Marketing campaign setup or management, within the agreed scope',
-    'Prospecting and outbound calling by people, with approved scripts and do-not-call screening, within agreed limits',
-    'Lead qualification, and qualified opportunities handed to your team',
-    'Quote, estimate and opportunity tracking',
-    'Completed-job, invoice and payment tracking that you confirm',
-    'Revenue attribution and a monthly performance report',
-    'Agreed workflow monitoring and adjustments',
+    'Business-specific CRM and pipeline setup',
+    'Lead capture and source tracking',
+    'Agreed marketing and prospect outreach workflows',
+    'Lead qualification and handoff',
+    'Quote and opportunity tracking',
+    'Completed-job and payment tracking',
+    'Lead-to-revenue reporting',
+    'Performance-fee calculations based on qualifying collected revenue',
   ],
   contractorDuties: [
     'Preparing and approving quotes and estimates',
@@ -122,17 +145,22 @@ export function percent(bps: number): string {
   return `${Number((bps / 100).toFixed(2))}%`;
 }
 
-/** The offer in one line, the same on every page. */
+/** The offer in one line, the same on every page: "$300 setup + $87/month + 5% performance fee". */
 export function growthLine(o: GrowthOffer = TRADE_GROWTH_OFFER): string {
-  return `${dollars(o.setupCents)} setup + ${dollars(o.monthlyCents)}/month + ${percent(o.performanceBps)} performance fee on eligible attributed collections`;
+  return `${dollars(o.setupCents)} setup + ${dollars(o.monthlyCents)}/month + ${percent(o.performanceBps)} performance fee`;
+}
+
+/** The worked example in one sentence, its fee computed rather than typed. */
+export function growthExample(o: GrowthOffer = TRADE_GROWTH_OFFER): string {
+  return `For example, if a qualifying job generates ${dollars(o.exampleCents)} in eligible collected revenue, the illustrative performance fee at ${percent(o.performanceBps)} is ${dollars(feeOn(o.exampleCents, o.performanceBps))}, subject to the agreed calculation rules.`;
 }
 
 /**
  * The performance fee on an amount of net eligible collections, in cents.
  *
  * Rounded half-up to the cent, once, on the total for a period — never per
- * payment and summed, which drifts by a cent per line. $8,000 at 500 bps is
- * $400; $3,000 is $150.
+ * payment and summed, which drifts by a cent per line. $6,000 at 500 bps is
+ * $300; $3,000 is $150.
  */
 export function feeOn(netEligibleCents: number, bps: number): number {
   if (!Number.isFinite(netEligibleCents) || netEligibleCents <= 0 || bps <= 0) return 0;
@@ -145,11 +173,11 @@ export function growthFaq(o: GrowthOffer = TRADE_GROWTH_OFFER): { q: string; a: 
   return [
     {
       q: `What does the ${pct} performance fee apply to?`,
-      a: `${o.feeBasis} For example, if an eligible job brings in $8,000 that you collect, the fee is ${dollars(feeOn(800_000, o.performanceBps))}. If you have collected $3,000 of it so far, the fee so far is ${dollars(feeOn(300_000, o.performanceBps))}, and the rest follows as you are paid.`,
+      a: `${o.feeDisclosure} ${growthExample(o)} If only part of that job has been collected so far, the fee so far is ${percent(o.performanceBps)} of the part collected, and the rest follows as you are paid.`,
     },
     {
       q: 'Is the advertising budget included?',
-      a: 'No. You set and pay your advertising budget directly to the ad platform, and approved third-party services bill you directly. Neither is part of our fees.',
+      a: `No. ${o.costDisclosure} You set and pay your advertising budget directly to the ad platform, and approved third-party services bill you directly.`,
     },
     {
       q: 'Do you charge the fee automatically?',

@@ -211,7 +211,7 @@ export default function IndustryPage({ slug }: { slug: TradeSlug }) {
       </section>
 
       {/* ── Pricing: the growth offer, from offers.ts ── */}
-      <GrowthPricing trade={trade} intro={ind.pricingIntro} />
+      <GrowthPricing intro={ind.pricingIntro} />
 
       {/* ── Questions this trade asks ── */}
       <FaqSection items={[...ind.faq, ...growthFaq()]} title={<>Questions {slug === 'hvac' ? 'HVAC owners' : 'roofers'} <em>ask first.</em></>} />

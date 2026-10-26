@@ -16,10 +16,10 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { MicrositeContext, useMicrosite, type MicrositeConfig } from './micrositeContext';
-import { CalendarCheck, Menu, X } from 'lucide-react';
+import { CalendarCheck, Mail, Menu, X } from 'lucide-react';
 import { LogoMark } from '../shared/Logo';
 import { appHref, isCrossOrigin } from '../../services/hosts';
-import { rememberArrival, strategyCallHref } from '../../services/strategyCall';
+import { rememberArrival, useCallLink } from '../../services/strategyCall';
 import HelpLauncher from '../shared/HelpLauncher';
 import Starfield from './Starfield';
 import './site.css';
@@ -29,19 +29,24 @@ import './industry.css';
 
 const cross = (href: string) => (isCrossOrigin(href) ? { rel: 'noopener' as const } : {});
 
-/** "Book …" on this microsite, to the strategy call, carrying where the visitor came from. */
+/**
+ * "Book …" on this microsite, to the strategy call, carrying where the visitor
+ * came from — or, while the owner is not taking bookings, to the page's own
+ * inquiry form, in words that say so.
+ */
 export function BookCall({ label, size = '', variant = 'primary', testid }: { label?: string; size?: '' | 'lg'; variant?: 'primary' | 'outline' | 'light'; testid?: string }) {
   const site = useMicrosite();
-  const href = strategyCallHref(site?.id ?? 'main');
+  const { href, closed } = useCallLink(site?.id ?? 'main', site?.writeHref ?? '#talk');
   return (
-    <a className={`dc-btn dc-btn-${variant}${size ? ` dc-btn-${size}` : ''}`} href={href} data-testid={testid ?? 'book-call'}>
-      <CalendarCheck size={size === 'lg' ? 16 : 15} /> {label ?? site?.bookLabel ?? 'Book a Strategy Call'}
+    <a className={`dc-btn dc-btn-${variant}${size ? ` dc-btn-${size}` : ''}`} href={href} data-testid={testid ?? 'book-call'} data-booking={closed ? 'closed' : 'open'}>
+      {closed ? <Mail size={size === 'lg' ? 16 : 15} /> : <CalendarCheck size={size === 'lg' ? 16 : 15} />} {closed ? site?.writeLabel ?? 'Write to us' : label ?? site?.bookLabel ?? 'Book a Strategy Call'}
     </a>
   );
 }
 
 export default function MicrositeLayout({ site, children }: { site: MicrositeConfig; children: ReactNode }) {
   useEffect(() => { rememberArrival(); }, []);
+  const call = useCallLink(site.id, site.writeHref);
   const [stuck, setStuck] = useState(false);
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -99,8 +104,8 @@ export default function MicrositeLayout({ site, children }: { site: MicrositeCon
           </nav>
           <div className="dc-nav-cta">
             {site.signIn && <a className="dc-btn dc-btn-ghost ms-signin" href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>}
-            <a className="dc-btn dc-btn-primary ms-book" href={strategyCallHref(site.id)} data-testid="nav-book">
-              <span className="dc-cta-long">{site.bookShort}</span><span className="dc-cta-short" aria-hidden="true">Book a call</span>
+            <a className="dc-btn dc-btn-primary ms-book" href={call.href} data-testid="nav-book">
+              <span className="dc-cta-long">{call.closed ? 'Write to us' : site.bookShort}</span><span className="dc-cta-short" aria-hidden="true">{call.closed ? 'Write to us' : 'Book a call'}</span>
             </a>
             <button type="button" className="ms-menu-btn" aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open} aria-controls="ms-menu" onClick={() => setOpen(o => !o)}>
               {open ? <X size={20} /> : <Menu size={20} />}
@@ -112,7 +117,7 @@ export default function MicrositeLayout({ site, children }: { site: MicrositeCon
           <div className="ms-menu" id="ms-menu" role="dialog" aria-label="Menu" onClick={e => { if ((e.target as HTMLElement).tagName === 'A') setOpen(false); }}>
             <a href={site.root} onClick={home}>Home</a>
             {site.nav.map(l => <a key={l.href} href={l.href}>{l.label}</a>)}
-            <a className="dc-btn dc-btn-primary" href={strategyCallHref(site.id)}>{site.bookLabel}</a>
+            <a className="dc-btn dc-btn-primary" href={call.href}>{call.closed ? site.writeLabel : site.bookLabel}</a>
             {site.signIn && <a className="ms-menu-quiet" href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>}
           </div>
         )}
@@ -132,7 +137,7 @@ export default function MicrositeLayout({ site, children }: { site: MicrositeCon
             </div>
             <div>
               <h5>Talk to us</h5>
-              <a href={strategyCallHref(site.id)}>{site.bookLabel}</a>
+              <a href={call.href}>{call.closed ? site.writeLabel : site.bookLabel}</a>
               {site.signIn && <a href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>}
             </div>
             <div>

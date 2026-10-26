@@ -156,6 +156,28 @@
 .dc .ind-diy a { color: var(--lime); text-decoration: underline; }
 
 /* ── The growth offer's price (GrowthPricing.tsx) ── */
+/* GrowthOfferBlock.tsx: the one block the home page, /hvac and /roofing share. */
+.dc .go-line { margin: 0 auto 18px; text-align: center; font-size: clamp(20px, 2.6vw, 28px); font-weight: 800; letter-spacing: -0.02em; color: var(--text); overflow-wrap: anywhere; }
+.go-includes { max-width: 1100px; margin: 0 auto 14px; padding: 22px; border-radius: 20px; background: var(--glass); border: 1px solid var(--edge); }
+.go-includes h3 { margin: 0 0 12px; font-size: 16px; font-weight: 800; color: var(--lime); }
+.go-includes ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 18px; padding: 0; margin: 0; list-style: none; }
+@media (max-width: 700px) { .go-includes ul { grid-template-columns: minmax(0, 1fr); } }
+.go-includes li { display: flex; gap: 9px; align-items: flex-start; font-size: 14px; line-height: 1.55; min-width: 0; }
+.go-includes li svg { flex-shrink: 0; margin-top: 4px; color: var(--lime); }
+.go-disclose { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: 1100px; margin: 0 auto 14px; }
+@media (max-width: 760px) { .go-disclose { grid-template-columns: minmax(0, 1fr); } }
+.go-note { min-width: 0; padding: 20px 22px; border-radius: 20px; background: rgba(200, 242, 77, 0.05); border: 1px solid rgba(200, 242, 77, 0.32); }
+.go-note h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 15px; font-weight: 800; color: var(--text); }
+.go-note h3 svg { color: var(--lime); flex-shrink: 0; }
+.dc .go-note p { margin: 0 0 8px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+.dc .go-note p:last-child { margin-bottom: 0; }
+.dc .go-note .go-example { color: var(--text); padding: 10px 12px; border-radius: 12px; background: rgba(0, 0, 0, 0.28); }
+.dc .gp-list { list-style: disc; margin: 0 0 6px; padding-left: 20px; color: var(--muted); font-size: 14px; line-height: 1.7; }
+/* HomePricing.tsx */
+.dc .hp-sub { margin: 0 auto 10px; color: var(--text); font-weight: 700; font-size: 17px; }
+.dc .hp-closed { max-width: 640px; margin: 12px auto 0; text-align: center; color: var(--muted); font-size: 14px; }
+.hp-form { max-width: 720px; margin: 22px auto 0; scroll-margin-top: 90px; }
+.dc .so-price .so-line { font-size: 18px; line-height: 1.35; }
 .gp-figures { display: flex; align-items: stretch; justify-content: center; gap: 12px; flex-wrap: wrap; margin: 0 auto 18px; max-width: 1100px; }
 .gp-fig { flex: 1 1 240px; min-width: 0; max-width: 340px; padding: 24px; border-radius: 22px; background: var(--glass-2); border: 1px solid rgba(200, 242, 77, 0.3); text-align: center; display: flex; flex-direction: column; gap: 6px; }
 .gp-fig b { font-size: clamp(34px, 4vw, 46px); font-weight: 800; letter-spacing: -0.04em; color: var(--lime); line-height: 1; }

@@ -19,7 +19,10 @@
  * price nobody is held to. Medical billing has no price there (it is quoted
  * after an assessment), so its structured data carries none.
  */
-import { TRADE_GROWTH_OFFER, percent } from './offers';
+import { TRADE_GROWTH_OFFER, dollars, percent } from './offers';
+
+/* The search snippet's price, from the offer — never typed (it once drifted from the page). */
+const PRICE_WORDS = `${dollars(TRADE_GROWTH_OFFER.setupCents)} setup, ${dollars(TRADE_GROWTH_OFFER.monthlyCents)}/month, plus a ${percent(TRADE_GROWTH_OFFER.performanceBps)} performance fee on eligible collections.`;
 
 export type IndustrySlug = 'hvac' | 'roofing' | 'medical-billing';
 /** The two trades sold the growth service. */
@@ -45,7 +48,7 @@ export const INDUSTRY_PAGES: Record<IndustrySlug, IndustryMeta> = {
     name: 'HVAC',
     audience: 'HVAC businesses',
     title: 'HVAC growth service: leads, follow-up and revenue tracking — Protected Central',
-    description: 'An HVAC pipeline set up for you, inquiries captured with their source, agreed campaigns and outbound prospecting, and every estimate tracked to the job and the payment. $300 setup, $87/month, plus a performance fee on eligible collections.',
+    description: `An HVAC pipeline set up for you, inquiries captured with their source, agreed campaigns and outbound prospecting, and every estimate tracked to the job and the payment. ${PRICE_WORDS}`,
   },
   roofing: {
     slug: 'roofing',
@@ -53,7 +56,7 @@ export const INDUSTRY_PAGES: Record<IndustrySlug, IndustryMeta> = {
     name: 'Roofing',
     audience: 'Roofing contractors',
     title: 'Roofing growth service: inquiries, estimates and revenue tracking — Protected Central',
-    description: 'A roofing pipeline set up for you, inquiries captured with their source, commercial prospecting and campaigns, and every inspection and estimate tracked to the job and the payment. $300 setup, $87/month, plus a performance fee on eligible collections.',
+    description: `A roofing pipeline set up for you, inquiries captured with their source, commercial prospecting and campaigns, and every inspection and estimate tracked to the job and the payment. ${PRICE_WORDS}`,
   },
   'medical-billing': {
     slug: 'medical-billing',
