@@ -74,11 +74,11 @@ r = await sc({ action: 'settings_get' });
 ok('nobody at all is refused', r.status === 401, JSON.stringify(r));
 ok('no settings row was written by those attempts', sql("SELECT COUNT(*) AS n FROM crm_strategy_settings")[0].n === 0);
 
-console.log('\nStrategy call — switched off, then set up');
+console.log('\nStrategy call — on by default, then set up');
 r = await sc({ action: 'config' });
-ok('the public page loads with no account, switched off by default', r.d.success && r.d.settings.enabled === false, JSON.stringify(r.d));
+ok('the public page loads with no account, taking bookings by default', r.d.success && r.d.settings.enabled === true, JSON.stringify(r.d));
 r = await sc({ action: 'slots', from: '2030-01-01', to: '2030-01-07' });
-ok('switched off, it offers no times', r.d.closed === true, JSON.stringify(r.d));
+ok('switched on by default, it is not closed', r.d.closed !== true, JSON.stringify(r.d));
 
 const tz = 'America/New_York';
 const W = [{ from: '09:00', to: '17:00' }];

@@ -115,9 +115,29 @@ export const DEFAULT_TERMS: Terms = {
   setupCents: TRADE_GROWTH_OFFER.setupCents,
   monthlyCents: TRADE_GROWTH_OFFER.monthlyCents,
   performanceBps: TRADE_GROWTH_OFFER.performanceBps,
-  attributionDays: 180,
+  attributionDays: TRADE_GROWTH_OFFER.rules.attributionDays,
+  /* Sales tax and permit fees only — money that passes straight through to a
+     government. Materials and discounts stay in: the fee is already taken only
+     of what was collected, and leaving materials out would invite a dispute
+     about cost on every job. Decided 2026-10-26 (growth-service terms). */
   exclusions: ['tax', 'permits'],
 };
+
+/**
+ * Whether the contractor may still mark a lead as their existing customer.
+ *
+ * Until the job is won, or within the agreed days of the lead being recorded,
+ * whichever is later (the written terms, "Existing customers"). After that,
+ * taking a won job out of the fee is a correction, not a flag: the service team
+ * makes it with a reason both sides read, so a fee cannot be erased after the
+ * fact by one click.
+ */
+export function existingCustomerProblem(l: { wonAt: string | null; createdAt: string }, now = Date.now()): string | null {
+  const days = TRADE_GROWTH_OFFER.rules.existingCustomerDays;
+  if (!l.wonAt) return null;
+  if (now - Date.parse(l.createdAt) <= days * DAY) return null;
+  return `A lead can be flagged as your existing customer until its job is won or within ${days} days of it being recorded. This one is past both — ask the service team to correct it, with your record of them as a customer.`;
+}
 
 /** Cleans terms from a form; `field` names the box that is wrong. */
 export function cleanTerms(v: Record<string, unknown>): { terms?: Terms; error?: string; field?: string } {

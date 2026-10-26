@@ -77,6 +77,7 @@ import { handleBooking } from './routes/booking';
 import { handleBookingMedia } from './routes/bookingMedia';
 import { handleStrategyCall, strategyReminders } from './routes/strategyCall';
 import { handleLeadRevenue } from './routes/leadRevenue';
+import { handleSnapshots } from './routes/snapshots';
 import { handleYtThumb, handleImgProxy } from './routes/proxies';
 import { handleStripeConfig, handleStripeCheckout, handleStripePortal, handleStripeWebhook } from './routes/stripe';
 import {
@@ -213,6 +214,7 @@ const ROUTES: Record<string, Handler> = {
   /* The install owner's own strategy call — public booking, owner-only settings. */
   '/api/strategy-call.php': handleStrategyCall,
   '/api/lead-revenue.php': handleLeadRevenue,
+  '/api/snapshots.php': handleSnapshots,
   '/api/deliverability.php': handleDeliverability,
   '/api/placement.php': handlePlacement,
   '/api/blog-publish.php': handleBlogPublish,

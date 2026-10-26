@@ -26,6 +26,7 @@ const ok = (n: string, p: boolean, d = '') => out.push(`${p ? 'PASS' : 'FAIL'}  
   ok('app. is not the marketing site', !h.isMarketingHost());
   ok('app. is not a rehearsal — no warning bar, no unfinished features',
     !h.isStagingHost() && !h.isRehearsal());
+  ok('app. answers its root with the sign-in form, not the site', !h.siteAtRoot());
 }
 
 /* ── The marketing site ── */
@@ -42,6 +43,7 @@ for (const name of ['protectedcentral.com', 'www.protectedcentral.com']) {
   ok('testing. renders the product, not the pitch', h.isAppHost() && !h.isMarketingHost());
   ok('testing. draws the warning bar', h.isStagingHost());
   ok('testing. runs held-back features', h.isRehearsal());
+  ok('testing. shows the staging site at its root, signed out', h.siteAtRoot());
 }
 
 /* ── The testing copy, on the addresses Cloudflare turns on by itself ──
@@ -55,6 +57,7 @@ for (const name of ['crmpro-staging.azeem654.workers.dev', 'abc123-crmpro-stagin
   ok(`${name} draws the warning bar`, h.isStagingHost());
   ok(`${name} renders the product, not the pitch`, h.isAppHost() && !h.isMarketingHost());
   ok(`${name} runs held-back features`, h.isRehearsal());
+  ok(`${name} keeps the sign-in form at its root`, !h.siteAtRoot());
 }
 
 /* ── And the live Worker's own preview URL is not mislabelled ── */

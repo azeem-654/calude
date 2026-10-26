@@ -53,8 +53,41 @@ export interface GrowthOffer {
   contractorDuties: string[];
   /** The service's limits are agreed in writing, not unlimited. */
   limits: string;
+  /** What one month's fee covers, item by item — the written terms quote this list. */
+  monthlyScope: string[];
   /** Explicit in every customer agreement — the site says they will be. */
   agreementTerms: string[];
+  /**
+   * The fixed numbers of the written terms (/growth-service-terms). Chosen to
+   * protect the operator without being terms a contractor would refuse or a
+   * court would strike: each is the common middle of what service agreements
+   * like this use, not the most aggressive end. The agreement screen and the
+   * terms page read them from here, so the two cannot disagree.
+   */
+  rules: {
+    /** Days from first contact to the job being won for it still to count. */
+    attributionDays: number;
+    /** Days the contractor has to flag a lead as an existing customer after it is recorded (or until it is won, if later). */
+    existingCustomerDays: number;
+    /** How far back a contact must appear in the contractor's records to count as an existing customer, in months. */
+    existingLookbackMonths: number;
+    /** Days to record a payment received from a qualifying job. */
+    reportDays: number;
+    /** Days to query a statement line before it is accepted. */
+    queryDays: number;
+    /** Days an invoice is payable in. */
+    paymentDays: number;
+    /** Monthly interest on overdue invoices, in basis points (100 = 1%), or the legal maximum if lower. */
+    lateBpsMonthly: number;
+    /** Minimum term from the start date, in months. */
+    minimumMonths: number;
+    /** Written notice to end after the minimum term, in days. */
+    noticeDays: number;
+    /** Our total liability is capped at the fees paid in this many months before a claim. */
+    liabilityMonths: number;
+    /** Years the contractor keeps job and payment records. */
+    recordYears: number;
+  };
 }
 
 export interface AssessmentOffer {
@@ -108,7 +141,17 @@ export const TRADE_GROWTH_OFFER: GrowthOffer = {
     'Confirming the job is complete and issuing the final invoice',
     'Confirming what was paid, and when',
   ],
-  limits: 'Calls, campaigns and hours each month are agreed in writing before work starts. The service does not include unlimited advertising, unlimited calling, custom development or unlimited manual work.',
+  limits: 'Each month includes up to 3 hours of service-team time and up to 2 active campaigns; anything more is quoted in writing and starts only once you approve it. The service does not include unlimited advertising, unlimited calling, custom development or unlimited manual work.',
+  /* Small on purpose: $87 a month buys a few hours of people's time, and an
+     open-ended "we'll handle your marketing" is the promise that costs the
+     operator money on every customer. More is sold, never absorbed. */
+  monthlyScope: [
+    'Up to 3 hours of service-team time a month — campaign changes, lead follow-up, outbound calls and reporting combined. Unused hours do not carry over',
+    'Up to 2 active campaigns or outreach workflows at a time',
+    'Outbound calls made by people, within those hours, only to numbers that pass the do-not-call, consent and calling-hour checks, on scripts you have approved',
+    'Your CRM, pipeline, lead capture and lead-to-revenue ledger kept running',
+    'One lead-to-revenue report and one fee statement a month',
+  ],
   agreementTerms: [
     'How long after first contact a job still counts (the attribution window)',
     'Whether taxes, permits, materials passed through at cost or discounts are excluded',
@@ -116,7 +159,23 @@ export const TRADE_GROWTH_OFFER: GrowthOffer = {
     'That existing customers and work from your other sources are excluded',
     'When fees are calculated, reviewed with you and invoiced',
   ],
+  rules: {
+    attributionDays: 180,
+    existingCustomerDays: 14,
+    existingLookbackMonths: 24,
+    reportDays: 10,
+    queryDays: 10,
+    paymentDays: 15,
+    lateBpsMonthly: 100,
+    minimumMonths: 3,
+    noticeDays: 30,
+    liabilityMonths: 3,
+    recordYears: 2,
+  },
 };
+
+/** Where the written terms are published, on every host that speaks as Protected Central. */
+export const GROWTH_TERMS_PATH = '/growth-service-terms';
 
 export const MEDICAL_BILLING_OFFER: AssessmentOffer = {
   id: 'medical_billing',

@@ -49,6 +49,13 @@ has commits `staging` does not, rather than discarding them. Pushing straight
 to `main` still works and still deploys — it is for a hotfix, and the next
 promotion will refuse until you have merged it back into `staging`.
 
+**testing.protectedcentral.com's root is the staging copy of the public
+site** (`siteAtRoot()`, since 2026-10-26, so the owner has an address to see
+site changes on): signed out, `/` is `SiteHome` with the TESTING bar pinned to
+the bottom, and its Sign in goes to the testing `/login`; every other path
+still answers with the sign-in form. Signed in, `/site` shows it again. Sign-up
+stays shut there (`SELF_SERVE_SIGNUP=off`).
+
 `src/services/hosts.ts` is what makes one build serve both: `isStagingHost()`
 draws the testing banner and `isRehearsal()` decides which features in
 `src/services/features.ts` are switched on. Nothing is baked in at build time,

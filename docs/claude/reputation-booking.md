@@ -156,8 +156,11 @@ sets it in **Settings → Platform services → Strategy Call Booking**
 `strategy-call` is reserved in `slugProblem`, and App.tsx routes it before any
 workspace's `/book/<slug>` (our hosts only).
 
-- **Off by default** (`DEFAULT_SETTINGS.enabled = false`); switched off, the
-  page says bookings are not open and links to the source site's own form.
+- **On by default since 2026-10-26** (`DEFAULT_SETTINGS.enabled = true`, at
+  the owner's request: weekdays 09:00–17:00 New York, a day's notice, 30-minute
+  calls); migration 0078 switched on a row already saved off. Switched off by
+  the owner, the page says bookings are not open and links to the source
+  site's own form.
 - Several windows a day, closed dates, special hours per date, lengths
   15/30/45/60, notice, horizon, buffers, daily limit, up to six questions.
   `cleanSettings` refuses box by box (`strategy.*` fields).

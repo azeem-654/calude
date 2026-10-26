@@ -74,9 +74,12 @@ export interface StrategySettings {
 const W = (from: string, to: string): Window[] => [{ from, to }];
 
 export const DEFAULT_SETTINGS: StrategySettings = {
-  /* Off until the owner has read the hours and switched it on: a page that
-     takes bookings at hours nobody chose is a meeting nobody attends. */
-  enabled: false,
+  /* On (since 2026-10-26, when the owner asked for it switched on): every
+     "Book a strategy call" button on the sites leads here, and switched off
+     they all fell back to "Write to us". The hours below are the ones the
+     owner was told about — weekdays 9–5 New York time, a day's notice — and
+     migration 0078 turns on a row already saved switched off. */
+  enabled: true,
   title: 'Strategy call',
   description: 'A conversation about your business, how enquiries reach you now and whether our service is a fit. No obligation.',
   hostName: '',

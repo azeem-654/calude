@@ -236,3 +236,142 @@ export const AFFILIATE_TERMS: LegalSection[] = [
     ],
   },
 ];
+
+/* ── Growth service terms ──────────────────────────────────────────────────
+ *
+ * The written terms of the HVAC/roofing growth service, published at
+ * /growth-service-terms and attached to every customer agreement. Decided
+ * 2026-10-26 when the owner asked for terms that keep the operator safe: each
+ * clause closes a way the operator could lose money or be blamed for somebody
+ * else's work, at the common middle of what such agreements use rather than
+ * the harshest end — a term a contractor refuses to sign, or a court strikes,
+ * protects nobody. Every number comes from TRADE_GROWTH_OFFER.rules, which
+ * the fee engine (lib/leadRevenue.ts) also reads. Not legal advice:
+ * docs/OWNER-CHECKLIST.md item 33 asks for a lawyer's review before selling.
+ */
+import { GROWTH_TERMS_PATH, TRADE_GROWTH_OFFER as G, dollars, percent } from '../../../worker/src/lib/offers';
+
+export const GROWTH_TERMS_UPDATED = '26 October 2026';
+export { GROWTH_TERMS_PATH };
+
+const R = G.rules;
+
+export const GROWTH_TERMS: LegalSection[] = [
+  {
+    id: 'scope', title: 'What these terms cover',
+    body: [
+      `These terms apply to the Protected Central growth service for HVAC and roofing businesses ("the service"). They form one agreement with the written order you sign ("your agreement"), which records your fees, your start date and any amounts excluded from the performance fee. Where your agreement states a number differently from these terms, your agreement wins.`,
+      'Your use of the Protected Central software is also covered by our Terms of Service and Privacy Policy. A change to our public prices never changes an agreement you have signed.',
+    ],
+  },
+  {
+    id: 'fees', title: 'Fees',
+    body: [
+      `Unless your agreement says otherwise: a one-time setup fee of ${dollars(G.setupCents)}, due when you sign; a monthly fee of ${dollars(G.monthlyCents)}, due in advance each month from your start date; and a performance fee of ${percent(G.performanceBps)} of net eligible collections, worked out as described below.`,
+      'The setup fee is not refundable once setup work has started. Your advertising budget is paid by you directly to the ad platform, and approved third-party services (for example an SMS provider or a call-tracking number) bill you directly. Neither is part of our fees, and we never mark them up.',
+      'We do not charge a card or bank account automatically unless you separately authorise it in writing.',
+    ],
+  },
+  {
+    id: 'qualifying', title: 'Which jobs carry the performance fee',
+    body: ['A job is a qualifying job when all of these are true:'],
+    list: [
+      'The lead was first recorded through the agreed service while your agreement was in force',
+      'It came from the agreed service, not from your own sources, and the person was not your existing customer (see the next section)',
+      `The job was won within ${R.attributionDays} days of the lead's first contact (the attribution window), unless your agreement states another window`,
+      'You have confirmed the job complete',
+    ],
+  },
+  {
+    id: 'existing', title: 'Existing customers and your own leads',
+    body: [
+      `If a lead is somebody who was already your customer, or who was in contact with your business in the ${R.existingLookbackMonths} months before the lead was recorded, flag them in Jobs & revenue before the job is won, or within ${R.existingCustomerDays} days of the lead being recorded if that is later. Flagged leads carry no fee.`,
+      'After that, a lead can only be taken out of the fee by the service team correcting it, on your record showing the earlier relationship. Corrections are made with a reason that both sides can read.',
+    ],
+  },
+  {
+    id: 'collections', title: 'What the fee is taken of',
+    body: [
+      'Eligible collections are the money you actually receive for qualifying jobs — whether it is paid by your customer, an insurer or a financing company, in one payment or in instalments — less sales tax and permit fees, less any other amounts your agreement excludes, and less refunds and chargebacks. Further work won from the same lead within the attribution window counts as part of it.',
+      'The fee is never taken of quotes, accepted estimates, unpaid invoices, your other work or your business turnover. It is worked out once on each statement\'s total, rounded to the cent.',
+    ],
+  },
+  {
+    id: 'reporting', title: 'Recording jobs and payments',
+    body: [
+      `You agree to record in Jobs & revenue whether each qualifying lead's job was won or lost, when it is complete, and every payment received for it, within ${R.reportDays} days of it happening. Keep the invoices and payment records for qualifying jobs for ${R.recordYears} years.`,
+      'Up to once a quarter we may ask for copies of the invoices and payment records for qualifying leads. Collections found unrecorded are added to the next statement. Re-booking a qualifying lead under another name, or taking payment for it some other way, does not stop the fee applying.',
+      'No payment integration is connected: payments are entered by hand. A payment reported by the service team counts only once you confirm it.',
+    ],
+  },
+  {
+    id: 'statements', title: 'Statements, review and invoices',
+    body: [
+      `After each month ends we prepare a statement listing the jobs and payments behind the fee. You have ${R.queryDays} days from receiving it to query any line in the app. Lines you do not query in that time are accepted. A queried line is held until it is answered; the rest of the statement goes ahead.`,
+      `We invoice the performance fee once the statement is approved. Invoices are payable within ${R.paymentDays} days. On an invoice more than ${R.paymentDays} days overdue we may, after telling you in writing, pause the service until it is paid and charge interest of ${percent(R.lateBpsMonthly)} a month, or the highest rate the law allows if that is lower.`,
+      'An approved statement is not reopened. A correction found later goes on the next statement.',
+    ],
+  },
+  {
+    id: 'refunds', title: 'Refunds, chargebacks and disputes',
+    body: [
+      'A disputed payment is held, and not counted, until the dispute is resolved. A refund or chargeback on a qualifying job reduces the statement on which it is recorded.',
+      'If refunds make a statement\'s total negative, the negative balance is carried forward against future performance fees. It is never paid out in cash, and any balance left when your agreement ends lapses.',
+    ],
+  },
+  {
+    id: 'service', title: 'What the monthly fee covers',
+    body: ['Each month the service includes:'],
+    list: [
+      ...G.monthlyScope,
+      'Anything beyond this — more hours, more campaigns, new pages, custom work — is quoted in writing and starts only once you approve the quote',
+    ],
+  },
+  {
+    id: 'results', title: 'No guaranteed results',
+    body: [
+      'We will do the agreed work carefully, but we do not promise any number of leads, appointments, jobs or amount of revenue. Advertising platforms set their own prices, rules and reach, and their decisions and outages are outside our control. The setup and monthly fees are for the work, whatever it produces.',
+    ],
+  },
+  {
+    id: 'calls', title: 'Calls and messages',
+    body: [
+      'Calls made for you are made by people — no automatic dialler and no prerecorded voice — only to numbers that pass the do-not-call, consent and calling-hour checks (8am to 9pm in the called person\'s time, or narrower where a state requires), and only on scripts you have approved. We may decline any call or message we believe would break the law or a platform\'s rules.',
+      'You agree to give us only contact details you have the right to use, to tell us promptly of anybody who asks not to be contacted, and to keep the consent records you hold. You are responsible for the calls and messages your own business makes, and for claims arising from contact lists you supplied.',
+    ],
+  },
+  {
+    id: 'your-work', title: 'Your work and your customers',
+    body: [
+      'You are responsible for your licences, insurance and permits; for your quotes, prices and contracts with your customers; for the work itself, its warranties and its safety; and for collecting what you are owed. We are not a party to your contracts with your customers and are not responsible for your work.',
+      'You agree to cover our reasonable losses and costs from any claim made against us arising from your work, from contact lists or content you supplied, or from your breaking these terms.',
+    ],
+  },
+  {
+    id: 'term', title: 'How long it runs, and ending it',
+    body: [
+      `Your agreement runs for a minimum of ${R.minimumMonths} months from its start date and then month to month. After the minimum term either of us may end it with ${R.noticeDays} days' written notice; monthly fees are payable to the end of the notice period.`,
+      'We may end it straight away if an invoice is more than 30 days overdue or if either party seriously breaks these terms and does not put it right within 10 days of being told.',
+      'When it ends, the performance fee still applies to qualifying jobs from leads recorded while it was in force whose payments are received within the attribution window after the end date, and your duty to record those jobs and payments continues for that time. You can export your data for 30 days after the end.',
+    ],
+  },
+  {
+    id: 'liability', title: 'Limit of liability',
+    body: [
+      `Our total liability under your agreement is limited to the fees you paid us in the ${R.liabilityMonths} months before the event giving rise to the claim. We are not liable for lost profits, lost business, advertising spend or indirect losses. Nothing in these terms limits liability that the law does not allow to be limited.`,
+    ],
+  },
+  {
+    id: 'data', title: 'Your data',
+    body: [
+      'Your customer and job records are yours. We use them only to deliver the service and as our Privacy Policy describes. We may use anonymised, combined figures that identify neither you nor your customers to improve the service.',
+    ],
+  },
+  {
+    id: 'general', title: 'Changes and general terms',
+    body: [
+      'A change to your agreement must be in writing and accepted by both of us. We may update these terms for agreements signed after the update; an agreement already signed keeps the terms it was signed on.',
+      'Your agreement is governed by the law of the state it names. If any part of these terms cannot be enforced, the rest still applies. Notices are sent by email to the addresses in your agreement.',
+    ],
+  },
+];

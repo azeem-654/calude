@@ -11,7 +11,7 @@
  * purpose: nothing about the price may differ between the pages.
  */
 import { Check, Info, Receipt } from 'lucide-react';
-import { TRADE_GROWTH_OFFER as O, dollars, growthExample, growthLine, percent } from '../../../worker/src/lib/offers';
+import { GROWTH_TERMS_PATH, TRADE_GROWTH_OFFER as O, dollars, growthExample, growthLine, percent } from '../../../worker/src/lib/offers';
 
 export default function GrowthOfferBlock() {
   return (
@@ -52,6 +52,7 @@ export default function GrowthOfferBlock() {
           <h3><Receipt size={15} aria-hidden="true" /> Performance-fee disclosure</h3>
           <p>{O.feeDisclosure}</p>
           <p className="go-example" data-testid="fee-example">{growthExample()}</p>
+          <p><a href={GROWTH_TERMS_PATH} data-testid="growth-terms-link">Read the full growth service terms</a></p>
         </div>
       </div>
     </div>

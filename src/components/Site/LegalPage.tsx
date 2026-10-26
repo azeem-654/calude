@@ -7,24 +7,24 @@
  * (PolicyPage), with a contents list and anchored sections so a support reply
  * can link to one. The words are in legalText.ts.
  */
-import { AFFILIATE_TERMS, LEGAL_UPDATED, PRIVACY, PRIVACY_CONTACT, TERMS, type LegalSection } from './legalText';
+import { AFFILIATE_TERMS, GROWTH_TERMS, GROWTH_TERMS_UPDATED, LEGAL_UPDATED, PRIVACY, PRIVACY_CONTACT, TERMS, type LegalSection } from './legalText';
 import { usePageTitle } from '../../services/pageTitle';
 
 const INK = '#17191c';
 const MUTED = '#5b6270';
 const LINE = '#e6e9f0';
 
-export default function LegalPage({ doc }: { doc: 'privacy' | 'terms' | 'affiliate' }) {
-  const title = doc === 'privacy' ? 'Privacy Policy' : doc === 'affiliate' ? 'Affiliate Program Terms' : 'Terms of Service';
+export default function LegalPage({ doc }: { doc: 'privacy' | 'terms' | 'affiliate' | 'growth' }) {
+  const title = doc === 'privacy' ? 'Privacy Policy' : doc === 'affiliate' ? 'Affiliate Program Terms' : doc === 'growth' ? 'Growth Service Terms' : 'Terms of Service';
   usePageTitle(`${title} — Protected Central`);
-  const sections: LegalSection[] = doc === 'privacy' ? PRIVACY : doc === 'affiliate' ? AFFILIATE_TERMS : TERMS;
+  const sections: LegalSection[] = doc === 'privacy' ? PRIVACY : doc === 'affiliate' ? AFFILIATE_TERMS : doc === 'growth' ? GROWTH_TERMS : TERMS;
 
   return (
     <div style={{ minHeight: '100vh', background: '#f4f5f7', padding: 'clamp(20px, 5vw, 52px) clamp(16px, 4vw, 32px)', fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif' }}>
       <article style={{ maxWidth: 760, margin: '0 auto', background: '#fff', border: `1px solid ${LINE}`, borderRadius: 18, padding: 'clamp(22px, 4vw, 42px)' }}>
         <a href="/" style={{ fontSize: 13, color: MUTED, textDecoration: 'none' }}>← Protected Central</a>
         <h1 style={{ margin: '14px 0 0', fontSize: 'clamp(24px, 4vw, 32px)', fontWeight: 800, color: INK, letterSpacing: '-0.025em' }}>{title}</h1>
-        <p style={{ margin: '6px 0 0', fontSize: 12.5, color: MUTED }}>Last updated {LEGAL_UPDATED}</p>
+        <p style={{ margin: '6px 0 0', fontSize: 12.5, color: MUTED }}>Last updated {doc === 'growth' ? GROWTH_TERMS_UPDATED : LEGAL_UPDATED}</p>
 
         <nav aria-label="Contents" style={{ marginTop: 22, padding: '14px 16px', borderRadius: 12, background: '#f8fafc', border: `1px solid ${LINE}` }}>
           <b style={{ fontSize: 12, color: MUTED, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Contents</b>

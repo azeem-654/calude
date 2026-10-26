@@ -35,7 +35,7 @@ import { isZone } from '../lib/bookingTime';
 import {
   APPROVAL_KINDS, CALL_OUTCOMES, CHANNELS, DEFAULT_TERMS, METHODS, PAYMENT_KINDS, STAGE_INFO,
   buildStatement, callCheck, centsFrom, cleanTerms, isChannel, isConsent, isStage, periodLabel, phoneKey,
-  stageMoveProblem, summarize,
+  existingCustomerProblem, stageMoveProblem, summarize,
   type AgreementFacts, type ApprovalKind, type LeadFacts, type PaymentFacts, type PaymentKind, type Stage, type Terms, type Verification,
 } from '../lib/leadRevenue';
 
@@ -425,6 +425,10 @@ export async function handleLeadRevenue(req: Request, env: Env): Promise<Respons
     if (reason.length < 3) return fail('Say why, in a few words — it is kept with the lead.', 200, { field: 'lead.reason' });
     /* Marking somebody an existing customer takes the job out of the fee; only the contractor knows that. The owner may only undo it, with a reason both can read. */
     if (value && !c.contractor) return notContractor();
+    if (value && !c.owner) {
+      const late = existingCustomerProblem({ wonAt: l.won_at, createdAt: l.created_at });
+      if (late) return fail(late, 200, { field: 'lead.reason', code: 'too_late' });
+    }
     await env.DB.batch([
       env.DB.prepare('UPDATE crm_rev_leads SET existing_customer = ?, updated_at = ? WHERE id = ? AND account_id = ?').bind(value ? 1 : 0, nowIso(), l.id, c.accountId),
       event(env, c, l.id, 'existing_customer', { value, reason }),

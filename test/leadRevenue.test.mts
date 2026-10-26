@@ -7,7 +7,7 @@
  *   npm run test:leadrevenue
  */
 import {
-  buildStatement, callCheck, centsFrom, cleanTerms, leadVerdict, monthEnd, money, paymentVerdict, phoneKey, stageMoveProblem, summarize,
+  DEFAULT_TERMS, buildStatement, callCheck, centsFrom, cleanTerms, existingCustomerProblem, leadVerdict, monthEnd, money, paymentVerdict, phoneKey, stageMoveProblem, summarize,
   type AgreementFacts, type LeadFacts, type PaymentFacts,
 } from '../worker/src/lib/leadRevenue';
 import { TRADE_GROWTH_OFFER, growthExample } from '../worker/src/lib/offers';
@@ -113,6 +113,15 @@ const m = summarize([{ ...lead(), quoteCents: 700_000, finalCents: 650_000, crea
   [pay({ amountCents: 650_000, excludedCents: 50_000 }), pay({ leadId: 'L2', amountCents: 10_000 }), pay({ verification: 'reported', confirmedAt: null })], '0000', A);
 ok('collected counts confirmed money only; eligible only qualifying jobs, less exclusions', m.collectedCents === 660_000 && m.eligibleCents === 600_000, m);
 ok('quotes are summed apart and never counted as money', m.quotedCents === 800_000 && m.completedCents === 650_000 && m.inquiries === 2 && m.fromService === 1 && m.won === 1, m);
+
+console.log('\nThe written terms');
+const now = Date.parse('2026-06-01T00:00:00Z');
+const daysAgo = (d: number) => new Date(now - d * 86_400_000).toISOString();
+ok('an existing customer can be flagged any time before the job is won', existingCustomerProblem({ wonAt: null, createdAt: daysAgo(90) }, now) === null);
+ok('…or within 14 days of the lead being recorded, even once won', existingCustomerProblem({ wonAt: daysAgo(1), createdAt: daysAgo(13) }, now) === null);
+ok('…but not after both, which needs the service team’s correction', /ask the service team/.test(existingCustomerProblem({ wonAt: daysAgo(1), createdAt: daysAgo(20) }, now) ?? ''));
+ok('new agreements start from the written terms’ window and exclusions', DEFAULT_TERMS.attributionDays === TRADE_GROWTH_OFFER.rules.attributionDays && DEFAULT_TERMS.exclusions.join() === 'tax,permits');
+ok('the monthly scope is limited in writing', TRADE_GROWTH_OFFER.monthlyScope.some(x => /3 hours/.test(x)) && /3 hours/.test(TRADE_GROWTH_OFFER.limits));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

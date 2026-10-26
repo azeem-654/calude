@@ -235,6 +235,13 @@ contractor, approved by the install owner, and invoiced outside the app.
   open questions, and still compute to the same lines and fee — otherwise
   `stale`, recalculate. Approval stamps each payment's `statement_id`, so
   nothing is counted twice; corrections go on the next statement.
+- **The written terms** (`/growth-service-terms`, `GROWTH_TERMS`) are the
+  contract the ledger enforces; their numbers are `TRADE_GROWTH_OFFER.rules`
+  and `DEFAULT_TERMS` reads its window from there. The contractor may flag an
+  existing customer only until the job is won or within 14 days of the lead
+  (`existingCustomerProblem`); after that it is the owner's
+  `attribution_fix`, with a reason. A negative balance is carried, never paid
+  out, and lapses when the agreement ends.
 - No payment integration exists: `integration_verified` is a state only the
   server could set, and the screens say none is connected. No call is placed
   by the software; the national DNC registry is not connected.

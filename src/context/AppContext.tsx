@@ -246,6 +246,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setFunnels(loadLS<Funnel[]>('crm_funnels', []));
       setWebsites(loadLS<Website[]>('crm_websites', []));
       setPipelines(loadLS<Pipeline[]>('crm_pipelines', mockPipelines));
+      /* An industry snapshot installs fields from the server (Agency/Snapshots.tsx). */
+      setCustomFieldDefs(loadLS<CustomFieldDef[]>('crm_custom_fields', []));
       setSocialPosts(loadLS<DesignPost[]>('crm_social_posts', []));
       setReviews(loadLS<Review[]>('crm_reviews', []));
       setAppointments(loadLS<Appointment[]>('crm_appointments', []));

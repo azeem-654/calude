@@ -20,7 +20,7 @@ import {
   BarChart3, Building2, Calendar, CalendarClock, CreditCard,
   Globe, Inbox, LayoutDashboard, LayoutTemplate, Newspaper, Palette, Rocket,
   Send, Settings as SettingsIcon, ShieldAlert, Star, TrendingUp, Users,
-  type LucideIcon, Package, UserPlus, BadgePercent, Crosshair, BookUser, Clapperboard, Receipt, Handshake } from 'lucide-react';
+  type LucideIcon, Package, UserPlus, BadgePercent, Crosshair, BookUser, Clapperboard, Receipt, Handshake, Layers } from 'lucide-react';
 
 export interface NavItem {
   path: string;
@@ -139,6 +139,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { path: '/billing', label: 'Plan & billing', desc: 'Your subscription, invoices and usage', icon: CreditCard, aka: ['invoice', 'subscription', 'payment'] },
       { path: '/affiliate', label: 'Affiliate program', desc: 'Earn 40% of every payment from customers you refer, for as long as they pay', icon: BadgePercent, aka: ['affiliate', 'referral', 'commission', 'partner', 'earn', 'refer'] },
       { path: '/agency', label: 'Agency & clients', desc: 'Every sub-account you run, in one place', icon: Building2, aka: ['sub-accounts', 'white label', 'clients'], agencyOnly: true },
+      { path: '/snapshots', label: 'Industry snapshots', desc: 'Ready-made pipelines, checklists and fields for HVAC, roofing and medical billing — installed without touching what you already have', icon: Layers, aka: ['snapshot', 'snapshots', 'industry', 'template', 'hvac', 'roofing', 'medical billing', 'setup', 'provisioning'], agencyOnly: true },
       { path: '/growth', label: 'Growth service', desc: 'Agreements, each customer’s lead-to-revenue ledger and performance-fee statements', icon: Handshake, aka: ['growth service', 'agreements', 'performance fee', 'statements', 'hvac', 'roofing', 'commercial terms'], ownerOnly: true },
       { path: '/signups', label: 'Sign-ups & trials', desc: 'Who signed up, how far they got, and a message or a kickoff call for them', icon: UserPlus, aka: ['signups', 'trial', 'customers', 'onboarding', 'kickoff', 'new users'], ownerOnly: true },
       /* The owner's own lead files. Searched by the owner alone (the server

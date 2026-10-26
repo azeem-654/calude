@@ -6,6 +6,7 @@ import { installTenantStorage } from './services/tenancy'
 import { adoptSessionWorkspace, moveSessionToCookie } from './services/auth'
 import { installFieldGuard } from './services/fieldGuard'
 import { captureRef } from './services/referral'
+import { captureIndustry } from './services/industrySetup'
 import { capturePlan } from './services/sitePlan'
 import { captureVisitor } from './services/funnel'
 import { initTheme } from './services/theme'
@@ -21,6 +22,8 @@ adoptSessionWorkspace();
 installFieldGuard();
 /* An affiliate's `?ref=` is remembered before anything routes (services/referral.ts). */
 captureRef();
+/* The trade a sign-up came from (`?industry=`), for its first workspace (services/industrySetup.ts). */
+captureIndustry();
 /* A plan made on the public site ("Find my solution") arrives in the address's
    fragment, and the funnel's visitor id in its query — both taken out of the
    address and kept on this origin before anything routes (services/sitePlan.ts,

@@ -58,7 +58,7 @@ campaign sends → digests). A scheduled run has no origin: absolute URLs read
 | Reputation, the booking page, the owner's strategy call | `docs/claude/reputation-booking.md` |
 | Prospect search, AI Prospecting, Lead library, daily finders, connected searches, contact lists | `docs/claude/prospecting.md` |
 | Security, multi-tenancy, secrets, form refusals (`data-field`) | `docs/claude/security.md` |
-| Top bar, dashboard | `docs/claude/app-ui.md` |
+| Top bar, dashboard, industry snapshots (`/snapshots`, sign-up industry) | `docs/claude/app-ui.md` |
 | Public site, industry microsites, service pricing (`lib/offers.ts`), its funnel, logo strip | `docs/claude/site.md` |
 | AI Video Studio | `docs/claude/video-studio.md` |
 | Commands, deploying, staging and live | `docs/claude/deploying.md` |

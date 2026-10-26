@@ -8,7 +8,7 @@ import { attributeIfPending } from './services/referral';
 import { pendingPlan } from './services/sitePlan';
 import { trackKnown } from './services/funnel';
 import { getActiveAccountId, setActiveAccountId, activeBranding } from './services/tenancy';
-import { isAppHost, isMarketingHost, isWhiteLabelHost, markWhiteLabelHost } from './services/hosts';
+import { isAppHost, isMarketingHost, isStagingHost, isWhiteLabelHost, markWhiteLabelHost, siteAtRoot } from './services/hosts';
 import { industryFor, speaksAsUs } from '../worker/src/lib/industryPages';
 import { cachedHost, resolveHost, type ResolvedHost } from './services/whitelabel';
 import { initCloudSync, startCloudRefresh } from './services/serverData';
@@ -69,6 +69,8 @@ import TrialBar from './components/shared/TrialBar';
 import CornerHelp from './components/shared/CornerHelp';
 import Signups from './components/Agency/Signups';
 import GrowthService from './components/Agency/GrowthService';
+import Snapshots from './components/Agency/Snapshots';
+import { claimIndustryIfPending } from './services/industrySetup';
 import JobsRevenue from './components/Jobs/JobsRevenue';
 import Affiliate from './components/Affiliate/Affiliate';
 
@@ -135,7 +137,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
   const isEditor = location.pathname.startsWith('/social-creator/editor');
 
   /* The Trust Center is public on every host, signed in or not. */
-  if (['/security', '/privacy', '/terms-of-service', '/affiliate-terms', '/pricing'].includes(location.pathname)) {
+  if (['/security', '/privacy', '/terms-of-service', '/affiliate-terms', '/growth-service-terms', '/pricing'].includes(location.pathname)) {
     return (
       <Routes>
         <Route path="/pricing" element={<PricingPage />} />
@@ -143,6 +145,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
         <Route path="/privacy" element={<LegalPage doc="privacy" />} />
         <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
         <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
+        <Route path="/growth-service-terms" element={<LegalPage doc="growth" />} />
       </Routes>
     );
   }
@@ -272,6 +275,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/signups" element={<Signups />} />
           {/* The owner's growth-service desk; the server refuses anybody else. */}
           <Route path="/growth" element={<GrowthService />} />
+          <Route path="/snapshots" element={<Snapshots />} />
           <Route path="/jobs" element={<JobsRevenue />} />
           <Route path="/affiliate" element={<Affiliate />} />
           <Route path="/terms" element={<PolicyPage />} />
@@ -279,6 +283,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/privacy" element={<LegalPage doc="privacy" />} />
           <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
           <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
+        <Route path="/growth-service-terms" element={<LegalPage doc="growth" />} />
           {/*
            * Every other Routes block in this file has a catch-all; this one did
            * not, and the result was a screen that looked broken rather than
@@ -340,6 +345,11 @@ function SyncGate({ children }: { children: React.ReactNode }) {
         setResolved(match);
         markWhiteLabelHost(true);
       }
+      /* Before the first pull: a new account's industry snapshot lands in the
+         workspace first, so the pull brings it down and the app never seeds
+         its generic pipeline over it (services/industrySetup.ts). */
+      await claimIndustryIfPending();
+      if (!alive) return;
       await initCloudSync();
       if (!alive) return;
       /* Before the workspace mounts, so nothing reads the old plaintext Twilio
@@ -415,7 +425,8 @@ export default function App() {
            address, so signing back in lands where they were. Anywhere else a
            signed-out "/" is the marketing page, which would read as having
            been thrown out of the product — go to sign-in, where the reason is. */
-        if (!isAppHost() && !/\/login$/.test(location.pathname)) {
+        const atRoot = location.pathname === `${import.meta.env.BASE_URL.replace(/\/$/, '')}/`;
+        if ((!isAppHost() || (siteAtRoot() && atRoot)) && !/\/login$/.test(location.pathname)) {
           location.replace(`${import.meta.env.BASE_URL.replace(/\/$/, '')}/login`);
           return;
         }
@@ -489,6 +500,16 @@ export default function App() {
   if (window.location.pathname.slice(base.length).replace(/\/+$/, '') === STRATEGY_CALL_PATH && speaksAsUs(window.location.hostname) && !isWhiteLabelHost()) {
     return <StrategyCallPage />;
   }
+  /* The testing site's copy of the public site, for the owner while signed in
+     (signed out, its root already is the site — see siteAtRoot). */
+  if (session && isStagingHost() && !isWhiteLabelHost() && window.location.pathname.slice(base.length).replace(/\/+$/, '') === '/site') {
+    return (
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
+        <StagingBanner at="bottom" />
+        <SiteHome />
+      </BrowserRouter>
+    );
+  }
   if (!session && isPublicReport) {
     return (
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
@@ -549,6 +570,7 @@ export default function App() {
           <Route path="/privacy" element={<LegalPage doc="privacy" />} />
           <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
           <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
+        <Route path="/growth-service-terms" element={<LegalPage doc="growth" />} />
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="*" element={<SiteHome />} />
         </Routes>
@@ -570,7 +592,7 @@ export default function App() {
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
         {/* Before the sign-in form, not only after it. Somebody typing their
             password into the testing copy has already been misled. */}
-        <StagingBanner />
+        <StagingBanner at={siteAtRoot() && window.location.pathname === `${base}/` ? 'bottom' : 'top'} />
         <Routes>
           {/* Two doors, because the marketing site has two buttons. What each
               one can actually do is still the server's call. */}
@@ -579,9 +601,11 @@ export default function App() {
           <Route path="/privacy" element={<LegalPage doc="privacy" />} />
           <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
           <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
+        <Route path="/growth-service-terms" element={<LegalPage doc="growth" />} />
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/login" element={<LoginScreen onAuthed={signedIn} intent="signin" />} />
           <Route path="/signup" element={<LoginScreen onAuthed={signedIn} intent="signup" />} />
+          <Route path="/" element={siteAtRoot() ? <SiteHome /> : <LoginScreen onAuthed={signedIn} />} />
           <Route path="*" element={isAppHost() ? <LoginScreen onAuthed={signedIn} /> : <SiteHome />} />
         </Routes>
       </BrowserRouter>

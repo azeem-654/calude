@@ -36,7 +36,10 @@ export type ContentOrigin =
   /** Autopilot — the central execution system. Everything it builds carries
    *  this, so a record can always be traced back to the run that made it and
    *  to the reason that run decided to. */
-  | 'autopilot';
+  | 'autopilot'
+  /** A pipeline, stage or field put in place by an industry snapshot
+   *  (worker/src/lib/snapshots.ts). */
+  | 'industry-snapshot';
 
 export interface ContentSource {
   origin: ContentOrigin;
@@ -65,6 +68,7 @@ export const ORIGIN_LABEL: Record<ContentOrigin, string> = {
   'business-flow': 'Business flow',
   'marketing-campaign': 'Marketing campaign',
   autopilot: 'AI Autopilot',
+  'industry-snapshot': 'Industry snapshot',
 };
 
 /** "Video campaign · Five mistakes that kill your first hire" */

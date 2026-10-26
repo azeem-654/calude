@@ -117,7 +117,7 @@ export const INDUSTRIES: Record<TradeSlug, Industry> = {
   hvac: {
     slug: 'hvac',
     site: {
-      id: 'hvac', root: '/hvac', tag: 'HVAC', nav: SITE_NAV, signIn: true,
+      id: 'hvac', root: '/hvac', tag: 'HVAC', nav: SITE_NAV, signIn: true, growthTerms: true,
       bookLabel: 'Request an HVAC Growth Consultation', bookShort: 'Book a consultation',
       writeHref: '#talk', writeLabel: 'Write to us about your business',
       footerLine: 'Growth and follow-up for heating and cooling businesses.',
@@ -275,7 +275,7 @@ export const INDUSTRIES: Record<TradeSlug, Industry> = {
   roofing: {
     slug: 'roofing',
     site: {
-      id: 'roofing', root: '/roofing', tag: 'Roofing', nav: SITE_NAV, signIn: true,
+      id: 'roofing', root: '/roofing', tag: 'Roofing', nav: SITE_NAV, signIn: true, growthTerms: true,
       bookLabel: 'Request a Roofing Growth Consultation', bookShort: 'Book a consultation',
       writeHref: '#talk', writeLabel: 'Write to us about your business',
       footerLine: 'Inquiries, inspections and estimates, followed through for roofing contractors.',

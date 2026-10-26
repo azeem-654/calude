@@ -40,7 +40,7 @@ r = cleanSettings({ ...base, minNoticeMin: 1e9, windowDays: -4, bufferAfter: 999
 ok('numbers are clamped and questions capped at six', r.settings.minNoticeMin === 14 * 1440 && r.settings.windowDays === 1 && r.settings.bufferAfter === 120 && r.settings.dailyLimit === 0 && r.settings.questions.length === 6);
 r = cleanSettings(base);
 ok('good settings pass clean', r.errors.length === 0, r.errors);
-ok('the default is switched off', DEFAULT_SETTINGS.enabled === false);
+ok('the default is switched on, at weekday hours', DEFAULT_SETTINGS.enabled === true && DEFAULT_SETTINGS.weekly.mon.length === 1 && DEFAULT_SETTINGS.weekly.sat.length === 0);
 const pub = publicSettings({ ...base, notifyEmail: 'owner@example.com' });
 ok('the public view carries no notice address or reminder setting', !JSON.stringify(pub).includes('owner@example.com') && !('reminderHours' in pub) && !('notifyEmail' in pub));
 

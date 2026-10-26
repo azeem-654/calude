@@ -186,6 +186,11 @@ jobs:
       - name: Test plan allowances
         run: npm run test:allowances
 
+      # Industry snapshots: every snapshot passes its checks and names real
+      # templates, and an install only ever adds (worker/src/lib/snapshots.ts).
+      - name: Test industry snapshots
+        run: npm run test:snapshots
+
       - name: Build
         run: npm run build
         env:

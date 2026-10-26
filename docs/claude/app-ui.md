@@ -62,3 +62,35 @@ growth chart and Business progress read only this workspace's records; with
 none they say so (they once drew invented deals, "5 executed / 42% win rate",
 a +34% curve and sample department scores, and a new customer took them for
 their own). The growth rate is the real one and may be negative.
+
+## Industry snapshots — Workspace → Industry snapshots (/snapshots)
+
+Phase 3 of `docs/IMPLEMENTATION-PLAN.md`. A snapshot is typed, versioned data
+in `worker/src/lib/snapshots.ts` (HVAC, Roofing, Medical billing): a pipeline
+whose stages carry their checklists, contact fields, and suggested workflow
+template keys (shown, not installed). `validateSnapshot` is run by the
+catalogue and by `npm run test:snapshots` (also in `staging.yml`), which also
+checks every template key exists.
+
+- **An install only adds.** It writes into the app's own documents
+  (`crm_pipelines`, `crm_custom_fields`) through `dataUpdate`, matching by id
+  (`snap-<id>-…`), never by name. Present items are left exactly as the
+  customer has them; items an earlier install added and the customer deleted
+  are not put back unless `restore` is ticked. A later version adds only its
+  new items, in place. A document that is not a list is refused, not replaced.
+  Records carry `source.origin = 'industry-snapshot'`.
+- **Route** `/api/snapshots.php` (`routes/snapshots.ts`), migration 0079
+  (`crm_workspaces.industry`, `crm_snapshot_installs`). A customer installs
+  where `workspaceAccess` lets them; the install owner into any existing
+  workspace without claiming it; client logins and `__agency__` never.
+  Installing twice writes nothing and no second history row.
+- **Sign-up carries the industry**: `/signup?industry=<slug>` (the trade
+  sites' "Start the software free") is kept as `pc_industry`
+  (`services/industrySetup.ts`); SyncGate calls `claim` *before the first
+  pull*, so the new workspace opens on the industry pipeline and the generic
+  one is never seeded. The server honours it once, for a new (≤ 7 days)
+  account's own workspace (`industry = ''` claim).
+- The screen pushes queued edits (`flushNow`) before an install into the
+  open workspace and pulls after (`refreshFromCloud`; AppContext reloads
+  pipelines and fields). `npm run test:snapshotse2e` (wrangler :8875, fresh
+  D1, needs a `VITE_BASE=/` build) and `test:security` cover it.

@@ -92,7 +92,8 @@ export const isAppHost = (): boolean =>
  * True on the rehearsal copy.
  *
  * Note where this sits: `testing.protectedcentral.com` is in `APP_HOSTS`, so it
- * renders the product rather than the marketing page. Leaving it out was the
+ * renders the product rather than the marketing page (bar its root, which
+ * `siteAtRoot` gives to the staging site). Leaving it out was the
  * trap — a name that is neither an app host nor a marketing host falls through
  * to the development behaviour, and a visitor to the testing site would have
  * been shown the pitch instead of the login form.
@@ -105,6 +106,20 @@ export const isStagingHost = (): boolean => {
   const h = host();
   return STAGING_HOSTS.has(h) || isStagingWorkerUrl(h);
 };
+
+/**
+ * Whether a signed-out visitor at "/" sees the public site rather than the sign-in form.
+ *
+ * True off the app hosts (development, previews) as before, and on the testing
+ * site too. The owner asked to see the staging copy of the *site* at
+ * testing.protectedcentral.com and press its Sign in button, as a visitor
+ * would — otherwise a change to the site pushed to staging had no address to
+ * be looked at. Only the root: every other path there still answers with the
+ * sign-in form, so a deep link into the testing app is not turned into a pitch.
+ * Never on app.protectedcentral.com, whose site is a different address, and
+ * not on the staging Worker's workers.dev addresses, which nobody is sent to.
+ */
+export const siteAtRoot = (): boolean => !isAppHost() || (!whiteLabelled && STAGING_HOSTS.has(host()));
 
 /**
  * Does the address bar agree with the Worker about which site this is?

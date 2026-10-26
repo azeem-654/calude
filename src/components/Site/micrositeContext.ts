@@ -22,6 +22,8 @@ export interface MicrositeConfig {
   footerLine: string;
   /** Show "Sign in" (the trade sites sell an app login; the RCM site does not yet). */
   signIn: boolean;
+  /** Sells the growth service, so its footer links the growth service terms. */
+  growthTerms?: boolean;
 }
 
 export const MicrositeContext = createContext<MicrositeConfig | null>(null);

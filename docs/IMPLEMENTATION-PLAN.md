@@ -53,7 +53,7 @@ owner) can pick up where the last phase stopped.
    - Owner commercial settings (effective-dated; never rewrites a signed
      agreement); calling/advertising safeguards (call log, DNC/consent,
      calling hours, approval gate). Dashboards with stated definitions.
-3. **Snapshot marketplace and industry provisioning**
+3. **Snapshot marketplace and industry provisioning** — **done 2026-10-26** (`test:snapshots`, `test:snapshotse2e`, `test:security` additions; notes in `docs/claude/app-ui.md`). Built: `lib/snapshots.ts`, migration 0079, `/api/snapshots.php`, Workspace → Industry snapshots, the sign-up industry claim. Snapshots hold pipelines, checklists and fields; workflows are suggested from the template library, not installed.
    - Typed, validated snapshot registry (HVAC, Roofing, Medical Billing/RCM)
      with versions; owner catalogue with preview/validate/install/history.
    - Signup carries the industry from the microsite; the server validates and

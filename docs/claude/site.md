@@ -108,6 +108,13 @@ path check. `npm run test:industry` fails if a menu entry leaves the site;
   `MEDICAL_BILLING_OFFER` (no figure). Never type a figure into a page;
   `test:industry` fails if one of the site components does. `feeOn()` is the
   fee arithmetic (integer cents, half-up once).
+- **The written terms** are `GROWTH_TERMS` in `Site/legalText.ts`, published
+  at `/growth-service-terms` (every host, signed in or not; in the sitemap)
+  and linked from the price block and the trade sites' footer. Every number
+  in them is `TRADE_GROWTH_OFFER.rules` (180-day window, 14 days to flag an
+  existing customer, 10 days to query, net 15, 3-month minimum, 30 days'
+  notice, liability capped at 3 months' fees) and `monthlyScope` (3 hours, 2
+  campaigns a month). Change a number there, never in the prose.
 - **One block draws the price** — `Site/GrowthOfferBlock.tsx`, no props, on the
   home page (`HomePricing`, `#pricing`) and on /hvac and /roofing
   (`GrowthPricing`). `test:strategycalle2e` compares its text on the three

@@ -25,7 +25,13 @@ import { useEffect, useState } from 'react';
 import { hostMatchesServer, isStagingHost } from '../../services/hosts';
 import { authStatus } from '../../services/auth';
 
-export default function StagingBanner() {
+/**
+ * `at="bottom"` pins it to the foot of the screen: over the public site, whose
+ * own header is fixed to the top, the bar in the flow slid underneath it and
+ * the two read as one tangle (seen at 390 wide on the testing site's root).
+ */
+export default function StagingBanner({ at = 'top' }: { at?: 'top' | 'bottom' }) {
+  const pin: React.CSSProperties = at === 'bottom' ? { position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 2147483000 } : {};
   /*
    * ── Why this asks the server as well as the address bar ──
    *
@@ -57,6 +63,7 @@ export default function StagingBanner() {
   if (agrees === false) {
     return (
       <div role="alert" style={{
+        ...pin,
         display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap',
         padding: '10px clamp(14px, 3vw, 22px)',
         background: '#b42318', color: '#fff',
@@ -81,6 +88,7 @@ export default function StagingBanner() {
 
   return (
     <div role="status" style={{
+      ...pin,
       display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap',
       padding: '7px clamp(14px, 3vw, 22px)',
       background: '#3730a3', color: '#fff',

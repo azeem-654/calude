@@ -180,6 +180,17 @@ for (const act of ['customers', 'terms_add', 'agreement_draft', 'statement_compu
   check(`B cannot ${act} (owner only)`, r.status === 403 && !r.ok, JSON.stringify(r.data).slice(0, 120));
 }
 check("A's lead is untouched", d1rows(`SELECT name, stage FROM crm_rev_leads WHERE id = '${lrLead.data.lead?.id}'`)[0]?.name === 'A homeowner');
+/* Industry snapshots (routes/snapshots.ts): B installs nothing into A's workspace, reads
+   none of A's history, lists nobody's workspaces, and cannot claim A's industry. */
+for (const act of ['preview', 'install', 'history']) {
+  const r = await api('snapshots.php', { action: act, token: B.token, accountId: A.acct, snapshotId: 'hvac', restore: true });
+  check(`B cannot ${act} a snapshot on A's workspace`, r.status === 403 && !r.ok, JSON.stringify(r.data).slice(0, 120));
+}
+const snW = await api('snapshots.php', { action: 'workspaces', token: B.token });
+check('B cannot list every workspace (owner only)', snW.status === 403 && !snW.data.workspaces, JSON.stringify(snW.data).slice(0, 120));
+const snBucket = await api('snapshots.php', { action: 'install', token: B.token, accountId: '__agency__', snapshotId: 'hvac' });
+check('no snapshot installs into an agency bucket', !snBucket.ok && snBucket.status === 400, JSON.stringify(snBucket.data).slice(0, 120));
+check("A's pipelines carry no snapshot B tried to install", !(d1rows(`SELECT v FROM crm_data WHERE account_id = '${A.acct}' AND k = 'crm_pipelines'`)[0]?.v ?? '').includes('snap-hvac'));
 const repS = await api('reputation.php', { action: 'status', token: B.token, accountId: A.acct });
 check("B cannot read A's review source", !repS.ok, JSON.stringify(repS.data).slice(0, 120));
 const repR = await api('reputation.php', { action: 'reviews', token: B.token, accountId: A.acct });

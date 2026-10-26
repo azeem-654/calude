@@ -16,7 +16,11 @@ import { ArrowLeft, Check, Loader } from 'lucide-react';
 import { usePageTitle } from '../../services/pageTitle';
 import { isInstallOwner } from '../../services/moderation';
 import { DEFAULT_TERMS, EXCLUSION_KINDS, money, type Terms } from '../../../worker/src/lib/leadRevenue';
+import { GROWTH_TERMS_PATH, TRADE_GROWTH_OFFER } from '../../../worker/src/lib/offers';
+import { GROWTH_TERMS_UPDATED } from '../Site/legalText';
 import { Err, INK, LINE, Ledger, MUTED, box, btn, grid, input, label, primary, revApi, type Agreement, type Overview } from '../Jobs/JobsRevenue';
+
+const R = TRADE_GROWTH_OFFER.rules;
 
 interface Customer { email: string; name: string; accountId: string; agreement: string | null; leads: number; awaitingConfirm: number; openStatements: number; openQueries: number }
 interface TermRow { id: string; effective_from: string; setup_cents: number; monthly_cents: number; performance_bps: number; attribution_days: number; exclusions: string; note: string; created_by: string }
@@ -165,7 +169,7 @@ function AgreementAdmin({ o, accountId, customerName, reload }: { o: Overview; a
             <label style={label}>Signed on<input style={input} type="date" data-field="agreement.signedOn" value={sign.signedOn} max={todayIso()} onChange={e => setSign(x => ({ ...x, signedOn: e.target.value }))} /></label>
             <label style={label}>In force from<input style={input} type="date" data-field="agreement.startsOn" value={sign.startsOn} onChange={e => setSign(x => ({ ...x, startsOn: e.target.value }))} /></label>
           </div>
-          <p style={small}>Record it as signed only once the customer has signed the written agreement. From then on its terms cannot be changed here or anywhere else.</p>
+          <p style={small}>Record it as signed only once the customer has signed the written agreement, with the <a href={GROWTH_TERMS_PATH} target="_blank" rel="noopener noreferrer">growth service terms</a> attached (version of {GROWTH_TERMS_UPDATED}: {R.minimumMonths}-month minimum, {R.noticeDays} days’ notice, statements queried within {R.queryDays} days, invoices due in {R.paymentDays}, liability capped at {R.liabilityMonths} months’ fees). From then on its terms cannot be changed here or anywhere else.</p>
           <div><button style={primary} disabled={busy === 'sign'} onClick={() => void run('sign', 'agreement_activate', { id: draft.id, ...sign })} data-testid="agreement-sign"><Check size={13} /> Record as signed</button></div>
           {err.key === 'sign' && <Err text={err.text} />}
         </div>
