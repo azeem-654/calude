@@ -34,6 +34,7 @@ import CompaniesHousePanel from './CompaniesHousePanel';
 import GoogleSignInPanel from './GoogleSignInPanel';
 import LeadDirectoryAdmin from './LeadDirectoryAdmin';
 import SourcePolicyPanel from './SourcePolicyPanel';
+import StrategyCallSettings from './StrategyCallSettings';
 
 const INK = '#0f172a';
 const MUTED = '#64748b';
@@ -61,7 +62,7 @@ const PILL: Record<State, { text: string; bg: string; fg: string; Icon: typeof C
 };
 
 /* The two embedded below, by service id, so "Set it" can scroll to them. */
-const EMBEDDED: Record<string, string> = { google_places: 'platform-google-maps', google_oauth: 'platform-google-signin', email_verifier: 'platform-email-verifier', companies_house: 'platform-companies-house', lead_directory: 'platform-lead-directory' };
+const EMBEDDED: Record<string, string> = { google_places: 'platform-google-maps', google_oauth: 'platform-google-signin', email_verifier: 'platform-email-verifier', companies_house: 'platform-companies-house', lead_directory: 'platform-lead-directory', strategy_call: 'platform-strategy-call' };
 
 export default function PlatformServices({ openTab }: { openTab: (id: string) => void }) {
   const [services, setServices] = useState<Service[] | null>(null);
@@ -150,6 +151,7 @@ export default function PlatformServices({ openTab }: { openTab: (id: string) =>
         )}
       </div>
 
+      <div id="platform-strategy-call" style={{ scrollMarginTop: 16 }}><StrategyCallSettings /></div>
       <div id="platform-ai-main" style={{ scrollMarginTop: 16 }}><AiEngineCard /></div>
       <div id="platform-ai-keys" style={{ scrollMarginTop: 16 }}><AiKeysPanel /></div>
       <div id="platform-geoapify" style={{ scrollMarginTop: 16 }}><GeoapifyKeyPanel /></div>

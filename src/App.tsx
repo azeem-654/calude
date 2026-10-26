@@ -57,6 +57,9 @@ import PolicyPage from './components/Site/PolicyPage';
 import TrustCenter from './components/Site/TrustCenter';
 import PricingPage from './components/Site/PricingPage';
 import IndustryPage from './components/Site/IndustryPage';
+import MedicalBillingPage from './components/Site/MedicalBillingPage';
+import StrategyCallPage from './components/StrategyCall/StrategyCallPage';
+import { STRATEGY_CALL_PATH } from '../worker/src/lib/strategyCall';
 import LegalPage from './components/Site/LegalPage';
 import StandingBanner from './components/shared/StandingBanner';
 import StagingBanner from './components/shared/StagingBanner';
@@ -471,9 +474,15 @@ export default function App() {
   if (trade && speaksAsUs(window.location.hostname) && !isWhiteLabelHost()) {
     return (
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
-        <IndustryPage slug={trade.slug} />
+        {trade.slug === 'medical-billing' ? <MedicalBillingPage /> : <IndustryPage slug={trade.slug} />}
       </BrowserRouter>
     );
+  }
+  /* The operator's own strategy call — on our hosts only, signed in or not,
+     and before any workspace's /book/<slug> (that address is reserved). A
+     reseller's domain keeps /book/* for its own clients' pages. */
+  if (window.location.pathname.slice(base.length).replace(/\/+$/, '') === STRATEGY_CALL_PATH && speaksAsUs(window.location.hostname) && !isWhiteLabelHost()) {
+    return <StrategyCallPage />;
   }
   if (!session && isPublicReport) {
     return (

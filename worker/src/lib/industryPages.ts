@@ -1,6 +1,6 @@
 /**
- * The trade pages — protectedcentral.com/hvac and /roofing — as a crawler sees
- * them.
+ * The industry microsites — protectedcentral.com/hvac, /roofing and
+ * /medical-billing — as a crawler sees them.
  *
  * The page itself is the React app (src/components/Site/IndustryPage.tsx), and
  * it titles its own tab. But a search engine's first pass and every link
@@ -14,12 +14,16 @@
  * and the rewriting itself, which needs the Worker's HTMLRewriter, is
  * industryHead.ts.
  *
- * Prices in the structured data are read from `PLAN_DEFS`, the table checkout
- * charges from, so a search result cannot quote a price nobody is charged.
+ * Prices in the structured data are read from lib/offers.ts, the one place
+ * the growth service's terms are written, so a search result cannot quote a
+ * price nobody is held to. Medical billing has no price there (it is quoted
+ * after an assessment), so its structured data carries none.
  */
-import { PLAN_DEFS } from './allowances';
+import { TRADE_GROWTH_OFFER, percent } from './offers';
 
-export type IndustrySlug = 'hvac' | 'roofing';
+export type IndustrySlug = 'hvac' | 'roofing' | 'medical-billing';
+/** The two trades sold the growth service. */
+export type TradeSlug = Exclude<IndustrySlug, 'medical-billing'>;
 
 export interface IndustryMeta {
   slug: IndustrySlug;
@@ -40,16 +44,24 @@ export const INDUSTRY_PAGES: Record<IndustrySlug, IndustryMeta> = {
     path: '/hvac',
     name: 'HVAC',
     audience: 'HVAC businesses',
-    title: 'CRM and follow-up for HVAC businesses — Protected Central',
-    description: 'Keep every HVAC enquiry, estimate and past customer in one pipeline. Protected Central builds the estimate follow-up, seasonal reactivation and prospecting workflows, and runs them once you approve. 7 days free.',
+    title: 'HVAC growth service: leads, follow-up and revenue tracking — Protected Central',
+    description: 'An HVAC pipeline set up for you, inquiries captured with their source, agreed campaigns and outbound prospecting, and every estimate tracked to the job and the payment. $300 setup, $87/month, plus a performance fee on eligible collections.',
   },
   roofing: {
     slug: 'roofing',
     path: '/roofing',
     name: 'Roofing',
     audience: 'Roofing contractors',
-    title: 'CRM and follow-up for roofing contractors — Protected Central',
-    description: 'Track every roofing inquiry, inspection and estimate in one pipeline. Protected Central builds the inspection and estimate follow-up, reactivation and prospecting workflows, and runs them once you approve. 7 days free.',
+    title: 'Roofing growth service: inquiries, estimates and revenue tracking — Protected Central',
+    description: 'A roofing pipeline set up for you, inquiries captured with their source, commercial prospecting and campaigns, and every inspection and estimate tracked to the job and the payment. $300 setup, $87/month, plus a performance fee on eligible collections.',
+  },
+  'medical-billing': {
+    slug: 'medical-billing',
+    path: '/medical-billing',
+    name: 'Medical Billing',
+    audience: 'Medical practices',
+    title: 'Medical billing and revenue-cycle management — Protected Central',
+    description: 'Claims, denials, payments and A/R followed through for independent and multi-provider practices, with a revenue-leakage audit and reporting you can check. Priced after an assessment of your practice.',
   },
 };
 
@@ -82,25 +94,23 @@ export function isSiteHost(hostname: string): boolean {
   return h === 'protectedcentral.com' || h === 'www.protectedcentral.com' || h === 'localhost' || h === '127.0.0.1';
 }
 
-/** Schema.org data for one trade page: the page, the product it is about, the way back. */
+/** The growth service's two fixed prices, as Offers. The performance fee is a percentage, so it is said in words. */
+export function growthOffers(url: string) {
+  const o = TRADE_GROWTH_OFFER;
+  return [
+    { '@type': 'Offer', name: 'One-time setup', price: (o.setupCents / 100).toFixed(2), priceCurrency: o.currency, url: `${url}#pricing` },
+    {
+      '@type': 'Offer', name: 'Monthly platform and service fee', price: (o.monthlyCents / 100).toFixed(2), priceCurrency: o.currency, url: `${url}#pricing`,
+      priceSpecification: { '@type': 'UnitPriceSpecification', price: (o.monthlyCents / 100).toFixed(2), priceCurrency: o.currency, billingDuration: 'P1M', unitCode: 'MON' },
+      description: `Plus a performance fee of ${percent(o.performanceBps)} on eligible collections from jobs attributed to the service. Advertising budget and approved third-party charges are paid separately.`,
+    },
+  ];
+}
+
+/** Schema.org data for one microsite: the page, the service it is about, the way back. */
 export function industryJsonLd(m: IndustryMeta): string {
   const url = `${SITE_ORIGIN}${m.path}`;
-  const offers = PLAN_DEFS
-    .filter(p => p.kind === 'self' && p.monthlyCents > 0)
-    .map(p => ({
-      '@type': 'Offer',
-      name: p.name,
-      price: (p.monthlyCents / 100).toFixed(2),
-      priceCurrency: 'USD',
-      priceSpecification: {
-        '@type': 'UnitPriceSpecification',
-        price: (p.monthlyCents / 100).toFixed(2),
-        priceCurrency: 'USD',
-        billingDuration: 'P1M',
-        unitCode: 'MON',
-      },
-      url: `${url}#pricing`,
-    }));
+  const priced = m.slug !== 'medical-billing';
   const data = [
     {
       '@context': 'https://schema.org',
@@ -114,22 +124,15 @@ export function industryJsonLd(m: IndustryMeta): string {
     },
     {
       '@context': 'https://schema.org',
-      '@type': 'SoftwareApplication',
+      '@type': 'Service',
       '@id': `${url}#software`,
-      name: 'Protected Central',
-      applicationCategory: 'BusinessApplication',
-      operatingSystem: 'Web',
+      name: `Protected Central ${m.name}`,
+      serviceType: priced ? 'Lead generation and revenue tracking for contractors' : 'Medical billing and revenue-cycle management',
+      provider: { '@type': 'Organization', name: 'Protected Central', url: `${SITE_ORIGIN}/` },
+      areaServed: 'US',
       description: m.description,
       audience: { '@type': 'BusinessAudience', audienceType: m.audience },
-      offers,
-    },
-    {
-      '@context': 'https://schema.org',
-      '@type': 'BreadcrumbList',
-      itemListElement: [
-        { '@type': 'ListItem', position: 1, name: 'Protected Central', item: `${SITE_ORIGIN}/` },
-        { '@type': 'ListItem', position: 2, name: m.name, item: url },
-      ],
+      ...(priced ? { offers: growthOffers(url) } : {}),
     },
   ];
   /* `<` escaped so nothing in a description can close the script element. */
@@ -137,7 +140,7 @@ export function industryJsonLd(m: IndustryMeta): string {
 }
 
 /** Every public page worth indexing. Signed-in screens are not pages anybody searches for. */
-export const SITEMAP_PATHS = ['/', '/pricing', '/hvac', '/roofing', '/security', '/privacy', '/terms-of-service', '/terms', '/affiliate-terms'];
+export const SITEMAP_PATHS = ['/', '/pricing', '/hvac', '/roofing', '/medical-billing', '/book/strategy-call', '/security', '/privacy', '/terms-of-service', '/terms', '/affiliate-terms'];
 
 export function sitemapXml(): string {
   const urls = SITEMAP_PATHS.map(p => `  <url><loc>${SITE_ORIGIN}${p}</loc></url>`).join('\n');

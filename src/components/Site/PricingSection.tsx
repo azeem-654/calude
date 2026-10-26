@@ -15,14 +15,14 @@ import { BillingToggle, PlanCards, usePlanTable } from './PricingParts';
  * under the cards — the trade pages say what the price does and does not
  * cover for their reader. The cards and the numbers are the same everywhere.
  */
-export default function PricingSection({ intro, after }: { intro?: ReactNode; after?: ReactNode } = {}) {
+export default function PricingSection({ intro, after, eyebrow = 'Pricing' }: { intro?: ReactNode; after?: ReactNode; eyebrow?: string } = {}) {
   const table = usePlanTable();
   const [yearly, setYearly] = useState(false);
 
   return (
     <section className="dc-pricing" id="pricing">
       <div className="dc-chapter-head">
-        <span className="dc-eyebrow">Pricing</span>
+        <span className="dc-eyebrow">{eyebrow}</span>
         <h2>Three plans, <em>or one built around you.</em></h2>
         {intro ?? (
           <p>

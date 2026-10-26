@@ -78,34 +78,47 @@ wanted. A partner that gets integrated moves up a row. **The public site shows
 only the first two rows** (`partners={false}`); the sign-in screen keeps all
 three.
 
-## The trade pages — /hvac and /roofing
+## The industry microsites — /hvac, /roofing, /medical-billing
 
-`Site/IndustryPage.tsx` draws both from `Site/industries.ts`; the home page's
-parts do the rest (FeatureStage + ShotReel over reels.ts shots, PricingSection
-with an `intro`/`after`, FaqSection with `items`, the Custom `EnquiryForm` as
-"Discuss your business" with `context` — the owner sees `[HVAC page] …` under
-Custom plan enquiries). Order: hero → problems (each with its fix) → module
-stages → workflows → how it works → what it supports / does not do → pricing →
-FAQ → talk → closing call.
+Each reads as a site of its own: `Site/Microsite.tsx` (`MicrositeLayout`) is
+the only nav and footer they have — logo and "Home" go to the microsite's own
+root, the menu is in-page anchors only, **no link to `/` or to another
+industry**, and a real phone menu under 760px (the home page simply hides its
+links there). Which site a component is on is `micrositeContext.ts`, never a
+path check. `npm run test:industry` fails if a menu entry leaves the site;
+`npm run test:strategycalle2e` checks every header/footer link at 1280 and 390.
 
-- **Workflows are template keys**; the card prints the template's own name,
-  description and `needs`, so a dependency (SMS provider, a tag your phone
-  system must apply) is never retyped and forgotten.
-- **Say what it does not do**: no phone answering, no dispatch or crew
-  scheduling, no field-service integration, prospecting finds *businesses*
-  (never homeowners or storm paths), inbound texts are read only for STOP.
-  No figures — `npm run test:industry` fails on a percentage or multiplier,
-  a missing template or shot, or structured-data prices that differ from
-  `PLAN_DEFS`.
-- **The head is the Worker's**: `/hvac`, `/roofing` are in `run_worker_first`
-  and `lib/industryHead.ts` rewrites title, description, canonical, og: and
-  adds JSON-LD — only on our own hosts (`speaksAsUs`), never a reseller's
-  domain or free subdomain. `lib/industryPages.ts` is the shared metadata (the
-  app imports it, so it must stay free of Worker-only types). `/sitemap.xml`
-  and `/robots.txt` are written by the Worker on protectedcentral.com only.
-- **Routing**: App.tsx renders the page before every other tree, signed in or
-  not, on our hosts and not on white-label ones — so it can be read on the
-  testing site too.
+- **Trades** (`Site/IndustryPage.tsx` from `Site/industries.ts`) sell the
+  **growth service**, not the software plans: hero → problems → the service
+  and its steps → lead-to-revenue stages (with what "estimated", "quoted",
+  "invoiced" and "collected" mean — only collected counts) → the real screens
+  (FeatureStage + reels.ts, a sample workspace, said so) → workflows → what it
+  does / does not do → `GrowthPricing` → FAQ (`ind.faq` + `growthFaq()`) →
+  "Prefer to write?" (the Custom `EnquiryForm`, `[HVAC page] …`) → closing
+  call; "Start the software free" is a quiet link to `/signup?industry=<slug>`.
+- **Medical billing** (`Site/MedicalBillingPage.tsx` from
+  `Site/medicalBilling.ts`): its own sections, mint accent, no screens (there
+  is no RCM sample to photograph), **no figure of any kind**, no "HIPAA
+  compliant/certified", no testimonials; priced after an assessment.
+- **Prices are `worker/src/lib/offers.ts`** — `TRADE_GROWTH_OFFER` ($300 setup,
+  $87/month, 500 bps of eligible attributed collections; ad budget and
+  approved third-party charges separate) and `MEDICAL_BILLING_OFFER` (no
+  figure). Pages, the home page's `ServiceOffers` and the structured data all
+  read it; never type a figure into a page. `feeOn()` is the fee arithmetic
+  (integer cents, half-up once). The software plans stay in allowances.ts and
+  on the home page under "Software plans".
+- **Every booking button is `strategyCallHref(site)`** (`services/strategyCall.ts`):
+  `/book/strategy-call?src=<site>` plus the visit's UTM tags and click ids,
+  remembered on arrival (`rememberArrival`). `BookCall` uses the microsite's
+  own words (`bookLabel`).
+- **The head is the Worker's**: the three paths are in `run_worker_first` and
+  `lib/industryHead.ts` rewrites title, description, canonical, og: and adds
+  JSON-LD (a `Service`; the trades carry the two fixed prices as Offers and the
+  percentage in words; medical carries none) — only on our own hosts
+  (`speaksAsUs`). `/sitemap.xml` lists all three and `/book/strategy-call`.
+- **Routing**: App.tsx renders a microsite before every other tree, signed in
+  or not, on our hosts and not on white-label ones.
+- **`.dc p { margin: 0 }` out-ranks a single class** — a centred paragraph on
+  these pages needs `.dc .x { margin: … auto }`, or it sits left.
 - **Screens are the sample agency, not a trade.** Trade-specific pictures need
-  an HVAC/roofing seed and recipes in `scripts/site-reels.mts`; until then the
-  hero says the screens are a sample, not a real trade business's records.
+  an HVAC/roofing seed and recipes in `scripts/site-reels.mts`.

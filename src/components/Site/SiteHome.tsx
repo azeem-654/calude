@@ -30,7 +30,7 @@ import {
   BarChart3, Building2, Lock, Palette, ShieldCheck, Mail, MessageSquare,
   Image as ImageIcon, FileText, LayoutTemplate, Wand2, Globe, Search, Rss,
   PlaySquare, Mic, GitBranch, PenLine, Bot, ClipboardList, Calendar, KeyRound, Eye,
-  Workflow, CalendarCheck, Thermometer, Home,
+  Workflow, CalendarCheck, Thermometer, Home, Stethoscope,
 } from 'lucide-react';
 import { LogoMark } from '../shared/Logo';
 import { appHref, isCrossOrigin } from '../../services/hosts';
@@ -51,6 +51,8 @@ import { useFilmStep } from './useFilmStep';
 import SolutionsSection, { type FindRequest } from './SolutionsSection';
 import FaqSection from './FaqSection';
 import PricingSection from './PricingSection';
+import ServiceOffers from './ServiceOffers';
+import { rememberArrival, strategyCallHref } from '../../services/strategyCall';
 import { track } from '../../services/funnel';
 import { motionReduced } from '../../services/motion';
 import { INDUSTRY_PAGES } from '../../../worker/src/lib/industryPages';
@@ -339,6 +341,8 @@ function ChapterBlock({ c, onFind }: { c: Chapter; onFind: () => void }) {
 /* ── The page ────────────────────────────────────────────────────────────── */
 
 export default function SiteHome() {
+  /* Campaign tags this visit arrived with, for the strategy call's source. */
+  useEffect(() => { rememberArrival(); }, []);
   const [stuck, setStuck] = useState(false);
   const [tab, setTab] = useState(0);
 
@@ -466,6 +470,7 @@ export default function SiteHome() {
           <a href="#autopilot">How it works</a>
           {featureReady('prospects') && <a href="#prospecting">AI Prospecting</a>}
           <a href="#scale">Agencies</a>
+          <a href="#services" className="ind-nav-link">Services</a>
           <a href="#pricing">Pricing</a>
           <a href="#faq">FAQ</a>
           <a href="/security">Security</a>
@@ -567,7 +572,7 @@ export default function SiteHome() {
         <div className="dc-chapter-head">
           <span className="dc-eyebrow">Industries</span>
           <h2>Written for <em>your trade.</em></h2>
-          <p>The same platform, explained with the enquiries, estimates and seasons of the business you run.</p>
+          <p>A site of its own for each industry we serve — written with the enquiries, estimates, claims and seasons of the business you run.</p>
         </div>
         <div className="ind-strip-cards">
           <a className="ind-strip-card" href={INDUSTRY_PAGES.hvac.path}>
@@ -581,6 +586,12 @@ export default function SiteHome() {
             <b>Roofing</b>
             <span>Inquiries, inspections and estimate follow-up for roofing contractors.</span>
             <i>See the roofing page <ArrowRight size={13} /></i>
+          </a>
+          <a className="ind-strip-card" href={INDUSTRY_PAGES['medical-billing'].path}>
+            <span className="dc-tile-icon"><Stethoscope size={16} /></span>
+            <b>Medical billing</b>
+            <span>Claims, denials, payments and A/R followed through for medical practices.</span>
+            <i>See the medical billing page <ArrowRight size={13} /></i>
           </a>
         </div>
       </section>
@@ -731,8 +742,9 @@ export default function SiteHome() {
         </div>
       </section>
 
-      {/* ── Pricing ── */}
-      <PricingSection />
+      {/* ── Services, then the software plans: two different things, side by side but never merged ── */}
+      <ServiceOffers />
+      <PricingSection eyebrow="Software plans" />
 
       {/* ── Questions ── */}
       <FaqSection />
@@ -747,6 +759,7 @@ export default function SiteHome() {
             Start free <ArrowUpRight size={16} />
           </a>
           <button type="button" className="dc-btn dc-btn-outline-light dc-btn-lg" onClick={() => openWizard()}>Find my solution</button>
+          <a className="dc-btn dc-btn-outline-light dc-btn-lg" href={strategyCallHref('main')}>Book a Strategy Call</a>
         </div>
         <div className="dc-cta-shot reveal" ref={ctaShot}>
           <ShotReel shots={REELS.dashboard} label="The product" chrome={false} />
@@ -779,6 +792,8 @@ export default function SiteHome() {
             <h5>Industries</h5>
             <a href={INDUSTRY_PAGES.hvac.path}>HVAC</a>
             <a href={INDUSTRY_PAGES.roofing.path}>Roofing</a>
+            <a href={INDUSTRY_PAGES['medical-billing'].path}>Medical billing</a>
+            <a href={strategyCallHref('main')}>Book a Strategy Call</a>
           </div>
           <div>
             <h5>Account</h5>

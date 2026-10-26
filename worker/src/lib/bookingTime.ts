@@ -314,6 +314,9 @@ export function slugProblem(slug: string): string | null {
   if (slug.length > 64) return 'Keep it to 64 characters.';
   if (!SLUG_RE.test(slug)) return 'Use lowercase letters, numbers and hyphens — not at the start or end.';
   if (/--/.test(slug)) return 'One hyphen at a time.';
+  /* The operator's own call (lib/strategyCall.ts) is routed at /book/strategy-call
+     before any workspace's page, so a workspace given it would never be seen. */
+  if (slug === 'strategy-call') return 'That address is reserved. Pick another.';
   return null;
 }
 

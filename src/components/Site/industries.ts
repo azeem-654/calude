@@ -26,9 +26,10 @@ import type { ReactNode } from 'react';
 import {
   Inbox, Clock, CalendarClock, History, BarChart3, ClipboardList, Search,
   Users, Calendar, Mail, Workflow, Mic, ShieldCheck, Send, Eye, PenLine,
-  Thermometer, CloudRain, Building2, MessageSquare, Home,
+  Thermometer, CloudRain, Building2, MessageSquare, Home, PhoneCall, FileCheck2, Handshake, Receipt,
 } from 'lucide-react';
-import type { IndustrySlug } from '../../../worker/src/lib/industryPages';
+import type { TradeSlug } from '../../../worker/src/lib/industryPages';
+import type { MicrositeConfig } from './micrositeContext';
 
 type Icon = (p: { size?: number }) => ReactNode;
 
@@ -52,7 +53,15 @@ export interface ModuleStage {
 }
 
 export interface Industry {
-  slug: IndustrySlug;
+  slug: TradeSlug;
+  /** The microsite's frame: its own nav, its own home, its booking words. */
+  site: MicrositeConfig;
+  /** The growth service, introduced in the trade's words. */
+  service: { lead: string; emph: string; body: string };
+  /** How the service runs, first call to monthly review. */
+  serviceSteps: { icon: Icon; title: string; body: string }[];
+  /** The journey every opportunity is tracked through, in the trade's words. */
+  journey: string[];
   icon: Icon;
   /** Shown in the eyebrow: "For HVAC businesses". */
   forWhom: string;
@@ -95,15 +104,42 @@ const LEADS_FEATURES = (enquiry: string) => [
   { icon: Calendar, title: 'Calendar & booking page', module: 'Calendar', body: 'A public booking page in your own hours, the week on one grid, and a reminder workflow before each appointment.' },
 ];
 
-export const INDUSTRIES: Record<IndustrySlug, Industry> = {
+/* Both trade microsites have the same sections, so the same menu. */
+const SITE_NAV = [
+  { href: '#problems', label: 'Problems' },
+  { href: '#service', label: 'The service' },
+  { href: '#tracking', label: 'Lead to revenue' },
+  { href: '#pricing', label: 'Pricing' },
+  { href: '#faq', label: 'FAQ' },
+];
+
+export const INDUSTRIES: Record<TradeSlug, Industry> = {
   hvac: {
     slug: 'hvac',
+    site: {
+      id: 'hvac', root: '/hvac', tag: 'HVAC', nav: SITE_NAV, signIn: true,
+      bookLabel: 'Request an HVAC Growth Consultation', bookShort: 'Book a consultation',
+      footerLine: 'Growth and follow-up for heating and cooling businesses.',
+    },
+    service: {
+      lead: 'A growth service,', emph: 'not just software.',
+      body: 'We set up an HVAC pipeline, capture and source every inquiry, run the agreed campaigns and outbound prospecting, qualify what comes in and hand qualified opportunities to your team — then track each one through estimate, job, invoice and payment, so both of us can see what the service actually brought in.',
+    },
+    serviceSteps: [
+      { icon: PhoneCall, title: '1. Strategy call', body: 'How inquiries reach you, what estimates are open, your service area and the work you want more of.' },
+      { icon: FileCheck2, title: '2. Agreement and limits', body: 'Scope, monthly limits on calls and campaigns, the attribution rules and what the performance fee excludes — in writing, before any work.' },
+      { icon: Workflow, title: '3. Setup', body: 'Your pipeline, lead capture with sources, estimate follow-up and the agreed campaigns, built and checked with you.' },
+      { icon: Search, title: '4. Prospecting and campaigns', body: 'Commercial prospecting and outbound calls by people, to approved scripts, screened against do-not-call lists and inside calling hours.' },
+      { icon: Handshake, title: '5. Qualified hand-off', body: 'Qualified opportunities go to your team with their history. You quote, do the work and invoice, as you do now.' },
+      { icon: Receipt, title: '6. Confirm and review', body: 'You confirm quotes, completed jobs and payments; each month we review the report and the fee with you before it is invoiced.' },
+    ],
+    journey: ['Inquiry received', 'Qualified', 'Opportunity', 'Visit booked', 'Estimate sent', 'Estimate accepted', 'Job won', 'Job in progress', 'Job completed', 'Final amount confirmed', 'Invoice issued', 'Payment received'],
     icon: Thermometer,
     forWhom: 'For HVAC businesses',
     hero: {
       lead: 'Every estimate followed up',
       emph: 'Every season planned ahead',
-      sub: 'Protected Central keeps your enquiries, estimates and past customers in one pipeline, then builds the follow-up that keeps them moving — estimate chasers, check-in campaigns before the busy season, outreach to commercial accounts. You read every step before it runs, and it sends from your own mailbox.',
+      sub: 'A growth and automation service for heating and cooling businesses: an HVAC pipeline set up for you, every inquiry captured with its source, agreed campaigns and outbound prospecting, qualified opportunities handed to your team — and every estimate tracked through to the job, the invoice and the payment.',
     },
     heroShots: ['pipe-board', 'hero-flow', 'contacts-profile'],
     problemsHead: {
@@ -217,32 +253,50 @@ export const INDUSTRIES: Record<IndustrySlug, Industry> = {
       'It does not guarantee leads or revenue. It makes sure the enquiries and estimates you have are followed up.',
       'It does not replace your office team. It does the repeated follow-up so they can do the rest.',
     ],
-    pricingIntro: 'One subscription for the CRM, pipelines, follow-up, campaigns and AI Autopilot — the same plans for every trade. 7 days free, and no card is asked for until you choose one.',
+    pricingIntro: 'The setup, the monthly platform and service fee, and a performance fee on eligible collections from jobs the service brought in. Your advertising budget and any approved third-party charges are yours, paid directly and never marked up.',
     faq: [
       { q: 'Does it answer our phones or take calls for us?', a: 'No. Protected Central has no phone system and does not answer calls. Texts go out through an SMS provider you connect. The Missed Call Text Back workflow can text a caller back, but only once something tags them “missed-call” — your own phone system or somebody on your team.' },
       { q: 'Can it schedule or dispatch technicians?', a: 'No. It has a calendar, a public booking page for appointments people book themselves, and reminders before them. It does not route technicians, plan jobs or manage parts — keep your field-service software for that.' },
-      { q: 'Does it connect to our field-service or job-management software?', a: 'Not directly today. Contacts come in through forms, CSV imports (duplicates merged) or by hand. If you need a connection to something you already use, a Custom plan includes integrations scoped and quoted for you.' },
+      { q: 'Does it connect to our field-service or job-management software?', a: 'Not directly today. Contacts come in through forms, CSV imports (duplicates merged) or by hand. If you need a connection to something you already use, raise it on the strategy call — it is scoped and quoted separately, never assumed.' },
       { q: 'Will it email or text customers without our say-so?', a: 'No. Anything that emails or texts starts as a draft, and new prospects are proposed in batches that wait for approval. What each business workspace may do on its own is a setting you can see and change.' },
       { q: 'Where do new commercial leads come from?', a: 'AI Prospecting searches public business directories and the businesses’ own websites, and checks every address before it is used. It finds businesses — property managers, offices, restaurants — not homeowners. How many it finds a month depends on your plan.' },
-      { q: 'Who sets it up?', a: 'You do, with AI Autopilot building the workflows from your description of the business. Every plan includes in-app help by chat, tickets and screen sharing. Done-for-you setup, an onboarding call and a named contact come with a Custom plan.' },
-      { q: 'Is there a free trial?', a: 'Yes — 7 days, and no card is asked for. When it ends the AI and the automations stop until you choose a plan; your records stay in your workspace and can be exported from Settings.' },
-      { q: 'Do you promise more jobs or revenue?', a: 'No. It makes sure the enquiries and estimates you already have are answered and followed up, and keeps prospecting going. What that brings in depends on your market, your prices and how your team answers.' },
+      { q: 'Who sets it up?', a: 'We do, as part of the setup fee: your pipeline, lead capture, the agreed campaigns and the tracking. You check it with us before anything runs. You keep a login to see everything yourself.' },
+      { q: 'Who makes the outbound calls?', a: 'People, working to a script you have approved, inside calling hours, screened against do-not-call lists, and within the monthly limit in your agreement. Nothing places automated, prerecorded or AI-voiced calls. Calling starts only after the scope and the compliance check are agreed.' },
+      { q: 'Do you promise more jobs or revenue?', a: 'No. We cannot promise leads, jobs or revenue. The service makes sure inquiries and estimates are captured, followed up and tracked, and that prospecting keeps going. What that brings in depends on your market, your prices and how your team answers.' },
     ],
     talk: {
       body: 'Tell us how enquiries reach you now, how estimates are followed up, and what you would like to change. A person reads every message and replies by email.',
       placeholder: 'How many technicians, how enquiries arrive, what happens after an estimate goes out…',
     },
-    closing: { title: 'Every enquiry answered.\nEvery estimate followed up.', body: 'Free for 7 days, no card needed. Nothing sends until you approve it.' },
+    closing: { title: 'Every enquiry answered.\nEvery estimate followed up.', body: 'Start with a strategy call about your business. No obligation, and nothing runs until you have agreed it.' },
   },
 
   roofing: {
     slug: 'roofing',
+    site: {
+      id: 'roofing', root: '/roofing', tag: 'Roofing', nav: SITE_NAV, signIn: true,
+      bookLabel: 'Request a Roofing Growth Consultation', bookShort: 'Book a consultation',
+      footerLine: 'Inquiries, inspections and estimates, followed through for roofing contractors.',
+    },
+    service: {
+      lead: 'Inspections to collected payments,', emph: 'run with you.',
+      body: 'We set up a roofing pipeline, capture homeowner and property-manager inquiries with their source, run the agreed campaigns and commercial prospecting, qualify what comes in and pass qualified opportunities to your team — then follow every inspection and estimate through to the signed job, the final invoice and the payment.',
+    },
+    serviceSteps: [
+      { icon: PhoneCall, title: '1. Strategy call', body: 'Residential or commercial, how inquiries arrive, what happens after an inspection and where estimates stall.' },
+      { icon: FileCheck2, title: '2. Agreement and limits', body: 'Scope, monthly limits, attribution rules and exclusions — such as insurance-claim work you already had — agreed in writing first.' },
+      { icon: Workflow, title: '3. Setup', body: 'Your roofing pipeline, inquiry capture with sources, inspection confirmations and estimate follow-up, built and checked with you.' },
+      { icon: Search, title: '4. Prospecting and campaigns', body: 'Property managers and commercial owners found and called by people, to approved scripts, screened against do-not-call lists and inside calling hours.' },
+      { icon: Handshake, title: '5. Qualified hand-off', body: 'Qualified opportunities reach your estimator with their history. You inspect, quote and do the work, as you do now.' },
+      { icon: Receipt, title: '6. Confirm and review', body: 'You confirm accepted estimates, completed jobs and payments; each month we go through the report and the fee with you before it is invoiced.' },
+    ],
+    journey: ['Inquiry received', 'Qualified', 'Opportunity', 'Inspection booked', 'Estimate sent', 'Estimate accepted', 'Contract won', 'Job in progress', 'Job completed', 'Final amount confirmed', 'Invoice issued', 'Payment received'],
     icon: Home,
     forWhom: 'For roofing contractors',
     hero: {
       lead: 'Every inspection followed up',
       emph: 'Every estimate kept moving',
-      sub: 'Protected Central keeps roofing inquiries, inspections and estimates in one pipeline, and builds the follow-up homeowners and property managers actually receive — inspection confirmations, estimate chasers, check-ins with leads that went quiet after the rush. You read every step before it runs, and it sends from your own mailbox.',
+      sub: 'A growth and automation service for roofing contractors: a roofing pipeline set up for you, homeowner and property-manager inquiries captured with their source, agreed campaigns and commercial prospecting, and every inspection and estimate followed through to the signed job and the collected payment.',
     },
     heroShots: ['pipe-board', 'hero-flow', 'cal-week'],
     problemsHead: {
@@ -356,22 +410,22 @@ export const INDUSTRIES: Record<IndustrySlug, Industry> = {
       'It does not connect to roofing or job-management software today. Contacts come in by form, CSV import or by hand.',
       'It does not guarantee leads or revenue, and it does not replace your office team — it does the repeated follow-up.',
     ],
-    pricingIntro: 'One subscription for the CRM, pipelines, follow-up, campaigns and AI Autopilot — the same plans for every trade. 7 days free, and no card is asked for until you choose one.',
+    pricingIntro: 'The setup, the monthly platform and service fee, and a performance fee on eligible collections from roofing jobs the service brought in. Your advertising budget and any approved third-party charges are paid by you directly and never marked up.',
     faq: [
       { q: 'Can it find homes damaged in a storm?', a: 'No. It does not track storms and does not find individual homeowners. AI Prospecting searches public business directories, so it suits commercial work — property managers, facilities firms, commercial building owners. Homeowners reach you through your forms, your booking page and the lists you are allowed to contact.' },
       { q: 'Does it answer our phones or take calls for us?', a: 'No. Protected Central has no phone system and does not answer calls. Texts go out through an SMS provider you connect. The Missed Call Text Back workflow can text a caller back, but only once something tags them “missed-call” — your own phone system or somebody on your team.' },
       { q: 'Can it schedule crews or manage jobs?', a: 'No. It has a calendar, a public booking page for inspections people book themselves, and reminders before them. It does not schedule crews, measure roofs, order materials or handle insurance claims.' },
       { q: 'Can homeowners and property managers get different follow-up?', a: 'Yes. Tag each contact, or keep separate pipelines, and give each audience its own sequence. Every workflow starts from the tag or stage you choose, and every message is yours to edit.' },
-      { q: 'Does it connect to our roofing or job-management software?', a: 'Not directly today. Contacts come in through forms, CSV imports (duplicates merged) or by hand. If you need a connection to something you already use, a Custom plan includes integrations scoped and quoted for you.' },
+      { q: 'Does it connect to our roofing or job-management software?', a: 'Not directly today. Contacts come in through forms, CSV imports (duplicates merged) or by hand. If you need a connection to something you already use, raise it on the strategy call — it is scoped and quoted separately, never assumed.' },
       { q: 'Will it email or text anybody without our say-so?', a: 'No. Anything that emails or texts starts as a draft, and new prospects are proposed in batches that wait for approval. What each business workspace may do on its own is a setting you can see and change.' },
-      { q: 'Who sets it up?', a: 'You do, with AI Autopilot building the workflows from your description of the business. Every plan includes in-app help by chat, tickets and screen sharing. Done-for-you setup, an onboarding call and a named contact come with a Custom plan.' },
-      { q: 'Is there a free trial?', a: 'Yes — 7 days, and no card is asked for. When it ends the AI and the automations stop until you choose a plan; your records stay in your workspace and can be exported from Settings.' },
-      { q: 'Do you promise more jobs or revenue?', a: 'No. It makes sure the inquiries and estimates you already have are answered and followed up, and keeps prospecting going. What that brings in depends on your market, your prices and how your team answers.' },
+      { q: 'Who sets it up?', a: 'We do, as part of the setup fee: the pipeline, inquiry capture, inspection and estimate follow-up, the agreed campaigns and the tracking. You check it with us before anything runs, and keep a login to see everything.' },
+      { q: 'Does insurance or storm work count toward the fee?', a: 'Only what your agreement says counts. Work you already had, existing customers and jobs from your other sources are excluded, and how insurance-funded jobs, supplements and deductibles are treated is written into the agreement before work starts.' },
+      { q: 'Do you promise more jobs or revenue?', a: 'No. We cannot promise leads, jobs, collections or revenue. The service makes sure inquiries, inspections and estimates are captured, followed up and tracked, and that prospecting keeps going. What that brings in depends on your market, your prices and how your team answers.' },
     ],
     talk: {
       body: 'Tell us how inquiries reach you now, what happens after an inspection, and what you would like to change. A person reads every message and replies by email.',
       placeholder: 'Residential or commercial, how inquiries arrive, what happens after an estimate goes out…',
     },
-    closing: { title: 'Every inquiry answered.\nEvery estimate followed up.', body: 'Free for 7 days, no card needed. Nothing sends until you approve it.' },
+    closing: { title: 'Every inquiry answered.\nEvery estimate followed up.', body: 'Start with a consultation about your roofing business. No obligation, and nothing runs until you have agreed it.' },
   },
 };

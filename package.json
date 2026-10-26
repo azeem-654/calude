@@ -22,6 +22,8 @@
     "test:domains": "npx --yes tsx worker/test/domains.test.mts",
     "test:hosts": "npx --yes tsx test/hosts.test.mts",
     "test:industry": "npx --yes tsx test/industryPages.test.mts",
+    "test:strategycall": "npx --yes tsx test/strategyCall.test.mts",
+    "test:strategycalle2e": "node test/strategyCall.e2e.mjs",
     "test:plan": "npx --yes tsx test/sendingPlan.test.mts",
     "test:launch": "npx --yes tsx test/launchPlan.test.mts",
     "test:checkout": "npx --yes tsx worker/test/checkout.test.mts",

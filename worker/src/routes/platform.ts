@@ -31,6 +31,7 @@ import { googleCreds } from '../lib/googleAuth';
 import { installPlacesKey, placesUsage } from '../lib/googlePlaces';
 import { PROVIDERS as VOICE_PROVIDERS } from '../lib/voice';
 import { systemMailStatus } from './systemMail';
+import { loadSettings as loadStrategySettings } from './strategyCall';
 
 interface Req { token?: string; action?: string }
 
@@ -347,6 +348,17 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
       detail: voices ? `${voices} provider${voices === 1 ? '' : 's'} built in.` : 'No voice provider is built into this app yet; voice agents say so. Nothing to set.',
       checkedAt: null, lastError: '',
       where: { label: 'docs/OWNER-CHECKLIST.md, section 18' },
+    });
+    const strategy = await loadStrategySettings(env).catch(() => null);
+    services.push({
+      id: 'strategy_call', name: 'Strategy Call Booking',
+      powers: 'The "Book a strategy call" buttons on the home page and the HVAC, roofing and medical billing sites',
+      state: strategy?.enabled ? 'ok' : 'off',
+      detail: strategy?.enabled
+        ? `Taking bookings at /book/strategy-call, ${strategy.durations.join(' or ')} minutes, in ${strategy.timezone}.`
+        : 'Switched off: visitors who press a booking button are told bookings are not open and offered the written enquiry form.',
+      checkedAt: null, lastError: '',
+      where: { label: 'below' },
     });
     const wrap = !!(env.CREDENTIAL_WRAP_KEY ?? '').trim();
     services.push({

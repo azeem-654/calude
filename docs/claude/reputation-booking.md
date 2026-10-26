@@ -141,3 +141,43 @@ refused if Intl does not know it).
   Bangkok — 11 hours apart in the slots, the booking at the right UTC instant,
   off-grid times refused, uploads, the address across workspaces, the editor,
   390/1280. `test:security` covers the media route (testimonial photos too) and the website read across tenants (and its fence). Local `wrangler dev`'s proxy can exit when a browser closes mid-request — run it in a restart loop.
+
+## The strategy call — the operator's own booking page
+
+`/book/strategy-call` (`StrategyCall/StrategyCallPage.tsx`) is where every
+"Book a strategy call / consultation / assessment" button on the four sites
+goes. It is **the install's, not a workspace's**: settings in
+`crm_strategy_settings` (one row), bookings in `crm_strategy_calls`
+(migration 0076), API `/api/strategy-call.php` (`routes/strategyCall.ts`),
+rules in `lib/strategyCall.ts` (pure, on top of `bookingTime.ts`). The owner
+sets it in **Settings → Platform services → Strategy Call Booking**
+(`Settings/StrategyCallSettings.tsx`); every owner action checks
+`role = 'agency' AND accountId IS NULL` on the server. The slug
+`strategy-call` is reserved in `slugProblem`, and App.tsx routes it before any
+workspace's `/book/<slug>` (our hosts only).
+
+- **Off by default** (`DEFAULT_SETTINGS.enabled = false`); switched off, the
+  page says bookings are not open and links to the source site's own form.
+- Several windows a day, closed dates, special hours per date, lengths
+  15/30/45/60, notice, horizon, buffers, daily limit, up to six questions.
+  `cleanSettings` refuses box by box (`strategy.*` fields).
+- **No double booking**: the INSERT is one statement that refuses an overlap
+  (with buffers) and a full day; a partial unique index refuses two confirmed
+  calls at one instant; `idem_key` (the browser's submit id) turns a retried
+  or double-clicked submit into the booking it already made (`replayed`).
+- **The guest's link** is `?manage=<id>.<key>`; only the key's SHA-256 is
+  stored, a wrong id or key answers the same, and the guest view carries no
+  note or source. The owner's private note never leaves the owner's list.
+- **Mail** goes through `installMailbox()` + `deliver()`; each booking keeps
+  `notify` = `sent` | `failed: …` | `not_configured` | `off`, and the page
+  promises an email only when the server says one was accepted. Reminders
+  are a cron pass after the trial mail (`strategyReminders`). **No calendar
+  or video integration** — the panel says so; a fixed https room link is sent
+  as typed.
+- The source site, UTM tags, click ids and referrer are kept per booking
+  (`cleanSource`) for the owner's list.
+- `npm run test:strategycall` (pure) and `npm run test:strategycalle2e`
+  (self-contained: wrangler :8871, fresh D1, needs a `VITE_BASE=/` build):
+  owner-only access, field refusals with no dead end, idempotent submits, a
+  five-way race, daily limit, closed dates, guest move/cancel, the sites'
+  links and isolation at 1280/390. `test:security` covers the route by id.

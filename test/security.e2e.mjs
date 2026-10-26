@@ -144,6 +144,20 @@ const fSave = await api('finders.php', { action: 'save', token: B.token, account
 check("B cannot start a finder on A's project from B's workspace", !fSave.ok, JSON.stringify(fSave.data).slice(0, 120));
 const fRec = await api('finders.php', { action: 'record', token: B.token, accountId: B.acct, projectId: pj.data.id, rows: [{ ref: 'x', name: 'x' }] });
 check("B cannot add prospects to A's project", !fRec.ok, JSON.stringify(fRec.data).slice(0, 120));
+/* The owner's strategy call (routes/strategyCall.ts) is the install's, not a
+   workspace's: a customer reads none of it and changes none of it by id. */
+const scList = await api('strategy-call.php', { action: 'list', token: B.token, view: 'upcoming' });
+check("B cannot list the owner's strategy calls", scList.status === 403 && !scList.ok, JSON.stringify(scList.data).slice(0, 120));
+const scSet = await api('strategy-call.php', { action: 'settings_save', token: B.token, settings: { enabled: true, timezone: 'UTC', notifyEmail: 'b@evil.example' } });
+check("B cannot change the strategy call settings", scSet.status === 403 && !scSet.ok, JSON.stringify(scSet.data).slice(0, 120));
+const scGet = await api('strategy-call.php', { action: 'settings_get', token: B.token });
+check("B cannot read the strategy call settings", scGet.status === 403 && !scGet.ok, JSON.stringify(scGet.data).slice(0, 120));
+for (const act of ['note', 'cancel', 'reschedule', 'set_status']) {
+  const r = await api('strategy-call.php', { action: act, token: B.token, id: 'sc_anything', note: 'x', status: 'completed', ownerDate: '2030-01-07', ownerTime: '09:00' });
+  check(`B cannot ${act} a strategy call by id`, r.status === 403 && !r.ok, JSON.stringify(r.data).slice(0, 120));
+}
+const scGuest = await api('strategy-call.php', { action: 'manage_get', id: 'sc_anything', key: 'guess' });
+check('a guessed strategy-call id and key show nothing', !scGuest.ok && !scGuest.data.booking, JSON.stringify(scGuest.data).slice(0, 120));
 const repS = await api('reputation.php', { action: 'status', token: B.token, accountId: A.acct });
 check("B cannot read A's review source", !repS.ok, JSON.stringify(repS.data).slice(0, 120));
 const repR = await api('reputation.php', { action: 'reviews', token: B.token, accountId: A.acct });

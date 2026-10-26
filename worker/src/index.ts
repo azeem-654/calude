@@ -75,6 +75,7 @@ import { handleTrack } from './routes/track';
 import { handleUnsubscribe } from './routes/unsubscribe';
 import { handleBooking } from './routes/booking';
 import { handleBookingMedia } from './routes/bookingMedia';
+import { handleStrategyCall, strategyReminders } from './routes/strategyCall';
 import { handleYtThumb, handleImgProxy } from './routes/proxies';
 import { handleStripeConfig, handleStripeCheckout, handleStripePortal, handleStripeWebhook } from './routes/stripe';
 import {
@@ -208,6 +209,8 @@ const ROUTES: Record<string, Handler> = {
   '/api/booking.php': handleBooking,
   /* The booking page's photo, logo and short clip — public by random key. */
   '/api/booking-media.php': handleBookingMedia,
+  /* The install owner's own strategy call — public booking, owner-only settings. */
+  '/api/strategy-call.php': handleStrategyCall,
   '/api/deliverability.php': handleDeliverability,
   '/api/placement.php': handlePlacement,
   '/api/blog-publish.php': handleBlogPublish,
@@ -460,6 +463,11 @@ export default {
        * Autopilot queue is. Both gate themselves (every half hour, once a day).
        */
       const trialMail = await runTrialMail(env);
+
+      /* Reminders for the owner's own strategy calls — a person is waiting on
+         this one, so it goes with the owner's other mail; it never throws into
+         the passes after it. */
+      await strategyReminders(env).catch(() => 0);
 
       /*
        * Telling somebody an engagement event happened.
