@@ -64,8 +64,11 @@ export default function EngageTickets({ tickets, onChange }: { tickets: Ticket[]
   }
 
   return (
-    <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'minmax(0, 340px) minmax(0, 1fr)', alignItems: 'start' }}>
-      <div style={{ ...card, overflow: 'hidden', maxHeight: '70vh', overflowY: 'auto' }}>
+    /* Wraps rather than a fixed two-column grid: at phone width the 340px list
+       left the open ticket a column a few pixels wide. The ticket's grow far
+       outweighs the list's, so side by side the list stays near its 300px. */
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-start' }}>
+      <div style={{ ...card, flex: '1 1 300px', minWidth: 0, maxWidth: '100%', overflow: 'hidden', maxHeight: '70vh', overflowY: 'auto' }}>
         {tickets.map(t => (
           <button key={t.id} onClick={() => setOpenId(t.id)} style={{
             display: 'block', width: '100%', textAlign: 'left', padding: '12px 14px',
@@ -86,7 +89,7 @@ export default function EngageTickets({ tickets, onChange }: { tickets: Ticket[]
         ))}
       </div>
 
-      <div style={{ ...card, padding: 18, minHeight: 300 }}>
+      <div style={{ ...card, flex: '999 1 320px', minWidth: 0, padding: 18, minHeight: 300 }}>
         {!openId || !detail ? (
           <p style={{ fontSize: 13, color: MUTED, margin: 0 }}>Pick a ticket to work on it.</p>
         ) : (

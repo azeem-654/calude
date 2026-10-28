@@ -128,9 +128,16 @@ path check. `npm run test:industry` fails if a menu entry leaves the site;
   agency: `npx tsx scripts/industry-demos.mts` (after a `VITE_BASE=/` build)
   seeds a fresh D1 with an HVAC firm and a roofer set up as the growth
   service sets one up (the snapshot, template workflows, the Jobs & revenue
-  ledger through the real API) and the synthetic practice in the owner's own
-  workspace, then photographs `ind-*` into `public/site/reel/` (desktop, -sm,
-  -m) and writes `marketing/industry-films/focus.json`. The films are
+  ledger through the real API), an online store (`ind-ecom-*`, for
+  `<IndustryDemo slug="ecommerce" />`: the `ecommerce` snapshot installed by
+  the owner — `claim` only records the industry now — products and orders via
+  commerce.php, draft campaigns and posts, template workflows, tickets raised
+  through its own widget; **no marketplace, Stripe or SMS provider is
+  connected and the screens say so**) and the synthetic practice in the
+  owner's own workspace, then photographs `ind-*` into `public/site/reel/`
+  (desktop, -sm, -m; name files to take only those) and writes
+  `marketing/industry-films/focus.json`. `film` is optional: a demo without
+  one (e-commerce) shows no player and `make.mts` skips it. The films are
   `npx tsx marketing/industry-films/make.mts` (Piper `en_US-ryan-high`,
   `PIPER_MODEL=`; ffmpeg) from the same steps, so page and film cannot
   disagree. Every `solved` line and note says only what its screen shows —

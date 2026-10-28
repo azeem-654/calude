@@ -13,18 +13,24 @@
  *
  * ── What the pictures are ──
  *
- * Three sample workspaces on a fresh database: a heating and cooling firm and
+ * Four sample workspaces on a fresh database: a heating and cooling firm and
  * a roofer set up the way the growth service sets one up (the industry
  * snapshot's pipeline and fields, workflows from the template library, the
- * Jobs & revenue ledger written through the real API), and the synthetic
- * medical practice `synthetic_seed` loads, whose every screen says
+ * Jobs & revenue ledger written through the real API), an online store set up
+ * the way the e-commerce service sets one up (the `ecommerce` snapshot, its
+ * catalogue and orders, drafts, workflows and support tickets), and the
+ * synthetic medical practice `synthetic_seed` loads, whose every screen says
  * "Synthetic test data only". Every business, person and amount is invented;
  * the section says so above the first picture. Each `solved` line describes
  * only what is on its screen, never a result.
+ *
+ * The store is connected to no marketplace — none can be. Amazon, eBay and
+ * Walmart appear only as where a customer bought, written on the record, and
+ * in what a customer wrote in a ticket.
  */
 import type { ReelShot } from './reels';
 
-export type DemoSlug = 'hvac' | 'roofing' | 'medical-billing';
+export type DemoSlug = 'hvac' | 'roofing' | 'medical-billing' | 'ecommerce';
 
 export interface DemoStep {
   /** The problem, as the owner or practice manager would say it. */
@@ -48,7 +54,8 @@ export interface IndustryDemo {
   body: string;
   /** Said once, above the first picture. */
   sample: string;
-  film: { title: string; intro: string; outro: string };
+  /** The narrated film (marketing/industry-films). A demo without one shows its steps only; nothing reads a film that is not there. */
+  film?: { title: string; intro: string; outro: string };
   steps: DemoStep[];
 }
 
@@ -291,6 +298,108 @@ export const INDUSTRY_DEMOS: Record<DemoSlug, IndustryDemo> = {
           shot('ind-med-audit', 'The access log: who viewed or changed what, and when', 'The Access log tab: an append-only list of views and changes on the synthetic practice’s claims, each with who, what and when.', ['Every view and change recorded', 'Append-only — nobody can edit it', 'Ids and codes, never patient details']),
         ],
         say: ['A monthly PDF, slow replies, and no way to see who touched your claims.', 'The practice gets its own portal, with requests and answers in one place, and an access log of every view and change that nobody can edit.'],
+      },
+    ],
+  },
+
+  /* No film yet: the page shows the steps alone until one is made. */
+  ecommerce: {
+    slug: 'ecommerce',
+    eyebrow: 'See it working',
+    lead: 'Nine places an online store loses customers —',
+    emph: 'and the screen that handles each.',
+    body: 'A small outdoor-gear brand selling on its own shop and on marketplaces, set up the way we set yours up: the store-customer pipeline, the catalogue and orders, the launch email and posts as drafts, the store’s workflows and its support tickets. Each step is the problem first, then the real screen.',
+    sample: 'Screens from a sample store workspace with invented customers, products and orders — the running software, not a mock-up. No marketplace is connected: Amazon, eBay and Walmart appear only as where a customer bought.',
+    steps: [
+      {
+        pain: 'Products and orders in too many tabs',
+        problem: 'The catalogue lives in one place, the orders in another and the marketplace sales on a spreadsheet — so nobody is sure what sold, what is still unpaid and what came back.',
+        solved: 'The Online shop holds the catalogue — price, cost, stock, and whether each product is for sale or still a draft — and every order with its lines, total and status: pending, paid, fulfilled or refunded.',
+        module: 'Online shop',
+        shots: [
+          shot('ind-ecom-shop', 'Products: price, cost, stock — for sale or still a draft', 'The Online shop of a sample outdoor-gear store: six products, each with its price, what it costs, units in stock and category; five marked for sale and the new camp stove still a draft.', ['Price, cost and stock on every product', 'A new product stays a draft until it is ready', 'Collections, discount codes, delivery and tax below']),
+          shot('ind-ecom-orders', 'Orders: pending, paid, fulfilled or refunded', 'The Orders panel: six orders, each with the customer’s email, what they bought, the total and a status of pending, paid, fulfilled or refunded, under a note that no payment account is connected yet.', ['Every order with its lines and total', 'The status changed in place', 'It says so when no payment account is connected']),
+        ],
+        say: ['The catalogue is in one place, the orders in another, and nobody is sure what sold or what is still unpaid.', 'The online shop keeps the catalogue, with price, cost and stock, and every order with its status: pending, paid, fulfilled or refunded.'],
+      },
+      {
+        pain: 'Customers you cannot tell apart',
+        problem: 'A buyer from your own shop, one from Amazon and a wholesale enquiry look the same in an inbox, and nobody can say who bought once and who keeps coming back.',
+        solved: 'The e-commerce snapshot’s Store customers pipeline — New enquiry, Cart or quote, First order, Review asked, Repeat customer, Lapsed — and a customer list that keeps where each one came from, a marketplace order noted by hand.',
+        module: 'Pipeline',
+        shots: [
+          shot('ind-ecom-pipeline', 'Store customers: from first enquiry to repeat buyer', 'A deals board titled Store customers with columns New enquiry, Cart or quote, First order, Review asked, Repeat customer and Lapsed — win back, each card a customer with what they bought or asked about, its value and days in stage.', ['Stages installed by the e-commerce snapshot', 'Unpaid orders and group quotes kept apart', 'Days in stage on every card']),
+          shot('ind-ecom-contacts', 'Customers: where they came from, their stage and pipeline', 'The contacts list of the sample store: each customer with their source — shop checkout, a wholesale form, or an Amazon, eBay or Walmart order noted by hand — their stage, open deals and place in the pipeline.', ['Where each customer came from', 'Marketplace buyers noted by hand, not synced', 'Stage and pipeline on every row']),
+        ],
+        say: ['A shop buyer, an Amazon buyer and a wholesale enquiry all look the same in an inbox.', 'Every customer sits in a store pipeline, from first enquiry to repeat buyer, with where they came from kept on the record.'],
+      },
+      {
+        pain: 'A launch email nobody has time to write',
+        problem: 'The new product is ready, the people who asked to hear about it are waiting, and the email is still a note on somebody’s phone.',
+        solved: 'The launch email waits in Email campaigns as a draft for customers, its subject, preview line and message ready to read — and the screen says plainly that no mailbox can send yet.',
+        module: 'Email campaigns',
+        shots: [
+          shot('ind-ecom-campaigns', 'Email campaigns: the launch email, drafted', 'The Email campaigns screen with two draft campaigns — the camp stove launch and a restock note — nothing sent yet, under a notice that no mailbox can send until one is connected.', ['Drafts, nothing sent', 'It says so when no mailbox can send', 'Addressed to customers, not everybody']),
+          shot('ind-ecom-campaign', 'The launch email: subject, preview line and message', 'The camp stove launch campaign opened on its Content tab: the subject, the preview line and the message, signed by the store’s owner.', ['Read every word before it goes', 'Subject and preview line together', 'Marked Draft until it is activated']),
+        ],
+        say: ['The product is ready, and the launch email is still a note on somebody’s phone.', 'Here the launch email waits as a draft, ready to read, and the screen says plainly that no mailbox can send it yet.'],
+      },
+      {
+        pain: 'Launch posts that never get made',
+        problem: 'Everybody agrees the launch needs posts. Launch week arrives and nothing has been designed.',
+        solved: 'The launch and product posts are drafted in the Graphics Designer & Editor — for Instagram, Facebook, LinkedIn, YouTube and TikTok — one marked Ready to publish, the rest drafts, and none published.',
+        module: 'Graphics Designer & Editor',
+        shots: [shot('ind-ecom-social', 'Launch posts, drafted — none published', 'The Graphics Designer & Editor for the sample store: eight designs, none published or scheduled; the camp stove square post marked Ready to publish, and launch, product, restock and tip posts as drafts.', ['Designed ahead of launch week', 'Ready to publish, or still a draft — said on each', 'Published stays at zero until somebody posts'])],
+        say: ['Everybody agrees the launch needs posts, and launch week arrives with nothing designed.', 'Here the launch posts are drafted ahead, one marked ready to publish, and none published.'],
+      },
+      {
+        pain: 'Unpaid orders nobody chases',
+        problem: 'A card declines at checkout, the order sits unpaid, and nothing tells anybody — so the sale quietly disappears.',
+        solved: 'The store’s business workspace in AI Autopilot holds its seven workflows and the set-up still to do. Abandoned Cart Recovery starts when an order is tagged unpaid: wait an hour, assume it was the card, wait a day, ask once whether to hold it.',
+        module: 'AI Autopilot',
+        shots: [
+          shot('ind-ecom-workspace', 'The store’s business workspace: its aim, workflows and set-up', 'The sample store’s business workspace in AI Autopilot, opened on its Overview: the aim — launch the camp stove, recover unpaid orders, ask for reviews, bring buyers back — its seven workflows, and set-up steps still to tick, starting with connecting the mailbox.', ['One aim, seven workflows', 'Set-up steps shown until they are done', 'Revenue counted from paid orders only']),
+          shot('ind-ecom-cart', 'Abandoned Cart Recovery: two reminders, then it stops', 'The E-commerce Abandoned Cart Recovery workflow: when an order is tagged unpaid, wait an hour, email assuming it was the card, wait a day, ask once whether to hold it.', ['Starts when an order is tagged unpaid', 'Assumes the card failed, not the customer', 'Two messages, then it stops']),
+        ],
+        say: ['A card declines at checkout, the order sits unpaid, and nothing tells anybody.', 'The store’s business workspace runs Abandoned Cart Recovery: an hour later it assumes it was the card, and a day later asks once whether to hold the order.'],
+      },
+      {
+        pain: 'Reviews asked before the parcel arrives',
+        problem: 'A review request on the day of purchase is asked before anyone has an opinion — and one sent to an unhappy customer invites a bad review.',
+        solved: 'Post-Purchase Review thanks the buyer at once and asks how it went twelve days later; Unhappy Customer Recovery takes an unhappy customer off the review list and gives a person a task to ring them today.',
+        module: 'AI Autopilot',
+        shots: [shot('ind-ecom-reviews', 'Reviews asked once it has arrived; the unhappy go to a person', 'Workflows in the store’s business workspace: Post-Purchase Review, which thanks the buyer and asks twelve days later; Client Review Request, asked once the order is delivered; and Unhappy Customer Recovery, which stops review requests and sets a task to ring the customer.', ['Thanked now, asked once it has been used', 'An unhappy customer is never asked for a review', 'A task to ring them today'])],
+        say: ['A review asked the day of purchase comes before anyone has an opinion, and one sent to an unhappy customer invites a bad review.', 'Post-Purchase Review asks once the order has arrived, and Unhappy Customer Recovery hands an unhappy customer to a person instead.'],
+      },
+      {
+        pain: 'Texts nobody agreed to',
+        problem: 'A text costs money and cannot be recalled — and one sent to somebody who never asked for it is how a small brand gets reported.',
+        solved: 'The review request sends a single text, only after its email and a wait, then marks the customer as asked; and this business workspace is set so that sending texts asks first.',
+        module: 'AI Autopilot',
+        shots: [
+          shot('ind-ecom-sms', 'One text, after the email — then it stops', 'The Client Review Request workflow scrolled to its end: an email asking once, a four-day wait, one text, then the customer is marked as asked.', ['One text, after the email', 'Then it marks them asked and stops', 'Texts only where an SMS provider is connected']),
+          shot('ind-ecom-guardrails', 'Send texts: asks first', 'The business workspace settings: what AI Autopilot is allowed to do for the store — write workflows, switch them on, send email, send texts, book appointments, find prospects — with sending texts set to Asks first.', ['Texts set to ask first', 'Each permission per business workspace', 'Changes take effect on the next pass']),
+        ],
+        say: ['A text costs money, cannot be recalled, and sent to somebody who never asked, gets a small brand reported.', 'Here a review request sends one text, only after its email, and sending texts is set to ask first.'],
+      },
+      {
+        pain: '“Where is my order?” in five inboxes',
+        problem: 'Tracking questions, a dented mug and a marketplace return arrive by email, chat and DM, and the urgent one waits behind the rest.',
+        solved: 'Every request from the store’s help widget is a ticket with a reference and a status — open, in progress, waiting on customer, resolved — and internal notes the customer never sees; Ticket Triage sends urgent ones to a person and acknowledges the rest.',
+        module: 'Customer Engagement',
+        shots: [
+          shot('ind-ecom-tickets', 'Tickets: each with a reference, a status and notes', 'The Tickets tab: five tickets about a declined card, a dented mug, a sock size bought on Amazon, stalled tracking and a product question, each with its status; the Amazon one opened with an internal note that it is returned through Amazon.', ['Every request a ticket with a reference', 'Open, in progress, waiting, resolved', 'Internal notes the customer never sees']),
+          shot('ind-ecom-triage', 'Ticket Triage: urgent to a person, the rest acknowledged', 'The Customer Support Ticket Triage workflow: a support form submitted is tagged as a ticket; if urgent it goes straight to a senior with a task, otherwise it is acknowledged and a task is set to answer it.', ['Urgent goes straight to a person', 'Everyone else is told it has arrived', 'A task so nothing waits unanswered']),
+        ],
+        say: ['Tracking questions, damaged parcels and marketplace returns arrive everywhere, and the urgent one waits behind the rest.', 'Every request becomes a ticket with a status and private notes, and ticket triage sends the urgent ones straight to a person.'],
+      },
+      {
+        pain: 'One-time buyers who never come back',
+        problem: 'Most customers buy once. Nobody reminds them when the socks wear out, and last year’s buyers hear nothing until they have bought elsewhere.',
+        solved: 'Repeat Order Reminder writes once, sixty days after an order, with an easy way to stop; Cold Lead Re-activation sends something useful, then something new, then asks whether to stop.',
+        module: 'AI Autopilot',
+        shots: [shot('ind-ecom-repeat', 'Reminded once when it runs out; lapsed buyers written to, then left alone', 'Two workflows in the store’s business workspace: Repeat Order Reminder, which waits sixty days after an order and reminds once, and Cold Lead Re-activation, which sends a useful note, then news from the workshop, then asks whether to stop.', ['Reminded once, easy to stop', 'Useful first, then something new', 'Three messages, then it leaves them alone'])],
+        say: ['Most customers buy once, and nobody reminds them when they run out.', 'Repeat Order Reminder writes once when the order has plausibly run out, and re-activation writes to lapsed buyers three times, then leaves them alone.'],
       },
     ],
   },
