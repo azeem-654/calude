@@ -1,10 +1,11 @@
 /**
  * Photographs the industry sites' "See it working" screens from the real app:
- * an HVAC business, a roofing business and the synthetic medical practice.
+ * an HVAC business, a roofing business, an online store and the synthetic
+ * medical practice.
  *
  *   VITE_BASE=/ npm run build
- *   npx tsx scripts/industry-demos.mts             # every picture
- *   npx tsx scripts/industry-demos.mts hvac-jobs   # just the ones named
+ *   npx tsx scripts/industry-demos.mts                 # every picture
+ *   npx tsx scripts/industry-demos.mts ind-hvac-jobs   # just the files named (every workspace is still seeded)
  *   HOLD=1 npx tsx scripts/industry-demos.mts      # seed, then wait (for writing a recipe)
  *
  * Self-contained like site-reels.mts: its own `wrangler dev` (:8798) over a
@@ -228,6 +229,16 @@ const TRADES: Trade[] = [
 interface Account { slug: string; email: string; password: string; token: string; acct: string; business: string; projectId?: string }
 const accounts: Record<string, Account> = {};
 
+/**
+ * The snapshot, as it really reaches a customer: the sign-up records the
+ * industry they came from (`claim` installs nothing since 2026-10-28), and the
+ * install owner chooses and installs it — the only one who may.
+ */
+async function installSnapshot(a: Account, industry: string, snapshotId: string) {
+  await must(`${a.slug} claim`, post('/api/snapshots.php', { action: 'claim', token: a.token, industry }));
+  await must(`${a.slug} snapshot`, post('/api/snapshots.php', { action: 'install', token: T, accountId: a.acct, snapshotId }));
+}
+
 for (const t of TRADES) {
   const reg = await must(`${t.slug} sign-up`, post('/api/auth.php', { action: 'register', email: t.email, password: t.password, name: t.owner, businessName: t.business }));
   const a: Account = { slug: t.slug, email: t.email, password: t.password, token: reg.token, acct: reg.user.accountId, business: t.business };
@@ -237,7 +248,7 @@ for (const t of TRADES) {
   sql(`INSERT OR REPLACE INTO crm_plans (owner_email, plan_id, resell_limit, source, updated_at) VALUES ('${t.email}', 'growth', 0, 'manual', '${iso(0)}')`);
 
   /* The industry snapshot — the pipeline, its stages and the fields the service installs. */
-  await must(`${t.slug} snapshot`, post('/api/snapshots.php', { action: 'claim', token: a.token, industry: t.slug }));
+  await installSnapshot(a, t.slug, t.slug);
   const pipes = JSON.parse(sql(`SELECT v FROM crm_data WHERE account_id = '${a.acct}' AND k = 'crm_pipelines'`)[0]?.v ?? '[]');
   const pipe = pipes.find((p: { id: string }) => p.id === `snap-${t.slug}-pipeline`);
   if (!pipe) throw new Error(`${t.slug}: the snapshot pipeline is missing`);
@@ -327,6 +338,254 @@ for (const t of TRADES) {
   console.log(`seeded  ${t.business}`);
 }
 
+/* ── The online store ─────────────────────────────────────────────────────── */
+
+/*
+ * A small outdoor-gear brand selling on its own shop and on marketplaces, set
+ * up as the e-commerce service sets one up: the `ecommerce` snapshot (its
+ * customer pipeline and fields) installed by the owner, the store's workflows
+ * from the template library, its catalogue and orders through
+ * /api/commerce.php, support tickets raised through its own help widget, and
+ * the launch email and posts as drafts.
+ *
+ * What is NOT here, because it is not true: no marketplace is connected —
+ * Amazon, eBay and Walmart appear only as the "Where they bought" field on a
+ * customer and as words in a ticket. No Stripe account, so the shop says it
+ * cannot take payment and the orders were recorded by hand. No SMS provider,
+ * so Settings says "No SMS sender saved yet." No review is shown anywhere,
+ * because none exists.
+ */
+const STORE = {
+  slug: 'ecommerce', business: 'Larkspur Trail Co.', owner: 'Jess Romero', email: 'jess@larkspurtrail.example', password: 'Larkspur-capture-2026!',
+  domain: 'larkspurtrail.example', phone: '(303) 555-0186',
+  description: 'Camp cookware, trail bottles, merino socks and small outdoor gear, sold on our own shop and on marketplaces from a workshop in Boulder, Colorado.',
+  project: 'Larkspur — camp stove launch and repeat buyers', objective: 'Launch the camp stove to customers who asked to hear from us, recover unpaid orders, ask for reviews once orders arrive and bring one-time buyers back',
+  templates: ['unpaid-order', 'thank-buyer', 'review-request', 'unhappy-first', 'reorder-reminder', 'dormant-winback', 'ticket-triage'],
+};
+/* The store's own words where a template was written for a trade — the edit the service makes when it sets one up. */
+const STORE_COPY: Record<string, Record<string, Record<string, string>>> = {
+  'review-request': {
+    n0: { tag: 'order-delivered' },
+    n2: { subject: 'How is it out on the trail, {{firstName}}?', body: 'Hello {{firstName}},\n\nYour order should have reached you a few days ago. If it is doing its job, a short review on the shop helps a small workshop more than you would think.\n\nAnd if anything is not right, reply to me first and I will put it right.' },
+    n4: { message: 'Hi {{firstName}}, Jess from Larkspur — if you have a minute, a quick review of your order would really help us. Thank you either way. Reply STOP to stop texts.' },
+  },
+  'dormant-winback': {
+    n1: { subject: 'Before your next trip, {{firstName}}', body: 'Hello {{firstName}},\n\nIt has been a while. One thing worth doing before the next trip, whatever gear you use: check the seals on your bottle and stove and replace any that have cracked.\n\nIf you want a hand choosing anything, reply and I will help.' },
+    n3: { subject: 'Something new from the workshop, {{firstName}}', body: 'Hello {{firstName}},\n\nWe have just finished a camp stove we spent the summer testing. If you would like a look before it goes on the shop, reply and I will send you the details.' },
+    n5: { subject: 'Shall I stop emailing, {{firstName}}?', body: 'Hello {{firstName}},\n\nI have written twice and not heard back, so I will leave it there.\n\nIf you would rather we did not email at all, use the unsubscribe link below and that is that.' },
+  },
+};
+
+interface Shopper { first: string; last: string; town: string; status: string; tags: string[]; channel: string; first_order: string; last_order: string; orders: string; segment: string; consent: string }
+const S = (first: string, last: string, town: string, status: string, tags: string[], channel: string, first_order: string, last_order: string, orders: string, segment: string, consent: string): Shopper =>
+  ({ first, last, town, status, tags, channel, first_order, last_order, orders, segment, consent });
+const SHOPPERS: Shopper[] = [
+  S('Ana', 'Ferreira', 'Portland, OR', 'customer', ['order-paid', 'first order'], 'Own shop', day(-6), day(-6), '1', 'Camp kitchen', `Email — at checkout, ${day(-6)}`),
+  S('Daniel', 'Osei', 'Madison, WI', 'prospect', ['order-unpaid'], 'Own shop', '', '', '0', 'Camp kitchen', `Email — at checkout, ${day(-1)}`),
+  S('Maya', 'Chen', 'Denver, CO', 'lead', ['bulk quote', 'scout troop'], 'Own shop', '', '', '0', 'Gifts and groups', `Email — enquiry form, ${day(-3)}`),
+  S('Grace', 'Mwangi', 'Boise, ID', 'customer', ['repeat buyer', 'socks'], 'Own shop', day(-210), day(-24), '4', 'Hiking apparel', `Email and SMS — account page, ${day(-210)}`),
+  S('Lucas', 'Bergstrom', 'Duluth, MN', 'customer', ['order-paid', 'first order'], 'Amazon', day(-9), day(-9), '1', 'Lighting', 'None recorded — marketplace order'),
+  S('Priya', 'Raman', 'Austin, TX', 'lead', ['question'], 'Own shop', '', '', '0', 'Camp kitchen', `Email — launch list, ${day(-12)}`),
+  S('Tom', 'Whitaker', 'Asheville, NC', 'customer', ['order-delivered'], 'eBay', day(-15), day(-15), '1', 'Camp kitchen', 'None recorded — marketplace order'),
+  S('Hannah', 'Kowalski', 'Missoula, MT', 'customer', ['order-delivered'], 'Own shop', day(-18), day(-18), '1', 'Hiking apparel', `Email — at checkout, ${day(-18)}`),
+  S('Marco', 'DeLuca', 'Bend, OR', 'customer', ['repeat buyer'], 'Own shop', day(-320), day(-40), '3', 'Camp kitchen', `Email — at checkout, ${day(-320)}`),
+  S('Sara', 'Lindgren', 'Flagstaff, AZ', 'churned', ['dormant'], 'Walmart', day(-400), day(-230), '2', 'Hydration', 'None recorded — marketplace order'),
+  S('Kenji', 'Tanaka', 'Seattle, WA', 'churned', ['dormant'], 'Own shop', day(-380), day(-200), '2', 'Hiking apparel', `Email — at checkout, ${day(-380)}`),
+  S('Olivia', 'Brennan', 'Burlington, VT', 'customer', ['unhappy', 'damaged in transit'], 'Own shop', day(-8), day(-8), '1', 'Camp kitchen', `Email — at checkout, ${day(-8)}`),
+  S('Cairn', 'Outfitters', 'Golden, CO', 'lead', ['wholesale', 'retailer'], 'Own shop', '', '', '0', 'Wholesale', `Email — wholesale form, ${day(-2)}`),
+  S('Rosa', 'Alvarez', 'Santa Fe, NM', 'customer', ['repeat buyer', 'socks'], 'Amazon', day(-150), day(-35), '2', 'Hiking apparel', 'None recorded — marketplace order'),
+];
+const PRODUCTS = [
+  { name: 'Larkspur Ultralight Camp Stove', sku: 'LT-STOVE-01', price: 7900, cost: 3100, status: 'draft', inventory: 120, category: 'Camp kitchen', description: 'A 74 g folding canister stove with a wide pot support and a piezo igniter. Launching soon — not yet on the shop.' },
+  { name: 'Titanium Camp Mug, 450 ml', sku: 'LT-MUG-450', price: 3400, cost: 1150, status: 'active', inventory: 86, category: 'Camp kitchen', description: 'Single-wall titanium with folding handles and a lid that doubles as a strainer.' },
+  { name: 'Two-Person Camp Cookset', sku: 'LT-COOK-2P', price: 6400, cost: 2400, status: 'active', inventory: 41, category: 'Camp kitchen', description: 'A 1.3 L pot, a frying lid and two bowls that nest inside each other and a stuff sack.' },
+  { name: 'Insulated Trail Bottle, 750 ml', sku: 'LT-BTL-750', price: 2800, cost: 900, status: 'active', inventory: 154, category: 'Hydration', description: 'Double-wall steel, keeps water cold through a long day; the cap fits a standard filter.' },
+  { name: 'Merino Hiking Socks, 3 pairs', sku: 'LT-SOCK-3', price: 3900, cost: 1300, status: 'active', inventory: 230, category: 'Hiking apparel', description: 'Mid-weight merino blend with a cushioned sole. Sizes S to XL.' },
+  { name: 'Rechargeable Headlamp, 400 lm', sku: 'LT-LAMP-400', price: 4200, cost: 1600, status: 'active', inventory: 63, category: 'Lighting', description: 'USB-C charging, a red night mode and a lock so it does not switch on in the pack.' },
+];
+
+{
+  const t = STORE;
+  const reg = await must('store sign-up', post('/api/auth.php', { action: 'register', email: t.email, password: t.password, name: t.owner, businessName: t.business }));
+  const a: Account = { slug: t.slug, email: t.email, password: t.password, token: reg.token, acct: reg.user.accountId, business: t.business };
+  accounts.ecommerce = a;
+  const as = (p: string, body: Record<string, unknown>) => post(p, { token: a.token, accountId: a.acct, ...body });
+  sql(`INSERT OR REPLACE INTO crm_plans (owner_email, plan_id, resell_limit, source, updated_at) VALUES ('${t.email}', 'growth', 0, 'manual', '${iso(0)}')`);
+
+  await installSnapshot(a, 'ecommerce', 'ecommerce');
+  const pipes = JSON.parse(sql(`SELECT v FROM crm_data WHERE account_id = '${a.acct}' AND k = 'crm_pipelines'`)[0]?.v ?? '[]');
+  const pipe = pipes.find((p: { id: string }) => p.id === 'snap-ecommerce-pipeline');
+  if (!pipe) throw new Error('store: the snapshot pipeline is missing');
+
+  const contacts = SHOPPERS.map((p, i) => {
+    const business = p.tags.includes('wholesale');
+    return {
+      id: `ecom-c${i}`, name: `${p.first} ${p.last}`, firstName: business ? 'Buyer' : p.first, lastName: business ? '' : p.last,
+      company: business ? `${p.first} ${p.last}` : '',
+      email: business ? 'buying@cairnoutfitters.example' : `${p.first.toLowerCase()}.${p.last.toLowerCase()}@mail.example`,
+      phone: `(555) 01${String(40 + i).padStart(2, '0')}-${String(3100 + i * 41).slice(0, 4)}`,
+      status: p.status, tags: p.tags, source: p.channel === 'Own shop' ? (business ? 'Wholesale form' : 'Shop checkout') : `${p.channel} order (noted by hand)`,
+      createdAt: iso(-60 + i * 4), lastActivity: day(-(i % 7)), value: 0, address: p.town,
+      customFields: {
+        ecom_channel: p.channel, ...(p.first_order ? { ecom_first_order: p.first_order } : {}), ...(p.last_order ? { ecom_last_order: p.last_order } : {}),
+        ecom_orders: p.orders, ecom_segment: p.segment, marketing_consent: p.consent,
+      },
+    };
+  });
+  /* Per snapshot stage, in order: [shopper, what, value in dollars]. */
+  const deals: [number, string, number][][] = [
+    [[5, 'Stove fuel question before the launch', 0], [12, 'Wholesale enquiry — 3 shops', 0]],
+    [[1, 'Unpaid order — cookset and mug', 98], [2, 'Group quote — 40 mugs for a scout troop', 1360]],
+    [[0, 'First order — trail bottle', 28], [4, 'First order — headlamp (Amazon)', 42]],
+    [[7, 'Socks — delivered, review asked', 39], [6, 'Cookset — delivered (eBay)', 64], [11, 'Mug — damaged in transit', 34]],
+    [[3, 'Fourth order — socks', 117], [8, 'Third order — cookset and mug', 98], [13, 'Second order — socks (Amazon)', 39]],
+    [[9, 'Last order 7 months ago — bottles', 56], [10, 'Last order 6 months ago — socks', 78]],
+  ];
+  const probability = [10, 30, 100, 100, 100, 20];
+  pipe.stages = pipe.stages.map((st: Record<string, unknown>, si: number) => ({
+    ...st,
+    deals: (deals[si] ?? []).map(([who, what, value], n) => ({
+      id: `ecom-d${si}-${n}`, title: `${what} — ${contacts[who].name}`, contactId: contacts[who].id, contactName: contacts[who].name,
+      value, stage: st.id, probability: probability[si], expectedClose: day(2 + si * 2 + n), assignedTo: ['Jess', 'Support', 'Jess'][n % 3],
+      createdAt: iso(-12 + si + n), priority: si === 1 && n === 0 ? 'high' : 'normal', status: 'active',
+    })),
+  }));
+
+  /* The launch email, written and waiting — a draft, never counted as sent. */
+  const launchBody = [
+    '<p>Hello {{firstName}},</p>',
+    '<p>All summer we have been testing a camp stove in our own workshop and on our own trips: 74 grams, folds smaller than a mug, a wide pot support that takes the two-person cookset, and an igniter that works with cold fingers.</p>',
+    '<p>You asked to hear from us, so you are hearing first. It goes on the shop next week at $79. Reply to this email if you would like us to hold one for you.</p>',
+    '<p>— Jess, Larkspur Trail Co.</p>',
+  ].join('\n');
+  const campaigns = [
+    {
+      id: 'ecom-camp-launch', name: 'Camp stove launch — customers who opted in', type: 'email', status: 'draft', goal: 'Launch the camp stove',
+      audience: 'customers', fromName: t.business, fromEmail: t.email, replyTo: t.email, openTracking: false, clickTracking: false, stopOnReply: true, stopOnBounce: true,
+      subject: 'The camp stove we tested all summer', previewText: 'You asked to hear from us first — it goes on the shop next week.', emailBody: launchBody,
+      sent: 0, opened: 0, clicked: 0, replied: 0, bounced: 0, unsubscribed: 0, createdAt: iso(-2),
+    },
+    {
+      id: 'ecom-sock-restock', name: 'Merino socks back in stock', type: 'email', status: 'draft', goal: 'Tell repeat buyers the sizes are back',
+      audience: 'customers', fromName: t.business, fromEmail: t.email, replyTo: t.email, openTracking: false, clickTracking: false, stopOnReply: true, stopOnBounce: true,
+      subject: 'Your size is back, {{firstName}}', previewText: 'Medium and large merino socks are on the shop again.', emailBody: '<p>Hello {{firstName}},</p>\n<p>Medium and large are back on the shop.</p>',
+      sent: 0, opened: 0, clicked: 0, replied: 0, bounced: 0, unsubscribed: 0, createdAt: iso(-5),
+    },
+  ];
+
+  /* The launch posts, drafted in the Graphics Designer & Editor. The app does not post to any social network; these wait for a person to publish. */
+  let el = 0;
+  const text = (x: number, y: number, w: number, h: number, s: string, size: number, color: string, weight: '400' | '600' | '800' = '800', align: 'left' | 'center' = 'center') => ({
+    id: `el${el++}`, type: 'text', x, y, width: w, height: h, rotation: 0, zIndex: el, locked: false, visible: true,
+    data: { kind: 'text', text: s, fontSize: size, fontFamily: 'Inter', color, fontWeight: weight === '400' ? 'normal' : weight, fontStyle: 'normal', textAlign: align, lineHeight: 1.2, letterSpacing: 0, textDecoration: 'none' },
+  });
+  const box = (x: number, y: number, w: number, h: number, fill: string, shapeType = 'rounded-rect') => ({
+    id: `el${el++}`, type: 'shape', x, y, width: w, height: h, rotation: 0, zIndex: el, locked: false, visible: true,
+    data: { kind: 'shape', shapeType, fill, stroke: 'transparent', strokeWidth: 0, opacity: 1 },
+  });
+  const bg = (a1: string, a2: string) => ({ type: 'gradient', color: a1, gradientStart: a1, gradientEnd: a2, gradientAngle: 150, imageFit: 'cover' });
+  const design = (id: string, name: string, platform: string, aspectRatio: string, w: number, h: number, background: unknown, elements: unknown[], tags: string[], ago: number) =>
+    ({ id, name, platform, aspectRatio, canvasWidth: w, canvasHeight: h, background, elements, status: 'draft', tags, createdAt: iso(-ago), updatedAt: iso(-ago, 2) });
+  const posts = [
+    design('ecom-post-launch', 'Camp stove launch — square post', 'instagram', '1:1', 540, 540, bg('#1f3d2b', '#3f6b4a'), [
+      text(40, 70, 460, 40, 'NEW FROM THE WORKSHOP', 20, '#e8d9a8', '600'), text(40, 140, 460, 130, 'The 74 g\ncamp stove', 54, '#ffffff'),
+      box(170, 330, 200, 54, '#e8d9a8'), text(170, 344, 200, 30, 'On the shop next week', 17, '#1f3d2b', '600'), text(40, 460, 460, 30, 'Larkspur Trail Co.', 18, 'rgba(255,255,255,0.8)', '400'),
+    ], ['launch', 'ready-to-publish'], 2),
+    design('ecom-post-story', 'Camp stove launch — story', 'instagram', '9:16', 405, 720, bg('#14261b', '#2f5a3c'), [
+      text(30, 120, 345, 40, 'TESTED ALL SUMMER', 20, '#e8d9a8', '600'), text(30, 200, 345, 180, 'Folds\nsmaller\nthan a mug', 50, '#ffffff'),
+      text(30, 560, 345, 40, 'Launching next week', 22, '#e8d9a8', '600'),
+    ], ['launch'], 2),
+    design('ecom-post-socks', 'Merino socks restock', 'facebook', '1:1', 540, 540, bg('#3b2f4a', '#6b5a86'), [
+      text(40, 150, 460, 120, 'Your size\nis back', 56, '#ffffff'), text(40, 330, 460, 40, 'Merino hiking socks, M and L', 22, '#f1e7ff', '600'),
+    ], ['restock'], 5),
+    design('ecom-post-tip', 'Trail tip — check your seals', 'linkedin', '1:1', 540, 540, bg('#0f3b4a', '#1f6b80'), [
+      text(40, 120, 460, 60, 'TRAIL TIP', 22, '#bfe9f3', '600'), text(40, 200, 460, 150, 'Check the seals on your bottle before the next trip', 34, '#ffffff'),
+    ], ['tips'], 7),
+    design('ecom-post-launch-fb', 'Camp stove launch — Facebook post', 'facebook', '1:1', 540, 540, bg('#2a4a35', '#5b8a63'), [
+      text(40, 110, 460, 120, 'Hold one\nbefore launch', 50, '#ffffff'), text(40, 300, 460, 60, 'Reply to our email and we will set a stove aside', 22, '#e8d9a8', '600'),
+    ], ['launch'], 1),
+    design('ecom-post-thumb', 'Camp stove — video thumbnail', 'youtube', '16:9', 640, 360, bg('#10241a', '#35603f'), [
+      text(30, 90, 580, 110, 'Breakfast at\nthe trailhead', 46, '#ffffff'), text(30, 260, 580, 40, 'The camp stove, tested', 22, '#e8d9a8', '600'),
+    ], ['launch'], 1),
+    design('ecom-post-cookset', 'Cookset and mug — what nests inside', 'instagram', '4:5', 432, 540, bg('#4a3b22', '#8a6d3b'), [
+      text(30, 140, 372, 130, 'What fits\ninside the pot', 44, '#ffffff'), text(30, 330, 372, 40, 'Mug, bowls, stove', 22, '#f6e7c8', '600'),
+    ], ['product'], 3),
+    design('ecom-post-lamp', 'Headlamp — red night mode', 'tiktok', '9:16', 405, 720, bg('#2a0f12', '#6b1f2a'), [
+      text(30, 200, 345, 160, 'Red light\nkeeps your\nnight vision', 44, '#ffffff'), text(30, 560, 345, 40, 'Rechargeable headlamp', 20, '#ffd3d8', '600'),
+    ], ['product'], 4),
+  ];
+
+  await must('store workspace', as('/api/data.php', { action: 'bulk_set', items: {
+    crm_contacts: JSON.stringify(contacts),
+    crm_pipelines: JSON.stringify(pipes),
+    crm_campaigns: JSON.stringify(campaigns),
+    crm_social_posts: JSON.stringify(posts),
+    crm_setup_hidden: '1',
+    crm_email_provider: JSON.stringify({ provider: 'smtp' }),
+    crm_smtp: JSON.stringify({ host: `smtp.${t.domain}`, port: '587', user: t.email, pass: '••••••••', fromName: t.business, fromEmail: t.email, encryption: 'tls' }),
+    crm_onboarding: JSON.stringify({
+      version: 1, step: 5, completed: true, skipped: false,
+      profile: { companyName: t.business, industry: 'E-commerce', description: t.description, website: t.domain, email: t.email, phone: t.phone, brandColor: '#2f5a3c' },
+      goals: {}, channels: ['email'], plan: [], audit: [],
+    }),
+  } }));
+
+  /* The catalogue and the orders, through the shop's own endpoint. Recorded by hand: no payment processor is connected. */
+  const prod: Record<string, string> = {};
+  for (const [i, p] of PRODUCTS.entries()) {
+    const r = await must(`product ${p.sku}`, as('/api/commerce.php', { action: 'save_product', name: p.name, sku: p.sku, priceCents: p.price, costCents: p.cost, status: p.status, description: p.description, inventory: p.inventory, trackInventory: true, category: p.category, sortOrder: i }));
+    prod[p.sku] = String(r.id);
+  }
+  const line = (sku: string, qty = 1) => { const p = PRODUCTS.find(x => x.sku === sku)!; return { productId: prod[sku], name: p.name, qty, priceCents: p.price }; };
+  const ORDERS: [number, ReturnType<typeof line>[], string][] = [
+    [8, [line('LT-COOK-2P'), line('LT-MUG-450')], 'fulfilled'],
+    [3, [line('LT-SOCK-3', 3)], 'fulfilled'],
+    [7, [line('LT-SOCK-3')], 'fulfilled'],
+    [11, [line('LT-MUG-450')], 'refunded'],
+    [0, [line('LT-BTL-750')], 'paid'],
+    [1, [line('LT-COOK-2P'), line('LT-MUG-450')], 'pending'],
+  ];
+  for (const [who, items, status] of ORDERS) {
+    await must(`order for ${contacts[who].name}`, as('/api/commerce.php', { action: 'record_order', email: contacts[who].email, contactId: contacts[who].id, items, status }));
+  }
+
+  /* The business workspace, with the store's workflows from the template library. */
+  const pf = await must('store portfolio', as('/api/projects.php', { action: 'save_portfolio', name: t.business, profile: { description: t.description, website: t.domain } }));
+  const pr = await must('store project', as('/api/projects.php', {
+    action: 'save_project', portfolioId: pf.id, name: t.project, objective: t.objective, kind: 'ecommerce',
+    guardrails: { sendEmail: 'approval', sendSms: 'approval', createWorkflows: 'on', activateWorkflows: 'approval' },
+    launchSteps: [{ label: 'Connect the mailbox' }, { label: 'Recover unpaid orders' }, { label: 'Launch the camp stove' }, { label: 'Ask for reviews once orders arrive' }],
+  }));
+  a.projectId = pr.id;
+  for (const k of t.templates) {
+    const tp = TEMPLATES.find(x => x.key === k);
+    if (!tp) throw new Error(`no template ${k}`);
+    const copy = STORE_COPY[k] ?? {};
+    const nodes = tp.nodes.map(nd => copy[nd.id] ? { ...nd, config: { ...nd.config, ...copy[nd.id] } } : nd);
+    await must(`store workflow ${k}`, as('/api/autopilot.php', { action: 'save_workflow', projectId: pr.id, record: { name: tp.name, description: tp.description, nodes, status: 'active', key: k }, templateKey: k }));
+  }
+  sql(`UPDATE crm_projects SET status = 'running', last_planned_at = '${iso(0, -2)}', created_at = '${iso(-21)}' WHERE id = '${pr.id}'`);
+
+  /* Support: the store's help widget, and the tickets customers raised through it. */
+  const w = await must('store widget', as('/api/engagement.php', { action: 'save_widget', record: { name: 'Shop help', title: 'Questions about an order?', welcome: 'Ask about an order, a return or a product.', features: ['chat', 'ticket'], status: 'live' } }));
+  const widgetKey = String(w.item.public_key);
+  const TICKETS: [number, string, string, string, string, string, string?][] = [
+    [1, 'Card declined at checkout — is my order saved?', 'I tried to pay for the cookset and a mug and the card was declined. Is the order still there?', 'open', 'high', 'Payment'],
+    [11, 'Mug arrived dented', 'The titanium mug arrived with a dent in the rim and the box was crushed. Can you replace it?', 'in_progress', 'high', 'Damaged in transit', 'Refunded on the order; a replacement goes out when the restock lands.'],
+    [13, 'Bought socks on Amazon — can I swap the size?', 'I ordered the merino socks through Amazon and they are too small. Can you swap them for a large?', 'waiting', 'normal', 'Marketplace order', 'Amazon orders are returned through Amazon — replied with the steps and offered a large from our own shop.'],
+    [6, 'Tracking has not moved in four days', 'My cookset order shows the same tracking update since Monday.', 'open', 'normal', 'Delivery'],
+    [5, 'Does the new stove take standard canisters?', 'Will the camp stove take the usual screw-on isobutane canisters?', 'resolved', 'low', 'Product question'],
+  ];
+  for (const [who, subject, message, status, priority, category, note] of TICKETS) {
+    const c = contacts[who];
+    const tk = await must(`ticket ${subject}`, post('/api/engage.php', { action: 'ticket', widgetKey, email: c.email, name: c.name, subject, message }));
+    const row = sql(`SELECT id FROM crm_tickets WHERE account_id = '${a.acct}' AND reference = '${tk.reference}'`)[0];
+    await must(`ticket status ${tk.reference}`, as('/api/engagement.php', { action: 'set_ticket', id: row.id, status, priority, category, assignedTo: priority === 'high' ? t.owner : 'Support' }));
+    if (note) await must(`ticket note ${tk.reference}`, as('/api/engagement.php', { action: 'ticket_reply', id: row.id, message: note, internal: true }));
+  }
+  console.log(`seeded  ${t.business}`);
+}
+
 /* ── The synthetic practice, in the owner's own workspace ─────────────────── */
 
 /* A fixed workspace id the owner's browser is pointed at (crm_active_account
@@ -358,7 +617,7 @@ if (process.env.HOLD) {
 
 /* ── The browser: one signed-in window per business, desktop and phone ───── */
 
-type Who = 'hvac' | 'roofing' | 'med';
+type Who = 'hvac' | 'roofing' | 'med' | 'ecom';
 const browser = await pw.chromium.launch();
 const contexts: Record<string, Awaited<ReturnType<typeof browser.newContext>>> = {};
 const errs: string[] = [];
@@ -380,7 +639,7 @@ async function as(who: Who) {
     }, who === 'med');
     const p = await ctx.newPage();
     p.on('pageerror', e => errs.push(`${key} ${p.url()}: ${e.message}`));
-    const cred = who === 'med' ? OWNER : accounts[who];
+    const cred = who === 'med' ? OWNER : accounts[who === 'ecom' ? 'ecommerce' : who];
     /* Once more if the Worker restarted under the sign-in (it is restarted above). */
     for (let attempt = 1; ; attempt++) {
       try {
@@ -415,6 +674,14 @@ const go = async (route: string, settle = 2200) => {
   await hideNoise();
 };
 let proved = '';
+/** Where the picture starts, when the window cannot scroll that far (a short page): the document y of an element, less a gap. */
+let cropAt: number | null = null;
+/** A panel that slides over the page: the picture is the window alone, as site-reels.mts takes a dialog. */
+let windowOnly = false;
+const startAt = async (sel: string | RegExp, gap = 110) => {
+  const loc = typeof sel === 'string' && /^[#.[]/.test(sel) ? page.locator(sel).first() : page.getByText(sel).first();
+  cropAt = await loc.evaluate((el, g) => Math.max(0, Math.round(el.getBoundingClientRect().top + window.scrollY - g)), gap);
+};
 const onScreen = async (where: string, heading: string | RegExp | null, ...texts: (string | RegExp)[]) => {
   const here = new URL(page.url()).pathname;
   if (here !== where) throw new Error(`landed on ${here}, not ${where}`);
@@ -469,6 +736,25 @@ const leadNamed = async (name: string) => {
   focus('[data-testid="lead-detail"]');
 };
 
+/**
+ * The Online shop from a panel down. Its own "Hide" buttons fold the payment
+ * and print-supplier set-up forms first: empty key boxes and this local
+ * Worker's webhook address are not the picture of a store's catalogue.
+ */
+const shop = async (panel: string) => {
+  await go('/sell');
+  /* One at a time: a folded panel's button stops saying Hide, so a list taken up front goes stale. */
+  for (let i = 0; i < 4; i++) {
+    const hide = page.getByRole('button', { name: 'Hide', exact: true }).first();
+    if (!await hide.isVisible().catch(() => false)) break;
+    await hide.click();
+    await page.waitForTimeout(400);
+  }
+  await page.waitForTimeout(500);
+  await page.locator(panel).first().evaluate((el, g) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - g), phone ? 70 : 110);
+  await page.waitForTimeout(600);
+};
+
 const H = TRADES[0], R = TRADES[1];
 /** How to reach each picture. Every file in industryDemos.ts must be here, and every one ends on `onScreen`. */
 const RECIPES: Record<string, [Who, () => Promise<void>]> = {
@@ -494,6 +780,67 @@ const RECIPES: Record<string, [Who, () => Promise<void>]> = {
   'ind-roof-lead': ['roofing', async () => { await leadNamed('Paul Sanders'); await onScreen('/jobs', 'Jobs & revenue', 'Insurance re-roof'); }],
   'ind-roof-payments': ['roofing', async () => { await jobs(); await page.getByTestId('tab-payments').click(); await page.waitForTimeout(1000); focus('[data-payment]'); await onScreen('/jobs', 'Jobs & revenue', /Paul Sanders/); }],
   'ind-roof-reviews': ['roofing', async () => { await workflow('Client Review Request Automation'); await onScreen('/autopilot', 'AI Autopilot', 'Client Review Request Automation', 'Unhappy Customer Recovery Automation'); }],
+
+  /* ── The online store ── */
+  'ind-ecom-shop': ['ecom', async () => { await shop('#products'); focus('#products'); await onScreen('/sell', 'Online shop', 'Larkspur Ultralight Camp Stove', 'Merino Hiking Socks, 3 pairs'); }],
+  'ind-ecom-orders': ['ecom', async () => { await shop('#orders'); focus('#orders'); await onScreen('/sell', 'Online shop', /Connect your own Stripe or Creem account/, 'daniel.osei@mail.example — 1 × Two-Person Camp Cookset, 1 × Titanium Camp Mug, 450 ml'); }],
+  'ind-ecom-pipeline': ['ecom', async () => { await go('/pipelines'); focus('Cart or quote'); await onScreen('/pipelines', 'Deals', 'Lapsed — win back', 'Unpaid order — cookset and mug — Daniel Osei'); }],
+  'ind-ecom-contacts': ['ecom', async () => { await go('/contacts'); focus('table'); await onScreen('/contacts', 'Contacts', 'Amazon order (noted by hand)', 'Lucas Bergstrom'); }],
+  'ind-ecom-campaigns': ['ecom', async () => { await go('/marketing'); focus('Camp stove launch — customers who opted in'); await onScreen('/marketing', 'Email campaigns', 'No mailbox can send yet.', 'Camp stove launch — customers who opted in'); }],
+  'ind-ecom-campaign': ['ecom', async () => {
+    await go('/marketing');
+    await page.getByText('Camp stove launch — customers who opted in').first().click();
+    await page.waitForTimeout(900);
+    await page.getByText('Content', { exact: true }).last().click();
+    await page.waitForTimeout(900);
+    windowOnly = true;
+    focus('The camp stove we tested all summer');
+    await onScreen('/marketing', null, 'The camp stove we tested all summer', /You asked to hear from us first/, /Jess, Larkspur Trail Co/);
+  }],
+  'ind-ecom-social': ['ecom', async () => { await go('/social-creator'); await under('Total Designs', phone ? 70 : 110); if (!phone) await startAt('Total Designs', 70); focus('Camp stove launch — square post'); await onScreen('/social-creator', null, 'Camp stove launch — square post', 'Ready to publish', 'Merino socks restock'); }],
+  'ind-ecom-workspace': ['ecom', async () => {
+    await go('/autopilot', 2600);
+    await page.getByText('Overview', { exact: true }).first().click();
+    await page.waitForTimeout(1200);
+    await hideNoise();
+    focus(STORE.objective);
+    await onScreen('/autopilot', 'AI Autopilot', STORE.project, 'Connect the mailbox', 'Customer Support Ticket Triage Automation');
+  }],
+  'ind-ecom-cart': ['ecom', async () => { await workflow('E-commerce Abandoned Cart Recovery Automation'); await onScreen('/autopilot', 'AI Autopilot', STORE.project, 'Assume it was the card'); }],
+  'ind-ecom-reviews': ['ecom', async () => { await workflow('Post-Purchase Review Automation'); await onScreen('/autopilot', 'AI Autopilot', 'Post-Purchase Review Automation', 'Unhappy Customer Recovery Automation', 'Ring them today'); }],
+  'ind-ecom-sms': ['ecom', async () => {
+    await workflow('Client Review Request Automation');
+    /* The text is the fifth step: the canvas's own arrow brings it into view. */
+    /* The canvas scrolled sideways, as a swipe or its arrows would, until the text step sits in view. */
+    await page.getByText('One nudge, then leave it').first().evaluate((el, lead) => {
+      let box: HTMLElement | null = el.parentElement;
+      while (box && !(box.scrollWidth > box.clientWidth + 4 && /(auto|scroll)/.test(getComputedStyle(box).overflowX))) box = box.parentElement;
+      if (!box) return;
+      const node = el.getBoundingClientRect().left, edge = box.getBoundingClientRect().left;
+      box.scrollLeft += node - edge - box.clientWidth * lead;
+    }, phone ? 0.04 : 0.5);
+    await page.waitForTimeout(700);
+    focus('One nudge, then leave it');
+    await onScreen('/autopilot', 'AI Autopilot', 'Client Review Request Automation', 'One nudge, then leave it');
+  }],
+  'ind-ecom-guardrails': ['ecom', async () => {
+    await go('/autopilot', 2600);
+    await page.getByText('Business Workspace Settings', { exact: true }).first().click();
+    await page.waitForTimeout(1200);
+    await hideNoise();
+    await under('What this business workspace is allowed to do', phone ? 70 : 110);
+    focus('Send texts');
+    await onScreen('/autopilot', 'AI Autopilot', 'Send texts', 'Texts cost money per message and cannot be recalled.');
+  }],
+  'ind-ecom-tickets': ['ecom', async () => {
+    await go('/engagement?tab=tickets');
+    await page.getByText('Bought socks on Amazon — can I swap the size?').first().click();
+    await page.waitForTimeout(1200);
+    focus(/Amazon orders are returned through Amazon/);
+    await onScreen('/engagement', 'Customer Engagement', 'Mug arrived dented', /Amazon orders are returned through Amazon/);
+  }],
+  'ind-ecom-triage': ['ecom', async () => { await workflow('Customer Support Ticket Triage Automation'); await onScreen('/autopilot', 'AI Autopilot', 'Customer Support Ticket Triage Automation', 'Is it urgent?'); }],
+  'ind-ecom-repeat': ['ecom', async () => { await workflow('Repeat Order Reminder Automation'); await onScreen('/autopilot', 'AI Autopilot', 'Repeat Order Reminder Automation', 'Cold Lead Re-activation Automation'); }],
 
   /* ── Medical billing, the synthetic practice ── */
   'ind-med-claims': ['med', async () => { await rcm(); focus('[data-claim]'); await onScreen('/rcm', 'Medical billing', 'Synthetic test data only — do not enter real patient information.', /Clearinghouse: Rejected/); }],
@@ -539,7 +886,7 @@ async function photograph(suffix: string) {
     const [who, recipe] = RECIPES[file];
     try {
       await as(who);
-      proved = ''; focusOn = null;
+      proved = ''; focusOn = null; cropAt = null; windowOnly = false;
       await recipe();
       if (!proved) throw new Error('the recipe never checked which screen it reached');
     } catch (e) {
@@ -552,7 +899,7 @@ async function photograph(suffix: string) {
     }
     await hideNoise();
     /* Panes that scroll on their own are let out, so the picture is the whole page. */
-    const at = await page.evaluate(() => {
+    const at = windowOnly ? { y: await page.evaluate(() => Math.round(window.scrollY)) } : await page.evaluate(() => {
       for (const el of document.querySelectorAll<HTMLElement>('body *')) {
         const cs = getComputedStyle(el);
         if (!/(auto|scroll)/.test(cs.overflowY) || el.clientHeight < 280 || el.scrollHeight <= el.clientHeight + 40) continue;
@@ -562,23 +909,32 @@ async function photograph(suffix: string) {
     });
     await page.waitForTimeout(400);
     /* On a phone the app's top bar is the same on every screen: the picture starts under it. */
-    const navEnd = suffix ? await page.evaluate(() => {
+    const navEnd = suffix && !windowOnly ? await page.evaluate(() => {
       for (const el of document.querySelectorAll<HTMLElement>('body *')) if (getComputedStyle(el).position === 'sticky') el.style.position = 'static';
       const bar = document.querySelector<HTMLElement>('header.app-header');
       if (!bar) return 0;
       bar.style.position = 'static';
       return Math.round(bar.getBoundingClientRect().bottom + window.scrollY);
     }) : 0;
+    if (cropAt !== null && cropAt > at.y) at.y = cropAt;
     if (navEnd > at.y) at.y = navEnd;
     const docH = await page.evaluate(() => document.documentElement.scrollHeight);
-    const h = Math.max(1, Math.min(suffix ? MAX_H.phone : MAX_H.desk, docH - at.y));
+    const h = windowOnly ? page.viewportSize()!.height : Math.max(1, Math.min(suffix ? MAX_H.phone : MAX_H.desk, docH - at.y));
     const width = page.viewportSize()!.width;
     if (!suffix && focusOn) {
       const r = await focusOn();
       if (r) focusRects[file] = { x: Math.round(r.x), y: Math.round(r.y - at.y), width: Math.round(r.width), height: Math.round(r.height), pageW: width, pageH: h };
     }
     crops[`${file}${suffix}`] = { h };
-    await page.screenshot({ path: `${RAW}/${file}${suffix}.png`, fullPage: true, clip: { x: 0, y: at.y, width, height: h } });
+    /* A sliding panel is fixed to the window: a full-page capture stretches the
+       window under it, so it is taken as the window is, its own scroll at the top. */
+    if (windowOnly) {
+      await page.evaluate(() => { for (const el of document.querySelectorAll<HTMLElement>('body *')) if (el.scrollTop) el.scrollTop = 0; });
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: `${RAW}/${file}${suffix}.png` });
+    } else {
+      await page.screenshot({ path: `${RAW}/${file}${suffix}.png`, fullPage: true, clip: { x: 0, y: at.y, width, height: h } });
+    }
     taken.push(`${file}${suffix}`);
     console.log(`took    ${file}${suffix}`);
   }

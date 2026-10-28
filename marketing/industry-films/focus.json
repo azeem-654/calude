@@ -214,5 +214,125 @@
   "height": 21,
   "pageW": 1920,
   "pageH": 1214
+ },
+ "ind-ecom-shop": {
+  "x": 533,
+  "y": 110,
+  "width": 916,
+  "height": 526,
+  "pageW": 1920,
+  "pageH": 2658
+ },
+ "ind-ecom-orders": {
+  "x": 533,
+  "y": 561,
+  "width": 916,
+  "height": 524,
+  "pageW": 1920,
+  "pageH": 1200
+ },
+ "ind-ecom-pipeline": {
+  "x": 416,
+  "y": 458,
+  "width": 82,
+  "height": 20,
+  "pageW": 1920,
+  "pageH": 1462
+ },
+ "ind-ecom-contacts": {
+  "x": 359,
+  "y": 316,
+  "width": 1959,
+  "height": 1042,
+  "pageW": 1920,
+  "pageH": 1387
+ },
+ "ind-ecom-campaigns": {
+  "x": 161,
+  "y": 504,
+  "width": 1594,
+  "height": 21,
+  "pageW": 1920,
+  "pageH": 1282
+ },
+ "ind-ecom-campaign": {
+  "x": 1241,
+  "y": 221,
+  "width": 638,
+  "height": 21,
+  "pageW": 1920,
+  "pageH": 1200
+ },
+ "ind-ecom-social": {
+  "x": 884,
+  "y": 407,
+  "width": 117,
+  "height": 21,
+  "pageW": 1920,
+  "pageH": 839
+ },
+ "ind-ecom-workspace": {
+  "x": 175,
+  "y": 385,
+  "width": 1117,
+  "height": 17,
+  "pageW": 1920,
+  "pageH": 1539
+ },
+ "ind-ecom-cart": {
+  "x": 174,
+  "y": 110,
+  "width": 347,
+  "height": 20,
+  "pageW": 1920,
+  "pageH": 2609
+ },
+ "ind-ecom-reviews": {
+  "x": 174,
+  "y": 110,
+  "width": 232,
+  "height": 20,
+  "pageW": 1920,
+  "pageH": 2314
+ },
+ "ind-ecom-guardrails": {
+  "x": 122,
+  "y": 523,
+  "width": 66,
+  "height": 19,
+  "pageW": 1920,
+  "pageH": 1200
+ },
+ "ind-ecom-tickets": {
+  "x": 653,
+  "y": 501,
+  "width": 991,
+  "height": 59,
+  "pageW": 1920,
+  "pageH": 1214
+ },
+ "ind-ecom-triage": {
+  "x": 174,
+  "y": 544,
+  "width": 295,
+  "height": 20,
+  "pageW": 1920,
+  "pageH": 1200
+ },
+ "ind-ecom-repeat": {
+  "x": 174,
+  "y": 110,
+  "width": 237,
+  "height": 20,
+  "pageW": 1920,
+  "pageH": 1392
+ },
+ "ind-ecom-sms": {
+  "x": 1037,
+  "y": 234,
+  "width": 176,
+  "height": 18,
+  "pageW": 1920,
+  "pageH": 2019
  }
 }

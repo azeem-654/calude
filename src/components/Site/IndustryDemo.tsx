@@ -50,7 +50,9 @@ export default function IndustryDemo({ slug }: { slug: DemoSlug }) {
           <h2>{d.lead} <em>{d.emph}</em></h2>
           <p>{d.body}</p>
         </div>
-        <DemoFilm slug={slug} title={d.film.title} />
+        {/* Only a demo that has a film made: a poster and a Play button over a
+            demo.mp4 that does not exist would be a player that plays nothing. */}
+        {d.film && <DemoFilm slug={slug} title={d.film.title} />}
         <ol className="idm-index" aria-label="The problems shown below">
           {d.steps.map((s, i) => <li key={s.pain}><a href={`#see-${i + 1}`}><b>{i + 1}</b> {s.pain}</a></li>)}
         </ol>

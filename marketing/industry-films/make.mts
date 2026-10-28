@@ -33,7 +33,11 @@ const FOCUS: Record<string, { x: number; y: number; width: number; height: numbe
   fs.existsSync(FOCUS_FILE) ? JSON.parse(fs.readFileSync(FOCUS_FILE, 'utf8')) : {};
 /* STILLS=t1,t2,… draws just those moments to <work>/still-<t>.png, for checking a layout before a whole render. */
 const STILLS = (process.env.STILLS ?? '').split(',').filter(Boolean).map(Number);
-const slugs = (process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(INDUSTRY_DEMOS)) as DemoSlug[];
+/* Only demos that have a film's words: one without (e-commerce, for now) shows its steps alone. */
+const withFilm = (Object.keys(INDUSTRY_DEMOS) as DemoSlug[]).filter(s => INDUSTRY_DEMOS[s].film);
+const asked = process.argv.slice(2) as DemoSlug[];
+for (const s of asked) if (!withFilm.includes(s)) { console.log(`${s}: no film words in industryDemos.ts — nothing to make`); process.exit(2); }
+const slugs = asked.length ? asked : withFilm;
 
 /* The site's pictures and film.html, served to the browser that draws the frames. */
 const server = http.createServer((req, res) => {
@@ -59,7 +63,7 @@ const vttTime = (t: number) => {
 
 const browser = await pw.chromium.launch();
 for (const slug of slugs) {
-  const d = INDUSTRY_DEMOS[slug];
+  const d = { ...INDUSTRY_DEMOS[slug], film: INDUSTRY_DEMOS[slug].film! };
   const work = path.join(WORK, slug);
   fs.rmSync(work, { recursive: true, force: true });
   fs.mkdirSync(work, { recursive: true });
