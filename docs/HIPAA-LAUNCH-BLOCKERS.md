@@ -54,3 +54,38 @@ test:rcm` fails if this page and that list disagree.
 Nothing in the app or on the site says "HIPAA compliant" or "HIPAA certified" —
 there is no such certification, and compliance is a set of practices, most of
 them above, not a feature.
+
+## Where patient data could live — the low-cost options (researched 2026-10-28)
+
+The owner asked for a free third-party place to keep medical billing customer
+data, since Cloudflare signs a BAA only on Enterprise. The honest answer:
+
+- **No free consumer storage is acceptable** — a free Google Drive, Dropbox,
+  OneDrive, Airtable or Notion account comes with no BAA, so patient data must
+  never go there.
+- **The cheapest acceptable route is to hold no patient data at all.** The
+  practice keeps patient details in its own EHR / practice-management system
+  (which already has its own BAA); Protected Central keeps only the practice's
+  account reference, codes and amounts, as the module is built to. This costs
+  nothing and is the recommended starting point.
+- **If a store is needed, the low-cost options with a BAA are pay-as-you-go
+  clouds, not free products:**
+  - **AWS** — the Business Associate Addendum is accepted in AWS Artifact at
+    no extra charge; it covers only HIPAA-eligible services (Amazon S3 and
+    DynamoDB among them). You pay normal usage, which is small at low volume;
+    whether free-tier usage is covered was not confirmed — ask AWS.
+  - **Google Cloud** — a BAA covering the products on Google's HIPAA list
+    (Cloud Storage and Firestore among them; most Firebase-branded services are
+    *not* covered). Usage is billed normally.
+  - **Supabase** — needs its Team plan (reported at about $599/month) plus a
+    paid HIPAA add-on, so it is not a low-cost option.
+- Any of these is a **new integration** this app does not have: the Worker
+  would call it, the credentials would be stored encrypted, and each item of
+  this checklist would be re-checked for it. A BAA alone does not make a
+  set-up compliant — encryption, access control, logging and a risk analysis
+  are still the owner's.
+
+Sources: aws.amazon.com/compliance/hipaa-eligible-services-reference,
+docs.cloud.google.com/security/compliance/hipaa, and secondary guides on
+Supabase's plan requirements (confirm with each provider before relying on
+them).

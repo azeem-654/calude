@@ -51,10 +51,15 @@ the chargeback and the customs declaration.
 ## Plans and allowances — one table, counted on the server
 
 `worker/src/lib/allowances.ts` (pure, no imports; the browser re-exports it as
-`services/allowances.ts`) is **the** package table: three priced plans
-(`kind: 'self'` — Starter $49 / Growth $97 / Pro $197 a month, yearly at ten
-months), **Custom** (`kind: 'custom'`, no price, given by hand) and `agency`
-(`kind: 'legacy'`, never shown or sold, kept with what its subscribers bought),
+`services/allowances.ts`) is **the** package table: since 2026-10-28 two
+priced plans on sale (`kind: 'self'` — **Growth $97** and **Scale $297** a
+month, monthly only: `annualCents: 0` means no yearly price and checkout
+refuses `interval: 'year'` for it with `code: 'monthly_only'`), **Custom**
+(`kind: 'custom'`, no price, given by hand) and the legacy plans (`kind:
+'legacy'`, never shown or sold, enforced and renewed with what their
+subscribers bought: `starter` $49/$490, `pro` $197/$1,970, `agency`). Never
+reuse a plan id for a different product; a plan leaving sale becomes legacy
+and its old prices go into `LEGACY_CENTS`,
 plus the trial's numbers, for fourteen meters (projects, workflows per
 project, sub-accounts, branded login addresses, AI requests, posts, articles,
 AI emails, prospects found, recordings, AI Shorts, video/render minutes,
@@ -88,7 +93,9 @@ docs/PRICING.md has the market research, costs and what white-label means.
   Plans & allowances). Prices are not editable on a screen.
 - A renewal is matched to the plan the subscriber is on before the amount
   (`soldAt`, `LEGACY_CENTS`): $97 was "Agency" (`pro`) and is now Growth;
-  $149/$297/$2,970 are `agency`. A feature on every plan is listed once
+  $149/$297/$2,970 are `agency` — and $297 is now also Scale's price, so an
+  old Agency subscriber renewing at $297 stays `agency`, while a $297 payment
+  from somebody with no plan on record is Scale (`planByAmount` first). A feature on every plan is listed once
   (`INCLUDED`), never as what a higher plan adds; white-label's countable part
   (`login_addresses`) is refused at `whitelabel.php add`.
 - `npm run test:allowances` (pure, real SQLite with every migration via

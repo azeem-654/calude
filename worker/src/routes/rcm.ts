@@ -35,7 +35,9 @@ import {
   matchLine, parseRemitCsv, patientRefProblem, payerMoveProblem, payerStatusAfterRemit, phiProblem, reconcile, rowKey, signedCents,
   syntheticPractice, syntheticRemitCsv, validModifier, validNpi, validProcCode,
   type AppealStatus, type AuthStatus, type ChStatus, type DataMode, type LineFacts, type PayerKind, type PayerStatus, type RemitRow, type WorkStatus,
+  collectionsStatement, type FeeRow,
 } from '../lib/rcm';
+import { MEDICAL_BILLING_OFFER } from '../lib/offers';
 import { centsFrom } from '../lib/leadRevenue';
 
 const isOwner = (u: SessionUser): boolean => u.role === 'agency' && !u.accountId;
@@ -458,6 +460,24 @@ export async function handleRcm(req: Request, env: Env): Promise<Response> {
     const { results } = await env.DB.prepare('SELECT e.id, e.claim_id AS claimId, k.claim_no AS claimNo, e.kind, e.detail, e.by_email AS byEmail, e.by_role AS byRole, e.at FROM crm_rcm_events e LEFT JOIN crm_rcm_claims k ON k.id = e.claim_id WHERE e.account_id = ? ORDER BY e.id DESC LIMIT 500')
       .bind(c.accountId).all();
     return json({ success: true, events: results.map(e => ({ ...e, detail: parse((e as { detail: string }).detail, {}) })) });
+  }
+
+  /* The month's collections fee statement (lib/rcm.ts collectionsStatement): read by
+     the billing team and the practice alike, so the practice can check every line
+     behind the fee. A calculation to review — nothing is invoiced or charged here. */
+  if (action === 'fee_statement') {
+    const month = String(d.month ?? '').trim() || today().slice(0, 7);
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return fail('Name the month as YYYY-MM.', 200, { field: 'rcm.fee.month' });
+    const { results } = await env.DB.prepare(`SELECT r.id, r.claim_id AS claimId, COALESCE(k.claim_no, r.claim_no) AS claimNo, r.paid_on AS paidOn, r.paid_cents AS paidCents, r.outcome
+        FROM crm_rcm_remit_rows r LEFT JOIN crm_rcm_claims k ON k.id = r.claim_id AND k.account_id = r.account_id
+        WHERE r.account_id = ? AND r.paid_on LIKE ? ORDER BY r.paid_on, r.row_no`).bind(c.accountId, `${month}%`).all<FeeRow>();
+    const st = collectionsStatement(results, month, MEDICAL_BILLING_OFFER.collectionsBps);
+    return json({
+      success: true, statement: st, synthetic: mode === 'synthetic',
+      basis: MEDICAL_BILLING_OFFER.feeBasis,
+      status: 'calculated — for review, not invoiced',
+      patientPayments: 'not tracked',
+    });
   }
 
   /* Notes: the one thing both sides write. A practice note is always visible to both. */

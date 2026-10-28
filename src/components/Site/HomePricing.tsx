@@ -1,24 +1,28 @@
 /**
- * The home page's pricing: the growth service, the offer new prospects are
- * sold. The software plans' cards ($49 / $97 / $197) are no longer shown here
- * — the owner's decision of 2026-10-26. They still exist in allowances.ts, on
- * /pricing (which existing subscribers reach from Plan & billing) and on every
- * subscription already sold; nothing here reprices anybody.
+ * The home page's software pricing: Growth $97/month, Scale $297/month and
+ * Custom (the owner's specification of 2026-10-28) — the same cards as
+ * /pricing, drawn from the plan table the server charges and enforces
+ * (PricingParts.tsx, lib/allowances.ts). No figure is typed here.
  *
- * The button books the strategy call while the owner is taking bookings. While
- * they are not, it opens the inquiry form below instead — a "Book" button
- * that lands on "bookings are closed" is worse than no button. The form is
- * always one click away ("Prefer to write?") and opens by itself when the
- * visitor arrives at /#enquire (where the closed booking page sends them).
+ * The managed services are priced in their own section below
+ * (ServiceOffers.tsx) and never in this table: a software subscription and a
+ * managed-service fee are different purchases.
+ *
+ * Custom is sold by conversation. Its button opens the strategy call while the
+ * owner is taking bookings; while they are not, it opens the inquiry form
+ * below instead — a "Book" button that lands on "bookings are closed" is
+ * worse than no button. The form is always one click away ("Prefer to
+ * write?") and opens by itself at /#enquire, where the closed booking page
+ * sends visitors.
  */
 import { useEffect, useRef, useState } from 'react';
-import { CalendarCheck, Mail } from 'lucide-react';
-import { TRADE_GROWTH_OFFER as O } from '../../../worker/src/lib/offers';
+import { ArrowRight, CalendarCheck, Mail } from 'lucide-react';
 import { strategyCallHref, useBookingState } from '../../services/strategyCall';
-import GrowthOfferBlock from './GrowthOfferBlock';
+import { BILLING_TERMS, PlanCards, usePlanTable } from './PricingParts';
 import { EnquiryForm } from './PricingPage';
 
 export default function HomePricing() {
+  const table = usePlanTable();
   const closed = useBookingState() === 'closed';
   const [writing, setWriting] = useState(false);
   const formRef = useRef<HTMLDivElement | null>(null);
@@ -33,20 +37,21 @@ export default function HomePricing() {
   }, []);
 
   return (
-    <section className="ind-sec gp hp" id="pricing" aria-label="Pricing">
+    <section className="ind-sec hp" id="pricing" aria-label="Software pricing">
       <div className="dc-chapter-head">
-        <span className="dc-eyebrow">Pricing</span>
-        <h2>{O.headline}</h2>
-        <p className="hp-sub">{O.subhead}</p>
-        <p>{O.summary}</p>
+        <span className="dc-eyebrow">Software pricing</span>
+        <h2>Protected Central software. <em>Run it yourself.</em></h2>
+        <p>The CRM and marketing-automation platform as a self-serve subscription: 7 days free with no card, then {BILLING_TERMS.replace('USD, billed monthly after the 7-day trial · ', 'billed monthly in US dollars, ')}. Every number on a card is what the product holds you to.</p>
       </div>
 
-      <GrowthOfferBlock />
+      <PlanCards table={table} customHref="#enquire" onCustom={toForm} />
+
+      <p className="hp-compare"><a href="/pricing#compare">Compare every feature, plan by plan <ArrowRight size={13} /></a></p>
 
       <div className="dc-cta-pair gp-cta">
         {closed ? (
           <button type="button" className="dc-btn dc-btn-primary dc-btn-lg" onClick={toForm} data-testid="home-book" data-booking="closed">
-            <Mail size={16} /> Tell Us About Your Business
+            <Mail size={16} /> Contact Sales about Custom
           </button>
         ) : (
           <a className="dc-btn dc-btn-primary dc-btn-lg" href={strategyCallHref('main')} data-testid="home-book" data-booking="open">
@@ -61,7 +66,7 @@ export default function HomePricing() {
 
       {open && (
         <div className="hp-form" id="enquire" ref={formRef} data-testid="home-enquire">
-          <EnquiryForm context="Growth service — home page" needs={false} placeholder="Your trade, your area, how leads reach you now and what you would like more of…" />
+          <EnquiryForm context="Home page" placeholder="Custom plan, a managed service, or a question — tell us about your business…" />
         </div>
       )}
     </section>

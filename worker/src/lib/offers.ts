@@ -1,19 +1,24 @@
 /**
  * The services sold by conversation — not by checkout — and what each costs.
  *
- * Two offers, kept apart on purpose:
+ * Three offers, kept apart on purpose:
  *
  *   - the **growth service** for HVAC and roofing contractors: a one-time
  *     setup fee, a monthly fee, and a performance fee on *eligible, attributed
  *     collections* — money a customer actually received for a job the service
  *     brought in, under that customer's own agreement. Never their whole
  *     turnover, never a quote or a won-job value;
- *   - **medical billing / RCM**, priced only after an assessment. It has no
- *     figure here because none is approved, and it must never inherit the
- *     trade offer's percentage — contingency pricing on healthcare collections
- *     needs its own legal review.
+ *   - **medical billing / RCM** (published 2026-10-28 at the owner's
+ *     instruction, subject to legal and compliance review): the same setup and
+ *     monthly figures, and a percentage of *eligible net collections on claims
+ *     handled under the signed agreement*. It is its own constant with its own
+ *     basis, exclusions and terms — it does not inherit the trade offer, whose
+ *     "qualifying job" attribution means nothing for a practice's claims;
+ *   - **e-commerce business setup and growth management**: a flat monthly fee
+ *     for a written scope of managed work, with no performance fee and every
+ *     platform, ad and inventory cost the client's own.
  *
- * The software plans (Starter / Growth / Pro) are a third thing and live in
+ * The software plans (Growth / Scale / Custom) are a fourth thing and live in
  * allowances.ts; nothing here is charged by checkout. Every page, the
  * structured data a search engine reads, and (from phase 2) the defaults of a
  * new customer agreement read these constants, so the site cannot quote a
@@ -90,13 +95,52 @@ export interface GrowthOffer {
   };
 }
 
-export interface AssessmentOffer {
+export interface MedicalBillingOffer {
   id: 'medical_billing';
   name: string;
-  pricing: 'assessment';
-  /** What the price depends on. */
-  factors: string[];
-  note: string;
+  currency: 'USD';
+  setupCents: number;
+  monthlyCents: number;
+  /** Basis points of eligible net collections on claims handled under the agreement: 500 = 5%. */
+  collectionsBps: number;
+  labels: { setup: string; monthly: string; collections: string };
+  /** What the percentage is taken of, in plain words. */
+  feeBasis: string;
+  /** What is never counted. */
+  excluded: string[];
+  /** How the eligible amount is worked out, step by step — the statement follows this order. */
+  calculation: string[];
+  /** Paid by the practice, never part of our fees. */
+  separate: string[];
+  /** How billing works. */
+  billing: string[];
+  /** Said beside every quote of the price. */
+  review: string;
+  /** The worked example's eligible net collections; the fee is computed by feeOn. */
+  exampleCents: number;
+}
+
+/**
+ * E-commerce Business Setup & Growth Management — a managed service at one
+ * monthly price. No performance fee, no quotas: what a month covers is agreed
+ * in a written scope, because catalogue size, channels and ad accounts differ
+ * too much between stores for one list to be honest.
+ */
+export interface ManagedServiceOffer {
+  id: 'ecommerce_management';
+  name: string;
+  currency: 'USD';
+  monthlyCents: number;
+  /** What the monthly fee is for, in one sentence. */
+  feeBasis: string;
+  /** Paid by the client, never part of our fee unless a signed agreement says otherwise. */
+  separate: string[];
+  /** What a written scope settles before the first month. */
+  scopeCovers: string[];
+  /** What stays the client's. */
+  clientDuties: string[];
+  /** Said wherever the price is. */
+  noGuarantee: string;
 }
 
 export const TRADE_GROWTH_OFFER: GrowthOffer = {
@@ -177,20 +221,79 @@ export const TRADE_GROWTH_OFFER: GrowthOffer = {
 /** Where the written terms are published, on every host that speaks as Protected Central. */
 export const GROWTH_TERMS_PATH = '/growth-service-terms';
 
-export const MEDICAL_BILLING_OFFER: AssessmentOffer = {
+export const MEDICAL_BILLING_OFFER: MedicalBillingOffer = {
   id: 'medical_billing',
   name: 'Medical billing and revenue-cycle management',
-  pricing: 'assessment',
-  factors: [
-    'Specialty and payer mix',
-    'Number of providers and locations',
-    'Monthly claim volume',
-    'Your current billing workflow and any backlog',
-    'Which billing and denial-management services you need',
-    'Integrations and onboarding complexity',
-    'Reporting and client-support requirements',
+  currency: 'USD',
+  setupCents: 30_000,
+  monthlyCents: 8_700,
+  collectionsBps: 500,
+  labels: {
+    setup: 'One-time practice setup fee',
+    monthly: 'Recurring platform and billing-service fee',
+    collections: 'Of eligible net collections on claims we handle under your signed agreement',
+  },
+  feeBasis: 'Payer payments actually received on claims we submitted or worked under your signed agreement, after refunds, recoupments, take-backs and any other amounts your agreement excludes. It is not a percentage of your practice’s total revenue, and not of collections on claims we did not handle.',
+  excluded: [
+    'Claims we did not prepare, submit or work under the agreement',
+    'Patient payments, co-pays and self-pay balances, unless your agreement includes them',
+    'Payments received before the agreement started, and balances it excludes',
+    'Amounts billed but not yet paid, and expected or estimated payments',
+    'Refunds, recoupments, overpayment take-backs and chargebacks — deducted when they happen',
   ],
-  note: 'We quote after an assessment of your practice. There is no standard percentage or monthly price, and the HVAC and roofing performance fee does not apply to medical billing.',
+  calculation: [
+    'Start from payer payments posted from remittances on claims handled under the agreement in the month',
+    'Take off refunds, recoupments and take-backs on those claims in the same month',
+    'Leave out anything your agreement excludes',
+    'Apply the agreed percentage to what remains — the eligible net collections',
+    'Send you the statement with every claim and payment behind it, for review before it is invoiced',
+  ],
+  separate: [
+    'Clearinghouse, practice-management and EHR subscriptions',
+    'Payer enrollment or credentialing fees charged by third parties',
+    'Any third-party service you approve in advance',
+  ],
+  billing: [
+    'The setup fee is invoiced when the agreement is signed',
+    'The monthly fee is invoiced each month in advance',
+    'The collections percentage is invoiced monthly in arrears, after you have reviewed the statement',
+    'Nothing is charged to a card automatically',
+  ],
+  review: 'Published pricing, subject to legal and compliance review and to the terms of your signed agreement and business associate agreement. Percentage-of-collections billing is regulated in some states and some payer contracts; where it is not permitted, we agree a different basis with you in writing.',
+  exampleCents: 2_000_000,
+};
+
+export const ECOMMERCE_OFFER: ManagedServiceOffer = {
+  id: 'ecommerce_management',
+  name: 'E-commerce Business Setup & Growth Management',
+  currency: 'USD',
+  monthlyCents: 220_000,
+  feeBasis: 'The monthly fee pays for the managed-service work in your written scope — setting up and running your store and marketplace accounts, advertising management, and your Protected Central CRM and marketing automation. It is not a share of your sales.',
+  separate: [
+    'Advertising spend, paid by you straight to each ad platform',
+    'Inventory and product purchasing',
+    'Marketplace commissions, referral and selling fees',
+    'Shipping, fulfilment and payment-processing fees',
+    'Paid themes, apps, subscriptions and other third-party services',
+  ],
+  scopeCovers: [
+    'Which platforms and marketplaces are in scope, and the access you give us to each',
+    'How many products and listings we set up and maintain each month',
+    'Which advertising channels we manage, and the monthly ad budget you set',
+    'How many email and SMS campaigns and automations we build and run',
+    'How much social and blog content we prepare, and who approves it',
+    'Customer-support and ticket handling: hours, channels and what is escalated to you',
+    'The monthly report: what it measures and when you receive it',
+  ],
+  clientDuties: [
+    'Owning your seller, store and ad accounts, and keeping them in good standing',
+    'Giving us the access each platform allows, and approving payment methods yourself',
+    'Supplying products, inventory, pricing, images and accurate product information',
+    'Fulfilment and shipping, unless your scope says otherwise',
+    'Approving campaigns, ad budgets and content before they go out',
+    'Keeping to each marketplace’s rules and the laws that apply to your products',
+  ],
+  noGuarantee: 'We do not guarantee revenue, sales volume, return on ad spend, profit or how soon a store becomes profitable. Marketplaces decide seller approval, listing approval and ad eligibility.',
 };
 
 /** "$300", "$87", "$1,250.50" — whole dollars without cents. */
@@ -202,6 +305,21 @@ export function dollars(cents: number): string {
 /** "5%", "2.5%". */
 export function percent(bps: number): string {
   return `${Number((bps / 100).toFixed(2))}%`;
+}
+
+/** The medical offer in one line: "$300 setup + $87/month + 5% of eligible net collections". */
+export function medicalLine(o: MedicalBillingOffer = MEDICAL_BILLING_OFFER): string {
+  return `${dollars(o.setupCents)} setup + ${dollars(o.monthlyCents)}/month + ${percent(o.collectionsBps)} of eligible net collections`;
+}
+
+/** The medical worked example, its fee computed rather than typed. */
+export function medicalExample(o: MedicalBillingOffer = MEDICAL_BILLING_OFFER): string {
+  return `For example, if payers paid ${dollars(o.exampleCents)} in a month on claims handled under your agreement and nothing was refunded or excluded, the collections fee at ${percent(o.collectionsBps)} would be ${dollars(feeOn(o.exampleCents, o.collectionsBps))}. Payments on claims we did not handle add nothing.`;
+}
+
+/** "$2,200/month". */
+export function ecommerceLine(o: ManagedServiceOffer = ECOMMERCE_OFFER): string {
+  return `${dollars(o.monthlyCents)}/month`;
 }
 
 /** The offer in one line, the same on every page: "$300 setup + $87/month + 5% performance fee". */

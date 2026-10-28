@@ -79,18 +79,31 @@ checks every template key exists.
   are not put back unless `restore` is ticked. A later version adds only its
   new items, in place. A document that is not a list is refused, not replaced.
   Records carry `source.origin = 'industry-snapshot'`.
-- **Route** `/api/snapshots.php` (`routes/snapshots.ts`), migration 0079
-  (`crm_workspaces.industry`, `crm_snapshot_installs`). A customer installs
-  where `workspaceAccess` lets them; the install owner into any existing
-  workspace without claiming it; client logins and `__agency__` never.
+- **The marketplace is the install owner's alone** (owner's decision
+  2026-10-28): the owner chooses and installs each customer's snapshot.
+  Every action of `/api/snapshots.php` (`routes/snapshots.ts`) except `claim`
+  — the catalogue included — answers 403 `not_owner` to anybody else, on
+  their own workspace too; the menu entry is `ownerOnly` and `/snapshots`
+  redirects anybody else (App.tsx). Do not add a customer path back: it is
+  the business rule, not a UI preference. Migration 0079
+  (`crm_workspaces.industry`, `crm_snapshot_installs` — the audit record:
+  who, as which role, which version, what was added). The owner installs
+  into any existing workspace without claiming it; `__agency__` never.
   Installing twice writes nothing and no second history row.
-- **Sign-up carries the industry**: `/signup?industry=<slug>` (the trade
+- **Five snapshots**: HVAC, Roofing, Medical billing service (the biller's own
+  practice-onboarding pipeline), **Medical practice (billing client)** (the
+  practice's billing follow-up — work items, never patients) and
+  **E-commerce store** (customers from enquiry to repeat buyer; no
+  marketplace is connected). An install writes only `crm_pipelines` and
+  `crm_custom_fields` — no contacts, messages, credentials or settings.
+- **Sign-up carries the industry**: `/signup?industry=<slug>` (the service
   sites' "Start the software free") is kept as `pc_industry`
-  (`services/industrySetup.ts`); SyncGate calls `claim` *before the first
-  pull*, so the new workspace opens on the industry pipeline and the generic
-  one is never seeded. The server honours it once, for a new (≤ 7 days)
-  account's own workspace (`industry = ''` claim).
+  (`services/industrySetup.ts`); after sign-in `claim` **records** it on a
+  new (≤ 7 days) account's own workspace, once — nothing is installed. The
+  owner's workspace picker shows it as "asked for <industry>".
 - The screen pushes queued edits (`flushNow`) before an install into the
   open workspace and pulls after (`refreshFromCloud`; AppContext reloads
   pipelines and fields). `npm run test:snapshotse2e` (wrangler :8875, fresh
-  D1, needs a `VITE_BASE=/` build) and `test:security` cover it.
+  D1, needs a `VITE_BASE=/` build: owner vs customer on API and direct URL,
+  the right snapshot into the right workspace and nowhere else) and
+  `test:security` cover it.

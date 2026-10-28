@@ -98,7 +98,7 @@ import { runHousekeeping } from './lib/housekeeping';
 import { handleLogo } from './lib/brandLogo';
 import { handleWidgetAvatar } from './lib/widgetAvatar';
 import { handleUserAvatar } from './routes/userAvatar';
-import { industryFor, isSiteHost, robotsTxt, sitemapXml, speaksAsUs } from './lib/industryPages';
+import { PAGE_ALIASES, industryFor, isSiteHost, robotsTxt, sitemapXml, speaksAsUs } from './lib/industryPages';
 import { markGated, stagingGate } from './lib/stagingGate';
 import { rewriteIndustryHead } from './lib/industryHead';
 
@@ -305,6 +305,10 @@ async function serve(req: Request, env: Env, ctx: ExecutionContext, url: URL): P
       })
       .transform(res);
   }
+
+  /* A typed short address for a service page: one permanent redirect, so the canonical page is the only copy. */
+  const alias = PAGE_ALIASES[url.pathname.replace(/\/+$/, '').toLowerCase()];
+  if (alias && speaksAsUs(url.hostname)) return Response.redirect(`${url.origin}${alias}${url.search}`, 301);
 
   /* The trade pages' head, for crawlers and link previews (lib/industryPages.ts). */
   const trade = industryFor(url.pathname);

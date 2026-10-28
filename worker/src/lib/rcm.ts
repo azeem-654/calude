@@ -35,6 +35,7 @@
  * Pure: the browser imports it too, so a screen explains a figure with the
  * rule that made it. `npm run test:rcm`.
  */
+import { feeOn } from './offers';
 
 /* ── Money ──────────────────────────────────────────────────────────────── */
 
@@ -588,4 +589,53 @@ export function syntheticRemitCsv(claimNos: Record<string, string>, today: strin
   rows.push([c('SYN-1004'), 'SYNICN4004', '', '99213', '135.00', '88.00', '70.40', '17.60', 'CO', '45', '', 'SYNCHK-2002', today]);
   rows.push([c('SYN-1005'), 'SYNICN5005', '', '99214', '180.00', '0', '0', '0', 'CO', '16', 'M51', 'SYNCHK-2002', today]);
   return rows.map(r => r.map(v => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)).join(',')).join('\n') + '\n';
+}
+
+/* ── The collections fee statement ────────────────────────────────────────── */
+
+/**
+ * The medical billing service's percentage-of-collections fee for one month
+ * (lib/offers.ts MEDICAL_BILLING_OFFER, published 2026-10-28), worked out from
+ * the one thing this module knows was paid: posted remittance rows.
+ *
+ * Healthcare's own rule, not the trade service's: there is no "qualifying
+ * job" or attribution window here — a claim in this workspace is a claim the
+ * billing team handles. What counts:
+ *
+ *   - rows `posted` to a claim, dated (`paid_on`) in the month — never an
+ *     unmatched, duplicate or set-aside row (listed apart, so the practice
+ *     can see what was left out and why);
+ *   - a negative paid amount is a recoupment or take-back and comes off;
+ *   - patient payments are not tracked by this module, so none is counted.
+ *
+ * If take-backs exceed receipts, the fee is zero and the shortfall is shown —
+ * never a negative fee, and never quietly carried into another month (the
+ * signed agreement says whether it is). Only `feeOn` is shared with the trade
+ * service: the arithmetic (integer cents, half-up once on the total).
+ *
+ * A statement is a calculation to review, never a charge: nothing here
+ * invoices, charges a card or marks a fee paid.
+ */
+export interface FeeRow { id: string; claimId: string | null; claimNo: string; paidOn: string; paidCents: number; outcome: string }
+export interface FeeStatement {
+  month: string;
+  counted: FeeRow[];
+  excluded: FeeRow[];
+  receivedCents: number;
+  takebackCents: number;
+  netCents: number;
+  shortfallCents: number;
+  bps: number;
+  feeCents: number;
+}
+
+export function collectionsStatement(rows: FeeRow[], month: string, bps: number): FeeStatement {
+  const inMonth = rows.filter(r => /^\d{4}-\d{2}$/.test(month) && r.paidOn.startsWith(month));
+  const counted = inMonth.filter(r => r.outcome === 'posted' && !!r.claimId);
+  const excluded = inMonth.filter(r => !(r.outcome === 'posted' && !!r.claimId));
+  const receivedCents = counted.reduce((t, r) => t + Math.max(0, Math.round(r.paidCents)), 0);
+  const takebackCents = counted.reduce((t, r) => t + Math.max(0, -Math.round(r.paidCents)), 0);
+  const diff = receivedCents - takebackCents;
+  const netCents = Math.max(0, diff);
+  return { month, counted, excluded, receivedCents, takebackCents, netCents, shortfallCents: Math.max(0, -diff), bps, feeCents: feeOn(netCents, bps) };
 }

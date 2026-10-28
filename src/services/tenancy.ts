@@ -13,7 +13,7 @@
  */
 import { PLAN_DEFS, SOLD_PLANS, featureLines } from '../../worker/src/lib/allowances';
 
-export type PlanId = 'starter' | 'growth' | 'pro' | 'custom' | 'agency';
+export type PlanId = 'starter' | 'growth' | 'scale' | 'pro' | 'custom' | 'agency';
 export type AccountStatus = 'active' | 'trial' | 'paused' | 'cancelled';
 
 export interface Plan {
@@ -47,7 +47,7 @@ const asPlan = (p: (typeof PLAN_DEFS)[number]): Plan => ({
   features: featureLines(p),
   limits: { resell: p.limits.sub_accounts },
 });
-/** The three plans checkout sells — what the trial bar and Plan & billing offer. */
+/** The plans checkout sells — what the trial bar and Plan & billing offer. */
 export const PLANS: Plan[] = SOLD_PLANS(PLAN_DEFS).map(asPlan);
 /* Every plan, Custom and the legacy one included, so a record naming one still finds it. */
 const EVERY_PLAN: Plan[] = PLAN_DEFS.map(asPlan);

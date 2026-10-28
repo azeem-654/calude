@@ -2,11 +2,12 @@
  * What the medical billing microsite says — protectedcentral.com/medical-billing.
  *
  * A different business from the trade sites, written separately: a
- * professional revenue-cycle service for medical practices, priced only after
- * an assessment (lib/offers.ts → MEDICAL_BILLING_OFFER, which has no figure).
+ * professional revenue-cycle service for medical practices. Its price is
+ * lib/offers.ts → MEDICAL_BILLING_OFFER, drawn by MedicalBillingPage.tsx; no
+ * figure is typed in this file.
  *
  * What it must never say, because nothing supports it: a recovery amount, a
- * denial rate, a collection percentage, a customer, a testimonial, a payer
+ * denial rate, a collection rate, a customer, a testimonial, a payer
  * partnership, a certification, "HIPAA compliant" or "HIPAA certified" (there
  * is no such certification), or a live clearinghouse / EHR / payer connection.
  * `npm run test:industry` fails on percentages, multipliers and those words.
@@ -115,7 +116,7 @@ export const MED_SPECIALTIES: { icon: Icon; title: string; body: string }[] = [
 export const MED_AUDIT = {
   lead: 'Start with a revenue-leakage audit,',
   emph: 'built on evidence.',
-  body: 'Before anything changes, we compare what your records say happened with what was billed, answered and paid. Every finding names the records it rests on and how sure it is — and nothing is called a missed claim until we have checked that the source data is complete.',
+  body: 'Before anything changes, we compare what your records say happened with what was billed, answered and paid. The audit flags potential issues for a person to review: every finding names the records it rests on and how sure it is, and nothing is called a missed claim until we have checked that the source data is complete. It cannot see inside payer systems, so a finding is a reason to look, not proof that money was lost.',
   checks: [
     'Encounters with no matching claim',
     'Claims prepared but never submitted',
@@ -210,7 +211,8 @@ export const MED_FAQ: { q: string; a: string }[] = [
   { q: 'Are you HIPAA compliant?', a: 'There is no official HIPAA certification, and we do not claim one. We sign a business associate agreement before handling any patient data, use minimum-necessary data, restrict and log access, and review the safeguards for your account with you before we start.' },
   { q: 'Will you change our codes?', a: 'Not on our own. Missing information and inconsistencies are flagged in a review queue; coding decisions are made by qualified, authorized people, and consequential changes are confirmed with your practice.' },
   { q: 'Do you connect to our EHR, practice-management system or clearinghouse?', a: 'We start with validated exports and reports from your systems. A live connection to a clearinghouse, EHR or payer is set up only after it is configured and tested with authorized access — we will tell you which, if any, are live for your practice.' },
-  { q: 'How is it priced?', a: 'After an assessment of your specialty, payer mix, providers and locations, claim volume, backlog, the services you need, integrations and reporting. There is no standard percentage or monthly price, and our HVAC and roofing pricing does not apply.' },
+  { q: 'How is it priced?', a: 'A one-time setup fee, a monthly fee, and a percentage of eligible net collections — payer payments actually received on claims we handled under your signed agreement, after refunds and take-backs. Not a percentage of your practice’s total revenue. The figures are in the pricing section above; your signed agreement states the exact basis and exclusions.' },
+  { q: 'Is the collections percentage allowed in my state?', a: 'Percentage-of-collections billing is restricted in some states and by some payer contracts. The pricing is subject to legal and compliance review; where a percentage is not permitted, we agree a different basis with you in writing before you sign.' },
   { q: 'What do you need from us to start?', a: 'An assessment call, a signed agreement and BAA, the access we agree, and recent exports of claims, remittances and A/R. We tell you exactly which reports during the assessment.' },
 ];
 

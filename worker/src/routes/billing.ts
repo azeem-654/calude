@@ -86,7 +86,7 @@ const isOwner = (user: SessionUser) => user.accountId === null && user.role === 
  * charged, and changing one is a release.
  */
 const PLAN_CENTS: Record<string, { name: string; cents: number; annualCents: number }> = Object.fromEntries(
-  /* The three priced plans only: Custom is agreed by hand and has no price,
+  /* The priced plans on sale only: Custom is agreed by hand and has no price,
      and a legacy plan is renewed, never bought again. */
   SOLD_PLANS().map(p => [p.id, { name: p.name, cents: p.monthlyCents, annualCents: p.annualCents }]),
 );
@@ -287,6 +287,9 @@ export async function handleBilling(req: Request, env: Env): Promise<Response> {
     /* Monthly unless yearly is asked for by name; the yearly price is the
        plan's own, never a figure from the request. */
     const interval = d.interval === 'year' ? 'year' as const : 'month' as const;
+    /* The published plans are monthly only (2026-10-28); a yearly request for
+       one is refused by name rather than charged as a $0 year. */
+    if (interval === 'year' && !plan.annualCents) return fail(`${plan.name} is billed monthly — there is no yearly price.`, 200, { code: 'monthly_only' });
     const amountCents = interval === 'year' ? plan.annualCents : plan.cents;
     const currency = (String(d.currency ?? 'USD') || 'USD').toUpperCase();
     if (provider.currencies.length && !provider.currencies.includes(currency)) {

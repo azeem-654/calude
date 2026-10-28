@@ -74,3 +74,4 @@
 .sc-card .sc-meet { display: flex; gap: 8px; align-items: flex-start; justify-content: center; }
 .sc-meet svg { flex-shrink: 0; margin-top: 4px; color: var(--lime); }
 .sc-done { text-align: center; }
+.sc-note { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: #fff7e6; color: #8a4b00; font-size: 13px; line-height: 1.5; }

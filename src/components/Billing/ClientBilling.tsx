@@ -48,8 +48,11 @@ export default function ClientBilling() {
   const [error, setError] = useState('');
   /* The packages as the server holds them — the numbers it enforces. */
   const [table, setTable] = useState<PlanTable>(DEFAULT_TABLE);
-  const [yearly, setYearly] = useState(false);
+  const [yearlyAsked, setYearly] = useState(false);
   useEffect(() => { void fetchPlans().then(t => { if (t) setTable(t); }); }, []);
+  /* No plan on sale has a yearly price since 2026-10-28; the switch appears only if one does again. */
+  const offersYearly = SOLD_PLANS(table.plans).some(p => p.annualCents > 0);
+  const yearly = yearlyAsked && offersYearly;
 
   useEffect(() => {
     let alive = true;
@@ -155,7 +158,8 @@ export default function ClientBilling() {
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', margin: '4px 0 12px' }}>
             <div style={{ fontSize: 15, fontWeight: 800, color: INK }}>Choose a plan</div>
-            <div role="radiogroup" aria-label="Billing period" style={{ display: 'inline-flex', background: '#eceef1', borderRadius: 999, padding: 3, gap: 2 }}>
+            {!offersYearly && <div style={{ fontSize: 12.5, color: MUTED }}>US dollars, billed monthly · renews until you cancel</div>}
+            {offersYearly && <div role="radiogroup" aria-label="Billing period" style={{ display: 'inline-flex', background: '#eceef1', borderRadius: 999, padding: 3, gap: 2 }}>
               {([['month', 'Monthly'], ['year', 'Yearly · 2 months free']] as const).map(([k, label]) => {
                 const on = (k === 'year') === yearly;
                 return (
@@ -165,7 +169,7 @@ export default function ClientBilling() {
                   </button>
                 );
               })}
-            </div>
+            </div>}
           </div>
           {payments === false && (
             <div role="status" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: '#fef3c7', color: '#92400e', padding: '12px 14px', borderRadius: 12, fontSize: 13.5, lineHeight: 1.5, marginBottom: 14 }}>
@@ -200,7 +204,7 @@ export default function ClientBilling() {
             <strong style={{ color: INK }}>Every plan includes:</strong> {table.included.join(' · ')}.
           </p>
           <p style={{ color: MUTED, fontSize: 12.5, lineHeight: 1.6, margin: '8px 0 0' }}>
-            Need more than Pro, done-for-you setup or invoiced billing?{' '}
+            Need more than Scale, done-for-you setup or invoiced billing?{' '}
             <a href={`${siteOrigin()}/pricing#custom`} target="_blank" rel="noopener noreferrer" style={{ color: INK, fontWeight: 700 }}>Ask about a Custom plan</a>
             {' '}· <a href={`${siteOrigin()}/pricing#compare`} target="_blank" rel="noopener noreferrer" style={{ color: INK, fontWeight: 700 }}>Compare every feature</a>
           </p>

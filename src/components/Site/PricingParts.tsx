@@ -1,7 +1,9 @@
 /**
- * The pricing pieces the home page and /pricing share: the monthly/yearly
- * switch, the four cards (three priced plans and Custom), each with "Show full
- * details", and the full comparison.
+ * The pricing pieces the home page and /pricing share: the cards (the priced
+ * plans and Custom — since 2026-10-28 Growth, Scale and Custom), each
+ * with "Show full details", the full comparison, and the monthly/yearly
+ * switch, which is drawn only while some plan has a yearly price (none does
+ * now; `hasYearly`).
  *
  * Every number and every tick is generated from the plan table
  * (worker/src/lib/allowances.ts — `featureLines`, `comparison`), read first
@@ -27,6 +29,12 @@ export function usePlanTable(): PlanTable {
   return table;
 }
 
+/** Whether any plan on sale has a yearly price — the switch is pointless otherwise. */
+export const hasYearly = (table: PlanTable) => CARD_PLANS(table.plans).some(p => p.kind === 'self' && p.annualCents > 0);
+
+/** The recurring terms, said once under every priced card. */
+export const BILLING_TERMS = 'USD, billed monthly after the 7-day trial · renews each month until you cancel';
+
 export function BillingToggle({ yearly, onChange }: { yearly: boolean; onChange: (y: boolean) => void }) {
   return (
     <div className="dc-billing-toggle" role="radiogroup" aria-label="Billing period">
@@ -48,16 +56,17 @@ export function CellView({ v }: { v: Cell }) {
  * The four cards. `customHref` is where Custom's button goes — the enquiry
  * form on /pricing, or that page from the home page.
  */
-export function PlanCards({ table, yearly, customHref, onCustom }: {
-  table: PlanTable; yearly: boolean; customHref: string; onCustom?: () => void;
+export function PlanCards({ table, yearly: askedYearly = false, customHref, onCustom }: {
+  table: PlanTable; yearly?: boolean; customHref: string; onCustom?: () => void;
 }) {
   const plans = CARD_PLANS(table.plans);
+  const yearly = askedYearly && hasYearly(table);
   const groups = comparison(plans);
   const [open, setOpen] = useState<string>('');
   const signup = appHref('/signup');
 
   return (
-    <div className="dc-plans dc-plans-4">
+    <div className={`dc-plans dc-plans-4${plans.length === 3 ? ' dc-plans-3' : ''}`} data-testid="plan-cards">
       {plans.map(p => {
         const custom = p.kind === 'custom';
         const shown = open === p.id;
@@ -96,6 +105,7 @@ export function PlanCards({ table, yearly, customHref, onCustom }: {
               ? <a className="dc-btn dc-btn-outline" href={customHref} onClick={e => { if (onCustom) { e.preventDefault(); onCustom(); } }}>Tell us what you need <ArrowRight size={14} /></a>
               : <a className={`dc-btn ${p.featured ? 'dc-btn-primary' : 'dc-btn-outline'}`} href={signup} {...cross(signup)} onClick={() => track('trial_cta_clicked')}>Start free <ArrowRight size={14} /></a>}
             <small className="dc-plan-note">{custom ? 'A reply from a person, by email' : '7 days free · No card required'}</small>
+            {!custom && <small className="dc-plan-note dc-plan-terms" data-testid="plan-terms">{BILLING_TERMS}</small>}
           </div>
         );
       })}

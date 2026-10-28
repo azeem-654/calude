@@ -145,7 +145,7 @@ export default function MedicalBilling() {
   );
 }
 
-type Tab = 'claims' | 'review' | 'denials' | 'remits' | 'aging' | 'auths' | 'leakage' | 'messages' | 'audit' | 'setup';
+type Tab = 'claims' | 'review' | 'denials' | 'remits' | 'aging' | 'auths' | 'leakage' | 'fee' | 'messages' | 'audit' | 'setup';
 
 function Workbench({ accountId }: { accountId: string }) {
   const [o, setO] = useState<Overview | null>(null);
@@ -171,6 +171,7 @@ function Workbench({ accountId }: { accountId: string }) {
     { id: 'aging', label: 'A/R aging', show: true },
     { id: 'auths', label: 'Prior auth', show: true },
     { id: 'leakage', label: 'Leakage audit', show: true },
+    { id: 'fee', label: 'Fee statement', show: true },
     { id: 'messages', label: 'Messages', badge: o.as.practice ? requests : 0, show: true },
     { id: 'audit', label: 'Access log', show: true },
     { id: 'setup', label: 'Set-up', show: o.as.biller },
@@ -199,6 +200,7 @@ function Workbench({ accountId }: { accountId: string }) {
       {tab === 'aging' && <Aging o={o} />}
       {tab === 'auths' && <Auths o={o} accountId={accountId} reload={reload} />}
       {tab === 'leakage' && <Leakage o={o} />}
+      {tab === 'fee' && <FeeStatementTab accountId={accountId} />}
       {tab === 'messages' && <Messages o={o} accountId={accountId} reload={reload} />}
       {tab === 'audit' && <AuditLog accountId={accountId} />}
       {tab === 'setup' && o.as.biller && <Setup o={o} accountId={accountId} reload={reload} />}
@@ -738,6 +740,76 @@ function Aging({ o }: { o: Overview }) {
             <thead><tr><th style={th}>Payer</th>{AGING_BUCKETS.map(b => <th key={b.key} style={th}>{b.label}</th>)}</tr></thead>
             <tbody>{a.byPayer.map(p => <tr key={p.payerId}><td style={td}>{payer(p.payerId)}</td>{AGING_BUCKETS.map(b => <td key={b.key} style={td}>{money(Number(p[b.key] ?? 0))}</td>)}</tr>)}</tbody>
           </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── The collections fee statement ──
+   Read-only, and the same for the billing team and the practice: the month's
+   posted payer payments behind the fee, what was left out and why, and the
+   arithmetic (lib/rcm.ts collectionsStatement). Nothing is invoiced from here. */
+
+interface FeeStatementAnswer {
+  statement: { month: string; counted: FeeLine[]; excluded: FeeLine[]; receivedCents: number; takebackCents: number; netCents: number; shortfallCents: number; bps: number; feeCents: number };
+  synthetic: boolean; basis: string; status: string;
+}
+interface FeeLine { id: string; claimId: string | null; claimNo: string; paidOn: string; paidCents: number; outcome: string }
+
+function FeeStatementTab({ accountId }: { accountId: string }) {
+  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [d, setD] = useState<Answer<FeeStatementAnswer> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setD(null);
+    void rcmApi<FeeStatementAnswer>('fee_statement', { accountId, month }).then(r => { if (alive) setD(r); });
+    return () => { alive = false; };
+  }, [accountId, month]);
+  const st = d?.success ? d.statement : null;
+  const OUT: Record<string, string> = { unmatched: 'Not matched to a claim', duplicate: 'Already posted in another file', set_aside: 'Set aside', posted: 'Not linked to a claim' };
+  return (
+    <div style={{ display: 'grid', gap: 10, minWidth: 0 }} data-testid="rcm-fee">
+      <div style={box}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+          <h3 style={{ ...h3, margin: 0 }}>Collections fee statement</h3>
+          <label style={label}>Month<input type="month" style={input} data-field="rcm.fee.month" value={month} onChange={e => setMonth(e.target.value)} /></label>
+        </div>
+        {!d && <p style={small}><Loader size={13} className="spin" /> Calculating…</p>}
+        {d && !d.success && <Err text={d.error ?? 'Could not calculate the statement.'} />}
+        {st && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', gap: 8, marginTop: 10 }}>
+              {[['Payer payments posted', st.receivedCents], ['Take-backs and recoupments', -st.takebackCents], ['Eligible net collections', st.netCents], [`Fee at ${st.bps / 100}%`, st.feeCents]].map(([k, v]) => (
+                <div key={k as string} style={{ padding: 10, borderRadius: 12, background: '#f8fafc', border: `1px solid ${LINE}` }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: MUTED }}>{k}</div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: INK }} data-testid={`rcm-fee-${String(k).split(' ')[0].toLowerCase()}`}>{money(v as number)}</div>
+                </div>
+              ))}
+            </div>
+            {st.shortfallCents > 0 && <p style={{ ...small, color: WARN, marginTop: 8 }}>Take-backs exceeded payments by {money(st.shortfallCents)} this month, so the fee is nil. Whether the difference carries into next month is set by the signed agreement.</p>}
+            <p style={{ ...small, marginTop: 8 }}><b style={{ color: INK }}>Status: {d.status}.</b> {d.basis} Patient payments are not tracked in this module, so none is counted.{d.synthetic ? ' Synthetic test data only — no real payments.' : ''}</p>
+          </>
+        )}
+      </div>
+      {st && (
+        <div style={{ ...box, ...scroller }}>
+          <h3 style={h3}>Counted ({st.counted.length})</h3>
+          {st.counted.length ? (
+            <table style={table}>
+              <thead><tr><th style={th}>Paid on</th><th style={th}>Claim</th><th style={th}>Amount</th></tr></thead>
+              <tbody>{st.counted.map(r => <tr key={r.id}><td style={td}>{r.paidOn}</td><td style={td}>{r.claimNo || '—'}</td><td style={td}>{money(r.paidCents)}</td></tr>)}</tbody>
+            </table>
+          ) : <p style={small}>No payer payment was posted to a claim in this month.</p>}
+          {st.excluded.length > 0 && (
+            <>
+              <h3 style={{ ...h3, marginTop: 12 }}>Left out ({st.excluded.length})</h3>
+              <table style={table}>
+                <thead><tr><th style={th}>Paid on</th><th style={th}>Claim</th><th style={th}>Amount</th><th style={th}>Why</th></tr></thead>
+                <tbody>{st.excluded.map(r => <tr key={r.id}><td style={td}>{r.paidOn}</td><td style={td}>{r.claimNo || '—'}</td><td style={td}>{money(r.paidCents)}</td><td style={td}>{OUT[r.outcome] ?? r.outcome}</td></tr>)}</tbody>
+              </table>
+            </>
+          )}
         </div>
       )}
     </div>

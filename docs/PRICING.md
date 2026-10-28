@@ -3,11 +3,34 @@
 What Protected Central sells, what each package allows, why those numbers, and
 where the market sits. Written 2026-10-14.
 
-> **Since 2026-10-26 the public home page prices the managed growth service
-> instead** — $300 setup + $87/month + 5% performance fee on eligible collected
-> revenue from qualifying jobs (`worker/src/lib/offers.ts`, `docs/claude/site.md`).
-> The software plans below are unchanged and still sold and billed; they are
-> shown on `/pricing` but no longer as cards on the home page.
+> **Since 2026-10-28 (the owner's specification) new customers are offered
+> exactly three software options: Growth $97/month, Scale $297/month, and
+> Custom** (no price — "Book a Strategy Call" / "Contact Sales"). Monthly
+> only, in US dollars, after the 7-day no-card trial; renews monthly until
+> cancelled. They are on the home page (`#pricing`) and `/pricing`.
+>
+> - **Growth** keeps its id, price and allowance — its subscribers see no
+>   change. Yearly is no longer offered to new buyers; a yearly Growth
+>   subscription still renews at $970.
+> - **Scale** is a new plan id (`scale`) with the allowance Pro was sized at
+>   (40 business workspaces, 25 sub-accounts, 20,000 AI requests …). At $297
+>   that leaves room for the "answered first" support it promises.
+> - **Starter ($49) and Pro ($197) are legacy**: not sold, still enforced and
+>   renewed at the price each subscriber pays, with the allowance they bought
+>   (`LEGACY_CENTS`). Nobody is repriced; no subscription, invoice or record is
+>   touched.
+> - The managed services are separate offers with their own prices, never in
+>   this table: e-commerce $2,200/month; HVAC and roofing $300 + $87/month + 5%
+>   of eligible collected revenue; medical billing $300 + $87/month + 5% of
+>   eligible net collections on claims handled (`worker/src/lib/offers.ts`).
+>
+> **Owner decisions still open:** whether to offer yearly billing again (set
+> `annualCents` on Growth/Scale), whether Scale's allowances should be higher
+> than Pro's were, and whether "Growth" should be renamed so it is not confused
+> with the HVAC/roofing "growth service".
+>
+> The table below is the 2026-10-14 package set, kept for the reasoning and
+> for the legacy subscribers; Scale's column equals Pro's.
 
 The packages live in **one file**, `worker/src/lib/allowances.ts` (`PLAN_DEFS`,
 `TRIAL_LIMITS`). The server enforces them and checkout charges from them, and

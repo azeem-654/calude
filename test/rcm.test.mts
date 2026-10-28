@@ -150,6 +150,28 @@ ok('the synthetic remittance parses cleanly', parseRemitCsv(syntheticRemitCsv({ 
 const doc = fs.readFileSync('docs/HIPAA-LAUNCH-BLOCKERS.md', 'utf8');
 ok('every launch blocker is in docs/HIPAA-LAUNCH-BLOCKERS.md', HIPAA_BLOCKERS.every(b => doc.includes(`\`${b.key}\``)), HIPAA_BLOCKERS.filter(b => !doc.includes(`\`${b.key}\``)).map(b => b.key));
 
+/* The collections fee statement: posted payer payments on claims, take-backs off, never negative. */
+{
+  const { collectionsStatement } = await import('../worker/src/lib/rcm');
+  const { MEDICAL_BILLING_OFFER, TRADE_GROWTH_OFFER } = await import('../worker/src/lib/offers');
+  const rows = [
+    { id: 'a', claimId: 'c1', claimNo: 'SYN-1', paidOn: '2026-10-03', paidCents: 1_000_000, outcome: 'posted' },
+    { id: 'b', claimId: 'c2', claimNo: 'SYN-2', paidOn: '2026-10-09', paidCents: 1_000_000, outcome: 'posted' },
+    { id: 'c', claimId: 'c1', claimNo: 'SYN-1', paidOn: '2026-10-20', paidCents: -200_000, outcome: 'posted' },
+    { id: 'd', claimId: null, claimNo: 'SYN-9', paidOn: '2026-10-21', paidCents: 500_000, outcome: 'unmatched' },
+    { id: 'e', claimId: 'c2', claimNo: 'SYN-2', paidOn: '2026-10-22', paidCents: 1_000_000, outcome: 'duplicate' },
+    { id: 'f', claimId: 'c3', claimNo: 'SYN-3', paidOn: '2026-09-30', paidCents: 900_000, outcome: 'posted' },
+  ];
+  const st = collectionsStatement(rows, '2026-10', MEDICAL_BILLING_OFFER.collectionsBps);
+  ok('fee statement: only posted rows on a claim, in the month, count', st.counted.map(r => r.id).join() === 'a,b,c' && st.excluded.map(r => r.id).join() === 'd,e');
+  ok('fee statement: take-backs come off before the percentage', st.receivedCents === 2_000_000 && st.takebackCents === 200_000 && st.netCents === 1_800_000 && st.feeCents === 90_000, st);
+  ok('fee statement: a duplicate payment is never counted twice', !st.counted.some(r => r.id === 'e'));
+  const neg = collectionsStatement([{ id: 'x', claimId: 'c1', claimNo: '', paidOn: '2026-11-02', paidCents: -50_000, outcome: 'posted' }], '2026-11', 500);
+  ok('fee statement: more taken back than paid is a nil fee and a stated shortfall, never a negative fee', neg.feeCents === 0 && neg.netCents === 0 && neg.shortfallCents === 50_000);
+  ok('fee statement: a bad month counts nothing', collectionsStatement(rows, 'October', 500).counted.length === 0);
+  ok('the medical offer is its own constant, not the trade offer', MEDICAL_BILLING_OFFER.id === 'medical_billing' && !('performanceBps' in MEDICAL_BILLING_OFFER) && MEDICAL_BILLING_OFFER.collectionsBps === 500 && TRADE_GROWTH_OFFER.id === 'trade_growth');
+}
+
 console.log(out.join('\n'));
 const failed = out.filter(l => l.startsWith('FAIL')).length;
 console.log(`\n${out.length - failed}/${out.length} passed`);

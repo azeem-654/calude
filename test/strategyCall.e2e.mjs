@@ -20,7 +20,7 @@
  *    and closed dates hold; the guest's link (and only it) moves or cancels;
  *  - the source site and campaign tags survive to the owner's list;
  *  - the four sites link to the booking page with their own source, and the
- *    three microsites never link home or to each other, with a working phone
+ *    four service sites never link home or to each other, with a working phone
  *    menu and no sideways scroll at 390.
  */
 import fs from 'node:fs';
@@ -201,7 +201,8 @@ br = await pw.chromium.launch();
 const errs = [];
 const overflow = page => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 fs.mkdirSync('test-results', { recursive: true });
-const MICRO = ['hvac', 'roofing', 'medical-billing'];
+const PATH = { hvac: '/hvac', roofing: '/roofing', 'medical-billing': '/medical-billing', ecommerce: '/ecommerce-management-services' };
+const MICRO = Object.keys(PATH);
 
 for (const width of [1280, 390]) {
   const ctx = await br.newContext({ viewport: { width, height: 860 } });
@@ -211,42 +212,56 @@ for (const width of [1280, 390]) {
   await page.goto(`${B}/`, { waitUntil: 'networkidle' });
   const pricing = page.locator('#pricing');
   await pricing.scrollIntoViewIfNeeded();
-  const pt = await pricing.innerText();
-  ok(`home @${width}: pricing leads with the approved heading and line`, /Turn More Leads Into Paying Customers/i.test(pt) && /pricing aligned to measurable results/.test(pt) && (await page.getByTestId('growth-line').innerText()) === '$300 setup + $87/month + 5% performance fee', pt.slice(0, 300));
-  ok(`home @${width}: setup, monthly and performance fees are labelled apart`, /One-time setup fee/i.test(pt) && /Recurring platform and agreed service fee/i.test(pt) && /Performance fee on eligible revenue collected/i.test(pt));
-  ok(`home @${width}: the cost and fee disclosures and the $6,000 example`, /advertising budget/.test(pt) && /third-party expenses/.test(pt) && /unaccepted quotations/.test(pt) && /\$6,000 in eligible collected revenue.*is \$300/.test(pt));
-  const homeMain = await page.locator('body').innerText();
-  ok(`home @${width}: no $49, $97 or $197 software-plan cards`, !/\$49\b|\$97\b|\$197\b/.test(homeMain), (homeMain.match(/.{30}\$(49|97|197)\b.{20}/) ?? [''])[0]);
+  await page.waitForTimeout(500);
+  const pt = (await pricing.innerText()).replace(/\$\s*\n?/g, '$');
+  ok(`home @${width}: software pricing is exactly Growth $97/month, Scale $297/month and Custom`, (await pricing.locator('[data-plan]').count()) === 3 && /\$97\/month/.test(pt) && /\$297\/month/.test(pt) && /Let’s talk/.test(pt) && !/\$49\b|\$197\b/.test(pt), pt.slice(0, 400));
+  ok(`home @${width}: the recurring terms are stated`, /billed monthly/i.test(pt) && /USD|US dollars/.test(pt) && /until you cancel/.test(pt));
+  ok(`home @${width}: no managed-service price in the software table`, !/\$2,200|\$300 setup|\$87/.test(pt));
   const st = await page.locator('#services').innerText();
-  ok(`home @${width}: medical billing is by assessment`, /By assessment/.test(st) && /does not apply/.test(st));
-  ok(`home @${width}: links to all three microsites`, await page.locator('a[href="/hvac"]').count() > 0 && await page.locator('a[href="/roofing"]').count() > 0 && await page.locator('a[href="/medical-billing"]').count() > 0);
+  ok(`home @${width}: the four managed services, each priced in its own card`, /\$2,200\/month/.test(st) && (st.match(/\$300 setup \+ \$87\/month \+ 5% performance fee/g) ?? []).length === 2 && /\$300 setup \+ \$87\/month \+ 5% of eligible net collections/.test(st), st.slice(0, 400));
+  ok(`home @${width}: says how the software and the services relate`, /software supports the delivery/.test(st) && /service fee pays for the agreed managed-service work/.test(st));
+  ok(`home @${width}: links to all four service sites`, (await Promise.all(Object.values(PATH).map(p => page.locator(`a[href="${p}"]`).count()))).every(n => n > 0));
   await page.waitForSelector('[data-testid="home-book"][data-booking="open"]', { timeout: 10_000 });
   ok(`home @${width}: bookings open — the button books, carrying src=main`, /\/book\/strategy-call\?src=main/.test(await page.getByTestId('home-book').getAttribute('href')));
   await page.getByTestId('home-write').click();
   ok(`home @${width}: "Prefer to write?" opens the inquiry form`, await page.getByTestId('home-enquire').isVisible());
-  const homeBlock = { line: await page.getByTestId('growth-line').innerText(), cost: await page.getByTestId('cost-disclosure').innerText(), fee: await page.getByTestId('fee-disclosure').innerText(), figs: await page.getByTestId('growth-figures').innerText() };
   ok(`home @${width}: no sideways scroll`, (await overflow(page)) <= 0, String(await overflow(page)));
   await pricing.screenshot({ path: `test-results/home-pricing-${width}.png` });
+  await page.locator('#services').screenshot({ path: `test-results/home-services-${width}.png` });
 
+  let tradeBlock = null;
   for (const id of MICRO) {
-    await page.goto(`${B}/${id}?utm_source=newsletter&utm_campaign=autumn`, { waitUntil: 'networkidle' });
+    const root = PATH[id];
+    await page.goto(`${B}${root}?utm_source=newsletter&utm_campaign=autumn`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(400);
     const hrefs = await page.$$eval('header a, footer a, .ms-menu a', as => as.map(a => a.getAttribute('href') ?? ''));
-    const leaks = hrefs.filter(h => h === '/' || MICRO.some(m => m !== id && (h === `/${m}` || h.startsWith(`/${m}#`))) || /^\/#/.test(h) || h === '/pricing');
+    const leaks = hrefs.filter(h => h === '/' || MICRO.some(m => m !== id && (h === PATH[m] || h.startsWith(`${PATH[m]}#`))) || /^\/#/.test(h) || h === '/pricing');
     ok(`${id} @${width}: no link home or to another industry`, leaks.length === 0, leaks.join());
-    ok(`${id} @${width}: the logo stays on the microsite`, (await page.getByTestId('ms-logo').getAttribute('href')) === `/${id}`);
+    ok(`${id} @${width}: the logo stays on the microsite`, (await page.getByTestId('ms-logo').getAttribute('href')) === root);
     const book = await page.getByTestId('hero-book').getAttribute('href');
     ok(`${id} @${width}: booking carries the site and the campaign`, book.includes(`src=${id}`) && book.includes('utm_campaign=autumn'), book);
     const body = await page.locator('main').innerText();
+    ok(`${id} @${width}: one h1`, (await page.locator('h1').count()) === 1);
+    ok(`${id} @${width}: no software-plan price on a service site`, !/\$49\b|\$97\b|\$197\b|\$297\b/.test(body));
     if (id === 'medical-billing') {
-      ok(`${id} @${width}: no price, no percentage`, !/\$\s?\d/.test(body) && !/\d\s?%/.test(body), (body.match(/.{30}(\$\s?\d|\d\s?%).{20}/) ?? [''])[0]);
-      ok(`${id} @${width}: says it is priced after an assessment`, /after an assessment/.test(body));
+      const mp = await page.locator('#pricing').innerText();
+      ok(`${id} @${width}: $300 setup + $87/month + 5% of eligible net collections`, (await page.getByTestId('med-line').innerText()) === '$300 setup + $87/month + 5% of eligible net collections');
+      ok(`${id} @${width}: the basis is claims handled, not total revenue; subject to legal review`, /claims we submitted or worked under your signed agreement/.test(mp) && /not a percentage of your practice’s total revenue/i.test(mp) && /subject to legal and compliance review/i.test(mp));
+      ok(`${id} @${width}: refunds and take-backs come off; nothing charged automatically`, /Refunds, recoupments/.test(mp) && /Nothing is charged to a card automatically/.test(mp));
+      ok(`${id} @${width}: never the trade performance fee`, !/performance fee/i.test(mp) && !/\$6,000/.test(body));
+    } else if (id === 'ecommerce') {
+      const ep = await page.locator('#pricing').innerText();
+      ok(`${id} @${width}: $2,200/month for the written scope`, /\$2,200\/month/.test(ep.replace(/\n/g, '')) && /E-commerce Business Setup & Growth Management/.test(ep) && /written scope/.test(ep));
+      ok(`${id} @${width}: ad spend, inventory, fees, shipping and apps are separate`, ['Advertising spend', 'Inventory', 'Marketplace commissions', 'Shipping', 'themes, apps'].every(w => ep.includes(w)));
+      ok(`${id} @${width}: no guarantee, and no marketplace claimed as connected`, /do not guarantee revenue/.test(ep) && /does not connect to Amazon, eBay, Walmart or Shopify/.test(body));
+      ok(`${id} @${width}: no trade or medical fee here`, !/\$300 setup|\$87|5%/.test(body));
     } else {
       ok(`${id} @${width}: the growth offer is shown`, /\$300/.test(body) && /\$87/.test(body) && /5%/.test(body));
       const block = { line: await page.getByTestId('growth-line').innerText(), cost: await page.getByTestId('cost-disclosure').innerText(), fee: await page.getByTestId('fee-disclosure').innerText(), figs: await page.getByTestId('growth-figures').innerText() };
-      ok(`${id} @${width}: price, figures and disclosures match the home page word for word`, JSON.stringify(block) === JSON.stringify(homeBlock), JSON.stringify(block).slice(0, 300));
-      ok(`${id} @${width}: no $49, $97 or $197 plan`, !/\$49\b|\$97\b|\$197\b/.test(body));
-      ok(`${id} @${width}: no $45 or $2,200 offer`, !/\$45\b|\$2,200/.test(body));
+      if (!tradeBlock) tradeBlock = block;
+      else ok(`${id} @${width}: price, figures and disclosures match the HVAC site word for word`, JSON.stringify(block) === JSON.stringify(tradeBlock), JSON.stringify(block).slice(0, 300));
+      ok(`${id} @${width}: the $6,000 → $300 example and the disclosures`, /advertising budget/.test(body) && /unaccepted quotations/.test(body) && /\$6,000 in eligible collected revenue.*is \$300/.test(body));
+      ok(`${id} @${width}: no $2,200 offer`, !/\$2,200/.test(body));
     }
     ok(`${id} @${width}: no sideways scroll`, (await overflow(page)) <= 0, String(await overflow(page)));
     if (width === 390) {
@@ -260,6 +275,12 @@ for (const width of [1280, 390]) {
       ok(`${id} @390: a menu link closes the menu and goes to its section`, !(await menu.isVisible()) && page.url().endsWith('#pricing'));
     }
     await page.screenshot({ path: `test-results/microsite-${id}-${width}.png` });
+  }
+  {
+    const r = await fetch(`${B}/ecommerce`, { redirect: 'manual' });
+    ok(`@${width}: /ecommerce answers 301 to the one canonical page`, r.status === 301 && new URL(r.headers.get('location'), B).pathname === '/ecommerce-management-services', `${r.status} ${r.headers.get('location')}`);
+    const h = await (await fetch(`${B}/ecommerce-management-services`)).text();
+    ok(`@${width}: the served head is the e-commerce page's (title, canonical, structured data)`, /<title>E-commerce Management Services/.test(h) && /rel="canonical" href="https:\/\/protectedcentral\.com\/ecommerce-management-services"/.test(h) && /"price":"2200.00"/.test(h));
   }
   const hvacText = await (async () => { await page.goto(`${B}/hvac`, { waitUntil: 'networkidle' }); return page.locator('main').innerText(); })();
   const roofText = await (async () => { await page.goto(`${B}/roofing`, { waitUntil: 'networkidle' }); return page.locator('main').innerText(); })();
@@ -322,7 +343,7 @@ for (const width of [1280, 390]) {
   ok(`closed home @${width}: no sideways scroll`, (await overflow(page)) <= 0, String(await overflow(page)));
   await page.screenshot({ path: `test-results/home-closed-${width}.png` });
   for (const id of MICRO) {
-    await page.goto(`${B}/${id}`, { waitUntil: 'networkidle' });
+    await page.goto(`${B}${PATH[id]}`, { waitUntil: 'networkidle' });
     await page.waitForSelector('[data-testid="hero-book"][data-booking="closed"]', { timeout: 10_000 });
     const want = id === 'medical-billing' ? '#request' : '#talk';
     const hrefs = await page.$$eval('a', as => as.map(a => a.getAttribute('href') ?? ''));

@@ -30,7 +30,7 @@ import {
   BarChart3, Building2, Lock, Palette, ShieldCheck, Mail, MessageSquare,
   Image as ImageIcon, FileText, LayoutTemplate, Wand2, Globe, Search, Rss,
   PlaySquare, Mic, GitBranch, PenLine, Bot, ClipboardList, Calendar, KeyRound, Eye,
-  Workflow, CalendarCheck, Thermometer, Home, Stethoscope,
+  Workflow, CalendarCheck, Thermometer, Home, Stethoscope, ShoppingBag, LayoutDashboard,
 } from 'lucide-react';
 import { LogoMark } from '../shared/Logo';
 import { appHref, isCrossOrigin } from '../../services/hosts';
@@ -466,12 +466,12 @@ export default function SiteHome() {
         </a>
         <nav className="dc-links" aria-label="Sections">
           <a href="#solutions">Solutions</a>
-          <a href="#industries" className="ind-nav-link">Industries</a>
+          <a href="#industries" className="ind-nav-link">What we offer</a>
           <a href="#autopilot">How it works</a>
           {featureReady('prospects') && <a href="#prospecting">AI Prospecting</a>}
           <a href="#scale">Agencies</a>
-          <a href="#services" className="ind-nav-link">Services</a>
-          <a href="#pricing">Pricing</a>
+          <a href="#pricing">Software pricing</a>
+          <a href="#services" className="ind-nav-link">Managed services</a>
           <a href="#faq">FAQ</a>
           <a href="/security">Security</a>
         </nav>
@@ -565,16 +565,30 @@ export default function SiteHome() {
              the product is real, before the tour of how it works. ── */}
       <SolutionsSection find={find} onBuild={k => openWizard(k)} />
 
-      {/* ── The trades with a page of their own ──
-             Straight after the recipes: a visitor who runs an HVAC or roofing
-             firm finds the page written for them before the general tour. ── */}
-      <section className="ind-strip" id="industries" aria-label="Industries">
+      {/* ── What we offer: the five business lines, told apart ──
+             Straight after the recipes: a visitor sees at once that there is
+             the software they run themselves, and four services we run for
+             them, each with its own site. Prices are in the two pricing
+             sections further down (HomePricing, ServiceOffers), never mixed. ── */}
+      <section className="ind-strip" id="industries" aria-label="What we offer">
         <div className="dc-chapter-head">
-          <span className="dc-eyebrow">Industries</span>
-          <h2>Written for <em>your trade.</em></h2>
-          <p>A site of its own for each industry we serve — written with the enquiries, estimates, claims and seasons of the business you run.</p>
+          <span className="dc-eyebrow">What we offer</span>
+          <h2>Software you run, <em>or services we run for you.</em></h2>
+          <p>Protected Central is a CRM and marketing-automation platform you can subscribe to and run yourself. Our team also runs four managed services in it, each with a site of its own.</p>
         </div>
-        <div className="ind-strip-cards">
+        <div className="ind-strip-cards ind-strip-5">
+          <a className="ind-strip-card ind-strip-soft" href="#pricing">
+            <span className="dc-tile-icon"><LayoutDashboard size={16} /></span>
+            <b>CRM &amp; automation software</b>
+            <span>Self-serve subscriptions: Growth, Scale or Custom — you run it yourself.</span>
+            <i>See software pricing <ArrowRight size={13} /></i>
+          </a>
+          <a className="ind-strip-card" href={INDUSTRY_PAGES.ecommerce.path}>
+            <span className="dc-tile-icon"><ShoppingBag size={16} /></span>
+            <b>E-commerce management</b>
+            <span>Shopify, Amazon, eBay and Walmart stores set up and managed for you.</span>
+            <i>E-commerce services <ArrowRight size={13} /></i>
+          </a>
           <a className="ind-strip-card" href={INDUSTRY_PAGES.hvac.path}>
             <span className="dc-tile-icon"><Thermometer size={16} /></span>
             <b>HVAC</b>
@@ -742,7 +756,7 @@ export default function SiteHome() {
         </div>
       </section>
 
-      {/* ── Pricing is the growth service; the software plans' cards are no longer shown to new prospects (HomePricing.tsx) ── */}
+      {/* ── Software pricing, then the managed services — two sections, never one table ── */}
       <HomePricing />
       <ServiceOffers />
 
@@ -786,10 +800,11 @@ export default function SiteHome() {
           <div>
             <h5>Sell</h5>
             <a href="#scale">Sub-accounts</a><a href="#scale">White-label</a>
-            <a href="#scale">Analytics</a><a href="#pricing">Pricing</a>
+            <a href="#scale">Analytics</a><a href="#pricing">Software pricing</a>
           </div>
           <div>
-            <h5>Industries</h5>
+            <h5>Managed services</h5>
+            <a href={INDUSTRY_PAGES.ecommerce.path}>E-commerce management</a>
             <a href={INDUSTRY_PAGES.hvac.path}>HVAC</a>
             <a href={INDUSTRY_PAGES.roofing.path}>Roofing</a>
             <a href={INDUSTRY_PAGES['medical-billing'].path}>Medical billing</a>

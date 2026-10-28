@@ -78,7 +78,7 @@ wanted. A partner that gets integrated moves up a row. **The public site shows
 only the first two rows** (`partners={false}`); the sign-in screen keeps all
 three.
 
-## The industry microsites — /hvac, /roofing, /medical-billing
+## The industry microsites — /hvac, /roofing, /medical-billing, /ecommerce-management-services
 
 Each reads as a site of its own: `Site/Microsite.tsx` (`MicrositeLayout`) is
 the only nav and footer they have — logo and "Home" go to the microsite's own
@@ -97,9 +97,25 @@ path check. `npm run test:industry` fails if a menu entry leaves the site;
   "Prefer to write?" (the Custom `EnquiryForm`, `[HVAC page] …`) → closing
   call; "Start the software free" is a quiet link to `/signup?industry=<slug>`.
 - **Medical billing** (`Site/MedicalBillingPage.tsx` from
-  `Site/medicalBilling.ts`): its own sections, mint accent, **no figure of any
-  kind**, no "HIPAA compliant/certified", no testimonials; priced after an
-  assessment. After the problems: **why practices change billing company**
+  `Site/medicalBilling.ts`): its own sections, mint accent, no result figure
+  of any kind, no "HIPAA compliant/certified", no testimonials. **Priced since
+  2026-10-28** at $300 setup + $87/month + 5% of eligible net collections on
+  claims handled under the signed agreement (`MEDICAL_BILLING_OFFER`,
+  `medicalLine()`, `medicalExample()`), with the basis, exclusions, statement
+  steps and "subject to legal and compliance review" beside it; the copy file
+  types no figure (`test:industry`). The leakage audit "flags potential issues
+  for a person to review" — never proof that money was lost.
+- **E-commerce** (`/ecommerce-management-services`,
+  `Site/EcommercePage.tsx` from `Site/ecommerce.ts`, 2026-10-28): the premium
+  managed service *E-commerce Business Setup & Growth Management*,
+  `ECOMMERCE_OFFER` $2,200/month for a written scope, no performance fee; ad
+  spend, inventory, marketplace and payment fees, shipping and apps separate;
+  no revenue/ROAS guarantee; **says no marketplace is connected** (the team
+  works in the client's own Amazon, eBay, Walmart and Shopify accounts) —
+  never add a logo or "integrated with" for them. One canonical URL;
+  `/ecommerce`, `/e-commerce`, `/ecommerce-management` answer 301
+  (`PAGE_ALIASES`, index.ts, `run_worker_first`). Its "See it working" is
+  `INDUSTRY_DEMOS.ecommerce` (a sample store's workspace, no film). After the problems: **why practices change billing company**
   (`MED_SWITCH`, each reason paired with how we work instead — never a claim
   about a named company), six questions to ask theirs (`MED_ASK`), then the
   demo below; specialties (`MED_SPECIALTIES`) after reporting.
@@ -139,11 +155,16 @@ path check. `npm run test:industry` fails if a menu entry leaves the site;
   home page (`HomePricing`, `#pricing`) and on /hvac and /roofing
   (`GrowthPricing`). `test:strategycalle2e` compares its text on the three
   pages word for word at 1280 and 390.
-- **The home page no longer shows the software plans' cards** ($49/$97/$197,
-  owner's decision 2026-10-26). They remain in allowances.ts, on `/pricing`
-  (titled "Software plans", reached from Plan & billing, with a note quoting
-  the growth service) and on every subscription already sold. Do not put them
-  back on the home page unless the owner asks.
+- **The home page tells the five business lines apart** (owner's
+  specification 2026-10-28, superseding 2026-10-26): *What we offer*
+  (`#industries`: the software and the four services, no prices) → … →
+  **Software pricing** (`HomePricing`, `#pricing`: the plan cards — Growth
+  $97, Scale $297, Custom — from allowances.ts, Custom by strategy call or
+  the `#enquire` form) → **Managed services** (`ServiceOffers`, `#services`:
+  e-commerce, HVAC, roofing, medical billing, each its one-line price from
+  offers.ts and a link to its own site, with the note that the software
+  supports delivery and the fee pays for the work). Never one table for both.
+  `GrowthOfferBlock` is now on /hvac and /roofing only.
 - **Booking buttons follow the owner's switch** (`useBookingState`/`useCallLink`
   in `services/strategyCall.ts`, one `config` call per page): while bookings
   are closed, `BookCall`, the microsite nav/menu/footer and the home button

@@ -1,10 +1,8 @@
 /**
- * /pricing — the software plans, in full.
- *
- * Since 2026-10-26 the home page prices the growth service instead and no
- * longer shows these cards to new prospects; this page stays because existing
- * subscribers reach it from Plan & billing, and it says at the top that the
- * service is a different offer, quoting it from lib/offers.ts.
+ * /pricing — the software plans, in full: Growth $97/month, Scale $297/month
+ * and Custom (the owner's specification of 2026-10-28; the home page shows
+ * the same cards). It says near the top that the managed services are
+ * separate offers with their own prices, and links to them on the main site.
  *
  * The cards and the comparison are PricingParts.tsx, generated from the plan
  * table the server enforces (worker/src/lib/allowances.ts). The white-label
@@ -18,16 +16,15 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, Loader } from 'lucide-react';
 import { LogoMark } from '../shared/Logo';
 import { appHref, isCrossOrigin, siteOrigin } from '../../services/hosts';
-import { TRADE_GROWTH_OFFER, growthLine } from '../../../worker/src/lib/offers';
 import { usePageTitle } from '../../services/pageTitle';
 import { CARD_PLANS, isUnlimited, sendEnquiry, type EnquiryNeed } from '../../services/allowances';
-import { BillingToggle, ComparisonTable, PlanCards, usePlanTable } from './PricingParts';
+import { BILLING_TERMS, BillingToggle, ComparisonTable, PlanCards, hasYearly, usePlanTable } from './PricingParts';
 import './site.css';
 
 const cross = (href: string) => (isCrossOrigin(href) ? { rel: 'noopener' as const } : {});
 
 const NEEDS: { id: EnquiryNeed; label: string }[] = [
-  { id: 'limits', label: 'Higher allowances than Pro' },
+  { id: 'limits', label: 'Higher allowances than Scale' },
   { id: 'setup', label: 'Done-for-you setup' },
   { id: 'integrations', label: 'A custom integration' },
   { id: 'invoice', label: 'Invoiced billing' },
@@ -52,7 +49,8 @@ export default function PricingPage() {
   const faq: { q: string; a: string }[] = [
     { q: 'Is there a free trial?', a: `Yes — 7 days, and no card is asked for. The trial has its own allowance (${table.trial.limits.autopilot_projects} AI Autopilot business workspaces, ${table.trial.limits.ai_shorts} AI Shorts, ${table.trial.limits.social_posts} social posts, ${table.trial.limits.prospects_found} prospects found), enough to build a real project and see it work.` },
     { q: 'What happens when the trial ends?', a: 'The AI and the automations stop until you choose a plan. Everything you made stays in your workspace, and you can download all of it from Settings at any time.' },
-    { q: 'How does yearly billing work?', a: 'You pay ten months’ price once a year — two months free — on the same plan and allowances. Prices are in US dollars.' },
+    { q: 'How am I billed?', a: `Monthly, in US dollars: ${sold.map(p => `${p.name} $${(p.monthlyCents / 100).toLocaleString('en-US')} a month`).join(', ')}. The first charge is at the end of the 7-day trial, when you choose a plan in Plan & billing, and the plan renews each month until you cancel. Taxes, if any apply, are shown at checkout.` },
+    { q: 'I already subscribe on an older plan. Does anything change?', a: 'No. If you are on Starter, Pro, Agency or a yearly plan, you keep your price and your allowance for as long as you stay subscribed. The new prices apply to new subscriptions.' },
     { q: 'Can I cancel?', a: 'Yes. Plan & billing → Manage billing & payment method opens the payment provider’s own portal, where you change your card, see invoices and cancel. When the provider tells us the subscription has ended, the AI and automations stop as they do at the end of a trial; your records stay yours.' },
     { q: 'What happens when I reach an allowance?', a: 'That one thing waits — a new business workspace, the month’s next Short or post — and the app says which allowance it is, how much is used and which plan raises it. Nothing is charged extra, and monthly allowances start again on the 1st.' },
     { q: 'Can I change plan?', a: 'Choose a larger plan from Plan & billing before you subscribe, or, once subscribed, write to us with the form below and we move you.' },
@@ -73,16 +71,17 @@ export default function PricingPage() {
         <a className="tc-back" href={home}><ArrowLeft size={14} /> Back to the site</a>
         <div className="dc-chapter-head pcp-head">
           <span className="dc-eyebrow">Software plans</span>
-          <h1 className="tc-h1">Three plans. <em>Or one built around you.</em></h1>
+          <h1 className="tc-h1">Growth, Scale, <em>or Custom.</em></h1>
           <p>
             Every number below is what the product holds you to — not an estimate — and every plan is white-label.
-            7 days free, no card required.
+            7 days free, no card required; then {BILLING_TERMS.replace('USD, billed monthly after the 7-day trial · ', 'billed monthly in US dollars, ')}.
           </p>
         </div>
         <p className="pcp-service" data-testid="pricing-service-note">
-          These are self-serve software subscriptions. Looking for the managed growth service for your business?
-          It is <b>{growthLine()}</b> — {TRADE_GROWTH_OFFER.costDisclosure.charAt(0).toLowerCase() + TRADE_GROWTH_OFFER.costDisclosure.slice(1)}
-          {' '}<a href={`${siteOrigin()}/#pricing`}>See the growth service <ArrowRight size={13} /></a>
+          These are self-serve software subscriptions. Want us to do the work for you? Our managed services —
+          e-commerce management, HVAC and roofing growth, and medical billing — are separate offers with their own
+          prices and written terms.
+          {' '}<a href={`${siteOrigin()}/#services`}>See the managed services <ArrowRight size={13} /></a>
         </p>
         <nav className="tc-toc pcp-toc" aria-label="On this page">
           <a href="#plans">Plans</a><a href="#compare">Compare every feature</a><a href="#white-label">White-label</a>
@@ -90,7 +89,7 @@ export default function PricingPage() {
         </nav>
 
         <section id="plans" className="pcp-sec">
-          <BillingToggle yearly={yearly} onChange={setYearly} />
+          {hasYearly(table) && <BillingToggle yearly={yearly} onChange={setYearly} />}
           <PlanCards table={table} yearly={yearly} customHref="#custom" onCustom={toForm} />
         </section>
 
@@ -152,8 +151,9 @@ export default function PricingPage() {
         <section id="custom" className="pcp-sec" ref={formRef}>
           <h2 className="pcp-h2">Custom plans</h2>
           <p className="pcp-lead">
-            For more than Pro allows, or something it does not do. Tell us what you need; a person reads it and
-            replies by email. A Custom plan starts from everything in Pro and raises what you need.
+            For more than Scale allows, or something it does not do. Tell us what you need; a person reads it and
+            replies by email, or book a strategy call. A Custom plan starts from everything in Scale and raises what
+            you need; its price is agreed with you in writing.
           </p>
           <EnquiryForm />
         </section>

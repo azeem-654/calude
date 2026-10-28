@@ -12,13 +12,13 @@
  * problems, each reason paired with how this service works instead; then the
  * RCM workspace itself, problem by problem (IndustryDemo — real screens of the
  * synthetic practice, labelled so, and the narrated film made from them). No
- * figures of any kind (medicalBilling.ts says what may never be claimed). The frame is MicrositeLayout, so nothing
+ * figure but the price (medicalBilling.ts says what may never be claimed). The frame is MicrositeLayout, so nothing
  * here links to the general home page or to another industry.
  */
-import { Check, Play } from 'lucide-react';
+import { Check, Info, Play, Receipt } from 'lucide-react';
 import { usePageTitle } from '../../services/pageTitle';
 import { INDUSTRY_PAGES } from '../../../worker/src/lib/industryPages';
-import { MEDICAL_BILLING_OFFER } from '../../../worker/src/lib/offers';
+import { MEDICAL_BILLING_OFFER as MO, dollars, medicalExample, medicalLine, percent } from '../../../worker/src/lib/offers';
 import {
   MED_AR, MED_ASK, MED_AUDIENCE, MED_SPECIALTIES, MED_SWITCH, MED_AUDIT, MED_CLAIMS, MED_FAQ, MED_HERO, MED_PROBLEMS, MED_PROCESS, MED_REPORTING,
   MED_SECURITY, MED_SITE_ICON, MED_SOFTWARE, MEDICAL_SITE,
@@ -215,16 +215,52 @@ export default function MedicalBillingPage() {
         </div>
       </section>
 
-      {/* ── 9. Pricing: assessed, never a figure ── */}
-      <section className="ind-sec" id="pricing" aria-label="Pricing">
+      {/* ── 9. Pricing: the published figures, and exactly what the percentage is of ── */}
+      <section className="ind-sec gp" id="pricing" aria-label="Pricing">
         <div className="dc-chapter-head">
           <span className="dc-eyebrow">Pricing</span>
-          <h2>Priced for your practice, <em>after an assessment.</em></h2>
-          <p data-testid="med-pricing-note">{MEDICAL_BILLING_OFFER.note}</p>
+          <h2>Published pricing, <em>on collections we handle.</em></h2>
+          <p data-testid="med-pricing-note">{MO.review}</p>
         </div>
-        <div className="ind-outcome-card med-factors">
-          <h3>What the price depends on</h3>
-          <ul>{MEDICAL_BILLING_OFFER.factors.map(f => <li key={f}><Check size={13} aria-hidden="true" /> <span>{f}</span></li>)}</ul>
+        <div className="go" data-testid="med-offer">
+          <p className="go-line" data-testid="med-line">{medicalLine()}</p>
+          <div className="gp-figures">
+            <div className="gp-fig">
+              <b>{dollars(MO.setupCents)}</b>
+              <span>{MO.labels.setup}</span>
+              <p>Paid once: your practice, providers and payers set up, and your exports checked with you.</p>
+            </div>
+            <div className="gp-plus" aria-hidden="true">+</div>
+            <div className="gp-fig">
+              <b>{dollars(MO.monthlyCents)}<small>/month</small></b>
+              <span>{MO.labels.monthly}</span>
+              <p>The RCM workspace, the practice portal and the billing work agreed with you, billed monthly.</p>
+            </div>
+            <div className="gp-plus" aria-hidden="true">+</div>
+            <div className="gp-fig">
+              <b>{percent(MO.collectionsBps)}</b>
+              <span>{MO.labels.collections}</span>
+              <p>Only on payer payments actually received on claims we handled — never your whole revenue.</p>
+            </div>
+          </div>
+          <div className="go-includes" data-testid="med-basis">
+            <h3>What the percentage is taken of</h3>
+            <p className="med-basis">{MO.feeBasis}</p>
+            <h3>How each month’s statement is worked out</h3>
+            <ol className="med-calc">{MO.calculation.map(c => <li key={c}>{c}.</li>)}</ol>
+            <p className="go-example" data-testid="med-example">{medicalExample()}</p>
+          </div>
+          <div className="go-disclose">
+            <div className="go-note" data-testid="med-excluded">
+              <h3><Info size={15} aria-hidden="true" /> Never counted</h3>
+              <ul className="ecom-list">{MO.excluded.map(i => <li key={i}>{i}</li>)}</ul>
+            </div>
+            <div className="go-note" data-testid="med-billing">
+              <h3><Receipt size={15} aria-hidden="true" /> Billing and separate costs</h3>
+              <ul className="ecom-list">{MO.billing.map(i => <li key={i}>{i}</li>)}</ul>
+              <p>Paid separately, by your practice: {MO.separate.map(x => x.charAt(0).toLowerCase() + x.slice(1)).join('; ')}.</p>
+            </div>
+          </div>
         </div>
         <div className="dc-cta-pair gp-cta"><BookCall size="lg" /></div>
       </section>

@@ -24,13 +24,13 @@ export const STRATEGY_CALL_SLUG = 'strategy-call';
 export const STRATEGY_CALL_PATH = `/book/${STRATEGY_CALL_SLUG}`;
 
 /** Where a visitor can come from. Anything else is recorded as "main". */
-export const SITE_SOURCES = ['main', 'hvac', 'roofing', 'medical-billing'] as const;
+export const SITE_SOURCES = ['main', 'hvac', 'roofing', 'medical-billing', 'ecommerce'] as const;
 export type SiteSource = typeof SITE_SOURCES[number];
 export const SOURCE_LABEL: Record<SiteSource, string> = {
-  main: 'Protected Central website', hvac: 'HVAC site', roofing: 'Roofing site', 'medical-billing': 'Medical billing site',
+  main: 'Protected Central website', hvac: 'HVAC site', roofing: 'Roofing site', 'medical-billing': 'Medical billing site', ecommerce: 'E-commerce services page',
 };
 /** Where "back" goes from the booking page — the site the visitor came from, never another one. */
-export const SOURCE_HOME: Record<SiteSource, string> = { main: '/', hvac: '/hvac', roofing: '/roofing', 'medical-billing': '/medical-billing' };
+export const SOURCE_HOME: Record<SiteSource, string> = { main: '/', hvac: '/hvac', roofing: '/roofing', 'medical-billing': '/medical-billing', ecommerce: '/ecommerce-management-services' };
 
 export const DURATION_CHOICES = [15, 30, 45, 60] as const;
 export const MEETING_TYPES = ['video_link', 'phone', 'in_person'] as const;

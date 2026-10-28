@@ -64,3 +64,15 @@ apart; patient payments are not tracked.
 The launch list and its reasoning: `docs/HIPAA-LAUNCH-BLOCKERS.md` (the test
 fails if it and `HIPAA_BLOCKERS` disagree). Nothing anywhere says "HIPAA
 compliant" or "certified".
+
+**The collections fee statement** (2026-10-28; tab *Fee statement*,
+`fee_statement`, rule `collectionsStatement` in lib/rcm.ts). The medical
+offer is $300 setup + $87/month + 5% of eligible net collections on claims
+handled under the signed agreement (`MEDICAL_BILLING_OFFER` in lib/offers.ts —
+its own constant; it shares only `feeOn` with the trade service). A month's
+statement counts remittance rows **posted to a claim** and dated in the
+month; a negative paid amount is a take-back and comes off; unmatched,
+duplicate and set-aside rows are listed as left out; patient payments are not
+tracked, so none count; more taken back than paid is a nil fee with the
+shortfall stated. Billing team and practice read the same statement. It is a
+calculation for review — nothing invoices, charges or marks a fee paid.

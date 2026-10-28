@@ -85,6 +85,12 @@ let r = await rcm({ action: 'overview', accountId: PAM.acct });
 ok('nobody at all is refused', r.status === 401, r);
 r = await rcm({ action: 'overview', token: EVE.token, accountId: PAM.acct });
 ok("another customer cannot open the practice's billing", r.status === 403 && !r.d.claims, r);
+r = await rcm({ action: 'fee_statement', token: EVE.token, accountId: PAM.acct, month: '2026-10' });
+ok("another customer cannot read the practice's fee statement", r.status === 403 && !r.d.statement, r);
+r = await rcm({ action: 'fee_statement', token: PAM.token, accountId: PAM.acct, month: '2026-10' });
+ok('the practice reads its own fee statement — a calculation for review, nothing charged', r.d.success && r.d.statement.month === '2026-10' && /not invoiced/.test(r.d.status) && r.d.statement.bps === 500, r.d);
+r = await rcm({ action: 'fee_statement', token: PAM.token, accountId: PAM.acct, month: 'October' });
+ok('a malformed month is refused at its box', !r.d.success && r.d.field === 'rcm.fee.month', r.d);
 for (const act of ['blockers', 'blocker_set', 'practices_all']) {
   r = await rcm({ action: act, token: PAM.token, key: 'baa_template', done: true, note: 'forged' });
   ok(`a customer cannot ${act} (owner only)`, r.status === 403, r);
@@ -265,6 +271,11 @@ for (const width of [1280, 390]) {
   ok(`owner @${width}: A/R aging in buckets`, /Over 120/.test(await page.getByTestId('aging').innerText()));
   await page.getByTestId('rcm-tab-leakage').click();
   ok(`owner @${width}: the leakage audit shows evidence`, /Evidence/.test(await page.getByTestId('leakage').innerText()));
+  await page.getByTestId('rcm-tab-fee').click();
+  await page.waitForSelector('[data-testid="rcm-fee"] [data-testid="rcm-fee-fee"]', { timeout: 10_000 });
+  const feeText = await page.getByTestId('rcm-fee').innerText();
+  ok(`owner @${width}: the fee statement shows its arithmetic, for review and not invoiced`, /Eligible net collections/.test(feeText) && /for review, not invoiced/.test(feeText) && /Synthetic test data only/.test(feeText), feeText.slice(0, 300));
+  ok(`owner @${width}: no sideways scroll on the fee statement`, (await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)) <= 0);
   await page.getByTestId('rcm-tab-audit').click();
   await page.waitForSelector('[data-testid="audit"] tbody tr');
   ok(`owner @${width}: the access log is there`, (await page.locator('[data-testid="audit"] tbody tr').count()) > 3);

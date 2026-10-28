@@ -1,50 +1,75 @@
 /**
- * The home page's industry sites, after its pricing.
+ * The home page's managed services, after the software pricing.
  *
- * The growth service for HVAC and roofing is priced in the section above
- * (HomePricing); its card here repeats only the one-line price from
- * lib/offers.ts and leads to the two trade sites. Medical billing is a
- * different offer, priced after an assessment, and never carries the trades'
- * performance fee.
+ * Four services, each with its own site, its own written terms and its own
+ * price, quoted in one line from lib/offers.ts — never typed here, and never
+ * in the software plans' table above. The note at the top says how the two
+ * relate: the software is what the work is delivered in; a service fee pays
+ * for the agreed work.
+ *
+ * The HVAC and roofing growth service is one offer sold on two sites, so it
+ * has a card per site with the same line; medical billing has its own basis
+ * (eligible net collections on claims handled), and e-commerce a flat fee.
  */
-import { ArrowRight, Home, Stethoscope, Thermometer } from 'lucide-react';
-import { MEDICAL_BILLING_OFFER, TRADE_GROWTH_OFFER as O, growthLine } from '../../../worker/src/lib/offers';
+import { ArrowRight, Home, ShoppingBag, Stethoscope, Thermometer } from 'lucide-react';
+import { MEDICAL_BILLING_OFFER, TRADE_GROWTH_OFFER, ecommerceLine, growthLine, medicalLine } from '../../../worker/src/lib/offers';
+import { INDUSTRY_PAGES } from '../../../worker/src/lib/industryPages';
+
+const SERVICES = [
+  {
+    id: 'ecommerce', icon: ShoppingBag, title: 'E-commerce business setup & management', href: INDUSTRY_PAGES.ecommerce.path,
+    line: ecommerceLine(), basis: 'for the agreed monthly managed-service scope',
+    body: 'Shopify, Amazon, eBay and Walmart store setup and management, advertising management, and your CRM, email, SMS, reviews and support run for you.',
+    separate: 'ad spend, inventory, marketplace and payment fees, shipping and third-party apps.',
+    link: 'E-commerce management services',
+  },
+  {
+    id: 'hvac', icon: Thermometer, title: 'HVAC business services', href: INDUSTRY_PAGES.hvac.path,
+    line: growthLine(), basis: 'performance fee on eligible collected revenue from qualifying jobs',
+    body: 'Inquiries captured with their source, estimates followed up, and every job tracked to the payment in your account.',
+    separate: TRADE_GROWTH_OFFER.costDisclosure.replace(/^You are responsible for /, '').replace(/\. These costs.*$/, '.'),
+    link: 'HVAC growth service',
+  },
+  {
+    id: 'roofing', icon: Home, title: 'Roofing business services', href: INDUSTRY_PAGES.roofing.path,
+    line: growthLine(), basis: 'performance fee on eligible collected revenue from qualifying jobs',
+    body: 'Inspections, estimates and insurance jobs followed through, with each job tracked to the payment collected.',
+    separate: TRADE_GROWTH_OFFER.costDisclosure.replace(/^You are responsible for /, '').replace(/\. These costs.*$/, '.'),
+    link: 'Roofing growth service',
+  },
+  {
+    id: 'medical', icon: Stethoscope, title: 'Medical billing & RCM services', href: INDUSTRY_PAGES['medical-billing'].path,
+    line: medicalLine(), basis: 'on claims handled under the signed agreement, subject to legal and compliance review',
+    body: 'Claims, denials, remittances and A/R followed through for medical practices, with a practice portal and reporting.',
+    separate: MEDICAL_BILLING_OFFER.separate.map(s => s.charAt(0).toLowerCase() + s.slice(1)).join('; ') + '.',
+    link: 'Medical billing services',
+  },
+] as const;
 
 export default function ServiceOffers() {
   return (
-    <section className="ind-sec so" id="services" aria-label="Industry services">
+    <section className="ind-sec so" id="services" aria-label="Managed services">
       <div className="dc-chapter-head">
-        <span className="dc-eyebrow">Industries</span>
-        <h2>Built for your trade, <em>priced in the open.</em></h2>
-        <p>Each industry has its own site, its own terms and its own price.</p>
+        <span className="dc-eyebrow">Managed services</span>
+        <h2>Prefer us to do the work? <em>Done-for-you services.</em></h2>
+        <p>Each service is run by our team in Protected Central, on its own written terms and at its own price. The software supports the delivery; the service fee pays for the agreed managed-service work — it is not a software plan, and you do not need one as well.</p>
       </div>
 
-      <div className="so-cards">
-        <article className="so-card" data-testid="offer-growth">
-          <div className="so-head">
-            <span className="dc-tile-icon"><Thermometer size={16} /></span>
-            <span className="dc-tile-icon"><Home size={16} /></span>
-            <h3>{O.name}</h3>
-          </div>
-          <div className="so-price so-price-one"><div><b className="so-line">{growthLine()}</b><span>the pricing above, the same on both sites</span></div></div>
-          <p className="so-separate"><b>Paid separately, by you:</b> your advertising budget, and any approved third-party expenses.</p>
-          <div className="so-links">
-            <a href="/hvac">HVAC <ArrowRight size={13} /></a>
-            <a href="/roofing">Roofing <ArrowRight size={13} /></a>
-          </div>
-        </article>
-
-        <article className="so-card" data-testid="offer-medical">
-          <div className="so-head">
-            <span className="dc-tile-icon"><Stethoscope size={16} /></span>
-            <h3>{MEDICAL_BILLING_OFFER.name}</h3>
-          </div>
-          <div className="so-price so-price-one"><div><b>By assessment</b><span>quoted for your practice</span></div></div>
-          <p>{MEDICAL_BILLING_OFFER.note}</p>
-          <p className="so-separate"><b>Priced on:</b> {MEDICAL_BILLING_OFFER.factors.slice(0, 4).join(', ').toLowerCase()}, and more.</p>
-          <div className="so-links"><a href="/medical-billing">Medical billing <ArrowRight size={13} /></a></div>
-        </article>
+      <div className="so-cards so-cards-4">
+        {SERVICES.map(s => (
+          <article key={s.id} className="so-card" data-testid={`offer-${s.id}`}>
+            <div className="so-head">
+              <span className="dc-tile-icon"><s.icon size={16} /></span>
+              <h3>{s.title}</h3>
+            </div>
+            <div className="so-price so-price-one"><div><b className="so-line">{s.line}</b><span>{s.basis}</span></div></div>
+            <p>{s.body}</p>
+            <p className="so-separate"><b>Paid separately, by you:</b> {s.separate}</p>
+            <div className="so-links"><a href={s.href}>{s.link} <ArrowRight size={13} /></a></div>
+          </article>
+        ))}
       </div>
+      <p className="so-foot">No service guarantees revenue, sales, collections or results. Each service’s page has its full terms.</p>
     </section>
   );
 }

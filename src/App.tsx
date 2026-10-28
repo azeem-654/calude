@@ -58,6 +58,7 @@ import TrustCenter from './components/Site/TrustCenter';
 import PricingPage from './components/Site/PricingPage';
 import IndustryPage from './components/Site/IndustryPage';
 import MedicalBillingPage from './components/Site/MedicalBillingPage';
+import EcommercePage from './components/Site/EcommercePage';
 import StrategyCallPage from './components/StrategyCall/StrategyCallPage';
 import { STRATEGY_CALL_PATH } from '../worker/src/lib/strategyCall';
 import LegalPage from './components/Site/LegalPage';
@@ -483,7 +484,8 @@ export default function App() {
     return <GoogleCallback onAuthed={signedIn} />;
   }
   /*
-   * The trade pages, /hvac and /roofing — public, signed in or not, like
+   * The service sites — /hvac, /roofing, /medical-billing and
+   * /ecommerce-management-services — public, signed in or not, like
    * /pricing, so the owner can read them on the testing site too. Only where
    * the address speaks as Protected Central: a reseller's own domain (or free
    * subdomain of ours) keeps its login at every path, because a page there
@@ -493,7 +495,7 @@ export default function App() {
   if (trade && speaksAsUs(window.location.hostname) && !isWhiteLabelHost()) {
     return (
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
-        {trade.slug === 'medical-billing' ? <MedicalBillingPage /> : <IndustryPage slug={trade.slug} />}
+        {trade.slug === 'medical-billing' ? <MedicalBillingPage /> : trade.slug === 'ecommerce' ? <EcommercePage /> : <IndustryPage slug={trade.slug} />}
       </BrowserRouter>
     );
   }

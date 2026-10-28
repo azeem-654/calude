@@ -30,7 +30,7 @@
     // The trade pages are the same: their title, description and structured
     // data must be in the HTML a crawler reads (lib/industryPages.ts). And the
     // sitemap and robots.txt are written by the Worker, for the public site only.
-    "run_worker_first": ["/api/*", "/p/*", "/hvac", "/hvac/", "/roofing", "/roofing/", "/medical-billing", "/medical-billing/", "/sitemap.xml", "/robots.txt"],
+    "run_worker_first": ["/api/*", "/p/*", "/hvac", "/hvac/", "/roofing", "/roofing/", "/medical-billing", "/medical-billing/", "/ecommerce-management-services", "/ecommerce-management-services/", "/ecommerce", "/e-commerce", "/ecommerce-management", "/sitemap.xml", "/robots.txt"],
     "binding": "ASSETS"
   },
 

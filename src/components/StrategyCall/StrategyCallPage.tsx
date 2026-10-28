@@ -34,9 +34,9 @@ const call = async <T,>(action: string, extra: Record<string, unknown> = {}): Pr
   return r.json();
 };
 
-const INDUSTRY_OF: Record<SiteSource, string> = { main: '', hvac: 'HVAC', roofing: 'Roofing', 'medical-billing': 'Medical practice' };
+const INDUSTRY_OF: Record<SiteSource, string> = { main: '', hvac: 'HVAC', roofing: 'Roofing', 'medical-billing': 'Medical practice', ecommerce: 'E-commerce' };
 /* Where "write to us instead" goes on each site — its own form, never another site's. */
-const WRITE_TO: Record<SiteSource, string> = { main: '/#enquire', hvac: '/hvac#talk', roofing: '/roofing#talk', 'medical-billing': '/medical-billing#request' };
+const WRITE_TO: Record<SiteSource, string> = { main: '/#enquire', hvac: '/hvac#talk', roofing: '/roofing#talk', 'medical-billing': '/medical-billing#request', ecommerce: '/ecommerce-management-services#talk' };
 
 const newRequestId = () => {
   try { return crypto.randomUUID(); } catch { return `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`; }
@@ -275,6 +275,8 @@ function Book({ settings, confirms, src }: { settings: PublicSettings; confirms:
         {slot && (
           <form className="sc-form" onSubmit={submit} noValidate>
             <h2>Your details</h2>
+            {/* A practice booking an assessment: the call needs practice-level facts only, never a patient's. */}
+            {src === 'medical-billing' && <p className="sc-note" role="note" data-testid="sc-no-phi">Please do not include any patient information — names, dates of birth, member IDs or claim details. The call needs only your practice’s details.</p>}
             <div className="sc-row">
               <label>Name<input className={field('strategy.name')} data-field="strategy.name" value={f.name} onChange={set('name')} autoComplete="name" required /></label>
               <label>Email<input className={field('strategy.email')} data-field="strategy.email" type="email" value={f.email} onChange={set('email')} autoComplete="email" required /></label>

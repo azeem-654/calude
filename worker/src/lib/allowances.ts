@@ -102,18 +102,31 @@ export type Limits = Record<MeterId, number>;
 /*
  * ── The packages ──
  *
- * Three priced, self-serve plans and Custom, which has no price: it is agreed
+ * Two priced, self-serve plans and Custom, which has no price: it is agreed
  * with the customer, and the install owner gives it to them by hand (Sign-ups
  * & trials → Plans & allowances → Give a customer a plan). docs/PRICING.md has
  * the market comparison and the cost per unit these were set against.
  *
- * Plan ids are the ones `crm_plans` already holds. `agency` is no longer sold
- * — it was "Network" ($149), then briefly "Agency" ($297) — and is kept, with
- * the allowance its subscribers bought, as a legacy plan: never on a card,
- * never at checkout, still enforced and still renewed (LEGACY_CENTS).
+ * Since 2026-10-28 (the owner's specification) new customers are offered
+ * exactly Growth at $97 a month, Scale at $297 a month, and Custom — monthly,
+ * in US dollars; no yearly price is published (`annualCents: 0` means none is
+ * sold, and checkout refuses a yearly request for it).
+ *
+ * Plan ids are the ones `crm_plans` already holds, and none is ever reused for
+ * a different product. A plan no longer sold becomes `legacy`: never on a
+ * card, never at checkout, still enforced with the allowance its subscribers
+ * bought, and still renewed at the price they pay (LEGACY_CENTS) — nobody is
+ * repriced or has an allowance taken away by a change here:
+ *   - `starter` — Starter, $49 / $490 (2026-10-14 to 2026-10-28);
+ *   - `pro` — Pro, $197 / $1,970 (2026-10-14 to 2026-10-28), and before that
+ *     "Agency" at $97;
+ *   - `agency` — "Network" ($149), then briefly "Agency" ($297).
+ * Growth keeps its id, price and allowance, so its subscribers see no change
+ * except that yearly is no longer offered to new buyers; a yearly Growth
+ * subscription still renews (LEGACY_CENTS).
  */
-export type PlanKey = 'starter' | 'growth' | 'pro' | 'custom' | 'agency';
-export const PLAN_KEYS: PlanKey[] = ['starter', 'growth', 'pro', 'custom', 'agency'];
+export type PlanKey = 'starter' | 'growth' | 'scale' | 'pro' | 'custom' | 'agency';
+export const PLAN_KEYS: PlanKey[] = ['starter', 'growth', 'scale', 'pro', 'custom', 'agency'];
 
 /** `self` is bought at checkout; `custom` is agreed and given by hand; `legacy` is kept for who has it. */
 export type PlanKind = 'self' | 'custom' | 'legacy';
@@ -126,7 +139,7 @@ export interface PlanDef {
   tagline: string;
   /** 0 for Custom: there is no list price. */
   monthlyCents: number;
-  /** Billed once a year — ten months' price, two free. */
+  /** Billed once a year — ten months' price, two free. 0: no yearly price is sold. */
   annualCents: number;
   /** Drawn as the recommended one. */
   featured?: boolean;
@@ -138,8 +151,10 @@ export interface PlanDef {
 
 export const PLAN_DEFS: PlanDef[] = [
   {
-    id: 'starter', name: 'Starter', kind: 'self', color: '#3e63dd',
-    tagline: 'One business putting its marketing on autopilot.',
+    /* Not sold since 2026-10-28. Its subscribers keep what they bought, at their price.
+       First in the list: an unknown plan id is held to it (limitsFor). */
+    id: 'starter', name: 'Starter', kind: 'legacy', color: '#3e63dd',
+    tagline: 'No longer offered — kept for the subscribers who have it.',
     monthlyCents: 4_900, annualCents: 49_000,
     support: 'In-app help: chat, tickets and screen sharing',
     limits: {
@@ -152,8 +167,8 @@ export const PLAN_DEFS: PlanDef[] = [
   },
   {
     id: 'growth', name: 'Growth', kind: 'self', color: '#8b5cf6', featured: true,
-    tagline: 'A growing business, or a freelancer with a few clients.',
-    monthlyCents: 9_700, annualCents: 97_000,
+    tagline: 'One business running its CRM, follow-up and marketing automation in one place.',
+    monthlyCents: 9_700, annualCents: 0,
     support: 'In-app help: chat, tickets and screen sharing',
     limits: {
       autopilot_projects: 10, workflows_per_project: 12, sub_accounts: 5,
@@ -164,8 +179,26 @@ export const PLAN_DEFS: PlanDef[] = [
     },
   },
   {
-    id: 'pro', name: 'Pro', kind: 'self', color: '#0f766e',
-    tagline: 'An agency running AI marketing for its clients, under its own brand.',
+    /* Sold from 2026-10-28. The allowance is the one Pro was sized at for
+       $197 (docs/PRICING.md has the cost per unit), so at $297 it carries a
+       wider margin for the extra support time; the owner may raise any of it
+       on Plans & allowances without a release. */
+    id: 'scale', name: 'Scale', kind: 'self', color: '#0f766e',
+    tagline: 'A bigger operation or an agency: more business workspaces, campaigns, clients and AI.',
+    monthlyCents: 29_700, annualCents: 0,
+    support: 'In-app help, answered first',
+    limits: {
+      autopilot_projects: 40, workflows_per_project: 25, sub_accounts: 25,
+      ai_requests: 20_000, social_posts: 800, blog_articles: 120, ai_emails: 6_000,
+      prospects_found: 8_000,
+      long_videos: 50, ai_shorts: 400, video_minutes: 3_000, render_minutes: 4_000, video_storage_gb: 300,
+      login_addresses: 25,
+    },
+  },
+  {
+    /* Not sold since 2026-10-28. Its subscribers keep what they bought, at their price. */
+    id: 'pro', name: 'Pro', kind: 'legacy', color: '#0f766e',
+    tagline: 'No longer offered — kept for the subscribers who have it.',
     monthlyCents: 19_700, annualCents: 197_000,
     support: 'In-app help, answered first',
     limits: {
@@ -180,7 +213,7 @@ export const PLAN_DEFS: PlanDef[] = [
     /* The numbers are where a Custom plan starts; the owner changes them on
        Plans & allowances. Never sold at checkout. */
     id: 'custom', name: 'Custom', kind: 'custom', color: '#17191c',
-    tagline: 'More than Pro, or something Pro does not do — agreed with you.',
+    tagline: 'More than Scale, or something Scale does not do — agreed with you.',
     monthlyCents: 0, annualCents: 0,
     support: 'An onboarding call, done-for-you setup and a named contact',
     limits: {
@@ -207,7 +240,7 @@ export const PLAN_DEFS: PlanDef[] = [
   },
 ];
 
-/** The plans a card shows: the three priced ones, then Custom. */
+/** The plans a card shows: the priced ones, then Custom. */
 export const CARD_PLANS = (plans: PlanDef[] = PLAN_DEFS) => plans.filter(p => p.kind !== 'legacy');
 /** The plans checkout sells. */
 export const SOLD_PLANS = (plans: PlanDef[] = PLAN_DEFS) => plans.filter(p => p.kind === 'self');
@@ -256,10 +289,22 @@ export const OWNER_LIMITS: Limits = Object.fromEntries(METER_IDS.map(id => [id, 
 
 /**
  * Prices a plan was sold at before, by plan id — so a renewal at an old price
- * stays on the plan it bought: $97 was "Agency" (`pro`) before it was Growth's
- * price; $149 was "Network" and $297 a month or $2,970 a year "Agency" (`agency`).
+ * stays on the plan it bought: Starter's $49 / $490; Growth's yearly $970;
+ * Pro's $197 / $1,970, and $97 when it was called "Agency"; $149 was
+ * "Network" and $297 a month or $2,970 a year "Agency" (`agency`).
+ *
+ * $297 a month is now also Scale's price. A renewal is matched to the plan the
+ * subscriber is already on first (billing.ts `planFromEvent`), so an old
+ * Agency subscriber renewing at $297 stays on `agency`; a new payment of $297
+ * with no plan on record is Scale, because `planByAmount` (current prices)
+ * is asked before this list.
  */
-export const LEGACY_CENTS: Partial<Record<PlanKey, number[]>> = { pro: [9_700], agency: [14_900, 29_700, 297_000] };
+export const LEGACY_CENTS: Partial<Record<PlanKey, number[]>> = {
+  starter: [4_900, 49_000],
+  growth: [97_000],
+  pro: [9_700, 19_700, 197_000],
+  agency: [14_900, 29_700, 297_000],
+};
 
 export const planDef = (id: string): PlanDef | undefined => PLAN_DEFS.find(p => p.id === id);
 export const isPlanKey = (id: string): id is PlanKey => (PLAN_KEYS as string[]).includes(id);
@@ -298,7 +343,7 @@ export type StandingKind = 'owner' | 'trial' | 'ended' | 'plan';
 export function limitsFor(kind: StandingKind, planId: string, over: Overrides = {}): Limits {
   if (kind === 'owner') return OWNER_LIMITS;
   if (kind === 'trial' || kind === 'ended') return applyOverrides(TRIAL_LIMITS, over.trial);
-  const p = planDef(planId) ?? PLAN_DEFS[0];
+  const p = planDef(planId) ?? planDef('starter')!;
   return applyOverrides(p.limits, over[p.id]);
 }
 
@@ -318,8 +363,9 @@ export function upgradeFor(meter: MeterId, current: { kind: StandingKind; planId
   if (isUnlimited(have)) return null;
   const ladder = CARD_PLANS(plans);
   const at = ladder.findIndex(p => p.id === current.planId);
-  /* A legacy plan sits at the top of what is sold; from it, only Custom raises anything. */
-  const from = current.kind !== 'plan' ? -1 : at >= 0 ? at : ladder.length - 2;
+  /* A legacy plan may sit below what is sold (Starter) or above it (Agency):
+     search the whole ladder for the first plan that allows more. */
+  const from = current.kind !== 'plan' ? -1 : at;
   for (const p of ladder.slice(from + 1)) {
     if (isUnlimited(p.limits[meter]) || p.limits[meter] > have) return p;
   }
@@ -487,7 +533,7 @@ export function planByAmount(cents: number | undefined, plans: PlanDef[] = PLAN_
   if (!cents) return null;
   for (const p of SOLD_PLANS(plans)) {
     if (p.monthlyCents === cents) return { id: p.id, interval: 'month' };
-    if (p.annualCents === cents) return { id: p.id, interval: 'year' };
+    if (p.annualCents > 0 && p.annualCents === cents) return { id: p.id, interval: 'year' };
   }
   return null;
 }
@@ -495,7 +541,7 @@ export function planByAmount(cents: number | undefined, plans: PlanDef[] = PLAN_
 /** Has this plan ever been sold at this amount? */
 export const soldAt = (id: string, cents: number | undefined): boolean => {
   const p = planDef(id);
-  return !!p && !!cents && ((p.kind === 'self' && (p.monthlyCents === cents || p.annualCents === cents)) || (LEGACY_CENTS[p.id] ?? []).includes(cents));
+  return !!p && !!cents && ((p.kind === 'self' && (p.monthlyCents === cents || (p.annualCents > 0 && p.annualCents === cents))) || (LEGACY_CENTS[p.id] ?? []).includes(cents));
 };
 
 /* ── The read the screens draw ───────────────────────────────────────────── */

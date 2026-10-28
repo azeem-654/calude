@@ -15,18 +15,21 @@
  * industryHead.ts.
  *
  * Prices in the structured data are read from lib/offers.ts, the one place
- * the growth service's terms are written, so a search result cannot quote a
- * price nobody is held to. Medical billing has no price there (it is quoted
- * after an assessment), so its structured data carries none.
+ * every service's terms are written, so a search result cannot quote a price
+ * nobody is held to.
+ *
+ * The e-commerce service page (/ecommerce-management-services) is served the
+ * same way: one canonical address, with /ecommerce and /e-commerce answering
+ * 301 to it (index.ts `ALIASES`), so a search engine never sees two copies.
  */
-import { TRADE_GROWTH_OFFER, dollars, percent } from './offers';
+import { ECOMMERCE_OFFER, MEDICAL_BILLING_OFFER, TRADE_GROWTH_OFFER, dollars, ecommerceLine, medicalLine, percent } from './offers';
 
 /* The search snippet's price, from the offer — never typed (it once drifted from the page). */
 const PRICE_WORDS = `${dollars(TRADE_GROWTH_OFFER.setupCents)} setup, ${dollars(TRADE_GROWTH_OFFER.monthlyCents)}/month, plus a ${percent(TRADE_GROWTH_OFFER.performanceBps)} performance fee on eligible collections.`;
 
-export type IndustrySlug = 'hvac' | 'roofing' | 'medical-billing';
+export type IndustrySlug = 'hvac' | 'roofing' | 'medical-billing' | 'ecommerce';
 /** The two trades sold the growth service. */
-export type TradeSlug = Exclude<IndustrySlug, 'medical-billing'>;
+export type TradeSlug = 'hvac' | 'roofing';
 
 export interface IndustryMeta {
   slug: IndustrySlug;
@@ -64,8 +67,23 @@ export const INDUSTRY_PAGES: Record<IndustrySlug, IndustryMeta> = {
     name: 'Medical Billing',
     audience: 'Medical practices',
     title: 'Medical billing and revenue-cycle management — Protected Central',
-    description: 'Claims, denials, payments and A/R followed through for independent and multi-provider practices, with a revenue-leakage audit and reporting you can check. Priced after an assessment of your practice.',
+    description: `Claims, denials, payments and A/R followed through for independent and multi-provider practices, with a revenue-leakage review and reporting you can check. ${medicalLine()}, on claims handled under your signed agreement.`,
   },
+  ecommerce: {
+    slug: 'ecommerce',
+    path: '/ecommerce-management-services',
+    name: 'E-commerce',
+    audience: 'Online sellers and e-commerce brands',
+    title: 'E-commerce Management Services: Amazon, eBay, Shopify & Walmart — Protected Central',
+    description: `Done-for-you e-commerce business setup and management: Shopify store and marketplace accounts on Amazon, eBay and Walmart set up and run, ads managed, and CRM, email, SMS and support handled. ${ecommerceLine()} for a written monthly scope; ad spend and platform fees are yours.`,
+  },
+};
+
+/** Addresses people type for the e-commerce page, answered with a 301 to the one canonical address. */
+export const PAGE_ALIASES: Record<string, string> = {
+  '/ecommerce': '/ecommerce-management-services',
+  '/e-commerce': '/ecommerce-management-services',
+  '/ecommerce-management': '/ecommerce-management-services',
 };
 
 /** The trade a path names, or null. A trailing slash is the same page. */
@@ -110,10 +128,40 @@ export function growthOffers(url: string) {
   ];
 }
 
+/** The medical service's two fixed prices as Offers; the collections percentage in words. */
+export function medicalOffers(url: string) {
+  const o = MEDICAL_BILLING_OFFER;
+  return [
+    { '@type': 'Offer', name: 'One-time practice setup', price: (o.setupCents / 100).toFixed(2), priceCurrency: o.currency, url: `${url}#pricing` },
+    {
+      '@type': 'Offer', name: 'Monthly platform and billing-service fee', price: (o.monthlyCents / 100).toFixed(2), priceCurrency: o.currency, url: `${url}#pricing`,
+      priceSpecification: { '@type': 'UnitPriceSpecification', price: (o.monthlyCents / 100).toFixed(2), priceCurrency: o.currency, billingDuration: 'P1M', unitCode: 'MON' },
+      description: `Plus ${percent(o.collectionsBps)} of eligible net collections on claims handled under the signed agreement. Subject to legal and compliance review.`,
+    },
+  ];
+}
+
+/** The e-commerce service's one monthly price. */
+export function ecommerceOffers(url: string) {
+  const o = ECOMMERCE_OFFER;
+  return [{
+    '@type': 'Offer', name: 'Monthly managed service', price: (o.monthlyCents / 100).toFixed(2), priceCurrency: o.currency, url: `${url}#pricing`,
+    priceSpecification: { '@type': 'UnitPriceSpecification', price: (o.monthlyCents / 100).toFixed(2), priceCurrency: o.currency, billingDuration: 'P1M', unitCode: 'MON' },
+    description: 'For the agreed monthly scope. Advertising spend, inventory, marketplace and payment fees, shipping and third-party apps are paid separately by the client.',
+  }];
+}
+
+const SERVICE_TYPE: Record<IndustrySlug, string> = {
+  hvac: 'Lead generation and revenue tracking for contractors',
+  roofing: 'Lead generation and revenue tracking for contractors',
+  'medical-billing': 'Medical billing and revenue-cycle management',
+  ecommerce: 'E-commerce store setup and management',
+};
+
 /** Schema.org data for one microsite: the page, the service it is about, the way back. */
 export function industryJsonLd(m: IndustryMeta): string {
   const url = `${SITE_ORIGIN}${m.path}`;
-  const priced = m.slug !== 'medical-billing';
+  const offers = m.slug === 'medical-billing' ? medicalOffers(url) : m.slug === 'ecommerce' ? ecommerceOffers(url) : growthOffers(url);
   const data = [
     {
       '@context': 'https://schema.org',
@@ -130,12 +178,12 @@ export function industryJsonLd(m: IndustryMeta): string {
       '@type': 'Service',
       '@id': `${url}#software`,
       name: `Protected Central ${m.name}`,
-      serviceType: priced ? 'Lead generation and revenue tracking for contractors' : 'Medical billing and revenue-cycle management',
+      serviceType: SERVICE_TYPE[m.slug],
       provider: { '@type': 'Organization', name: 'Protected Central', url: `${SITE_ORIGIN}/` },
       areaServed: 'US',
       description: m.description,
       audience: { '@type': 'BusinessAudience', audienceType: m.audience },
-      ...(priced ? { offers: growthOffers(url) } : {}),
+      offers,
     },
   ];
   /* `<` escaped so nothing in a description can close the script element. */
@@ -143,7 +191,7 @@ export function industryJsonLd(m: IndustryMeta): string {
 }
 
 /** Every public page worth indexing. Signed-in screens are not pages anybody searches for. */
-export const SITEMAP_PATHS = ['/', '/pricing', '/hvac', '/roofing', '/medical-billing', '/book/strategy-call', '/security', '/privacy', '/terms-of-service', '/terms', '/affiliate-terms', '/growth-service-terms'];
+export const SITEMAP_PATHS = ['/', '/pricing', '/ecommerce-management-services', '/hvac', '/roofing', '/medical-billing', '/book/strategy-call', '/security', '/privacy', '/terms-of-service', '/terms', '/affiliate-terms', '/growth-service-terms'];
 
 export function sitemapXml(): string {
   const urls = SITEMAP_PATHS.map(p => `  <url><loc>${SITE_ORIGIN}${p}</loc></url>`).join('\n');

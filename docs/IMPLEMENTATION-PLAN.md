@@ -83,3 +83,42 @@ by the owner), the medical billing compensation model and BAA (34, 38), and —
 the largest — a hosting BAA before any patient data (Cloudflare signs one only
 on Enterprise; `docs/HIPAA-LAUNCH-BLOCKERS.md`). Medical billing runs on
 synthetic data until then, and says so on every screen.
+
+---
+
+# 2026-10-28 specification — pricing, service pages, snapshot access
+
+The owner's specification of 2026-10-28 replaced parts of the plan above.
+Audit first, then the checklist; each line says what was reused and what is new.
+
+## Audit — what already existed
+
+| Asked for | Found | Done |
+|---|---|---|
+| Software plans $97 / $297 / Custom | Starter $49 / Growth $97 / Pro $197 / Custom, yearly at ten months; cards on /pricing only | Growth kept ($97, same id and allowance); **Scale** new (`scale`, $297, Pro's allowance); Starter and Pro legacy; monthly only; cards back on the home page |
+| E-commerce service page | No route, no offer anywhere | **New**: `/ecommerce-management-services`, `ECOMMERCE_OFFER` $2,200/month, head/JSON-LD/sitemap, 301 aliases |
+| HVAC and roofing pages | Built in phase 1–2: microsites, $300 + $87 + 5%, the auditable lead-to-revenue ledger (source → qualified → quote → won → completed → final amount → collected → refunds → fee, manual vs integration-confirmed, owner approval, no auto-charge) | **Reused** unchanged; tests extended (HVAC never links roofing and vice versa) |
+| Medical billing price | "By assessment", no figure | **Published** $300 + $87 + 5% of eligible net collections on claims handled (`MEDICAL_BILLING_OFFER`, its own constant), subject to legal review; **new** Fee statement in Medical billing |
+| RCM capabilities | Phase 4 module: claims, two statuses, denials/appeals, CSV remittances + reconciliation, A/R aging, prior auth, coding review, leakage audit, portal, access log, synthetic-only until the launch checklist | **Reused**; audit wording now "flags potential issues for review" |
+| Snapshot marketplace owner-only | Customers could browse and install into their own workspace; sign-up installed automatically | **Changed**: owner-only on every action and route; sign-up records the industry only; two new snapshots (e-commerce store, medical practice) |
+| Booking / forms | Strategy call with owner settings, closed-state fallback to each page's form, idempotent enquiry form | **Reused**; e-commerce source added; "no patient information" notice on medical bookings |
+| Industry screenshots | HVAC, roofing and medical "See it working" sets from real seeded workspaces | **Reused**; e-commerce set **new** (sample store workspace) |
+
+## Checklist
+
+- [x] Plans: allowances.ts, checkout refusal of yearly, Plan & billing, /pricing, home cards
+- [x] Legacy plans renew at their own price (`LEGACY_CENTS`), nobody repriced
+- [x] E-commerce offer, page, SEO head, sitemap, redirects, booking source
+- [x] Medical price, basis, exclusions, statement steps, review caveat; Fee statement tab
+- [x] Home page: five lines told apart; software and services priced in separate sections
+- [x] Snapshots owner-only (API + UI + direct URL); claim records only; new snapshots
+- [x] E-commerce screenshots from a seeded sample store
+- [x] Docs and owner checklist (items 31, 34, 35, 38, 39, 40)
+- [ ] Owner: legal review of the medical percentage; e-commerce scope template; yearly billing decision
+
+## Not built (said on the pages)
+
+No Amazon, eBay, Walmart, Shopify or ad-network integration; no clearinghouse,
+EHR, payer or eligibility integration; no payment integration for the
+performance or collections fee (statements are reviewed, then invoiced by the
+owner); patient payments are not tracked in Medical billing.
