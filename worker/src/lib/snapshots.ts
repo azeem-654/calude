@@ -26,9 +26,9 @@
  * Pure and import-free: the browser's build compiles it too, for the preview.
  */
 
-export type SnapshotId = 'hvac' | 'roofing' | 'medical_billing';
+export type SnapshotId = 'hvac' | 'roofing' | 'medical_billing' | 'medical_practice' | 'ecommerce';
 /** The microsite slug a sign-up arrives with (`?industry=`). */
-export type IndustrySlug = 'hvac' | 'roofing' | 'medical-billing';
+export type IndustrySlug = 'hvac' | 'roofing' | 'medical-billing' | 'ecommerce';
 
 export interface SnapStage { id: string; name: string; color: string; playbook: string[] }
 export interface SnapField { key: string; label: string }
@@ -137,7 +137,69 @@ const MEDICAL: Snapshot = {
   templates: ['speed-to-lead', 'appointment-reminders', 'stage-proposal', 'stale-deal'],
 };
 
-export const SNAPSHOTS: readonly Snapshot[] = [HVAC, ROOFING, MEDICAL];
+/* For the practice's own workspace, when the billing service runs one for
+   it: the follow-up work between the practice and the billing team, at the
+   level of a work item — never a patient. Claims, remittances and A/R live in
+   Medical billing (/rcm), which stays on synthetic data until its launch
+   checklist is cleared; this pipeline must never become a way round that, and
+   its first checklist says so. */
+const MEDICAL_PRACTICE: Snapshot = {
+  id: 'medical_practice', industry: 'medical-billing', version: 1,
+  title: 'Medical practice (billing client)',
+  summary: 'For a practice whose billing we run: a pipeline for the billing follow-up work between the practice and the billing team — documents asked for, payer follow-up, appeals — and the practice-level details billing needs. No patient details: claims stay in Medical billing.',
+  history: [{ version: 1, date: '2026-10-28', note: 'First version.' }],
+  pipeline: {
+    id: `${P('medical_practice')}-pipeline`, name: 'Billing follow-up',
+    stages: [
+      { id: `${P('medical_practice')}-raised`, name: 'Issue raised', color: '#6366f1', playbook: ['Describe the issue by claim reference from Medical billing, never by patient name or date of birth', 'Name who at the practice owns it'] },
+      { id: `${P('medical_practice')}-docs`, name: 'Waiting on practice', color: '#f59e0b', playbook: ['Ask for the missing document or answer through Medical billing → Messages', 'Follow up after two working days'] },
+      { id: `${P('medical_practice')}-payer`, name: 'Waiting on payer', color: '#0ea5e9', playbook: ['Record the call reference or portal answer in the claim itself', 'Set the next follow-up date'] },
+      { id: `${P('medical_practice')}-appeal`, name: 'Correction or appeal', color: '#a855f7', playbook: ['Check the appeal or corrected-claim deadline', 'Have a person review the correction before it is sent'] },
+      { id: `${P('medical_practice')}-resolved`, name: 'Resolved', color: '#16a34a', playbook: ['Note the outcome on the claim', 'Mention it in the monthly report'] },
+    ],
+  },
+  fields: [
+    { key: 'practice_specialty', label: 'Specialty' },
+    { key: 'practice_pm_system', label: 'Practice-management / EHR system' },
+    { key: 'practice_main_payers', label: 'Main payers' },
+    { key: 'practice_billing_contact', label: 'Billing contact at the practice' },
+    { key: 'practice_report_day', label: 'Monthly report day' },
+  ],
+  templates: ['ticket-triage', 'stale-deal'],
+};
+
+/* An online seller run under the e-commerce management service: customers
+   from first enquiry to repeat buyer, and the store details the service team
+   records. Marketplaces are not connected to Protected Central; the stages
+   are where people record what they did there. */
+const ECOMMERCE: Snapshot = {
+  id: 'ecommerce', industry: 'ecommerce', version: 1,
+  title: 'E-commerce store',
+  summary: 'A customer pipeline for an online seller — enquiry, first order, follow-up, repeat buyer, win-back — with the store and marketplace details the service records. It does not connect a marketplace: orders and listings on Amazon, eBay or Walmart are worked there and noted here.',
+  history: [{ version: 1, date: '2026-10-28', note: 'First version.' }],
+  pipeline: {
+    id: `${P('ecommerce')}-pipeline`, name: 'Store customers',
+    stages: [
+      { id: `${P('ecommerce')}-enquiry`, name: 'New enquiry', color: '#6366f1', playbook: ['Answer product and shipping questions the same working day', 'Note which channel they came from (store, marketplace, social, ad)'] },
+      { id: `${P('ecommerce')}-cart`, name: 'Cart or quote', color: '#0ea5e9', playbook: ['Follow up an abandoned cart or a bulk-order quote once', 'Only email or text people who agreed to hear from you'] },
+      { id: `${P('ecommerce')}-first`, name: 'First order', color: '#3b82f6', playbook: ['Send the thank-you and what to expect on delivery', 'Open a ticket at once for any delivery or product problem'] },
+      { id: `${P('ecommerce')}-review`, name: 'Review asked', color: '#f59e0b', playbook: ['Ask for a review once the order has arrived', 'Hand an unhappy reply to a person before anything else'] },
+      { id: `${P('ecommerce')}-repeat`, name: 'Repeat customer', color: '#22c55e', playbook: ['Remind them before they would usually reorder', 'Tag them for the segment their purchases fit'] },
+      { id: `${P('ecommerce')}-lapsed`, name: 'Lapsed — win back', color: '#a855f7', playbook: ['One useful message, then an offer, then stop', 'Never message somebody who unsubscribed'] },
+    ],
+  },
+  fields: [
+    { key: 'ecom_channel', label: 'Where they bought (Shopify, Amazon, eBay, Walmart, other)' },
+    { key: 'ecom_first_order', label: 'First order date' },
+    { key: 'ecom_last_order', label: 'Last order date' },
+    { key: 'ecom_orders', label: 'Number of orders' },
+    { key: 'ecom_segment', label: 'Segment (product interest)' },
+    { key: 'marketing_consent', label: 'Marketing consent (email / SMS, and when given)' },
+  ],
+  templates: ['unpaid-order', 'thank-buyer', 'review-request', 'unhappy-first', 'reorder-reminder', 'dormant-winback', 'ticket-triage'],
+};
+
+export const SNAPSHOTS: readonly Snapshot[] = [HVAC, ROOFING, MEDICAL, MEDICAL_PRACTICE, ECOMMERCE];
 
 export const snapshotById = (id: unknown): Snapshot | undefined => SNAPSHOTS.find(s => s.id === id);
 export const snapshotForIndustry = (slug: unknown): Snapshot | undefined => SNAPSHOTS.find(s => s.industry === slug);

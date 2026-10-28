@@ -10,15 +10,17 @@
  * every way of signing up — a password, a code, Google — without threading
  * the slug through each.
  *
- * Called by SyncGate *before* the first pull, so the industry's pipeline is in
- * the workspace before the app would seed its generic one.
+ * Since 2026-10-28 the server only *records* the industry: the platform owner
+ * chooses and installs each customer's snapshot (Workspace → Industry
+ * snapshots lists the workspace as having asked for it), so a sign-up never
+ * installs one by itself.
  */
 import { sessionToken } from './auth';
 import { API_BASE } from './apiBase';
 
 const KEY = 'pc_industry';
 const DAYS = 30;
-const SLUGS = new Set(['hvac', 'roofing', 'medical-billing']);
+const SLUGS = new Set(['hvac', 'roofing', 'medical-billing', 'ecommerce']);
 
 interface Stored { slug: string; at: number }
 

@@ -9,16 +9,20 @@
  * `wrangler dev` on :8875 (inspector :9375), and stops what it started.
  *
  * What it covers:
- *  - the sign-up claim: the industry a new account arrived with sets up its
- *    own workspace once, and never an old account, the owner, or twice;
- *  - who may install where: nobody signed out, never another customer's
- *    workspace, never the agency bucket; the owner into any workspace without
- *    claiming it;
+ *  - the sign-up claim: the industry a new account arrived with is *recorded*
+ *    on its own workspace once — nothing installed — and never for an old
+ *    account, the owner, or twice;
+ *  - only the install owner reaches the marketplace (2026-10-28): every
+ *    action, the catalogue included, answers 403 to a customer — on their own
+ *    workspace as much as anybody else's — and nobody signed out gets in;
+ *  - the owner installs the matching snapshot into the matching customer's
+ *    workspace (roofing, e-commerce, the medical practice) without claiming
+ *    it, and nothing reaches any other workspace;
  *  - installing twice changes nothing and writes no second history row;
- *  - in the browser: `/signup?industry=roofing` → sign in → the workspace
- *    opens with the roofing pipeline, not the generic one; the catalogue
- *    previews and installs at 1280 and 390 with no sideways scroll and no page
- *    errors.
+ *  - in the browser: `/signup?industry=roofing` → sign in → the industry is
+ *    recorded, no snapshot installed; a customer typing /snapshots is sent
+ *    away and has no menu entry for it; the owner's screen picks workspaces at
+ *    390 with no sideways scroll and no page errors.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -72,9 +76,9 @@ ok('owner and three customers exist', !!(T && CARA.acct && BEN.acct && OLD.acct)
 
 console.log('\nThe sign-up claim');
 let r = await sn({ action: 'claim', token: CARA.token, industry: 'hvac' });
-ok('a new account’s industry sets up its own workspace', r.d.success && r.d.mode === 'signup' && r.d.added > 0, r.d);
-ok('…with the HVAC pipeline in its documents', pipesOf(CARA.acct).some(p => p.id === 'snap-hvac-pipeline'));
-ok('…and the industry recorded on the workspace', sql(`SELECT industry FROM crm_workspaces WHERE account_id = '${CARA.acct}'`)[0].industry === 'hvac');
+ok('a new account’s industry is recorded on its own workspace', r.d.success && r.d.recorded === 'hvac' && r.d.installed === false, r.d);
+ok('…and nothing is installed by the customer’s sign-up', !pipesOf(CARA.acct).some(p => p.id === 'snap-hvac-pipeline') && sql(`SELECT COUNT(*) AS n FROM crm_snapshot_installs WHERE account_id = '${CARA.acct}'`)[0].n === 0);
+ok('…the industry kept for the owner to act on', sql(`SELECT industry FROM crm_workspaces WHERE account_id = '${CARA.acct}'`)[0].industry === 'hvac');
 r = await sn({ action: 'claim', token: CARA.token, industry: 'roofing' });
 ok('a second claim does nothing', r.d.success === false && r.d.reason === 'already_set' && !pipesOf(CARA.acct).some(p => p.id === 'snap-roofing-pipeline'), r.d);
 r = await sn({ action: 'claim', token: OLD.token, industry: 'roofing' });
@@ -84,20 +88,30 @@ ok('the install owner has no sign-up to claim for', r.d.success === false && r.d
 r = await sn({ action: 'claim', token: BEN.token, industry: 'dentist' });
 ok('an industry that has no snapshot is refused', r.d.success === false && r.d.reason === 'unknown_industry', r.d);
 
-console.log('\nWho may install where');
+console.log('\nOnly the platform owner reaches the marketplace');
 r = await sn({ action: 'catalogue' });
 ok('nobody at all is refused', r.status === 401, r);
+r = await sn({ action: 'catalogue', token: BEN.token });
+ok('a customer cannot list the catalogue', r.status === 403 && r.d.code === 'not_owner' && !r.d.snapshots, r.d);
 for (const action of ['preview', 'install', 'history']) {
+  r = await sn({ action, token: BEN.token, accountId: BEN.acct, snapshotId: 'roofing' });
+  ok(`a customer is refused ${action} on their own workspace`, r.status === 403 && r.d.code === 'not_owner', r);
   r = await sn({ action, token: BEN.token, accountId: CARA.acct, snapshotId: 'roofing' });
-  ok(`another customer is refused ${action} on a workspace not theirs`, r.status === 403, r);
+  ok(`a customer is refused ${action} on a workspace not theirs`, r.status === 403, r);
 }
+r = await sn({ action: 'install', token: BEN.token, accountId: BEN.acct, snapshotId: 'roofing', restore: true });
+ok('…restore too', r.status === 403, r);
 r = await sn({ action: 'install', token: BEN.token, accountId: '__agency__', snapshotId: 'roofing' });
-ok('the agency bucket is not a workspace', r.status === 400 && r.d.code === 'not_a_workspace', r);
+ok('a customer naming the agency bucket is refused', r.status === 403, r);
+r = await sn({ action: 'install', token: T, accountId: '__agency__', snapshotId: 'roofing' });
+ok('the agency bucket is not a workspace, even for the owner', r.status === 400 && r.d.code === 'not_a_workspace', r);
 r = await sn({ action: 'workspaces', token: BEN.token });
 ok('a customer cannot list every workspace', r.status === 403, r);
-r = await sn({ action: 'preview', token: BEN.token, accountId: BEN.acct, snapshotId: 'plumbing' });
+r = await sn({ action: 'preview', token: T, accountId: BEN.acct, snapshotId: 'plumbing' });
 ok('an unknown snapshot is refused at its box', !r.d.success && r.d.field === 'snapshot.id', r.d);
-ok('nothing was written by the refusals', !pipesOf(CARA.acct).some(p => p.id === 'snap-roofing-pipeline') && sql(`SELECT COUNT(*) AS n FROM crm_snapshot_installs WHERE account_id = '${BEN.acct}'`)[0].n === 0);
+r = await sn({ action: 'install', token: T, accountId: 'acct-nobody', snapshotId: 'roofing' });
+ok('a workspace that does not exist is refused', r.status === 404, r);
+ok('nothing was written by the refusals', !pipesOf(CARA.acct).some(p => p.id === 'snap-roofing-pipeline') && sql(`SELECT COUNT(*) AS n FROM crm_snapshot_installs`)[0].n === 0);
 
 console.log('\nThe owner installs into a customer’s workspace');
 r = await sn({ action: 'workspaces', token: T });
@@ -116,12 +130,24 @@ const roof = bp.find(p => p.id === 'snap-roofing-pipeline');
 roof.stages[0].name = 'Fresh lead';
 roof.stages = roof.stages.filter(s => s.id !== 'snap-roofing-claim');
 await api('data.php', { action: 'put', token: BEN.token, accountId: BEN.acct, key: 'crm_pipelines', value: JSON.stringify(bp) });
-r = await sn({ action: 'preview', token: BEN.token, accountId: BEN.acct, snapshotId: 'roofing' });
-ok('the customer’s preview: their rename kept, their deletion not undone', r.d.success && !r.d.changes && r.d.items.some(i => i.label === 'Fresh lead' && i.status === 'present') && r.d.items.some(i => i.key.endsWith('-claim') && i.status === 'removed'), r.d.items);
-r = await sn({ action: 'install', token: BEN.token, accountId: BEN.acct, snapshotId: 'roofing', restore: true });
+r = await sn({ action: 'preview', token: T, accountId: BEN.acct, snapshotId: 'roofing' });
+ok('the owner’s preview: the customer’s rename kept, their deletion not undone', r.d.success && !r.d.changes && r.d.items.some(i => i.label === 'Fresh lead' && i.status === 'present') && r.d.items.some(i => i.key.endsWith('-claim') && i.status === 'removed'), r.d.items);
+r = await sn({ action: 'install', token: T, accountId: BEN.acct, snapshotId: 'roofing', restore: true });
 ok('…and restoring puts the deleted stage back, rename untouched', r.d.success && r.d.added === 1 && pipesOf(BEN.acct).find(p => p.id === 'snap-roofing-pipeline').stages.some(s => s.id === 'snap-roofing-claim') && pipesOf(BEN.acct).find(p => p.id === 'snap-roofing-pipeline').stages[0].name === 'Fresh lead', r.d);
-r = await sn({ action: 'history', token: BEN.token, accountId: BEN.acct });
-ok('the history says what happened, newest first', r.d.success && r.d.history.length === 2 && r.d.history[0].mode === 'restore' && r.d.industry === 'roofing', r.d);
+r = await sn({ action: 'history', token: T, accountId: BEN.acct });
+ok('the history says what happened, newest first, and who did it', r.d.success && r.d.history.length === 2 && r.d.history[0].mode === 'restore' && r.d.history.every(h => h.byEmail === OWNER && h.byRole === 'owner') && r.d.industry === 'roofing', r.d);
+
+console.log('\nThe right snapshot into the right workspace, and nowhere else');
+r = await sn({ action: 'install', token: T, accountId: CARA.acct, snapshotId: 'hvac' });
+ok('the owner installs HVAC where HVAC was asked for', r.d.success && pipesOf(CARA.acct).some(p => p.id === 'snap-hvac-pipeline'), r.d);
+const keysBefore = new Set(sql(`SELECT k FROM crm_data WHERE account_id = '${OLD.acct}'`).map(x => x.k));
+r = await sn({ action: 'install', token: T, accountId: OLD.acct, snapshotId: 'ecommerce' });
+ok('the owner installs e-commerce into a store’s workspace', r.d.success && pipesOf(OLD.acct).some(p => p.id === 'snap-ecommerce-pipeline'), r.d);
+r = await sn({ action: 'install', token: T, accountId: OLD.acct, snapshotId: 'medical_practice' });
+ok('…and the medical practice snapshot installs on its own pipeline', r.d.success && pipesOf(OLD.acct).some(p => p.id === 'snap-medical-practice-pipeline'), r.d);
+ok('no workspace received another’s snapshot', !pipesOf(CARA.acct).some(p => /ecommerce|roofing|medical/.test(p.id)) && !pipesOf(BEN.acct).some(p => /ecommerce|hvac|medical/.test(p.id)) && !pipesOf(OLD.acct).some(p => /hvac|roofing/.test(p.id)));
+const keysAfter = sql(`SELECT k FROM crm_data WHERE account_id = '${OLD.acct}'`).map(x => x.k);
+ok('an install writes only pipelines and contact fields — no contacts, messages or settings', keysAfter.every(k => keysBefore.has(k) || k === 'crm_pipelines' || k === 'crm_custom_fields'), keysAfter);
 
 console.log('\nThe screens');
 br = await pw.chromium.launch();
@@ -136,7 +162,7 @@ const signIn = async (page, email, password) => {
   await page.waitForTimeout(3000);
 };
 
-/* A sign-up from the roofing site: the slug is carried to the first sign-in. */
+/* A sign-up from the roofing site: the slug is carried to the first sign-in, and recorded — not installed. */
 {
   const DANA = await mkUser('dana@roof.test', 'Purple-kettle-5dana', 'Dana Roofs');
   const ctx = await br.newContext({ viewport: { width: 1280, height: 900 } });
@@ -145,12 +171,9 @@ const signIn = async (page, email, password) => {
   await page.goto(`${B}/signup?industry=roofing`, { waitUntil: 'networkidle' });
   ok('the sign-up page remembers the industry it was sent with', (await page.evaluate(() => JSON.parse(localStorage.getItem('pc_industry') ?? 'null')?.slug)) === 'roofing');
   await signIn(page, DANA.email, DANA.password);
-  ok('signing in sets up the roofing workspace', pipesOf(DANA.acct).some(p => p.id === 'snap-roofing-pipeline') && sql(`SELECT industry FROM crm_workspaces WHERE account_id = '${DANA.acct}'`)[0].industry === 'roofing');
-  ok('…and the generic pipeline was not seeded beside it', !pipesOf(DANA.acct).some(p => p.id === 'pipeline-default'), pipesOf(DANA.acct).map(p => p.id));
+  ok('signing in records roofing on the workspace', sql(`SELECT industry FROM crm_workspaces WHERE account_id = '${DANA.acct}'`)[0].industry === 'roofing');
+  ok('…without installing the roofing snapshot', !pipesOf(DANA.acct).some(p => p.id === 'snap-roofing-pipeline'), pipesOf(DANA.acct).map(p => p.id));
   ok('…and the slug is forgotten once used', (await page.evaluate(() => localStorage.getItem('pc_industry'))) === null);
-  await page.goto(`${B}/pipelines`, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(1500);
-  ok('the pipeline board opens on the roofing stages', /Inspection booked/.test(await page.locator('body').innerText()));
   await ctx.close();
 }
 
@@ -160,22 +183,11 @@ for (const width of [1280, 390]) {
   page.on('pageerror', e => errs.push(`cara@${width}: ${e}`));
   await signIn(page, CARA.email, CARA.password);
   await page.goto(`${B}/snapshots`, { waitUntil: 'networkidle' });
-  await page.waitForSelector('[data-testid="snapshot-roofing"]', { timeout: 15_000 });
-  ok(`customer @${width}: the catalogue lists three snapshots that pass their checks`, (await page.locator('[data-testid="snapshot-hvac"], [data-testid="snapshot-roofing"], [data-testid="snapshot-medical_billing"]').count()) === 3 && (await page.getByTestId('snapshot-problems').count()) === 0);
-  ok(`customer @${width}: no workspace picker for a customer`, (await page.locator('[data-field="snapshot.workspace"]').count()) === 0);
-  ok(`customer @${width}: the HVAC card says it is installed here`, /installed here/.test(await page.getByTestId('snapshot-hvac').innerText()));
-  await page.getByTestId('snapshot-preview-hvac').click();
-  await page.waitForSelector('[data-testid="snapshot-plan"]');
-  ok(`customer @${width}: re-previewing HVAC offers nothing to add`, /Nothing to add/.test(await page.getByTestId('snapshot-plan').innerText()));
-  if (width === 1280) {
-    await page.getByTestId('snapshot-preview-roofing').click();
-    await page.waitForSelector('[data-testid="snapshot-install"]:not([disabled])');
-    await page.getByTestId('snapshot-install').click();
-    await page.waitForSelector('[data-testid="snapshot-done"]', { timeout: 15_000 });
-    ok('customer: installing roofing beside HVAC adds it and keeps HVAC', pipesOf(CARA.acct).some(p => p.id === 'snap-roofing-pipeline') && pipesOf(CARA.acct).some(p => p.id === 'snap-hvac-pipeline'));
-  }
+  await page.waitForTimeout(1500);
+  ok(`customer @${width}: typing /snapshots sends them away`, !page.url().includes('/snapshots') && (await page.getByTestId('snapshots').count()) === 0, page.url());
+  const nav = await page.evaluate(() => [...document.querySelectorAll('a[href]')].some(a => a.getAttribute('href') === '/snapshots'));
+  ok(`customer @${width}: no link to the marketplace anywhere on the page`, !nav);
   ok(`customer @${width}: no sideways scroll`, (await overflow(page)) <= 0, String(await overflow(page)));
-  await page.screenshot({ path: `test-results/snapshots-${width}.png`, fullPage: true });
   await ctx.close();
 }
 {
@@ -186,6 +198,13 @@ for (const width of [1280, 390]) {
   await page.goto(`${B}/snapshots`, { waitUntil: 'networkidle' });
   await page.waitForSelector('[data-field="snapshot.workspace"]', { timeout: 15_000 });
   ok('owner: picks any customer’s workspace', (await page.locator('[data-field="snapshot.workspace"] option').count()) >= 4);
+  ok('owner: the catalogue lists every snapshot, each passing its checks', (await page.locator('[data-testid="snapshot-hvac"], [data-testid="snapshot-roofing"], [data-testid="snapshot-medical_billing"], [data-testid="snapshot-medical_practice"], [data-testid="snapshot-ecommerce"]').count()) === 5 && (await page.getByTestId('snapshot-problems').count()) === 0);
+  ok('owner: a workspace that signed up from a trade site says it asked for it', /asked for roofing/.test(await page.locator('[data-field="snapshot.workspace"]').innerText()));
+  await page.selectOption('[data-field="snapshot.workspace"]', OLD.acct);
+  await page.getByTestId('snapshot-preview-ecommerce').click();
+  await page.waitForSelector('[data-testid="snapshot-plan"]');
+  ok('owner: previewing e-commerce on the store’s workspace offers nothing new (already installed)', /Nothing to add/.test(await page.getByTestId('snapshot-plan').innerText()));
+  await page.screenshot({ path: 'test-results/snapshots-owner-390.png', fullPage: true });
   ok('owner @390: no sideways scroll', (await overflow(page)) <= 0, String(await overflow(page)));
   await ctx.close();
 }

@@ -5,11 +5,12 @@
  * what each holds, whether it passes its checks, a preview of exactly what an
  * install would add to a workspace, the install, and the history of installs.
  *
- * A customer installs into the workspace they are in. The install owner can
- * also pick any customer's workspace, which is how a customer who signed up
- * before snapshots existed — or from the home page rather than a trade site —
- * is set up. The server decides both (routes/snapshots.ts); the picker being
- * hidden from customers is a courtesy.
+ * The install owner's screen only (the owner's decision of 2026-10-28): they
+ * pick the customer's workspace and the snapshot that fits that business.
+ * Customers neither see it in the menu nor reach it by its address (App.tsx),
+ * and the server refuses every action to anybody else (routes/snapshots.ts) —
+ * that refusal, not the hidden menu, is the rule. A workspace whose owner
+ * signed up from an industry site is listed as having asked for it.
  *
  * An install only adds. Everything already in the workspace is left as the
  * customer has it, and items they deleted come back only if "Put back what was
@@ -41,6 +42,9 @@ interface WorkspaceRow { accountId: string; email: string; name: string | null; 
 interface HistoryRow { id: string; snapshotId: string; version: number; mode: string; added: string[]; present: number; skipped: number; byEmail: string; byRole: string; at: string }
 interface Preview { items: PlanItem[]; counts: Record<ItemStatus, number>; changes: boolean }
 
+/** Whether any snapshot has been installed there (`installed` is a JSON object of snapshot → version). */
+const hasInstall = (w: WorkspaceRow) => { try { return Object.keys(JSON.parse(w.installed || '{}') ?? {}).length > 0; } catch { return false; } };
+
 const small: React.CSSProperties = { fontSize: 12.5, color: MUTED, margin: 0, lineHeight: 1.55 };
 const chip = (bg: string, fg: string): React.CSSProperties => ({ display: 'inline-block', padding: '2px 8px', borderRadius: 999, background: bg, color: fg, fontSize: 11.5, fontWeight: 700 });
 const STATUS: Record<ItemStatus, { label: string; bg: string; fg: string }> = {
@@ -56,7 +60,6 @@ export default function Snapshots() {
   usePageTitle('Industry snapshots');
   const active = getActiveAccountId() ?? '';
   const [cat, setCat] = useState<CatalogueSnap[] | null>(null);
-  const [owner, setOwner] = useState(false);
   const [loadErr, setLoadErr] = useState('');
   const [workspaces, setWorkspaces] = useState<WorkspaceRow[]>([]);
   const [target, setTarget] = useState(active);
@@ -73,8 +76,8 @@ export default function Snapshots() {
   useEffect(() => {
     void api<{ owner: boolean; snapshots: CatalogueSnap[] }>('catalogue').then(d => {
       if (!d.success) { setLoadErr(d.error ?? 'Could not load the catalogue.'); return; }
-      setCat(d.snapshots); setOwner(d.owner);
-      if (d.owner) void api<{ workspaces: WorkspaceRow[] }>('workspaces').then(w => { if (w.success) setWorkspaces(w.workspaces); });
+      setCat(d.snapshots);
+      void api<{ workspaces: WorkspaceRow[] }>('workspaces').then(w => { if (w.success) setWorkspaces(w.workspaces); });
     });
   }, []);
 
@@ -127,14 +130,12 @@ export default function Snapshots() {
 
       <div style={{ ...box, display: 'grid', gap: 10 }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          {owner ? (
-            <label style={{ ...label, flex: '1 1 320px' }}>Install into
-              <select style={input} data-field="snapshot.workspace" value={target} onChange={e => setTarget(e.target.value)}>
-                {active && <option value={active}>This workspace</option>}
-                {workspaces.filter(w => w.accountId !== active).map(w => <option key={w.accountId} value={w.accountId}>{w.name || w.email}{w.industry ? ` — ${w.industry}` : ''}</option>)}
-              </select>
-            </label>
-          ) : <p style={{ ...small, flex: '1 1 320px' }}>Installs go into the workspace you are in now.</p>}
+          <label style={{ ...label, flex: '1 1 320px' }}>Install into the customer’s workspace
+            <select style={input} data-field="snapshot.workspace" value={target} onChange={e => setTarget(e.target.value)}>
+              {active && <option value={active}>This workspace (yours)</option>}
+              {workspaces.filter(w => w.accountId !== active).map(w => <option key={w.accountId} value={w.accountId}>{w.name || w.email}{w.name && w.email ? ` (${w.email})` : ''}{w.industry ? (hasInstall(w) ? ` — ${w.industry}` : ` — asked for ${w.industry}`) : ''}</option>)}
+            </select>
+          </label>
           <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12.5, color: INK }}>
             <input type="checkbox" data-field="snapshot.restore" checked={restore} onChange={e => setRestore(e.target.checked)} /> Put back what was removed
           </label>

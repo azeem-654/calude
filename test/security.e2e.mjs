@@ -189,7 +189,12 @@ for (const act of ['preview', 'install', 'history']) {
 const snW = await api('snapshots.php', { action: 'workspaces', token: B.token });
 check('B cannot list every workspace (owner only)', snW.status === 403 && !snW.data.workspaces, JSON.stringify(snW.data).slice(0, 120));
 const snBucket = await api('snapshots.php', { action: 'install', token: B.token, accountId: '__agency__', snapshotId: 'hvac' });
-check('no snapshot installs into an agency bucket', !snBucket.ok && snBucket.status === 400, JSON.stringify(snBucket.data).slice(0, 120));
+check('no snapshot installs into an agency bucket', !snBucket.ok && snBucket.status === 403, JSON.stringify(snBucket.data).slice(0, 120));
+/* The marketplace is the platform owner's alone (2026-10-28): a customer is refused it on their own workspace too. */
+for (const act of ['catalogue', 'preview', 'install', 'history']) {
+  const r = await api('snapshots.php', { action: act, token: B.token, accountId: B.acct, snapshotId: 'hvac' });
+  check(`B cannot ${act} a snapshot even on B's own workspace (owner only)`, r.status === 403 && !r.ok && !r.data.snapshots, JSON.stringify(r.data).slice(0, 120));
+}
 check("A's pipelines carry no snapshot B tried to install", !(d1rows(`SELECT v FROM crm_data WHERE account_id = '${A.acct}' AND k = 'crm_pipelines'`)[0]?.v ?? '').includes('snap-hvac'));
 /* Medical billing (routes/rcm.ts): a practice's claims, remittances, notes and access log are
    its own and the billing team's; B reaches none of it by naming A's workspace or A's ids, a

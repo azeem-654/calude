@@ -1,19 +1,28 @@
 /**
  * /api/snapshots.php — industry snapshots: the catalogue, a preview of what an
  * install would do, the install itself, its history, and the sign-up claim
- * that provisions a workspace for the microsite its owner came from.
+ * that records which industry a new customer arrived from.
  *
  * The rules (what a snapshot holds, how an install merges) are
  * lib/snapshots.ts. This file is who may install where, and the record of it.
  *
- * ── Who may install where ──
+ * ── Who may install where: the install owner, and nobody else ──
  *
- *   - a customer (an agency user) into a workspace `workspaceAccess` lets
- *     them into — their own, or a client's they run;
- *   - the install owner into any workspace that exists, without claiming it
- *     (the same `knownWorkspace` rule as the growth-service ledger: calling
- *     `workspaceAccess` for the owner on a customer's workspace would claim it);
- *   - a client login, never — a snapshot changes the account's structure.
+ * The owner's decision of 2026-10-28: the platform owner chooses and installs
+ * the snapshot that fits each customer's business. Customers do not browse
+ * the marketplace or install from it, so every action here except `claim`
+ * answers 403 `not_owner` to anybody but the install owner — the catalogue
+ * included, because what is in it is the owner's service, not a shop window.
+ * Hiding the menu entry is a courtesy; this check is the rule.
+ *
+ * The owner installs into any workspace that exists, without claiming it
+ * (the same `knownWorkspace` rule as the growth-service ledger: calling
+ * `workspaceAccess` for the owner on a customer's workspace would claim it).
+ *
+ * `claim` (after sign-up, from `?industry=`) used to install the matching
+ * snapshot for the new customer. It now only records the industry they came
+ * from, once, on their own new workspace — the owner sees it as "asked for"
+ * in the workspace list and decides what to install.
  *
  * ── Why the server writes the documents ──
  *
@@ -24,7 +33,7 @@
  * the result after (Agency/Snapshots.tsx).
  */
 import { body, fail, json } from '../lib/http';
-import { dataGet, dataUpdate, nowIso, userFromToken, workspaceAccess, type Env, type SessionUser } from '../lib/db';
+import { dataGet, dataUpdate, nowIso, userFromToken, type Env, type SessionUser } from '../lib/db';
 import { SNAPSHOTS, planCounts, planInstall, snapshotById, snapshotForIndustry, validateSnapshot, type Snapshot } from '../lib/snapshots';
 
 const isOwner = (u: SessionUser): boolean => u.role === 'agency' && !u.accountId;
@@ -36,24 +45,20 @@ const FIELDS = 'crm_custom_fields';
    short enough that an old account cannot be reshaped by an old link. */
 const CLAIM_DAYS = 7;
 
-interface Ctx { user: SessionUser; accountId: string; role: 'owner' | 'customer' }
+interface Ctx { user: SessionUser; accountId: string; role: 'owner' }
 
 async function context(env: Env, user: SessionUser, raw: unknown): Promise<Ctx | Response> {
   const accountId = String(raw ?? '').trim();
   if (!accountId || !/^[\w.:@-]{1,120}$/.test(accountId)) return fail('Name the workspace.', 400);
   /* The agency bucket holds billing and suppression lists, not a pipeline. */
   if (accountId.startsWith('__')) return fail('Snapshots install into a workspace, not the agency’s own settings.', 400, { code: 'not_a_workspace' });
-  if (user.role !== 'agency') return fail('Only the account owner can install a snapshot.', 403, { code: 'not_allowed' });
-  if (isOwner(user)) {
-    const w = await env.DB.prepare('SELECT owner_email FROM crm_workspaces WHERE account_id = ?').bind(accountId).first<{ owner_email: string }>();
-    const u = w ? null : await env.DB.prepare('SELECT email FROM crm_users WHERE account_id = ? LIMIT 1').bind(accountId).first<{ email: string }>();
-    if (!w && !u) return fail('There is no such workspace.', 404, { code: 'not_found' });
-    return { user, accountId, role: 'owner' };
-  }
-  const a = await workspaceAccess(env.DB, user, accountId);
-  if (!a.ok) return fail(a.message ?? 'That workspace is not yours.', 403, { code: a.code ?? 'not_yours' });
-  return { user, accountId, role: 'customer' };
+  const w = await env.DB.prepare('SELECT owner_email FROM crm_workspaces WHERE account_id = ?').bind(accountId).first<{ owner_email: string }>();
+  const u = w ? null : await env.DB.prepare('SELECT email FROM crm_users WHERE account_id = ? LIMIT 1').bind(accountId).first<{ email: string }>();
+  if (!w && !u) return fail('There is no such workspace.', 404, { code: 'not_found' });
+  return { user, accountId, role: 'owner' };
 }
+
+const NOT_OWNER = 'Industry snapshots are chosen and installed by Protected Central for you. Ask us if your workspace should be set up for your industry.';
 
 /** Every item key earlier installs of `snap` put into this workspace. */
 async function priorKeys(env: Env, accountId: string, snap: Snapshot): Promise<Set<string>> {
@@ -108,6 +113,21 @@ export async function handleSnapshots(req: Request, env: Env): Promise<Response>
   const user = await userFromToken(env.DB, d.token as string | undefined);
   if (!user) return fail('Sign in again.', 401, { code: 'signed_out' });
 
+  /* After sign-up: the industry the customer arrived with, recorded once on a new workspace of their own. Nothing is installed. */
+  if (action === 'claim') {
+    const snap = snapshotForIndustry(d.industry);
+    if (!snap) return json({ success: false, reason: 'unknown_industry' });
+    if (user.role !== 'agency' || !user.accountId) return json({ success: false, reason: 'not_a_new_account' });
+    const u = await env.DB.prepare('SELECT created_at FROM crm_users WHERE email = ?').bind(user.email).first<{ created_at: string }>();
+    if (!u || Date.now() - Date.parse(u.created_at) > CLAIM_DAYS * 86_400_000) return json({ success: false, reason: 'not_a_new_account' });
+    const claimed = await env.DB.prepare("UPDATE crm_workspaces SET industry = ? WHERE account_id = ? AND owner_email = ? AND industry = ''")
+      .bind(snap.industry, user.accountId, user.email).run();
+    if (!claimed.meta?.changes) return json({ success: false, reason: 'already_set' });
+    return json({ success: true, recorded: snap.industry, installed: false });
+  }
+
+  if (!isOwner(user)) return fail(NOT_OWNER, 403, { code: 'not_owner' });
+
   if (action === 'catalogue') {
     return json({
       success: true,
@@ -118,7 +138,6 @@ export async function handleSnapshots(req: Request, env: Env): Promise<Response>
 
   /* The owner's view across customers: which workspace is set up for what. */
   if (action === 'workspaces') {
-    if (!isOwner(user)) return fail('Only the install owner can see every workspace.', 403, { code: 'not_owner' });
     const { results } = await env.DB.prepare(
       `SELECT w.account_id AS accountId, w.owner_email AS email, w.industry,
               (SELECT name FROM crm_users u WHERE u.account_id = w.account_id ORDER BY u.created_at LIMIT 1) AS name,
@@ -126,20 +145,6 @@ export async function handleSnapshots(req: Request, env: Env): Promise<Response>
        FROM crm_workspaces w ORDER BY w.created_at DESC LIMIT 500`,
     ).all();
     return json({ success: true, workspaces: results });
-  }
-
-  /* After sign-up: the industry the customer arrived with, once, for a new workspace of their own. */
-  if (action === 'claim') {
-    const snap = snapshotForIndustry(d.industry);
-    if (!snap) return json({ success: false, reason: 'unknown_industry' });
-    if (user.role !== 'agency' || !user.accountId) return json({ success: false, reason: 'not_a_new_account' });
-    const u = await env.DB.prepare('SELECT created_at FROM crm_users WHERE email = ?').bind(user.email).first<{ created_at: string }>();
-    if (!u || Date.now() - Date.parse(u.created_at) > CLAIM_DAYS * 86_400_000) return json({ success: false, reason: 'not_a_new_account' });
-    const claimed = await env.DB.prepare("UPDATE crm_workspaces SET industry = ? WHERE account_id = ? AND owner_email = ? AND industry = ''")
-      .bind(snap.industry, user.accountId, user.email).run();
-    if (!claimed.meta?.changes) return json({ success: false, reason: 'already_set' });
-    const c: Ctx = { user, accountId: user.accountId, role: 'customer' };
-    return json(await record(env, c, snap, false, 'signup'));
   }
 
   const ctx = await context(env, user, d.accountId);

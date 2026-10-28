@@ -276,7 +276,8 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/signups" element={<Signups />} />
           {/* The owner's growth-service desk; the server refuses anybody else. */}
           <Route path="/growth" element={<GrowthService />} />
-          <Route path="/snapshots" element={<Snapshots />} />
+          {/* The owner installs snapshots for customers; nobody else reaches the screen, and the server refuses them anyway. */}
+          <Route path="/snapshots" element={isInstallOwner() ? <Snapshots /> : <Navigate to="/" replace />} />
           <Route path="/jobs" element={<JobsRevenue />} />
           <Route path="/rcm" element={<MedicalBilling />} />
           <Route path="/affiliate" element={<Affiliate />} />
