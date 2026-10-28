@@ -122,3 +122,21 @@ No Amazon, eBay, Walmart, Shopify or ad-network integration; no clearinghouse,
 EHR, payer or eligibility integration; no payment integration for the
 performance or collections fee (statements are reviewed, then invoiced by the
 owner); patient payments are not tracked in Medical billing.
+
+## Release (2026-10-28)
+
+- **Staging:** commit 457a7d2, "Deploy to testing" run 148 succeeded
+  (typecheck, every unit suite, build, migrations, deploy, the lock answering
+  401). The testing site is locked, so it was not browsed from the session.
+- **Production:** promoted by "Promote testing to live" run 27; "Deploy to
+  Cloudflare" run 371 succeeded on 457a7d2. Live checks (read-only, no
+  payments, messages or bookings): the plan table answers Growth $97 and Scale
+  $297, monthly only; home, /pricing, /ecommerce-management-services, /hvac,
+  /roofing and /medical-billing show their prices at 1280 and 390 with no
+  overflow, broken image or page error; each service site's navigation stays
+  on it; /ecommerce answers 301; the e-commerce head, JSON-LD and sitemap are
+  served; the snapshot API refuses a signed-out caller.
+- **Migrations:** none. **Payment configuration:** none — checkout builds each
+  price itself; existing subscriptions are untouched.
+- **Rollback:** promote an earlier commit (or push a revert to `staging` and
+  promote); no data change to undo.
