@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react';
 import { ArrowRight, Check, ChevronDown, Minus } from 'lucide-react';
 import { appHref, isCrossOrigin } from '../../services/hosts';
 import { track } from '../../services/funnel';
+import { BILLING_TERMS, hasYearly } from './pricingTerms';
 import {
   CARD_PLANS, COMPARE_NOTES, CUSTOM_OFFER, DEFAULT_TABLE, annualSaving, comparison, dollars, featureLines, fetchPlans,
   type Cell, type PlanDef, type PlanTable,
@@ -28,12 +29,6 @@ export function usePlanTable(): PlanTable {
   useEffect(() => { void fetchPlans().then(t => { if (t) setTable(t); }); }, []);
   return table;
 }
-
-/** Whether any plan on sale has a yearly price — the switch is pointless otherwise. */
-export const hasYearly = (table: PlanTable) => CARD_PLANS(table.plans).some(p => p.kind === 'self' && p.annualCents > 0);
-
-/** The recurring terms, said once under every priced card. */
-export const BILLING_TERMS = 'USD, billed monthly after the 7-day trial · renews each month until you cancel';
 
 export function BillingToggle({ yearly, onChange }: { yearly: boolean; onChange: (y: boolean) => void }) {
   return (

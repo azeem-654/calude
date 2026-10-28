@@ -171,7 +171,7 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   const cards = sec.locator('[data-plan]');
   ok(`site ${w}: Growth, Scale and Custom — no legacy plan`, (await cards.count()) === 3 && (await sec.locator('[data-plan="custom"]').count()) === 1 && (await sec.locator('[data-plan="scale"]').count()) === 1 && (await sec.locator('[data-plan="starter"], [data-plan="pro"], [data-plan="agency"]').count()) === 0);
   const text = await sec.innerText();
-  const flat = text.replace(/\$\s*\n?/g, '$');
+  const flat = text.replace(/\s+/g, '');
   ok(`site ${w}: $97 and $297 a month, and Custom by conversation`, /\$97\/month/.test(flat) && /\$297\/month/.test(flat) && /Let’s talk/.test(text) && !/\$49\b|\$197\b/.test(flat), text.slice(0, 400));
   ok(`site ${w}: the recurring terms under every priced card`, (await sec.getByTestId('plan-terms').count()) === 2 && /billed monthly/.test(await sec.getByTestId('plan-terms').first().innerText()));
   ok(`site ${w}: the owner's change is on the card`, /150 AI Shorts/.test(await sec.locator('[data-plan="growth"]').innerText()));

@@ -18,7 +18,8 @@ import { LogoMark } from '../shared/Logo';
 import { appHref, isCrossOrigin, siteOrigin } from '../../services/hosts';
 import { usePageTitle } from '../../services/pageTitle';
 import { CARD_PLANS, isUnlimited, sendEnquiry, type EnquiryNeed } from '../../services/allowances';
-import { BILLING_TERMS, BillingToggle, ComparisonTable, PlanCards, hasYearly, usePlanTable } from './PricingParts';
+import { BillingToggle, ComparisonTable, PlanCards, usePlanTable } from './PricingParts';
+import { BILLING_TERMS, hasYearly } from './pricingTerms';
 import './site.css';
 
 const cross = (href: string) => (isCrossOrigin(href) ? { rel: 'noopener' as const } : {});

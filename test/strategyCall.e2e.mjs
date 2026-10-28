@@ -213,8 +213,9 @@ for (const width of [1280, 390]) {
   const pricing = page.locator('#pricing');
   await pricing.scrollIntoViewIfNeeded();
   await page.waitForTimeout(500);
-  const pt = (await pricing.innerText()).replace(/\$\s*\n?/g, '$');
-  ok(`home @${width}: software pricing is exactly Growth $97/month, Scale $297/month and Custom`, (await pricing.locator('[data-plan]').count()) === 3 && /\$97\/month/.test(pt) && /\$297\/month/.test(pt) && /Let’s talk/.test(pt) && !/\$49\b|\$197\b/.test(pt), pt.slice(0, 400));
+  const pt = await pricing.innerText();
+  const flatPt = pt.replace(/\s+/g, '');
+  ok(`home @${width}: software pricing is exactly Growth $97/month, Scale $297/month and Custom`, (await pricing.locator('[data-plan]').count()) === 3 && /\$97\/month/.test(flatPt) && /\$297\/month/.test(flatPt) && /Let’s talk/.test(pt) && !/\$49\b|\$197\b/.test(flatPt), pt.slice(0, 400));
   ok(`home @${width}: the recurring terms are stated`, /billed monthly/i.test(pt) && /USD|US dollars/.test(pt) && /until you cancel/.test(pt));
   ok(`home @${width}: no managed-service price in the software table`, !/\$2,200|\$300 setup|\$87/.test(pt));
   const st = await page.locator('#services').innerText();
@@ -344,7 +345,9 @@ for (const width of [1280, 390]) {
   await page.screenshot({ path: `test-results/home-closed-${width}.png` });
   for (const id of MICRO) {
     await page.goto(`${B}${PATH[id]}`, { waitUntil: 'networkidle' });
-    await page.waitForSelector('[data-testid="hero-book"][data-booking="closed"]', { timeout: 10_000 });
+    const switched = await page.waitForSelector('[data-testid="hero-book"][data-booking="closed"]', { timeout: 10_000 }).then(() => true, () => false);
+    ok(`closed ${id} @${width}: the booking buttons switch to the page's form`, switched, await page.getByTestId('hero-book').getAttribute('data-booking').catch(() => 'no hero button'));
+    if (!switched) continue;
     const want = id === 'medical-billing' ? '#request' : '#talk';
     const hrefs = await page.$$eval('a', as => as.map(a => a.getAttribute('href') ?? ''));
     ok(`closed ${id} @${width}: buttons go to the page's own form, none to the booking page`, (await page.getByTestId('hero-book').getAttribute('href')) === want && !hrefs.some(h => h.includes('/book/strategy-call')) && await page.locator(want).count() === 1, hrefs.filter(h => h.includes('strategy')).join());

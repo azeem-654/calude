@@ -759,13 +759,14 @@ interface FeeLine { id: string; claimId: string | null; claimNo: string; paidOn:
 
 function FeeStatementTab({ accountId }: { accountId: string }) {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
-  const [d, setD] = useState<Answer<FeeStatementAnswer> | null>(null);
+  /* The answer is kept with the month it is for, so a newer month shows "Calculating…" rather than the old figures. */
+  const [got, setGot] = useState<{ month: string; r: Answer<FeeStatementAnswer> } | null>(null);
   useEffect(() => {
     let alive = true;
-    setD(null);
-    void rcmApi<FeeStatementAnswer>('fee_statement', { accountId, month }).then(r => { if (alive) setD(r); });
+    void rcmApi<FeeStatementAnswer>('fee_statement', { accountId, month }).then(r => { if (alive) setGot({ month, r }); });
     return () => { alive = false; };
   }, [accountId, month]);
+  const d = got?.month === month ? got.r : null;
   const st = d?.success ? d.statement : null;
   const OUT: Record<string, string> = { unmatched: 'Not matched to a claim', duplicate: 'Already posted in another file', set_aside: 'Set aside', posted: 'Not linked to a claim' };
   return (
@@ -788,7 +789,7 @@ function FeeStatementTab({ accountId }: { accountId: string }) {
               ))}
             </div>
             {st.shortfallCents > 0 && <p style={{ ...small, color: WARN, marginTop: 8 }}>Take-backs exceeded payments by {money(st.shortfallCents)} this month, so the fee is nil. Whether the difference carries into next month is set by the signed agreement.</p>}
-            <p style={{ ...small, marginTop: 8 }}><b style={{ color: INK }}>Status: {d.status}.</b> {d.basis} Patient payments are not tracked in this module, so none is counted.{d.synthetic ? ' Synthetic test data only — no real payments.' : ''}</p>
+            <p style={{ ...small, marginTop: 8 }}><b style={{ color: INK }}>Status: {d?.status}.</b> {d?.basis} Patient payments are not tracked in this module, so none is counted.{d?.synthetic ? ' Synthetic test data only — no real payments.' : ''}</p>
           </>
         )}
       </div>

@@ -18,7 +18,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, CalendarCheck, Mail } from 'lucide-react';
 import { strategyCallHref, useBookingState } from '../../services/strategyCall';
-import { BILLING_TERMS, PlanCards, usePlanTable } from './PricingParts';
+import { PlanCards, usePlanTable } from './PricingParts';
+import { BILLING_TERMS } from './pricingTerms';
 import { EnquiryForm } from './PricingPage';
 
 export default function HomePricing() {

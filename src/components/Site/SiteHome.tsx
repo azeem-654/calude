@@ -466,12 +466,11 @@ export default function SiteHome() {
         </a>
         <nav className="dc-links" aria-label="Sections">
           <a href="#solutions">Solutions</a>
-          <a href="#industries" className="ind-nav-link">What we offer</a>
           <a href="#autopilot">How it works</a>
           {featureReady('prospects') && <a href="#prospecting">AI Prospecting</a>}
           <a href="#scale">Agencies</a>
-          <a href="#pricing">Software pricing</a>
-          <a href="#services" className="ind-nav-link">Managed services</a>
+          <a href="#pricing">Pricing</a>
+          <a href="#services" className="ind-nav-link">Services</a>
           <a href="#faq">FAQ</a>
           <a href="/security">Security</a>
         </nav>
