@@ -12,6 +12,11 @@
 # week. `script-src` has no 'unsafe-inline' and no 'unsafe-eval': the built app
 # needs neither, and together they are most of what XSS relies on.
 # YouTube's player API is the one third-party script (AI Shorts preview).
+# 'wasm-unsafe-eval' lets the page compile WebAssembly — only that, not
+# JavaScript eval — for the Screen Recorder's camera background (blur, remove,
+# replace), whose person-finding model runs in MediaPipe's WebAssembly; the
+# files are our own (served from 'self'), loaded only when somebody picks a
+# camera background.
 #
 # microphone=(self) because voice prompts and the Screen Recorder use it;
 # camera=(self) because the Media Library's Screen Recorder (Video Studio)
@@ -19,7 +24,7 @@
 # whatever the person allows. display-capture is left at its default ('self').
 # Location is not used anywhere and is refused.
 /*
-  Content-Security-Policy: script-src 'self' https://www.youtube.com https://s.ytimg.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  Content-Security-Policy: script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com https://s.ytimg.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
   X-Content-Type-Options: nosniff
   X-Frame-Options: SAMEORIGIN
   Referrer-Policy: strict-origin-when-cross-origin

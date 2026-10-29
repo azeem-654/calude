@@ -216,6 +216,24 @@ export is a canvas recording; Video Studio is the real one.
   browser offers `cursor` (Safari/Firefox). **Floating controls** are a
   Document Picture-in-Picture window (Chrome/Edge), opened by the Start press
   (a click is needed; the share picker uses it up after), inline styles only.
+  **Camera look** (`cameraFx.ts`, live, all modes — camera-only now goes
+  through the canvas too): brightness/contrast/colour/warmth (canvas
+  `filter`, offered only where it exists), night view, "smooth skin" (a
+  shrunk-and-stretched soft-focus copy — never a filter blur), and **behind
+  you**: blur %, remove (a see-through cut-out over the screen in a bubble, a
+  colour in camera-only) or the person's picture. The person-finder is
+  MediaPipe's selfie segmenter (`segmenter.ts`, `@mediapipe/tasks-vision`
+  pinned, model in `src/assets/models`, Apache-2.0), its own lazy chunk (11 MB
+  wasm, fetched only when a background is picked; CSP has
+  `'wasm-unsafe-eval'` for it). It looks at ≤256 px, never more than a quarter
+  of the time (interval ≥ 4× a look's cost), and moves from GPU to CPU when GPU
+  looks are slow (emulated graphics: 267 ms vs 17 ms). **Title card and
+  logo** (`Brand`, sprites drawn once, restored like the bubble). **Studio
+  Sound** is not done live: Save sets `audio.studio` on the new project's
+  version 1 (`editVideo`), so every export has the engine's chain; the browser
+  keeps echo/noise suppression and `voiceIsolation` where offered. After Save
+  the recorder shows the processing bar (`ProcessingProgress.tsx`, two
+  decimals, the upload screen's creep), as does the editor's "Working on it".
   Not built: a custom/smoothed pointer, zoom/speed pills on the editor's
   timeline, re-styling a recording after it is made.
 - **Honest gaps**, shown on the **What works** panel: speaker labels, eye contact

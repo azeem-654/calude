@@ -303,7 +303,7 @@ export function ImportProgress({ job, upload, error, transcription, onCancel, on
   return (
     <div className="vs-progress-screen" data-testid="vs-upload-progress" data-pct={shown.toFixed(1)} data-stage={done ? 'ready' : band.key}>
       <div className="vs-ps-name" title={job.name}>{job.name}</div>
-      <div className="vs-ps-pct" aria-live="off" data-testid="vs-progress-pct">{done ? '100' : shown.toFixed(1)}<small>%</small></div>
+      <div className="vs-ps-pct" aria-live="off" data-testid="vs-progress-pct">{done ? '100' : shown.toFixed(2)}<small>%</small></div>
       <div className="vs-ps-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor(shown)} aria-label="Getting your video ready"><i style={{ width: `${shown}%` }} /></div>
       <div className="vs-ps-now" data-testid="vs-progress-stage">
         {failed ? <><AlertCircle size={15} /> Stopped</> : done ? <><Check size={15} /> Ready — opening the editor</> : <><Loader size={15} className="spin" /> {band.label}… <span className="vs-ps-clock" data-testid="vs-progress-clock">{Math.floor(stepFor / 60)}:{String(stepFor % 60).padStart(2, '0')}</span></>}

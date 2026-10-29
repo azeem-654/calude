@@ -94,6 +94,7 @@
     "test:videoyoutube": "node test/videoYoutube.e2e.mjs"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "0.10.35",
     "date-fns": "^4.2.1",
     "dompurify": "^3.4.16",
     "hls.js": "1.6",

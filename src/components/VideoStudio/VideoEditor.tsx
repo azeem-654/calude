@@ -24,6 +24,7 @@
  * server's jobs say. At phone width the panels stack and the rail becomes a
  * bar along the bottom of the screen.
  */
+import { OverallProgress } from './ProcessingProgress';
 import { askConfirm } from '../shared/ConfirmDialog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -111,6 +112,7 @@ export function StagesCard({ view, onRetry, onCancel }: { view: ProjectView; onR
         {st === 'failed' && <button type="button" className="vs-btn sm" onClick={onRetry}><RefreshCw size={13} /> Try again</button>}
         {st === 'processing' && <button type="button" className="vs-btn ghost sm" onClick={onCancel}>Cancel</button>}
       </div>
+      {st === 'processing' && <OverallProgress view={view} />}
       <div className="vs-stages">
         {view.stages.map(s => (
           <div key={s.key} className={`vs-st ${s.state}`} data-stage={s.key} data-state={s.state}>

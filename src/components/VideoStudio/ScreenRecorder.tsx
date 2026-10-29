@@ -37,13 +37,15 @@ import {
   MonitorPlay, Camera, Mic, MicOff, Pause, Play, Square, Circle, Download, RotateCcw, Trash2, UploadCloud, X, AlertCircle, Check, Loader, Volume2, Info,
   ImagePlus, Ban, ZoomIn, RefreshCw, VideoOff, PictureInPicture2, MousePointer2,
 } from 'lucide-react';
-import { createVideoProject, uploadVideo, renameVideoProject, deleteVideoProject, bytesLabel, type VideoRequest } from '../../services/videoStudio';
+import { ProjectProgress } from './ProcessingProgress';
+import { createVideoProject, uploadVideo, renameVideoProject, deleteVideoProject, editVideo, bytesLabel, type VideoRequest } from '../../services/videoStudio';
 import {
   support, mediaError, fileSlug, bubbleAt, frameSize, bitrateFor, finishFile, startClock, stopStreams, msClock, CORNERS,
   Compositor, AutoZoom, loadBackdrop, readPrefs, defaultPrefs, slowComputer, gradientCss,
   FPS, RES, RES_LABEL, CAM_RES, COLORS, GRADIENTS,
-  type RecMode, type Bubble, type Corner, type BubbleSize, type Prefs, type Look, type Res, type Quality, type CamRes, type CursorMode, type GradientId,
+  type RecMode, type Bubble, type Corner, type BubbleSize, type Prefs, type Look, type Res, type Quality, type CamRes, type CursorMode, type GradientId, type Brand,
 } from './recorder';
+import { canGrade, NO_FX, type CamFx, type CamBg } from './cameraFx';
 
 type Phase = 'setup' | 'starting' | 'countdown' | 'recording' | 'paused' | 'finishing' | 'review';
 type SaveState = { state: 'idle' } | { state: 'saving'; sent: number; total: number } | { state: 'saved'; projectId: string } | { state: 'failed'; error: string };
@@ -68,7 +70,7 @@ const CORNER_LABEL: Record<Corner, string> = { tl: 'Top left', tr: 'Top right', 
 const QUALITY_LABEL: Record<Quality, string> = { light: 'Light', standard: 'Standard', high: 'High' };
 const CURSOR_LABEL: Record<CursorMode, string> = { always: 'Always shown', motion: 'Only while moving', never: 'Hidden' };
 const CAM_LABEL: Record<CamRes, string> = { '480': '480p', '720': '720p', '1080': '1080p' };
-const GRADIENT_LABEL: Record<GradientId, string> = { sequoia: 'Sequoia', sunset: 'Sunset', mint: 'Mint', ocean: 'Ocean', peach: 'Peach', night: 'Night' };
+const gradientLabel = (id: GradientId) => id[0].toUpperCase() + id.slice(1);
 
 /* A per-browser convenience: the frame rate, quality and look somebody chose last time. Never the picture. */
 const PREFS_KEY = 'crm_rec_prefs';
@@ -115,6 +117,9 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   const [camHidden, setCamHidden] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [pip, setPip] = useState<Window | null>(null);
+  const [camBg, setCamBg] = useState<{ url: string; name: string } | null>(null);
+  const [logo, setLogo] = useState<{ url: string; name: string } | null>(null);
+  const [fxState, setFxState] = useState<{ state: string; error: string }>({ state: 'off', error: '' });
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const screenVid = useRef<HTMLVideoElement>(null);
@@ -151,6 +156,10 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   const dispSrc = useRef<MediaStreamAudioSourceNode | null>(null);
   const pipRef = useRef<Window | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const camBgRef = useRef<ImageBitmap | null>(null);
+  const logoRef = useRef<ImageBitmap | null>(null);
+  const camBgFile = useRef<HTMLInputElement>(null);
+  const logoFile = useRef<HTMLInputElement>(null);
   const stats = useRef({ last: 0, late: 0, ticks: 0, warned: false, n: 0 });
   const fitKey = useRef('');
   phaseRef.current = phase;
@@ -161,6 +170,13 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
 
   const setPref = <K extends keyof Prefs>(k: K, v: Prefs[K]) => setPrefs(p => ({ ...p, [k]: v }));
   const setLook = (l: Partial<Look>) => setPrefs(p => ({ ...p, look: { ...p.look, ...l } }));
+  const setFx = (f: Partial<CamFx>) => setPrefs(p => ({ ...p, fx: { ...p.fx, ...f } }));
+  const setBrand = (b: Partial<Brand>) => setPrefs(p => ({ ...p, brand: { ...p.brand, ...b } }));
+  useEffect(() => {
+    const fx = comp.current.fx;
+    fx.onState = () => setFxState({ state: fx.state, error: fx.error });
+    return () => { fx.onState = null; };
+  }, []);
   useEffect(() => {
     try { localStorage.setItem(PREFS_KEY, JSON.stringify({ ...prefs, look: prefs.look.bg.kind === 'image' ? { ...prefs.look, bg: { kind: 'none' } } : prefs.look })); } catch { /* private window */ }
   }, [prefs]);
@@ -213,7 +229,8 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
           width: { ideal: CAM_RES[prefs.camRes].width }, height: { ideal: CAM_RES[prefs.camRes].height },
           frameRate: { ideal: mode === 'cam' ? prefs.fps : Math.min(30, prefs.fps) },
         } : false,
-        audio: m ? { ...(micId ? { deviceId: { exact: micId } } : {}), echoCancellation: true, noiseSuppression: true } : false,
+        /* voiceIsolation is Chrome's stronger cleaner where the computer offers it (ignored elsewhere). */
+        audio: m ? { ...(micId ? { deviceId: { exact: micId } } : {}), echoCancellation: true, noiseSuppression: true, ...(sup.isolate && prefs.isolate ? { voiceIsolation: true } : {}) } as MediaTrackConstraints : false,
       });
       if (c) {
         cam.current = new MediaStream(s.getVideoTracks());
@@ -268,9 +285,17 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     st.n++;
     const cv = canvasRef.current;
     const capturingNow = ph === 'countdown' || ph === 'recording' || ph === 'paused';
-    if (modeRef.current !== 'cam' && cv && ph !== 'review' && ph !== 'finishing') {
-      const scr = display.current ? screenVid.current : null;
-      const face = modeRef.current === 'screen-cam' && live(cam.current) && !camHiddenRef.current ? camVid.current : null;
+    if (cv && ph !== 'review' && ph !== 'finishing') {
+      const camOnly = modeRef.current === 'cam';
+      const scr = !camOnly && display.current ? screenVid.current : null;
+      const face = modeRef.current !== 'screen' && live(cam.current) && !camHiddenRef.current ? camVid.current : null;
+      /* Camera only: the frame takes the camera's own shape while choosing, so what is seen is what is recorded. */
+      if (camOnly && face?.videoWidth && !capturingNow) {
+        const fs = frameSize(face.videoWidth, face.videoHeight);
+        if (cv.width !== fs.w || cv.height !== fs.h) { cv.width = fs.w; cv.height = fs.h; comp.current.invalidate(); }
+      }
+      /* Back to a screen mode while choosing: the 16:9 placeholder again, not the camera's shape. */
+      if (!camOnly && !display.current && !capturingNow && (cv.width !== 1280 || cv.height !== 720)) { cv.width = 1280; cv.height = 720; comp.current.invalidate(); }
       /* Nothing moving and nothing recording: a few frames a second keep the preview current for a sixth of the work. */
       const idle = !scr && !face && !capturingNow;
       if (!(idle && st.n % 6) && !(document.hidden && !capturingNow)) {
@@ -280,7 +305,11 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
         else if (scr && ph === 'recording') z.sample(scr, now);
         const ctx = getCtx();
         if (ctx) {
-          comp.current.draw(ctx, scr, face, p.look, p.look.bg.kind === 'image' ? imageRef.current : null, bubbleRef.current, z.view(now));
+          comp.current.draw(ctx, {
+            screen: scr, cam: face, camOnly, look: p.look, image: p.look.bg.kind === 'image' ? imageRef.current : null,
+            bubble: bubbleRef.current, view: z.view(now), fx: p.fx, camBg: p.fx.bg === 'image' ? camBgRef.current : null,
+            brand: p.brand, logo: logoRef.current, now,
+          });
           canvasTrack.current?.requestFrame();
         }
         /*
@@ -340,6 +369,8 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     try { pipRef.current?.close(); } catch { /* gone */ }
   }, []);
   useEffect(() => () => { if (image) URL.revokeObjectURL(image.url); }, [image]);
+  useEffect(() => () => { if (camBg) URL.revokeObjectURL(camBg.url); }, [camBg]);
+  useEffect(() => () => { if (logo) URL.revokeObjectURL(logo.url); }, [logo]);
 
   /* Leaving the page with a recording going, uploading or unsaved. */
   useEffect(() => {
@@ -361,7 +392,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
       setElapsed(ms);
       if (ms >= MAX_MS && phaseRef.current === 'recording') stop('Recordings stop at two hours. This one is kept below.');
       const st = stats.current, p = prefsRef.current;
-      if (!st.warned && modeRef.current !== 'cam' && st.ticks > p.fps * 5 && st.late / st.ticks > 0.15) {
+      if (!st.warned && st.ticks > p.fps * 5 && st.late / st.ticks > 0.15) {
         st.warned = true;
         setNote(`This computer is falling behind at ${p.fps} fps, so parts of the recording may look jerky. It is still recording; next time choose 30 fps, ${RES_LABEL['720']} and Light.`);
       }
@@ -447,7 +478,14 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
         comp.current.invalidate();
       }
     }
-    if (mode === 'cam' && camVid.current) await metadata(camVid.current);
+    if (mode === 'cam' && camVid.current) {
+      await metadata(camVid.current);
+      if (canvasRef.current && camVid.current.videoWidth) {
+        const s = frameSize(camVid.current.videoWidth, camVid.current.videoHeight);
+        canvasRef.current.width = s.w; canvasRef.current.height = s.h;
+        comp.current.invalidate();
+      }
+    }
     setPhase('countdown');
     for (let n = 3; n > 0; n--) {
       setCount(n);
@@ -460,7 +498,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   const begin = () => {
     const m = sup.mime!;
     let video: MediaStreamTrack | undefined;
-    if (mode !== 'cam') {
+    {
       const cv = canvasRef.current!;
       let s = cv.captureStream(0);
       const t = s.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined;
@@ -468,8 +506,8 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
       else { stopStreams(s); s = cv.captureStream(prefs.fps); canvasTrack.current = null; }
       canvasStream.current = s;
       video = s.getVideoTracks()[0];
-    } else video = cam.current?.getVideoTracks()[0];
-    if (!video || video.readyState !== 'live') { releaseCapture(); setPhase('setup'); setError('There was no picture to record — try again.'); return; }
+    }
+    if (!video || video.readyState !== 'live' || (mode === 'cam' && !live(cam.current))) { releaseCapture(); setPhase('setup'); setError('There was no picture to record — try again.'); return; }
     const micT = mic ? micS.current?.getAudioTracks()[0] : undefined;
     let sound: MediaStreamTrack | undefined;
     if (mode !== 'cam' && (micT || sysAudio)) {
@@ -481,8 +519,8 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     } else sound = [micT, display.current?.getAudioTracks()[0]].find(t => t?.readyState === 'live');
     const out = new MediaStream([video, ...(sound ? [sound] : [])]);
     const st = video.getSettings();
-    const w = (mode !== 'cam' ? canvasRef.current?.width : st.width) ?? 1280;
-    const h = (mode !== 'cam' ? canvasRef.current?.height : st.height) ?? 720;
+    const w = canvasRef.current?.width ?? st.width ?? 1280;
+    const h = canvasRef.current?.height ?? st.height ?? 720;
     let r: MediaRecorder;
     try { r = new MediaRecorder(out, { mimeType: m.mime, videoBitsPerSecond: bitrateFor(w, h, prefs.fps, prefs.quality), audioBitsPerSecond: 128_000 }); }
     catch (e) { releaseCapture(); setPhase('setup'); setError(`This browser could not start recording (${(e as Error).message || 'MediaRecorder refused'}).`); return; }
@@ -573,6 +611,18 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
       setError('');
     } catch { setError('That picture could not be read. Try a JPG, PNG or WebP.'); }
   };
+  /** A picture for behind the camera, or the logo: read here, kept in this browser, never uploaded. */
+  const pickPicture = async (f: File | undefined, which: 'camBg' | 'logo') => {
+    if (!f) return;
+    if (!f.type.startsWith('image/')) { setError('That file is not a picture. Choose a PNG, JPG or WebP.'); return; }
+    try {
+      const bmp = await loadBackdrop(f);
+      const shown = { url: URL.createObjectURL(f), name: f.name };
+      if (which === 'camBg') { camBgRef.current = bmp; setCamBg(shown); setFx({ bg: 'image' }); }
+      else { logoRef.current = bmp; setLogo(shown); }
+      setError('');
+    } catch { setError('That picture could not be read. Try a PNG, JPG or WebP.'); }
+  };
   const removeImage = () => {
     if (prefs.look.bg.kind === 'image') setLook({ bg: { kind: 'none' } });
     imageRef.current = null;
@@ -615,6 +665,13 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
         const c = await createVideoProject({ name: nm, prompt: '', settings: RECORDING_SETTINGS });
         if (!c.success) { setSave({ state: 'failed', error: c.error ?? 'The recording could not be saved.' }); return; }
         project.current = { id: c.id, name: nm };
+        /* Studio Sound is the engine's (RNNoise, de-esser, EQ, −16 LUFS), far beyond what a browser can do live
+           without taxing a small computer. A new project's edit is version 1; switched on there, every export
+           from the editor has it. A refusal only loses the switch, and is said. */
+        if (prefs.studio) {
+          const e = await editVideo(c.id, 1, [{ op: 'audio.set', patch: { studio: true, strength: 70 } }], 'Studio Sound, from the Screen Recorder');
+          if (!e.success) setNote('Studio Sound could not be switched on for this recording — turn it on in the editor’s Audio tab.');
+        }
       } else if (project.current.name !== nm) {
         const r = await renameVideoProject(project.current.id, nm);
         if (r.success) project.current.name = nm;
@@ -652,11 +709,10 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
       : !sup.mime ? 'This browser cannot record in a format we can keep (WebM or MP4). Use a recent Chrome, Edge, Firefox or Safari.'
         : '';
   const canStart = !blocked && phase === 'setup' && (mode === 'cam' ? sup.devices : sup.display);
-  const showCanvas = mode !== 'cam' && phase !== 'review';
-  const showCam = mode === 'cam' && phase !== 'review';
+  const showCanvas = phase !== 'review';
   const pct = save.state === 'saving' && save.total ? Math.round(save.sent / save.total * 100) : 0;
   const canDrag = mode === 'screen-cam' && camOn && !camHidden;
-  const look = prefs.look, framed = look.bg.kind !== 'none';
+  const look = prefs.look, framed = look.bg.kind !== 'none', fx = prefs.fx, brand = prefs.brand;
   /* What a minute costs on disk, on a 16:9 screen — what the person weighs when choosing. */
   const perMin = (() => {
     const d = mode === 'cam' ? CAM_RES[prefs.camRes] : { width: RES[prefs.res], height: Math.round(RES[prefs.res] * 9 / 16) };
@@ -695,7 +751,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
               style={{ cursor: canDrag ? 'grab' : 'default' }}
               aria-label="Preview of what is recorded"
             />
-            <video ref={camVid} muted playsInline autoPlay className={showCam && camOn ? '' : 'vs-rec-hidden'} data-testid="rec-cam" />
+            <video ref={camVid} muted playsInline autoPlay className="vs-rec-hidden" data-testid="rec-cam" />
             <video ref={screenVid} muted playsInline autoPlay className="vs-rec-hidden" />
             {phase === 'review' && result && <video src={result.url} controls playsInline data-testid="rec-playback" />}
             {phase !== 'review' && mode === 'screen' && !display.current && <p className={`vs-rec-hint${framed ? ' on-bg' : ''}`}>Press <b>Start recording</b>, then choose a screen, window or tab to share.</p>}
@@ -715,7 +771,10 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
                   <input className="vs-input" value={name} onChange={e => setName(e.target.value)} maxLength={120} data-field="video.name" data-testid="rec-name" disabled={save.state === 'saving' || save.state === 'saved'} />
                 </label>
                 {save.state === 'saved' ? (
-                  <div className="vs-note ok" data-testid="rec-saved" role="status"><Check size={16} /> <span>Saved to your Media Library. <Link to={`/video-studio/${save.projectId}`}>Open it in the editor</Link> to trim it, add captions or make Shorts.</span></div>
+                  <>
+                    <div className="vs-note ok" data-testid="rec-saved" role="status"><Check size={16} /> <span>Saved to your Media Library. <Link to={`/video-studio/${save.projectId}`}>Open it in the editor</Link> to trim it, add captions or make Shorts.</span></div>
+                    <ProjectProgress projectId={save.projectId} />
+                  </>
                 ) : (
                   <button type="button" className="vs-btn ai vs-rec-big" onClick={() => void saveIt()} disabled={busy} data-testid="rec-save">
                     {save.state === 'saving' ? <Loader size={18} className="spin" /> : <UploadCloud size={18} />} {save.state === 'saving' ? 'Saving…' : save.state === 'failed' ? 'Try saving again' : 'Save to Media Library'}
@@ -782,6 +841,13 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
                   {mode !== 'cam' && !capturing && (
                     <label className="vs-rec-check"><input type="checkbox" checked={sysAudio} onChange={e => setSysAudio(e.target.checked)} disabled={capturing} data-testid="rec-sys" /> <Volume2 size={15} /> Also record sound from the tab or computer</label>
                   )}
+                  {!capturing && sup.isolate && mic && (
+                    <label className="vs-rec-check"><input type="checkbox" checked={prefs.isolate} onChange={e => setPref('isolate', e.target.checked)} data-testid="rec-isolate" /> <Mic size={15} /> Isolate my voice while recording</label>
+                  )}
+                  {!capturing && (
+                    <label className="vs-rec-check"><input type="checkbox" checked={prefs.studio} onChange={e => setPref('studio', e.target.checked)} data-testid="rec-studio" /> <Volume2 size={15} /> Studio Sound on the saved recording</label>
+                  )}
+                  {!capturing && prefs.studio && <small className="vs-sub" style={{ margin: 0 }}>The browser already cuts echo and steady noise as you speak. Studio Sound — removing room noise, de-essing, evening out and setting the loudness — is done properly after saving, by the video engine, so recording stays light; every video you export from the editor has it.</small>}
                   {mode !== 'cam' && sysAudio && !capturing && <small className="vs-sub" style={{ margin: 0 }}>Chrome and Edge offer it in the share window: a tab’s sound always, the whole screen’s on Windows and ChromeOS. Firefox and Safari share no sound.</small>}
                 </div>
 
@@ -821,13 +887,91 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
                   </div>
                 )}
 
+                {needsCam && (
+                  <div className="vs-col" style={{ gap: 8 }} data-testid="rec-camfx">
+                    <b className="vs-rec-h">Camera look <small className="vs-sub" style={{ margin: 0, fontWeight: 500 }}>— {camOn ? 'see it on the preview' : 'check the camera to see it'}; changes live</small></b>
+                    {canGrade() ? (
+                      <div className="vs-rec-sliders">
+                        <label>Brightness<input type="range" min={-50} max={50} step={1} value={fx.bright} onChange={e => setFx({ bright: Number(e.target.value) })} data-testid="rec-fx-bright" /></label>
+                        <label>Contrast<input type="range" min={-50} max={50} step={1} value={fx.contrast} onChange={e => setFx({ contrast: Number(e.target.value) })} /></label>
+                        <label>Colour<input type="range" min={-50} max={50} step={1} value={fx.sat} onChange={e => setFx({ sat: Number(e.target.value) })} /></label>
+                        <label>Warmth<input type="range" min={-50} max={50} step={1} value={fx.warmth} onChange={e => setFx({ warmth: Number(e.target.value) })} /></label>
+                        <label>Smooth skin<input type="range" min={0} max={100} step={5} value={fx.soften} onChange={e => setFx({ soften: Number(e.target.value) })} data-testid="rec-fx-soften" /></label>
+                      </div>
+                    ) : <small className="vs-sub" style={{ margin: 0 }}>This browser cannot colour-grade the camera (Safari 18 and newer, Chrome, Edge and Firefox can).</small>}
+                    <div className="vs-chips">
+                      {canGrade() && <button type="button" className="vs-chip" aria-pressed={fx.night} onClick={() => setFx({ night: !fx.night })} data-testid="rec-fx-night">Night view</button>}
+                      {mode === 'cam' && <button type="button" className="vs-chip" aria-pressed={bubble.mirror} onClick={() => setBubble(b => ({ ...b, mirror: !b.mirror }))}>Mirror</button>}
+                      <button type="button" className="vs-chip" onClick={() => setPrefs(p => ({ ...p, fx: { ...NO_FX, bg: p.fx.bg, blur: p.fx.blur, bgColor: p.fx.bgColor } }))}>Reset look</button>
+                    </div>
+                    <small className="vs-sub" style={{ margin: 0 }}>Smooth skin lays a soft focus over the camera picture; night view brightens a dark room. Both are in the recording.</small>
+                    <b className="vs-rec-h" style={{ marginTop: 4 }}>Behind you</b>
+                    <div className="vs-chips" role="group" aria-label="Camera background">
+                      {(['none', 'blur', 'remove', 'image'] as CamBg[]).map(k => (
+                        <button key={k} type="button" className="vs-chip" aria-pressed={fx.bg === k} data-testid={`rec-fx-bg-${k}`}
+                          onClick={() => k === 'image' && !camBg ? camBgFile.current?.click() : setFx({ bg: k })}>
+                          {k === 'none' ? 'As it is' : k === 'blur' ? 'Blur' : k === 'remove' ? 'Remove' : camBg ? 'My picture' : 'A picture…'}
+                        </button>
+                      ))}
+                      <input ref={camBgFile} type="file" accept="image/png,image/jpeg,image/webp,image/avif" hidden onChange={e => { void pickPicture(e.target.files?.[0], 'camBg'); e.target.value = ''; }} data-testid="rec-fx-bg-file" />
+                    </div>
+                    {fx.bg === 'blur' && <div className="vs-rec-sliders"><label>Blur {fx.blur}%<input type="range" min={0} max={100} step={5} value={fx.blur} onChange={e => setFx({ blur: Number(e.target.value) })} data-testid="rec-fx-blur" /></label></div>}
+                    {fx.bg === 'remove' && mode === 'cam' && (
+                      <div className="vs-rec-swatches" role="group" aria-label="Colour behind you">
+                        {COLORS.map(c => <button key={c} type="button" className="vs-rec-sw" style={{ background: c }} aria-pressed={fx.bgColor === c} aria-label={`Colour ${c}`} onClick={() => setFx({ bgColor: c })} />)}
+                      </div>
+                    )}
+                    {fx.bg === 'image' && camBg && (
+                      <div className="vs-row" style={{ gap: 6 }}>
+                        <small className="vs-sub vs-rec-file" style={{ margin: 0 }}>{camBg.name} — stays in this browser</small>
+                        <button type="button" className="vs-chip" onClick={() => camBgFile.current?.click()}>Replace</button>
+                        <button type="button" className="vs-chip" onClick={() => { setFx({ bg: 'none' }); camBgRef.current = null; setCamBg(null); }}>Remove</button>
+                      </div>
+                    )}
+                    {fx.bg !== 'none' && (
+                      <small className={`vs-sub${fxState.state === 'failed' ? ' vs-rec-bad' : ''}`} style={{ margin: 0 }} data-testid="rec-fx-state" data-state={fxState.state}>
+                        {fxState.state === 'loading' ? 'Loading the person-finder (about 11 MB, once)… the camera shows as it is until it is ready.'
+                          : fxState.state === 'failed' ? `The person-finder could not start in this browser (${fxState.error}), so the background is shown as it is.`
+                            : `${mode === 'screen-cam' && fx.bg === 'remove' ? 'You stand over your screen, cut out. ' : ''}Found in this browser — nothing is sent anywhere. It works the computer harder than the rest; if the recording stutters, choose “As it is”.`}
+                      </small>
+                    )}
+                  </div>
+                )}
+
+                <div className="vs-col" style={{ gap: 8 }} data-testid="rec-brand">
+                  <b className="vs-rec-h">Title and logo <small className="vs-sub" style={{ margin: 0, fontWeight: 500 }}>— on the video, changes live</small></b>
+                  <label className="vs-rec-check"><input type="checkbox" checked={brand.card} onChange={e => setBrand({ card: e.target.checked })} data-testid="rec-card" /> Show a title card on the left</label>
+                  {brand.card && (
+                    <>
+                      <input className="vs-input" placeholder="Title — e.g. How to book a call" value={brand.title} maxLength={60} onChange={e => setBrand({ title: e.target.value })} aria-label="Title" data-testid="rec-card-title" />
+                      <textarea className="vs-input" placeholder="A line or two of description" value={brand.desc} maxLength={140} rows={2} onChange={e => setBrand({ desc: e.target.value })} aria-label="Description" data-testid="rec-card-desc" />
+                      <div className="vs-chips">
+                        <button type="button" className="vs-chip" aria-pressed={brand.cardPos === 'bl'} onClick={() => setBrand({ cardPos: 'bl' })}>Bottom left</button>
+                        <button type="button" className="vs-chip" aria-pressed={brand.cardPos === 'tl'} onClick={() => setBrand({ cardPos: 'tl' })}>Top left</button>
+                      </div>
+                    </>
+                  )}
+                  <div className="vs-row" style={{ gap: 6 }}>
+                    <button type="button" className="vs-btn sm" onClick={() => logoFile.current?.click()} data-testid="rec-logo-btn"><ImagePlus size={14} /> {logo ? 'Replace logo' : 'Add a logo'}</button>
+                    {logo && <><img src={logo.url} alt="" className="vs-rec-logo" /><button type="button" className="vs-chip" onClick={() => { logoRef.current = null; setLogo(null); }}>Remove</button></>}
+                    <input ref={logoFile} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/avif" hidden onChange={e => { void pickPicture(e.target.files?.[0], 'logo'); e.target.value = ''; }} data-testid="rec-logo-file" />
+                  </div>
+                  {logo && (
+                    <div className="vs-chips">
+                      {(Object.keys(CORNERS) as Corner[]).map(k => <button key={k} type="button" className="vs-chip" aria-pressed={brand.logoCorner === k} onClick={() => setBrand({ logoCorner: k })}>{CORNER_LABEL[k]}</button>)}
+                      {(['S', 'M', 'L'] as BubbleSize[]).map(z => <button key={z} type="button" className="vs-chip" aria-pressed={brand.logoSize === z} onClick={() => setBrand({ logoSize: z })}>{z === 'S' ? 'Small' : z === 'M' ? 'Medium' : 'Large'}</button>)}
+                    </div>
+                  )}
+                  <small className="vs-sub" style={{ margin: 0 }}>A transparent PNG logo looks best. Pictures stay in this browser and are drawn into the recording.</small>
+                </div>
+
                 {mode !== 'cam' && (
                   <div className="vs-col" style={{ gap: 8 }} data-testid="rec-look">
                     <b className="vs-rec-h">Background and frame <small className="vs-sub" style={{ margin: 0, fontWeight: 500 }}>— change it any time, even while recording</small></b>
                     <div className="vs-rec-swatches" role="group" aria-label="Background">
                       <button type="button" className="vs-rec-sw none" aria-pressed={look.bg.kind === 'none'} title="No background — the screen fills the video" aria-label="No background" onClick={() => setLook({ bg: { kind: 'none' } })} data-testid="rec-bg-none"><Ban size={15} /></button>
                       {COLORS.map(c => <button key={c} type="button" className="vs-rec-sw" style={{ background: c }} aria-pressed={look.bg.kind === 'color' && look.bg.color === c} aria-label={`Colour ${c}`} onClick={() => setLook({ bg: { kind: 'color', color: c } })} />)}
-                      {(Object.keys(GRADIENTS) as GradientId[]).map(id => <button key={id} type="button" className="vs-rec-sw" style={{ background: gradientCss(id) }} aria-pressed={look.bg.kind === 'gradient' && look.bg.id === id} title={GRADIENT_LABEL[id]} aria-label={`${GRADIENT_LABEL[id]} gradient`} onClick={() => setLook({ bg: { kind: 'gradient', id } })} data-testid={`rec-bg-${id}`} />)}
+                      {(Object.keys(GRADIENTS) as GradientId[]).map(id => <button key={id} type="button" className="vs-rec-sw" style={{ background: gradientCss(id) }} aria-pressed={look.bg.kind === 'gradient' && look.bg.id === id} title={gradientLabel(id)} aria-label={`${gradientLabel(id)} gradient`} onClick={() => setLook({ bg: { kind: 'gradient', id } })} data-testid={`rec-bg-${id}`} />)}
                       <button type="button" className="vs-rec-sw img" style={image ? { backgroundImage: `url(${image.url})` } : undefined} aria-pressed={look.bg.kind === 'image'}
                         title={image ? `Your picture: ${image.name}` : 'Use your own picture'} aria-label={image ? 'Your picture' : 'Choose a picture'}
                         onClick={() => image ? setLook({ bg: { kind: 'image' } }) : fileRef.current?.click()} data-testid="rec-bg-image">{!image && <ImagePlus size={15} />}</button>

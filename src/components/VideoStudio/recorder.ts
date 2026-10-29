@@ -10,6 +10,7 @@
  */
 import { fixWebmDuration } from '../../lib/webmDuration';
 import ClockWorker from './recorderClock.worker.ts?worker';
+import { CameraFx, NO_FX, type CamFx, type CamBg } from './cameraFx';
 
 export type RecMode = 'screen' | 'screen-cam' | 'cam';
 export type BubbleSize = 'S' | 'M' | 'L';
@@ -18,7 +19,7 @@ export const CORNERS = { tl: { x: 0, y: 0 }, tr: { x: 1, y: 0 }, bl: { x: 0, y: 
 export type Corner = keyof typeof CORNERS;
 
 /** What this browser offers, asked once. */
-export interface Support { secure: boolean; devices: boolean; display: boolean; recorder: boolean; mime: Mime | null; cursor: boolean; pip: boolean }
+export interface Support { secure: boolean; devices: boolean; display: boolean; recorder: boolean; mime: Mime | null; cursor: boolean; isolate: boolean; pip: boolean }
 export interface Mime { mime: string; type: 'video/webm' | 'video/mp4'; ext: 'webm' | 'mp4' }
 
 /*
@@ -51,13 +52,16 @@ export function support(): Support {
       try { if (MediaRecorder.isTypeSupported(c.mime)) { mime = c; break; } } catch { /* an old engine throws on unknown types */ }
     }
   }
-  let cursor = false;
-  try { cursor = !!(md?.getSupportedConstraints?.() as Record<string, boolean> | undefined)?.cursor; } catch { /* not offered */ }
+  let cursor = false, isolate = false;
+  try {
+    const c = md?.getSupportedConstraints?.() as Record<string, boolean> | undefined;
+    cursor = !!c?.cursor; isolate = !!c?.voiceIsolation;
+  } catch { /* not offered */ }
   return {
     secure: typeof window === 'undefined' || window.isSecureContext !== false,
     devices: !!md?.getUserMedia,
     display: !!md && typeof md.getDisplayMedia === 'function',
-    recorder, mime, cursor,
+    recorder, mime, cursor, isolate,
     /* Chrome and Edge's always-on-top window, for the controls while another window is in front. */
     pip: typeof window !== 'undefined' && 'documentPictureInPicture' in window,
   };
@@ -138,6 +142,18 @@ export const GRADIENTS = {
   ocean: { angle: 145, stops: ['#38bdf8', '#2563eb', '#1e3a8a'], glows: [] },
   peach: { angle: 120, stops: ['#fde68a', '#fca5a5', '#f9a8d4'], glows: [] },
   night: { angle: 150, stops: ['#1e293b', '#312e81', '#0f172a'], glows: [[0.8, 0.15, 0.5, '#7c3aed']] },
+  aurora: { angle: 160, stops: ['#0f172a', '#134e4a', '#0f172a'], glows: [[0.25, 0.2, 0.55, '#22d3ee'], [0.8, 0.75, 0.5, '#a855f7']] },
+  candy: { angle: 120, stops: ['#f0abfc', '#c4b5fd', '#93c5fd'], glows: [[0.9, 0.1, 0.4, '#fbcfe8']] },
+  forest: { angle: 150, stops: ['#14532d', '#166534', '#052e16'], glows: [[0.15, 0.1, 0.5, '#84cc16']] },
+  dusk: { angle: 180, stops: ['#1e1b4b', '#9d174d', '#f97316'], glows: [] },
+  lavender: { angle: 135, stops: ['#ede9fe', '#ddd6fe', '#c7d2fe'], glows: [[0.85, 0.85, 0.45, '#fbcfe8']] },
+  sky: { angle: 180, stops: ['#bae6fd', '#e0f2fe', '#f8fafc'], glows: [[0.8, 0.15, 0.35, '#fef3c7']] },
+  graphite: { angle: 145, stops: ['#3f3f46', '#18181b', '#09090b'], glows: [[0.1, 0.1, 0.5, '#52525b']] },
+  coral: { angle: 125, stops: ['#fb7185', '#fb923c', '#fde047'], glows: [] },
+  lime: { angle: 140, stops: ['#ecfccb', '#a3e635', '#4d7c0f'], glows: [] },
+  royal: { angle: 135, stops: ['#1e40af', '#6d28d9', '#be185d'], glows: [[0.2, 0.85, 0.45, '#0ea5e9']] },
+  ember: { angle: 160, stops: ['#1c1917', '#7c2d12', '#1c1917'], glows: [[0.75, 0.25, 0.5, '#f59e0b']] },
+  mist: { angle: 135, stops: ['#f1f5f9', '#e2e8f0', '#cbd5e1'], glows: [[0.2, 0.2, 0.5, '#ffffff']] },
 } satisfies Record<string, Gradient>;
 export type GradientId = keyof typeof GRADIENTS;
 
@@ -227,18 +243,6 @@ const layerCanvas = (w: number, h: number): HTMLCanvasElement | OffscreenCanvas 
   const c = document.createElement('canvas'); c.width = w; c.height = h; return c;
 };
 
-/** A video drawn to fill a box (cropped, like object-fit: cover). */
-function drawCover(ctx: Ctx2D, v: HTMLVideoElement, r: Rect, mirror: boolean) {
-  const vw = v.videoWidth, vh = v.videoHeight;
-  if (!vw || !vh) return;
-  const s = Math.max(r.w / vw, r.h / vh);
-  const sw = r.w / s, sh = r.h / s;
-  ctx.save();
-  if (mirror) { ctx.translate(r.x + r.w, r.y); ctx.scale(-1, 1); ctx.drawImage(v, (vw - sw) / 2, (vh - sh) / 2, sw, sh, 0, 0, r.w, r.h); }
-  else ctx.drawImage(v, (vw - sw) / 2, (vh - sh) / 2, sw, sh, r.x, r.y, r.w, r.h);
-  ctx.restore();
-}
-
 function roundPath(ctx: Ctx2D, r: Rect, k: number) {
   ctx.beginPath();
   if (k <= 0) { ctx.rect(r.x, r.y, r.w, r.h); return; }
@@ -272,75 +276,184 @@ const WHOLE: View = { x: 0, y: 0, w: 1, h: 1 };
  * shadow blur every frame cost a software-drawn canvas 4–5 ms a frame — the
  * difference between 60 fps and a stutter on a small laptop.
  */
+/** Words cut to fit `max` pixels, at most `lines` lines, the last ending "…" if it had to be cut. */
+function wrap(c: Ctx2D, text: string, max: number, lines: number): string[] {
+  const words = text.split(/\s+/).filter(Boolean), out: string[] = [];
+  let line = '';
+  for (let i = 0; i < words.length; i++) {
+    const t = line ? `${line} ${words[i]}` : words[i];
+    if (c.measureText(t).width <= max || !line) { line = t; continue; }
+    out.push(line); line = words[i];
+    if (out.length === lines) { line = ''; break; }
+  }
+  if (line && out.length < lines) out.push(line);
+  const cut = out.join(' ').split(/\s+/).length < words.length;
+  if (cut && out.length) {
+    let last = out[out.length - 1];
+    while (last && c.measureText(`${last}…`).width > max) last = last.slice(0, -1);
+    out[out.length - 1] = `${last.trimEnd()}…`;
+  }
+  return out.map(l => { let x = l; while (x.length > 1 && c.measureText(x).width > max) x = x.slice(0, -2) + '…'; return x; });
+}
+
+function paintCard(W: number, H: number, title: string, desc: string): HTMLCanvasElement | OffscreenCanvas {
+  const short = Math.min(W, H), pad = Math.round(short * 0.022), ts = Math.round(short * 0.036), ds = Math.round(short * 0.025);
+  const maxText = Math.round(W * 0.42);
+  const font = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  const probe = layerCanvas(4, 4).getContext('2d') as Ctx2D;
+  probe.font = `700 ${ts}px ${font}`;
+  const tl = title ? wrap(probe, title, maxText, 1) : [];
+  const tw = tl.length ? probe.measureText(tl[0]).width : 0;
+  probe.font = `500 ${ds}px ${font}`;
+  const dl = desc ? wrap(probe, desc, maxText, 2) : [];
+  const dw = Math.max(0, ...dl.map(l => probe.measureText(l).width));
+  const bar = Math.max(3, Math.round(short * 0.006));
+  const w = Math.ceil(Math.max(tw, dw) + pad * 2 + bar * 2), h = Math.ceil(pad * 2 + tl.length * ts * 1.2 + (tl.length && dl.length ? ds * 0.35 : 0) + dl.length * ds * 1.3);
+  const c = layerCanvas(w, h), g = c.getContext('2d') as Ctx2D;
+  roundPath(g, { x: 0, y: 0, w, h }, Math.round(pad * 0.8));
+  g.fillStyle = 'rgba(12,12,20,.78)'; g.fill();
+  g.fillStyle = '#8b6cff'; g.fillRect(pad * 0.6, pad, bar, h - pad * 2);
+  let y = pad;
+  g.textBaseline = 'top';
+  g.fillStyle = '#ffffff'; g.font = `700 ${ts}px ${font}`;
+  for (const l of tl) { g.fillText(l, pad + bar * 2, y); y += ts * 1.2; }
+  if (tl.length && dl.length) y += ds * 0.35;
+  g.fillStyle = 'rgba(255,255,255,.82)'; g.font = `500 ${ds}px ${font}`;
+  for (const l of dl) { g.fillText(l, pad + bar * 2, y); y += ds * 1.3; }
+  return c;
+}
+
+export interface Brand {
+  /** The title card: a title and a line or two of description, low or high on the left. */
+  card: boolean; title: string; desc: string; cardPos: 'bl' | 'tl';
+  logoCorner: Corner; logoSize: BubbleSize;
+}
+export const NO_BRAND: Brand = { card: false, title: '', desc: '', cardPos: 'bl', logoCorner: 'tr', logoSize: 'M' };
+
+/** Everything one frame is drawn from. */
+export interface Scene {
+  screen: HTMLVideoElement | null;
+  cam: HTMLVideoElement | null;
+  /** Camera only: the camera fills the frame, no bubble and no screen frame. */
+  camOnly: boolean;
+  look: Look; image: ImageBitmap | null;
+  bubble: Bubble; view?: View;
+  fx: CamFx; camBg: ImageBitmap | null;
+  brand: Brand; logo: ImageBitmap | null;
+  now: number;
+}
+
 export class Compositor {
   private layer: HTMLCanvasElement | OffscreenCanvas | null = null;
   private holed: HTMLCanvasElement | OffscreenCanvas | null = null;
   private layerKey = '';
   private sprite: HTMLCanvasElement | OffscreenCanvas | null = null;
   private spriteKey = '';
-  private dirty: Rect | null = null;
+  private card: HTMLCanvasElement | OffscreenCanvas | null = null;
+  private cardKey = '';
+  private dirty: Rect[] = [];
   /* A replaced picture of the same size must still repaint the layer. */
   private ids = new WeakMap<ImageBitmap, number>();
   private nextId = 1;
-
+  /** The camera's look, and the person-finder behind a camera background. */
+  readonly fx = new CameraFx();
   /** Where the screen was last drawn, in canvas pixels. */
   box: Rect = { x: 0, y: 0, w: 0, h: 0 };
 
   /** The canvas was resized (which clears it): paint the background again on the next frame. */
   invalidate() { this.layerKey = ''; }
 
-  draw(ctx: CanvasRenderingContext2D, screen: HTMLVideoElement | null, cam: HTMLVideoElement | null, look: Look, image: ImageBitmap | null, b: Bubble, view: View = WHOLE) {
-    const W = ctx.canvas.width, H = ctx.canvas.height;
-    const sv = screen && screen.videoWidth ? screen : null;
+  draw(ctx: CanvasRenderingContext2D, sc: Scene) {
+    const W = ctx.canvas.width, H = ctx.canvas.height, short = Math.min(W, H);
+    const view = sc.view ?? WHOLE;
+    const look = sc.camOnly ? PLAIN_LOOK : sc.look;
+    const sv = !sc.camOnly && sc.screen && sc.screen.videoWidth ? sc.screen : null;
     const aspect = sv ? (sv.videoWidth * view.w) / (sv.videoHeight * view.h) : W / H;
     const r = screenRect(W, H, aspect, look);
     this.box = r;
     const framed = look.bg.kind !== 'none';
-    const k = framed ? Math.min(Math.round(Math.min(W, H) * look.radius / 100), r.w / 2, r.h / 2) : 0;
-    const key = `${W}x${H}|${r.x},${r.y},${r.w},${r.h}|${k}|${JSON.stringify(look)}|${image ? this.idOf(image) : ''}`;
+    const k = framed ? Math.min(Math.round(short * look.radius / 100), r.w / 2, r.h / 2) : 0;
+    const key = `${W}x${H}|${r.x},${r.y},${r.w},${r.h}|${k}|${JSON.stringify(look)}|${sc.image && framed ? this.idOf(sc.image) : ''}`;
     if (key !== this.layerKey || !this.layer) {
-      this.paintLayer(W, H, r, k, look, image);
+      this.paintLayer(W, H, r, k, look, sc.image);
       this.layerKey = key;
       ctx.drawImage(this.layer!, 0, 0);
-      this.dirty = null;
-    } else if (this.dirty) {
-      /* Where the bubble was last frame: back to background before anything is drawn over it again. */
-      const d = this.dirty;
-      ctx.drawImage(this.layer, d.x, d.y, d.w, d.h, d.x, d.y, d.w, d.h);
-      this.dirty = null;
+      this.dirty = [];
+    } else {
+      /* Where the bubble, card and logo were last frame: back to background before anything is drawn over them again. */
+      for (const d of this.dirty) ctx.drawImage(this.layer, d.x, d.y, d.w, d.h, d.x, d.y, d.w, d.h);
+      this.dirty = [];
     }
+    const cam = sc.cam && sc.cam.videoWidth ? sc.cam : null;
 
-    if (sv) {
-      const vw = sv.videoWidth, vh = sv.videoHeight;
-      ctx.drawImage(sv, view.x * vw, view.y * vh, view.w * vw, view.h * vh, r.x, r.y, r.w, r.h);
-    } else { ctx.fillStyle = framed ? '#1b1d26' : '#101117'; ctx.fillRect(r.x, r.y, r.w, r.h); }
-    if (k > 0 && this.holed) {
-      const c = k + 1;
-      for (const [x, y] of [[r.x, r.y], [r.x + r.w - c, r.y], [r.x, r.y + r.h - c], [r.x + r.w - c, r.y + r.h - c]]) ctx.drawImage(this.holed, x, y, c, c, x, y, c, c);
+    if (sc.camOnly) {
+      if (cam) this.fx.draw(ctx, cam, r, sc.bubble.mirror, sc.fx, sc.camBg, false, sc.now);
+      else { ctx.fillStyle = '#101117'; ctx.fillRect(r.x, r.y, r.w, r.h); }
+    } else {
+      if (sv) {
+        const vw = sv.videoWidth, vh = sv.videoHeight;
+        ctx.drawImage(sv, view.x * vw, view.y * vh, view.w * vw, view.h * vh, r.x, r.y, r.w, r.h);
+      } else { ctx.fillStyle = framed ? '#1b1d26' : '#101117'; ctx.fillRect(r.x, r.y, r.w, r.h); }
+      if (k > 0 && this.holed) {
+        const c = k + 1;
+        for (const [x, y] of [[r.x, r.y], [r.x + r.w - c, r.y], [r.x, r.y + r.h - c], [r.x + r.w - c, r.y + r.h - c]]) ctx.drawImage(this.holed, x, y, c, c, x, y, c, c);
+      }
+      if (cam) this.drawBubble(ctx, W, H, cam, sc);
     }
+    this.drawCard(ctx, W, H, sc.brand);
+    if (sc.logo) {
+      const L = sc.logo, lh = Math.round(short * { S: 0.07, M: 0.1, L: 0.14 }[sc.brand.logoSize]);
+      const lw = Math.min(Math.round(W * 0.3), Math.round(lh * L.width / L.height)), lh2 = Math.round(lw * L.height / L.width);
+      const m = Math.round(short * 0.035), c = CORNERS[sc.brand.logoCorner];
+      const box = { x: Math.round(m + c.x * (W - 2 * m - lw)), y: Math.round(m + c.y * (H - 2 * m - lh2)), w: lw, h: lh2 };
+      ctx.drawImage(L, box.x, box.y, box.w, box.h);
+      this.dirty.push(box);
+    }
+  }
 
-    if (!cam || !cam.videoWidth) return;
-    const br = bubbleRect(W, H, b, cam.videoWidth / cam.videoHeight);
+  private drawBubble(ctx: CanvasRenderingContext2D, W: number, H: number, cam: HTMLVideoElement, sc: Scene) {
+    const b = sc.bubble;
+    /* A removed background in a bubble is a cut-out: the person stands over the screen, no circle round them. */
+    const cutout = sc.fx.bg === 'remove';
+    const br = bubbleRect(W, H, cutout ? { ...b, shape: 'rounded' } : b, cam.videoWidth / cam.videoHeight);
+    if (cutout) {
+      this.dirty.push(br);
+      this.fx.draw(ctx, cam, br, b.mirror, sc.fx, sc.camBg, true, sc.now);
+      return;
+    }
     const blur = Math.round(br.h / 14);
     const sk = `${br.w}x${br.h}|${b.shape}`;
     if (sk !== this.spriteKey || !this.sprite) {
       this.sprite = layerCanvas(br.w + blur * 4, br.h + blur * 4);
-      const sc = this.sprite.getContext('2d') as Ctx2D;
-      sc.shadowColor = 'rgba(0,0,0,.45)'; sc.shadowBlur = blur;
-      shapePath(sc, { x: blur * 2, y: blur * 2, w: br.w, h: br.h }, b.shape);
-      sc.fillStyle = '#000'; sc.fill();
+      const spc = this.sprite.getContext('2d') as Ctx2D;
+      spc.shadowColor = 'rgba(0,0,0,.45)'; spc.shadowBlur = blur;
+      shapePath(spc, { x: blur * 2, y: blur * 2, w: br.w, h: br.h }, b.shape);
+      spc.fillStyle = '#000'; spc.fill();
       this.spriteKey = sk;
     }
     const sx = Math.max(0, br.x - blur * 2), sy = Math.max(0, br.y - blur * 2);
-    this.dirty = { x: sx, y: sy, w: Math.min(W, br.x + br.w + blur * 2) - sx, h: Math.min(H, br.y + br.h + blur * 2) - sy };
+    this.dirty.push({ x: sx, y: sy, w: Math.min(W, br.x + br.w + blur * 2) - sx, h: Math.min(H, br.y + br.h + blur * 2) - sy });
     ctx.drawImage(this.sprite, br.x - blur * 2, br.y - blur * 2);
     ctx.save();
     shapePath(ctx, br, b.shape);
     ctx.clip();
-    drawCover(ctx, cam, br, b.mirror);
+    this.fx.draw(ctx, cam, br, b.mirror, sc.fx, sc.camBg, false, sc.now);
     ctx.restore();
     shapePath(ctx, br, b.shape);
     ctx.lineWidth = Math.max(2, Math.round(br.h / 45)); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.stroke();
+  }
+
+  /** The title card, drawn once into a sprite per wording and size, then copied each frame. */
+  private drawCard(ctx: CanvasRenderingContext2D, W: number, H: number, br: Brand) {
+    const title = br.title.trim(), desc = br.desc.trim();
+    if (!br.card || (!title && !desc)) return;
+    const short = Math.min(W, H);
+    const key = `${W}x${H}|${title}|${desc}`;
+    if (key !== this.cardKey || !this.card) { this.card = paintCard(W, H, title, desc); this.cardKey = key; }
+    const m = Math.round(short * 0.035);
+    const box = { x: m, y: br.cardPos === 'tl' ? m : H - m - this.card.height, w: this.card.width, h: this.card.height };
+    ctx.drawImage(this.card, box.x, box.y);
+    this.dirty.push(box);
   }
 
   private idOf(im: ImageBitmap) {
@@ -467,10 +580,18 @@ export class AutoZoom {
 
 /* ── Remembered choices ────────────────────────────────────────────────── */
 
-export interface Prefs { fps: Fps; res: Res; quality: Quality; camRes: CamRes; look: Look; zoom: boolean; depth: number; cursor: CursorMode; float: boolean }
+export interface Prefs {
+  fps: Fps; res: Res; quality: Quality; camRes: CamRes; look: Look; zoom: boolean; depth: number; cursor: CursorMode; float: boolean;
+  fx: CamFx; brand: Brand;
+  /** Studio Sound switched on for the saved recording (applied by the engine when it is exported). */
+  studio: boolean;
+  /** The browser's own voice isolation while recording, where it has one. */
+  isolate: boolean;
+}
 export const defaultPrefs = (slow = slowComputer()): Prefs => ({
   fps: 30, res: slow ? '720' : '1080', quality: slow ? 'light' : 'standard', camRes: slow ? '480' : '720',
   look: PLAIN_LOOK, zoom: false, depth: 1.8, cursor: 'always', float: true,
+  fx: NO_FX, brand: NO_BRAND, studio: true, isolate: true,
 });
 
 /** Saved choices read back field by field — anything unknown falls back, and a picture is never remembered. */
@@ -480,6 +601,9 @@ export function readPrefs(raw: unknown, base: Prefs = defaultPrefs()): Prefs {
   const num = (v: unknown, lo: number, hi: number, d: number) => typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d;
   const l = (o.look && typeof o.look === 'object' ? o.look : {}) as Record<string, unknown>;
   const b = (l.bg && typeof l.bg === 'object' ? l.bg : {}) as Record<string, unknown>;
+  const f = (o.fx && typeof o.fx === 'object' ? o.fx : {}) as Record<string, unknown>;
+  const br = (o.brand && typeof o.brand === 'object' ? o.brand : {}) as Record<string, unknown>;
+  const str = (v: unknown, max: number) => typeof v === 'string' ? v.slice(0, max) : '';
   const bg: Backdrop = b.kind === 'color' && typeof b.color === 'string' && /^#[0-9a-f]{6}$/i.test(b.color) ? { kind: 'color', color: b.color }
     : b.kind === 'gradient' && typeof b.id === 'string' && b.id in GRADIENTS ? { kind: 'gradient', id: b.id as GradientId }
       : { kind: 'none' };
@@ -493,6 +617,19 @@ export function readPrefs(raw: unknown, base: Prefs = defaultPrefs()): Prefs {
     depth: num(o.depth, 1.25, 2.5, base.depth),
     cursor: pick(o.cursor, ['always', 'motion', 'never'] as CursorMode[], base.cursor),
     float: typeof o.float === 'boolean' ? o.float : base.float,
+    fx: {
+      bright: num(f.bright, -50, 50, 0), contrast: num(f.contrast, -50, 50, 0), sat: num(f.sat, -50, 50, 0), warmth: num(f.warmth, -50, 50, 0),
+      soften: num(f.soften, 0, 100, 0), night: f.night === true,
+      /* A picture is never remembered, so neither is choosing one. */
+      bg: pick(f.bg, ['none', 'blur', 'remove'] as CamBg[], 'none'), blur: num(f.blur, 0, 100, NO_FX.blur),
+      bgColor: typeof f.bgColor === 'string' && /^#[0-9a-f]{6}$/i.test(f.bgColor) ? f.bgColor : NO_FX.bgColor,
+    },
+    brand: {
+      card: br.card === true, title: str(br.title, 60), desc: str(br.desc, 140), cardPos: pick(br.cardPos, ['bl', 'tl'] as const, 'bl'),
+      logoCorner: pick(br.logoCorner, Object.keys(CORNERS) as Corner[], NO_BRAND.logoCorner), logoSize: pick(br.logoSize, ['S', 'M', 'L'] as BubbleSize[], 'M'),
+    },
+    studio: typeof o.studio === 'boolean' ? o.studio : base.studio,
+    isolate: typeof o.isolate === 'boolean' ? o.isolate : base.isolate,
   };
 }
 
