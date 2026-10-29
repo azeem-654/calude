@@ -49,6 +49,10 @@ ok('the committed hash cannot be replayed as the cookie', !!forged && 'stop' in 
 
 const hook = await run(env, '/api/billing-webhook.php');
 ok('signed webhooks are let through', !!hook && 'setCookie' in hook);
+const vf = await run(env, '/api/video-file.php?t=x');
+ok('signed video links are let through (the engine has no password)', !!vf && 'setCookie' in vf);
+const vapi = await run(env, '/api/video.php');
+ok('the rest of the video API stays locked', !!vapi && 'stop' in vapi);
 const sms = await run(env, '/api/sms-inbound.php');
 ok('Twilio inbound is let through', !!sms && 'setCookie' in sms);
 

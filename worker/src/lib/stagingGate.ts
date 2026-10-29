@@ -37,7 +37,11 @@
  * `robots.txt` (so crawlers read "Disallow: /" rather than a 401 they may
  * retry), and signed webhooks: Stripe, Creem and Twilio cannot type a password,
  * and their requests are proved by signature already (index.ts leaves the same
- * paths without the cookie swap).
+ * paths without the cookie swap). Likewise `/api/video-file.php`: the
+ * FFmpeg engine and Whisper fetch recordings and upload results through its
+ * links, which are HMAC-signed and short-lived and checked by the route
+ * before anything else (routes/videoFile.ts) — behind the lock every video
+ * on the testing site stopped at "ffprobe exited 1: 401 Unauthorized".
  */
 import type { Env } from './db';
 
@@ -81,6 +85,7 @@ export async function stagingGate(req: Request, env: Env, url: URL): Promise<{ s
     return { stop: new Response('User-agent: *\nDisallow: /\n', { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Robots-Tag': NOINDEX } }) };
   }
   if (url.pathname.startsWith('/api/') && /webhook|sms-inbound/.test(url.pathname)) return { setCookie: null };
+  if (url.pathname === '/api/video-file.php') return { setCookie: null };
 
   const want = await expected(env);
   /* A lock with an unreadable setting stays shut: open by mistake is the failure that matters. */

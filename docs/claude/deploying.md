@@ -56,7 +56,9 @@ stands in for them. Staging sets `assets.run_worker_first: true` so the lock
 covers the bundle too; live keeps its short list and has no lock. Only a hash
 is committed (`STAGING_GATE_HASH`); the owner's `STAGING_GATE` secret
 (`user:password`) overrides it. `robots.txt` answers `Disallow: /`, every
-answer carries `X-Robots-Tag: noindex`, and signed webhooks pass. A test or
+answer carries `X-Robots-Tag: noindex`, and signed webhooks pass — so do
+`/api/video-file.php` links (HMAC-signed; the FFmpeg engine fetches through
+them, and behind the lock every video stopped at "ffprobe … 401"). A test or
 script against the *deployed* testing site must send the credentials; local
 `wrangler dev` without `--env staging` has no lock. `npm run test:gate`, and the
 staging workflow checks the deployed site answers 401.
