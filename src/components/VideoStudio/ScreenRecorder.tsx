@@ -12,20 +12,37 @@
  *    can be dragged on the preview. The frames are drawn on a worker's clock
  *    so they keep coming while this tab is in the background (recorder.ts).
  *  - Microphone and the tab's / computer's sound are mixed with WebAudio when
- *    both are there.
+ *    both are there — always in the screen modes, so a screen switched
+ *    mid-recording can bring its own sound into a recorder whose tracks are
+ *    fixed once it starts.
+ *  - Every screen recording goes through the canvas, even with no camera or
+ *    background: that is what lets the background, frame and zoom change
+ *    while recording and another screen be shared without stopping. The
+ *    canvas is captured frame by frame (`captureStream(0)` + `requestFrame`)
+ *    so each drawn frame is recorded exactly once — a timed capture doubled
+ *    and dropped frames against the draw clock, which read as flicker.
+ *  - The controls can float over other windows (Chrome / Edge's Document
+ *    Picture-in-Picture), opened by the Start press itself because a browser
+ *    opens such a window only from a click.
  *  - Saving is the same path as uploading a file (NewVideoProject):
  *    `createVideoProject` + `uploadVideo`, the bar is the bytes really sent,
  *    and "Saved" is said only after the server confirms the upload. On a
  *    failure the server's own words are shown and the recording stays here
  *    to retry or download.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { MonitorPlay, Camera, Mic, MicOff, Pause, Play, Square, Circle, Download, RotateCcw, Trash2, UploadCloud, X, AlertCircle, Check, Loader, Volume2, Info } from 'lucide-react';
+import {
+  MonitorPlay, Camera, Mic, MicOff, Pause, Play, Square, Circle, Download, RotateCcw, Trash2, UploadCloud, X, AlertCircle, Check, Loader, Volume2, Info,
+  ImagePlus, Ban, ZoomIn, RefreshCw, VideoOff, PictureInPicture2, MousePointer2,
+} from 'lucide-react';
 import { createVideoProject, uploadVideo, renameVideoProject, deleteVideoProject, bytesLabel, type VideoRequest } from '../../services/videoStudio';
 import {
-  support, mediaError, fileSlug, bubbleAt, drawComposite, frameSize, bitrateFor, finishFile, startClock, stopStreams, msClock, CORNERS,
-  type RecMode, type Bubble, type Corner, type BubbleSize,
+  support, mediaError, fileSlug, bubbleAt, frameSize, bitrateFor, finishFile, startClock, stopStreams, msClock, CORNERS,
+  Compositor, AutoZoom, loadBackdrop, readPrefs, defaultPrefs, slowComputer, gradientCss,
+  FPS, RES, RES_LABEL, CAM_RES, COLORS, GRADIENTS,
+  type RecMode, type Bubble, type Corner, type BubbleSize, type Prefs, type Look, type Res, type Quality, type CamRes, type CursorMode, type GradientId,
 } from './recorder';
 
 type Phase = 'setup' | 'starting' | 'countdown' | 'recording' | 'paused' | 'finishing' | 'review';
@@ -48,6 +65,15 @@ const MODES: { key: RecMode; label: string; help: string; icon: typeof MonitorPl
   { key: 'cam', label: 'Camera only', help: 'Just you, no screen', icon: Camera },
 ];
 const CORNER_LABEL: Record<Corner, string> = { tl: 'Top left', tr: 'Top right', bl: 'Bottom left', br: 'Bottom right' };
+const QUALITY_LABEL: Record<Quality, string> = { light: 'Light', standard: 'Standard', high: 'High' };
+const CURSOR_LABEL: Record<CursorMode, string> = { always: 'Always shown', motion: 'Only while moving', never: 'Hidden' };
+const CAM_LABEL: Record<CamRes, string> = { '480': '480p', '720': '720p', '1080': '1080p' };
+const GRADIENT_LABEL: Record<GradientId, string> = { sequoia: 'Sequoia', sunset: 'Sunset', mint: 'Mint', ocean: 'Ocean', peach: 'Peach', night: 'Night' };
+
+/* A per-browser convenience: the frame rate, quality and look somebody chose last time. Never the picture. */
+const PREFS_KEY = 'crm_rec_prefs';
+const savedPrefs = (): Prefs => { try { return readPrefs(JSON.parse(localStorage.getItem(PREFS_KEY) || 'null')); } catch { return defaultPrefs(); } };
+const SLOW = slowComputer();
 
 const live = (s: MediaStream | null) => !!s && s.getTracks().some(t => t.readyState === 'live');
 const attach = (v: HTMLVideoElement | null, s: MediaStream | null) => {
@@ -83,6 +109,12 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   const [name, setName] = useState('');
   const [save, setSave] = useState<SaveState>({ state: 'idle' });
   const [busy, setBusy] = useState(false);
+  const [prefs, setPrefs] = useState<Prefs>(savedPrefs);
+  const [image, setImage] = useState<{ url: string; name: string } | null>(null);
+  const [micMuted, setMicMuted] = useState(false);
+  const [camHidden, setCamHidden] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const [pip, setPip] = useState<Window | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const screenVid = useRef<HTMLVideoElement>(null);
@@ -109,9 +141,29 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   const file = useRef<File | null>(null);
   const upload = useRef<AbortController | null>(null);
   const urlRef = useRef('');
+  const prefsRef = useRef(prefs);
+  const imageRef = useRef<ImageBitmap | null>(null);
+  const camHiddenRef = useRef(false);
+  const comp = useRef(new Compositor());
+  const zoom = useRef(new AutoZoom());
+  const ctx2d = useRef<CanvasRenderingContext2D | null>(null);
+  const canvasTrack = useRef<CanvasCaptureMediaStreamTrack | null>(null);
+  const dispSrc = useRef<MediaStreamAudioSourceNode | null>(null);
+  const pipRef = useRef<Window | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const stats = useRef({ last: 0, late: 0, ticks: 0, warned: false, n: 0 });
+  const fitKey = useRef('');
   phaseRef.current = phase;
   bubbleRef.current = bubble;
   modeRef.current = mode;
+  prefsRef.current = prefs;
+  camHiddenRef.current = camHidden;
+
+  const setPref = <K extends keyof Prefs>(k: K, v: Prefs[K]) => setPrefs(p => ({ ...p, [k]: v }));
+  const setLook = (l: Partial<Look>) => setPrefs(p => ({ ...p, look: { ...p.look, ...l } }));
+  useEffect(() => {
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify({ ...prefs, look: prefs.look.bg.kind === 'image' ? { ...prefs.look, bg: { kind: 'none' } } : prefs.look })); } catch { /* private window */ }
+  }, [prefs]);
 
   const needsCam = mode !== 'screen';
   const capturing = phase === 'starting' || phase === 'countdown' || phase === 'recording' || phase === 'paused' || phase === 'finishing';
@@ -155,7 +207,12 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     if (!sup.devices) { setError('This browser cannot use a camera or microphone.'); return false; }
     try {
       const s = await navigator.mediaDevices.getUserMedia({
-        video: c ? { ...(camId ? { deviceId: { exact: camId } } : {}), width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } : false,
+        /* In a bubble the camera never needs more than 30 frames a second; asking for 60 only costs the computer. */
+        video: c ? {
+          ...(camId ? { deviceId: { exact: camId } } : {}),
+          width: { ideal: CAM_RES[prefs.camRes].width }, height: { ideal: CAM_RES[prefs.camRes].height },
+          frameRate: { ideal: mode === 'cam' ? prefs.fps : Math.min(30, prefs.fps) },
+        } : false,
         audio: m ? { ...(micId ? { deviceId: { exact: micId } } : {}), echoCancellation: true, noiseSuppression: true } : false,
       });
       if (c) {
@@ -170,6 +227,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
       }
       if (m) {
         micS.current = new MediaStream(s.getAudioTracks());
+        micS.current.getAudioTracks().forEach(t => { t.enabled = !micMuted; });
         const ctx = audioCtx();
         const an = ctx.createAnalyser();
         an.fftSize = 512;
@@ -187,35 +245,87 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   };
 
   /* A device chosen while its preview is on: swap to it. */
-  useEffect(() => { if (cam.current && phaseRef.current === 'setup') { stopCam(); void ensureDevices(true, false); } }, [camId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (cam.current && phaseRef.current === 'setup') { stopCam(); void ensureDevices(true, false); } }, [camId, prefs.camRes]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (micS.current && phaseRef.current === 'setup') { stopMic(); void ensureDevices(false, true); } }, [micId]); // eslint-disable-line react-hooks/exhaustive-deps
   /* What the chosen mode no longer needs is switched off, light and all. */
   useEffect(() => { if (phaseRef.current === 'setup' && mode === 'screen' && cam.current) stopCam(); }, [mode]);
   useEffect(() => { if (phaseRef.current === 'setup' && !mic && micS.current) stopMic(); }, [mic]);
 
-  /* ── The frame clock: the composite, and the microphone meter ── */
-  useEffect(() => startClock(30, () => {
+  /* ── The frame clock: the composite, auto zoom and the microphone meter ── */
+  /* An opaque canvas: the browser skips blending it with the page, a measurable saving per frame on a small graphics chip. */
+  const getCtx = () => {
     const cv = canvasRef.current;
-    if (modeRef.current === 'screen-cam' && cv) {
-      const ctx = cv.getContext('2d');
-      if (ctx) drawComposite(ctx, display.current ? screenVid.current : null, live(cam.current) ? camVid.current : null, bubbleRef.current);
+    if (!cv) return null;
+    if (ctx2d.current?.canvas !== cv) ctx2d.current = cv.getContext('2d', { alpha: false });
+    return ctx2d.current;
+  };
+  const tick = useRef(() => {});
+  tick.current = () => {
+    const now = performance.now();
+    const ph = phaseRef.current, p = prefsRef.current, st = stats.current;
+    if (ph === 'recording') { if (st.last && now - st.last > 2.5 * 1000 / p.fps) st.late++; st.ticks++; }
+    st.last = now;
+    st.n++;
+    const cv = canvasRef.current;
+    const capturingNow = ph === 'countdown' || ph === 'recording' || ph === 'paused';
+    if (modeRef.current !== 'cam' && cv && ph !== 'review' && ph !== 'finishing') {
+      const scr = display.current ? screenVid.current : null;
+      const face = modeRef.current === 'screen-cam' && live(cam.current) && !camHiddenRef.current ? camVid.current : null;
+      /* Nothing moving and nothing recording: a few frames a second keep the preview current for a sixth of the work. */
+      const idle = !scr && !face && !capturingNow;
+      if (!(idle && st.n % 6) && !(document.hidden && !capturingNow)) {
+        const z = zoom.current;
+        z.depth = p.depth;
+        if (!p.zoom) z.out();
+        else if (scr && ph === 'recording') z.sample(scr, now);
+        const ctx = getCtx();
+        if (ctx) {
+          comp.current.draw(ctx, scr, face, p.look, p.look.bg.kind === 'image' ? imageRef.current : null, bubbleRef.current, z.view(now));
+          canvasTrack.current?.requestFrame();
+        }
+        /*
+         * Copying a video into a canvas at its own size is a plain copy; at another size it is a resample,
+         * which cost a software-drawn canvas eight times as much. So the capture is asked to deliver the
+         * screen at the size of its box — the browser scales it on the way in, cheaply — except with auto
+         * zoom on, where the extra detail is what keeps zoomed-in text sharp.
+         */
+        const track = display.current?.getVideoTracks()[0], box = comp.current.box;
+        if (track && capturingNow && box.w > 1) {
+          const cap = RES[p.res], fk = `${track.id}|${p.zoom ? 'full' : `${box.w}x${box.h}`}`;
+          if (fk !== fitKey.current) {
+            fitKey.current = fk;
+            void track.applyConstraints({
+              frameRate: { ideal: p.fps, max: p.fps }, width: { max: p.zoom ? cap : box.w }, height: { max: p.zoom ? cap : box.h },
+              ...(sup.cursor ? { cursor: p.cursor } : {}),
+            } as MediaTrackConstraints).catch(() => { /* kept as it was: drawing still scales it */ });
+          }
+        }
+      }
     }
     const mt = meter.current, el = meterEl.current;
-    if (mt && el) {
+    if (mt && el && st.n % 3 === 0) {
       mt.an.getByteTimeDomainData(mt.buf);
       let peak = 0;
       for (const v of mt.buf) peak = Math.max(peak, Math.abs(v - 128));
       el.style.width = `${Math.min(100, Math.round(peak / 128 * 160))}%`;
     }
-  }), []);
+  };
+  useEffect(() => startClock(prefs.fps, () => tick.current()), [prefs.fps]);
 
   /* ── Releasing everything ── */
+  const closePip = () => {
+    const w = pipRef.current;
+    pipRef.current = null; setPip(null);
+    try { w?.close(); } catch { /* already closed */ }
+  };
   const releaseCapture = () => {
     stopStreams(display.current, cam.current, micS.current, canvasStream.current, mixOut.current?.stream);
     display.current = cam.current = micS.current = canvasStream.current = null;
-    mixOut.current = null; meter.current = null;
+    mixOut.current = null; meter.current = null; canvasTrack.current = null; dispSrc.current = null;
     attach(screenVid.current, null); attach(camVid.current, null);
-    setCamOn(false); setMicOn(false);
+    setCamOn(false); setMicOn(false); setMicMuted(false); setCamHidden(false);
+    zoom.current.reset();
+    closePip();
     if (audio.current && audio.current.state !== 'closed') void audio.current.close().catch(() => {});
     audio.current = null;
   };
@@ -227,7 +337,9 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     stopStreams(display.current, cam.current, micS.current, canvasStream.current, mixOut.current?.stream);
     if (audio.current && audio.current.state !== 'closed') void audio.current.close().catch(() => {});
     if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+    try { pipRef.current?.close(); } catch { /* gone */ }
   }, []);
+  useEffect(() => () => { if (image) URL.revokeObjectURL(image.url); }, [image]);
 
   /* Leaving the page with a recording going, uploading or unsaved. */
   useEffect(() => {
@@ -237,19 +349,68 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
-  /* The timer (paused time left out), and the two-hour stop. */
+  /*
+   * The timer (paused time left out), the two-hour stop, and a computer that
+   * cannot keep up said out loud: when more than one frame in seven comes
+   * late the recording will look jerky, and the cure is a lower setting.
+   */
   useEffect(() => {
     if (phase !== 'recording' && phase !== 'paused') return;
     const t = setInterval(() => {
       const ms = msNow();
       setElapsed(ms);
       if (ms >= MAX_MS && phaseRef.current === 'recording') stop('Recordings stop at two hours. This one is kept below.');
-    }, 250);
+      const st = stats.current, p = prefsRef.current;
+      if (!st.warned && modeRef.current !== 'cam' && st.ticks > p.fps * 5 && st.late / st.ticks > 0.15) {
+        st.warned = true;
+        setNote(`This computer is falling behind at ${p.fps} fps, so parts of the recording may look jerky. It is still recording; next time choose 30 fps, ${RES_LABEL['720']} and Light.`);
+      }
+    }, 500);
     return () => clearInterval(t);
   }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Recording ── */
-  const shareEnded = () => {
+  const displayOptions = (): DisplayMediaStreamOptions => {
+    const cap = RES[prefs.res];
+    /* systemAudio / surfaceSwitching are Chrome's hints (ignored elsewhere): offer the computer's
+       sound in the picker when asked for, and let somebody switch what they share without stopping.
+       The size cap is asked of the capture itself, so a 5K screen is not copied at 5K only to be shrunk. */
+    return {
+      video: { frameRate: { ideal: prefs.fps, max: prefs.fps }, width: { max: cap }, height: { max: cap }, ...(sup.cursor ? { cursor: prefs.cursor } : {}) },
+      audio: sysAudio,
+      ...(sysAudio ? { systemAudio: 'include' } : {}),
+      surfaceSwitching: 'include', selfBrowserSurface: 'include',
+    } as DisplayMediaStreamOptions;
+  };
+
+  const openPip = async () => {
+    const dp = (window as unknown as { documentPictureInPicture?: { requestWindow(o: { width: number; height: number }): Promise<Window> } }).documentPictureInPicture;
+    if (!dp || pipRef.current) return;
+    try {
+      const w = await dp.requestWindow({ width: 440, height: 76 });
+      w.document.title = 'Recording controls';
+      Object.assign(w.document.body.style, { margin: '0', background: '#14151c', color: '#fff', font: '600 13px system-ui, -apple-system, "Segoe UI", sans-serif', overflow: 'hidden' });
+      w.addEventListener('pagehide', () => { if (pipRef.current === w) { pipRef.current = null; setPip(null); } });
+      pipRef.current = w; setPip(w);
+    } catch (e) {
+      setNote(`The floating controls could not open${(e as Error)?.message ? ` (${(e as Error).message})` : ''}. The controls on this page still work.`);
+    }
+  };
+
+  /** The shared screen's sound into the mix — again after a switch, the old one let go. */
+  const connectScreenSound = (s: MediaStream | null) => {
+    try { dispSrc.current?.disconnect(); } catch { /* gone */ }
+    dispSrc.current = null;
+    const t = s?.getAudioTracks()[0];
+    if (t && t.readyState === 'live' && mixOut.current && audio.current) {
+      dispSrc.current = audio.current.createMediaStreamSource(new MediaStream([t]));
+      dispSrc.current.connect(mixOut.current);
+    }
+  };
+
+  const shareEnded = (e?: Event) => {
+    /* A track from a screen already switched away from is not the one being recorded. */
+    if (e && e.target !== display.current?.getVideoTracks()[0]) return;
     const ph = phaseRef.current;
     if (ph === 'recording' || ph === 'paused') stop('You pressed “Stop sharing”, so the recording stopped. It is kept below.');
     else if (ph === 'starting' || ph === 'countdown') { run.current++; releaseCapture(); setPhase('setup'); setNote('Sharing stopped before the recording began.'); }
@@ -261,31 +422,29 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     const me = ++run.current;
     setPhase('starting');
     const back = (msg: string) => { if (msg) setError(msg); stopStreams(display.current); display.current = null; attach(screenVid.current, null); setPhase('setup'); };
+    /* Opened first, while this press still counts as one: the share picker uses it up. If the picker then
+       refuses for want of a press, the message asks for Start again — and the window is already open. */
+    if (prefs.float && sup.pip) await openPip();
+    if (run.current !== me) return;
     let shared: MediaStream | null = null;
     if (mode !== 'cam') {
       try {
-        /* systemAudio / surfaceSwitching are Chrome's hints (ignored elsewhere): offer the computer's
-           sound in the picker when asked for, and let somebody switch what they share without stopping. */
-        shared = await navigator.mediaDevices.getDisplayMedia({
-          video: { frameRate: { ideal: 30, max: 30 } },
-          audio: sysAudio,
-          ...(sysAudio ? { systemAudio: 'include' } : {}),
-          surfaceSwitching: 'include', selfBrowserSurface: 'include',
-        } as DisplayMediaStreamOptions);
-      } catch (e) { if (run.current === me) back(mediaError(e, 'screen')); return; }
+        shared = await navigator.mediaDevices.getDisplayMedia(displayOptions());
+      } catch (e) { if (run.current === me) { closePip(); back(mediaError(e, 'screen')); } return; }
       if (run.current !== me) { stopStreams(shared); return; }
       display.current = shared;
       shared.getVideoTracks()[0]?.addEventListener('ended', shareEnded);
       if (sysAudio && !shared.getAudioTracks().length) setNote('No computer sound was shared. Sound can be shared from a browser tab (tick “Share tab audio”), and on Windows or ChromeOS from the whole screen; windows and Mac screens share none.');
     }
-    if (!await ensureDevices(mode !== 'screen', mic)) { if (run.current === me) back(''); return; }
+    if (!await ensureDevices(mode !== 'screen', mic)) { if (run.current === me) { closePip(); back(''); } return; }
     if (run.current !== me) return;
     if (shared && screenVid.current) {
       attach(screenVid.current, shared);
       await metadata(screenVid.current);
-      if (mode === 'screen-cam' && canvasRef.current) {
-        const s = frameSize(screenVid.current.videoWidth, screenVid.current.videoHeight);
+      if (canvasRef.current) {
+        const s = frameSize(screenVid.current.videoWidth, screenVid.current.videoHeight, RES[prefs.res]);
         canvasRef.current.width = s.w; canvasRef.current.height = s.h;
+        comp.current.invalidate();
       }
     }
     if (mode === 'cam' && camVid.current) await metadata(camVid.current);
@@ -301,24 +460,31 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   const begin = () => {
     const m = sup.mime!;
     let video: MediaStreamTrack | undefined;
-    if (mode === 'screen-cam') { canvasStream.current = canvasRef.current!.captureStream(30); video = canvasStream.current.getVideoTracks()[0]; }
-    else if (mode === 'screen') video = display.current?.getVideoTracks()[0];
-    else video = cam.current?.getVideoTracks()[0];
+    if (mode !== 'cam') {
+      const cv = canvasRef.current!;
+      let s = cv.captureStream(0);
+      const t = s.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined;
+      if (t && typeof t.requestFrame === 'function') canvasTrack.current = t;
+      else { stopStreams(s); s = cv.captureStream(prefs.fps); canvasTrack.current = null; }
+      canvasStream.current = s;
+      video = s.getVideoTracks()[0];
+    } else video = cam.current?.getVideoTracks()[0];
     if (!video || video.readyState !== 'live') { releaseCapture(); setPhase('setup'); setError('There was no picture to record — try again.'); return; }
-    const sounds = [mic ? micS.current?.getAudioTracks()[0] : undefined, display.current?.getAudioTracks()[0]].filter((t): t is MediaStreamTrack => !!t && t.readyState === 'live');
-    let sound: MediaStreamTrack | undefined = sounds[0];
-    if (sounds.length > 1) {
+    const micT = mic ? micS.current?.getAudioTracks()[0] : undefined;
+    let sound: MediaStreamTrack | undefined;
+    if (mode !== 'cam' && (micT || sysAudio)) {
       const ctx = audioCtx();
       mixOut.current = ctx.createMediaStreamDestination();
-      for (const t of sounds) ctx.createMediaStreamSource(new MediaStream([t])).connect(mixOut.current);
+      if (micT?.readyState === 'live') ctx.createMediaStreamSource(new MediaStream([micT])).connect(mixOut.current);
+      connectScreenSound(display.current);
       sound = mixOut.current.stream.getAudioTracks()[0];
-    }
+    } else sound = [micT, display.current?.getAudioTracks()[0]].find(t => t?.readyState === 'live');
     const out = new MediaStream([video, ...(sound ? [sound] : [])]);
     const st = video.getSettings();
-    const w = (mode === 'screen-cam' ? canvasRef.current?.width : st.width) ?? 1280;
-    const h = (mode === 'screen-cam' ? canvasRef.current?.height : st.height) ?? 720;
+    const w = (mode !== 'cam' ? canvasRef.current?.width : st.width) ?? 1280;
+    const h = (mode !== 'cam' ? canvasRef.current?.height : st.height) ?? 720;
     let r: MediaRecorder;
-    try { r = new MediaRecorder(out, { mimeType: m.mime, videoBitsPerSecond: bitrateFor(w, h), audioBitsPerSecond: 128_000 }); }
+    try { r = new MediaRecorder(out, { mimeType: m.mime, videoBitsPerSecond: bitrateFor(w, h, prefs.fps, prefs.quality), audioBitsPerSecond: 128_000 }); }
     catch (e) { releaseCapture(); setPhase('setup'); setError(`This browser could not start recording (${(e as Error).message || 'MediaRecorder refused'}).`); return; }
     chunks.current = [];
     r.ondataavailable = e => { if (e.data.size) chunks.current.push(e.data); };
@@ -326,6 +492,8 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     r.onstop = () => void finish();
     rec.current = r;
     t0.current = performance.now(); pausedAt.current = null; pausedFor.current = 0;
+    stats.current = { last: 0, late: 0, ticks: 0, warned: false, n: 0 };
+    zoom.current.reset();
     setElapsed(0);
     r.start(1000);
     setPhase('recording');
@@ -364,6 +532,52 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     if (r?.state === 'paused') { r.resume(); if (pausedAt.current !== null) pausedFor.current += performance.now() - pausedAt.current; pausedAt.current = null; setPhase('recording'); }
   };
   const cancelStart = () => { run.current++; releaseCapture(); setPhase('setup'); };
+
+  /* ── While recording ── */
+  /** Another screen, window or tab, without stopping: the canvas keeps recording and draws whatever is shared now. */
+  const switchScreen = async () => {
+    if (switching || !display.current) return;
+    setSwitching(true);
+    try {
+      const s = await navigator.mediaDevices.getDisplayMedia(displayOptions());
+      if (!display.current || !(phaseRef.current === 'recording' || phaseRef.current === 'paused')) { stopStreams(s); return; }
+      const old = display.current;
+      display.current = s;
+      s.getVideoTracks()[0]?.addEventListener('ended', shareEnded);
+      attach(screenVid.current, s);
+      connectScreenSound(s);
+      zoom.current.reset();
+      stopStreams(old);
+      setNote('');
+    } catch (e) {
+      const n = (e as { name?: string } | null)?.name;
+      setNote(n === 'NotAllowedError' || n === 'AbortError' ? 'Still sharing the same screen.' : mediaError(e, 'screen'));
+    } finally { setSwitching(false); }
+  };
+  const toggleMic = () => {
+    const muted = !micMuted;
+    micS.current?.getAudioTracks().forEach(t => { t.enabled = !muted; });
+    setMicMuted(muted);
+  };
+  const toggleCam = () => setCamHidden(h => !h);
+  const toggleZoom = () => setPref('zoom', !prefs.zoom);
+
+  /* ── The background picture ── */
+  const pickImage = async (f: File | undefined) => {
+    if (!f) return;
+    if (!f.type.startsWith('image/')) { setError('That file is not a picture. Choose a JPG, PNG or WebP.'); return; }
+    try {
+      imageRef.current = await loadBackdrop(f);
+      setImage({ url: URL.createObjectURL(f), name: f.name });
+      setLook({ bg: { kind: 'image' } });
+      setError('');
+    } catch { setError('That picture could not be read. Try a JPG, PNG or WebP.'); }
+  };
+  const removeImage = () => {
+    if (prefs.look.bg.kind === 'image') setLook({ bg: { kind: 'none' } });
+    imageRef.current = null;
+    setImage(null);
+  };
 
   /* ── After ── */
   const dropResult = () => {
@@ -438,10 +652,18 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
       : !sup.mime ? 'This browser cannot record in a format we can keep (WebM or MP4). Use a recent Chrome, Edge, Firefox or Safari.'
         : '';
   const canStart = !blocked && phase === 'setup' && (mode === 'cam' ? sup.devices : sup.display);
-  const showCanvas = mode === 'screen-cam' && phase !== 'review';
+  const showCanvas = mode !== 'cam' && phase !== 'review';
   const showCam = mode === 'cam' && phase !== 'review';
-  const showScreen = mode === 'screen' && phase !== 'review' && !!display.current;
   const pct = save.state === 'saving' && save.total ? Math.round(save.sent / save.total * 100) : 0;
+  const canDrag = mode === 'screen-cam' && camOn && !camHidden;
+  const look = prefs.look, framed = look.bg.kind !== 'none';
+  /* What a minute costs on disk, on a 16:9 screen — what the person weighs when choosing. */
+  const perMin = (() => {
+    const d = mode === 'cam' ? CAM_RES[prefs.camRes] : { width: RES[prefs.res], height: Math.round(RES[prefs.res] * 9 / 16) };
+    return (bitrateFor(d.width, d.height, prefs.fps, prefs.quality) + 128_000) * 60 / 8;
+  })();
+  const live2 = { phase, elapsed, count, micOn: mic && micOn, micMuted, camShown: mode === 'screen-cam' && camOn, camHidden, screen: mode !== 'cam', switching, zoomOn: prefs.zoom };
+  const actions = { pause, resume, stop: () => stop(), cancel: cancelStart, toggleMic, toggleCam, switchScreen: () => void switchScreen(), toggleZoom };
 
   return (
     <div className="vs-modal-back" role="dialog" aria-modal="true" aria-label="Screen Recorder" data-testid="rec-dialog">
@@ -467,17 +689,17 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
             <canvas
               ref={canvasRef} width={1280} height={720} data-testid="rec-canvas"
               className={showCanvas ? '' : 'vs-rec-hidden'}
-              onPointerDown={e => { if (!camOn) return; drag.current = true; e.currentTarget.setPointerCapture(e.pointerId); dragTo(e); }}
+              onPointerDown={e => { if (!canDrag) return; drag.current = true; e.currentTarget.setPointerCapture(e.pointerId); dragTo(e); }}
               onPointerMove={e => { if (drag.current) dragTo(e); }}
               onPointerUp={() => { drag.current = false; }} onPointerCancel={() => { drag.current = false; }}
-              style={{ cursor: camOn ? 'grab' : 'default' }}
+              style={{ cursor: canDrag ? 'grab' : 'default' }}
               aria-label="Preview of what is recorded"
             />
             <video ref={camVid} muted playsInline autoPlay className={showCam && camOn ? '' : 'vs-rec-hidden'} data-testid="rec-cam" />
-            <video ref={screenVid} muted playsInline autoPlay className={showScreen ? '' : 'vs-rec-hidden'} />
+            <video ref={screenVid} muted playsInline autoPlay className="vs-rec-hidden" />
             {phase === 'review' && result && <video src={result.url} controls playsInline data-testid="rec-playback" />}
-            {phase !== 'review' && mode === 'screen' && !display.current && <p className="vs-rec-hint">Press <b>Start recording</b>, then choose a screen, window or tab to share.</p>}
-            {phase !== 'review' && mode === 'screen-cam' && !display.current && <p className="vs-rec-hint">Your screen appears here when you press <b>Start recording</b>.{camOn ? ' Drag your bubble to place it.' : <> Press <b>Check camera</b> to place your bubble.</>}</p>}
+            {phase !== 'review' && mode === 'screen' && !display.current && <p className={`vs-rec-hint${framed ? ' on-bg' : ''}`}>Press <b>Start recording</b>, then choose a screen, window or tab to share.</p>}
+            {phase !== 'review' && mode === 'screen-cam' && !display.current && <p className={`vs-rec-hint${framed ? ' on-bg' : ''}`}>Your screen appears here when you press <b>Start recording</b>.{camOn ? ' Drag your bubble to place it.' : <> Press <b>Check camera</b> to place your bubble.</>}</p>}
             {phase !== 'review' && mode === 'cam' && !camOn && <p className="vs-rec-hint">Press <b>Check camera</b> to see yourself before you start.</p>}
             {phase === 'countdown' && <div className="vs-rec-count" aria-live="assertive" data-testid="rec-countdown">{count}</div>}
           </div>
@@ -517,20 +739,34 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
               </div>
             ) : (
               <div className="vs-col" style={{ gap: 14 }}>
-                <div className="vs-col" style={{ gap: 6 }}>
-                  <b className="vs-rec-h">What do you want to record?</b>
-                  <div className="vs-rec-modes">
-                    {MODES.map(m => {
-                      const off = m.key === 'cam' ? !sup.devices : !sup.display;
-                      return (
-                        <button key={m.key} type="button" className="vs-rec-mode" aria-pressed={mode === m.key} disabled={off || phase !== 'setup'} onClick={() => setMode(m.key)} data-testid={`rec-mode-${m.key}`}>
-                          <span>{m.key === 'screen-cam' ? <><MonitorPlay size={18} /><Camera size={14} /></> : <m.icon size={18} />}</span>
-                          <b>{m.label}</b><small>{off ? 'Not available in this browser' : m.help}</small>
-                        </button>
-                      );
-                    })}
+                {!capturing && (
+                  <div className="vs-col" style={{ gap: 6 }}>
+                    <b className="vs-rec-h">What do you want to record?</b>
+                    <div className="vs-rec-modes">
+                      {MODES.map(m => {
+                        const off = m.key === 'cam' ? !sup.devices : !sup.display;
+                        return (
+                          <button key={m.key} type="button" className="vs-rec-mode" aria-pressed={mode === m.key} disabled={off || phase !== 'setup'} onClick={() => setMode(m.key)} data-testid={`rec-mode-${m.key}`}>
+                            <span>{m.key === 'screen-cam' ? <><MonitorPlay size={18} /><Camera size={14} /></> : <m.icon size={18} />}</span>
+                            <b>{m.label}</b><small>{off ? 'Not available in this browser' : m.help}</small>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {(phase === 'recording' || phase === 'paused') && (
+                  <div className="vs-col" style={{ gap: 6 }} data-testid="rec-live">
+                    <b className="vs-rec-h">While recording</b>
+                    <div className="vs-chips">
+                      {live2.micOn && <button type="button" className="vs-chip" aria-pressed={micMuted} onClick={toggleMic} data-testid="rec-mute">{micMuted ? <><MicOff size={13} /> Microphone muted</> : <><Mic size={13} /> Mute microphone</>}</button>}
+                      {live2.camShown && <button type="button" className="vs-chip" aria-pressed={camHidden} onClick={toggleCam} data-testid="rec-hide-cam">{camHidden ? <><VideoOff size={13} /> Camera hidden</> : <><Camera size={13} /> Hide camera</>}</button>}
+                      {mode !== 'cam' && <button type="button" className="vs-chip" onClick={() => void switchScreen()} disabled={switching} data-testid="rec-switch"><RefreshCw size={13} className={switching ? 'spin' : ''} /> {switching ? 'Choose what to share…' : 'Share a different screen'}</button>}
+                      {sup.pip && !pip && <button type="button" className="vs-chip" onClick={() => void openPip()} data-testid="rec-float"><PictureInPicture2 size={13} /> Floating controls</button>}
+                    </div>
+                  </div>
+                )}
 
                 <div className="vs-col" style={{ gap: 6 }}>
                   <b className="vs-rec-h">Sound</b>
@@ -543,19 +779,23 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
                       <span className="vs-rec-meter" title={micOn ? 'Microphone level' : 'Check the microphone to see its level'}><span ref={meterEl} /></span>
                     </div>
                   )}
-                  {mode !== 'cam' && (
+                  {mode !== 'cam' && !capturing && (
                     <label className="vs-rec-check"><input type="checkbox" checked={sysAudio} onChange={e => setSysAudio(e.target.checked)} disabled={capturing} data-testid="rec-sys" /> <Volume2 size={15} /> Also record sound from the tab or computer</label>
                   )}
-                  {mode !== 'cam' && sysAudio && <small className="vs-sub" style={{ margin: 0 }}>Chrome and Edge offer it in the share window: a tab’s sound always, the whole screen’s on Windows and ChromeOS. Firefox and Safari share no sound.</small>}
+                  {mode !== 'cam' && sysAudio && !capturing && <small className="vs-sub" style={{ margin: 0 }}>Chrome and Edge offer it in the share window: a tab’s sound always, the whole screen’s on Windows and ChromeOS. Firefox and Safari share no sound.</small>}
                 </div>
 
-                {needsCam && (
+                {needsCam && !capturing && (
                   <div className="vs-col" style={{ gap: 6 }}>
                     <b className="vs-rec-h">Camera</b>
                     <select className="vs-select" value={camId} onChange={e => setCamId(e.target.value)} disabled={capturing || !cams.length} aria-label="Camera">
                       {cams.length ? cams.map(d => <option key={d.id} value={d.id}>{d.label}</option>) : <option value="">No camera found yet</option>}
                     </select>
                     {cams.length > 0 && cams.every(d => /^Camera \d+$/.test(d.label)) && <small className="vs-sub" style={{ margin: 0 }}>Camera names appear once you allow the camera.</small>}
+                    <div className="vs-chips" role="group" aria-label="Camera resolution">
+                      {(Object.keys(CAM_RES) as CamRes[]).map(k => <button key={k} type="button" className="vs-chip" aria-pressed={prefs.camRes === k} onClick={() => setPref('camRes', k)} data-testid={`rec-camres-${k}`}>{CAM_LABEL[k]}</button>)}
+                    </div>
+                    <small className="vs-sub" style={{ margin: 0 }}>{mode === 'cam' ? 'The camera gives the nearest size it has.' : 'The bubble is small, so 480p or 720p looks the same and is lighter on the computer.'}</small>
                   </div>
                 )}
                 {phase === 'setup' && (needsCam || mic) && sup.devices && (
@@ -581,6 +821,88 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
                   </div>
                 )}
 
+                {mode !== 'cam' && (
+                  <div className="vs-col" style={{ gap: 8 }} data-testid="rec-look">
+                    <b className="vs-rec-h">Background and frame <small className="vs-sub" style={{ margin: 0, fontWeight: 500 }}>— change it any time, even while recording</small></b>
+                    <div className="vs-rec-swatches" role="group" aria-label="Background">
+                      <button type="button" className="vs-rec-sw none" aria-pressed={look.bg.kind === 'none'} title="No background — the screen fills the video" aria-label="No background" onClick={() => setLook({ bg: { kind: 'none' } })} data-testid="rec-bg-none"><Ban size={15} /></button>
+                      {COLORS.map(c => <button key={c} type="button" className="vs-rec-sw" style={{ background: c }} aria-pressed={look.bg.kind === 'color' && look.bg.color === c} aria-label={`Colour ${c}`} onClick={() => setLook({ bg: { kind: 'color', color: c } })} />)}
+                      {(Object.keys(GRADIENTS) as GradientId[]).map(id => <button key={id} type="button" className="vs-rec-sw" style={{ background: gradientCss(id) }} aria-pressed={look.bg.kind === 'gradient' && look.bg.id === id} title={GRADIENT_LABEL[id]} aria-label={`${GRADIENT_LABEL[id]} gradient`} onClick={() => setLook({ bg: { kind: 'gradient', id } })} data-testid={`rec-bg-${id}`} />)}
+                      <button type="button" className="vs-rec-sw img" style={image ? { backgroundImage: `url(${image.url})` } : undefined} aria-pressed={look.bg.kind === 'image'}
+                        title={image ? `Your picture: ${image.name}` : 'Use your own picture'} aria-label={image ? 'Your picture' : 'Choose a picture'}
+                        onClick={() => image ? setLook({ bg: { kind: 'image' } }) : fileRef.current?.click()} data-testid="rec-bg-image">{!image && <ImagePlus size={15} />}</button>
+                      <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/avif,image/gif" hidden onChange={e => { void pickImage(e.target.files?.[0]); e.target.value = ''; }} data-testid="rec-bg-file" />
+                    </div>
+                    {image && (
+                      <div className="vs-row" style={{ gap: 6 }}>
+                        <small className="vs-sub vs-rec-file" style={{ margin: 0 }}>{image.name} — stays in this browser</small>
+                        <button type="button" className="vs-chip" onClick={() => fileRef.current?.click()}>Replace</button>
+                        <button type="button" className="vs-chip" onClick={removeImage}>Remove</button>
+                      </div>
+                    )}
+                    {framed && (
+                      <div className="vs-rec-sliders">
+                        <label>Padding<input type="range" min={0} max={16} step={0.5} value={look.padding} onChange={e => setLook({ padding: Number(e.target.value) })} data-testid="rec-padding" /></label>
+                        <label>Roundness<input type="range" min={0} max={6} step={0.2} value={look.radius} onChange={e => setLook({ radius: Number(e.target.value) })} data-testid="rec-radius" /></label>
+                        <label>Shadow<input type="range" min={0} max={100} step={5} value={look.shadow} onChange={e => setLook({ shadow: Number(e.target.value) })} data-testid="rec-shadow" /></label>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {mode !== 'cam' && (
+                  <div className="vs-col" style={{ gap: 6 }} data-testid="rec-zoom">
+                    <b className="vs-rec-h">Zoom and pointer</b>
+                    <label className="vs-rec-check"><input type="checkbox" checked={prefs.zoom} onChange={toggleZoom} disabled={phase === 'finishing'} data-testid="rec-autozoom" /> <ZoomIn size={15} /> Zoom in automatically where you work</label>
+                    {prefs.zoom && (
+                      <div className="vs-chips" role="group" aria-label="Zoom depth">
+                        {[1.5, 1.8, 2.2].map(d => <button key={d} type="button" className="vs-chip" aria-pressed={prefs.depth === d} onClick={() => setPref('depth', d)}>{d}×</button>)}
+                      </div>
+                    )}
+                    <small className="vs-sub" style={{ margin: 0 }}>Glides in on the pointer, typing and menus by watching the picture, and back out when it goes quiet or the page scrolls. It is recorded into the video — switch it off any time, even while recording.</small>
+                    {!capturing && (sup.cursor ? (
+                      <div className="vs-chips" role="group" aria-label="Pointer">
+                        <MousePointer2 size={14} style={{ alignSelf: 'center' }} />
+                        {(Object.keys(CURSOR_LABEL) as CursorMode[]).map(k => <button key={k} type="button" className="vs-chip" aria-pressed={prefs.cursor === k} onClick={() => setPref('cursor', k)}>{CURSOR_LABEL[k]}</button>)}
+                      </div>
+                    ) : (
+                      <small className="vs-sub" style={{ margin: 0 }}>This browser records the pointer exactly as it is on screen; hiding it is offered in Safari and Firefox. A bigger, smoothed pointer with click effects needs a desktop recorder — a browser cannot see the pointer over other windows.</small>
+                    ))}
+                  </div>
+                )}
+
+                {!capturing && (
+                  <div className="vs-col" style={{ gap: 6 }} data-testid="rec-quality">
+                    <b className="vs-rec-h">Frame rate and quality</b>
+                    <div className="vs-chips" role="group" aria-label="Frame rate">
+                      {FPS.map(f => <button key={f} type="button" className="vs-chip" aria-pressed={prefs.fps === f} onClick={() => setPref('fps', f)} data-testid={`rec-fps-${f}`}>{f} fps</button>)}
+                    </div>
+                    {mode !== 'cam' && (
+                      <div className="vs-chips" role="group" aria-label="Resolution">
+                        {(Object.keys(RES) as Res[]).map(k => <button key={k} type="button" className="vs-chip" aria-pressed={prefs.res === k} onClick={() => setPref('res', k)} data-testid={`rec-res-${k}`}>{RES_LABEL[k]}</button>)}
+                      </div>
+                    )}
+                    <div className="vs-chips" role="group" aria-label="Quality">
+                      {(Object.keys(QUALITY_LABEL) as Quality[]).map(k => <button key={k} type="button" className="vs-chip" aria-pressed={prefs.quality === k} onClick={() => setPref('quality', k)} data-testid={`rec-q-${k}`}>{QUALITY_LABEL[k]}</button>)}
+                    </div>
+                    <small className="vs-sub" style={{ margin: 0 }} data-testid="rec-permin">
+                      About {bytesLabel(perMin)} a minute{mode !== 'cam' ? ' (a smaller screen records at its own size)' : ''}. {SLOW ? 'Set lighter to suit this computer. ' : ''}60 fps, 1440p and 4K need a fast computer; if the recording looks jerky, choose 30 fps, 720p and Light.
+                    </small>
+                  </div>
+                )}
+
+                {phase === 'setup' && (
+                  sup.pip ? (
+                    <div className="vs-col" style={{ gap: 4 }}>
+                      <label className="vs-rec-check"><input type="checkbox" checked={prefs.float} onChange={e => setPref('float', e.target.checked)} data-testid="rec-float-pref" /> <PictureInPicture2 size={15} /> Floating controls over other windows</label>
+                      <small className="vs-sub" style={{ margin: 0 }}>Pause, stop, mute and switch screens without coming back here. Sharing your whole screen shows them in the video too — drag them to a corner, or share a window or tab.</small>
+                    </div>
+                  ) : (
+                    <small className="vs-sub" style={{ margin: 0 }}>This browser cannot float controls over other windows (Chrome and Edge can). Come back to this tab to pause or stop, or press your browser’s “Stop sharing”.</small>
+                  )
+                )}
+
+                <div className="vs-rec-go">
                 {phase === 'setup' || phase === 'starting' ? (
                   <div className="vs-col" style={{ gap: 6 }}>
                     <button type="button" className="vs-btn ai vs-rec-big" onClick={() => void start()} disabled={!canStart} data-testid="rec-start">
@@ -600,11 +922,56 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
                     <button type="button" className="vs-btn vs-rec-big stop" onClick={() => stop()} data-testid="rec-stop"><Square size={16} fill="currentColor" /> Stop</button>
                   </div>
                 )}
+                </div>
               </div>
             )}
           </div>
         </div>
       </div>
+      {pip && createPortal(<FloatingControls s={live2} a={actions} />, pip.document.body)}
+    </div>
+  );
+}
+
+/* ── The floating controls ─────────────────────────────────────────────── */
+
+/*
+ * Drawn into the Picture-in-Picture window, which has none of this page's
+ * stylesheets — so every style is inline, and kept to what a 76-pixel-high
+ * strip needs.
+ */
+const bar: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', height: '100vh', boxSizing: 'border-box', whiteSpace: 'nowrap' };
+const fbtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, height: 40, minWidth: 40, padding: '0 10px', border: 0, borderRadius: 10, background: '#2a2c38', color: '#fff', cursor: 'pointer', font: 'inherit' };
+
+interface LiveState { phase: Phase; elapsed: number; count: number; micOn: boolean; micMuted: boolean; camShown: boolean; camHidden: boolean; screen: boolean; switching: boolean; zoomOn: boolean }
+interface LiveActions { pause(): void; resume(): void; stop(): void; cancel(): void; toggleMic(): void; toggleCam(): void; switchScreen(): void; toggleZoom(): void }
+
+/* A component of its own, not one made inside the bar: the bar re-renders twice a second and a remade button loses a click pressed across it. */
+function B({ on, label, onClick, children, style }: { on?: boolean; label: string; onClick: () => void; children: ReactNode; style?: CSSProperties }) {
+  return <button type="button" title={label} aria-label={label} aria-pressed={on} onClick={onClick} style={{ ...fbtn, ...(on ? { background: '#f59e0b', color: '#111' } : null), ...style }}>{children}</button>;
+}
+
+function FloatingControls({ s, a }: { s: LiveState; a: LiveActions }) {
+  const going = s.phase === 'recording' || s.phase === 'paused';
+  return (
+    <div style={bar}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minWidth: 74, fontVariantNumeric: 'tabular-nums' }} role="status">
+        <i style={{ width: 10, height: 10, borderRadius: '50%', background: s.phase === 'recording' ? '#ef4444' : '#f59e0b' }} />
+        {s.phase === 'countdown' ? `In ${s.count}…` : going ? msClock(s.elapsed) : s.phase === 'finishing' ? 'Saving…' : 'Ready'}
+      </span>
+      {s.phase === 'countdown' && <B label="Cancel" onClick={a.cancel}><X size={16} /> Cancel</B>}
+      {going && (
+        <>
+          {s.phase === 'recording'
+            ? <B label="Pause" onClick={a.pause}><Pause size={16} /></B>
+            : <B label="Resume" onClick={a.resume} style={{ background: '#16a34a' }}><Play size={16} /></B>}
+          <B label="Stop recording" onClick={a.stop} style={{ background: '#dc2626' }}><Square size={14} fill="currentColor" /> Stop</B>
+          {s.micOn && <B label={s.micMuted ? 'Unmute microphone' : 'Mute microphone'} on={s.micMuted} onClick={a.toggleMic}>{s.micMuted ? <MicOff size={16} /> : <Mic size={16} />}</B>}
+          {s.camShown && <B label={s.camHidden ? 'Show camera' : 'Hide camera'} on={s.camHidden} onClick={a.toggleCam}>{s.camHidden ? <VideoOff size={16} /> : <Camera size={16} />}</B>}
+          {s.screen && <B label={s.switching ? 'Choose what to share in the main window' : 'Share a different screen'} onClick={a.switchScreen}><RefreshCw size={16} /></B>}
+          {s.screen && <B label={s.zoomOn ? 'Turn auto zoom off' : 'Turn auto zoom on'} on={s.zoomOn} onClick={a.toggleZoom}><ZoomIn size={16} /></B>}
+        </>
+      )}
     </div>
   );
 }

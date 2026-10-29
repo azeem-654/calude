@@ -194,6 +194,30 @@ export is a canvas recording; Video Studio is the real one.
   `camera=(self)` in `public/_headers`. Limits: no screen sharing on phones
   (camera-only offered), system sound only Chrome/Edge (tabs; whole screen on
   Windows/ChromeOS), Safari records MP4, held in memory (stops at 2 h).
+  **Every screen mode goes through the canvas** (`Compositor`), so the frame
+  — background colour / gradient / the person's own picture (read locally,
+  never uploaded), padding, roundness, shadow — and the bubble change live
+  while recording, and **Share a different screen** swaps the source without
+  stopping (sound is always mixed through WebAudio in screen modes so the new
+  screen's sound joins). Frame rate 24/30/50/60, resolution 720p–4K, quality
+  Light/Standard/High (`bitrateFor`), camera 480/720/1080p; remembered in
+  `crm_rec_prefs` (never the picture); a 4-core / 4 GB computer starts at
+  720p/30/Light. **Lightweight on purpose**: the background is painted onto
+  the canvas only when it changes (a canvas keeps its pixels) — per frame only
+  the screen, four corner patches and the bubble's box are redrawn; the
+  capture is asked (`applyConstraints`) for the screen at its box's size so
+  the copy is 1:1 (a resample cost ~8× in software), except with auto zoom;
+  `captureStream(0)` + `requestFrame` records each drawn frame once; the
+  worker clock aims at a fixed grid; H.264 (hardware) then VP8 before VP9; a
+  computer falling behind (>1 in 7 frames late) is told so. **Auto zoom**
+  (`AutoZoom`, opt-in, toggled live) reads a 96-px-wide copy of the screen
+  5×/s and eases toward where it changes — it cannot see the pointer over
+  other windows, and says so; the pointer can only be hidden where the
+  browser offers `cursor` (Safari/Firefox). **Floating controls** are a
+  Document Picture-in-Picture window (Chrome/Edge), opened by the Start press
+  (a click is needed; the share picker uses it up after), inline styles only.
+  Not built: a custom/smoothed pointer, zoom/speed pills on the editor's
+  timeline, re-styling a recording after it is made.
 - **Honest gaps**, shown on the **What works** panel: speaker labels, eye contact
   (researched 2026-10: NVIDIA Maxine is gRPC-only, Sieve's API no longer
   documented — no adapter), background removal (no provider), before/after audio

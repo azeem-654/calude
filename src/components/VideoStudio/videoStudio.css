@@ -926,6 +926,16 @@ html[data-theme="dark"] .vs canvas.vse-layout { filter: none; }
 }
 @media (max-width: 480px) { .vs-rec-mode small { display: none; } }
 /* The Media Library's own way in, and its player. */
+.vs-rec-hint.on-bg { color: #fff; text-shadow: 0 1px 8px rgba(0, 0, 0, .55); }
+.vs-rec-swatches { display: flex; flex-wrap: wrap; gap: 7px; }
+.vs-rec-sw { width: 34px; height: 34px; border-radius: 10px; border: 1.5px solid var(--line2); cursor: pointer; padding: 0; display: grid; place-items: center; color: var(--muted); background: var(--raise); background-size: cover; background-position: center; }
+.vs-rec-sw[aria-pressed="true"] { outline: 2.5px solid var(--accent); outline-offset: 2px; }
+.vs-rec-sliders { display: grid; gap: 6px; }
+.vs-rec-sliders label { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12.5px; font-weight: 650; color: var(--muted); }
+.vs-rec-sliders input { width: 100%; min-width: 0; }
+.vs-rec-file { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Start and Stop stay in reach at the bottom of a long settings column. */
+.vs-rec-go { position: sticky; bottom: -18px; background: linear-gradient(rgba(255, 255, 255, 0), #fff 14px); padding: 14px 0 6px; margin-top: -8px; z-index: 1; }
 .vs-rec-cta { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
 .vs-rec-cta .vs-grow { flex: 1; min-width: 200px; }
 .vs-media-play { position: absolute; inset: 0; margin: auto; width: 52px; height: 52px; border-radius: 50%; border: 0; display: grid; place-items: center; background: rgba(255, 255, 255, .92); color: #111; cursor: pointer; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
