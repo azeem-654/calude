@@ -175,6 +175,25 @@ export is a canvas recording; Video Studio is the real one.
   offered from `faces.json` `people` (track.py) — `layoutOptions` says why not;
   `layoutPlan` boxes (numbers only) → engine `layoutFrame`; preview drawn on a
   canvas with the same boxes.
+- **Screen Recorder** (`ScreenRecorder.tsx` + `recorder.ts`, lazy, in the
+  **Media Library** tab; `?tab=media&record=1` opens it): screen, screen +
+  camera bubble, or camera only, browser-only (getDisplayMedia /
+  getUserMedia / MediaRecorder, no service). The bubble is **composited** —
+  screen and camera drawn onto one canvas, `captureStream(30)` recorded — so
+  it is in the file; corner/size/shape/drag apply live. Frames are drawn on a
+  **worker's clock** (`recorderClock.worker.ts`, its own file: `script-src
+  'self'` refuses blob: workers) because rAF stops in a background tab. Mic +
+  tab/system sound mixed by WebAudio. WebM's missing duration is written
+  from the first MB only (`finishFile` → `lib/webmDuration.ts`). **Save** is
+  the upload path: `create` with `long: false, shorts: 0` (no AI analysis, no
+  render; still prepared and transcribed like any upload) + `uploadVideo`;
+  "Saved" only after `upload_complete`; a refusal before any byte (code set —
+  no storage, allowance) deletes the empty draft; the recording stays to
+  retry/download. `library` sources now carry `playUrl` (proxy, else the
+  original — no engine means no proxy) and `downloadUrl`. Needs
+  `camera=(self)` in `public/_headers`. Limits: no screen sharing on phones
+  (camera-only offered), system sound only Chrome/Edge (tabs; whole screen on
+  Windows/ChromeOS), Safari records MP4, held in memory (stops at 2 h).
 - **Honest gaps**, shown on the **What works** panel: speaker labels, eye contact
   (researched 2026-10: NVIDIA Maxine is gRPC-only, Sieve's API no longer
   documented — no adapter), background removal (no provider), before/after audio

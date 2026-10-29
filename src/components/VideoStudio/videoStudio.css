@@ -887,3 +887,47 @@ html[data-theme="dark"] .vs canvas.vse-layout { filter: none; }
 .vs-tool:disabled i { background: var(--soft); color: var(--faint); }
 .vs-tool:disabled b { color: var(--faint); }
 .vs-tool.on i { background: var(--ok-soft); color: var(--ok); }
+
+/* ── Screen Recorder (ScreenRecorder.tsx), in the Media Library ── */
+.vs-modal.vs-rec { max-width: min(1180px, 100%); padding: clamp(12px, 2vw, 18px); }
+.vs-rec-grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); align-items: start; }
+@media (max-width: 900px) { .vs-rec-grid { grid-template-columns: minmax(0, 1fr); } }
+/* Black in both themes: kept out of the app's dark-mode inversion (data-noinvert), so the pictures inside are not inverted twice. */
+.vs-rec-stage { position: relative; background: #0b0c10; border-radius: 14px; aspect-ratio: 16 / 9; overflow: hidden; display: grid; place-items: center; min-width: 0; }
+.vs-rec-stage > canvas, .vs-rec-stage > video { width: 100%; height: 100%; object-fit: contain; display: block; grid-area: 1 / 1; touch-action: none; }
+.vs-rec-stage > .vs-rec-hidden { position: absolute; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
+.vs-rec-hint { grid-area: 1 / 1; pointer-events: none; color: #c9ccd6; text-align: center; padding: 0 18px; margin: 0; font-size: 14px; line-height: 1.5; z-index: 1; }
+.vs-rec-count { position: absolute; inset: 0; display: grid; place-items: center; font-size: clamp(64px, 14vw, 140px); font-weight: 800; color: #fff; background: rgba(0, 0, 0, .45); text-shadow: 0 6px 30px rgba(0, 0, 0, .6); z-index: 2; }
+.vs-rec-side { min-width: 0; }
+.vs-rec-h { font-size: 13px; }
+.vs-rec-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.vs-rec-mode { border: 1.5px solid var(--line2); background: var(--raise); border-radius: 14px; padding: 10px 8px; cursor: pointer; display: grid; justify-items: center; gap: 3px; text-align: center; color: var(--ink); min-width: 0; }
+.vs-rec-mode span { display: inline-flex; gap: 2px; align-items: flex-end; color: var(--accent); }
+.vs-rec-mode b { font-size: 13px; }
+.vs-rec-mode small { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
+.vs-rec-mode[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px rgba(109, 74, 255, .18); }
+.vs-rec-mode:disabled { opacity: .5; cursor: not-allowed; }
+.vs-rec-check { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13.5px; cursor: pointer; }
+.vs-rec-check input { width: 18px; height: 18px; }
+.vs-rec-meter { flex: none; width: 70px; height: 10px; border-radius: 99px; background: rgba(17, 17, 39, .1); overflow: hidden; }
+.vs-rec-meter span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #10b981, #f59e0b 70%, #ef4444); }
+.vs-btn.vs-rec-big { width: 100%; justify-content: center; padding: 13px 18px; font-size: 16px; border-radius: 13px; }
+.vs-rec-controls { flex-wrap: nowrap; }
+.vs-rec-controls .vs-btn.vs-rec-big { flex: 1; width: auto; }
+.vs-btn.vs-rec-big.stop { background: #dc2626; border-color: #dc2626; color: #fff; }
+.vs-btn.vs-rec-big.stop:hover:not(:disabled) { background: #b91c1c; }
+.vs-rec-pill { display: inline-flex; align-items: center; gap: 7px; border-radius: 99px; padding: 4px 11px; font-size: 13px; font-weight: 700; background: var(--bad-soft); color: var(--bad); }
+.vs-rec-pill i { width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+.vs-rec-pill.paused { background: var(--warn-soft); color: var(--warn); }
+.vs-rec-pill b { font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: no-preference) {
+  .vs-rec-pill.recording i { animation: vs-rec-blink 1.2s ease-in-out infinite; }
+  @keyframes vs-rec-blink { 50% { opacity: .25; } }
+}
+@media (max-width: 480px) { .vs-rec-mode small { display: none; } }
+/* The Media Library's own way in, and its player. */
+.vs-rec-cta { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.vs-rec-cta .vs-grow { flex: 1; min-width: 200px; }
+.vs-media-play { position: absolute; inset: 0; margin: auto; width: 52px; height: 52px; border-radius: 50%; border: 0; display: grid; place-items: center; background: rgba(255, 255, 255, .92); color: #111; cursor: pointer; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
+.vs-media-play:hover { background: #fff; }
+.vs-media-player video { width: 100%; max-height: 70vh; background: #000; border-radius: 12px; display: block; }

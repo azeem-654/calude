@@ -1,26 +1,31 @@
 /**
  * The studio's workspace-wide views, all read from /api/video.php `library`:
  *
- *   Media Library    — the source recordings, each kept as uploaded.
+ *   Media Library    — the source recordings, each kept as uploaded and
+ *                      playable here, and the Screen Recorder that makes
+ *                      new ones in the browser (ScreenRecorder.tsx).
  *   Exports          — every video made, with its files and status.
  *   Ready to Publish — the calendar. Nothing is posted from here: there is
  *                      no connected publishing, so a planned day reads
  *                      "Ready to publish manually", with the files to
  *                      download and the words to copy.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Copy, Download, Image as ImageIcon, Loader, CalendarDays, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { Copy, Download, Image as ImageIcon, Loader, CalendarDays, ChevronLeft, ChevronRight, Check, MonitorPlay, Play, X, Clapperboard } from 'lucide-react';
 import { videoLibrary, clock, bytesLabel, STATUS_LABEL, type LibraryItem, type LibrarySource, type OutputStatus } from '../../services/videoStudio';
 
-function useLibrary() {
+/* Loaded when opened: nobody who only browses the library downloads the recorder. */
+const ScreenRecorder = lazy(() => import('./ScreenRecorder'));
+
+function useLibrary(nonce = 0) {
   const [data, setData] = useState<{ items: LibraryItem[]; sources: LibrarySource[] } | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
     let alive = true;
-    void videoLibrary().then(r => { if (!alive) return; if (r.success) setData({ items: r.items, sources: r.sources }); else setError(r.error ?? 'Could not load.'); });
+    void videoLibrary().then(r => { if (!alive) return; if (r.success) { setError(''); setData({ items: r.items, sources: r.sources }); } else setError(r.error ?? 'Could not load.'); });
     return () => { alive = false; };
-  }, []);
+  }, [nonce]);
   return { data, error };
 }
 
@@ -33,25 +38,75 @@ export function CopyButton({ text, label, small = true }: { text: string; label:
   );
 }
 
-export function MediaLibrary() {
-  const { data, error } = useLibrary();
-  if (error) return <div className="vs-note bad">{error}</div>;
-  if (!data) return <p className="vs-sub"><Loader size={14} className="spin" /> Loading…</p>;
-  if (!data.sources.length) return <div className="vs-card vs-empty">No recordings yet. A new video project starts with one.</div>;
+const SOURCE_STATE: Record<string, string> = { uploading: 'Uploading', processing: 'Preparing for the editor', ready: 'Ready to edit', failed: 'Preparing failed — open it to see why' };
+
+/** One saved recording, played from its signed link (the proxy once made, else the original). */
+function SourcePlayer({ s, onClose }: { s: LibrarySource; onClose: () => void }) {
   return (
-    <div className="vs-grid" data-testid="vs-media">
-      {data.sources.map(s => (
-        <Link key={s.projectId} to={`/video-studio/${s.projectId}`} className="vs-card vs-proj" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div className="vs-poster" style={s.posterUrl ? { backgroundImage: `url("${s.posterUrl}")` } : undefined}>
-            {s.duration > 0 && <span className="vs-dur">{clock(s.duration)}</span>}
-          </div>
-          <div className="vs-proj-body">
-            <b>{s.name || 'Recording'}</b>
-            <span>{s.projectName} · {bytesLabel(s.bytes)}{s.width ? ` · ${s.width}×${s.height}` : ''}</span>
-            <span>Original kept unchanged</span>
-          </div>
-        </Link>
-      ))}
+    <div className="vs-modal-back" role="dialog" aria-modal="true" aria-label={`Play ${s.projectName}`} onClick={onClose} data-testid="vs-media-player">
+      <div className="vs-modal vs-media-player" onClick={e => e.stopPropagation()}>
+        <div className="vs-row" style={{ marginBottom: 8 }}>
+          <b style={{ fontSize: 15 }}>{s.projectName}</b>
+          <span className="vs-spacer" />
+          <button type="button" className="vs-btn ghost sm" onClick={onClose} aria-label="Close"><X size={16} /></button>
+        </div>
+        <video src={s.playUrl} controls autoPlay playsInline />
+        <div className="vs-row" style={{ marginTop: 10 }}>
+          <Link className="vs-btn sm" to={`/video-studio/${s.projectId}`}><Clapperboard size={13} /> Open in the editor</Link>
+          {s.downloadUrl && <a className="vs-btn sm" href={s.downloadUrl}><Download size={13} /> Download original</a>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function MediaLibrary({ record = false, onRecord }: { record?: boolean; onRecord?: (open: boolean) => void }) {
+  const [nonce, setNonce] = useState(0);
+  const { data, error } = useLibrary(nonce);
+  const [localOpen, setLocalOpen] = useState(false);
+  const [playing, setPlaying] = useState<LibrarySource | null>(null);
+  const open = onRecord ? record : localOpen;
+  const setOpen = (o: boolean) => (onRecord ? onRecord(o) : setLocalOpen(o));
+  return (
+    <div className="vs-col" style={{ gap: 16 }}>
+      <div className="vs-card vs-rec-cta" data-testid="vs-recorder-cta">
+        <span className="vs-mark"><MonitorPlay size={22} /></span>
+        <div className="vs-grow">
+          <h2 style={{ margin: 0 }}>Screen Recorder</h2>
+          <p className="vs-sub" style={{ margin: '2px 0 0' }}>Record your screen, your screen with your face in a bubble, or just your camera — right here in the browser. Then save it to this library or download it.</p>
+        </div>
+        <button type="button" className="vs-btn ai vs-rec-big" style={{ width: 'auto' }} onClick={() => setOpen(true)} data-testid="vs-open-recorder"><MonitorPlay size={18} /> Record your screen</button>
+      </div>
+      {error ? <div className="vs-note bad">{error}</div>
+        : !data ? <p className="vs-sub"><Loader size={14} className="spin" /> Loading…</p>
+          : !data.sources.length ? <div className="vs-card vs-empty">No recordings yet. Record one above, or start a new video project with a file.</div>
+            : (
+              <div className="vs-grid" data-testid="vs-media">
+                {data.sources.map(s => (
+                  <div key={s.projectId} className="vs-card vs-proj" style={{ cursor: 'default' }} data-testid="vs-media-item">
+                    <div className="vs-poster" style={s.posterUrl ? { backgroundImage: `url("${s.posterUrl}")` } : undefined}>
+                      {s.duration > 0 && <span className="vs-dur">{clock(s.duration)}</span>}
+                      {s.playUrl && <button type="button" className="vs-media-play" onClick={() => setPlaying(s)} aria-label={`Play ${s.projectName}`} data-testid="vs-media-play"><Play size={22} fill="currentColor" /></button>}
+                    </div>
+                    <div className="vs-proj-body">
+                      <b>{s.projectName || s.name || 'Recording'}</b>
+                      <span>{bytesLabel(s.bytes)}{s.width ? ` · ${s.width}×${s.height}` : ''} · {new Date(s.createdAt).toLocaleDateString()}</span>
+                      <span>{SOURCE_STATE[s.status] ?? 'Original kept unchanged'}</span>
+                      <div className="vs-row" style={{ marginTop: 4 }}>
+                        <Link className="vs-btn sm" to={`/video-studio/${s.projectId}`}><Clapperboard size={13} /> Open</Link>
+                        {s.downloadUrl && <a className="vs-btn sm" href={s.downloadUrl}><Download size={13} /> Download</a>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+      {playing && <SourcePlayer s={playing} onClose={() => setPlaying(null)} />}
+      {open && (
+        <Suspense fallback={<div className="vs-modal-back"><p className="vs-sub" style={{ color: '#fff' }}><Loader size={14} className="spin" /> Opening the recorder…</p></div>}>
+          <ScreenRecorder onClose={() => setOpen(false)} onSaved={() => setNonce(n => n + 1)} />
+        </Suspense>
+      )}
     </div>
   );
 }
