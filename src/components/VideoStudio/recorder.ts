@@ -1,9 +1,10 @@
 /**
  * The Screen Recorder's plumbing that is not React: what this browser can
- * record, frame rate and quality, the camera bubble's geometry, the frame
- * (background, padding, roundness, shadow) and its compositor, automatic
- * zoom, plain-language errors and the clock that keeps drawing while the tab
- * is in the background.
+ * record, frame rate and quality, the layouts (where the screen and the
+ * camera sit), the camera's frame (shape and ring), the background, padding,
+ * roundness and shadow, and the compositor that draws them; the pointer log
+ * (where the pointer went and clicked, read from the picture), plain-language
+ * errors and the clock that keeps drawing while the tab is in the background.
  *
  * Everything here runs in the browser and only after the person presses a
  * button: nothing asks for a camera, a microphone or a screen on its own.
@@ -11,10 +12,12 @@
 import { fixWebmDuration } from '../../lib/webmDuration';
 import ClockWorker from './recorderClock.worker.ts?worker';
 import { CameraFx, NO_FX, type CamFx, type CamBg } from './cameraFx';
+import type { ScreenMeta, ScreenSeg, NBox } from '../../services/videoStudio';
 
 export type RecMode = 'screen' | 'screen-cam' | 'cam';
 export type BubbleSize = 'S' | 'M' | 'L';
-export interface Bubble { x: number; y: number; size: BubbleSize; shape: 'circle' | 'rounded'; mirror: boolean }
+/** Where the bubble sits (0–1 across the room left for it) and how big; its shape and ring are the camera's frame (`CamFrame`). */
+export interface Bubble { x: number; y: number; size: BubbleSize; mirror: boolean }
 export const CORNERS = { tl: { x: 0, y: 0 }, tr: { x: 1, y: 0 }, bl: { x: 0, y: 1 }, br: { x: 1, y: 1 } } as const;
 export type Corner = keyof typeof CORNERS;
 
@@ -131,7 +134,11 @@ export interface Look { bg: Backdrop; padding: number; radius: number; shadow: n
 export const FRAMED = { padding: 7, radius: 2.2, shadow: 60 };
 /* No background, but the frame's numbers ready: picking a background frames the screen at once. */
 export const PLAIN_LOOK: Look = { bg: { kind: 'none' }, ...FRAMED };
+/* What switching the background on brings back when nothing was chosen before. */
+export const DEFAULT_BG: Backdrop = { kind: 'gradient', id: 'sequoia' };
 export const COLORS = ['#ffffff', '#e5e7eb', '#0b0c10', '#6d4aff', '#0f766e', '#f59e0b'];
+/* With the background off, what shows round side-by-side panels: a neutral near-black, not a colour nobody chose. */
+const NO_BG_FILL = '#0b0c10';
 
 interface Gradient { angle: number; stops: string[]; glows: [x: number, y: number, r: number, color: string][] }
 /* Each drawn by the same numbers on the canvas and as the swatch's CSS, so the swatch is what is recorded. */
@@ -166,7 +173,7 @@ export function gradientCss(id: GradientId): string {
 function paintBackdrop(ctx: Ctx2D, W: number, H: number, bg: Backdrop, image: ImageBitmap | null) {
   if (bg.kind === 'color') { ctx.fillStyle = bg.color; ctx.fillRect(0, 0, W, H); return; }
   if (bg.kind === 'image' && image) { coverImage(ctx, image, W, H); return; }
-  if (bg.kind !== 'gradient') { ctx.fillStyle = '#101117'; ctx.fillRect(0, 0, W, H); return; }
+  if (bg.kind !== 'gradient') { ctx.fillStyle = NO_BG_FILL; ctx.fillRect(0, 0, W, H); return; }
   const g: Gradient = GRADIENTS[bg.id];
   /* CSS angles: 0deg points up, clockwise; the line is long enough to reach the corners, as CSS's is. */
   const a = g.angle * Math.PI / 180, dx = Math.sin(a), dy = -Math.cos(a);
@@ -204,43 +211,147 @@ export async function loadBackdrop(file: File): Promise<ImageBitmap> {
 /** Where the screen sits: inside the padding, its own shape, centred. With no background it fills the frame as before. */
 export function screenRect(W: number, H: number, aspect: number, look: Look): Rect {
   const pad = look.bg.kind === 'none' ? 0 : Math.round(Math.min(W, H) * look.padding / 100);
-  const bw = Math.max(2, W - 2 * pad), bh = Math.max(2, H - 2 * pad);
-  const s = Math.min(bw / aspect, bh);
-  const w = Math.round(s * aspect), h = Math.round(s);
-  return { x: Math.round((W - w) / 2), y: Math.round((H - h) / 2), w, h };
+  return fitIn({ x: pad, y: pad, w: Math.max(2, W - 2 * pad), h: Math.max(2, H - 2 * pad) }, aspect);
 }
 
-/* ── The camera bubble ─────────────────────────────────────────────────── */
+/** A picture of `aspect` as large as fits in `area`, centred. */
+function fitIn(area: Rect, aspect: number): Rect {
+  const s = Math.min(area.w / aspect, area.h);
+  const w = Math.max(2, Math.round(s * aspect)), h = Math.max(2, Math.round(s));
+  return { x: Math.round(area.x + (area.w - w) / 2), y: Math.round(area.y + (area.h - h) / 2), w, h };
+}
+
+/* ── The camera: bubble, shape, ring ───────────────────────────────────── */
 
 const SIZE: Record<BubbleSize, number> = { S: 0.2, M: 0.28, L: 0.38 };
 export interface Rect { x: number; y: number; w: number; h: number }
 
+export type CamShape = 'circle' | 'square' | 'rounded';
+export const SHAPES: readonly CamShape[] = ['circle', 'square', 'rounded'];
+/** Round the camera: none, the thin white line, a neon glow, a turning gradient, or a neon glow that breathes. */
+export type Ring = 'none' | 'white' | 'neon' | 'gradient' | 'pulse';
+export const RINGS: readonly Ring[] = ['none', 'white', 'neon', 'gradient', 'pulse'];
+export const RING_COLORS: readonly string[] = ['#22d3ee', '#a855f7', '#f472b6', '#facc15', '#4ade80', '#ffffff'];
+export interface CamFrame { shape: CamShape; ring: Ring; ringColor: string }
+export const DEFAULT_FRAME: CamFrame = { shape: 'circle', ring: 'white', ringColor: '#22d3ee' };
+
 /**
  * Where the bubble sits on a W×H frame. `x`/`y` are 0–1 across the room left
  * once the bubble and a margin are taken out, so the corners are exactly
- * 0 and 1 and dragging can never push it off the picture.
+ * 0 and 1 and dragging can never push it off the picture. Every shape is a
+ * square box the same size (the camera is cover-cropped into it); `wide` is
+ * the cut-out (background removed), which keeps the camera's own shape.
  */
-export function bubbleRect(W: number, H: number, b: Bubble, camAspect: number): Rect {
+export function bubbleRect(W: number, H: number, b: Bubble, camAspect: number, wide = false): Rect {
   const short = Math.min(W, H);
   const h = Math.round(short * SIZE[b.size]);
-  const w = b.shape === 'circle' ? h : Math.round(Math.min(W * 0.5, h * Math.min(16 / 9, Math.max(1, camAspect || 4 / 3))));
+  const w = wide ? Math.round(Math.min(W * 0.5, h * Math.min(16 / 9, Math.max(1, camAspect || 4 / 3)))) : h;
   const m = Math.round(short * 0.03);
   return { x: Math.round(m + b.x * Math.max(0, W - 2 * m - w)), y: Math.round(m + b.y * Math.max(0, H - 2 * m - h)), w, h };
 }
 
 /** The bubble centred on a point (frame pixels), clamped onto the picture. */
-export function bubbleAt(W: number, H: number, b: Bubble, camAspect: number, px: number, py: number): Pick<Bubble, 'x' | 'y'> {
-  const r = bubbleRect(W, H, b, camAspect);
+export function bubbleAt(W: number, H: number, b: Bubble, camAspect: number, px: number, py: number, wide = false): Pick<Bubble, 'x' | 'y'> {
+  const r = bubbleRect(W, H, b, camAspect, wide);
   const m = Math.round(Math.min(W, H) * 0.03);
   const roomX = Math.max(1, W - 2 * m - r.w), roomY = Math.max(1, H - 2 * m - r.h);
   const clamp = (v: number) => Math.min(1, Math.max(0, v));
   return { x: clamp((px - r.w / 2 - m) / roomX), y: clamp((py - r.h / 2 - m) / roomY) };
 }
 
+/**
+ * How round the camera's corners are. A bubble can be a circle; a tall panel
+ * cannot, so a circle there is drawn as a rounded panel — and a big panel's
+ * corners are capped so they read as the bubble's, not as a pill.
+ */
+export function camRadius(r: Rect, shape: CamShape, panel: boolean, short: number): number {
+  if (shape === 'square') return 0;
+  const side = Math.min(r.w, r.h);
+  if (!panel) return shape === 'circle' ? side / 2 : Math.round(side * 0.18);
+  return Math.round(Math.min(side * 0.16, short * 0.045));
+}
+
+/** The ring's line, glow and how far past the camera's edge it reaches (what must be put back each frame). */
+export function ringSize(r: Rect, ring: Ring, short: number): { lw: number; glow: number; ext: number } {
+  if (ring === 'none') return { lw: 0, glow: 0, ext: 0 };
+  /* A big panel's ring is as thick as a large bubble's, not a third of the screen's width. */
+  const base = Math.min(r.w, r.h, short * 0.3);
+  const lw = Math.max(2, Math.round(base / (ring === 'white' ? 45 : ring === 'gradient' ? 24 : 36)));
+  const glow = ring === 'neon' || ring === 'pulse' ? Math.max(4, Math.round(base / 10)) : 0;
+  return { lw, glow, ext: glow * 2 + lw };
+}
+
+/* The turning ring's colours: the chosen one and its two neighbours on the swatch row, back to the chosen one. */
+function ringStops(c: string): string[] {
+  const vivid = RING_COLORS.slice(0, 5), i = vivid.indexOf(c);
+  if (i < 0) return [c, '#22d3ee', '#a855f7', '#f472b6', c];
+  return [c, vivid[(i + 1) % 5], vivid[(i + 2) % 5], c];
+}
+
+/* ── Layouts: where the screen and the camera sit ──────────────────────── */
+
+/**
+ * Screen + camera layouts. 'bubble' is the camera over the screen, moved by
+ * dragging; the others place the camera as a fixed panel: beside the screen
+ * (about a third of the width, full height), the camera large with the
+ * screen as an inset ('presenter'), or half and half.
+ */
+export const LAYOUTS = ['bubble', 'speaker-left', 'speaker-right', 'presenter', 'split'] as const;
+export type Layout = typeof LAYOUTS[number];
+
+/**
+ * Where the screen and the camera are drawn on a W×H frame — pure, so the
+ * compositor, the layout picker's little previews and the recorded layout
+ * log all read the same boxes. `camAspect` null means no camera is shown:
+ * the screen then sits as it would alone, whatever the layout. `panel` says
+ * the camera is a fixed box (painted with the background) rather than a
+ * bubble moving over the screen. The output size never changes with the
+ * layout; a screen beside a panel is letterboxed inside its share.
+ */
+export function layoutRects(W: number, H: number, layout: Layout, look: Look, screenAspect: number, camAspect: number | null, bubble: Bubble, cutout = false): { screen: Rect; cam: Rect | null; panel: boolean } {
+  if (camAspect === null || layout === 'bubble') {
+    return { screen: screenRect(W, H, screenAspect, look), cam: camAspect === null ? null : bubbleRect(W, H, bubble, camAspect, cutout), panel: false };
+  }
+  const short = Math.min(W, H), framed = look.bg.kind !== 'none';
+  /* With the background off there is no padding to speak of — only a small gap, so the panels read as two. */
+  const gap = Math.max(4, Math.round(short * 0.025));
+  const pad = framed ? Math.round(short * look.padding / 100) : gap;
+  const inner: Rect = { x: pad, y: pad, w: Math.max(8, W - 2 * pad), h: Math.max(8, H - 2 * pad) };
+  if (layout === 'presenter') {
+    const cam = framed ? inner : { x: 0, y: 0, w: W, h: H };
+    const m = Math.round(short * 0.045);
+    let w = Math.round(cam.w * 0.45), h = Math.round(w / screenAspect);
+    const maxH = Math.round(cam.h * 0.6);
+    if (h > maxH) { h = maxH; w = Math.round(h * screenAspect); }
+    return { screen: { x: cam.x + cam.w - m - w, y: cam.y + m, w: Math.max(2, w), h: Math.max(2, h) }, cam, panel: true };
+  }
+  if (layout === 'split') {
+    const half = Math.floor((inner.w - gap) / 2);
+    const fit = fitIn({ x: 0, y: inner.y, w: half, h: inner.h }, screenAspect);
+    /* The pair is centred together, the camera as tall as the screen beside it, so the two halves match. */
+    const x0 = Math.round(inner.x + (inner.w - (half + gap + fit.w)) / 2);
+    return { screen: { ...fit, x: x0 + half + gap }, cam: { x: x0, y: fit.y, w: half, h: fit.h }, panel: true };
+  }
+  const cw = Math.round((inner.w - gap) / 3), left = layout === 'speaker-left';
+  const fit = fitIn({ x: 0, y: inner.y, w: inner.w - cw - gap, h: inner.h }, screenAspect);
+  const x0 = Math.round(inner.x + (inner.w - (cw + gap + fit.w)) / 2);
+  return left
+    ? { screen: { ...fit, x: x0 + cw + gap }, cam: { x: x0, y: inner.y, w: cw, h: inner.h }, panel: true }
+    : { screen: { ...fit, x: x0 }, cam: { x: x0 + fit.w + gap, y: inner.y, w: cw, h: inner.h }, panel: true };
+}
+
+/* ── Drawing ───────────────────────────────────────────────────────────── */
+
 type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
-const layerCanvas = (w: number, h: number): HTMLCanvasElement | OffscreenCanvas => {
+type Cv = HTMLCanvasElement | OffscreenCanvas;
+const layerCanvas = (w: number, h: number): Cv => {
   if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
   const c = document.createElement('canvas'); c.width = w; c.height = h; return c;
+};
+const sizedLayer = (c: Cv | null, w: number, h: number): Cv => {
+  if (c && c.width === w && c.height === h) return c;
+  if (c) { c.width = w; c.height = h; return c; }
+  return layerCanvas(w, h);
 };
 
 function roundPath(ctx: Ctx2D, r: Rect, k: number) {
@@ -255,27 +366,26 @@ function roundPath(ctx: Ctx2D, r: Rect, k: number) {
   ctx.closePath();
 }
 
-function shapePath(ctx: Ctx2D, r: Rect, shape: Bubble['shape']) {
-  if (shape === 'circle') { ctx.beginPath(); ctx.arc(r.x + r.w / 2, r.y + r.h / 2, Math.min(r.w, r.h) / 2, 0, Math.PI * 2); return; }
-  roundPath(ctx, r, Math.min(r.w, r.h) * 0.16);
+function edgePath(ctx: Ctx2D, r: Rect, k: number, circle: boolean) {
+  if (circle) { ctx.beginPath(); ctx.arc(r.x + r.w / 2, r.y + r.h / 2, Math.min(r.w, r.h) / 2, 0, Math.PI * 2); return; }
+  roundPath(ctx, r, k);
 }
 
-/** The part of the screen shown, 0–1 of its width and height (auto zoom crops it). */
-export interface View { x: number; y: number; w: number; h: number }
-const WHOLE: View = { x: 0, y: 0, w: 1, h: 1 };
-
 /**
- * Draws the recorded frame: background, the screen in its rounded frame, the
- * camera bubble. Built for slow computers. A canvas keeps its pixels between
- * frames, and nothing outside the screen moves except the bubble, so the
- * background (gradient, picture scaled to cover, the screen's shadow) is
- * painted onto the canvas only when a setting or the screen's shape changes.
- * A frame is then: the screen copied into its box, four small corner patches
- * cut from the background (rounded corners without a clip), the bubble's box
- * put back from the background and the bubble drawn. A full-frame copy or a
- * shadow blur every frame cost a software-drawn canvas 4–5 ms a frame — the
- * difference between 60 fps and a stutter on a small laptop.
+ * The frame round a box's edge, `out` beyond it and `inn` inside it, as four
+ * strips — what a ring and its glow cover. Copying four thin strips instead
+ * of the whole box is what keeps a big panel's glowing ring cheap.
  */
+function bandRects(r: Rect, out: number, inn: number): Rect[] {
+  const X0 = r.x - out, Y0 = r.y - out, X1 = r.x + r.w + out, Y1 = r.y + r.h + out;
+  const x0 = r.x + inn, y0 = r.y + inn, x1 = r.x + r.w - inn, y1 = r.y + r.h - inn;
+  if (x1 - x0 < 8 || y1 - y0 < 8) return [{ x: X0, y: Y0, w: X1 - X0, h: Y1 - Y0 }];
+  return [
+    { x: X0, y: Y0, w: X1 - X0, h: y0 - Y0 }, { x: X0, y: y1, w: X1 - X0, h: Y1 - y1 },
+    { x: X0, y: y0, w: x0 - X0, h: y1 - y0 }, { x: x1, y: y0, w: X1 - x1, h: y1 - y0 },
+  ];
+}
+
 /** Words cut to fit `max` pixels, at most `lines` lines, the last ending "…" if it had to be cut. */
 function wrap(c: Ctx2D, text: string, max: number, lines: number): string[] {
   const words = text.split(/\s+/).filter(Boolean), out: string[] = [];
@@ -296,7 +406,7 @@ function wrap(c: Ctx2D, text: string, max: number, lines: number): string[] {
   return out.map(l => { let x = l; while (x.length > 1 && c.measureText(x).width > max) x = x.slice(0, -2) + '…'; return x; });
 }
 
-function paintCard(W: number, H: number, title: string, desc: string): HTMLCanvasElement | OffscreenCanvas {
+function paintCard(W: number, H: number, title: string, desc: string): Cv {
   const short = Math.min(W, H), pad = Math.round(short * 0.022), ts = Math.round(short * 0.036), ds = Math.round(short * 0.025);
   const maxText = Math.round(W * 0.42);
   const font = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
@@ -337,19 +447,45 @@ export interface Scene {
   /** Camera only: the camera fills the frame, no bubble and no screen frame. */
   camOnly: boolean;
   look: Look; image: ImageBitmap | null;
-  bubble: Bubble; view?: View;
+  /** Where the screen and the camera sit (only 'bubble' matters without a camera). */
+  layout: Layout;
+  bubble: Bubble; frame: CamFrame;
   fx: CamFx; camBg: ImageBitmap | null;
   brand: Brand; logo: ImageBitmap | null;
   now: number;
 }
 
+/** A box that does not change from frame to frame, painted with the background: its shadow, and its rounded corners cut out of the patch layer. */
+interface Hole { r: Rect; k: number }
+
+/**
+ * Draws the recorded frame: background, the screen in its rounded frame, the
+ * camera as a bubble or a panel. Built for slow computers. A canvas keeps its
+ * pixels between frames, and nothing outside the screen and the camera moves,
+ * so the background (gradient, picture scaled to cover, the boxes' shadows)
+ * is painted onto the canvas only when a setting, the layout or a box's shape
+ * changes. A frame is then: the screen copied into its box, small corner
+ * patches cut from the background (rounded corners without a clip — for a
+ * camera panel too), the bubble's box or a ring's thin strips put back from
+ * the background, and the camera drawn. A full-frame copy or a shadow blur
+ * every frame cost a software-drawn canvas 4–5 ms a frame — the difference
+ * between 60 fps and a stutter on a small laptop — so glows and shadows are
+ * blurred once into sprites and only copied.
+ */
 export class Compositor {
-  private layer: HTMLCanvasElement | OffscreenCanvas | null = null;
-  private holed: HTMLCanvasElement | OffscreenCanvas | null = null;
+  private layer: Cv | null = null;
+  private holed: Cv | null = null;
   private layerKey = '';
-  private sprite: HTMLCanvasElement | OffscreenCanvas | null = null;
+  /** The bubble's shadow. */
+  private sprite: Cv | null = null;
   private spriteKey = '';
-  private card: HTMLCanvasElement | OffscreenCanvas | null = null;
+  /** A neon ring's glow. */
+  private glow: Cv | null = null;
+  private glowKey = '';
+  /** The presenter layout's screen shadow. */
+  private inset: Cv | null = null;
+  private insetKey = '';
+  private card: Cv | null = null;
   private cardKey = '';
   private dirty: Rect[] = [];
   /* A replaced picture of the same size must still repaint the layer. */
@@ -359,88 +495,209 @@ export class Compositor {
   readonly fx = new CameraFx();
   /** Where the screen was last drawn, in canvas pixels. */
   box: Rect = { x: 0, y: 0, w: 0, h: 0 };
+  /** Where the camera was last drawn, in canvas pixels (null when it was not). */
+  camBox: Rect | null = null;
 
   /** The canvas was resized (which clears it): paint the background again on the next frame. */
   invalidate() { this.layerKey = ''; }
 
   draw(ctx: CanvasRenderingContext2D, sc: Scene) {
     const W = ctx.canvas.width, H = ctx.canvas.height, short = Math.min(W, H);
-    const view = sc.view ?? WHOLE;
-    const look = sc.camOnly ? PLAIN_LOOK : sc.look;
-    const sv = !sc.camOnly && sc.screen && sc.screen.videoWidth ? sc.screen : null;
-    const aspect = sv ? (sv.videoWidth * view.w) / (sv.videoHeight * view.h) : W / H;
-    const r = screenRect(W, H, aspect, look);
-    this.box = r;
-    const framed = look.bg.kind !== 'none';
-    const k = framed ? Math.min(Math.round(short * look.radius / 100), r.w / 2, r.h / 2) : 0;
-    const key = `${W}x${H}|${r.x},${r.y},${r.w},${r.h}|${k}|${JSON.stringify(look)}|${sc.image && framed ? this.idOf(sc.image) : ''}`;
-    if (key !== this.layerKey || !this.layer) {
-      this.paintLayer(W, H, r, k, look, sc.image);
-      this.layerKey = key;
-      ctx.drawImage(this.layer!, 0, 0);
-      this.dirty = [];
-    } else {
-      /* Where the bubble, card and logo were last frame: back to background before anything is drawn over them again. */
-      for (const d of this.dirty) ctx.drawImage(this.layer, d.x, d.y, d.w, d.h, d.x, d.y, d.w, d.h);
-      this.dirty = [];
-    }
     const cam = sc.cam && sc.cam.videoWidth ? sc.cam : null;
-
     if (sc.camOnly) {
+      const r: Rect = { x: 0, y: 0, w: W, h: H };
+      this.box = r; this.camBox = cam ? r : null;
+      this.background(ctx, W, H, 'cam', [], PLAIN_LOOK, null);
       if (cam) this.fx.draw(ctx, cam, r, sc.bubble.mirror, sc.fx, sc.camBg, false, sc.now);
-      else { ctx.fillStyle = '#101117'; ctx.fillRect(r.x, r.y, r.w, r.h); }
-    } else {
-      if (sv) {
-        const vw = sv.videoWidth, vh = sv.videoHeight;
-        ctx.drawImage(sv, view.x * vw, view.y * vh, view.w * vw, view.h * vh, r.x, r.y, r.w, r.h);
-      } else { ctx.fillStyle = framed ? '#1b1d26' : '#101117'; ctx.fillRect(r.x, r.y, r.w, r.h); }
-      if (k > 0 && this.holed) {
-        const c = k + 1;
-        for (const [x, y] of [[r.x, r.y], [r.x + r.w - c, r.y], [r.x, r.y + r.h - c], [r.x + r.w - c, r.y + r.h - c]]) ctx.drawImage(this.holed, x, y, c, c, x, y, c, c);
-      }
-      if (cam) this.drawBubble(ctx, W, H, cam, sc);
+      else { ctx.fillStyle = '#101117'; ctx.fillRect(0, 0, W, H); }
+      this.drawBrand(ctx, W, H, sc);
+      return;
     }
-    this.drawCard(ctx, W, H, sc.brand);
-    if (sc.logo) {
-      const L = sc.logo, lh = Math.round(short * { S: 0.07, M: 0.1, L: 0.14 }[sc.brand.logoSize]);
-      const lw = Math.min(Math.round(W * 0.3), Math.round(lh * L.width / L.height)), lh2 = Math.round(lw * L.height / L.width);
-      const m = Math.round(short * 0.035), c = CORNERS[sc.brand.logoCorner];
-      const box = { x: Math.round(m + c.x * (W - 2 * m - lw)), y: Math.round(m + c.y * (H - 2 * m - lh2)), w: lw, h: lh2 };
-      ctx.drawImage(L, box.x, box.y, box.w, box.h);
-      this.dirty.push(box);
+    const look = sc.look, framed = look.bg.kind !== 'none';
+    const sv = sc.screen && sc.screen.videoWidth ? sc.screen : null;
+    const cutout = sc.fx.bg === 'remove';
+    const L = layoutRects(W, H, sc.layout, look, sv ? sv.videoWidth / sv.videoHeight : W / H, cam ? cam.videoWidth / cam.videoHeight : null, sc.bubble, cutout);
+    const presenter = L.panel && sc.layout === 'presenter';
+    /* Beside a panel the screen is rounded even with the background off: two boxes on a dark fill. */
+    const kS = framed || L.panel ? Math.min(Math.round(short * look.radius / 100), L.screen.w / 2, L.screen.h / 2) : 0;
+    const camFull = !!L.cam && L.cam.w >= W && L.cam.h >= H;
+    const kC = L.panel && L.cam && !camFull ? camRadius(L.cam, sc.frame.shape, true, short) : 0;
+    const holes: Hole[] = [];
+    if (!presenter) holes.push({ r: L.screen, k: kS });
+    if (L.panel && L.cam) holes.push({ r: L.cam, k: kC });
+    this.box = L.screen; this.camBox = L.cam;
+    this.background(ctx, W, H, L.panel ? sc.layout : 'bubble', holes, look, sc.image);
+    if (!presenter) this.drawScreen(ctx, sv, L.screen, kS, framed);
+    if (cam && L.cam) {
+      if (L.panel) {
+        /* A panel is a solid box: a removed background gets its colour behind the person, never see-through — nothing under a panel is put back each frame. */
+        this.fx.draw(ctx, cam, L.cam, sc.bubble.mirror, sc.fx, sc.camBg, false, sc.now);
+        /* Filling the whole frame (presenter, background off) it has no corners and no ring. */
+        if (!camFull) { this.patches(ctx, L.cam, kC); this.drawRing(ctx, L.cam, kC, false, sc.frame, sc.now, true); }
+      } else this.drawBubble(ctx, W, H, cam, L.cam, sc, cutout);
     }
+    if (presenter) this.drawInset(ctx, sv, L.screen, kS, short);
+    this.drawBrand(ctx, W, H, sc);
   }
 
-  private drawBubble(ctx: CanvasRenderingContext2D, W: number, H: number, cam: HTMLVideoElement, sc: Scene) {
+  /** The background layer: painted when its key changes, otherwise only last frame's dirty boxes are put back. */
+  private background(ctx: CanvasRenderingContext2D, W: number, H: number, tag: string, holes: Hole[], look: Look, image: ImageBitmap | null) {
+    const framed = look.bg.kind !== 'none';
+    const key = `${W}x${H}|${tag}|${holes.map(h => `${h.r.x},${h.r.y},${h.r.w},${h.r.h},${h.k}`).join(';')}|${JSON.stringify(look)}|${image && framed ? this.idOf(image) : ''}`;
+    if (key !== this.layerKey || !this.layer) {
+      this.paintLayer(W, H, holes, look, image);
+      this.layerKey = key;
+      ctx.drawImage(this.layer!, 0, 0);
+    } else {
+      /* Where the bubble, rings, card and logo were last frame: back to background before anything is drawn over them again. */
+      for (const d of this.dirty) ctx.drawImage(this.layer, d.x, d.y, d.w, d.h, d.x, d.y, d.w, d.h);
+    }
+    this.dirty = [];
+  }
+
+  /** A box to put back from the background next frame, kept on the canvas (a copy from outside the layer would fail). */
+  private dirtyRect(r: Rect, W: number, H: number) {
+    const x0 = Math.max(0, Math.floor(r.x)), y0 = Math.max(0, Math.floor(r.y));
+    const x1 = Math.min(W, Math.ceil(r.x + r.w)), y1 = Math.min(H, Math.ceil(r.y + r.h));
+    if (x1 > x0 && y1 > y0) this.dirty.push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+  }
+
+  private drawScreen(ctx: CanvasRenderingContext2D, sv: HTMLVideoElement | null, r: Rect, k: number, framed: boolean) {
+    if (sv) ctx.drawImage(sv, r.x, r.y, r.w, r.h);
+    else { ctx.fillStyle = framed ? '#1b1d26' : '#101117'; ctx.fillRect(r.x, r.y, r.w, r.h); }
+    this.patches(ctx, r, k);
+  }
+
+  /** Four corner patches from the background with the box's rounded shape cut out: rounded corners with no clip. */
+  private patches(ctx: CanvasRenderingContext2D, r: Rect, k: number) {
+    if (k <= 0 || !this.holed) return;
+    const c = Math.ceil(k) + 1;
+    for (const [x, y] of [[r.x, r.y], [r.x + r.w - c, r.y], [r.x, r.y + r.h - c], [r.x + r.w - c, r.y + r.h - c]]) ctx.drawImage(this.holed, x, y, c, c, x, y, c, c);
+  }
+
+  private drawBubble(ctx: CanvasRenderingContext2D, W: number, H: number, cam: HTMLVideoElement, br: Rect, sc: Scene, cutout: boolean) {
     const b = sc.bubble;
-    /* A removed background in a bubble is a cut-out: the person stands over the screen, no circle round them. */
-    const cutout = sc.fx.bg === 'remove';
-    const br = bubbleRect(W, H, cutout ? { ...b, shape: 'rounded' } : b, cam.videoWidth / cam.videoHeight);
+    /* A removed background in a bubble is a cut-out: the person stands over the screen, no frame or ring round them. */
     if (cutout) {
-      this.dirty.push(br);
+      this.dirtyRect(br, W, H);
       this.fx.draw(ctx, cam, br, b.mirror, sc.fx, sc.camBg, true, sc.now);
       return;
     }
+    const f = sc.frame, circle = f.shape === 'circle', short = Math.min(W, H);
+    const k = camRadius(br, f.shape, false, short);
     const blur = Math.round(br.h / 14);
-    const sk = `${br.w}x${br.h}|${b.shape}`;
+    /* The box put back next frame reaches as far as the shadow or the ring's glow, whichever is further. */
+    const E = Math.max(blur * 2, ringSize(br, f.ring, short).ext);
+    const sk = `${br.w}x${br.h}|${f.shape}`;
     if (sk !== this.spriteKey || !this.sprite) {
       this.sprite = layerCanvas(br.w + blur * 4, br.h + blur * 4);
       const spc = this.sprite.getContext('2d') as Ctx2D;
       spc.shadowColor = 'rgba(0,0,0,.45)'; spc.shadowBlur = blur;
-      shapePath(spc, { x: blur * 2, y: blur * 2, w: br.w, h: br.h }, b.shape);
+      edgePath(spc, { x: blur * 2, y: blur * 2, w: br.w, h: br.h }, k, circle);
       spc.fillStyle = '#000'; spc.fill();
       this.spriteKey = sk;
     }
-    const sx = Math.max(0, br.x - blur * 2), sy = Math.max(0, br.y - blur * 2);
-    this.dirty.push({ x: sx, y: sy, w: Math.min(W, br.x + br.w + blur * 2) - sx, h: Math.min(H, br.y + br.h + blur * 2) - sy });
+    this.dirtyRect({ x: br.x - E, y: br.y - E, w: br.w + 2 * E, h: br.h + 2 * E }, W, H);
     ctx.drawImage(this.sprite, br.x - blur * 2, br.y - blur * 2);
     ctx.save();
-    shapePath(ctx, br, b.shape);
+    edgePath(ctx, br, k, circle);
     ctx.clip();
     this.fx.draw(ctx, cam, br, b.mirror, sc.fx, sc.camBg, false, sc.now);
     ctx.restore();
-    shapePath(ctx, br, b.shape);
-    ctx.lineWidth = Math.max(2, Math.round(br.h / 45)); ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.stroke();
+    this.drawRing(ctx, br, k, circle, f, sc.now, false);
+  }
+
+  /**
+   * The ring round the camera. White and the turning gradient are one stroke
+   * a frame (the gradient's angle read from the clock, a turn every four
+   * seconds). Neon's glow is blurred once into a sprite and copied — a
+   * shadow blur each frame is what slow computers cannot afford — and a
+   * breathing ring is the same sprite drawn fainter and brighter. Round a
+   * panel only the strips the ring covers are copied, and put back next frame.
+   */
+  private drawRing(ctx: CanvasRenderingContext2D, r: Rect, k: number, circle: boolean, f: CamFrame, now: number, panel: boolean) {
+    if (f.ring === 'none') return;
+    const W = ctx.canvas.width, H = ctx.canvas.height;
+    const { lw, glow, ext } = ringSize(r, f.ring, Math.min(W, H));
+    if (panel) for (const b of bandRects(r, ext, 0)) this.dirtyRect(b, W, H);
+    if (f.ring === 'white') {
+      edgePath(ctx, r, k, circle);
+      ctx.lineWidth = lw; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.stroke();
+      return;
+    }
+    if (f.ring === 'gradient') {
+      const a = (now / 4000 % 1) * Math.PI * 2, cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+      let g: CanvasGradient;
+      /* Conic gradients arrived in Chrome 99, Safari 16.4 and Firefox 112; before that a turning linear one. */
+      if (typeof ctx.createConicGradient === 'function') g = ctx.createConicGradient(a, cx, cy);
+      else { const dx = Math.cos(a) * r.w / 2, dy = Math.sin(a) * r.h / 2; g = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy); }
+      const stops = ringStops(f.ringColor);
+      stops.forEach((c, i) => g.addColorStop(i / (stops.length - 1), c));
+      edgePath(ctx, r, k, circle);
+      ctx.lineWidth = lw; ctx.strokeStyle = g; ctx.stroke();
+      return;
+    }
+    const P = ext;
+    const key = `${r.w}x${r.h}|${k}|${circle}|${f.ringColor}|${glow}|${lw}`;
+    if (key !== this.glowKey || !this.glow) {
+      this.glow = sizedLayer(this.glow, r.w + 2 * P, r.h + 2 * P);
+      const gc = this.glow.getContext('2d') as Ctx2D;
+      gc.clearRect(0, 0, this.glow.width, this.glow.height);
+      gc.shadowColor = f.ringColor; gc.shadowBlur = glow;
+      gc.strokeStyle = f.ringColor; gc.lineWidth = lw;
+      edgePath(gc, { x: P, y: P, w: r.w, h: r.h }, k, circle);
+      gc.stroke(); gc.stroke();
+      gc.shadowBlur = 0; gc.shadowColor = 'transparent';
+      this.glowKey = key;
+    }
+    ctx.globalAlpha = f.ring === 'pulse' ? 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(now / 1700 * Math.PI * 2)) : 1;
+    const ox = r.x - P, oy = r.y - P;
+    if (panel) { for (const b of bandRects(r, P, P + k)) if (b.w > 0 && b.h > 0) ctx.drawImage(this.glow, b.x - ox, b.y - oy, b.w, b.h, b.x, b.y, b.w, b.h); }
+    else ctx.drawImage(this.glow, ox, oy);
+    ctx.globalAlpha = 1;
+    /* The tube itself stays lit while its glow breathes: the colour, with a paler core. */
+    edgePath(ctx, r, k, circle);
+    ctx.lineWidth = lw; ctx.strokeStyle = f.ringColor; ctx.stroke();
+    ctx.lineWidth = Math.max(1, lw * 0.4); ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.stroke();
+  }
+
+  /**
+   * Presenter: the screen as an inset over the camera. The camera under it is
+   * drawn whole every frame, so nothing needs putting back; the inset is
+   * clipped to its roundness (corner patches would cut from the background,
+   * not from the camera) and its shadow is a sprite copied as four strips.
+   */
+  private drawInset(ctx: CanvasRenderingContext2D, sv: HTMLVideoElement | null, r: Rect, k: number, short: number) {
+    const blur = Math.max(2, Math.round(short * 0.012)), P = blur * 2;
+    const key = `${r.w}x${r.h}|${k}|${blur}`;
+    if (key !== this.insetKey || !this.inset) {
+      this.inset = sizedLayer(this.inset, r.w + 2 * P, r.h + 2 * P);
+      const ic = this.inset.getContext('2d') as Ctx2D;
+      ic.clearRect(0, 0, this.inset.width, this.inset.height);
+      ic.shadowColor = 'rgba(0,0,0,.5)'; ic.shadowBlur = blur;
+      roundPath(ic, { x: P, y: P, w: r.w, h: r.h }, k); ic.fillStyle = '#000'; ic.fill();
+      ic.shadowBlur = 0; ic.shadowColor = 'transparent';
+      this.insetKey = key;
+    }
+    const ox = r.x - P, oy = r.y - P;
+    for (const b of bandRects(r, P, 0)) if (b.w > 0 && b.h > 0) ctx.drawImage(this.inset, b.x - ox, b.y - oy, b.w, b.h, b.x, b.y, b.w, b.h);
+    ctx.save();
+    if (k > 0) { roundPath(ctx, r, k); ctx.clip(); }
+    if (sv) ctx.drawImage(sv, r.x, r.y, r.w, r.h);
+    else { ctx.fillStyle = '#1b1d26'; ctx.fillRect(r.x, r.y, r.w, r.h); }
+    ctx.restore();
+  }
+
+  private drawBrand(ctx: CanvasRenderingContext2D, W: number, H: number, sc: Scene) {
+    this.drawCard(ctx, W, H, sc.brand);
+    if (!sc.logo) return;
+    const short = Math.min(W, H);
+    const L = sc.logo, lh = Math.round(short * { S: 0.07, M: 0.1, L: 0.14 }[sc.brand.logoSize]);
+    const lw = Math.min(Math.round(W * 0.3), Math.round(lh * L.width / L.height)), lh2 = Math.round(lw * L.height / L.width);
+    const m = Math.round(short * 0.035), c = CORNERS[sc.brand.logoCorner];
+    const box = { x: Math.round(m + c.x * (W - 2 * m - lw)), y: Math.round(m + c.y * (H - 2 * m - lh2)), w: lw, h: lh2 };
+    ctx.drawImage(L, box.x, box.y, box.w, box.h);
+    this.dirtyRect(box, W, H);
   }
 
   /** The title card, drawn once into a sprite per wording and size, then copied each frame. */
@@ -453,7 +710,7 @@ export class Compositor {
     const m = Math.round(short * 0.035);
     const box = { x: m, y: br.cardPos === 'tl' ? m : H - m - this.card.height, w: this.card.width, h: this.card.height };
     ctx.drawImage(this.card, box.x, box.y);
-    this.dirty.push(box);
+    this.dirtyRect(box, W, H);
   }
 
   private idOf(im: ImageBitmap) {
@@ -462,9 +719,9 @@ export class Compositor {
     return id;
   }
 
-  /** The background with the screen's shadow, and a copy with the screen's rounded shape cut out (the corner patches). */
-  private paintLayer(W: number, H: number, r: Rect, k: number, look: Look, image: ImageBitmap | null) {
-    const c = this.layer && this.layer.width === W && this.layer.height === H ? this.layer : layerCanvas(W, H);
+  /** The background with the fixed boxes' shadows, and a copy with their rounded shapes cut out (the corner patches). */
+  private paintLayer(W: number, H: number, holes: Hole[], look: Look, image: ImageBitmap | null) {
+    const c = sizedLayer(this.layer, W, H);
     const lc = c.getContext('2d') as Ctx2D;
     lc.clearRect(0, 0, W, H);
     paintBackdrop(lc, W, H, look.bg, image);
@@ -473,18 +730,20 @@ export class Compositor {
       lc.save();
       lc.shadowColor = `rgba(0,0,0,${(0.55 * s).toFixed(3)})`;
       lc.shadowBlur = Math.round(short * 0.05 * s); lc.shadowOffsetY = Math.round(short * 0.015 * s);
-      roundPath(lc, r, k); lc.fillStyle = '#000'; lc.fill();
+      for (const h of holes) { roundPath(lc, h.r, h.k); lc.fillStyle = '#000'; lc.fill(); }
       lc.restore();
     }
     this.layer = c;
-    this.holed = null;
-    if (k <= 0) return;
-    const h = layerCanvas(W, H);
-    const hc = h.getContext('2d') as Ctx2D;
+    if (!holes.some(h => h.k > 0)) { this.holed = null; return; }
+    const hd = sizedLayer(this.holed, W, H);
+    const hc = hd.getContext('2d') as Ctx2D;
+    hc.globalCompositeOperation = 'source-over';
+    hc.clearRect(0, 0, W, H);
     hc.drawImage(c, 0, 0);
     hc.globalCompositeOperation = 'destination-out';
-    roundPath(hc, r, k); hc.fill();
-    this.holed = h;
+    for (const h of holes) if (h.k > 0) { roundPath(hc, h.r, h.k); hc.fill(); }
+    hc.globalCompositeOperation = 'source-over';
+    this.holed = hd;
   }
 }
 
@@ -506,82 +765,247 @@ export function bitrateFor(w: number, h: number, fps = 30, quality: Quality = 's
   return Math.round(Math.min(q.max, Math.max(1e6, w * h * 30 * q.bpp * Math.pow(fps / 30, 0.6))));
 }
 
-/* ── Automatic zoom ────────────────────────────────────────────────────── */
+/* ── Where the pointer went ────────────────────────────────────────────── */
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const r3 = (n: number) => Math.round(n * 1000) / 1000;
+const GW = 16, GH = 9;
 
 /**
- * Zooms in on where the screen is changing — the pointer moving, typing, a
- * menu opening — and back out when it goes quiet or the whole page changes
- * (a scroll, a new page). A browser cannot see the pointer over other
- * windows, so this reads the picture: five times a second the screen is
- * shrunk to 96 pixels wide and compared with the last look. That costs well
- * under a millisecond; the zoom itself is eased every frame so it glides.
+ * Where the pointer goes and clicks, noted while recording. Nothing is
+ * zoomed or followed live — the owner wants that decided afterwards: the
+ * editor proposes moments from this and from what was said
+ * (worker/src/lib/video/pointer.ts) and the person chooses.
+ *
+ * A browser is never told where the pointer is over other windows, so it is
+ * read from the picture: eight times a second the shared screen is copied at
+ * 320 pixels wide in grey and compared with the last look. The pointer is
+ * the small thing that changed; a fifth of the picture changing at once is a
+ * scroll or a new page, and no pointer is read from it. A likely click is the
+ * pointer coming to rest and then the screen answering near it — a button
+ * lighting, a menu opening, a page changing. Close, not exact: a playing
+ * video or a busy page can mislead it, which is why it only proposes.
+ *
+ * Light on purpose: the buffers are made once per size and reused, and a
+ * look is one pass over 57,600 pixels (grey, compare and count together) —
+ * well under a millisecond — plus the browser's own copy of the frame.
  */
-export class AutoZoom {
-  private cv: HTMLCanvasElement | OffscreenCanvas | null = null;
-  private prev: Uint8Array | null = null;
-  private last = 0; private lastStep = 0; private lastActive = 0; private lastBig = 0; private streak = 0;
-  private target = { x: 0.5, y: 0.5, z: 1 };
-  private cur = { x: 0.5, y: 0.5, z: 1 };
-  depth = 1.8;
+export class PointerLog {
+  private c: Ctx2D | null = null;
+  private SW = 0; private SH = 0;
+  /**
+   * The last three looks, rotated. Two back is what tells where the pointer
+   * arrived from where it left: where it left, the picture is back to what it
+   * was two looks ago; where it arrived, it differs from both. Without it the
+   * estimate sat halfway between the two and lagged where the pointer stopped.
+   */
+  private cur = new Uint8Array(0); private prev = new Uint8Array(0); private prev2 = new Uint8Array(0);
+  /** Pixel column / row → grid cell, worked out once per size. */
+  private col = new Uint8Array(0); private row = new Uint8Array(0);
+  /** Looks since a reset (0: nothing to compare with; 1: no look two back yet). */
+  private looks = 0;
+  private cellN = new Uint32Array(GW * GH); private cellX = new Float64Array(GW * GH); private cellY = new Float64Array(GW * GH);
+  private seen = new Uint8Array(GW * GH); private stack = new Int16Array(GW * GH);
+  private last = -1e9;
+  /** The pointer estimate (0–1 of the screen). */
+  private hasEst = false; private ex = 0; private ey = 0;
+  /** Where it came to rest, since when (clock ms and recording seconds), and whether that rest already gave a click. */
+  private sx = 0; private sy = 0; private since = 0; private sinceT = 0; private clicked = true;
+  private lastAnswer = -1e9; private lastClick = -1e9;
+  private bx = 0; private by = 0;
+  /** [t, x, y]: t in seconds of the recording (pauses left out), x/y 0–1 of the shared screen's own picture. Only while it moves. */
+  path: [number, number, number][] = [];
+  /** Likely clicks, as above. */
+  clicks: [number, number, number][] = [];
+  /** When a scroll or page change happened (seconds of the recording). */
+  big: number[] = [];
 
-  reset() { this.prev = null; this.streak = 0; this.target = { x: 0.5, y: 0.5, z: 1 }; }
-  out() { this.target = { ...this.target, z: 1 }; this.streak = 0; }
+  /** A new recording. */
+  clear() {
+    this.reset();
+    this.path = []; this.clicks = []; this.big = [];
+    this.hasEst = false; this.clicked = true; this.lastAnswer = this.lastClick = -1e9;
+  }
+  /** Another screen shared, or a pause ended: the next look starts afresh rather than comparing two different pictures. */
+  reset() { this.looks = 0; this.last = -1e9; }
 
-  sample(v: HTMLVideoElement, now: number) {
-    if (now - this.last < 200 || !v.videoWidth) return;
+  /** One look, at most eight a second; `now` is the clock (ms), `t` the recording's time (s). */
+  look(v: HTMLVideoElement, now: number, t: number) {
+    if (now - this.last < 125) return;
+    const vw = v.videoWidth, vh = v.videoHeight;
+    if (!vw || !vh) return;
     this.last = now;
-    const SW = 96, SH = Math.max(24, Math.min(96, Math.round(96 * v.videoHeight / v.videoWidth)));
-    if (!this.cv || this.cv.width !== SW || this.cv.height !== SH) { this.cv = layerCanvas(SW, SH); this.prev = null; }
-    const c = this.cv.getContext('2d', { willReadFrequently: true }) as Ctx2D | null;
-    if (!c) return;
-    c.drawImage(v, 0, 0, SW, SH);
-    const px = c.getImageData(0, 0, SW, SH).data;
-    const g = new Uint8Array(SW * SH);
-    for (let i = 0; i < g.length; i++) g[i] = (px[i * 4] * 3 + px[i * 4 + 1] * 6 + px[i * 4 + 2]) / 10;
-    const p = this.prev;
-    this.prev = g;
-    if (!p) return;
-    let n = 0, x0 = SW, y0 = SH, x1 = -1, y1 = -1;
-    for (let i = 0; i < g.length; i++) {
-      if (Math.abs(g[i] - p[i]) < 18) continue;
-      n++;
-      const x = i % SW, y = (i / SW) | 0;
-      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+    const SW = 320, SH = Math.max(60, Math.min(320, Math.round(SW * vh / vw)));
+    if (SW !== this.SW || SH !== this.SH || !this.c) {
+      this.c = layerCanvas(SW, SH).getContext('2d', { willReadFrequently: true }) as Ctx2D | null;
+      this.SW = SW; this.SH = SH;
+      this.cur = new Uint8Array(SW * SH); this.prev = new Uint8Array(SW * SH); this.prev2 = new Uint8Array(SW * SH);
+      this.col = new Uint8Array(SW); this.row = new Uint8Array(SH);
+      for (let x = 0; x < SW; x++) this.col[x] = Math.min(GW - 1, Math.floor(x * GW / SW));
+      for (let y = 0; y < SH; y++) this.row[y] = Math.min(GH - 1, Math.floor(y * GH / SH));
+      this.looks = 0;
     }
-    if (!n) { this.streak = 0; return; }
-    /* A fifth of the screen changed at once: a scroll or a new page — show all of it. */
-    if (n > g.length * 0.2) { this.lastBig = now; this.out(); return; }
+    const c = this.c;
+    if (!c) return;
+    let px: Uint8ClampedArray;
+    try { c.drawImage(v, 0, 0, SW, SH); px = c.getImageData(0, 0, SW, SH).data; } catch { return; }
+    /* The new look goes into the oldest buffer; the last look is what it is compared with. */
+    const old = this.cur, older = this.prev, g = this.prev2;
+    this.cur = g; this.prev = old; this.prev2 = older;
+    const first = this.looks === 0, two = this.looks >= 2;
+    this.looks = Math.min(2, this.looks + 1);
+    const { cellN, cellX, cellY, col, row } = this;
+    cellN.fill(0); cellX.fill(0); cellY.fill(0);
+    let n = 0, sx = 0, sy = 0, x0 = SW, y0 = SH, x1 = -1, y1 = -1, an = 0, ax = 0, ay = 0;
+    for (let y = 0, i = 0, j = 0; y < SH; y++) {
+      const rb = row[y] * GW;
+      for (let x = 0; x < SW; x++, i++, j += 4) {
+        const lum = (px[j] * 77 + px[j + 1] * 150 + px[j + 2] * 29) >> 8;
+        const d = lum - old[i];
+        g[i] = lum;
+        if (first || (d < 24 && d > -24)) continue;
+        n++; sx += x; sy += y;
+        const d2 = lum - older[i];
+        if (!two || d2 >= 24 || d2 <= -24) { an++; ax += x; ay += y; }
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+        const ci = rb + col[x];
+        cellN[ci]++; cellX[ci] += x; cellY[ci] += y;
+      }
+    }
+    /* Nothing changed, or a few pixels (a blinking caret): the pointer, if anywhere, is resting. */
+    if (first || n < 4) return;
+    const N = SW * SH, asp = SH / SW;
     const bw = (x1 - x0 + 1) / SW, bh = (y1 - y0 + 1) / SH;
-    if (bw > 0.5 || bh > 0.5) { this.streak = 0; return; }
-    const cx = (x0 + x1 + 1) / 2 / SW, cy = (y0 + y1 + 1) / 2 / SH;
-    this.lastActive = now;
-    /* Two looks in a row, so a blinking text cursor alone never pulls the picture in. */
-    if (++this.streak < 2 || now - this.lastBig < 1200) return;
-    const t = this.target;
-    if (t.z === 1) { this.target = { x: cx, y: cy, z: this.depth }; return; }
-    /* Zoomed in: follow only when the action leaves the middle of the view, so the picture does not wobble. */
-    const reach = 0.3 / t.z;
-    if (Math.abs(cx - t.x) > reach || Math.abs(cy - t.y) > reach) this.target = { x: cx, y: cy, z: this.depth };
+    const big = n > N * 0.2;
+    /* The screen answering: a page change, or a change bigger than a pointer could make. */
+    const answer = big || (n > N * 0.003 && (bw >= 0.08 || bh >= 0.08));
+    if (answer) {
+      /*
+       * A click: the pointer has rested at least 200 ms, the screen was quiet
+       * just before, and it answers near the pointer (anywhere, for a page
+       * change). The window runs to 1.2 s of rest — a click lands a moment
+       * after the pointer stops, and the screen answers a moment after that.
+       * One click per rest, and never two within 350 ms. A playing video keeps
+       * the screen from ever being quiet, so it cannot fake clicks.
+       */
+      const rest = now - this.since;
+      if (this.hasEst && !this.clicked && rest >= 200 && rest <= 1200 && now - this.lastAnswer >= 400 && now - this.lastClick >= 350) {
+        const dx = Math.max(x0 / SW - this.sx, 0, this.sx - (x1 + 1) / SW), dy = Math.max(y0 / SH - this.sy, 0, this.sy - (y1 + 1) / SH);
+        if (big || Math.hypot(dx, dy * asp) <= 0.12) {
+          if (this.clicks.length < 5000) this.clicks.push([r2(Math.max(this.sinceT, t - 0.15)), r3(this.sx), r3(this.sy)]);
+          this.clicked = true; this.lastClick = now;
+        }
+      }
+      this.lastAnswer = now;
+    }
+    if (big) { if (this.big.length < 5000) this.big.push(r2(t)); return; }
+    let cx: number, cy: number;
+    if (bw < 0.08 && bh < 0.08) {
+      /* Where it arrived, when that can be told apart; otherwise the middle of what changed. */
+      if (an >= 3) { cx = (ax / an + 0.5) / SW; cy = (ay / an + 0.5) / SH; } else { cx = (sx / n + 0.5) / SW; cy = (sy / n + 0.5) / SH; }
+    }
+    else if (this.blob(N)) { cx = this.bx; cy = this.by; }
+    else return;
+    /* The screen answering (a menu opening) is not the pointer moving: then only a blob right by the estimate moves it. */
+    if (answer && this.hasEst && Math.hypot(cx - this.ex, (cy - this.ey) * asp) > 0.06) return;
+    this.move(cx, cy, now, t, asp);
   }
 
-  /** Eases toward the target (about a quarter of a second) and says which part of the screen to show. */
-  view(now: number): View {
-    if (this.target.z > 1 && now - this.lastActive > 3000) this.out();
-    const dt = this.lastStep ? Math.min(0.1, (now - this.lastStep) / 1000) : 0;
-    this.lastStep = now;
-    const k = 1 - Math.exp(-dt / 0.25);
-    for (const a of ['x', 'y', 'z'] as const) this.cur[a] += (this.target[a] - this.cur[a]) * k;
-    if (this.cur.z < 1.002) return WHOLE;
-    const w = 1 / this.cur.z;
-    const clamp = (c: number) => Math.min(1 - w, Math.max(0, c - w / 2));
-    return { x: clamp(this.cur.x), y: clamp(this.cur.y), w, h: w };
+  /** The small group of changed cells nearest the last estimate (before there is one, the smallest). */
+  private blob(N: number): boolean {
+    const { cellN, cellX, cellY, seen, stack } = this;
+    seen.fill(0);
+    let best = Infinity, found = false;
+    for (let s = 0; s < GW * GH; s++) {
+      if (seen[s] || cellN[s] < 2) continue;
+      let top = 0, pn = 0, ax = 0, ay = 0, c0 = GW, c1 = -1, r0 = GH, r1 = -1;
+      stack[top++] = s; seen[s] = 1;
+      while (top) {
+        const q = stack[--top], qx = q % GW, qy = (q / GW) | 0;
+        pn += cellN[q]; ax += cellX[q]; ay += cellY[q];
+        if (qx < c0) c0 = qx;
+        if (qx > c1) c1 = qx;
+        if (qy < r0) r0 = qy;
+        if (qy > r1) r1 = qy;
+        /* Each cell is pushed once (marked as it is pushed), so the stack never outgrows the grid. */
+        if (qx > 0 && !seen[q - 1] && cellN[q - 1] >= 2) { seen[q - 1] = 1; stack[top++] = q - 1; }
+        if (qx < GW - 1 && !seen[q + 1] && cellN[q + 1] >= 2) { seen[q + 1] = 1; stack[top++] = q + 1; }
+        if (qy > 0 && !seen[q - GW] && cellN[q - GW] >= 2) { seen[q - GW] = 1; stack[top++] = q - GW; }
+        if (qy < GH - 1 && !seen[q + GW] && cellN[q + GW] >= 2) { seen[q + GW] = 1; stack[top++] = q + GW; }
+      }
+      /* A pointer covers a cell or two; a bigger group is the page doing something. */
+      if (c1 - c0 > 1 || r1 - r0 > 1 || pn > N * 0.006) continue;
+      const x = (ax / pn + 0.5) / this.SW, y = (ay / pn + 0.5) / this.SH;
+      const score = this.hasEst ? Math.hypot(x - this.ex, (y - this.ey) * this.SH / this.SW) : pn;
+      if (score < best) { best = score; this.bx = x; this.by = y; found = true; }
+    }
+    return found;
   }
+
+  private move(cx: number, cy: number, now: number, t: number, asp: number) {
+    /* Lightly smoothed; a long jump is taken at once rather than dragged across the screen. */
+    if (!this.hasEst || Math.abs(cx - this.ex) > 0.25 || Math.abs(cy - this.ey) > 0.25) { this.ex = cx; this.ey = cy; }
+    else { this.ex += (cx - this.ex) * 0.75; this.ey += (cy - this.ey) * 0.75; }
+    const firstEst = !this.hasEst;
+    this.hasEst = true;
+    /* Moving is more than 1% of the width from where it last rested; less is the estimate settling. */
+    if (firstEst || Math.hypot(this.ex - this.sx, (this.ey - this.sy) * asp) > 0.01) {
+      this.sx = this.ex; this.sy = this.ey; this.since = now; this.sinceT = t; this.clicked = false;
+    }
+    const p: [number, number, number] = [r2(t), r3(this.ex), r3(this.ey)];
+    const l = this.path[this.path.length - 1];
+    if ((!l || l[1] !== p[1] || l[2] !== p[2]) && this.path.length < 60_000) this.path.push(p);
+  }
+}
+
+/** A canvas box as fractions of the frame, kept inside it. */
+const nbox = (r: Rect, W: number, H: number): NBox => {
+  const x = Math.min(1, Math.max(0, r.x / W)), y = Math.min(1, Math.max(0, r.y / H));
+  return [r3(x), r3(y), r3(Math.min(1 - x, r.w / W)), r3(Math.min(1 - y, r.h / H))];
+};
+const sameBox = (a: NBox | null, b: NBox | null) => a === b || (!!a && !!b && a.every((v, i) => v === b[i]));
+
+/**
+ * Where the screen and the camera were drawn over a recording — what lets
+ * the editor find the pointer in the frame and crop a Short round the screen
+ * or the camera. A segment is pushed only when something changed.
+ */
+export class LayoutLog {
+  segs: ScreenSeg[] = [];
+  clear() { this.segs = []; }
+  note(t: number, layout: string, screen: Rect | null, cam: Rect | null, shape: CamShape, W: number, H: number) {
+    if (!W || !H) return;
+    const s: ScreenSeg = { t: this.segs.length ? r2(t) : 0, layout, screen: screen ? nbox(screen, W, H) : null, cam: cam ? nbox(cam, W, H) : null, shape };
+    const l = this.segs[this.segs.length - 1];
+    if (l && l.layout === s.layout && l.shape === s.shape && sameBox(l.screen, s.screen) && sameBox(l.cam, s.cam)) return;
+    /* Dragging the bubble moves it every frame: changes within half a second fold into one, so a long drag cannot fill the list (the server keeps 500). */
+    if (l && (s.t - l.t < 0.5 || this.segs.length >= 500)) { this.segs[this.segs.length - 1] = { ...s, t: l.t }; return; }
+    this.segs.push(s);
+  }
+}
+
+/** What the recorder saw, for the saved recording — null when nothing was noted (or it was too short to keep). */
+export function screenMeta(w: number, h: number, ms: number, log: PointerLog, lay: LayoutLog): ScreenMeta | null {
+  const dur = r2(ms / 1000);
+  if (!lay.segs.length || dur < 0.5 || !w || !h) return null;
+  const inside = (p: [number, number, number]) => p[0] <= dur;
+  return { v: 1, w, h, dur, segs: lay.segs.map(s => ({ ...s, t: Math.min(s.t, dur) })), path: log.path.filter(inside), clicks: log.clicks.filter(inside), how: 'picture' };
 }
 
 /* ── Remembered choices ────────────────────────────────────────────────── */
 
 export interface Prefs {
-  fps: Fps; res: Res; quality: Quality; camRes: CamRes; look: Look; zoom: boolean; depth: number; cursor: CursorMode; float: boolean;
+  fps: Fps; res: Res; quality: Quality; camRes: CamRes; look: Look;
+  /** What switching the background back on brings: the last colour or gradient chosen (a picture is never remembered). */
+  lastBg: Backdrop;
+  /** Screen + camera: where the two sit. */
+  layout: Layout;
+  /** The camera's shape and ring. */
+  frame: CamFrame;
+  cursor: CursorMode; float: boolean;
   fx: CamFx; brand: Brand;
   /** Studio Sound switched on for the saved recording (applied by the engine when it is exported). */
   studio: boolean;
@@ -590,31 +1014,36 @@ export interface Prefs {
 }
 export const defaultPrefs = (slow = slowComputer()): Prefs => ({
   fps: 30, res: slow ? '720' : '1080', quality: slow ? 'light' : 'standard', camRes: slow ? '480' : '720',
-  look: PLAIN_LOOK, zoom: false, depth: 1.8, cursor: 'always', float: true,
+  look: PLAIN_LOOK, lastBg: DEFAULT_BG, layout: 'bubble', frame: DEFAULT_FRAME, cursor: 'always', float: true,
   fx: NO_FX, brand: NO_BRAND, studio: true, isolate: true,
 });
 
-/** Saved choices read back field by field — anything unknown falls back, and a picture is never remembered. */
+/**
+ * Saved choices read back field by field — anything unknown falls back, and a
+ * picture is never remembered. Keys from older versions (auto zoom's `zoom`
+ * and `depth`) are simply not read.
+ */
 export function readPrefs(raw: unknown, base: Prefs = defaultPrefs()): Prefs {
-  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const obj = (v: unknown) => (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+  const o = obj(raw);
   const pick = <T,>(v: unknown, ok: readonly T[], d: T): T => ok.includes(v as T) ? v as T : d;
   const num = (v: unknown, lo: number, hi: number, d: number) => typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d;
-  const l = (o.look && typeof o.look === 'object' ? o.look : {}) as Record<string, unknown>;
-  const b = (l.bg && typeof l.bg === 'object' ? l.bg : {}) as Record<string, unknown>;
-  const f = (o.fx && typeof o.fx === 'object' ? o.fx : {}) as Record<string, unknown>;
-  const br = (o.brand && typeof o.brand === 'object' ? o.brand : {}) as Record<string, unknown>;
+  const l = obj(o.look), f = obj(o.fx), br = obj(o.brand), fr = obj(o.frame);
   const str = (v: unknown, max: number) => typeof v === 'string' ? v.slice(0, max) : '';
-  const bg: Backdrop = b.kind === 'color' && typeof b.color === 'string' && /^#[0-9a-f]{6}$/i.test(b.color) ? { kind: 'color', color: b.color }
+  const bgOf = (b: Record<string, unknown>): Backdrop => b.kind === 'color' && typeof b.color === 'string' && /^#[0-9a-f]{6}$/i.test(b.color) ? { kind: 'color', color: b.color }
     : b.kind === 'gradient' && typeof b.id === 'string' && b.id in GRADIENTS ? { kind: 'gradient', id: b.id as GradientId }
       : { kind: 'none' };
+  const bg = bgOf(obj(l.bg)), last = bgOf(obj(o.lastBg));
   return {
     fps: pick(o.fps, FPS, base.fps),
     res: pick(o.res, Object.keys(RES) as Res[], base.res),
     quality: pick(o.quality, Object.keys(QUALITY) as Quality[], base.quality),
     camRes: pick(o.camRes, Object.keys(CAM_RES) as CamRes[], base.camRes),
     look: { bg, padding: num(l.padding, 0, 16, FRAMED.padding), radius: num(l.radius, 0, 6, FRAMED.radius), shadow: num(l.shadow, 0, 100, FRAMED.shadow) },
-    zoom: typeof o.zoom === 'boolean' ? o.zoom : base.zoom,
-    depth: num(o.depth, 1.25, 2.5, base.depth),
+    /* Saved before there was a switch: the background then in use is the one to bring back. */
+    lastBg: last.kind !== 'none' ? last : bg.kind !== 'none' ? bg : base.lastBg,
+    layout: pick(o.layout, LAYOUTS, base.layout),
+    frame: { shape: pick(fr.shape, SHAPES, base.frame.shape), ring: pick(fr.ring, RINGS, base.frame.ring), ringColor: pick(fr.ringColor, RING_COLORS, base.frame.ringColor) },
     cursor: pick(o.cursor, ['always', 'motion', 'never'] as CursorMode[], base.cursor),
     float: typeof o.float === 'boolean' ? o.float : base.float,
     fx: {

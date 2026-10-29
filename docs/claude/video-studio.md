@@ -206,14 +206,25 @@ export is a canvas recording; Video Studio is the real one.
   the canvas only when it changes (a canvas keeps its pixels) — per frame only
   the screen, four corner patches and the bubble's box are redrawn; the
   capture is asked (`applyConstraints`) for the screen at its box's size so
-  the copy is 1:1 (a resample cost ~8× in software), except with auto zoom;
+  the copy is 1:1 (a resample cost ~8× in software);
   `captureStream(0)` + `requestFrame` records each drawn frame once; the
   worker clock aims at a fixed grid; H.264 (hardware) then VP8 before VP9; a
-  computer falling behind (>1 in 7 frames late) is told so. **Auto zoom**
-  (`AutoZoom`, opt-in, toggled live) reads a 96-px-wide copy of the screen
-  5×/s and eases toward where it changes — it cannot see the pointer over
-  other windows, and says so; the pointer can only be hidden where the
-  browser offers `cursor` (Safari/Firefox). **Floating controls** are a
+  computer falling behind (>1 in 7 frames late) is told so. **Background is a
+  switch** (`rec-bg-toggle`: Off = the screen fills the video; On restores
+  `lastBg`, default the sequoia gradient). **Layouts** (`layoutRects`, live,
+  changeable while recording): bubble (draggable), speaker-left (the owner's
+  example: camera panel a third wide, screen right), speaker-right,
+  presenter (camera fills, screen inset top-right), split 50/50 — the layer
+  key includes the layout. **Camera frame**: circle / square / rounded
+  square, ring none / white / neon (glow cached in a sprite) / gradient
+  (turns once per 4 s from `sc.now`) / pulse, ring colours; a tall panel
+  cannot be round (said). **No live zoom** (removed on the owner's word —
+  the pointer is followed after processing): `PointerLog` reads a 320-px
+  grey copy 8×/s while recording (three looks, reused buffers, ~0.4 ms) and
+  notes the pointer and likely clicks; `LayoutLog` notes where screen and
+  camera were drawn; Save sends both (`screenMeta` → `saveScreenMeta`).
+  "Hidden" pointer (Safari/Firefox) means nothing to note — said in the UI.
+  **Floating controls** are a
   Document Picture-in-Picture window (Chrome/Edge), opened by the Start press
   (a click is needed; the share picker uses it up after), inline styles only.
   **Camera look** (`cameraFx.ts`, live, all modes — camera-only now goes
@@ -234,8 +245,8 @@ export is a canvas recording; Video Studio is the real one.
   keeps echo/noise suppression and `voiceIsolation` where offered. After Save
   the recorder shows the processing bar (`ProcessingProgress.tsx`, two
   decimals, the upload screen's creep), as does the editor's "Working on it".
-  Not built: a custom/smoothed pointer, zoom/speed pills on the editor's
-  timeline, re-styling a recording after it is made.
+  Not built: zoom/speed pills on the editor's timeline, re-styling a
+  recording after it is made (the pointer is the exception — see below).
 - **Following the pointer** (`lib/video/pointer.ts`, pure, shared; Properties →
   **Pointer** tab `PointerPanel.tsx`; a **Pointer** lane on the timeline, F or
   "Follow the pointer" on a marked stretch). Nothing zooms while recording:

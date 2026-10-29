@@ -967,3 +967,26 @@ html[data-theme="dark"] .vs canvas.vse-layout { filter: none; }
 .vs-media-play { position: absolute; inset: 0; margin: auto; width: 52px; height: 52px; border-radius: 50%; border: 0; display: grid; place-items: center; background: rgba(255, 255, 255, .92); color: #111; cursor: pointer; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
 .vs-media-play:hover { background: #fff; }
 .vs-media-player video { width: 100%; max-height: 70vh; background: #000; border-radius: 12px; display: block; }
+/* ── Screen Recorder: layouts, camera frames (recorder helper) ── */
+/* Layout picker: each preview is drawn from the recorder's own geometry (LayoutThumb), so only the boxes are styled here. */
+.vs-rec-layouts { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.vs-rec-lay { border: 1.5px solid var(--line2); background: var(--raise); border-radius: 12px; padding: 6px; cursor: pointer; display: grid; gap: 5px; text-align: center; color: var(--ink); min-width: 0; }
+.vs-rec-lay small { font-size: 11.5px; font-weight: 650; line-height: 1.2; }
+.vs-rec-lay[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px rgba(109, 74, 255, .18); }
+.vs-rec-lay-pic { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; background-size: cover; }
+.vs-rec-lay-pic i { position: absolute; display: block; box-sizing: border-box; }
+.vs-rec-lay-pic .scr { background: #e5e7eb; border-radius: 3px; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); }
+.vs-rec-lay-pic .cam { background: linear-gradient(160deg, #a78bfa, #6d4aff); border: 1.5px solid #fff; }
+/* The background on/off switch: a button with aria-pressed, so it reads as one control to a screen reader and to tests. */
+.vs-rec-switch-label { font-weight: 600; font-size: 13.5px; }
+.vs-rec-switch { flex: none; display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line2); background: var(--raise); color: var(--ink); border-radius: 99px; padding: 3px 12px 3px 3px; font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; min-width: 78px; }
+.vs-rec-switch i { position: relative; width: 34px; height: 20px; border-radius: 99px; background: var(--line2); flex: none; }
+.vs-rec-switch i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); }
+.vs-rec-switch[aria-pressed="true"] { border-color: var(--accent); }
+.vs-rec-switch[aria-pressed="true"] i { background: var(--accent); }
+.vs-rec-switch[aria-pressed="true"] i::after { left: 16px; }
+@media (prefers-reduced-motion: no-preference) { .vs-rec-switch i::after { transition: left .15s ease; } }
+/* Ring colours are round, and the chosen one glows in its own colour (the swatch sets `color`). */
+.vs-rec-sw.vs-rec-ring-sw { border-radius: 50%; width: 28px; height: 28px; }
+.vs-rec-sw.vs-rec-ring-sw[aria-pressed="true"] { box-shadow: 0 0 10px currentColor; }
+@media (max-width: 480px) { .vs-rec-layouts { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
