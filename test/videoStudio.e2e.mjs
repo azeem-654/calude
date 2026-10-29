@@ -253,7 +253,7 @@ const page = steady(await ctx.newPage());
 /* The editor's panels sit behind a rail (Project, AI Tools, Properties,
    Elements, Captions, Media), each with its own tabs; the script is always
    on screen, and Export scrolls to the videos. */
-const RAIL_OF = { media: 'media', video: 'properties', adjust: 'properties', effects: 'properties', animation: 'properties', tracking: 'properties', audio: 'properties', text: 'elements', music: 'elements', captions: 'captions', cleanup: 'ai', tools: 'ai', shorts: 'project', reuse: 'project' };
+const RAIL_OF = { media: 'media', video: 'properties', adjust: 'properties', effects: 'properties', animation: 'properties', tracking: 'properties', pointer: 'properties', audio: 'properties', text: 'elements', music: 'elements', captions: 'captions', cleanup: 'ai', tools: 'ai', shorts: 'project', reuse: 'project' };
 const openPanel = async (p, k) => {
   if (k === 'transcript') return;
   if (k === 'exports') { await p.locator('[data-act="export"]').click(); return; }
@@ -1083,8 +1083,9 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   const peek = await v('get', { projectId: PID }, who);
   const poke = await v('edit', { projectId: PID, baseVersion: 1, ops: [{ op: 'clip.remove', id: target.id }] }, who);
   const del = await v('delete', { projectId: PID }, who);
+  const scr = await v('screen_save', { projectId: PID, meta: { w: 640, h: 360, dur: 5, segs: [{ t: 0, screen: [0, 0, 1, 1] }] } }, who);
   const asA = await api('video.php', { token: who.T, accountId: A, action: 'list' });
-  ok('19 · another workspace sees none of the projects, videos or words', list.projects?.length === 0 && lib.items?.length === 0 && peek.code === 'not_found' && poke.code === 'not_found' && del.code === 'not_found', { list: list.projects?.length, lib: lib.items?.length, peek: peek.code, poke: poke.code, del: del.code });
+  ok('19 · another workspace sees none of the projects, videos or words', list.projects?.length === 0 && lib.items?.length === 0 && peek.code === 'not_found' && poke.code === 'not_found' && del.code === 'not_found' && scr.code === 'not_found', { list: list.projects?.length, lib: lib.items?.length, peek: peek.code, poke: poke.code, del: del.code, scr: scr.code });
   ok('…and cannot name the other workspace to get in', !asA.success && asA.code === 'not_yours', asA);
   /* A link from now: every video has been rendered again since S was read, and only the latest file is kept. */
   const url = new URL((await v('get', { projectId: PID })).outputs.find(o => o.mp4Url).mp4Url);
@@ -1280,6 +1281,39 @@ const halvesDiffer = (file, t) => Number(String(execFileSync('sh', ['-c',
   const p1 = probe(f1.file).streams.find(x => x.codec_type === 'video');
   const below = facesAt(f1.file, 8, 'iw:ih/2:0:ih/2'), diff1 = halvesDiffer(f1.file, 8);
   ok('the split Short renders at 1080×1920: the screen above, the camera — a face, big — below', p1.width === 1080 && p1.height === 1920 && below.length >= 1 && below[0].h > 0.25 && diff1 > 20, { w: p1.width, h: p1.height, below, diff1 });
+
+  /* The same recording as if the Screen Recorder had made it: its notes (where the screen and the camera
+     were, where the pointer went and clicked) make a tall Short camera-on-top with the screen following
+     the pointer, and the moments followed get a drawn pointer and click sounds. */
+  const meta = {
+    w: 1280, h: 720, dur: 24, how: 'picture',
+    segs: [{ t: 0, layout: 'bubble', screen: [0, 0, 1, 1], cam: [1030 / 1280, 470 / 720, 220 / 1280, 220 / 720], shape: 'rounded' }],
+    path: Array.from({ length: 200 }, (_, i) => [i * 0.1 + 2, 0.15 + 0.6 * (i / 200), 0.3 + 0.2 * Math.sin(i / 20)]),
+    clicks: [[5, 0.3, 0.35], [9, 0.5, 0.45]],
+  };
+  const ss = await v('screen_save', { projectId: pid, meta });
+  ok('the Screen Recorder\'s notes are kept with the project: a camera seen, the pointer\'s moves and clicks counted', ss.success && ss.screen?.cam === true && ss.screen.moves === 200 && ss.screen.clicks === 2, ss);
+  const G = await v('get', { projectId: pid });
+  ok('…and handed to the editor through a signed link', G.extras?.screen?.key?.endsWith('prep/screen.json') && /video-file\.php/.test(G.source.screenUrl ?? ''), { ex: G.extras?.screen, url: G.source.screenUrl });
+  const ep = await v('edit', { projectId: pid, baseVersion: G.docVersion, ops: [
+    { op: 'clip.add', s: 2, e: 20, title: 'Pointer Short' },
+    { op: 'pointer.focus.add', s: 3, e: 11, cursor: 'ring' },
+    { op: 'pointer.set', patch: { click: 'pop', moments: true, volume: 0.9 } },
+  ], note: 'pointer' });
+  const pclip = ep.doc?.clips?.find(c => c.title === 'Pointer Short');
+  ok('a moment to follow and click sounds are saved on the edit', ep.success && ep.doc.pointer?.focus?.length >= 1 && ep.doc.pointer.click === 'pop' && !!pclip, ep.error);
+  const pout = (await v('get', { projectId: pid })).outputs.find(o => o.clipId === pclip.id);
+  const pr = await renderOut(pid, pout.id);
+  const pf = await download(pr.o.downloadUrl, 'layout-screencam.mp4');
+  const pv = probe(pf.file).streams.find(x => x.codec_type === 'video');
+  const camTop = facesAt(pf.file, 6, 'iw:ih/3:0:0');
+  ok('the tall Short of a Screen Recorder recording renders camera-on-top by itself: 1080×1920, the face in the top third', pv.width === 1080 && pv.height === 1920 && camTop.length >= 1, { w: pv.width, h: pv.height, camTop });
+  await page.goto(`${B}/video-studio/${pid}`, { waitUntil: 'networkidle' });
+  await openPanel(page, 'pointer');
+  await page.getByTestId('vs-pointer-panel').waitFor({ timeout: 15_000 });
+  ok('the Pointer panel lists the moment, and the timeline has a Pointer lane with it', (await page.locator('[data-testid="vs-ptr-list"] [data-focus]').count()) >= 1 && (await page.locator('[data-testid="vs-pointer-lane"] [data-focus-block]').count()) >= 1);
+  const iso = await v('screen_save', { projectId: pid, meta }, { T: 'nope', A });
+  ok('…and a request without the session cannot write the notes', !iso.success, iso);
 
   /* Two people taking turns, one above the other. */
   const T2 = await v('get', { projectId: TWO_PID });

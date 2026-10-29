@@ -23,6 +23,11 @@ import { toXmeml, editorialScore } from '../worker/src/lib/video/xml';
 import { pickHighlight, thumbWords, cleanThumbSpec, renderSpec } from '../worker/src/lib/video/pipeline';
 import { thumbPlan, normaliseSpec, lineRect, TREND_LAYOUTS, STICKERS } from '../media/engine/thumbLayout.mjs';
 import { parseYoutubeUrl, youtubeRefusal, cleanOembed, youtubeThumb, YOUTUBE_WAY_FORWARD } from '../worker/src/lib/video/youtube';
+import {
+  cleanScreenMeta, autoFocus, pointerAt, pointerInFrame, focusWindows, zoomPlan, zoomAt, zoomLevel, screenPlan, followPath, followAt, pointerMarks, pointerAss, sfxEvents,
+  cursorFor, momentFor, resolveCursor, pointerOf, sfxSample, SFX_LENGTH, type ScreenMeta,
+} from '../worker/src/lib/video/pointer';
+import { linksIn, checkReshape, reshapePrompt } from '../src/components/VideoStudio/reshape';
 
 let pass = 0, failN = 0;
 const ok = (name: string, cond: unknown, detail: unknown = '') => {
@@ -615,6 +620,108 @@ console.log('\nTrending thumbnails: one plan for the engine and the preview');
   ok('even lines: "of work in 1" is never left with "1" alone', num.lines.slice(1).every(l => l.runs.map(r => r.t).join('').trim().split(' ').length >= 2), num.lines.map(l => l.runs.map(r => r.t).join('')));
   const spec = cleanThumbSpec({ layout: 'glow', text: 'A b c', sticker: 'star', side: 'left', color2: '#123456', textSize: 0.2 }, { layout: 'bold', text: 'x', highlight: '', at: 5, accent: '#facc15', color: '#000000', textColor: '#ffffff', border: true, zoom: 0.5 });
   ok('a designed spec keeps the new options, cleaned', spec.layout === 'glow' && spec.sticker === 'star' && spec.side === 'left' && spec.color2 === '#123456' && spec.textSize === 0.6, spec);
+}
+
+/* ── The pointer in a Screen Recorder recording (pointer.ts) ─────────────── */
+{
+  const meta = cleanScreenMeta({
+    w: 1920, h: 1080, dur: 60,
+    segs: [{ t: 0, layout: 'speaker-left', screen: [0.34, 0, 0.66, 1], cam: [0, 0, 0.33, 1], shape: 'rounded' }, { t: 1, layout: 'bad', screen: [2, 0, 1, 1], cam: null }],
+    path: [[0, 0.1, 0.1], [10, 0.2, 0.2], [10.5, 0.8, 0.5], [11, 0.8, 0.5], [30, 0.5, 0.5], [30.4, 0.52, 0.5], [99, 0.5, 0.5], ['x', 1, 1]],
+    clicks: [[11.2, 0.8, 0.5], [30.6, 0.52, 0.5], [70, 0.1, 0.1]],
+  })!;
+  ok('the recorder\'s notes are cleaned: a box off the frame and points outside the recording are dropped', !!meta && meta.segs.length === 1 && meta.path.length === 6 && meta.clicks.length === 2 && meta.how === 'picture', meta);
+  ok('…and something that is not a note is refused', cleanScreenMeta({ w: 1920 }) === null && cleanScreenMeta(null) === null);
+  ok('between two close samples the pointer is eased; across a long gap it stays where it was', JSON.stringify(pointerAt(meta, 10.25)) === JSON.stringify([0.5, 0.35]) && JSON.stringify(pointerAt(meta, 5)) === JSON.stringify([0.1, 0.1]));
+  const f = pointerInFrame(meta, 11)!;
+  ok('the pointer is placed on the frame through where the screen was drawn (speaker on the left)', Math.abs(f[0] - (0.34 + 0.8 * 0.66)) < 1e-6 && f[1] === 0.5, f);
+  const sentences = [
+    { s: 0, e: 9, text: 'Welcome to this walkthrough of the tool.' },
+    { s: 9.5, e: 12, text: 'Now click the settings button right here.' },
+    { s: 20, e: 25, text: 'We talk for a while about pricing in general.' },
+    { s: 29.5, e: 31, text: 'Type your name in this field and done.' },
+  ];
+  const auto = autoFocus(meta, sentences, 60);
+  ok('the moments picked are the ones where the words and the pointer act together — not talk alone', auto.length === 2 && auto[0].s < 9.5 && auto[0].e > 12 && auto[1].s < 29.5 && auto.every(r => r.by === 'auto' && r.why.length > 0), auto);
+  ok('…a hand for clicking, a ring for typing; "done" earns a celebration', auto[0].cursor === 'hand' && auto[1].cursor === 'ring' && auto[1].moment === 'celebrate', auto);
+  ok('with no transcript the clicks alone mark the moments, and say so', autoFocus(meta, [], 60).every(r => /no transcript/.test(r.why)) && autoFocus(meta, [], 60).length === 2);
+  ok('pointer words: hand, ring, spotlight, arrow', cursorFor('press save') === 'hand' && cursorFor('enter the email') === 'ring' && cursorFor('notice the total') === 'spotlight' && cursorFor('and so on') === 'arrow');
+  ok('moments: an error buzz for errors, a celebration for success, nothing otherwise', momentFor('oops, an error') === 'error' && momentFor('and that\'s it, it works') === 'celebrate' && momentFor('next we go on') === null);
+
+  /* The edit's operations. */
+  const doc0 = newDoc(parseRequest('a video'));
+  const d1 = applyOps(doc0, [{ op: 'pointer.focus.set', list: auto }, { op: 'pointer.focus.add', s: 40, e: 45, cursor: 'spotlight' }, { op: 'pointer.set', patch: { zoom: 9, click: 'pop', color: 'red', moments: true } }], 60).doc;
+  const pt = pointerOf(d1);
+  ok('focus ranges, your own added, settings clamped (zoom to 2.6×, a colour only as #rrggbb)', pt.focus.length === 3 && pt.ran && pt.zoom === 2.6 && pt.click === 'pop' && pt.color === '#facc15' && pt.moments && pt.focus[2].by === 'you', pt);
+  const d2 = applyOps(d1, [{ op: 'pointer.focus.removeRange', s: 41, e: 43 }], 60).doc;
+  ok('stopping the follow in the middle of a stretch splits it', pointerOf(d2).focus.length === 4, pointerOf(d2).focus);
+  const d3 = applyOps(d2, [{ op: 'pointer.focus.add', s: 9, e: 30 }], 60).doc;
+  ok('an added stretch over others merges with them', pointerOf(d3).focus.length === 3, pointerOf(d3).focus);
+  ok('a stretch under half a second is refused', applyOps(doc0, [{ op: 'pointer.focus.add', s: 3, e: 3.2 }], 60).refused.length === 1);
+  ok('a range\'s pointer: the customer\'s choice for all wins, else the range\'s, else the words', resolveCursor({ s: 0, e: 5, cursor: 'auto' }, 'dot', sentences) === 'dot' && resolveCursor({ s: 0, e: 5, cursor: 'arrow' }, 'auto', sentences) === 'arrow' && resolveCursor({ s: 9, e: 12, cursor: 'auto' }, 'auto', sentences) === 'hand');
+
+  /* The long video: zoom on the pointer. */
+  const keeps: [number, number][] = [[0, 20], [25, 60]];
+  const wins = focusWindows(pointerOf(d1).focus, keeps);
+  ok('the moments on the output\'s clock, through the cuts', wins.length === 3 && Math.abs(wins[1].a - (auto[1].s - 5)) < 0.01, wins.map(w => [w.a, w.b]));
+  const map = (fx: number, fy: number): [number, number] => [fx * 1920, fy * 1080];
+  const plan = zoomPlan(meta, keeps, wins, 2, 1920, 1080, map);
+  ok('outside the moments the picture is whole; inside it is zoomed, eased in over the ramp', zoomLevel(plan, 2) === 1 && zoomLevel(plan, wins[0].a + 1) === 2 && zoomLevel(plan, wins[0].a + 0.2) > 1 && zoomLevel(plan, wins[0].a + 0.2) < 2);
+  const v = zoomAt(plan, 11.5);
+  const px = map(...pointerInFrame(meta, 11.5)!);
+  ok('…looking at the pointer (it is on the zoomed picture), never past the frame\'s edge', v.z === 2 && px[0] >= v.x && px[0] <= v.x + 960 && v.x + 960 <= 1920 && v.y >= 0, { v, px });
+  ok('keyframes a straight line already gives are left out', plan.keys.length < (wins.reduce((n, w) => n + (w.b - w.a), 0) / 0.2), plan.keys.length);
+
+  /* A screen Short. */
+  const sc = screenPlan('screencam', meta, 9, 32, 1920, 1080, 1080, 1920)!;
+  ok('camera on top: the camera\'s box whole, a third of the height; the window the shape of what is left, inside the screen', !!sc && sc.top === 640 && sc.cam![2] === 634 && Math.abs(sc.crop[0] / sc.crop[1] - 1080 / 1280) < 0.01 && sc.crop[1] <= sc.region[3], sc);
+  const fo = screenPlan('follow', meta, 9, 32, 1920, 1080, 1080, 1920)!;
+  ok('no camera wanted: the whole height is the screen round the pointer', fo.top === 0 && fo.cam === null && Math.abs(fo.crop[0] / fo.crop[1] - 9 / 16) < 0.01);
+  const noCam = cleanScreenMeta({ ...meta, segs: [{ t: 0, layout: 'bubble', screen: [0, 0, 1, 1], cam: null, shape: 'circle' }] })!;
+  ok('…and with no camera recorded there is no camera-on-top layout', screenPlan('screencam', noCam, 0, 30, 1920, 1080, 1080, 1920) === null);
+  const path = followPath(meta, [[9, 32]], fo);
+  const at = followAt(path, 2.2)!;
+  ok('the window follows the pointer and never leaves the screen', path.length > 200 && path.every(([, x, y]) => x >= fo.region[0] && x + fo.crop[0] <= fo.region[0] + fo.region[2] && y >= 0) && Math.abs(at[0] + fo.crop[0] / 2 - pointerInFrame(meta, 11.2)![0] * 1920) < fo.crop[0] / 2, { at, region: fo.region });
+
+  /* The drawn pointer and the sounds. */
+  const place = (t: number, x: number, y: number): [number, number] => [x * 1920, y * 1080];
+  const { marks, clicks } = pointerMarks(meta, keeps, wins, 1, place, sentences, { click: 'click', moments: true });
+  ok('clicks inside the moments are heard; the last in a "done" moment celebrates', clicks.length === 2 && clicks[0].sound === 'click' && clicks[1].sound === 'celebrate', clicks);
+  const ass = pointerAss(marks.map(m => ({ ...m, cursor: 'ring' as const })), clicks, 1920, 1080, 1, '#22d3ee');
+  ok('the drawn pointer is ASS from numbers and fixed shapes only, gliding (\\move) with a ripple per click', /PlayResX: 1920/.test(ass) && /\\move\(/.test(ass) && (ass.match(/fscx180/g) ?? []).length === 2 && /EED322/.test(ass) && !/\{[^}]*[a-z]{4,}[^}]*\\p1\}/i.test(ass.replace(/\\(move|pos|bord|shad|fscx|fscy|an\d|p1|t\()/g, '')));
+  ok('nothing to draw is no script', pointerAss([], [], 1920, 1080, 1, '#ffffff') === '');
+  ok('sound effects: in order, none closer than 80 ms, "no sound" left out', JSON.stringify(sfxEvents([{ t: 1, x: 0, y: 0, sound: 'pop' }, { t: 1.05, x: 0, y: 0, sound: 'click' }, { t: 2, x: 0, y: 0, sound: 'none' }])) === JSON.stringify([[1, 'pop']]));
+  ok('each sound is a short, bounded wave (the same formulas as the engine)', (Object.keys(SFX_LENGTH) as (keyof typeof SFX_LENGTH)[]).every(k => { let peak = 0; for (let t = 0; t < SFX_LENGTH[k]; t += 1 / 8000) peak = Math.max(peak, Math.abs(sfxSample(k, t, 1))); return peak > 0.05 && peak <= 1; }));
+
+  /* What a render depends on. */
+  const src = { key: 'v/a/p/source.mp4', probe: { duration: 60, width: 1920, height: 1080, fps: 30, vcodec: 'h264', acodec: 'aac', hasAudio: true, format: 'mp4', rotation: 0 } };
+  const ref = { key: 'v/a/p/prep/screen.json', cam: true, at: 't', moves: 6, clicks: 2, dur: 60 };
+  const withShort = applyOps(d1, [{ op: 'clip.add', s: 8, e: 33 }], 60).doc;
+  const so = { kind: 'short' as const, clip_id: withShort.clips[0].id };
+  const plain = renderSpec(withShort, src, so, null)!;
+  const scr = renderSpec(withShort, src, so, null, ref)!;
+  ok('a tall Short of a Screen Recorder recording is laid out camera-on-top by itself (follow without a camera)', plain.screenLayout === null && scr.screenLayout === 'screencam' && renderSpec(withShort, src, so, null, { ...ref, cam: false })!.screenLayout === 'follow');
+  ok('…its pointer is drawn and its hash differs from the plain one; the same edit, the same hash', !!scr.pointer && scr.hash !== plain.hash && renderSpec(withShort, src, so, null, ref)!.hash === scr.hash);
+  const offPtr = applyOps(withShort, [{ op: 'pointer.set', patch: { on: false } }], 60).doc;
+  ok('switching the pointer off changes what the Short depends on (it still follows the pointer — that is its layout)', renderSpec(offPtr, src, so, null, ref)!.pointer === null && renderSpec(offPtr, src, so, null, ref)!.screenLayout === 'screencam' && renderSpec(offPtr, src, so, null, ref)!.hash !== scr.hash);
+  const lo = { kind: 'long' as const, clip_id: '' };
+  ok('the long video zooms on the pointer only where its picture maps straight onto the recording', !!renderSpec(withShort, src, lo, null, ref)!.pointer);
+  ok('a project with no Screen Recorder notes renders exactly as before', renderSpec(withShort, src, lo, null)!.hash === renderSpec(withShort, src, lo, null, null)!.hash && renderSpec(withShort, src, lo, null)!.pointer === null);
+}
+
+/* ── "Change these words with AI" (reshape.ts) ───────────────────────────── */
+{
+  const sent = { description: 'Learn to book calls.\n- Step one\n- Step two\nMore at www.mysite.com/start', title: 'Book calls fast', hashtags: '#calls' };
+  const ask = 'Add my affiliate link https://partner.example/ref?id=42 to the description and the bullet points';
+  ok('links are found in text, bare or with a scheme, without trailing punctuation', JSON.stringify(linksIn('See https://a.com/x. and www.b.org, or c.io/p!')) === JSON.stringify(['a.com/x', 'www.b.org', 'c.io/p']));
+  const good = checkReshape({ changed: { description: `${sent.description}\n- Get it here: https://partner.example/ref?id=42`, title: 'Book calls fast' }, summary: 'Added your link.' }, sent, ask, { description: 5000 });
+  ok('the customer\'s own link is kept; an unchanged text is not counted as a change', Object.keys(good.changed).join() === 'description' && good.changed.description.includes('partner.example/ref?id=42') && good.summary === 'Added your link.', good);
+  const bad = checkReshape({ changed: { description: 'Buy now at https://scam.example/x', hashtags: '#calls #sales', invented: 'x' } }, sent, ask);
+  ok('a link nobody gave is refused and named; a key that was not sent is ignored', !bad.changed.description && bad.changed.hashtags === '#calls #sales' && !('invented' in bad.changed) && /scam\.example/.test(bad.refused[0]), bad);
+  ok('a link already in the texts may stay or move', !!checkReshape({ changed: { title: 'Start at www.mysite.com/start' } }, sent, 'mention the site in the title').changed.title);
+  ok('limits hold and junk answers change nothing', checkReshape({ changed: { title: 'x'.repeat(300) } }, sent, 'longer', { title: 100 }).changed.title.length === 100 && Object.keys(checkReshape('nonsense', sent, ask).changed).length === 0);
+  const pr = reshapePrompt('make it } shorter', sent, 'the video');
+  ok('the prompt fences the request and the texts, and forbids invented links', /<<<REQUEST/.test(pr) && /<<<TEXTS/.test(pr) && /Never invent .*links/.test(pr) && pr.includes('"title":"Book calls fast"'));
 }
 
 console.log(`\n${pass} passed, ${failN} failed`);

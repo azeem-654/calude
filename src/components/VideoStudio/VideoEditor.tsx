@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import {
   getVideoProject, videoStatus, editVideo, applyOps, gotoVersion, renameVideoProject, retryVideo, cancelVideo, deleteVideoProject, renderOutputs,
-  loadTranscript, loadWave, loadTrack, uploadVideo, sentencesOf, clock, bytesLabel, keepRanges, clipKeeps, keptLength, STATUS_LABEL,
+  loadTranscript, loadWave, loadTrack, loadScreen, type ScreenMeta, uploadVideo, sentencesOf, clock, bytesLabel, keepRanges, clipKeeps, keptLength, STATUS_LABEL,
   type ProjectView, type Transcript, type VideoDoc, type Op, type Clip, type UploadProgress, type Capability, type TrackFile,
 } from '../../services/videoStudio';
 import { TranscriptPanel, CleanupPanel, ShortsPanel, CaptionsPanel } from './EditorPanels';
@@ -48,6 +48,7 @@ import PublishPanel from './PublishPanel';
 import VersionsPanel from './VersionsPanel';
 import Player from './Player';
 import Timeline from './Timeline';
+import PointerPanel from './PointerPanel';
 import { CapabilityPanel } from './VideoStudio';
 
 /** Every key the editor answers, in one sheet (press ? anywhere outside a text box). */
@@ -59,7 +60,7 @@ const SHORTCUTS: [string, [string, string][]][] = [
 
 /** The rail's groups (Descript's): each opens its panel beside the rail. */
 export type Group = 'project' | 'ai' | 'properties' | 'elements' | 'captions' | 'media';
-type Sub = 'shorts' | 'reuse' | 'tools' | 'cleanup' | 'video' | 'adjust' | 'effects' | 'animation' | 'tracking' | 'audio' | 'text' | 'music' | 'captions' | 'media';
+type Sub = 'shorts' | 'reuse' | 'tools' | 'cleanup' | 'video' | 'adjust' | 'effects' | 'animation' | 'tracking' | 'pointer' | 'audio' | 'text' | 'music' | 'captions' | 'media';
 export type PanelTab = Sub | 'transcript' | 'assistant' | 'versions' | 'exports';
 const RAIL: { key: Group; label: string; icon: typeof Film }[] = [
   { key: 'project', label: 'Project', icon: FolderOpen }, { key: 'ai', label: 'AI Tools', icon: Sparkles }, { key: 'properties', label: 'Properties', icon: SlidersHorizontal },
@@ -68,7 +69,7 @@ const RAIL: { key: Group; label: string; icon: typeof Film }[] = [
 const SUBS: Record<Group, { key: Sub; label: string }[]> = {
   project: [{ key: 'shorts', label: 'Compositions' }, { key: 'reuse', label: 'Reuse' }],
   ai: [{ key: 'tools', label: 'AI Tools' }, { key: 'cleanup', label: 'Cleanup' }],
-  properties: [{ key: 'video', label: 'Video' }, { key: 'adjust', label: 'Adjust' }, { key: 'effects', label: 'Effects' }, { key: 'animation', label: 'Animation' }, { key: 'tracking', label: 'Tracking' }, { key: 'audio', label: 'Audio' }],
+  properties: [{ key: 'video', label: 'Video' }, { key: 'adjust', label: 'Adjust' }, { key: 'effects', label: 'Effects' }, { key: 'animation', label: 'Animation' }, { key: 'tracking', label: 'Tracking' }, { key: 'pointer', label: 'Pointer' }, { key: 'audio', label: 'Audio' }],
   elements: [{ key: 'text', label: 'Text' }, { key: 'music', label: 'Music' }],
   captions: [{ key: 'captions', label: 'Captions' }],
   media: [{ key: 'media', label: 'Media' }],
@@ -93,6 +94,8 @@ export interface EditorCtx {
   say: (m: ChatMsg) => void;
   /** Faces and the speaker through the recording (the engine's track), once loaded. */
   track: TrackFile | null;
+  /** A Screen Recorder recording's notes — where the screen and camera were, where the pointer went and clicked — once loaded. */
+  screen: ScreenMeta | null;
   /** A version the server just saved (an assistant command), taken at once —
    *  waiting for the next refresh left a window where Undo went back two. */
   adopt: (doc: VideoDoc, version: number) => void;
@@ -343,6 +346,7 @@ function SidePanel({ ctx, group, sub, setSub, onClose, messages, commandRef }: {
         {sub === 'effects' && <VisualEffectsPanel ctx={ctx} />}
         {sub === 'animation' && <AnimationPanel ctx={ctx} />}
         {sub === 'tracking' && <TrackingPanel ctx={ctx} />}
+        {sub === 'pointer' && <PointerPanel ctx={ctx} />}
         {sub === 'audio' && <AudioPanel ctx={ctx} />}
         {sub === 'text' && <TextPanel ctx={ctx} />}
         {sub === 'music' && <MusicPanel ctx={ctx} />}
@@ -365,6 +369,8 @@ export default function VideoEditor({ id }: { id: string }) {
   const [wave, setWave] = useState<Uint8Array | null>(null);
   const [track, setTrack] = useState<TrackFile | null>(null);
   const trackUrlSeen = useRef(false);
+  const [screen, setScreen] = useState<ScreenMeta | null>(null);
+  const screenUrlSeen = useRef(false);
   const [error, setError] = useState('');
   const asked = params.get('tab') ?? '';
   const narrow = () => typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches;
@@ -441,6 +447,7 @@ export default function VideoEditor({ id }: { id: string }) {
       if (t) setTranscript(t);
     }
     if (v.source.waveUrl && !wave) void loadWave(v.source.waveUrl).then(w => { if (w) setWave(w); });
+    if (v.source.screenUrl && !screenUrlSeen.current) { screenUrlSeen.current = true; void loadScreen(v.source.screenUrl).then(m => { if (m) setScreen(m); else screenUrlSeen.current = false; }); }
     if (v.source.trackUrl && !trackUrlSeen.current) { trackUrlSeen.current = true; void loadTrack(v.source.trackUrl).then(t => { if (t) setTrack(t); else trackUrlSeen.current = false; }); }
   }, [doc, narrate, transcript, wave]);
 
@@ -577,8 +584,8 @@ export default function VideoEditor({ id }: { id: string }) {
   const duration = view?.source.probe?.duration ?? transcript?.duration ?? 0;
   durationRef.current = duration;
   const ctx = useMemo<EditorCtx | null>(() => view && doc ? {
-    view, doc, version, transcript, duration, apply, seek, time, selection, setSelection, activeClip, setActiveClip, refresh, setTab, say, adopt, track, caps,
-  } : null, [view, doc, version, transcript, duration, apply, seek, time, selection, activeClip, refresh, setTab, say, adopt, track, caps]);
+    view, doc, version, transcript, duration, apply, seek, time, selection, setSelection, activeClip, setActiveClip, refresh, setTab, say, adopt, track, screen, caps,
+  } : null, [view, doc, version, transcript, duration, apply, seek, time, selection, activeClip, refresh, setTab, say, adopt, track, screen, caps]);
   const sentences = useMemo(() => transcript ? sentencesOf(transcript.words) : [], [transcript]);
 
   if (error) return <div className="vs-note bad" role="alert"><AlertCircle size={16} /> {error} <Link to="/video-studio">Back to Video Studio</Link></div>;

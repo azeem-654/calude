@@ -13,10 +13,20 @@
  * Until something is written, a piece shows what the processing already made
  * (the output's title, description and hashtags), marked as such. Nothing is
  * posted anywhere: there is no publishing connection, and the section says so.
+ *
+ * Above all of it, "Change these words with AI": the customer says what to
+ * change — add an affiliate link to the description and the bullet points,
+ * shorten the titles, reshape it for another audience — for this video or
+ * every video at once. The AI answers with only the texts it changed;
+ * reshape.ts keeps it to the texts it was given and refuses any link the
+ * customer did not give. The board's words (title, description, hashtags,
+ * pinned comment, call to action, tags) are saved too, and one press puts
+ * everything back.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Check, RefreshCw, Wand2, Loader, Megaphone, PenLine, Send, AlertCircle } from 'lucide-react';
-import { savePublish, clock, type PublishTexts } from '../../services/videoStudio';
+import { Copy, Check, RefreshCw, Wand2, Loader, Megaphone, PenLine, Send, AlertCircle, Sparkles, Undo2 } from 'lucide-react';
+import { savePublish, updateMeta, clock, type PublishTexts, type OutputView, type VideoMeta } from '../../services/videoStudio';
+import { reshapePrompt, checkReshape, type Texts } from './reshape';
 import { aiJson, fencedTranscript } from '../../services/videoAi';
 import type { EditorCtx } from './VideoEditor';
 
@@ -57,6 +67,44 @@ function CopyBtn({ text }: { text: string }) {
       {done ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy</>}
     </button>
   );
+}
+
+/* The board's own words that live only on the output (not among the publishing texts above). */
+const META_KEYS: { key: string; label: string; of: (m: Partial<VideoMeta>) => string }[] = [
+  { key: 'pinned_comment', label: 'Pinned comment', of: m => m.pinnedComment ?? '' },
+  { key: 'call_to_action', label: 'Call to action', of: m => m.cta ?? '' },
+  { key: 'tags', label: 'Tags', of: m => (m.tags ?? []).join(', ') },
+  { key: 'keywords', label: 'Keywords', of: m => (m.keywords ?? []).join(', ') },
+];
+const LIMITS: Record<string, number> = Object.fromEntries(FIELDS.filter(f => f.limit).map(f => [f.key, f.limit!]));
+
+/** Every text one composition has: its publishing texts (written here, or what processing made), its posts and its board words. */
+function textsOf(o: OutputView | undefined, saved: PublishTexts | undefined, extraMade: Partial<Record<FieldKey, string>> = {}): Texts {
+  const m = (o?.meta ?? {}) as Partial<VideoMeta>;
+  const made: Partial<Record<FieldKey, string>> = { title: m.titles?.[0] ?? '', description: m.description ?? '', hashtags: (m.hashtags ?? []).join(' '), ...extraMade };
+  const t: Texts = {};
+  for (const f of FIELDS) { const v = saved?.fields?.[f.key] || made[f.key] || ''; if (v.trim()) t[f.key] = v; }
+  for (const [k, v] of Object.entries(saved?.posts ?? {})) if (v.trim()) t[`post_${k}`] = v;
+  if (saved?.fields?.write?.trim()) t.write = saved.fields.write;
+  if (o) for (const mk of META_KEYS) { const v = mk.of(m); if (v.trim()) t[mk.key] = v; }
+  return t;
+}
+
+/** A change back onto its homes: the publishing texts, the posts, the board's words. */
+function split(changed: Texts) {
+  const fields: Record<string, string> = {}, posts: Record<string, string> = {}, meta: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(changed)) {
+    if (k.startsWith('post_')) posts[k.slice(5)] = v;
+    else if (k === 'pinned_comment') meta.pinned_comment = v;
+    else if (k === 'call_to_action') meta.cta = v;
+    else if (k === 'tags' || k === 'keywords') meta[k] = v.split(',').map(x => x.trim()).filter(Boolean);
+    else fields[k] = v;
+  }
+  /* The board's title, description and hashtags follow the publishing texts, so downloads and copies carry the change. */
+  if (fields.title) meta.title = fields.title;
+  if (fields.description) meta.description = fields.description;
+  if (fields.hashtags) meta.hashtags = fields.hashtags.split(/[\s,]+/).filter(Boolean);
+  return { fields, posts, meta };
 }
 
 export default function PublishPanel({ ctx }: { ctx: EditorCtx }) {
@@ -145,6 +193,72 @@ Answer only JSON: {"text":"…"}`, 0.7);
     setFields(next); await save({ write: next.write }, {});
   };
 
+  /* ── Change these words with AI ── */
+  const [ask, setAsk] = useState('');
+  const [scope, setScope] = useState<'this' | 'all'>('this');
+  const [reshaped, setReshaped] = useState<{ text: string; bad: boolean } | null>(null);
+  const [undoN, setUndoN] = useState(0);
+  const undo = useRef<{ key: string; outputId: string | null; fields: Record<string, string>; posts: Record<string, string>; meta: Record<string, unknown> }[]>([]);
+  const aiOff = ai && ai.status !== 'working' ? `AI is not set up on this install — ${ai.note || 'the owner adds an AI key'}.` : '';
+  const keyOf = (o: OutputView) => (o.kind === 'long' ? 'long' : o.clipId);
+  const saveTo = async (k: string, o: OutputView | undefined, ch: Texts, prev: Texts) => {
+    const { fields: f, posts: ps, meta } = split(ch);
+    if (Object.keys(f).length || Object.keys(ps).length) { const r = await savePublish(view.project.id, k, f, ps); if (!r.success) throw new Error(r.error ?? 'The texts could not be saved.'); }
+    if (o && Object.keys(meta).length) {
+      const m = o.meta as Partial<VideoMeta>;
+      const title = meta.title as string | undefined;
+      const r = await updateMeta(view.project.id, o.id, { ...meta, ...(title ? { titles: [title, ...(m.titles ?? []).filter(t => t !== title)] } : {}) });
+      if (!r.success) throw new Error(r.error ?? 'The words could not be saved.');
+    }
+    const back = split(Object.fromEntries(Object.keys(ch).map(x => [x, prev[x] ?? ''])));
+    undo.current.push({ key: k, outputId: o?.id ?? null, ...back });
+    setUndoN(undo.current.length);
+    if (k === key) { setFields(x => ({ ...x, ...f })); setPosts(x => ({ ...x, ...ps })); }
+  };
+  const reshape = async () => {
+    const request = ask.trim();
+    if (!request) { setErr('Say what to change first — e.g. “add my affiliate link https://… to the description”.'); return; }
+    setBusy('reshape'); setErr(''); setReshaped(null); undo.current = []; setUndoN(0);
+    const targets: { k: string; o: OutputView | undefined; texts: Texts; what: string }[] = scope === 'this'
+      ? [{ k: key, o: out, texts: textsOf(out, { fields: { ...(saved?.fields ?? {}), ...fields }, posts: { ...(saved?.posts ?? {}), ...posts }, at: '' }, made), what }]
+      : view.outputs.map(o => {
+        const c = o.kind === 'short' ? doc.clips.find(x => x.id === o.clipId) : null;
+        return { k: keyOf(o), o, texts: textsOf(o, keyOf(o) === key ? { fields: { ...(saved?.fields ?? {}), ...fields }, posts: { ...(saved?.posts ?? {}), ...posts }, at: '' } : view.extras?.publish?.[keyOf(o)]), what: c ? `a Short titled “${c.title}”` : `the video “${view.project.name}”` };
+      });
+    let done = 0, changedN = 0;
+    const notes: string[] = [];
+    try {
+      for (const t of targets) {
+        if (!Object.keys(t.texts).length) continue;
+        setBusy(`reshape:${done + 1}/${targets.length}`);
+        const r = await aiJson<unknown>(reshapePrompt(request, t.texts, t.what), 0.4);
+        done++;
+        if (!r.ok) { notes.push(r.error); continue; }
+        const c = checkReshape(r.data, t.texts, request, LIMITS);
+        notes.push(...c.refused);
+        if (Object.keys(c.changed).length) { await saveTo(t.k, t.o, c.changed, t.texts); changedN += Object.keys(c.changed).length; if (c.summary && targets.length === 1) notes.unshift(c.summary); }
+      }
+      setReshaped({ text: changedN ? `${changedN} text${changedN === 1 ? '' : 's'} changed${targets.length > 1 ? ` across ${done} video${done === 1 ? '' : 's'}` : ''}. ${notes.join(' ')}`.trim() : `Nothing was changed. ${notes.join(' ')}`.trim(), bad: !changedN });
+      if (changedN) void ctx.refresh();
+    } catch (e) {
+      setErr(`${(e as Error).message} What was already changed is kept — press Undo to put it back.`);
+    } finally { setBusy(''); }
+  };
+  const putBack = async () => {
+    setBusy('reshape-undo');
+    try {
+      for (const u of [...undo.current].reverse()) {
+        if (Object.keys(u.fields).length || Object.keys(u.posts).length) await savePublish(view.project.id, u.key, u.fields, u.posts);
+        const o = view.outputs.find(x => x.id === u.outputId);
+        if (o && Object.keys(u.meta).length) await updateMeta(view.project.id, o.id, { ...u.meta, ...(u.meta.title ? { titles: [u.meta.title as string, ...((o.meta as Partial<VideoMeta>).titles ?? []).filter(t => t !== u.meta.title)] } : {}) });
+        if (u.key === key) { setFields(x => ({ ...x, ...u.fields })); setPosts(x => ({ ...x, ...u.posts })); }
+      }
+      undo.current = []; setUndoN(0);
+      setReshaped({ text: 'Put back as it was.', bad: false });
+      void ctx.refresh();
+    } finally { setBusy(''); }
+  };
+
   /* AI Tools' Publish and Write items: come here and write that piece. */
   const run = useRef<(k: string) => void>(() => {});
   run.current = (k: string) => {
@@ -168,6 +282,30 @@ Answer only JSON: {"text":"…"}`, 0.7);
         <h2 style={{ margin: 0, fontSize: 19, display: 'flex', gap: 8, alignItems: 'center' }}><Megaphone size={18} /> Publishing — {clip ? `Short ${doc.clips.indexOf(clip) + 1} · ${clip.title}` : 'Long video'}</h2>
         <span className="vs-spacer" />
         <span className="vs-kbd">Written from this {clip ? 'Short\'s' : 'video\'s'} words · edit anything · kept with the video · nothing is posted for you</span>
+      </div>
+      <div className="vs-card vs-reshape" data-testid="vs-reshape" style={{ marginBottom: 12 }}>
+        <div className="vs-row">
+          <b><Sparkles size={14} /> Change these words with AI</b>
+          <span className="vs-kbd">Titles, descriptions, bullet points, hashtags, posts, pinned comment and call to action — everything below and on the board</span>
+        </div>
+        <div className="vs-row" style={{ alignItems: 'stretch' }}>
+          <textarea className="vs-textarea" rows={2} style={{ flex: 1, minWidth: 0 }} value={ask} onChange={e => setAsk(e.target.value)} maxLength={2000} data-field="video.reshape" data-testid="vs-reshape-ask"
+            aria-label="What to change in the words" placeholder="e.g. Add my affiliate link https://example.com/ref to the description and the bullet points · Make the titles shorter · Rewrite it for dentists" />
+          <button type="button" className="vs-btn ai" onClick={() => void reshape()} disabled={!!aiOff || !!busy || !ask.trim()} data-act="reshape">
+            {busy.startsWith('reshape') ? <Loader size={14} className="spin" /> : <Wand2 size={14} />} {busy.startsWith('reshape:') && scope === 'all' ? `Changing ${busy.slice(8)}` : 'Change'}
+          </button>
+        </div>
+        <div className="vs-row" style={{ gap: 6 }}>
+          <div className="vs-chips" role="radiogroup" aria-label="Which videos">
+            <button type="button" className="vs-chip" role="radio" aria-checked={scope === 'this'} onClick={() => setScope('this')}>{clip ? 'This Short' : 'This video'}</button>
+            <button type="button" className="vs-chip" role="radio" aria-checked={scope === 'all'} onClick={() => setScope('all')} disabled={view.outputs.length < 2} data-testid="vs-reshape-all">Every video ({view.outputs.length})</button>
+          </div>
+          <span className="vs-spacer" />
+          {undoN > 0 && !busy && <button type="button" className="vs-btn ghost sm" onClick={() => void putBack()} data-act="reshape-undo"><Undo2 size={13} /> Undo</button>}
+        </div>
+        {aiOff && <small className="vs-kbd">{aiOff}</small>}
+        {reshaped && <div className={`vs-note ${reshaped.bad ? 'warn' : 'ok'}`} role="status" data-testid="vs-reshape-result"><Check size={15} /> <span>{reshaped.text}</span></div>}
+        <small className="vs-kbd" style={{ fontWeight: 500 }}>Only what you ask for is changed; a link is used exactly as you typed it, and the AI may not add one you did not give.</small>
       </div>
       {off && <div className="vs-note warn" style={{ marginBottom: 10 }}><AlertCircle size={15} /> {off}</div>}
       {err && <div className="vs-note bad" role="alert" style={{ marginBottom: 10 }} data-testid="vs-publish-error"><AlertCircle size={15} /> {err}</div>}

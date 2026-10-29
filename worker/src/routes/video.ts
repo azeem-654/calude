@@ -35,6 +35,7 @@ import { searchMusic, trackById, storeTrack, musicQuery, looksLikeAudio } from '
 import { checkPng } from '../lib/video/png';
 import { brandOf, kitOf, saveKit } from '../lib/video/brand';
 import { cleanOembed, parseYoutubeUrl, youtubeThumb, YOUTUBE_WAY_FORWARD } from '../lib/video/youtube';
+import { autoFocus, cleanScreenMeta, type ScreenRef } from '../lib/video/pointer';
 import {
   advanceProject, cancelProject, enqueue, originOf, outputsOf, parse, readTranscript, renderSpec, stagesOf, syncOutputs, queueAfterEdit,
   recreditOutputs, type Extras, type JobRow, type OutputRow, type ProjectRow, type Source, type Thumb,
@@ -61,6 +62,8 @@ interface Req {
   /** Start from the customer's own YouTube video instead of an upload (create, youtube_info). */
   youtubeUrl?: string;
   want?: { repurpose?: { posts?: number; blog?: boolean; email?: boolean }; quiz?: boolean; denoise?: string; voice?: boolean; music?: string };
+  /** screen_save: what the Screen Recorder noted (pointer.ts ScreenMeta). */
+  meta?: unknown;
 }
 
 const s = (v: unknown, n: number) => String(v ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
@@ -121,10 +124,11 @@ async function capabilities(env: Env, accountId: string, probe: boolean): Promis
 
 async function signedOutputs(env: Env, origin: string, p: ProjectRow, outs: OutputRow[], doc: VideoDoc | null, src: Source): Promise<Record<string, unknown>[]> {
   const tr = doc ? await readTranscript(env, p).catch(() => null) : null;
+  const screen = parse<Extras>(p.extras ?? '', {}).screen ?? null;
   return Promise.all(outs.map(async o => {
     const files = parse<{ mp4?: { key: string; bytes: number }; srt?: string; vtt?: string }>(o.files, {});
     const thumbs = parse<Thumb[]>(o.thumbs, []);
-    const spec = doc ? renderSpec(doc, src, o, tr) : null;
+    const spec = doc ? renderSpec(doc, src, o, tr, screen) : null;
     const base = slug(o.title || p.name);
     return {
       id: o.id, kind: o.kind, clipId: o.clip_id, title: o.title, status: o.status, error: o.error, version: o.version,
@@ -173,6 +177,7 @@ async function projectView(env: Env, origin: string, p: ProjectRow, opts: { ligh
     : null;
   const maxV = await env.DB.prepare('SELECT MAX(version) AS v FROM crm_video_versions WHERE project_id = ?').bind(p.id).first<{ v: number | null }>();
   const sendDoc = !opts.light || opts.knownVersion !== p.doc_version;
+  const ex = parse<Extras>(p.extras ?? '', {});
   return {
     project: {
       id: p.id, name: p.name, prompt: p.prompt, status: p.status, stage: p.stage, stageNote: p.stage_note, error: p.error,
@@ -188,12 +193,13 @@ async function projectView(env: Env, origin: string, p: ProjectRow, opts: { ligh
       proxyUrl: src.proxy ? await fileUrl(env, origin, p.account_id, src.proxy, 4 * 3600, '', true) : '',
       track: src.track ? { ready: !!src.track.key, summary: src.track.summary ?? null, error: src.track.error ?? '', at: src.track.at } : null,
       trackUrl: src.track?.key && sendDoc ? await fileUrl(env, origin, p.account_id, src.track.key, 4 * 3600) : '',
+      screenUrl: ex.screen?.key && sendDoc ? await fileUrl(env, origin, p.account_id, ex.screen.key, 4 * 3600) : '',
       posterUrl: src.poster ? await fileUrl(env, origin, p.account_id, src.poster, 4 * 3600) : '',
       waveUrl: src.wave && sendDoc ? await fileUrl(env, origin, p.account_id, src.wave, 4 * 3600) : '',
       filmstrip: src.filmstrip ? { url: await fileUrl(env, origin, p.account_id, src.filmstrip.key, 4 * 3600), every: src.filmstrip.every, tiles: src.filmstrip.tiles, w: src.filmstrip.w, h: src.filmstrip.h } : null,
       silences: sendDoc ? src.silences ?? [] : undefined,
     },
-    extras: parse<Extras>(p.extras, {}),
+    extras: ex,
     musicUrl: doc?.music ? await fileUrl(env, origin, p.account_id, doc.music.key, 4 * 3600) : '',
     transcriptUrl: p.transcript_key && sendDoc ? await fileUrl(env, origin, p.account_id, p.transcript_key, 4 * 3600) : '',
     docVersion: p.doc_version, maxVersion: maxV?.v ?? p.doc_version,
@@ -948,6 +954,32 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       await env.DB.prepare(`UPDATE crm_video_outputs SET status = ?, publish_at = ${at === undefined ? 'publish_at' : '?'}, updated_at = ? WHERE id = ?`)
         .bind(...(at === undefined ? [status, nowIso(), o.id] : [status, at ? at.toISOString() : null, nowIso(), o.id])).run();
       return json({ success: true });
+    }
+
+    /*
+     * What the Screen Recorder noted — where the screen and camera were drawn
+     * and where the pointer went and clicked — kept beside the recording
+     * (prep/screen.json, extras.screen). Checked field by field and capped
+     * (pointer.ts cleanScreenMeta); it is the customer's own recording, but
+     * a request is still a request. If the transcript is already there, the
+     * moments to follow are proposed at once; otherwise the analysis does it.
+     */
+    case 'screen_save': {
+      if (!env.VIDEO) return fail('Video storage is not set up yet.');
+      const meta = cleanScreenMeta(d.meta);
+      if (!meta) return fail('That recording note could not be read.');
+      const key = `${projectPrefix(accountId, p.id)}prep/screen.json`;
+      await env.VIDEO.put(key, JSON.stringify(meta), { httpMetadata: { contentType: 'application/json' } });
+      const ref: ScreenRef = { key, cam: meta.segs.some(g => !!g.cam), at: nowIso(), moves: meta.path.length, clicks: meta.clicks.length, dur: meta.dur };
+      await env.DB.prepare(`UPDATE crm_video_projects SET extras = json_set(COALESCE(NULLIF(extras, ''), '{}'), '$.screen', json(?)), updated_at = ? WHERE id = ?`).bind(JSON.stringify(ref), nowIso(), p.id).run();
+      const doc = parse<VideoDoc>(p.doc, null as unknown as VideoDoc);
+      const tr = !doc?.pointer?.ran ? await readTranscript(env, p) : null;
+      if (tr) {
+        const duration = parse<Source>(p.source, {}).probe?.duration ?? tr.duration;
+        const r = await saveEdit(env, p, undefined, [{ op: 'pointer.focus.set', list: autoFocus(meta, sentencesOf(tr.words), duration) }], 'Moments to follow the pointer, picked from what you said and where you clicked', 'Video Studio');
+        if (r.ok) await afterEdit(env, origin, p, r.doc);
+      }
+      return json({ success: true, screen: ref });
     }
 
     case 'meta_update': {

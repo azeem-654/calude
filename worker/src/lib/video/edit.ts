@@ -20,6 +20,7 @@
  * Pure: no imports outside this folder, no I/O — the browser imports it too
  * (src/services/videoStudio.ts), so both sides read the edit the same way.
  */
+import { applyPointerOp, type PointerOp, type PointerSettings } from './pointer';
 
 export interface Word {
   /** Index in the transcript; stable — edits refer to words by it. */
@@ -253,10 +254,16 @@ export const effectsOn = (fx: Effects): Partial<Effects> =>
  *            camera cropped to the face below
  *   two      two people taking turns: one above, the other below
  *   pip      the screen whole, the camera in a bubble in a corner
- * Absent: the Short's own crop / fit (`reframe`), as before.
+ *   screencam  a Screen Recorder recording made with the camera on: the
+ *            camera whole in the top third, the screen below cropped round
+ *            the pointer and following it (pointer.ts `screenPlan`)
+ *   follow   a Screen Recorder recording: the whole height is the screen
+ *            cropped round the pointer, following it
+ * Absent: the Short's own crop / fit (`reframe`) — or, for a Screen
+ * Recorder recording in a tall shape, screencam / follow (pipeline.ts).
  */
-export type ShortLayout = 'speaker' | 'screen' | 'split' | 'two' | 'pip';
-export const SHORT_LAYOUTS: ShortLayout[] = ['speaker', 'screen', 'split', 'two', 'pip'];
+export type ShortLayout = 'speaker' | 'screen' | 'split' | 'two' | 'pip' | 'screencam' | 'follow';
+export const SHORT_LAYOUTS: ShortLayout[] = ['speaker', 'screen', 'split', 'two', 'pip', 'screencam', 'follow'];
 
 export const lookOf = (doc: Pick<VideoDoc, 'look'>, kind: 'long' | 'short'): Look => ({ ...LOOK_DEFAULT, ...(doc.look?.[kind] ?? {}) });
 export const motionOf = (doc: Pick<VideoDoc, 'motion'>, kind: 'long' | 'short'): Motion => ({ ...MOTION_DEFAULT, ...(doc.motion?.[kind] ?? {}) });
@@ -287,6 +294,8 @@ export interface VideoDoc {
   mutes?: { id: string; s: number; e: number }[];
   /** Where the customer split the recording into scenes ("Split" at the playhead); scene numbers on the timeline. Source time. */
   splits?: number[];
+  /** Following the pointer of a Screen Recorder recording: the moments, the drawn pointer, click sounds (pointer.ts). */
+  pointer?: PointerSettings;
 }
 
 /* ── The request, read from what somebody typed ─────────────────────────── */
@@ -572,7 +581,8 @@ export type Op =
   | { op: 'mute.add'; s: number; e: number }
   | { op: 'mute.restoreRange'; s: number; e: number }
   | { op: 'scene.split'; t: number }
-  | { op: 'scene.join'; t: number };
+  | { op: 'scene.join'; t: number }
+  | PointerOp;
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const clamp = (n: unknown, lo: number, hi: number, d: number) => { const x = Number(n); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d; };
@@ -900,6 +910,12 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
         const fillers = Array.isArray(o.fillers) ? o.fillers.filter(k => typeof k === 'string' && /^[a-z_]{1,12}$/.test(k)).slice(0, 12) : d.cleanup.fillers;
         const maxPause = o.maxPause === null ? null : o.maxPause !== undefined ? Math.round(clamp(o.maxPause, 0.15, 3, 0.5) * 100) / 100 : d.cleanup.maxPause;
         d.cleanup = { preset: o.preset, ran: true, ...(fillers ? { fillers } : {}), ...(maxPause ? { maxPause } : {}) };
+        break;
+      }
+      case 'pointer.set': case 'pointer.focus.add': case 'pointer.focus.removeRange': case 'pointer.focus.remove': case 'pointer.focus.update': case 'pointer.focus.set': {
+        const r = applyPointerOp(d.pointer, o, duration);
+        if (r.refused) refused.push(r.refused);
+        else d.pointer = r.next;
         break;
       }
       default:

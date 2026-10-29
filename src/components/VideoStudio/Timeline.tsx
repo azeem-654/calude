@@ -22,12 +22,12 @@
  * render see one edit. A drag on a lane still marks any stretch (I / O too).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Scissors, RotateCcw, Shield, Film, X, Play, Music2, Plus, Type, VolumeX, ChevronsLeft, ChevronsRight, SplitSquareHorizontal, Minimize2 } from 'lucide-react';
-import { clock, effectiveCuts, sentencesOf, cuesOf, retimeWords, type Overlay, type Word } from '../../services/videoStudio';
+import { Scissors, RotateCcw, Shield, Film, X, Play, Music2, Plus, Type, VolumeX, ChevronsLeft, ChevronsRight, SplitSquareHorizontal, Minimize2, MousePointer2 } from 'lucide-react';
+import { clock, effectiveCuts, sentencesOf, cuesOf, retimeWords, pointerOf, type Overlay, type Word } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
 
 const NAME_W = 92;
-const ROW = { ruler: 22, scenes: 66, caps: 26, phrases: 30, wave: 46, shorts: 30, text: 26, music: 28 };
+const ROW = { ruler: 22, scenes: 66, caps: 26, phrases: 30, wave: 46, pointer: 26, shorts: 30, text: 26, music: 28 };
 /** A pause this long between words ends a phrase and is a gap block of its own. */
 const GAP = 0.35;
 
@@ -77,7 +77,7 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
   const drag = useRef<{ x0: number; t0: number; moved: boolean } | null>(null);
   const headRef = useRef<HTMLDivElement>(null);
   /* A Short's edge or an overlay being dragged: where it was, and where it is now. */
-  const [held, setHeld] = useState<{ kind: 'clip' | 'ov'; id: string; edge: 's' | 'e' | 'both'; x0: number; s: number; e: number; ns: number; ne: number } | null>(null);
+  const [held, setHeld] = useState<{ kind: 'clip' | 'ov' | 'ptr'; id: string; edge: 's' | 'e' | 'both'; x0: number; s: number; e: number; ns: number; ne: number } | null>(null);
 
   /* The composition on screen: a Short shows its own stretch. */
   const clip = ctx.activeClip ? doc.clips.find(c => c.id === ctx.activeClip) ?? null : null;
@@ -301,7 +301,7 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
     const best = marks.reduce((b, m) => (Math.abs(m - t) < Math.abs(b - t) ? m : b), marks[0]);
     return Math.abs(best - t) * pps < 14 && Math.abs(best - t) < 1.5 ? best : t;
   };
-  const grab = (e: React.PointerEvent, kindG: 'clip' | 'ov', id: string, edge: 's' | 'e' | 'both', s: number, en: number) => {
+  const grab = (e: React.PointerEvent, kindG: 'clip' | 'ov' | 'ptr', id: string, edge: 's' | 'e' | 'both', s: number, en: number) => {
     e.stopPropagation(); e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     setHeld({ kind: kindG, id, edge, x0: e.clientX, s, e: en, ns: s, ne: en });
@@ -321,11 +321,16 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
     setHeld(null);
     if (!m || (Math.abs(m.ns - m.s) < 0.02 && Math.abs(m.ne - m.e) < 0.02)) return;
     if (m.kind === 'clip') void ctx.apply([{ op: 'clip.update', id: m.id, patch: { s: m.ns, e: m.ne } }], `Short trimmed to ${clock(m.ns)}–${clock(m.ne)}`);
+    else if (m.kind === 'ptr') void ctx.apply([{ op: 'pointer.focus.update', id: m.id, patch: { s: m.ns, e: m.ne } }], `Pointer followed ${clock(m.ns)}–${clock(m.ne)}`);
     else void ctx.apply([{ op: 'overlay.update', id: m.id, patch: { s: m.ns, e: m.ne } }], 'Words moved');
   };
-  const live = (k: 'clip' | 'ov', id: string, s: number, e: number): [number, number] => (held && held.kind === k && held.id === id ? [held.ns, held.ne] : [s, e]);
+  const live = (k: 'clip' | 'ov' | 'ptr', id: string, s: number, e: number): [number, number] => (held && held.kind === k && held.id === id ? [held.ns, held.ne] : [s, e]);
 
-  /* Keys outside text boxes and the script: I and O mark, X cuts, P protects, M makes a Short; Delete removes the selected blocks. */
+  /* A Screen Recorder recording: the stretches where the video follows the pointer, as a lane of their own. */
+  const screenRec = !!view.extras?.screen;
+  const focus = screenRec ? pointerOf(doc).focus : [];
+
+  /* Keys outside text boxes and the script: I and O mark, X cuts, P protects, M makes a Short, F follows the pointer; Delete removes the selected blocks. */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
@@ -336,6 +341,7 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
       else if (e.key === 'o') { setPick(null); setSel(s => ({ s: Math.min(s?.s ?? Math.max(0, t - 2), t - 0.5), e: t })); }
       else if ((e.key === 'x' || ((e.key === 'Delete' || e.key === 'Backspace') && pick)) && r) { const rr = pick ? removeRange() ?? r : r; void act([{ op: 'cut.add', s: rr.s, e: rr.e, reason: 'Cut on the timeline' }], `Cut ${clock(rr.s)}–${clock(rr.e)}`); }
       else if (e.key === 'p' && r) void act([{ op: 'protect.add', s: r.s, e: r.e, note: 'Protected on the timeline' }, { op: 'cut.restoreRange', s: r.s, e: r.e }], 'Protected a stretch');
+      else if (e.key === 'f' && r && screenRec) void act([{ op: 'pointer.focus.add', s: r.s, e: r.e }], `Follow the pointer ${clock(r.s)}–${clock(r.e)}`);
       else if (e.key === 'm' && r && r.e - r.s >= 5) void act([{ op: 'clip.add', s: r.s, e: r.e, title: `Short from ${clock(r.s)}`, reason: 'Marked by you on the timeline' }], 'New Short from the timeline');
       else if (e.key === 'Escape' && (sel || pick)) { setSel(null); setPick(null); }
       else return;
@@ -416,6 +422,27 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
               {shades('wave')}
             </div>
           </div>
+          {screenRec && (
+            <div className="vse-tl-row" style={{ height: ROW.pointer }}>
+              <div className="vse-tl-name">Pointer</div>
+              <div className="vse-lane" style={{ width: W, height: ROW.pointer }} onPointerMove={drag2} onPointerUp={drop} data-testid="vs-pointer-lane">
+                {focus.filter(r => r.e > t0 && r.s < t1).map(r => {
+                  const [s0, e0] = live('ptr', r.id, r.s, r.e);
+                  return (
+                    <div key={r.id} className={`vse-block ptr ${r.by}`} style={{ left: x(Math.max(t0, s0)), width: Math.max(16, x(Math.min(t1, e0)) - x(Math.max(t0, s0))) }} data-focus-block={r.id}
+                      title={`${r.by === 'auto' ? `Picked: ${r.why}` : 'Marked by you'} — the video follows the pointer here. Drag to move, edges to resize; double-click for its settings.`}
+                      onPointerDown={e => grab(e, 'ptr', r.id, 'both', r.s, r.e)} onDoubleClick={() => { ctx.seek(r.s); ctx.setTab('pointer'); }}>
+                      <i className="h l" onPointerDown={e => grab(e, 'ptr', r.id, 's', r.s, r.e)} />
+                      <MousePointer2 size={10} style={{ flex: 'none', marginRight: 3 }} />{x(e0) - x(s0) > 70 ? (r.by === 'auto' ? 'Picked' : 'Yours') : ''}{held?.id === r.id ? ` · ${clock(e0 - s0)}` : ''}
+                      <button type="button" className="x" aria-label={`Stop following the pointer at ${clock(r.s)}`} onPointerDown={e => e.stopPropagation()} onClick={() => void ctx.apply([{ op: 'pointer.focus.remove', id: r.id }], `Stopped following the pointer at ${clock(r.s)}`)}><X size={9} /></button>
+                      <i className="h r" onPointerDown={e => grab(e, 'ptr', r.id, 'e', r.s, r.e)} />
+                    </div>
+                  );
+                })}
+                {!focus.length && <button type="button" className="vse-add-music words" onClick={() => ctx.setTab('pointer')}><MousePointer2 size={12} /> Mark where to follow the pointer (drag on the timeline, then press F)</button>}
+              </div>
+            </div>
+          )}
           {!clip && (
             <div className="vse-tl-row" style={{ height: ROW.shorts }}>
               <div className="vse-tl-name">Shorts</div>
@@ -496,6 +523,7 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
           <button type="button" className="vs-btn sm" data-act="block-after" disabled={hi >= blocks.length - 1} onClick={() => selectBlocks(hi + 1, blocks.length - 1)}><ChevronsRight size={13} /> Select everything after</button>
           <button type="button" className="vs-btn sm" data-act="block-split" onClick={() => void ctx.apply([{ op: 'scene.split', t: pickRange.s }], `Split at ${clock(pickRange.s)}`)}><SplitSquareHorizontal size={13} /> Split here</button>
           {!isMuted && <button type="button" className="vs-btn sm" data-act="block-mute" onClick={() => void act([{ op: 'mute.add', s: pickRange.s, e: pickRange.e }], `Muted ${clock(pickRange.s)}–${clock(pickRange.e)}`)}><VolumeX size={13} /> Mute</button>}
+          {screenRec && <button type="button" className="vs-btn sm" data-act="block-follow" onClick={() => void act([{ op: 'pointer.focus.add', s: pickRange.s, e: pickRange.e }], `Follow the pointer ${clock(pickRange.s)}–${clock(pickRange.e)}`)}><MousePointer2 size={13} /> Follow the pointer</button>}
           {onlyGaps && pb.length === 1 && pb[0].e - pb[0].s > 0.5 && !isCut && (
             <button type="button" className="vs-btn sm" data-act="block-shorten" onClick={() => void act([{ op: 'cut.add', s: pb[0].s + 0.15, e: pb[0].e - 0.15, reason: `Gap of ${(pb[0].e - pb[0].s).toFixed(1)} s shortened to 0.3 s` }], 'Shortened a gap')}><Minimize2 size={13} /> Shorten gap</button>
           )}
@@ -515,6 +543,8 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
           <button type="button" className="vs-btn sm" onClick={() => void act([{ op: 'protect.add', s: range.s, e: range.e, note: 'Protected on the timeline' }, { op: 'cut.restoreRange', s: range.s, e: range.e }], 'Protected a stretch')}><Shield size={13} /> Protect</button>
           <button type="button" className="vs-btn sm" disabled={range.e - range.s < 5} title={range.e - range.s < 5 ? 'Mark at least 5 seconds' : undefined}
             onClick={() => void act([{ op: 'clip.add', s: range.s, e: range.e, title: `Short from ${clock(range.s)}`, reason: 'Marked by you on the timeline' }], 'New Short from the timeline').then(() => ctx.setTab('shorts'))}><Film size={13} /> Make a Short</button>
+          {screenRec && <button type="button" className="vs-btn sm" data-act="tl-follow" onClick={() => void act([{ op: 'pointer.focus.add', s: range.s, e: range.e }], `Follow the pointer ${clock(range.s)}–${clock(range.e)}`)}><MousePointer2 size={13} /> Follow the pointer</button>}
+          {screenRec && focus.some(r => r.e > range.s && r.s < range.e) && <button type="button" className="vs-btn sm" data-act="tl-unfollow" onClick={() => void act([{ op: 'pointer.focus.removeRange', s: range.s, e: range.e }], `Stopped following the pointer ${clock(range.s)}–${clock(range.e)}`)}><X size={13} /> Stop following</button>}
           <span className="vs-spacer" />
           <button type="button" className="vs-btn ghost sm" aria-label="Clear the marked stretch" onClick={() => { setSel(null); ctx.setSelection(null); }}><X size={13} /></button>
         </div>

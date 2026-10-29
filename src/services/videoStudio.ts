@@ -18,6 +18,11 @@ export { cuesOf, isRtl, type Cue } from '../../worker/src/lib/video/captions';
 export { cleanupSummary, isFiller, findFillers, fillerCounts, FILLER_KINDS, FILLER_INFO, DEFAULT_FILLERS, type FillerKind } from '../../worker/src/lib/video/cleanup';
 export { cameraPath, cutTimes, punchSpans, overlaySpan, trackAt, cssLook, cssEffects, type TrackFile, type TrackRow } from '../../worker/src/lib/video/motion';
 export { layoutOptions, layoutPlan, LAYOUT_LABEL, type LayoutPlan, type LayoutOption } from '../../worker/src/lib/video/layouts';
+export {
+  autoFocus, pointerOf, pointerAt, pointerInFrame, segAt, focusWindows, zoomPlan, zoomAt, zoomLevel, screenPlan, screenLayoutOptions, followPath, followAt,
+  resolveCursor, cursorFor, momentFor, screenLayoutFor, frameMap, sfxSample, SFX_LENGTH, CURSOR_STYLES, CURSOR_LABEL, CLICK_SOUNDS, SOUND_LABEL, POINTER_DEFAULT,
+  type ScreenMeta, type ScreenSeg, type ScreenRef, type NBox, type CamShape, type FocusRange, type PointerSettings, type CursorStyle, type ClickSound, type Moment, type ZoomPlan, type ScreenPlan,
+} from '../../worker/src/lib/video/pointer';
 export { toXmeml, editorialScore } from '../../worker/src/lib/video/xml';
 export type { VideoMeta } from '../../worker/src/lib/video/shorts';
 export { parseYoutubeUrl, youtubeThumb, YOUTUBE_WAY_FORWARD, type YoutubeLink } from '../../worker/src/lib/video/youtube';
@@ -87,6 +92,8 @@ export interface ProjectView {
   source: { name: string; bytes: number; probe: Probe | null; proxyUrl: string; posterUrl: string; waveUrl: string; silences?: [number, number][];
     filmstrip?: { url: string; every: number; tiles: number; w: number; h: number } | null;
     track?: TrackStatus | null; trackUrl?: string;
+    /** A Screen Recorder recording's notes (layout, pointer path, clicks) — signed, when there are any. */
+    screenUrl?: string;
     /** Started from the customer's own YouTube video (fetched: the bytes arrived and were checked). */
     youtube?: { id: string; url: string; title: string; channel: string; thumb: string; fetched: boolean } | null;
     /** Fetched from a direct link to a video file: how far it has got. */
@@ -138,6 +145,7 @@ export interface Extras {
   quizNote?: string;
   publish?: Record<string, PublishTexts>;
   translations?: Record<string, { at: string; cues: { s: number; e: number; text: string }[] }>;
+  screen?: import('../../worker/src/lib/video/pointer').ScreenRef;
 }
 export interface PublishTexts { fields: Record<string, string>; posts: Record<string, string>; at: string }
 export const savePublish = (projectId: string, key: string, fields: Record<string, string>, platformPosts: Record<string, string> = {}) =>
@@ -171,6 +179,9 @@ export const moreThumbnails = (projectId: string, outputId: string, headline?: s
 export const chooseThumb = (projectId: string, outputId: string, index: number) => call('choose_thumb', { projectId, outputId, index });
 export const setOutputStatus = (projectId: string, outputId: string, status: OutputStatus, publishAt?: string | null) => call('set_status', { projectId, outputId, status, publishAt });
 export const updateMeta = (projectId: string, outputId: string, patch: Record<string, unknown>) => call<{ meta: VideoMeta }>('meta_update', { projectId, outputId, patch });
+/** What the Screen Recorder saw — the layout over time, the pointer's path and its clicks — kept with the project (prep/screen.json). */
+export const saveScreenMeta = (projectId: string, meta: import('../../worker/src/lib/video/pointer').ScreenMeta) =>
+  call<{ screen: import('../../worker/src/lib/video/pointer').ScreenRef }>('screen_save', { projectId, meta });
 export const regenerateMeta = (projectId: string, outputId: string) => call('regenerate_meta', { projectId, outputId });
 export const retryVideo = (projectId: string) => call<{ retried: number }>('retry', { projectId });
 export const cancelVideo = (projectId: string) => call('cancel', { projectId });
@@ -201,6 +212,10 @@ export async function applyDesignAsThumb(target: { projectId: string; outputId: 
   return { ok: true, note: a.note ?? '' };
 }
 export const trackNow = (projectId: string) => call('track_now', { projectId });
+export async function loadScreen(url: string): Promise<import('../../worker/src/lib/video/pointer').ScreenMeta | null> {
+  if (!url) return null;
+  try { const r = await fetch(url); return r.ok ? await r.json() : null; } catch { return null; }
+}
 export async function loadTrack(url: string): Promise<import('../../worker/src/lib/video/motion').TrackFile | null> {
   if (!url) return null;
   try { const r = await fetch(url); return r.ok ? await r.json() : null; } catch { return null; }

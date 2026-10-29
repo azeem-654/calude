@@ -18,6 +18,7 @@
  */
 import type { ShortLayout } from './edit';
 import type { TrackFile } from './motion';
+import { screenLayoutOptions, type ScreenRef } from './pointer';
 
 export interface Person { cx: number; cy: number; w: number; h: number; share: number }
 export interface LayoutOption { key: ShortLayout; ok: boolean; why: string; label: string }
@@ -25,6 +26,7 @@ export type Box = [number, number, number, number];
 
 export const LAYOUT_LABEL: Record<ShortLayout, string> = {
   speaker: 'Speaker (tracked)', screen: 'Screen only', split: 'Split: screen + camera', two: 'Split: both people', pip: 'Picture in picture',
+  screencam: 'Camera on top, screen follows the pointer', follow: 'Screen follows the pointer',
 };
 
 const peopleOf = (tf: TrackFile | null): Person[] => (tf?.people ?? []).filter(p => p.share >= 0.15).sort((a, b) => b.share - a.share);
@@ -48,7 +50,8 @@ export function twoPeople(tf: TrackFile | null): [Person, Person] | null {
   return (a.cx - b.cx || a.cy - b.cy) <= 0 ? [a, b] : [b, a];
 }
 
-export function layoutOptions(tf: TrackFile | null): LayoutOption[] {
+/** Every layout with whether this recording can carry it; the pointer-following ones need the Screen Recorder's notes (`screen`). */
+export function layoutOptions(tf: TrackFile | null, screen: Pick<ScreenRef, 'cam' | 'moves'> | null = null): LayoutOption[] {
   const found = !!tf;
   const ps = peopleOf(tf);
   const faces = (tf?.faces ?? 0) > 0 && (tf?.seen ?? 0) >= 0.1;
@@ -60,6 +63,7 @@ export function layoutOptions(tf: TrackFile | null): LayoutOption[] {
     { key: 'split', label: LAYOUT_LABEL.split, ok: !!bubble, why: !found ? noTrack : bubble ? '' : ps.length > 1 ? 'There are two people here, not a screen with a webcam.' : ps.length ? 'Needs a screen recording with a small webcam picture in a corner; the face here is the main picture.' : 'No webcam face was found.' },
     { key: 'two', label: LAYOUT_LABEL.two, ok: !!two, why: !found ? noTrack : two ? '' : ps.length === 1 ? 'Only one person was found.' : 'Needs two people on screen most of the time.' },
     { key: 'pip', label: LAYOUT_LABEL.pip, ok: !!bubble, why: !found ? noTrack : bubble ? '' : 'Needs a screen recording with a small webcam picture in a corner.' },
+    ...screenLayoutOptions(screen).map(o => ({ ...o, label: LAYOUT_LABEL[o.key] })),
   ];
 }
 

@@ -37,6 +37,10 @@ import {
 } from './edit';
 import { cameraPath, cutTimes, overlayAss, overlaySpan, punchSpans, skinBox, type TrackFile } from './motion';
 import { layoutPlan } from './layouts';
+import {
+  autoFocus, focusWindows, followAt, followPath, frameMap, pointerAss, screenLayoutFor, pointerMarks, pointerOf, resolveCursor, screenPlan, sfxEvents, zoomAt, zoomPlan,
+  type PointerSettings, type ScreenMeta, type ScreenRef,
+} from './pointer';
 import { cuesOf, toAss, toSrt, toVtt, thumbAss } from './captions';
 import { proposeCleanup, cleanFillerKinds } from './cleanup';
 import { cleanMeta, cleanQuiz, distinctMeta, fallbackMeta, fallbackPicks, keywordsOf, transcriptForAi, validatePicks, withMusicCredit, type QuizQuestion, type RawPick, type VideoMeta } from './shorts';
@@ -75,6 +79,8 @@ export interface Extras {
   publish?: Record<string, PublishTexts>;
   /** Captions translated into another language (by language name): the cues on the long video's clock. */
   translations?: Record<string, { at: string; cues: { s: number; e: number; text: string }[] }>;
+  /** A Screen Recorder recording: what it noted about the layout and the pointer (prep/screen.json, pointer.ts). */
+  screen?: ScreenRef;
 }
 export interface PublishTexts { fields: Record<string, string>; posts: Record<string, string>; at: string }
 export interface JobRow {
@@ -512,6 +518,13 @@ async function transcribeStep(env: Env, job: JobRow, p: ProjectRow, until: numbe
   await enqueue(env, { accountId: p.account_id, projectId: p.id, kind: 'analyze', idem: `analyze:${p.id}:${key}` });
 }
 
+/** The Screen Recorder's notes (layout, pointer path, clicks), or null. */
+export async function readScreen(env: Env, ref: ScreenRef | null | undefined): Promise<ScreenMeta | null> {
+  if (!ref?.key || !env.VIDEO) return null;
+  const o = await env.VIDEO.get(ref.key).catch(() => null);
+  return o ? o.json<ScreenMeta>().catch(() => null) : null;
+}
+
 export async function readTranscript(env: Env, p: ProjectRow): Promise<Transcript | null> {
   if (!p.transcript_key || !env.VIDEO) return null;
   const o = await env.VIDEO.get(p.transcript_key);
@@ -578,6 +591,18 @@ async function analyzeStep(env: Env, origin: string, job: JobRow, p: ProjectRow)
   /* Cleanup proposals, by rule, against the measured silences. */
   const cuts = proposeCleanup(tr.words, src.silences ?? null, doc.cleanup.preset, duration, { ...cleanupOptionsOf(doc), wave: await readWave(env, src) });
   doc = applyOps(doc, [{ op: 'cleanup.preset', preset: doc.cleanup.preset, cuts }], duration).doc;
+
+  /* A Screen Recorder recording: the moments worth following the pointer in,
+     from what was said and where it clicked — proposed once, never over the customer's own. */
+  const screenRef = parse<Extras>(p.extras, {}).screen;
+  if (screenRef && !doc.pointer?.ran) {
+    const meta = await readScreen(env, screenRef);
+    if (meta) {
+      const list = autoFocus(meta, sentences, duration);
+      doc = applyOps(doc, [{ op: 'pointer.focus.set', list }], duration).doc;
+      notes.push(list.length ? `${list.length} moment${list.length === 1 ? '' : 's'} to follow the pointer in ${list.length === 1 ? 'was' : 'were'} picked from what you said and where you clicked.` : 'No moment stood out to follow the pointer in — mark your own on the timeline.');
+    }
+  }
 
   /* Shorts and chapters, by the AI; checked; topped up by rule if short. */
   const opts = { count: doc.shorts.count, min: doc.shorts.min, max: doc.shorts.max, aspect: doc.shorts.aspect, mode: doc.shorts.mode ?? 'crop' };
@@ -664,6 +689,12 @@ export interface RenderSpec {
   layout: 'split' | 'two' | 'pip' | null;
   /** Stretches muted on the timeline, inside what is kept (source time). */
   mutes: [number, number][];
+  /** A Screen Recorder Short laid out round the pointer (pointer.ts screenPlan); null otherwise. */
+  screenLayout: 'screencam' | 'follow' | null;
+  /** Following the pointer in this video (zoom, drawn pointer, sounds); null when it does not apply. */
+  pointer: PointerSettings | null;
+  /** The Screen Recorder's notes, when this render needs them. */
+  screen: ScreenRef | null;
 }
 
 /** The music that goes under this kind of video, if any. */
@@ -671,7 +702,7 @@ export const musicFor = (doc: VideoDoc, kind: 'long' | 'short'): MusicTrack | nu
   doc.music && (doc.music.applyTo === 'all' || (doc.music.applyTo === 'long' ? kind === 'long' : kind === 'short')) ? doc.music : null;
 
 /** Everything a render depends on; its hash says whether a file is still current. */
-export function renderSpec(doc: VideoDoc, src: Source, out: Pick<OutputRow, 'kind' | 'clip_id'>, tr: Transcript | null): RenderSpec | null {
+export function renderSpec(doc: VideoDoc, src: Source, out: Pick<OutputRow, 'kind' | 'clip_id'>, tr: Transcript | null, screen: ScreenRef | null = null): RenderSpec | null {
   const probe = src.probe;
   if (!probe) return null;
   const clip = out.kind === 'short' ? doc.clips.find(c => c.id === out.clip_id) : undefined;
@@ -695,7 +726,16 @@ export function renderSpec(doc: VideoDoc, src: Source, out: Pick<OutputRow, 'kin
      A Short laid out as "speaker" follows the speaker whatever the Shorts' own tracking says. */
   const tracked = !!src.track?.key;
   const tracking: TrackMode = mode === 'crop' && tracked ? (clip?.layout === 'speaker' ? 'speaker' : trackingOf(doc, kind)) : 'off';
-  const layout = clip?.layout === 'split' || clip?.layout === 'two' || clip?.layout === 'pip' ? (tracked ? clip.layout : null) : null;
+  /* A Screen Recorder Short: the layout asked for, or — not asked, in a tall shape — the camera on top
+     if there was one, else the screen following the pointer, which is what a screen Short is for. */
+  const screenLayout = screenLayoutFor(clip, screen);
+  const layout = screenLayout ? null : clip?.layout === 'split' || clip?.layout === 'two' || clip?.layout === 'pip' ? (tracked ? clip.layout : null) : null;
+  /* The pointer is followed where the picture maps straight onto the recording: a screen Short, or a long
+     video shown whole or cropped still (a crop that follows a face moves under it). */
+  const ptr = pointerOf(doc);
+  const maps = kind === 'short' ? !!screenLayout || (mode !== 'crop' || tracking === 'off') : tracking === 'off';
+  const ptrOn = !!screen && ptr.on && (kind === 'long' ? ptr.long : ptr.shorts) && maps && focusWindows(ptr.focus, keeps).length > 0;
+  const pointer = ptrOn && (kind === 'long' || screenLayout) ? ptr : null;
   const overlays = (doc.overlays ?? []).filter(ov => overlaySpan(ov, keeps));
   const effects = effectsOn(effectsOf(doc, kind));
   const extra = {
@@ -705,10 +745,12 @@ export function renderSpec(doc: VideoDoc, src: Source, out: Pick<OutputRow, 'kin
     ...(overlays.length ? { overlays } : {}),
     ...(Object.keys(effects).length ? { fx: effects, ...(effects.appearance && tracked ? { tk: src.track?.key } : {}) } : {}),
     ...(layout ? { layout, tk: src.track?.key } : {}),
+    ...(screenLayout ? { sl: screenLayout, sk: screen?.key } : {}),
+    ...(pointer ? { ptr: { f: focusWindows(pointer.focus, keeps).map(w => [w.a, w.b, w.range.cursor, w.range.moment]), z: pointer.zoom, c: pointer.cursor, sz: pointer.size, col: pointer.color, k: pointer.click, m: pointer.moments, v: pointer.volume }, sk: screen?.key } : {}),
   };
   const mutes = mutedIn(doc, keeps);
   const hash = hashOf({ keeps, width, height, mode, x: reframe.x, y: reframe.y, captionsKey, audio: doc.audio, ...(musicKey ? { musicKey } : {}), ...extra, ...(mutes.length ? { mutes } : {}), v: 1 });
-  return { hash, keeps, width, height, mode, x: reframe.x, y: reframe.y, kind, clip, music, look, motion, tracking, overlays, effects, layout, mutes };
+  return { hash, keeps, width, height, mode, x: reframe.x, y: reframe.y, kind, clip, music, look, motion, tracking, overlays, effects, layout, mutes, screenLayout, pointer, screen: screenLayout || pointer ? screen : null };
 }
 
 /**
@@ -721,11 +763,12 @@ export async function queueAfterEdit(env: Env, _origin: string, p: ProjectRow, o
   const src = parse<Source>(p.source, {});
   const tr = await readTranscript(env, p);
   const outs = await outputsOf(env, p.id);
+  const screen = parse<Extras>(p.extras, {}).screen ?? null;
   let queued = 0;
   const pending: { o: OutputRow; spec: RenderSpec }[] = [];
   for (const o of outs) {
     if (opts.only && !opts.only.includes(o.id)) continue;
-    const spec = renderSpec(doc, src, o, tr);
+    const spec = renderSpec(doc, src, o, tr, screen);
     if (!spec || spec.hash === o.edit_hash) continue;
     pending.push({ o, spec });
   }
@@ -854,6 +897,56 @@ async function metadataStep(env: Env, job: JobRow, p: ProjectRow): Promise<void>
 
 /* ── Render ───────────────────────────────────────────────────────────────── */
 
+/**
+ * What a render needs to follow the pointer: a screen Short's layout (the
+ * camera's box, the window and its path round the pointer), the long
+ * video's zoom curve, the drawn pointer as ASS and the sound effects. Each
+ * is built from the Screen Recorder's notes; without them, nothing.
+ */
+async function pointerParams(env: Env, spec: RenderSpec, src: Source, tr: Transcript | null): Promise<{
+  screenLayout: Record<string, unknown> | null; pointerZoom: Record<string, unknown> | null; ass: string; sfx: [number, string][];
+}> {
+  const none = { screenLayout: null, pointerZoom: null, ass: '', sfx: [] as [number, string][] };
+  if (!spec.screen || (!spec.screenLayout && !spec.pointer)) return none;
+  const meta = await readScreen(env, spec.screen);
+  if (!meta) return none;
+  const srcW = src.probe!.width, srcH = src.probe!.height, W = spec.width, H = spec.height;
+  const speed = spec.motion.speed;
+  let screenLayout: Record<string, unknown> | null = null;
+  let place: ((t: number, fx: number, fy: number) => [number, number] | null) | null = null;
+  let pointerZoom: Record<string, unknown> | null = null;
+  if (spec.screenLayout && spec.clip) {
+    const plan = screenPlan(spec.screenLayout, meta, spec.clip.s, spec.clip.e, srcW, srcH, W, H);
+    if (plan) {
+      const path = followPath(meta, spec.keeps, plan);
+      screenLayout = { kind: plan.kind, cam: plan.cam, crop: plan.crop, top: plan.top, path };
+      const [cw, ch] = plan.crop, top = plan.top;
+      place = (t, fx, fy) => {
+        const at = followAt(path, t);
+        if (!at) return null;
+        const x = (fx * srcW - at[0]) * (W / cw), y = top + (fy * srcH - at[1]) * ((H - top) / ch);
+        return x < 0 || x > W || y < top || y > H ? null : [x, y];
+      };
+    }
+  }
+  const windows = spec.pointer ? focusWindows(spec.pointer.focus, spec.keeps) : [];
+  if (spec.pointer && spec.kind === 'long' && windows.length) {
+    const map = frameMap(spec.mode, srcW, srcH, W, H, spec.x, spec.y);
+    const plan = zoomPlan(meta, spec.keeps, windows, spec.pointer.zoom, W, H, map);
+    pointerZoom = { z: plan.z, ramp: plan.ramp, windows: plan.windows, keys: plan.keys };
+    place = (t, fx, fy) => {
+      const [px, py] = map(fx, fy), v = zoomAt(plan, t);
+      const x = (px - v.x) * v.z, y = (py - v.y) * v.z;
+      return x < 0 || x > W || y < 0 || y > H ? null : [x, y];
+    };
+  }
+  if (!spec.pointer || !place || !windows.length) return { ...none, screenLayout };
+  const sentences = tr ? sentencesOf(tr.words) : [];
+  const { marks, clicks } = pointerMarks(meta, spec.keeps, windows, speed, place, sentences, spec.pointer);
+  const ass = pointerAss(marks.map(mk => ({ ...mk, cursor: resolveCursor(mk.w.range, spec.pointer!.cursor, sentences) })), clicks, W, H, spec.pointer.size, spec.pointer.color);
+  return { screenLayout, pointerZoom, ass, sfx: sfxEvents(clicks) };
+}
+
 async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): Promise<void> {
   const out = await env.DB.prepare('SELECT * FROM crm_video_outputs WHERE id = ? AND project_id = ?').bind(job.target, p.id).first<OutputRow>();
   if (!out) { await save(env, job, { state: 'cancelled', error: 'output removed' }); return; }
@@ -861,7 +954,7 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
   const doc = parse<VideoDoc>(p.doc, null as unknown as VideoDoc);
   const src = parse<Source>(p.source, {});
   const tr = await readTranscript(env, p);
-  const spec = renderSpec(doc, src, out, tr);
+  const spec = renderSpec(doc, src, out, tr, parse<Extras>(p.extras, {}).screen ?? null);
   if (!spec) { await save(env, job, { state: 'cancelled', error: 'nothing to render' }); return; }
   /* Edited again since this job was queued: a newer job renders the newer edit. */
   if (want && spec.hash !== want && !job.engine_ref) { await save(env, job, { state: 'cancelled', error: 'superseded by a newer edit' }); return; }
@@ -893,14 +986,17 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
     const layout = spec.layout ? layoutPlan(spec.layout, tf, srcW, srcH, spec.width, spec.height) : null;
     const skin = spec.effects.appearance ? skinBox(tf, spec.keeps, srcW, srcH) : null;
     const m = spec.motion;
-    const zoom = m.zoom === 'slow' ? { kind: 'slow', amount: m.zoomAmount }
+    const ptr = await pointerParams(env, spec, src, tr);
+    /* Zooming in on the pointer is this video's zoom; a punch-in on top of it would move the picture under the drawn pointer. */
+    const zoom = ptr.pointerZoom ? null : m.zoom === 'slow' ? { kind: 'slow', amount: m.zoomAmount }
       : m.zoom === 'punch' && tr ? { kind: 'punch', amount: m.zoomAmount, spans: punchSpans(sentencesOf(tr.words), spec.keeps) } : null;
     return {
       op: 'render' as const,
       params: {
         keeps: spec.keeps, mutes: spec.mutes, width: spec.width, height: spec.height, srcWidth: src.probe!.width, srcHeight: src.probe!.height,
         mode: layout ? 'fit' : spec.layout ? 'fit' : spec.mode, cropX: spec.x, cropY: spec.y, ass, audio: doc.audio, hasAudio: src.probe!.hasAudio, fps: 30, name: 'video.mp4',
-        effects: spec.effects, layout, skin,
+        effects: spec.effects, layout: ptr.screenLayout ?? layout, skin,
+        pointerZoom: ptr.pointerZoom, pointerAss: ptr.ass, sfx: src.probe!.hasAudio && ptr.sfx.length ? { volume: spec.pointer?.volume ?? 0.6, events: ptr.sfx } : null,
         music: spec.music ? { volume: spec.music.volume, fadeIn: spec.music.fadeIn, fadeOut: spec.music.fadeOut, loop: spec.music.loop, duck: spec.music.duck } : null,
         preset: spec.kind === 'long' && keptLength(spec.keeps) > 1800 ? 'faster' : 'veryfast',
         camera, look: spec.look, zoom, speed,

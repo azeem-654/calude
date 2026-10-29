@@ -236,6 +236,45 @@ export is a canvas recording; Video Studio is the real one.
   decimals, the upload screen's creep), as does the editor's "Working on it".
   Not built: a custom/smoothed pointer, zoom/speed pills on the editor's
   timeline, re-styling a recording after it is made.
+- **Following the pointer** (`lib/video/pointer.ts`, pure, shared; Properties →
+  **Pointer** tab `PointerPanel.tsx`; a **Pointer** lane on the timeline, F or
+  "Follow the pointer" on a marked stretch). Nothing zooms while recording:
+  the recorder's `PointerLog` reads the shared screen ~8×/s small and notes
+  the pointer (the small thing that moves) and likely clicks (it rests, then
+  the screen answers under it) plus the layout over time; Save sends it with
+  `screen_save` → `prep/screen.json` (`cleanScreenMeta`, capped) and
+  `extras.screen` (a `ScreenRef` — **extras, not `source`**: `onPrepared`
+  rewrites `source` whole and would drop it). `analyzeStep` proposes the
+  moments once (`autoFocus`: words about doing something on screen *and* the
+  pointer acting, merged, ~1.5 a minute; clicks alone without a transcript,
+  said so) into `doc.pointer.focus` (`ran` — never over the customer's own);
+  `pointer.*` ops add/remove/resize/split as many stretches as wanted. Render
+  (`pipeline.ts pointerParams`): the long video zooms in on the pointer
+  inside each moment (`zoomPlan`/`zoomAt` ↔ the engine's `pointerZoomFilter`
+  zoompan expression, same curve; only where the frame maps straight onto
+  the recording — no face-tracked crop; it replaces the punch-in zoom); a
+  tall Short of a recorder recording is laid out by itself (`screenLayoutFor`)
+  as **screencam** (camera box whole in the top third, the screen below in a
+  fixed-size window moved along `followPath` by `sendcmd crop@ptr`) or
+  **follow** (no camera: the whole height). The drawn pointer — ring,
+  spotlight (a hole cut by winding), big arrow, pointing hand, dot, or
+  chosen per moment from the words (`cursorFor`) — and click ripples are
+  ASS from numbers only (`pointerAss` → engine `pointerAss`); click sounds
+  (click/soft/pop) and celebration/error where the words say so
+  (`momentFor`) are engine `SFX` aevalsrc formulas mixed before loudness —
+  `sfxSample` is the same formulas for the browser's "hear it" button;
+  **change both together**. The preview shows zoom, layout and pointer; the
+  real pointer stays under the drawn one unless the browser hid it. A
+  project without `extras.screen` renders and hashes exactly as before.
+- **Change these words with AI** (top of Publishing, `PublishPanel.tsx` +
+  pure `reshape.ts`): the customer's request ("add my affiliate link … to the
+  description and bullet points") and the texts go to `/api/ai.php`
+  (fenced: request vs content); the answer may change only texts it was
+  sent, within their limits, and **a link the customer did not give or that
+  was not already there refuses that text, named** (`checkReshape`). Saved
+  to the publishing texts (`publish_save`) and the board's words
+  (`meta_update`: title, description, hashtags, pinned comment, CTA, tags,
+  keywords), this video or every video, with Undo.
 - **Honest gaps**, shown on the **What works** panel: speaker labels, eye contact
   (researched 2026-10: NVIDIA Maxine is gRPC-only, Sieve's API no longer
   documented — no adapter), background removal (no provider), before/after audio

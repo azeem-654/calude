@@ -17,13 +17,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Search, Play, Pause, Music2, Upload, Trash2, Loader, ExternalLink, Check, Wand2, Volume2, Mic, Sparkles, Clapperboard } from 'lucide-react';
 import {
-  searchMusic, chooseMusic, uploadMusic, renderOutputs, clock, layoutOptions,
+  searchMusic, chooseMusic, uploadMusic, renderOutputs, clock, layoutOptions, screenLayoutFor,
   type FoundTrack, type Denoise, type Aspect, type Op, type ShortLayout,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
 import EffectRow, { FxSlider } from './EffectRow';
 
-function RenderHint({ ctx }: { ctx: EditorCtx }) {
+export function RenderHint({ ctx }: { ctx: EditorCtx }) {
   const stale = ctx.view.outputs.filter(o => o.stale);
   if (!stale.length) return null;
   return (
@@ -44,6 +44,8 @@ function LayoutIcon({ kind }: { kind: ShortLayout }) {
     : kind === 'screen' ? [box(2, 9, 14, 9, 'a')]
     : kind === 'split' ? [box(2, 2, 14, 12, 'a'), box(2, 16, 14, 12, 'b'), <circle key="f" cx={9} cy={21} r={2.6} className="f" />]
     : kind === 'two' ? [box(2, 2, 14, 12, 'a'), box(2, 16, 14, 12, 'b'), <circle key="f1" cx={9} cy={7.5} r={2.4} className="f" />, <circle key="f2" cx={9} cy={21.5} r={2.4} className="f" />]
+    : kind === 'screencam' ? [box(2, 2, 14, 8, 'a'), box(2, 11, 14, 17, 'b'), <circle key="f" cx={9} cy={6} r={2.4} className="f" />, <path key="p" d="M8 17 l0 6 l1.6-1.4 l1.2 2.4 l1-0.5 l-1.1-2.3 l2.2 0z" className="f" />]
+    : kind === 'follow' ? [box(2, 2, 14, 26, 'a'), <path key="p" d="M8 12 l0 7 l1.8-1.6 l1.4 2.8 l1.1-0.6 l-1.3-2.7 l2.5 0z" className="f" />]
     : [box(2, 2, 14, 26, 'a'), <circle key="p" cx={12} cy={22} r={3.4} className="f" />];
   return <svg className="vs-layout-ic" viewBox="0 0 18 30" width={18} height={30} aria-hidden="true">{parts}</svg>;
 }
@@ -55,6 +57,8 @@ export function VideoPanel({ ctx }: { ctx: EditorCtx }) {
     const n = doc.clips.findIndex(c => c.id === clip.id) + 1;
     const set = (patch: Extract<Op, { op: 'clip.update' }>['patch'], note: string) =>
       void ctx.apply([{ op: 'clip.update', id: clip.id, patch }], note);
+    /* What the render does for a tall Short of a Screen Recorder recording when no layout is picked (pipeline.ts renderSpec). */
+    const autoLayout = clip.layout ? null : screenLayoutFor(clip, ctx.view.extras?.screen);
     return (
       <div className="vs-col" data-testid="vs-video-panel">
         <div className="vs-row"><b>Short {n}</b><span className="vs-kbd">{clock(clip.s)}–{clock(clip.e)}</span><span className="vs-spacer" />
@@ -67,14 +71,14 @@ export function VideoPanel({ ctx }: { ctx: EditorCtx }) {
         </div>
         <div className="vs-label" data-testid="vs-layouts">Layout
           <div className="vs-layouts" role="radiogroup" aria-label="Layout">
-            {layoutOptions(ctx.track).map(o => (
-              <button key={o.key} type="button" role="radio" aria-checked={clip.layout === o.key} className="vs-layout-opt" disabled={!o.ok} data-layout-opt={o.key}
+            {layoutOptions(ctx.track, ctx.view.extras?.screen ?? null).map(o => (
+              <button key={o.key} type="button" role="radio" aria-checked={clip.layout === o.key || (!clip.layout && autoLayout === o.key)} className="vs-layout-opt" disabled={!o.ok} data-layout-opt={o.key}
                 title={o.ok ? o.label : o.why} onClick={() => set({ layout: o.key }, `Short ${n}: ${o.label.toLowerCase()}`)}>
-                <LayoutIcon kind={o.key} /><span><b>{o.label}</b>{!o.ok && <small>{o.why}</small>}</span>
+                <LayoutIcon kind={o.key} /><span><b>{o.label}</b>{!clip.layout && autoLayout === o.key && <small>Chosen for this screen recording</small>}{!o.ok && <small>{o.why}</small>}</span>
               </button>
             ))}
           </div>
-          <small className="vs-kbd" style={{ fontWeight: 500 }}>Worked out from the faces in the recording; only the layouts it can carry are offered. The preview shows the layout; the render builds the same boxes.</small>
+          <small className="vs-kbd" style={{ fontWeight: 500 }}>Worked out from the faces in the recording{ctx.view.extras?.screen ? ' and from where the Screen Recorder saw the pointer' : ''}; only the layouts it can carry are offered. The preview shows the layout; the render builds the same boxes.</small>
         </div>
         {(!clip.layout || clip.layout === 'speaker' || clip.layout === 'screen') && <div className="vs-label">Framing
           <div className="vs-chips">

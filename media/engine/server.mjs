@@ -791,6 +791,95 @@ function layoutFrame(l, W, H, srcW, srcH, sh, fps) {
   return `split[l1][l2];[l1]${main};[l2]${crop(l.boxes[0], size, size)},${round}[pin];${base}[pin]overlay=${x}:${y}`;
 }
 
+/**
+ * A Screen Recorder Short laid out round the pointer (the Worker's
+ * pointer.ts `screenPlan` / `followPath` — numbers only):
+ *   screencam  the camera's box, whole, on a blurred copy of itself in the
+ *              top `top` pixels; below it the screen — a window of `crop`
+ *              pixels moved along `path` and scaled to fill
+ *   follow     the whole frame is that window
+ * The window keeps its size; only where it sits moves, through sendcmd, as
+ * a crop that follows a face does (a crop that changes size stalls FFmpeg).
+ */
+function cleanScreenLayout(l, srcW, srcH, W, H) {
+  if (!l || typeof l !== 'object' || !['screencam', 'follow'].includes(l.kind)) return null;
+  const cw = even(num(l.crop?.[0], 0, 16, srcW)), ch = even(num(l.crop?.[1], 0, 16, srcH));
+  if (cw > srcW || ch > srcH) return null;
+  const top = l.kind === 'screencam' ? even(num(l.top, H / 3, 64, H - 64)) : 0;
+  let cam = null;
+  if (l.kind === 'screencam') {
+    const b = Array.isArray(l.cam) ? l.cam : [];
+    const w = even(num(b[2], 0, 0, srcW)), h = even(num(b[3], 0, 0, srcH));
+    if (w < 16 || h < 16 || w > srcW || h > srcH) return null;
+    cam = [Math.round(num(b[0], 0, 0, srcW - w)), Math.round(num(b[1], 0, 0, srcH - h)), w, h];
+  }
+  const path = (Array.isArray(l.path) ? l.path : []).slice(0, 40000)
+    .map(r => [num(r?.[0], 0, 0, 1e6), Math.round(num(r?.[1], 0, 0, srcW - cw)), Math.round(num(r?.[2], 0, 0, srcH - ch))]).sort((a, b) => a[0] - b[0]);
+  return { kind: l.kind, crop: [cw, ch], top, cam, path };
+}
+
+function screenFrame(l, W, H, fps, cmds) {
+  const [cw, ch] = l.crop;
+  const [x0, y0] = l.path.length ? [l.path[0][1], l.path[0][2]] : [0, 0];
+  let last = [x0, y0];
+  for (const [t, x, y] of l.path) if (x !== last[0] || y !== last[1]) { cmds.push([t, `crop@ptr x ${x}, crop@ptr y ${y}`]); last = [x, y]; }
+  const win = h => `crop@ptr=${cw}:${ch}:${x0}:${y0},scale=${W}:${h},setsar=1`;
+  if (l.kind === 'follow') return win(H);
+  const [cx, cy, bw, bh] = l.cam;
+  return `split[sc1][sc2];[sc1]crop=${bw}:${bh}:${cx}:${cy},${fitFrame('sct', W, l.top, bw, bh, null, fps, '[sct]')};[sc2]${win(H - l.top)}[scb];[sct][scb]vstack`;
+}
+
+/**
+ * Zooming in on the pointer in the long video (the Worker's pointer.ts
+ * `zoomPlan`, drawn there by `zoomAt` from the same curve): the zoom eases
+ * in over `ramp` seconds at each window's start and out at its end, and the
+ * view's centre runs through the keyframes. Built here from numbers only.
+ */
+function pointerZoomFilter(pz, W, H, fps) {
+  if (!pz || typeof pz !== 'object') return '';
+  const z = num(pz.z, 1.8, 1.3, 2.6), ramp = num(pz.ramp, 0.45, 0.1, 2);
+  const wins = (Array.isArray(pz.windows) ? pz.windows : []).slice(0, 300).map(w => [num(w?.[0], 0, 0, 1e6), num(w?.[1], 0, 0, 1e6)]).filter(([a, b]) => b > a);
+  if (!wins.length) return '';
+  const keys = (Array.isArray(pz.keys) ? pz.keys : []).slice(0, 6000).map(k => [num(k?.[0], 0, 0, 1e6), num(k?.[1], W / 2, 0, W), num(k?.[2], H / 2, 0, H)]).sort((a, b) => a[0] - b[0]);
+  const f = n => n.toFixed(3);
+  const env = wins.map(([a, b]) => `clip((it-${f(a)})/${f(ramp)},0,1)*clip((${f(b)}-it)/${f(ramp)},0,1)`).join('+');
+  const piece = j => keys.length < 2 ? (j === 1 ? f(W / 2) : f(H / 2)) : keys.slice(0, -1).map((k, i) => {
+    const n = keys[i + 1], dt = Math.max(1e-3, n[0] - k[0]);
+    return `gte(it,${f(k[0])})*lt(it,${f(n[0])})*(${f(k[j])}+${f(n[j] - k[j])}*(it-${f(k[0])})/${f(dt)})`;
+  }).join('+');
+  return `zoompan=z='1+${f(z - 1)}*min(1,${env})':x='max(0,min(iw-iw/zoom,(${piece(1)})-iw/zoom/2))':y='max(0,min(ih-ih/zoom,(${piece(2)})-ih/zoom/2))':d=1:s=${W}x${H}:fps=${fps}`;
+}
+
+/*
+ * Click and moment sounds, named here and made from formulas (aevalsrc) —
+ * never filter text from a request. The Worker's pointer.ts `sfxSample`
+ * plays the same formulas in the browser so a sound can be heard before it
+ * is chosen; change both together.
+ */
+const SFX = {
+  click: { d: 0.06, e: '0.6*sin(2*PI*2200*t)*exp(-t*90)+0.3*(random(0)*2-1)*exp(-t*160)' },
+  soft: { d: 0.09, e: '0.5*sin(2*PI*900*t)*exp(-t*60)' },
+  pop: { d: 0.12, e: '0.6*sin(2*PI*(500+1500*t)*t)*exp(-t*40)' },
+  celebrate: { d: 0.75, e: '0.3*(sin(2*PI*523*t)*between(t,0,0.14)+sin(2*PI*659*t)*between(t,0.12,0.26)+sin(2*PI*784*t)*between(t,0.24,0.38)+sin(2*PI*1047*t)*between(t,0.36,0.75))*exp(-max(0,t-0.36)*5)' },
+  error: { d: 0.42, e: '0.35*(sin(2*PI*220*t)+0.6*sin(2*PI*233*t))*(between(t,0,0.16)+between(t,0.22,0.42))' },
+};
+
+/** The effects as one track `[fx]` as long as the video: each sound made once per kind, split, delayed to its moment and mixed. */
+function sfxGraph(sfx, total, stereo) {
+  if (!sfx || typeof sfx !== 'object') return [];
+  const vol = num(sfx.volume, 0.6, 0, 1);
+  const ev = (Array.isArray(sfx.events) ? sfx.events : []).slice(0, 300).map(e => [num(e?.[0], -1, -1, total), String(e?.[1])]).filter(([t, k]) => t >= 0 && t < total && Object.hasOwn(SFX, k));
+  if (!ev.length || vol <= 0) return [];
+  const lines = [], labels = [];
+  for (const k of [...new Set(ev.map(e => e[1]))]) {
+    const mine = ev.filter(e => e[1] === k);
+    lines.push(`aevalsrc='${SFX[k].e}':s=48000:d=${SFX[k].d},${stereo},asplit=${mine.length}${mine.map((_, i) => `[fx${k}${i}]`).join('')}`);
+    mine.forEach(([t], i) => { const ms = Math.round(t * 1000); lines.push(`[fx${k}${i}]adelay=${ms}|${ms}[fy${k}${i}]`); labels.push(`[fy${k}${i}]`); });
+  }
+  lines.push(`${labels.join('')}amix=inputs=${labels.length}:duration=longest:normalize=0,volume=${vol.toFixed(2)},apad,atrim=0:${total.toFixed(3)}[fx]`);
+  return lines;
+}
+
 /** Green screen: a real chroma key on the colour chosen, the spill taken off the edges, a colour behind. */
 function greenFilter(g, W, H, fps) {
   if (!g) return '';
@@ -829,10 +918,13 @@ async function render(job, dir) {
 
   const cmds = [];
   const fx = cleanEffects(p.effects);
-  const layout = cleanLayout(p.layout, srcW, srcH, W, H);
-  const mode = layout ? 'layout' : ['crop', 'fit', 'source'].includes(p.mode) ? p.mode : 'source';
+  const screenL = cleanScreenLayout(p.layout, srcW, srcH, W, H);
+  const layout = screenL ? null : cleanLayout(p.layout, srcW, srcH, W, H);
+  const mode = layout || screenL ? 'layout' : ['crop', 'fit', 'source'].includes(p.mode) ? p.mode : 'source';
   let frame;
-  if (layout) {
+  if (screenL) {
+    frame = screenFrame(screenL, W, H, fps, cmds);
+  } else if (layout) {
     frame = layoutFrame(layout, W, H, srcW, srcH, fx.shadow, fps);
   } else if (mode === 'crop') {
     const cw = even(Math.min(srcW, srcH * W / H)), ch = even(Math.min(srcH, srcW * H / W));
@@ -879,6 +971,9 @@ async function render(job, dir) {
     }
     if (expr) zoom = `,zoompan=z='${expr}':x='iw/2-(iw/zoom/2)':y='ih*0.4-(ih/zoom*0.4)':d=1:s=${W}x${H}:fps=${fps}`;
   }
+  /* Zooming in on the pointer takes the place of any other zoom (the Worker sends one or the other). */
+  const pz = pointerZoomFilter(p.pointerZoom, W, H, fps);
+  if (pz) zoom = `,${pz}`;
 
   /* A flash or a dip to black at each jump cut. */
   let trans = '';
@@ -901,7 +996,7 @@ async function render(job, dir) {
 
   const look = lookFilters(p.look);
   let subs = '';
-  for (const [k, key] of [['caps', 'ass'], ['words', 'overlayAss']]) {
+  for (const [k, key] of [['caps', 'ass'], ['words', 'overlayAss'], ['ptr', 'pointerAss']]) {
     if (typeof p[key] === 'string' && p[key].length) {
       await fsp.writeFile(path.join(dir, `${k}.ass`), p[key]);
       subs += `,subtitles=filename=${path.join(dir, `${k}.ass`)}:fontsdir=${FONTS}`;
@@ -927,6 +1022,9 @@ async function render(job, dir) {
   const sound = [];
   if (hasAudio) {
     sound.push(`[0:a]asetpts=PTS-STARTPTS,aresample=48000,asetnsamples=n=${48000 / fps}:p=0,aselect='${sel}',asetpts=N/SR/TB,${voice.join(',')},${stereo}[sp]`);
+    /* Click and moment sounds join the voice before the loudness is set, so the whole stays at −16 LUFS. */
+    const fx = sfxGraph(p.sfx, outTotal, stereo);
+    if (fx.length) { sound[0] = sound[0].replace(/\[sp\]$/, '[sp0]'); sound.push(...fx, '[sp0][fx]amix=inputs=2:duration=first:normalize=0[sp]'); }
   }
   /* `@LEVEL@` is where the loudness filter goes: measuring it first (pass one)
      and then applying exactly what was measured (pass two). */

@@ -32,6 +32,7 @@ import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, Music2
 import {
   keepRanges, clipKeeps, keptLength, retimeWords, cuesOf, toOutput, toSource, clock, isRtl, lookOf, motionOf, trackingOf, cssLook, punchSpans, cutTimes, trackAt, overlaySpan, sentencesOf,
   effectsOf, effectsOn, cssEffects, layoutPlan, dimsFor, LAYOUT_LABEL, type LayoutPlan,
+  pointerOf, pointerInFrame, focusWindows, zoomPlan, zoomAt, screenPlan, followPath, followAt, screenLayoutFor, frameMap, resolveCursor, type ScreenPlan, type ZoomPlan,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
 import { Deck } from './deck';
@@ -102,6 +103,35 @@ function drawLayout(c: HTMLCanvasElement, v: HTMLVideoElement, plan: LayoutPlan,
   g.beginPath(); g.arc(bx + bs / 2, by + bs / 2, bs / 2, 0, Math.PI * 2); g.clip();
   crop(plan.boxes[0], bx, by, bs, bs);
   g.restore();
+}
+
+/**
+ * A Screen Recorder Short laid out round the pointer: the camera's box whole
+ * on a blurred copy of itself in the top third (screencam), and the window
+ * at its place along the follow path — the boxes the render is sent.
+ */
+function drawScreenLayout(c: HTMLCanvasElement, v: HTMLVideoElement, plan: ScreenPlan, at: [number, number] | null) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const W = Math.round(c.clientWidth * dpr), H = Math.round(c.clientHeight * dpr);
+  if (!W || !H) return;
+  if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+  const g = c.getContext('2d');
+  if (!g || v.readyState < 2 || !v.videoWidth) return;
+  const kx = v.videoWidth / plan.src[0], ky = v.videoHeight / plan.src[1];
+  const top = Math.round(H * plan.top / plan.out[1]);
+  g.clearRect(0, 0, W, H);
+  if (plan.cam && top > 0) {
+    const [x, y, w, h] = plan.cam;
+    g.save(); g.beginPath(); g.rect(0, 0, W, top); g.clip();
+    const cover = Math.max(W / w, top / h), fit = Math.min(W / w, top / h);
+    g.filter = 'blur(14px) brightness(.75)';
+    g.drawImage(v, x * kx, y * ky, w * kx, h * ky, (W - w * cover) / 2, (top - h * cover) / 2, w * cover, h * cover);
+    g.filter = 'none';
+    g.drawImage(v, x * kx, y * ky, w * kx, h * ky, (W - w * fit) / 2, (top - h * fit) / 2, w * fit, h * fit);
+    g.restore();
+  }
+  const [cw, ch] = plan.crop, [x, y] = at ?? [plan.region[0], plan.region[1]];
+  g.drawImage(v, x * kx, y * ky, cw * kx, ch * ky, 0, top, W, H - top);
 }
 
 export default function Player({ ctx, transport, below }: {
@@ -185,8 +215,29 @@ export default function Player({ ctx, transport, below }: {
   }, [clip?.layout, clip?.aspect, probe, ctx.track]); // eslint-disable-line react-hooks/exhaustive-deps
   /* Stretches muted on the timeline: the preview turns its sound off there, as the render does. */
   const mutes = doc.mutes ?? [];
-  const live = useRef({ keeps, total, speed, motion, spans, cuts, followRows, objPos, report, plan, shadow: fx.shadow ?? null, mutes, muted });
-  live.current = { keeps, total, speed, motion, spans, cuts, followRows, objPos, report, plan, shadow: fx.shadow ?? null, mutes, muted };
+
+  /* Following the pointer of a Screen Recorder recording, as the render will
+     (pipeline.ts pointerParams): a screen Short's layout round the pointer,
+     the long video's zoom inside the moments, and the drawn pointer. */
+  const scr = ctx.screen, sref = view.extras?.screen ?? null;
+  const ptr = pointerOf(doc);
+  const outDims = probe ? dimsFor(aspect, probe.width, probe.height) : null;
+  const screenL = screenLayoutFor(clip, sref);
+  const splan: ScreenPlan | null = useMemo(() => screenL && scr && probe && outDims && clip ? screenPlan(screenL, scr, clip.s, clip.e, probe.width, probe.height, outDims.width, outDims.height) : null,
+    [screenL, scr, probe, outDims?.width, outDims?.height, clip?.s, clip?.e]); // eslint-disable-line react-hooks/exhaustive-deps
+  const spath = useMemo(() => splan && scr ? followPath(scr, keeps, splan) : null, [splan, scr, keeps]);
+  const pwins = useMemo(() => scr && sref && ptr.on && (clip ? ptr.shorts && !!splan : ptr.long && tracking === 'off') ? focusWindows(ptr.focus, keeps) : [],
+    [scr, sref, doc.pointer, clip, splan, keeps, tracking]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fmap = useMemo(() => probe && outDims ? frameMap(cropping ? 'crop' : fit ? 'fit' : 'source', probe.width, probe.height, outDims.width, outDims.height, reframe.x, reframe.y) : null,
+    [probe, outDims?.width, outDims?.height, cropping, fit, reframe.x, reframe.y]); // eslint-disable-line react-hooks/exhaustive-deps
+  const zplan: ZoomPlan | null = useMemo(() => !clip && pwins.length && scr && fmap && outDims ? zoomPlan(scr, keeps, pwins, ptr.zoom, outDims.width, outDims.height, fmap) : null,
+    [clip, pwins, scr, fmap, keeps, ptr.zoom]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sentencesAll = useMemo(() => transcript ? sentencesOf(transcript.words) : [], [transcript]);
+  const pcursors = useMemo(() => pwins.map(w => resolveCursor(w.range, ptr.cursor, sentencesAll)), [pwins, ptr.cursor, sentencesAll]);
+  const ptrRef = useRef<HTMLDivElement>(null);
+  const pointerLive = scr && (zplan || splan) ? { scr, zplan, splan, spath, pwins, pcursors, fmap, out: outDims!, size: ptr.size, color: ptr.color } : null;
+  const live = useRef({ keeps, total, speed, motion, spans, cuts, followRows, objPos, report, plan, shadow: fx.shadow ?? null, mutes, muted, pointerLive });
+  live.current = { keeps, total, speed, motion, spans, cuts, followRows, objPos, report, plan, shadow: fx.shadow ?? null, mutes, muted, pointerLive };
 
   /* The deck: two elements swapped at each cut (deck.ts says why). It is made
      once; the edit, the speed and the sound reach it below. Everything that
@@ -210,7 +261,41 @@ export default function Player({ ctx, transport, below }: {
       const m = L.motion;
       if (m.zoom === 'slow') z = 1 + (m.zoomAmount - 1) * Math.min(1, o / Math.max(1, L.total));
       else if (m.zoom === 'punch' && L.spans.some(([s0, e0]) => o >= s0 && o < e0)) z = m.zoomAmount;
-      wrap.style.transform = z !== 1 ? `scale(${z.toFixed(3)})` : '';
+      const P = L.pointerLive;
+      const zv = P?.zplan ? zoomAt(P.zplan, o) : null;
+      if (zv && zv.z > 1.001) {
+        /* Zoomed on the pointer: the view's top-left at the frame's corner, then scaled — the render's zoompan. */
+        wrap.style.transformOrigin = '0 0';
+        wrap.style.transform = `scale(${zv.z.toFixed(3)}) translate(${(-zv.x / P!.zplan!.w * 100).toFixed(3)}%, ${(-zv.y / P!.zplan!.h * 100).toFixed(3)}%)`;
+      } else {
+        wrap.style.transformOrigin = '50% 40%';
+        wrap.style.transform = z !== 1 && !P?.zplan ? `scale(${z.toFixed(3)})` : '';
+      }
+      if (P?.splan && layoutRef.current) drawScreenLayout(layoutRef.current, a.classList.contains('on') ? a : b, P.splan, P.spath ? followAt(P.spath, o) : null);
+      /* The drawn pointer, where the render draws it, inside the moments only. */
+      const pe = ptrRef.current;
+      if (pe) {
+        const wi = P ? P.pwins.findIndex(w => o >= w.a && o <= w.b) : -1;
+        const f = wi >= 0 && P ? pointerInFrame(P.scr, t) : null;
+        let pos: [number, number] | null = null;
+        if (f && P) {
+          if (P.splan && P.spath) {
+            const at = followAt(P.spath, o), [cw, ch] = P.splan.crop, top = P.splan.top, [W, H] = P.splan.out;
+            if (at) pos = [(f[0] * P.splan.src[0] - at[0]) * (W / cw), top + (f[1] * P.splan.src[1] - at[1]) * ((H - top) / ch)];
+            if (pos && (pos[1] < top || pos[0] < 0 || pos[0] > W)) pos = null;
+          } else if (P.fmap) {
+            const [px, py] = P.fmap(f[0], f[1]);
+            pos = zv ? [(px - zv.x) * zv.z, (py - zv.y) * zv.z] : [px, py];
+          }
+        }
+        const cur = wi >= 0 && P ? P.pcursors[wi] : 'none';
+        if (pos && cur !== 'none' && P) {
+          pe.hidden = false;
+          pe.dataset.cursor = cur;
+          pe.style.left = `${(pos[0] / P.out.width * 100).toFixed(2)}%`;
+          pe.style.top = `${(pos[1] / P.out.height * 100).toFixed(2)}%`;
+        } else pe.hidden = true;
+      }
       if (L.followRows) { const [cx, cy] = trackAt(L.followRows, t); const pos = L.objPos(cx, cy, 0.42); a.style.objectPosition = pos; b.style.objectPosition = pos; }
       if (L.plan && layoutRef.current) drawLayout(layoutRef.current, a.classList.contains('on') ? a : b, L.plan, L.shadow);
       /* Fades, and a flash or dip at each jump cut. */
@@ -361,7 +446,8 @@ export default function Player({ ctx, transport, below }: {
                 }} />
             ))}
           </div>
-          {plan && <canvas ref={layoutRef} className="vse-layout" data-testid="vs-layout-preview" data-layout={plan.kind} aria-label={`${LAYOUT_LABEL[plan.kind]} — preview`} />}
+          {(plan || splan) && <canvas ref={layoutRef} className="vse-layout" data-testid="vs-layout-preview" data-layout={plan?.kind ?? splan!.kind} aria-label={`${LAYOUT_LABEL[plan?.kind ?? splan!.kind]} — preview`} />}
+          {pointerLive && pwins.length > 0 && <div ref={ptrRef} className="vse-ptr" hidden data-testid="vs-pointer-preview" style={{ ['--ptr' as string]: ptr.color, ['--ptrk' as string]: String(ptr.size * frameH / 1080) }}><i /></div>}
           <div ref={shadeRef} className="vse-shade" />
           {words.map(({ o, span }) => out !== null && out >= span![0] && out < span![1] && (
             <div key={o.id} className={`vse-ov ${o.style} pos-${o.position} anim-${o.anim}`} data-testid="vs-overlay"
@@ -387,6 +473,8 @@ export default function Player({ ctx, transport, below }: {
           {speed !== 1 && <span className="vs-badge"><Gauge size={11} /> {speed}×</span>}
           {followRows && <span className="vs-badge">Following the {tracking}</span>}
           {plan && <span className="vs-badge">{LAYOUT_LABEL[plan.kind]}</span>}
+          {splan && <span className="vs-badge">{LAYOUT_LABEL[splan.kind]}</span>}
+          {pwins.length > 0 && <span className="vs-badge" title="Sounds are heard in the rendered video"><MousePointer2 size={11} /> Pointer followed in {pwins.length} moment{pwins.length === 1 ? '' : 's'}</span>}
           {(fx.green || fx.appearance) && <span className="vs-badge" title="The preview cannot key a green screen or find skin to smooth; the render does both">{fx.green ? 'Green screen' : 'Skin smoothing'} in the render</span>}
           {track && <span className="vs-badge" title="Ducking under speech and noise reduction are heard in the rendered file"><Music2 size={11} /> {track.title.slice(0, 26)}</span>}
         </div>
