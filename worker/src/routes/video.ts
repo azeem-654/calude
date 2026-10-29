@@ -461,14 +461,23 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
         description: meta.description ?? '', hashtags: (meta.hashtags ?? []).join(' '),
       };
     }));
-    const sources = await env.DB.prepare(`SELECT id, name, source, created_at FROM crm_video_projects WHERE account_id = ? AND json_extract(source, '$.key') IS NOT NULL ORDER BY created_at DESC LIMIT 200`)
-      .bind(accountId).all<{ id: string; name: string; source: string; created_at: string }>();
+    const sources = await env.DB.prepare(`SELECT id, name, status, source, created_at FROM crm_video_projects WHERE account_id = ? AND json_extract(source, '$.key') IS NOT NULL ORDER BY created_at DESC LIMIT 200`)
+      .bind(accountId).all<{ id: string; name: string; status: string; source: string; created_at: string }>();
     return json({
       success: true, items,
       sources: await Promise.all(sources.results.map(async r => {
         const src = parse<Source>(r.source, {});
+        const ext = (src.name?.match(VIDEO_EXT)?.[1] ?? 'mp4').toLowerCase();
         return { projectId: r.id, projectName: r.name, name: src.name ?? '', bytes: src.bytes ?? 0, duration: src.probe?.duration ?? 0, width: src.probe?.width ?? 0, height: src.probe?.height ?? 0, createdAt: r.created_at,
-          posterUrl: src.poster ? await fileUrl(env, origin, accountId, src.poster, 4 * 3600) : '' };
+          status: r.status,
+          posterUrl: src.poster ? await fileUrl(env, origin, accountId, src.poster, 4 * 3600) : '',
+          /* Played in the Media Library: the editor's 540p proxy once the
+             engine has made one, the stored original until then (an install
+             without the engine never makes a proxy, and a recording saved
+             from the Screen Recorder must still play). Both keys sit under
+             this workspace's prefix, so the link reaches nothing else. */
+          playUrl: await fileUrl(env, origin, accountId, src.proxy ?? src.key!, 4 * 3600, '', true),
+          downloadUrl: await fileUrl(env, origin, accountId, src.key!, 7200, `${slug(r.name)}.${ext}`) };
       })),
     });
   }

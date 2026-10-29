@@ -15,6 +15,8 @@
  *                               topic, link or script — no recording needed)
  * /video-studio?tab=repurpose   the older Repurposing module (one video idea
  *                               out to a campaign across channels)
+ * /video-studio?tab=media&record=1  the Media Library with the Screen Recorder
+ *                               open (ScreenRecorder.tsx)
  * /video-studio/:id             the editor
  *
  * The two older modules were separate pages (/ai-shorts, /social-automation,
@@ -224,7 +226,7 @@ export default function VideoStudio() {
           )}
           {tab === 'quick-shorts' && <div className="vs-note" data-testid="vs-quick-note"><Link2 size={15} /> <span><b>Quick Shorts</b> makes a Short from a topic, a link or a script — no recording needed. To cut Shorts from a recording you made, start a <button type="button" className="vs-btn ghost sm" onClick={() => startNew()}>new video project</button>.</span></div>}
           {tab === 'repurpose' && <div className="vs-note" data-testid="vs-repurpose-note"><Rocket size={15} /> <span><b>Repurpose</b> turns one video idea into a campaign across channels. To write posts, an article and emails from a recording, open its project and use <b>Reuse</b>, or choose “Repurpose into posts, emails and a blog” when you start one.</span></div>}
-          {tab === 'media' && <MediaLibrary />}
+          {tab === 'media' && <MediaLibrary record={params.get('record') === '1'} onRecord={o => setParams(o ? { tab: 'media', record: '1' } : { tab: 'media' }, { replace: true })} />}
           {tab === 'brand' && <BrandKit />}
           {tab === 'exports' && <ExportsList />}
           {tab === 'publish' && <ReadyToPublish />}

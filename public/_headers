@@ -13,15 +13,18 @@
 # needs neither, and together they are most of what XSS relies on.
 # YouTube's player API is the one third-party script (AI Shorts preview).
 #
-# microphone=(self) because voice prompts use it; camera and location are not
-# used anywhere and are refused.
+# microphone=(self) because voice prompts and the Screen Recorder use it;
+# camera=(self) because the Media Library's Screen Recorder (Video Studio)
+# records the camera — with camera=() the browser refuses the webcam outright,
+# whatever the person allows. display-capture is left at its default ('self').
+# Location is not used anywhere and is refused.
 /*
   Content-Security-Policy: script-src 'self' https://www.youtube.com https://s.ytimg.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
   X-Content-Type-Options: nosniff
   X-Frame-Options: SAMEORIGIN
   Referrer-Policy: strict-origin-when-cross-origin
   Strict-Transport-Security: max-age=31536000; includeSubDomains
-  Permissions-Policy: camera=(), geolocation=(), microphone=(self), payment=(), usb=()
+  Permissions-Policy: camera=(self), geolocation=(), microphone=(self), payment=(), usb=()
   Cross-Origin-Opener-Policy: same-origin-allow-popups
 
 # The chat widget is embedded on customers' own sites, so it must be loadable

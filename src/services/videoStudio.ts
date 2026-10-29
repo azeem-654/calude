@@ -109,7 +109,15 @@ export interface LibraryItem {
   duration: number; width: number; height: number; publishAt: string | null; updatedAt: string;
   thumbUrl: string; thumbDownload: string; downloadUrl: string; caption: string; description: string; hashtags: string;
 }
-export interface LibrarySource { projectId: string; projectName: string; name: string; bytes: number; duration: number; width: number; height: number; createdAt: string; posterUrl: string }
+export interface LibrarySource {
+  projectId: string; projectName: string; name: string; bytes: number; duration: number; width: number; height: number; createdAt: string; posterUrl: string;
+  /** The project's own status (draft, uploading, processing, ready, failed). */
+  status: string;
+  /** Signed, short-lived: the editor's proxy once made, the stored original until then. */
+  playUrl: string;
+  /** Signed: the original exactly as uploaded, named for the project. */
+  downloadUrl: string;
+}
 
 export interface VideoBrand {
   company: string; description: string; website: string; color: string; accent: string; cta: string; handles: string; logoKey: string;
