@@ -50,7 +50,7 @@ export default function ClientBilling() {
   const [table, setTable] = useState<PlanTable>(DEFAULT_TABLE);
   const [yearlyAsked, setYearly] = useState(false);
   useEffect(() => { void fetchPlans().then(t => { if (t) setTable(t); }); }, []);
-  /* No plan on sale has a yearly price since 2026-10-28; the switch appears only if one does again. */
+  /* The switch appears only while a plan on sale has a yearly price (back since 2026-10-29). */
   const offersYearly = SOLD_PLANS(table.plans).some(p => p.annualCents > 0);
   const yearly = yearlyAsked && offersYearly;
 

@@ -1,5 +1,5 @@
 /**
- * The home page's software pricing: Growth $97/month, Scale $297/month and
+ * The home page's software pricing: Advanced $97/month, Scale $297/month and
  * Custom (the owner's specification of 2026-10-28) — the same cards as
  * /pricing, drawn from the plan table the server charges and enforces
  * (PricingParts.tsx, lib/allowances.ts). No figure is typed here.
@@ -18,14 +18,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, CalendarCheck, Mail } from 'lucide-react';
 import { strategyCallHref, useBookingState } from '../../services/strategyCall';
-import { PlanCards, usePlanTable } from './PricingParts';
-import { BILLING_TERMS } from './pricingTerms';
+import { BillingToggle, PlanCards, usePlanTable } from './PricingParts';
+import { BILLING_CLAUSE, hasYearly } from './pricingTerms';
 import { EnquiryForm } from './PricingPage';
 
 export default function HomePricing() {
   const table = usePlanTable();
   const closed = useBookingState() === 'closed';
   const [writing, setWriting] = useState(false);
+  const [yearly, setYearly] = useState(false);
   const formRef = useRef<HTMLDivElement | null>(null);
   const open = writing || closed;
 
@@ -42,10 +43,11 @@ export default function HomePricing() {
       <div className="dc-chapter-head">
         <span className="dc-eyebrow">Software pricing</span>
         <h2>Protected Central software. <em>Run it yourself.</em></h2>
-        <p>The CRM and marketing-automation platform as a self-serve subscription: 7 days free with no card, then {BILLING_TERMS.replace('USD, billed monthly after the 7-day trial · ', 'billed monthly in US dollars, ')}. Every number on a card is what the product holds you to.</p>
+        <p>The CRM and marketing-automation platform as a self-serve subscription: 7 days free with no card, then {BILLING_CLAUSE}. Every number on a card is what the product holds you to.</p>
       </div>
 
-      <PlanCards table={table} customHref="#enquire" onCustom={toForm} />
+      {hasYearly(table) && <BillingToggle yearly={yearly} onChange={setYearly} />}
+      <PlanCards table={table} yearly={yearly} customHref="#enquire" onCustom={toForm} />
 
       <p className="hp-compare"><a href="/pricing#compare">Compare every feature, plan by plan <ArrowRight size={13} /></a></p>
 

@@ -214,6 +214,7 @@ function ModeBanner({ o }: { o: Overview }) {
       <div style={{ ...box, background: '#f0fdf4', borderColor: '#bbf7d0' }} data-testid="rcm-mode">
         <p style={{ margin: 0, fontSize: 13, color: INK, fontWeight: 700 }}><Lock size={14} style={{ verticalAlign: '-2px', color: GOOD }} /> Live patient data. Every view and change is logged, and 2-step sign-in is required to open it.</p>
         <p style={{ ...small, marginTop: 4 }}>Live since {day(o.settings.liveAt)}. BAA signed {day(o.settings.baaSignedOn)}. No clearinghouse or payer is connected: claims are submitted in your clearinghouse and its answers recorded here.</p>
+        <p style={{ ...small, marginTop: 4 }}>Patient records stay in the practice’s own EHR or practice-management system; this module keeps only the account reference, codes and amounts.</p>
       </div>
     );
   }
@@ -221,6 +222,7 @@ function ModeBanner({ o }: { o: Overview }) {
     <div style={{ ...box, background: '#fffbeb', borderColor: '#fde68a' }} data-testid="rcm-mode">
       <p style={{ margin: 0, fontSize: 13, color: '#78350f', fontWeight: 700 }}><AlertTriangle size={14} style={{ verticalAlign: '-2px' }} /> Synthetic test data only — do not enter real patient information.</p>
       <p style={{ ...small, marginTop: 4, color: '#92400e' }}>Patient references here start SYN-. Real patient data waits until the launch checklist is signed off, a BAA is in place, and 2-step sign-in is on for everyone. No clearinghouse or payer is connected.</p>
+      <p style={{ ...small, marginTop: 4, color: '#92400e' }}>Patient records stay in the practice’s own EHR or practice-management system. This module keeps only the account reference, codes and amounts — never names, dates of birth, addresses or member IDs — and none of it is sent to AI, campaigns or support tickets.</p>
     </div>
   );
 }
@@ -790,6 +792,10 @@ function FeeStatementTab({ accountId }: { accountId: string }) {
             </div>
             {st.shortfallCents > 0 && <p style={{ ...small, color: WARN, marginTop: 8 }}>Take-backs exceeded payments by {money(st.shortfallCents)} this month, so the fee is nil. Whether the difference carries into next month is set by the signed agreement.</p>}
             <p style={{ ...small, marginTop: 8 }}><b style={{ color: INK }}>Status: {d?.status}.</b> {d?.basis} Patient payments are not tracked in this module, so none is counted.{d?.synthetic ? ' Synthetic test data only — no real payments.' : ''}</p>
+            {/* Percentage-of-collections pay for billing is restricted by some
+                states and payer contracts; the statement must never read as
+                settled law. docs/MEDICAL-INTEGRATIONS.md, owner checklist 34. */}
+            <p style={{ ...small, marginTop: 6, color: WARN }} data-testid="rcm-fee-legal">A percentage-of-collections fee must be reviewed by a qualified attorney against the applicable state laws and the practice’s payer contracts before it is used commercially. Where it is not permitted, a different basis is agreed in writing.</p>
           </>
         )}
       </div>

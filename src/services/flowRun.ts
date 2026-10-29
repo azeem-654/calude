@@ -11,6 +11,7 @@
  * campaign into five modules and then cannot take it back is a chain most
  * people will not risk pressing.
  */
+import { designForPost } from '../../worker/src/lib/design/forPost';
 import type { Campaign, Funnel } from '../types';
 import type { EmailSequence } from '../types/marketing';
 import type { DesignPost, CanvasElement } from '../components/SocialCreator/types';
@@ -103,6 +104,8 @@ function designFor(p: FlowPlan['social'][number], brandColor: string, company: s
 
   return {
     id: `flow-social-${Date.now()}-${seq}`,
+    /* A template design, filled — the elements below are the fallback for older screens. */
+    design: designForPost({ platform: p.platform, headline: p.headline, body: (p as { caption?: string }).caption ?? '', hashtags: (p as { hashtags?: string[] }).hashtags ?? [] }, { company, primary: brandColor }, 'bold'),
     name: `Day ${p.day} · ${p.headline.slice(0, 34)}`,
     platform: p.platform,
     aspectRatio: square ? '1:1' : '16:9',

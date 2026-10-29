@@ -11,6 +11,8 @@ import type { DesignPost, Platform, CanvasElement, CanvasBackground } from './ty
 import { PLATFORM_PRESETS, RATIO_SIZES, TEMPLATES } from './templates';
 import { normalisePosts } from './normalise';
 import { generateSocialPostDesign, hasGeminiKey } from '../../lib/gemini';
+import DesignTemplateGallery from './design/TemplateGallery';
+import DesignCanvas from './design/DesignCanvas';
 
 /** The status as the customer should read it — see the note in the card. */
 function statusOf(p: DesignPost): { key: string; label: string } {
@@ -27,7 +29,11 @@ const PLATFORM_ICONS: Record<string, React.ReactNode> = {
   facebook:  <span style={{ fontSize: 12, fontWeight: 700 }}>FB</span>,
 };
 
+/** Where a post is edited: the template editor for a template design, the free-form canvas otherwise. */
+const editPath = (p: DesignPost) => (p.design ? `/social-creator/design/${p.id}` : `/social-creator/editor/${p.id}`);
+
 function ThumbnailPreview({ post }: { post: DesignPost }) {
+  if (post.design) return <div style={{ width: 170, maxWidth: '100%' }}><DesignCanvas doc={post.design} width={170} label={post.name} /></div>;
   const [w, h] = (post.aspectRatio || '1:1').split(':').map(Number);
   const thumbH = 170;
   const thumbW = Math.round((w / h) * thumbH);
@@ -469,10 +475,8 @@ export default function SocialCreator() {
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [showNew, setShowNew] = useState(false);
   const [modalInit, setModalInit] = useState<ModalInit | undefined>(undefined);
-  const [heroQuery, setHeroQuery] = useState('');
   const [sortBy, setSortBy] = useState<'updated' | 'created' | 'name'>('updated');
 
-  const openTemplates = (init?: ModalInit) => { setModalInit({ step: 'template', ...init }); setShowNew(true); };
 
   /* One key, more than one writer: content setup and older versions of this
      module store thinner records here. Everything is made into a complete
@@ -508,19 +512,6 @@ export default function SocialCreator() {
     navigate(`/social-creator/editor/${id}`);
   };
 
-  const quickCreate = (t: typeof TEMPLATES[0]) => {
-    handleCreate({
-      name: t.name,
-      platform: t.platform === 'all' ? 'instagram' : t.platform as Platform,
-      aspectRatio: t.aspectRatio,
-      canvasWidth: t.canvasWidth,
-      canvasHeight: t.canvasHeight,
-      background: { ...t.background },
-      elements: t.elements.map((el, i) => ({ ...el, id: `el-${Date.now()}-${i}` })) as CanvasElement[],
-      status: 'draft',
-      tags: t.tags,
-    });
-  };
 
   const handleDuplicate = (post: DesignPost) => {
     const now = new Date().toISOString();
@@ -534,89 +525,25 @@ export default function SocialCreator() {
   };
 
   return (
-    <div style={{ padding: '32px 40px', maxWidth: 1400, margin: '0 auto' }}>
-      {/* ── Canva-style hero ── */}
-      <div style={{ position: 'relative', borderRadius: 22, overflow: 'hidden', marginBottom: 26, padding: '44px 40px 30px', background: 'linear-gradient(100deg, #a21caf 0%, #7c3aed 40%, #2563eb 75%, #06b6d4 100%)' }}>
-        <button
-          onClick={() => { setModalInit(undefined); setShowNew(true); }}
-          style={{ position: 'absolute', top: 18, right: 18, display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', border: 'none', borderRadius: 10, background: 'rgba(255,255,255,0.95)', color: '#6d28d9', fontWeight: 800, fontSize: 13.5, cursor: 'pointer' }}>
-          <Plus size={16} /> New Design
+    <div style={{ padding: 'clamp(14px, 3vw, 32px) clamp(14px, 3.4vw, 40px)', maxWidth: 1400, margin: '0 auto', minWidth: 0, boxSizing: 'border-box' }}>
+      {/* ── The template library ──
+          This page used to open on a colourful hero, a strip of the old
+          element templates and an "AI Generate" that asked the AI to place
+          text and shapes by coordinates — which is why every post came out as
+          words on a gradient with a button. A design now starts from a real
+          template (design/), drawn with the customer's own details. The
+          free-form canvas is still here for anybody who wants it. */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 18 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#64748b' }}>Graphics Designer &amp; Editor</div>
+          <h1 style={{ margin: '4px 0 0', fontSize: 'clamp(22px, 3vw, 28px)', fontWeight: 800, color: '#17191c', letterSpacing: '-0.02em' }}>Social media graphics</h1>
+        </div>
+        <button onClick={() => { setModalInit({ step: 'blank' }); setShowNew(true); }} data-testid="blank-canvas"
+          style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 14px', border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff', color: '#17191c', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+          <Plus size={15} /> Blank canvas
         </button>
-        <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.85)', fontSize: 12.5, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 6 }}>Graphics Designer & Editor</div>
-        <h1 style={{ margin: '0 0 20px', fontSize: 32, fontWeight: 800, color: '#fff', textAlign: 'center', letterSpacing: '-0.02em', textShadow: '0 2px 12px rgba(0,0,0,0.2)' }}>
-          What will you design today?
-        </h1>
-        {/* Hero search */}
-        <div style={{ maxWidth: 620, margin: '0 auto 26px', position: 'relative' }}>
-          <Search size={17} style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-          <input
-            value={heroQuery}
-            onChange={e => setHeroQuery(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') openTemplates({ query: heroQuery }); }}
-            placeholder="Search templates… try 'fashion', 'sale' or 'quote'"
-            style={{ width: '100%', padding: '14px 18px 14px 44px', border: 'none', borderRadius: 12, fontSize: 15, outline: 'none', boxSizing: 'border-box', boxShadow: '0 10px 30px rgba(0,0,0,0.25)' }}
-          />
-        </div>
-        {/* Category shortcuts */}
-        <div style={{ display: 'flex', gap: 26, justifyContent: 'center', flexWrap: 'wrap' }}>
-          {[
-            { label: 'For you', emoji: '✨', act: () => openTemplates() },
-            { label: 'Modern', emoji: '◼️', act: () => openTemplates({ category: 'Modern' }) },
-            { label: 'Trending', emoji: '🔥', act: () => openTemplates({ category: 'Trending' }) },
-            { label: 'Fashion', emoji: '🛍️', act: () => openTemplates({ category: 'Fashion' }) },
-            { label: 'Promotion', emoji: '💸', act: () => openTemplates({ category: 'Promotion' }) },
-            { label: 'Quote', emoji: '💬', act: () => openTemplates({ category: 'Quote' }) },
-            { label: 'Business', emoji: '💼', act: () => openTemplates({ category: 'Business' }) },
-            { label: 'Aesthetic', emoji: '🎨', act: () => openTemplates({ category: 'Aesthetic' }) },
-            { label: 'AI Generate', emoji: '🪄', act: () => { setModalInit({ step: 'ai' }); setShowNew(true); } },
-          ].map(c => (
-            <button key={c.label} onClick={c.act}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, background: 'none', border: 'none', cursor: 'pointer' }}>
-              <span style={{ width: 52, height: 52, borderRadius: 99, background: 'rgba(255,255,255,0.2)', border: '1.5px solid rgba(255,255,255,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, backdropFilter: 'blur(6px)', transition: 'transform 0.15s' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.1)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; }}>
-                {c.emoji}
-              </span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>{c.label}</span>
-            </button>
-          ))}
-        </div>
       </div>
-
-      {/* ── You might want to try… ── */}
-      <div style={{ marginBottom: 30 }}>
-        <h2 style={{ margin: '0 0 14px', fontSize: 18, fontWeight: 800, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Sparkles size={17} color="#7c3aed" /> You might want to try…
-        </h2>
-        <div style={{ display: 'flex', gap: 14, overflowX: 'auto', paddingBottom: 8 }}>
-          {/* Modern first: it is the newest work and the set most people should
-              be starting from. Trending and Fashion follow, so the strip still
-              has the variety it had. */}
-          {[
-            ...TEMPLATES.filter(t => t.category === 'Modern'),
-            ...TEMPLATES.filter(t => t.category === 'Trending'),
-            ...TEMPLATES.filter(t => t.category === 'Fashion'),
-          ].slice(0, 10).map(t => (
-            <div key={t.id} onClick={() => quickCreate(t)}
-              style={{ cursor: 'pointer', borderRadius: 12, overflow: 'hidden', border: '1px solid #eceef2', background: '#fff', flexShrink: 0, transition: 'transform 0.15s, box-shadow 0.15s' }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 12px 28px -8px rgba(16,24,40,0.22)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}>
-              <div style={{ maxHeight: 190, overflow: 'hidden' }}>
-                <MiniPreview t={t} width={150} />
-              </div>
-              <div style={{ padding: '8px 11px' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 128 }}>{t.name}</div>
-                <div style={{ fontSize: 10.5, color: '#94a3b8', fontWeight: 600 }}>{t.category}</div>
-              </div>
-            </div>
-          ))}
-          <div onClick={() => openTemplates()}
-            style={{ cursor: 'pointer', borderRadius: 12, border: '2px dashed #d6d3e0', background: '#faf9fc', flexShrink: 0, width: 150, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 190, color: '#7c3aed' }}>
-            <LayoutGrid size={26} />
-            <span style={{ fontSize: 12.5, fontWeight: 700 }}>Browse all templates</span>
-          </div>
-        </div>
-      </div>
+      <DesignTemplateGallery onCreate={(p: DesignPost) => { addSocialPost(p); navigate(`/social-creator/design/${p.id}`); }} />
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))', gap: 16, marginBottom: 32 }}>
@@ -696,7 +623,7 @@ export default function SocialCreator() {
             <PostCard
               key={p.id}
               post={p}
-              onEdit={() => navigate(`/social-creator/editor/${p.id}`)}
+              onEdit={() => navigate(editPath(p))}
               onDuplicate={() => handleDuplicate(p)}
               onDelete={() => handleDelete(p.id)}
             />
@@ -707,7 +634,7 @@ export default function SocialCreator() {
           {filtered.map((p, i) => (
             <div
               key={p.id}
-              onClick={() => navigate(`/social-creator/editor/${p.id}`)}
+              onClick={() => navigate(editPath(p))}
               style={{
                 display: 'flex', alignItems: 'center', gap: 16, padding: '14px 20px', cursor: 'pointer',
                 borderBottom: i < filtered.length - 1 ? '1px solid #f1f5f9' : 'none',
@@ -728,7 +655,7 @@ export default function SocialCreator() {
               <span style={{ fontSize: 12, color: '#94a3b8' }}>{new Date(p.updatedAt).toLocaleDateString()}</span>
               <div style={{ display: 'flex', gap: 4 }}>
                 {[
-                  { icon: <Edit3 size={14} />, fn: (e: any) => { e.stopPropagation(); navigate(`/social-creator/editor/${p.id}`); } },
+                  { icon: <Edit3 size={14} />, fn: (e: any) => { e.stopPropagation(); navigate(editPath(p)); } },
                   { icon: <Copy size={14} />, fn: (e: any) => { e.stopPropagation(); handleDuplicate(p); } },
                   { icon: <Trash2 size={14} />, fn: (e: any) => { e.stopPropagation(); handleDelete(p.id); } },
                 ].map((btn, bi) => (

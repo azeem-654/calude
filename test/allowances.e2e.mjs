@@ -11,7 +11,7 @@
  *    1280 and 390, with nothing wider than the window.
  *  - The install owner raises the trial's projects on Sign-ups & trials →
  *    Plans & allowances, and the third project is then made.
- *  - The public site's pricing shows Growth $97, Scale $297 and Custom from the
+ *  - The public site's pricing shows Advanced $97, Scale $297 and Custom from the
  *    server's own table — an owner's change included — monthly only,
  *    with "Show full details", at 1440 and 390; /pricing has the comparison
  *    (header kept in view on a desktop, one plan at a time on a phone), the
@@ -66,7 +66,7 @@ const p1 = await mk('Kitchen fitters'), p2 = await mk('Bathroom fitters');
 ok('two projects are made on the trial', p1.success && p2.success, [p1, p2]);
 const p3 = await mk('Architects');
 ok('the third is refused by name', p3.success === false && p3.code === 'allowance' && p3.meter === 'autopilot_projects' && p3.used === 2 && p3.limit === 2 && p3.status === 402, p3);
-ok('…saying the plan and the plan that raises it', /Free trial includes 2 AI Autopilot business workspaces and 2 exist/.test(p3.error) && p3.upgrade?.id === 'growth' && /Growth includes 10/.test(p3.error), p3.error);
+ok('…saying the plan and the plan that raises it', /Free trial includes 2 AI Autopilot business workspaces and 2 exist/.test(p3.error) && p3.upgrade?.id === 'growth' && /Advanced includes 10/.test(p3.error), p3.error);
 ok('…and nothing was written', (await api('projects.php', { token: CT, accountId: ACCT, action: 'get' })).projects?.length === 2);
 const asked = await api('allowances.php', { token: CT, accountId: ACCT, action: 'check', meter: 'autopilot_projects' });
 ok('`check` answers the same before anything is tried', asked.success && asked.ok === false && asked.code === 'allowance' && asked.limit === 2, asked);
@@ -118,9 +118,9 @@ for (const width of [1280, 390]) {
   const shorts = await card.locator('[data-meter="ai_shorts"]').innerText();
   ok(`${width}: …and every other meter, used and allowed`, /0 of 10/.test(shorts) && (await card.locator('[data-meter]').count()) === 14, shorts);
   ok(`${width}: …on the free trial`, /Free trial/.test(await card.innerText()));
-  ok(`${width}: Plan & billing offers Growth and Scale with their numbers`, (await page.locator('[data-plan]').count()) === 2 && /100 AI Shorts/.test(await page.locator('[data-plan="growth"]').innerText()) && /\$97\/month/.test(await page.locator('[data-plan="growth"]').innerText()) && /\$297\/month/.test(await page.locator('[data-plan="scale"]').innerText()) && /White-label/.test(await page.locator('[data-plan="scale"]').innerText()));
+  ok(`${width}: Plan & billing offers Advanced and Scale with their numbers`, (await page.locator('[data-plan]').count()) === 2 && /100 AI Shorts/.test(await page.locator('[data-plan="growth"]').innerText()) && /\$97\/month/.test(await page.locator('[data-plan="growth"]').innerText()) && /\$297\/month/.test(await page.locator('[data-plan="scale"]').innerText()) && /White-label/.test(await page.locator('[data-plan="scale"]').innerText()));
   ok(`${width}: …and a way to ask about Custom`, (await page.getByRole('link', { name: 'Ask about a Custom plan' }).count()) === 1);
-  ok(`${width}: …monthly only, said so — no yearly switch`, (await page.getByRole('radio', { name: /Yearly/ }).count()) === 0 && /billed monthly/.test(await page.locator('body').innerText()));
+  ok(`${width}: …monthly or yearly — the switch is there, and yearly is ten months' price`, (await page.getByRole('radio', { name: /Yearly/ }).count()) === 1 && await (async () => { await page.getByRole('radio', { name: /Yearly/ }).click(); const t = await page.locator('[data-plan="growth"]').innerText(); await page.getByRole('radio', { name: /Monthly/ }).click(); return /\$970\/year/.test(t); })());
   ok(`${width}: nothing is wider than the window on Plan & billing`, (await overflow(page)) <= 0, await overflow(page));
   if (width === 1280) await page.screenshot({ path: '.wrangler-allowances/billing-1280.png', fullPage: true });
   await page.goto(`${B}/autopilot`, { waitUntil: 'networkidle' });
@@ -142,7 +142,7 @@ for (const width of [1280, 390]) {
   const ed = page.locator('[data-plan-limits]');
   await ed.waitFor({ timeout: 15_000 });
   await ed.getByLabel('Free trial: AI Autopilot business workspaces').fill('3');
-  await ed.getByLabel('Growth: AI Shorts').fill('150');
+  await ed.getByLabel('Advanced: AI Shorts').fill('150');
   await ed.getByRole('button', { name: 'Save allowances' }).click();
   await ed.getByText('Saved.').waitFor({ timeout: 10_000 }).catch(() => {});
   ok('the owner saves new numbers on Plans & allowances', /Saved\./.test(await ed.innerText()));
@@ -162,14 +162,14 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   const home = page.locator('#pricing');
   await home.scrollIntoViewIfNeeded();
   await page.waitForTimeout(800);
-  ok(`site ${w}: the home page's software pricing is Growth, Scale and Custom`, (await home.locator('[data-plan]').count()) === 3 && (await home.locator('[data-plan="growth"], [data-plan="scale"], [data-plan="custom"]').count()) === 3 && /150 AI Shorts/.test(await home.locator('[data-plan="growth"]').innerText()));
+  ok(`site ${w}: the home page's software pricing is Advanced, Scale and Custom`, (await home.locator('[data-plan]').count()) === 3 && (await home.locator('[data-plan="growth"], [data-plan="scale"], [data-plan="custom"]').count()) === 3 && /150 AI Shorts/.test(await home.locator('[data-plan="growth"]').innerText()));
   await page.goto(`${B}/pricing`, { waitUntil: 'networkidle' });
   const sec = page.locator('#plans');
   await sec.scrollIntoViewIfNeeded();
   await page.waitForTimeout(800);
   ok(`/pricing ${w}: says it is the software and points to the managed services`, /Software plans/i.test(await page.locator('.pcp-head').innerText()) && /managed services/.test(await page.getByTestId('pricing-service-note').innerText()) && /#services$/.test(await page.getByTestId('pricing-service-note').locator('a').getAttribute('href')));
   const cards = sec.locator('[data-plan]');
-  ok(`site ${w}: Growth, Scale and Custom — no legacy plan`, (await cards.count()) === 3 && (await sec.locator('[data-plan="custom"]').count()) === 1 && (await sec.locator('[data-plan="scale"]').count()) === 1 && (await sec.locator('[data-plan="starter"], [data-plan="pro"], [data-plan="agency"]').count()) === 0);
+  ok(`site ${w}: Advanced, Scale and Custom — no legacy plan`, (await cards.count()) === 3 && (await sec.locator('[data-plan="custom"]').count()) === 1 && (await sec.locator('[data-plan="scale"]').count()) === 1 && (await sec.locator('[data-plan="starter"], [data-plan="pro"], [data-plan="agency"]').count()) === 0);
   const text = await sec.innerText();
   const flat = text.replace(/\s+/g, '');
   ok(`site ${w}: $97 and $297 a month, and Custom by conversation`, /\$97\/month/.test(flat) && /\$297\/month/.test(flat) && /Let’s talk/.test(text) && !/\$49\b|\$197\b/.test(flat), text.slice(0, 400));
@@ -177,7 +177,7 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   ok(`site ${w}: the owner's change is on the card`, /150 AI Shorts/.test(await sec.locator('[data-plan="growth"]').innerText()));
   ok(`site ${w}: white-label said on every card`, (await sec.locator('[data-plan]:not([data-plan="custom"])', { hasText: 'White-label' }).count()) === 2);
   ok(`site ${w}: 7 days free · No card required`, /7 days free · No card required/.test(text));
-  ok(`site ${w}: no yearly switch while no plan has a yearly price`, (await sec.getByRole('radio', { name: /Yearly/ }).count()) === 0);
+  ok(`site ${w}: a yearly switch, since the plans on sale have a yearly price`, (await sec.getByRole('radio', { name: /Yearly/ }).count()) === 1);
   const pro = sec.locator('[data-plan="scale"]');
   await pro.getByRole('button', { name: 'Show full details' }).click();
   const details = await pro.locator('.dc-plan-details').innerText().catch(() => '');

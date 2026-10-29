@@ -24,14 +24,17 @@ const ok = (n: string, c: boolean, d: unknown = '') => { if (c) pass++; else fai
 console.log('Rules');
 ok('every plan names every meter', PLAN_DEFS.every(p => METER_IDS.every(id => typeof p.limits[id] === 'number')) && METER_IDS.every(id => typeof TRIAL_LIMITS[id] === 'number'));
 const SOLD = SOLD_PLANS(), CARDS = CARD_PLANS();
-ok('new customers see exactly Growth $97, Scale $297 and Custom', SOLD.map(p => `${p.id}:${p.monthlyCents}`).join() === 'growth:9700,scale:29700' && CARDS.map(p => p.id).join() === 'growth,scale,custom');
+ok('new customers see exactly Advanced (id growth) $97, Scale $297 and Custom', SOLD.map(p => `${p.id}:${p.monthlyCents}`).join() === 'growth:9700,scale:29700' && CARDS.map(p => p.id).join() === 'growth,scale,custom');
 ok('Starter and Pro are kept as legacy, with what their subscribers bought', planDef('starter')!.kind === 'legacy' && planDef('pro')!.kind === 'legacy' && limitsFor('plan', 'starter').ai_shorts === 30 && limitsFor('plan', 'pro').autopilot_projects === 40 && limitsFor('plan', 'growth').ai_shorts === 100);
 ok('Custom has no price; the legacy plan is on no card', planDef('custom')!.monthlyCents === 0 && !CARDS.some(p => p.kind === 'legacy'));
 ok('plans are in ascending price', SOLD.every((p, i) => i === 0 || p.monthlyCents > SOLD[i - 1].monthlyCents));
 ok('no plan allows less than the one below it (Custom last)', CARDS.every((p, i) => i === 0 || METER_IDS.every(id => p.limits[id] < 0 || (CARDS[i - 1].limits[id] >= 0 && p.limits[id] >= CARDS[i - 1].limits[id]))));
 ok('a legacy Agency subscriber keeps unlimited projects and sub-accounts', limitsFor('plan', 'agency').autopilot_projects === UNLIMITED && limitsFor('plan', 'agency').sub_accounts === UNLIMITED && limitsFor('plan', 'agency').ai_shorts === 1000);
 ok('the trial allows no more than Starter, except where it is equal', METER_IDS.every(id => TRIAL_LIMITS[id] <= PLAN_DEFS[0].limits[id]));
-ok('the plans on sale are monthly only — no yearly price', SOLD.every(p => p.annualCents === 0));
+ok('the plans on sale are sold yearly too, at ten months\' price (the discount they always had)', SOLD.every(p => p.annualCents === p.monthlyCents * 10) && planDef('growth')!.annualCents === 97000 && planDef('scale')!.annualCents === 297000);
+ok('the $97 plan is called Advanced on every screen, its id unchanged', planDef('growth')!.name === 'Advanced');
+ok('Scale allows more than legacy Pro on every meter', METER_IDS.every(id => planDef('scale')!.limits[id] > planDef('pro')!.limits[id]));
+ok('…and no more than Custom starts at', METER_IDS.every(id => planDef('custom')!.limits[id] < 0 || planDef('scale')!.limits[id] <= planDef('custom')!.limits[id]));
 ok('legacy yearly prices were ten months (two free)', ['starter', 'pro'].every(id => (LEGACY_CENTS[id as 'pro'] ?? []).includes(planDef(id)!.monthlyCents * 10)) && annualSaving({ monthlyCents: 4900, annualCents: 49000 }) === 9800);
 ok('every price on sale is distinct, so an amount names one plan', new Set(SOLD.map(p => p.monthlyCents)).size === SOLD.length);
 ok('the owner is unlimited on every meter', METER_IDS.every(id => OWNER_LIMITS[id] === UNLIMITED) && limitsFor('owner', 'starter') === OWNER_LIMITS);
@@ -43,12 +46,12 @@ ok('an owner change wins, a bad one is ignored', limitsFor('plan', 'starter', { 
 ok('limits are whole numbers from 0, or -1', cleanLimit('12') === 12 && cleanLimit(-1) === -1 && cleanLimit(-2) === null && cleanLimit(1.5) === null && cleanLimit('') === null && cleanLimit(true) === null);
 ok('verdict: room, none, unlimited', verdict(29, 30).ok && !verdict(30, 30).ok && verdict(30, 30).left === 0 && !verdict(25, 30, 6).ok && verdict(1e9, UNLIMITED).ok);
 ok('fill: a bar, and none for unlimited', fill({ used: 15, limit: 30 }) === 0.5 && fill({ used: 99, limit: UNLIMITED }) === 0 && fill({ used: 40, limit: 30 }) === 1);
-ok('the plan that raises Shorts above Starter is Growth', upgradeFor('ai_shorts', { kind: 'plan', planId: 'starter' })?.id === 'growth');
+ok('the plan that raises Shorts above Starter is Advanced', upgradeFor('ai_shorts', { kind: 'plan', planId: 'starter' })?.id === 'growth');
 ok('from the trial, the first plan on sale', upgradeFor('autopilot_projects', { kind: 'trial', planId: 'starter' })?.id === 'growth');
-ok('from legacy Starter, Growth', upgradeFor('autopilot_projects', { kind: 'plan', planId: 'starter' })?.id === 'growth');
-ok('from Growth, Scale', upgradeFor('ai_shorts', { kind: 'plan', planId: 'growth' })?.id === 'scale');
+ok('from legacy Starter, Advanced', upgradeFor('autopilot_projects', { kind: 'plan', planId: 'starter' })?.id === 'growth');
+ok('from Advanced, Scale', upgradeFor('ai_shorts', { kind: 'plan', planId: 'growth' })?.id === 'scale');
 ok('above Scale, Custom raises it', upgradeFor('ai_shorts', { kind: 'plan', planId: 'scale' })?.id === 'custom');
-ok('above Pro, Custom raises it', upgradeFor('ai_shorts', { kind: 'plan', planId: 'pro' })?.id === 'custom' && upgradeFor('login_addresses', { kind: 'plan', planId: 'pro' })?.id === 'custom');
+ok('above legacy Pro, Scale raises it (Scale is above Pro on every meter)', upgradeFor('ai_shorts', { kind: 'plan', planId: 'pro' })?.id === 'scale' && upgradeFor('login_addresses', { kind: 'plan', planId: 'pro' })?.id === 'scale');
 ok('nothing raises an unlimited meter', upgradeFor('autopilot_projects', { kind: 'plan', planId: 'agency' }) === null && upgradeFor('ai_shorts', { kind: 'owner', planId: '' }) === null);
 ok('formatLimit says Unlimited', formatLimit(UNLIMITED) === 'Unlimited' && formatLimit(1500) === '1,500' && formatLimit(300, meterOf('video_minutes')) === '300 min');
 
@@ -59,9 +62,9 @@ ok('it starts again on the 1st', periodEnd('m:2026-10') === '2026-11-01T00:00:00
 
 /* ── Words ── */
 console.log('Words');
-const shortsMsg = refusalText(meterOf('ai_shorts')!, 30, 30, 'Starter', { name: 'Growth', limit: 100 }, periodEnd('m:2026-10'));
+const shortsMsg = refusalText(meterOf('ai_shorts')!, 30, 30, 'Starter', { name: 'Advanced', limit: 100 }, periodEnd('m:2026-10'));
 ok('a monthly refusal names the plan, the numbers, the date and the plan that raises it',
-  /30 AI Shorts on Starter/.test(shortsMsg) && /30 of 30/.test(shortsMsg) && /1 November/.test(shortsMsg) && /Growth includes 100 a month/.test(shortsMsg), shortsMsg);
+  /30 AI Shorts on Starter/.test(shortsMsg) && /30 of 30/.test(shortsMsg) && /1 November/.test(shortsMsg) && /Advanced includes 100 a month/.test(shortsMsg), shortsMsg);
 const projMsg = refusalText(meterOf('autopilot_projects')!, 2, 2, 'Free trial', { name: 'Starter', limit: 3 });
 ok('a count refusal says what exists and how to make room', /Free trial includes 2 AI Autopilot business workspaces and 2 exist/.test(projMsg) && /delete one/.test(projMsg), projMsg);
 ok('a workflow refusal is about the one project', /This business workspace already has 6 of the 6 workflows/.test(refusalText(meterOf('workflows_per_project')!, 6, 6, 'Starter', null)));
@@ -84,7 +87,7 @@ ok('…white-label and reselling as rows of their own', groups.some(g => g.name 
 ok('…and Custom as agreed, never an invented number', rows.find(r => r.note === meterOf('ai_shorts')!.counted)!.values.custom === 'Set to fit');
 ok('…and change when the owner changes a number', featureLines(effectivePlans({ growth: { ai_shorts: 123 } })[1]).some(l => l.includes('123 AI Shorts')));
 ok('the server\'s sub-account table is the plan table', PLAN_DEFS.every(p => PLAN_RESELL[p.id] === p.limits.sub_accounts));
-ok('an amount names the plan on sale at that price', planByAmount(9700)?.id === 'growth' && planByAmount(29700)?.id === 'scale' && planByAmount(29700)?.interval === 'month' && planByAmount(4900) === null && planByAmount(19700) === null && planByAmount(14900) === null && planByAmount(97000) === null);
+ok('an amount names the plan on sale at that price', planByAmount(9700)?.id === 'growth' && planByAmount(29700)?.id === 'scale' && planByAmount(29700)?.interval === 'month' && planByAmount(4900) === null && planByAmount(19700) === null && planByAmount(14900) === null && planByAmount(97000)?.id === 'growth' && planByAmount(97000)?.interval === 'year' && planByAmount(297000)?.id === 'scale' && planByAmount(297000)?.interval === 'year');
 ok('the old prices still belong to the plans that charged them', soldAt('pro', 9700) && soldAt('pro', 19700) && soldAt('pro', 197000) && soldAt('starter', 4900) && soldAt('starter', 49000) && soldAt('growth', 97000) && soldAt('agency', 14900) && soldAt('agency', 29700) && soldAt('agency', 297000) && !soldAt('starter', 9700) && !soldAt('growth', 29700));
 ok('a $297 renewal of an old Agency subscription stays Agency; a new one is Scale', soldAt('agency', 29700) && soldAt('scale', 29700) && planByAmount(29700)?.id === 'scale');
 ok('Custom is never matched to an amount', !soldAt('custom', 0) && planByAmount(0) === null);

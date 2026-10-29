@@ -480,6 +480,9 @@ async function callGemini(prompt: string, temperature = 0.7): Promise<string> {
   return text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
 }
 
+/** A JSON-answering text call, for callers that build and check their own prompt (the template copywriter). */
+export const askGeminiJson = (prompt: string, temperature = 0.7) => callGemini(prompt, temperature);
+
 /**
  * AI Hook: generate scroll-stopping opening lines for a short clip.
  * Returns 5 hook lines in the clip's language.

@@ -35,6 +35,19 @@ practice list are owner-only.
   every screen; this is the one place sample data is allowed, because it is
   the owner's test bench.
 
+**Outside the module (2026-10-29).** Patient records stay in the practice's
+own EHR / practice-management system; no medical-record store is to be added.
+`lib/phiGuard.ts` (pure; `test:phi`) catches SSNs, Medicare MBIs, labelled
+DOB / MRN / member IDs and a patient named beside a date: `/api/ai.php` refuses
+(`code: 'phi'`), a website visitor's chat message or ticket is redacted before it
+is stored or read by the AI agent (`routes/engage.ts`), a team member's chat or
+ticket reply is refused naming the box (`routes/engagement.ts`), and the
+campaign pre-send check blocks — not overridable (`services/deliverability.ts`).
+The RCM banner says records stay in the EHR; the Fee statement says a
+percentage-of-collections fee needs an attorney's review against state law and
+payer contracts. Requirements for any future medical integration (BAA chain,
+minimum necessary, logging, test data first): `docs/MEDICAL-INTEGRATIONS.md`.
+
 **Two statuses, never merged.** `ch_status` (not_sent / submitted / accepted
 / rejected — the clearinghouse's edits) and `payer_status` (none … paid /
 partial / denied / appealed / closed). `payerMoveProblem` refuses "paid" and

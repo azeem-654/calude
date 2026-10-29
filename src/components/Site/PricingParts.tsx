@@ -1,9 +1,9 @@
 /**
  * The pricing pieces the home page and /pricing share: the cards (the priced
- * plans and Custom — since 2026-10-28 Growth, Scale and Custom), each
+ * plans and Custom — since 2026-10-28 Advanced (id `growth`), Scale and Custom), each
  * with "Show full details", the full comparison, and the monthly/yearly
- * switch, which is drawn only while some plan has a yearly price (none does
- * now; `hasYearly`).
+ * switch, which is drawn only while some plan has a yearly price
+ * (`hasYearly`; back since 2026-10-29).
  *
  * Every number and every tick is generated from the plan table
  * (worker/src/lib/allowances.ts — `featureLines`, `comparison`), read first

@@ -51,10 +51,16 @@ the chargeback and the customs declaration.
 ## Plans and allowances — one table, counted on the server
 
 `worker/src/lib/allowances.ts` (pure, no imports; the browser re-exports it as
-`services/allowances.ts`) is **the** package table: since 2026-10-28 two
-priced plans on sale (`kind: 'self'` — **Growth $97** and **Scale $297** a
-month, monthly only: `annualCents: 0` means no yearly price and checkout
-refuses `interval: 'year'` for it with `code: 'monthly_only'`), **Custom**
+`services/allowances.ts`) is **the** package table: two priced plans on sale
+(`kind: 'self'` — **Advanced $97** (id `growth`; shown as "Growth" until
+2026-10-29, renamed so it is not confused with the HVAC/roofing growth service)
+and **Scale $297** a month; since 2026-10-29 yearly again at ten months' price —
+$970 and $2,970 — and the switch appears on the site and Plan & billing
+because `hasYearly`/`offersYearly` read `annualCents`; `annualCents: 0` would
+still mean no yearly price and checkout refuses `interval: 'year'` for it with
+`code: 'monthly_only'`). Scale's allowance is about 1.5× legacy Pro's on every
+meter (`test:allowances` holds "Scale > Pro", and "≤ Custom"); those numbers
+await the owner's approval (OWNER-CHECKLIST 31). **Custom**
 (`kind: 'custom'`, no price, given by hand) and the legacy plans (`kind:
 'legacy'`, never shown or sold, enforced and renewed with what their
 subscribers bought: `starter` $49/$490, `pro` $197/$1,970, `agency`). Never

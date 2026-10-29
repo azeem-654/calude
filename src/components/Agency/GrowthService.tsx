@@ -8,6 +8,9 @@
  *     to agreements drafted from its date; a signed agreement keeps the terms
  *     it was signed on (fixed by a trigger in migration 0077, not only here).
  *
+ *   - E-commerce agreement templates: a Service Agreement and Scope of Work
+ *     per client, drafted for legal review (AgreementTemplates.tsx).
+ *
  * The server refuses all of it to anybody but the install owner
  * (routes/leadRevenue.ts); the route being hidden is a courtesy.
  */
@@ -19,6 +22,7 @@ import { DEFAULT_TERMS, EXCLUSION_KINDS, money, type Terms } from '../../../work
 import { GROWTH_TERMS_PATH, TRADE_GROWTH_OFFER } from '../../../worker/src/lib/offers';
 import { GROWTH_TERMS_UPDATED } from '../Site/legalText';
 import { Err, INK, LINE, Ledger, MUTED, box, btn, grid, input, label, primary, revApi, type Agreement, type Overview } from '../Jobs/JobsRevenue';
+import AgreementTemplates from './AgreementTemplates';
 
 const R = TRADE_GROWTH_OFFER.rules;
 
@@ -31,7 +35,7 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 
 export default function GrowthService() {
   usePageTitle('Growth service');
-  const [tab, setTab] = useState<'customers' | 'terms'>('customers');
+  const [tab, setTab] = useState<'customers' | 'terms' | 'templates'>('customers');
   const [open, setOpen] = useState<Customer | null>(null);
   if (!isInstallOwner()) {
     return <div style={{ padding: 28 }}><div style={box}><p style={small}>The growth service is run by the install owner. Your own jobs and revenue are under Sales → Jobs &amp; revenue.</p></div></div>;
@@ -46,12 +50,12 @@ export default function GrowthService() {
         <CustomerView c={open} back={() => setOpen(null)} />
       ) : (
         <>
-          <div role="tablist" style={{ display: 'flex', gap: 6 }}>
-            {(['customers', 'terms'] as const).map(t => (
-              <button key={t} role="tab" aria-selected={tab === t} style={{ ...btn, ...(tab === t ? { background: INK, color: '#fff', borderColor: INK } : {}) }} onClick={() => setTab(t)}>{t === 'customers' ? 'Customers' : 'Commercial terms'}</button>
+          <div role="tablist" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {(['customers', 'terms', 'templates'] as const).map(t => (
+              <button key={t} role="tab" aria-selected={tab === t} style={{ ...btn, ...(tab === t ? { background: INK, color: '#fff', borderColor: INK } : {}) }} onClick={() => setTab(t)}>{t === 'customers' ? 'Customers' : t === 'terms' ? 'Commercial terms' : 'E-commerce agreement templates'}</button>
             ))}
           </div>
-          {tab === 'customers' ? <Customers onOpen={setOpen} /> : <TermsTab />}
+          {tab === 'customers' ? <Customers onOpen={setOpen} /> : tab === 'terms' ? <TermsTab /> : <AgreementTemplates />}
         </>
       )}
     </div>

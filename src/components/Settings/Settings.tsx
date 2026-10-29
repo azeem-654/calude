@@ -28,6 +28,7 @@ import DiagnosticsCard from './DiagnosticsCard';
 import ScreenChecksCard from './ScreenChecksCard';
 import SystemMailCard from './SystemMailCard';
 import DeliveryCheck from './DeliveryCheck';
+import { deliveryLog } from '../../services/engagement';
 import RouteCheck from './RouteCheck';
 import SecurityPanel from './SecurityPanel';
 import SecurityCenter from './SecurityCenter';
@@ -492,43 +493,15 @@ function EmailSMSTab() {
         </>
       )}
 
-      {/* Delivery status / log preview */}
+      {/* Delivery status / log preview.
+          This was five invented rows (sarah@example.com "delivered", mike@…
+          "opened") shown to every customer as if they were their own sends.
+          It is now the latest entries of the server's real log
+          (crm_delivery_log), with the full, searchable log one click away. */}
       {card(
         <>
-          {sectionHead(<Send size={20} color="#f59e0b" />, 'Message Delivery Log', 'Recent outgoing messages and delivery status')}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-            {[
-              { to: 'sarah@example.com', subject: 'Welcome to your trial!', channel: 'email', status: 'delivered', time: '2 min ago' },
-              { to: '+15559990001', subject: 'Follow-up reminder', channel: 'sms', status: 'delivered', time: '5 min ago' },
-              { to: 'mike@techcorp.com', subject: 'Your 50% off trial upgrade', channel: 'email', status: 'opened', time: '12 min ago' },
-              { to: 'emily@startup.io', subject: 'Quick question, Emily', channel: 'email', status: 'bounced', time: '1 hour ago' },
-              { to: '+15559990002', subject: 'Hi, this is a reminder…', channel: 'sms', status: 'failed', time: '2 hours ago' },
-            ].map((row, i) => {
-              const sc: Record<string, { bg: string; color: string }> = {
-                delivered: { bg: '#f0fdf4', color: '#16a34a' },
-                opened: { bg: '#eff6ff', color: '#2563eb' },
-                bounced: { bg: '#fef2f2', color: '#dc2626' },
-                failed: { bg: '#fef2f2', color: '#dc2626' },
-              };
-              const s = sc[row.status];
-              return (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 0', borderBottom: '1px solid #f8fafc' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: row.channel === 'email' ? '#eff6ff' : '#f0fdfa', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {row.channel === 'email' ? <Mail size={14} color="#2563eb" /> : <MessageSquare size={14} color="#0d9488" />}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.subject}</p>
-                    {/* An address has no break opportunity of its own. */}
-                    <p style={{ fontSize: '11px', color: '#94a3b8', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>To: {row.to}</p>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-                    <span style={{ fontSize: '11px', padding: '2px 10px', borderRadius: '10px', backgroundColor: s.bg, color: s.color, fontWeight: 600, textTransform: 'capitalize' }}>{row.status}</span>
-                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>{row.time}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {sectionHead(<Send size={20} color="#f59e0b" />, 'Message Delivery Log', 'Your latest outgoing messages, as the sending server answered')}
+          <RecentDeliveries />
         </>
       )}
 
@@ -538,6 +511,64 @@ function EmailSMSTab() {
           <Save size={16} /> Save SMS Settings
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The newest few rows of the real delivery log. "Sent" means the sending
+ * server accepted it — not that it reached the inbox — and the wording says so.
+ */
+function RecentDeliveries() {
+  const navigate = useNavigate();
+  const [rows, setRows] = useState<{ id: string; channel: string; recipient: string; subject: string; status: string; detail: string; createdAt: string }[] | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let alive = true;
+    void deliveryLog().then(r => {
+      if (!alive) return;
+      if (r.success === false) { setError(r.error ?? 'The delivery log could not be read.'); setRows([]); return; }
+      setRows(((r.entries ?? []) as NonNullable<typeof rows>).slice(0, 5));
+    });
+    return () => { alive = false; };
+  }, []);
+  const tone: Record<string, { bg: string; color: string }> = {
+    sent: { bg: '#f0fdf4', color: '#16a34a' },
+    failed: { bg: '#fef2f2', color: '#dc2626' },
+    suppressed: { bg: '#f1f5f9', color: '#64748b' },
+  };
+  if (!rows) return <p style={{ fontSize: 13, color: '#64748b', display: 'flex', gap: 6, alignItems: 'center' }}><Loader size={14} className="spin" /> Reading the log…</p>;
+  return (
+    <div data-testid="recent-deliveries">
+      {error && <p style={{ fontSize: 13, color: '#b42318', margin: '0 0 8px' }}>{error}</p>}
+      {!error && rows.length === 0 && (
+        <p style={{ fontSize: 13, color: '#64748b', margin: 0, lineHeight: 1.6 }}>
+          Nothing has been sent from this workspace yet. Each email and SMS appears here the moment the server tries to send it, with what the receiving server said.
+        </p>
+      )}
+      {rows.map(row => {
+        const s = tone[row.status] ?? tone.suppressed;
+        return (
+          <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 0', borderBottom: '1px solid #f8fafc' }}>
+            <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: row.channel === 'sms' ? '#f0fdfa' : '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              {row.channel === 'sms' ? <MessageSquare size={14} color="#0d9488" /> : <Mail size={14} color="#2563eb" />}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.subject || (row.channel === 'sms' ? 'Text message' : '(no subject)')}</p>
+              {/* An address has no break opportunity of its own. */}
+              <p style={{ fontSize: '11px', color: '#94a3b8', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.detail || undefined}>To: {row.recipient}</p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+              <span style={{ fontSize: '11px', padding: '2px 10px', borderRadius: '10px', backgroundColor: s.bg, color: s.color, fontWeight: 600, textTransform: 'capitalize' }}>{row.status === 'sent' ? 'Accepted' : row.status}</span>
+              <span style={{ fontSize: '11px', color: '#94a3b8' }}>{new Date(row.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+            </div>
+          </div>
+        );
+      })}
+      <p style={{ fontSize: 11, color: '#94a3b8', margin: '10px 0 0', lineHeight: 1.5 }}>
+        “Accepted” means the sending server took the message; it can still land in spam or bounce later.{' '}
+        <button type="button" onClick={() => navigate('/engagement?tab=delivery')} style={{ background: 'none', border: 'none', padding: 0, color: '#5b46e5', fontWeight: 600, cursor: 'pointer', fontSize: 11 }}>See the full log →</button>
+      </p>
     </div>
   );
 }

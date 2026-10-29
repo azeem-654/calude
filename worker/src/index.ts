@@ -40,6 +40,7 @@ import { handleIntake } from './routes/intake';
 import { handleSitePlan } from './routes/sitePlan';
 import { handleVideo } from './routes/video';
 import { handleVideoFile } from './routes/videoFile';
+import { handleMedia, handleMediaPhoto } from './routes/media';
 import { runVideoJobs } from './lib/video/pipeline';
 import { handleSetup } from './routes/setup';
 import { handleWhitelabel } from './routes/whitelabel';
@@ -174,6 +175,9 @@ const ROUTES: Record<string, Handler> = {
   '/api/site-plan.php': handleSitePlan,
   '/api/video.php': handleVideo,
   '/api/video-file.php': handleVideoFile,
+  /* The Media Center's pictures: graphics exported from the designer, uploads
+     to design with, and CC0 photo search (GET ?photo= serves one). */
+  '/api/media.php': (req, env) => (req.method === 'GET' ? handleMediaPhoto(req, env) : handleMedia(req, env)),
   '/api/setup.php': handleSetup,
   '/api/whitelabel.php': handleWhitelabel,
   /* The client report. `view` answers to nobody signed in — see routes/portal.ts

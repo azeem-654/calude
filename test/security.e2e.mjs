@@ -222,6 +222,20 @@ for (const act of ['blockers', 'blocker_set', 'practices_all']) {
   check(`B cannot ${act} (owner only)`, r.status === 403 && !r.ok, JSON.stringify(r.data).slice(0, 120));
 }
 check('no launch blocker was signed off by a customer', d1rows("SELECT COUNT(*) AS n FROM crm_rcm_blockers WHERE note = 'forged'")[0]?.n === 0);
+/* Media Center pictures (routes/media.ts): A's graphics and uploads are A's. B reaches none of
+   them by naming A's workspace, nor by naming A's picture ids from B's own workspace; an upload
+   link is signed for B's own prefix, and a commit naming another workspace's key is refused. */
+const medId = `med_${crypto.randomBytes(10).toString('hex')}`;
+d1rows(`INSERT INTO crm_media_assets (id, account_id, kind, name, r2_key, created_at) VALUES ('${medId}', '${A.acct}', 'graphic', 'A-SECRET-GRAPHIC', 'v/${A.acct}/media/${medId}/file.png', '2026-10-29')`);
+for (const [act, extra] of [['list', {}], ['url', { ids: [medId] }], ['delete', { id: medId }], ['rename', { id: medId, name: 'forged' }]]) {
+  const viaA = await api('media.php', { action: act, token: B.token, accountId: A.acct, ...extra });
+  const viaB = await api('media.php', { action: act, token: B.token, accountId: B.acct, ...extra });
+  const leaked = JSON.stringify(viaB.data).includes('A-SECRET-GRAPHIC') || Object.keys(viaB.data.urls ?? {}).length > 0;
+  check(`B cannot ${act} A's Media Center pictures`, viaA.status === 403 && !viaA.ok && !leaked && !(act !== 'list' && act !== 'url' && viaB.ok), JSON.stringify([viaA.status, viaB.data]).slice(0, 160));
+}
+const forgedCommit = await api('media.php', { action: 'commit', token: B.token, accountId: B.acct, id: medId, key: `v/${A.acct}/media/${medId}/file.png` });
+check("B cannot commit a picture under A's prefix", !forgedCommit.ok, JSON.stringify(forgedCommit.data).slice(0, 120));
+check("A's picture is still A's, unrenamed", d1rows(`SELECT name FROM crm_media_assets WHERE id = '${medId}'`)[0]?.name === 'A-SECRET-GRAPHIC');
 const repS = await api('reputation.php', { action: 'status', token: B.token, accountId: A.acct });
 check("B cannot read A's review source", !repS.ok, JSON.stringify(repS.data).slice(0, 120));
 const repR = await api('reputation.php', { action: 'reviews', token: B.token, accountId: A.acct });

@@ -1,5 +1,5 @@
 /**
- * /pricing — the software plans, in full: Growth $97/month, Scale $297/month
+ * /pricing — the software plans, in full: Advanced $97/month, Scale $297/month
  * and Custom (the owner's specification of 2026-10-28; the home page shows
  * the same cards). It says near the top that the managed services are
  * separate offers with their own prices, and links to them on the main site.
@@ -19,7 +19,7 @@ import { appHref, isCrossOrigin, siteOrigin } from '../../services/hosts';
 import { usePageTitle } from '../../services/pageTitle';
 import { CARD_PLANS, isUnlimited, sendEnquiry, type EnquiryNeed } from '../../services/allowances';
 import { BillingToggle, ComparisonTable, PlanCards, usePlanTable } from './PricingParts';
-import { BILLING_TERMS, hasYearly } from './pricingTerms';
+import { BILLING_CLAUSE, hasYearly } from './pricingTerms';
 import './site.css';
 
 const cross = (href: string) => (isCrossOrigin(href) ? { rel: 'noopener' as const } : {});
@@ -72,10 +72,10 @@ export default function PricingPage() {
         <a className="tc-back" href={home}><ArrowLeft size={14} /> Back to the site</a>
         <div className="dc-chapter-head pcp-head">
           <span className="dc-eyebrow">Software plans</span>
-          <h1 className="tc-h1">Growth, Scale, <em>or Custom.</em></h1>
+          <h1 className="tc-h1">Advanced, Scale, <em>or Custom.</em></h1>
           <p>
             Every number below is what the product holds you to — not an estimate — and every plan is white-label.
-            7 days free, no card required; then {BILLING_TERMS.replace('USD, billed monthly after the 7-day trial · ', 'billed monthly in US dollars, ')}.
+            7 days free, no card required; then {BILLING_CLAUSE}.
           </p>
         </div>
         <p className="pcp-service" data-testid="pricing-service-note">

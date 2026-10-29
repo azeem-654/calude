@@ -42,6 +42,8 @@ import Settings from './components/Settings/Settings';
 const VideoStudio = lazy(() => import('./components/VideoStudio/VideoStudio'));
 import SocialCreator from './components/SocialCreator/SocialCreator';
 import PostEditor from './components/SocialCreator/PostEditor';
+/* Lazy: the template editor brings its own fonts and renderer, and most visits never open it. */
+const DesignStudio = lazy(() => import('./components/SocialCreator/design/DesignStudio'));
 import AgencyDashboard from './components/Agency/AgencyDashboard';
 import ClientBilling from './components/Billing/ClientBilling';
 import SiteHome from './components/Site/SiteHome';
@@ -260,6 +262,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/video-studio/:id" element={<Suspense fallback={<div style={{ padding: 40, display: 'flex', gap: 8, alignItems: 'center', color: '#6b7280' }}><Loader size={16} className="spin" /> Opening Video Studio…</div>}><VideoStudio /></Suspense>} />
           <Route path="/social-automation" element={<MovedIntoStudio tab="repurpose" />} />
           <Route path="/social-creator" element={<SocialCreator />} />
+          <Route path="/social-creator/design/:id" element={<Suspense fallback={null}><DesignStudio /></Suspense>} />
           <Route path="/social-creator/editor/:id" element={<PostEditor />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/reputation" element={<Reputation />} />

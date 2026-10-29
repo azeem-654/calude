@@ -10,6 +10,7 @@
  *                   paid verification API (whose key never leaves the server).
  */
 
+import { findPhi } from '../../worker/src/lib/phiGuard';
 import type { Contact } from '../types';
 import { getSession } from './auth';
 import { getActiveAccountId } from './tenancy';
@@ -641,6 +642,16 @@ export function preSendCheck(
     const verdict = health?.verdict ?? check.verdict;
     if (verdict === 'invalid') blocked.push(r.email);
     else if (verdict === 'risky') risky.push(r.email);
+  }
+
+  /* Patient details never go out in a campaign: a mass email is the least
+     private channel there is, and the mail provider holds no business
+     associate agreement (worker/src/lib/phiGuard.ts). A hard block — the
+     override on this screen does not cover it. */
+  const phi = findPhi(`${subject}\n${body}`);
+  if (phi.length) {
+    issues.push({ level: 'block', title: 'This campaign contains what looks like patient information',
+      detail: `${[...new Set(phi.map(f => f.kind))].join(', ')} found in the subject or message. Remove it — patient details stay in the practice’s own records system and are never sent in a campaign.` });
   }
 
   if (blocked.length) {

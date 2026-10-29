@@ -47,7 +47,10 @@ export default function PreSendCheck({ audience, subject, body, onProceed, onCan
   const blocking = report.issues.filter(i => i.level === 'block');
   // Removing bad addresses is not an obstacle — it is the check doing its job.
   const hardBlocks = blocking.filter(i => !i.title.includes('will not be sent to'));
-  const canProceed = willSend.length > 0 && (hardBlocks.length === 0 || override);
+  /* Patient information is never overridable: "send anyway" is for a sender
+     score the customer is willing to risk, not for somebody else's privacy. */
+  const phiBlock = blocking.some(i => i.title.includes('patient information'));
+  const canProceed = willSend.length > 0 && !phiBlock && (hardBlocks.length === 0 || override);
 
   const card: React.CSSProperties = { background: '#fff', borderRadius: 14, border: '1px solid #e6e9f0', padding: 16, marginBottom: 12 };
   const btn = (primary = false, danger = false): React.CSSProperties => ({

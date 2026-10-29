@@ -142,7 +142,7 @@ export default function EngageTickets({ tickets, onChange }: { tickets: Ticket[]
             </div>
 
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-              <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={3}
+              <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={3} data-field="message"
                 placeholder={internal ? 'A note only your team can see…' : 'Reply to the customer…'}
                 style={{ flex: 1, padding: '10px 12px', border: `1px solid ${LINE}`, borderRadius: 11, fontSize: 13.5, fontFamily: 'inherit', resize: 'vertical', outline: 'none' }} />
               <button onClick={() => void (async () => {

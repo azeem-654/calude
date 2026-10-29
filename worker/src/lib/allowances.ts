@@ -108,9 +108,17 @@ export type Limits = Record<MeterId, number>;
  * the market comparison and the cost per unit these were set against.
  *
  * Since 2026-10-28 (the owner's specification) new customers are offered
- * exactly Growth at $97 a month, Scale at $297 a month, and Custom — monthly,
- * in US dollars; no yearly price is published (`annualCents: 0` means none is
- * sold, and checkout refuses a yearly request for it).
+ * exactly Advanced (id `growth`) at $97 a month, Scale at $297 a month, and
+ * Custom, in US dollars. Since 2026-10-29 yearly billing is back at the
+ * discount it always had — ten months' price, two free: Advanced $970 (the
+ * yearly price Growth was sold at until 2026-10-28) and Scale $2,970.
+ * `annualCents: 0` still means no yearly price, and checkout refuses a yearly
+ * request for such a plan.
+ *
+ * "Growth" was renamed "Advanced" on every customer screen (2026-10-29) so it
+ * is not confused with the HVAC/roofing "growth service"; the id stays
+ * `growth`, because crm_plans rows, checkout metadata and processor
+ * subscriptions already carry it.
  *
  * Plan ids are the ones `crm_plans` already holds, and none is ever reused for
  * a different product. A plan no longer sold becomes `legacy`: never on a
@@ -166,9 +174,9 @@ export const PLAN_DEFS: PlanDef[] = [
     },
   },
   {
-    id: 'growth', name: 'Growth', kind: 'self', color: '#8b5cf6', featured: true,
+    id: 'growth', name: 'Advanced', kind: 'self', color: '#8b5cf6', featured: true,
     tagline: 'One business running its CRM, follow-up and marketing automation in one place.',
-    monthlyCents: 9_700, annualCents: 0,
+    monthlyCents: 9_700, annualCents: 97_000,
     support: 'In-app help: chat, tickets and screen sharing',
     limits: {
       autopilot_projects: 10, workflows_per_project: 12, sub_accounts: 5,
@@ -179,20 +187,24 @@ export const PLAN_DEFS: PlanDef[] = [
     },
   },
   {
-    /* Sold from 2026-10-28. The allowance is the one Pro was sized at for
-       $197 (docs/PRICING.md has the cost per unit), so at $297 it carries a
-       wider margin for the extra support time; the owner may raise any of it
-       on Plans & allowances without a release. */
+    /* Sold from 2026-10-28. Until 2026-10-29 its allowance was Pro's, which
+       left a Pro subscriber with exactly what Scale sells for $100 more. Now
+       every meter is about 1.5× Pro's — Scale is 1.5× Pro's price ($297 vs
+       $197), so the operator's cost per dollar stays where Pro was sized
+       (docs/PRICING.md) — and every one stays at or under where Custom
+       starts. These numbers wait on the owner's approval
+       (docs/OWNER-CHECKLIST.md item 31); any of them can be changed on Plans
+       & allowances without a release. */
     id: 'scale', name: 'Scale', kind: 'self', color: '#0f766e',
     tagline: 'A bigger operation or an agency: more business workspaces, campaigns, clients and AI.',
-    monthlyCents: 29_700, annualCents: 0,
+    monthlyCents: 29_700, annualCents: 297_000,
     support: 'In-app help, answered first',
     limits: {
-      autopilot_projects: 40, workflows_per_project: 25, sub_accounts: 25,
-      ai_requests: 20_000, social_posts: 800, blog_articles: 120, ai_emails: 6_000,
-      prospects_found: 8_000,
-      long_videos: 50, ai_shorts: 400, video_minutes: 3_000, render_minutes: 4_000, video_storage_gb: 300,
-      login_addresses: 25,
+      autopilot_projects: 60, workflows_per_project: 35, sub_accounts: 40,
+      ai_requests: 30_000, social_posts: 1_200, blog_articles: 180, ai_emails: 9_000,
+      prospects_found: 12_000,
+      long_videos: 75, ai_shorts: 600, video_minutes: 4_500, render_minutes: 6_000, video_storage_gb: 450,
+      login_addresses: 40,
     },
   },
   {
@@ -289,7 +301,8 @@ export const OWNER_LIMITS: Limits = Object.fromEntries(METER_IDS.map(id => [id, 
 
 /**
  * Prices a plan was sold at before, by plan id — so a renewal at an old price
- * stays on the plan it bought: Starter's $49 / $490; Growth's yearly $970;
+ * stays on the plan it bought: Starter's $49 / $490; Growth's yearly $970
+ * (on sale again as Advanced's since 2026-10-29, kept here regardless);
  * Pro's $197 / $1,970, and $97 when it was called "Agency"; $149 was
  * "Network" and $297 a month or $2,970 a year "Agency" (`agency`).
  *
@@ -398,7 +411,7 @@ const plural = (n: number, one: string) => {
   return one.endsWith('y') && !/[aeiou]y$/.test(one) ? `${one.slice(0, -1)}ies` : `${one}s`;
 };
 
-/** "This month's 30 AI Shorts are used (30 of 30) — they start again on 1 November. Growth includes 100." */
+/** "This month's 30 AI Shorts are used (30 of 30) — they start again on 1 November. Advanced includes 100." */
 export function refusalText(m: Meter, used: number, limit: number, planName: string, upgrade: { name: string; limit: number } | null, resetsAt = ''): string {
   const what = m.kind === 'monthly'
     ? `This month’s ${num(limit)} ${plural(limit, m.one)} on ${planName} ${limit === 1 ? 'is' : 'are'} used (${num(Math.round(used))} of ${num(limit)})`

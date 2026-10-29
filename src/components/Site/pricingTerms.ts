@@ -8,4 +8,7 @@ import { CARD_PLANS, type PlanTable } from '../../services/allowances';
 export const hasYearly = (table: PlanTable) => CARD_PLANS(table.plans).some(p => p.kind === 'self' && p.annualCents > 0);
 
 /** The recurring terms, said once under every priced card. */
-export const BILLING_TERMS = 'USD, billed monthly after the 7-day trial · renews each month until you cancel';
+export const BILLING_TERMS = 'USD, billed monthly or yearly after the 7-day trial · renews each period until you cancel';
+
+/** The same terms as a clause inside a sentence ("7 days free, no card; then …"). */
+export const BILLING_CLAUSE = 'billed monthly or yearly in US dollars, renewing each period until you cancel';

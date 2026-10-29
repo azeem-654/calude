@@ -86,6 +86,9 @@
     "test:sitefunnel": "node test/siteFunnel.e2e.mjs",
     "test:video": "npx --yes tsx test/videoStudio.test.mts",
     "test:allowances": "npx --yes tsx test/allowances.test.mts",
+    "test:agreements": "npx --yes tsx test/serviceAgreements.test.mts",
+    "test:phi": "npx --yes tsx test/phiGuard.test.mts",
+    "test:socialtemplates": "npx --yes tsx test/socialTemplates.test.mts",
     "test:allowancese2e": "node test/allowances.e2e.mjs",
     "test:videoe2e": "node test/videoStudio.e2e.mjs",
     "test:videoyoutube": "node test/videoYoutube.e2e.mjs"

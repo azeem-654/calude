@@ -26,6 +26,7 @@
  * uploads the video itself to Google's file store, which is far larger than a
  * Worker request may be.
  */
+import { findPhi, phiRefusal } from '../lib/phiGuard';
 import { fail, json } from '../lib/http';
 import { canAccess, userFromToken, type Env } from '../lib/db';
 import { aiBase, loadAiKey, modelsFor, trialRefusal } from '../lib/ai';
@@ -61,6 +62,17 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
 
   const contents = d.request?.contents;
   if (!Array.isArray(contents) || !contents.length) return fail('There was nothing for the AI to read.');
+
+  /* Patient details are never sent to the AI: the AI provider is not covered
+     by a business associate agreement (docs/HIPAA-LAUNCH-BLOCKERS.md). Only
+     the text parts are read — a picture's base64 is not text and could
+     match a pattern by chance. */
+  const said = contents.flatMap(c => {
+    const parts = (c as { parts?: unknown })?.parts;
+    return Array.isArray(parts) ? parts.map(p => (p as { text?: unknown })?.text).filter((t): t is string => typeof t === 'string') : [];
+  }).join('\n');
+  const phi = phiRefusal(findPhi(said), 'the AI');
+  if (phi) return fail(phi, 200, { code: 'phi' });
 
   for (const [what, max, windowSeconds] of [['ai-hour', 120, 3600], ['ai-day', 800, 86_400]] as const) {
     const v = await rateLimit(env, { what, who: accountId, max, windowSeconds });

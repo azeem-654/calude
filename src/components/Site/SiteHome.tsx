@@ -579,7 +579,7 @@ export default function SiteHome() {
           <a className="ind-strip-card ind-strip-soft" href="#pricing">
             <span className="dc-tile-icon"><LayoutDashboard size={16} /></span>
             <b>CRM &amp; automation software</b>
-            <span>Self-serve subscriptions: Growth, Scale or Custom — you run it yourself.</span>
+            <span>Self-serve subscriptions: Advanced, Scale or Custom — you run it yourself.</span>
             <i>See software pricing <ArrowRight size={13} /></i>
           </a>
           <a className="ind-strip-card" href={INDUSTRY_PAGES.ecommerce.path}>

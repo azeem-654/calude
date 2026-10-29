@@ -62,6 +62,7 @@ campaign sends → digests). A scheduled run has no origin: absolute URLs read
 | Top bar, dashboard, industry snapshots (`/snapshots`, sign-up industry) | `docs/claude/app-ui.md` |
 | Public site, industry microsites, service pricing (`lib/offers.ts`), its funnel, logo strip | `docs/claude/site.md` |
 | AI Video Studio | `docs/claude/video-studio.md` |
+| Graphics Designer & Editor: the social template library, its renderer, AI copy rules, Media Center pictures (`/api/media.php`) | `docs/claude/graphics.md` |
 | Commands, deploying, staging and live, the testing site's password lock | `docs/claude/deploying.md` |
 | Verifying a change, site reels, test traps | `docs/claude/testing.md` |
 

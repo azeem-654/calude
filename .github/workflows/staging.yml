@@ -202,6 +202,20 @@ jobs:
       - name: Test medical billing rules
         run: npm run test:rcm
 
+      # The patient-information net in front of the AI, tickets and campaigns:
+      # catches SSNs, Medicare numbers and labelled dates of birth, passes
+      # ordinary marketing copy (worker/src/lib/phiGuard.ts).
+      - name: Test the patient-information guard
+        run: npm run test:phi
+
+      # The social template library: every template well-formed and distinct,
+      # and no number, price, review or claim written that the business did not give.
+      - name: Test the social template library
+        run: npm run test:socialtemplates
+
+      - name: Test the e-commerce agreement templates
+        run: npm run test:agreements
+
       - name: Build
         run: npm run build
         env:

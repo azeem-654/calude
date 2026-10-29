@@ -4,10 +4,10 @@ What Protected Central sells, what each package allows, why those numbers, and
 where the market sits. Written 2026-10-14.
 
 > **Since 2026-10-28 (the owner's specification) new customers are offered
-> exactly three software options: Growth $97/month, Scale $297/month, and
-> Custom** (no price — "Book a Strategy Call" / "Contact Sales"). Monthly
-> only, in US dollars, after the 7-day no-card trial; renews monthly until
-> cancelled. They are on the home page (`#pricing`) and `/pricing`.
+> exactly three software options: Advanced (named Growth until 2026-10-29)
+> $97/month, Scale $297/month, and Custom** (no price — "Book a Strategy
+> Call" / "Contact Sales"). In US dollars, after the 7-day no-card trial;
+> monthly, or yearly since 2026-10-29; renews each period until cancelled. They are on the home page (`#pricing`) and `/pricing`.
 >
 > - **Growth** keeps its id, price and allowance — its subscribers see no
 >   change. Yearly is no longer offered to new buyers; a yearly Growth
@@ -24,10 +24,18 @@ where the market sits. Written 2026-10-14.
 >   of eligible collected revenue; medical billing $300 + $87/month + 5% of
 >   eligible net collections on claims handled (`worker/src/lib/offers.ts`).
 >
-> **Owner decisions still open:** whether to offer yearly billing again (set
-> `annualCents` on Growth/Scale), whether Scale's allowances should be higher
-> than Pro's were, and whether "Growth" should be renamed so it is not confused
-> with the HVAC/roofing "growth service".
+> **Decided 2026-10-29 (the owner's specification):** yearly billing is back
+> at the existing discount — ten months' price: Advanced $970/year (the price
+> Growth's yearly was sold at), Scale $2,970/year. "Growth" is called
+> **Advanced** on every customer screen; its id stays `growth`, so subscribers,
+> checkout metadata and processor subscriptions are untouched. Scale's
+> allowance is now about 1.5× legacy Pro's on every meter (Scale costs 1.5×
+> Pro's price): 60 business workspaces, 35 workflows each, 40 sub-accounts,
+> 30,000 AI requests, 1,200 posts, 180 articles, 9,000 AI emails, 12,000
+> prospects, 75 recordings, 600 Shorts, 4,500 video / 6,000 render minutes,
+> 450 GB, 40 login addresses — **these numbers await the owner's approval**
+> (OWNER-CHECKLIST 31) and can be changed on Plans & allowances without a
+> release.
 >
 > The table below is the 2026-10-14 package set, kept for the reasoning and
 > for the legacy subscribers; Scale's column equals Pro's.

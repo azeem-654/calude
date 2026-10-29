@@ -8,6 +8,7 @@
  * naming another workspace's conversation returns nothing rather than a refusal
  * that confirms it exists.
  */
+import { findPhi, phiRefusal } from '../lib/phiGuard';
 import { body, fail, json } from '../lib/http';
 import { nowIso, userFromToken, workspaceAccess, type Env } from '../lib/db';
 import { cleanSlug, publicKey, recordEvent, rid } from '../lib/engagement';
@@ -243,6 +244,8 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
     const text = s(d.message, 4000);
     const hasImage = typeof d.image === 'string' && d.image.length > 0;
     if (!text && !hasImage) return fail('Write something first.', 200, { field: 'message' });
+    const phiMsg = phiRefusal(findPhi(text), 'a chat');
+    if (phiMsg) return fail(phiMsg, 200, { field: 'message', code: 'phi' });
 
     const msgId = rid('msg');
     let attachments = '[]';
@@ -402,7 +405,9 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
       .bind(s(d.id, 80), accountId).first();
     if (!t) return fail('That ticket could not be found.', 404);
     const text = s(d.message, 6000);
-    if (!text) return fail('Write something first.');
+    if (!text) return fail('Write something first.', 200, { field: 'message' });
+    const phiMsg = phiRefusal(findPhi(text), 'a support ticket');
+    if (phiMsg) return fail(phiMsg, 200, { field: 'message', code: 'phi' });
     await env.DB.prepare(
       `INSERT INTO crm_ticket_messages (id, ticket_id, account_id, role, author, body, internal, created_at)
        VALUES (?,?,?, 'agent', ?,?,?,?)`,
@@ -433,6 +438,8 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
   if (act === 'create_ticket') {
     const subject = s(d.subject, 200);
     if (!subject) return fail('Give the ticket a subject.');
+    const phiMsg = phiRefusal(findPhi(`${subject}\n${s(d.bodyText, 6000)}`), 'a support ticket');
+    if (phiMsg) return fail(phiMsg, 200, { code: 'phi' });
     const { nextTicketRef, guestKey } = await import('../lib/engagement');
     const reference = await nextTicketRef(env, accountId);
     const id = rid('tkt');

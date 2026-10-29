@@ -431,10 +431,14 @@ function ToggleSwitch({ on, onChange, label, desc }: { on: boolean; onChange: (v
 
 /* ─── Step 1: Campaign Brief ─── */
 function StepBrief({ state, onChange }: { state: WizardState; onChange: (u: Partial<WizardState>) => void }) {
+  /* The badges used to read "~24% open rate", "98% open rate" and "3×
+     conversion" — industry folklore shown as if it were a result. They now
+     say what each type is; this workspace's own measured rates are in the
+     sidebar on the Review step, from its sent campaigns. */
   const types = [
-    { id: 'email' as const,    icon: <Mail size={20} color="#17191c" />,          label: 'Email Campaign',   desc: 'Newsletter, announcement, or blast',     badge: '~24% open rate', color: '#17191c' },
-    { id: 'sms' as const,      icon: <MessageSquare size={20} color="#22c55e" />, label: 'SMS Campaign',     desc: 'Flash sales, urgent alerts, outreach',   badge: '98% open rate',  color: '#22c55e' },
-    { id: 'sequence' as const, icon: <Zap size={20} color="#f59e0b" />,           label: 'Email Sequence',   desc: 'Multi-step automated follow-up flow',    badge: '3× conversion',  color: '#f59e0b' },
+    { id: 'email' as const,    icon: <Mail size={20} color="#17191c" />,          label: 'Email Campaign',   desc: 'Newsletter, announcement, or blast',     badge: 'One send',        color: '#17191c' },
+    { id: 'sms' as const,      icon: <MessageSquare size={20} color="#22c55e" />, label: 'SMS Campaign',     desc: 'Flash sales, urgent alerts, outreach',   badge: 'Text messages',   color: '#22c55e' },
+    { id: 'sequence' as const, icon: <Zap size={20} color="#f59e0b" />,           label: 'Email Sequence',   desc: 'Multi-step automated follow-up flow',    badge: 'Follows up for you', color: '#f59e0b' },
   ];
   const tones: { id: ToneType; label: string; desc: string; emoji: string }[] = [
     { id: 'professional', label: 'Professional', desc: 'Formal & business-appropriate', emoji: '👔' },
@@ -1994,6 +1998,12 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign,
    * exactly the thing worth starting a second campaign from.
    */
   const { campaigns: existingCampaigns } = useApp();
+  /* This workspace's own sent email campaigns, summed — what the Review step
+     shows instead of industry benchmarks. Counts come from the send and the
+     open/click tracking, so a campaign never sent adds nothing. */
+  const pastResults = existingCampaigns
+    .filter(c => c.type === 'email' && (c.sent ?? 0) > 0)
+    .reduce((a, c) => ({ sent: a.sent + (c.sent ?? 0), opened: a.opened + (c.opened ?? 0), clicked: a.clicked + (c.clicked ?? 0) }), { sent: 0, opened: 0, clicked: 0 });
 
   /** Bring a whole campaign across, minus anything that is about its own past. */
   const cloneFrom = (c: Campaign) => {
@@ -2189,7 +2199,7 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign,
   const aiTips: Record<number, string> = {
     1: '✨ The more detail you give about your campaign concept, the better the AI can personalize your email copy and subject lines. Be specific!',
     2: '📊 Best practices: 3 emails over 7 days for promos, 4–5 emails over 14 days for nurture. Add follow-ups with "If not opened" conditions for maximum impact.',
-    3: '📧 Your sender name and email affect open rates. Use a real person\'s name ("John at Acme") instead of a company name for 20–30% higher opens.',
+    3: '📧 Your sender name and email affect open rates. A real person\'s name ("John at Acme") is often opened more than a company name — compare your own campaigns\' results to see what works for your list.',
     4: '🎯 Smaller, targeted segments outperform large blasts. A well-targeted list of 100 beats an untargeted list of 1,000 every time.',
     5: '🚀 Always send a test email first. Check subject line, preview text, and that personalization tokens like {{firstName}} render correctly.',
   };
@@ -2396,13 +2406,21 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign,
 
               {step === 4 && (
                 <div>
-                  <p style={{ fontSize: 10, fontWeight: 700, color: '#64748b', marginBottom: 7, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Benchmarks</p>
+                  {/* Was a "Benchmarks" box of fixed figures (22–28% opens,
+                      3–5% clicks, Tue/Thu 10am–2pm) that read like this
+                      workspace's results. Now it is this workspace's own sent
+                      email campaigns, or says there are none yet. */}
+                  <p style={{ fontSize: 10, fontWeight: 700, color: '#64748b', marginBottom: 7, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Your past results</p>
+                  {pastResults.sent === 0 ? (
+                    <div style={{ padding: '7px 9px', backgroundColor: 'white', borderRadius: 6, border: '1px solid #f1f5f9', fontSize: 10, color: '#64748b', lineHeight: 1.5 }} data-testid="wizard-no-results">
+                      No email campaigns sent from this workspace yet — open and click rates appear here once one has been sent and tracked.
+                    </div>
+                  ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                     {[
-                      { label: 'Open rate',    value: '22–28%'   },
-                      { label: 'Click rate',   value: '3–5%'     },
-                      { label: 'Best day',     value: 'Tue/Thu'  },
-                      { label: 'Best time',    value: '10am–2pm' },
+                      { label: 'Emails sent',  value: pastResults.sent.toLocaleString() },
+                      { label: 'Opened',       value: `${Math.round((pastResults.opened / pastResults.sent) * 100)}%` },
+                      { label: 'Clicked',      value: `${Math.round((pastResults.clicked / pastResults.sent) * 100)}%` },
                     ].map(b => (
                       <div key={b.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 8px', backgroundColor: 'white', borderRadius: 6, border: '1px solid #f1f5f9' }}>
                         <span style={{ fontSize: 10, color: '#94a3b8' }}>{b.label}</span>
@@ -2410,6 +2428,7 @@ export default function CampaignWizard({ contacts, onClose, onAdd, editCampaign,
                       </div>
                     ))}
                   </div>
+                  )}
                 </div>
               )}
 

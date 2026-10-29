@@ -9,6 +9,7 @@
  * a page reload is resumed by resumePendingGeneration() on dashboard mount.
  */
 
+import { designForPost } from '../../worker/src/lib/design/forPost';
 import type { ContentMonth, MonthContent, OnboardingState, GeneratedSocialPost, GeneratedVideo } from '../types/onboarding';
 import type { Campaign } from '../types';
 import type { EmailSequence } from '../types/marketing';
@@ -376,6 +377,8 @@ function designFromSocialPost(p: GeneratedSocialPost, month: ContentMonth, brand
   });
   return {
     id: `ob-social-${Date.now()}-${seq}`,
+    /* A template design, filled — the elements below are the fallback for older screens. */
+    design: designForPost({ platform: p.platform, headline: p.headline, body: p.caption, hashtags: p.hashtags }, { company, primary: brandColor }, 'bold'),
     name: `Day ${p.day} · ${p.headline.slice(0, 34)}`,
     platform: p.platform,
     aspectRatio: square ? '1:1' : '16:9',

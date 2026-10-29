@@ -69,3 +69,5 @@ graphify-out/
 
 # Per-machine Claude Code settings (the graphify hook names this machine's path)
 .claude/settings.local.json
+.wrangler-dz/
+.wrangler-rec/

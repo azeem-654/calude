@@ -12,6 +12,7 @@
  */
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import MediaGraphics from './MediaGraphics';
 import { Copy, Download, Image as ImageIcon, Loader, CalendarDays, ChevronLeft, ChevronRight, Check, MonitorPlay, Play, X, Clapperboard } from 'lucide-react';
 import { videoLibrary, clock, bytesLabel, STATUS_LABEL, type LibraryItem, type LibrarySource, type OutputStatus } from '../../services/videoStudio';
 
@@ -101,6 +102,7 @@ export function MediaLibrary({ record = false, onRecord }: { record?: boolean; o
                 ))}
               </div>
             )}
+      <MediaGraphics />
       {playing && <SourcePlayer s={playing} onClose={() => setPlaying(null)} />}
       {open && (
         <Suspense fallback={<div className="vs-modal-back"><p className="vs-sub" style={{ color: '#fff' }}><Loader size={14} className="spin" /> Opening the recorder…</p></div>}>

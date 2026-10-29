@@ -22,6 +22,7 @@
  *  - **Everything is rate limited per address**, because every endpoint here
  *    creates rows for anonymous callers.
  */
+import { redactPhi } from '../lib/phiGuard';
 import { alertFor, pushToWorkspace } from '../lib/push';
 import { body, fail, json } from '../lib/http';
 import { nowIso, userFromToken, type Env, type SessionUser } from '../lib/db';
@@ -300,7 +301,11 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     if (conv.status === 'closed') return withCors(fail('This conversation has been closed.', 409));
 
     const accountId = String(conv.accountId);
-    const text = String(d.message ?? '').trim().slice(0, MAX_BODY);
+    /* Redacted rather than refused: a website visitor may not know why a
+       box would say no, and what they typed would otherwise be kept and
+       read by the AI agent, neither of which is covered by a business
+       associate agreement. The message they see back is the redacted one. */
+    const text = redactPhi(String(d.message ?? '').trim().slice(0, MAX_BODY)).text;
     if (!text) return withCors(fail('Type a message first.'));
 
     /* The same gate every other entry point in this app goes through. A public
@@ -483,7 +488,7 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     if (!img.ok) return withCors(fail(img.message, img.code === 'too_large' ? 413 : 422, { code: img.code }));
 
     const accountId = String(conv.accountId);
-    const caption = String(d.message ?? '').trim().slice(0, MAX_BODY);
+    const caption = redactPhi(String(d.message ?? '').trim().slice(0, MAX_BODY)).text;
     if (caption) {
       const g = await contentGate(env, accountId, 'chat', caption);
       if (!g.ok) return withCors(fail(g.message, 422, { code: 'blocked' }));
@@ -672,10 +677,13 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     const accountId = String(w.accountId);
     const email = cleanEmail(d.email) || (await signedIn(env, d.token))?.email || '';
     if (!email) return withCors(fail('Enter an email address so we can reply.'));
-    const subject = String(d.subject ?? '').trim().slice(0, 200);
+    const subject = redactPhi(String(d.subject ?? '').trim().slice(0, 200)).text;
     if (!subject) return withCors(fail('Say what it is about.'));
 
-    const text = String(d.message ?? '').trim().slice(0, MAX_BODY);
+    /* A support ticket is an ordinary help-desk record, not a place for
+       patient details — anything that looks like one is removed before it
+       is stored (lib/phiGuard.ts). */
+    const text = redactPhi(String(d.message ?? '').trim().slice(0, MAX_BODY)).text;
     const tGate = await contentGate(env, accountId, 'form', `${subject}\n${text}`);
     if (!tGate.ok) return withCors(fail(tGate.message, 422, { code: 'blocked' }));
 

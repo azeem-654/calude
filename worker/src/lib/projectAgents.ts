@@ -40,6 +40,7 @@ import { loadAiKey, researchWeb } from './ai';
 import { record, roomFor } from './allowanceStore';
 import { readSite, urlProblem } from './readSite';
 import { drawSocial, paletteOf } from './designLayouts';
+import { designForPost } from './design/forPost';
 import { logoAddress } from './brandLogo';
 import {
   writeBlogPost, writeImagePosts, writeSequenceBatch,
@@ -350,6 +351,9 @@ export function designFromPost(
     design?: Record<string, string>;
     /** A signed address for the client's logo, or '' to set the name instead. */
     logoSrc?: string;
+    /** What the business does, so the design's photo is of its own trade. */
+    industry?: string;
+    description?: string;
   },
 ): Record<string, unknown> {
   const platform = ['instagram', 'facebook', 'linkedin', 'twitter', 'tiktok', 'youtube']
@@ -364,8 +368,17 @@ export function designFromPost(
     headline: post.headline, company: opts.company, badge: (post.badge ?? '').trim().slice(0, 14), cta: (post.cta ?? '').trim().slice(0, 22),
   }, opts.logoSrc ?? '', opts.id);
 
+  /* The design itself: a template, filled — what the Graphics Designer shows
+     and exports. `elements` above stay as the plain fallback for any screen
+     that predates templates. */
+  const design = designForPost(post, {
+    company: opts.company, primary: palette.bg, accent: palette.accent, secondary: palette.bg2, logo: opts.logoSrc ?? '',
+    industry: opts.industry, description: opts.description,
+  }, c('layout') || 'bold');
+
   return {
     id: opts.id,
+    design,
     name: post.headline.slice(0, 60) || 'Untitled post',
     platform,
     aspectRatio: square ? '1:1' : '16:9',
@@ -585,7 +598,7 @@ async function runAgentNode(
       if (!first) first = id;
       await push(env, accountId, SOCIAL_KEY, designFromPost(p, {
         id, brandColor, company: brand.companyName, source, now, ready: c('handoff') === 'ready',
-        design: cfg as Record<string, string>, logoSrc,
+        design: cfg as Record<string, string>, logoSrc, industry: brand.industry, description: brand.description,
       }));
       await record(env, accountId, 'social_posts', id);
     }
@@ -892,7 +905,7 @@ export async function repurposeRecording(
       for (const p of posts) {
         const id = `sp-${crypto.randomUUID()}`;
         if (!first) first = id;
-        await push(env, accountId, SOCIAL_KEY, designFromPost(p, { id, brandColor: '#5b46e5', company: brand.companyName, source, now, ready: false, design: {}, logoSrc: '' }));
+        await push(env, accountId, SOCIAL_KEY, designFromPost(p, { id, brandColor: '#5b46e5', company: brand.companyName, source, now, ready: false, design: {}, logoSrc: '', industry: brand.industry, description: brand.description }));
         await record(env, accountId, 'social_posts', id);
       }
       links.push({ kind: 'social-post', id: first, label: `${posts.length} post${posts.length === 1 ? '' : 's'} from “${rec.title.slice(0, 40)}”`, route: '/social-creator' });

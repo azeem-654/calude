@@ -362,7 +362,9 @@ function generateClips(project: VideoProject): VideoClip[] {
       duration: Math.round(segments.reduce((s, sg) => s + (sg.end - sg.start), 0)) || dur,
       segments,
       thumbnailGradient: GRADIENTS[(i + 2) % GRADIENTS.length] as string,
-      viralityScore: Math.max(55, t.score - Math.floor(Math.random() * 5)),
+      /* A sample's score is the sample's own fixed number, never jittered to
+         look measured; the project carries isDemo and says it is an example. */
+      viralityScore: t.score,
       transcript: t.transcript,
       captions,
       aspectRatio: ratio,
@@ -606,7 +608,7 @@ function ScoreBadge({ score, size = 'md' }: { score: number; size?: 'sm' | 'md' 
   const px = size === 'lg' ? '6px 12px' : size === 'sm' ? '2px 6px' : '3px 8px';
   const fs = size === 'lg' ? '14px' : size === 'sm' ? '10px' : '11px';
   return (
-    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: `${c}18`, border: `1px solid ${c}40`, borderRadius: '6px', padding: px, flexShrink: 0 }}>
+    <div title="An AI estimate of how strong the opening hook is — not a forecast of views" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: `${c}18`, border: `1px solid ${c}40`, borderRadius: '6px', padding: px, flexShrink: 0 }}>
       <Zap size={size === 'lg' ? 13 : 10} color={c} />
       <span style={{ fontSize: fs, fontWeight: 800, color: c }}>{score}</span>
     </div>

@@ -15,6 +15,7 @@
  * design", not a made-up title, and an unrecognised platform falls back to the
  * one whose canvas is squarest rather than being guessed at.
  */
+import type { DesignDoc } from '../../../worker/src/lib/design/spec';
 import type { AspectRatio, CanvasBackground, CanvasElement, DesignPost, Platform } from './types';
 import { PLATFORM_PRESETS, RATIO_SIZES } from './templates';
 
@@ -72,6 +73,13 @@ export function normalisePost(raw: unknown): DesignPost | null {
     aiPrompt: typeof p.aiPrompt === 'string' ? p.aiPrompt : undefined,
     /* The Video Studio link survives only whole: every field it needs, or none. */
     videoThumb: videoThumbOf(p.videoThumb),
+    /* A template design survives only whole enough to draw: a template id and a format. */
+    design: p.design && typeof p.design === 'object' && typeof (p.design as DesignDoc).templateId === 'string' && typeof (p.design as DesignDoc).format === 'string' && (p.design as DesignDoc).content && typeof (p.design as DesignDoc).content === 'object'
+      ? (() => { const d = p.design as DesignDoc; return { ...d, images: d.images ?? {}, colors: d.colors ?? { primary: '#3e63dd' }, company: d.company ?? '' }; })() : undefined,
+    caption: typeof p.caption === 'string' ? p.caption : undefined,
+    hashtags: Array.isArray(p.hashtags) ? (p.hashtags as unknown[]).filter((t): t is string => typeof t === 'string') : undefined,
+    scheduledAt: typeof p.scheduledAt === 'string' ? p.scheduledAt : undefined,
+    mediaId: typeof p.mediaId === 'string' ? p.mediaId : undefined,
     createdAt: created,
     updatedAt: iso(p.updatedAt ?? created),
   };

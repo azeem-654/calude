@@ -1,3 +1,4 @@
+import type { DesignDoc } from '../../../worker/src/lib/design/spec';
 export type Platform = 'instagram' | 'facebook' | 'twitter' | 'linkedin' | 'tiktok' | 'youtube';
 export type AspectRatio = '1:1' | '9:16' | '16:9' | '4:5' | '3:2';
 export type ElementType = 'text' | 'image' | 'shape' | 'sticker';
@@ -96,6 +97,20 @@ export interface DesignPost {
    * thumbnail" (exported at the size the video needs: canvas × 2).
    */
   videoThumb?: VideoThumbLink;
+  /**
+   * A template design (design/ — the template library). When present, this
+   * is what the post is: it opens in the template editor and every picture
+   * of it is drawn from this, not from `elements`, which then hold only the
+   * plain fallback older screens can show.
+   */
+  design?: DesignDoc;
+  /** The words posted with the picture. */
+  caption?: string;
+  hashtags?: string[];
+  /** When the customer plans to post it (status 'scheduled'). Nothing posts it automatically. */
+  scheduledAt?: string;
+  /** The exported PNG's id in the Media Center, once saved there. */
+  mediaId?: string;
   createdAt: string;
   updatedAt: string;
 }
