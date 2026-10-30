@@ -163,6 +163,9 @@ export default function Player({ ctx, transport, below }: {
   const [zoomPct, setZoomPct] = useState(100);
   const [tool, setTool] = useState<'select' | 'scrub'>('select');
   const [frameH, setFrameH] = useState(360);
+  /* The playhead as this player knows it — the editor's copy is told less often (see paint). */
+  const [here, setHere] = useState(ctx.time);
+  useEffect(() => { if (!deck.current?.playing) setHere(ctx.time); }, [ctx.time]);
   const video = useHeldSrc(view.source.proxyUrl);
   const music = useHeldSrc(view.musicUrl);
 
@@ -183,7 +186,7 @@ export default function Player({ ctx, transport, below }: {
   const spans = useMemo(() => motion.zoom === 'punch' && transcript ? punchSpans(sentencesOf(transcript.words), keeps) : [], [motion.zoom, transcript, keeps]);
   const cuts = useMemo(() => motion.transition !== 'none' ? cutTimes(keeps) : [], [motion.transition, keeps]);
   const style = doc.captions[kind];
-  const out = toOutput(ctx.time, keeps);
+  const out = toOutput(here, keeps);
   const total = keptLength(keeps);
   const cue = doc.captions.on && out !== null ? cues.find(c => out >= c.s && out < c.e) : undefined;
   const track = doc.music && (doc.music.applyTo === 'all' || (doc.music.applyTo === 'long') === !clip) ? doc.music : null;
@@ -246,7 +249,7 @@ export default function Player({ ctx, transport, below }: {
   useEffect(() => {
     const a = aRef.current, b = bRef.current, wrap = deckRef.current;
     if (!a || !b || !wrap) return;
-    let last = -1, lastAt = 0, hush = false;
+    let last = -1, lastAt = 0, lastRep = -1, repAt = 0, hush = false;
     const paint = (t: number) => {
       const L = live.current;
       const inMute = L.mutes.some(m => t >= m.s && t < m.e);
@@ -310,7 +313,11 @@ export default function Player({ ctx, transport, below }: {
       }
       window.dispatchEvent(new CustomEvent('vs-frame', { detail: t }));
       const now = performance.now();
-      if (Math.abs(t - last) > 0.04 && now - lastAt > 90) { last = t; lastAt = now; L.report(-1 - t); }
+      /* Captions and words on screen follow ten times a second (this player only); the rest of the
+         editor — transcript, timeline labels, panels — four times while playing: telling the whole
+         editor ten times a second redrew it under the video and the preview stuttered. */
+      if (Math.abs(t - last) > 0.04 && now - lastAt > 90) { last = t; lastAt = now; setHere(t); }
+      if (Math.abs(t - lastRep) > 0.04 && (!deck.current?.playing || now - repAt > 250)) { lastRep = t; repAt = now; L.report(-1 - t); }
     };
     const d = new Deck(a, b, paint);
     deck.current = d;

@@ -989,6 +989,15 @@ html[data-theme="dark"] .vs canvas.vse-layout { filter: none; }
 /* Ring colours are round, and the chosen one glows in its own colour (the swatch sets `color`). */
 .vs-rec-sw.vs-rec-ring-sw { border-radius: 50%; width: 28px; height: 28px; }
 .vs-rec-sw.vs-rec-ring-sw[aria-pressed="true"] { box-shadow: 0 0 10px currentColor; }
+.vs-rec-pick { position: relative; overflow: hidden; border-radius: 50%; width: 28px; height: 28px; background: conic-gradient(#ef4444, #facc15, #4ade80, #22d3ee, #3b82f6, #a855f7, #ef4444); }
+.vs-rec-pick input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.vs-rec-scenes { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+.vs-rec-scene { display: grid; gap: 3px; padding: 3px; border: 1.5px solid var(--line2); border-radius: 10px; background: var(--raise); color: var(--muted); cursor: pointer; font: inherit; text-align: center; min-width: 0; }
+.vs-rec-scene img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 7px; display: block; }
+.vs-rec-scene small { font-size: 11px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vs-rec-scene[aria-pressed="true"] { border-color: var(--accent); color: var(--ink); }
+.vs-rec-nudge { display: inline-flex; gap: 3px; }
+.vs-rec-nudge .vs-chip { padding-inline: 7px; }
 @media (max-width: 480px) { .vs-rec-layouts { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
 /* ═══ 2026-10 refresh: the studio's front page, progress on the right, export, logo, text ═══ */

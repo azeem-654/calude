@@ -142,6 +142,14 @@ export is a canvas recording; Video Studio is the real one.
   chapters, downloads at the size made, Export XML (`toXmeml`, Premiere/Resolve),
   duplicate. The inspector is an icon rail; the playhead moves per frame from
   the player's loop (`vs-frame` event), not React state.
+- **The editor's preview copy** is 720p at CRF 23 (`buildPrepare`
+  `proxyHeight`/`proxyCrf`; the engine never makes it taller than the
+  source) — at 540p/28 a screen recording's text was a blur. Existing
+  projects keep their 540p copy. **The preview stuttered** because the
+  transcript redrew whole ten times a second while playing (`thumbAt` made a
+  new style object per paragraph, so `Para`'s memo never held); the tiles'
+  styles are now cached, and the player tells the editor the time four
+  times a second while playing (captions keep their own ten).
 - **The player is a deck** (`deck.ts`): two `<video>` elements on the proxy; the
   standby is seeked (paused) to the next kept stretch and swapped in on the
   playing one's last kept frame (`requestVideoFrameCallback`, rAF fallback). Never
@@ -199,10 +207,19 @@ export is a canvas recording; Video Studio is the real one.
   never uploaded), padding, roundness, shadow — and the bubble change live
   while recording, and **Share a different screen** swaps the source without
   stopping (sound is always mixed through WebAudio in screen modes so the new
-  screen's sound joins). Frame rate 24/30/50/60, resolution 720p–4K, quality
-  Light/Standard/High (`bitrateFor`), camera 480/720/1080p; remembered in
-  `crm_rec_prefs` (never the picture); a 4-core / 4 GB computer starts at
-  720p/30/Light. **Lightweight on purpose**: the background is painted onto
+  screen's sound joins). Frame rate 15/20/24/25/30/50/60, resolution
+  360p–4K, quality Data saver/Light/Standard/High/Best (`bitrateFor`, each
+  with its own floor), camera 240/360/480/540/720/1080p; remembered in
+  `crm_rec_prefs` (never the person's own picture); a 4-core / 4 GB
+  computer starts at 720p/30/Light. **The camera and microphone come on by
+  themselves** when the recorder opens (or the mode changes) — the owner's
+  call, so the preview shows the person at once; asked once per mode, the
+  button asks again after a refusal. **Frames are read from the tracks**
+  (`trackFeed.ts`, `MediaStreamTrackProcessor`, newest frame kept, the one
+  before closed at once) — drawn from a `<video>`, Chrome stopped painting
+  it while the recorder's tab was behind the window being recorded, and
+  the screen and camera froze and jumped ("stuck frames"); Firefox/Safari
+  still draw the element. **Lightweight on purpose**: the background is painted onto
   the canvas only when it changes (a canvas keeps its pixels) — per frame only
   the screen, four corner patches and the bubble's box are redrawn; the
   capture is asked (`applyConstraints`) for the screen at its box's size so
@@ -216,9 +233,16 @@ export is a canvas recording; Video Studio is the real one.
   example: camera panel a third wide, screen right), speaker-right,
   presenter (camera fills, screen inset top-right), split 50/50 — the layer
   key includes the layout. **Camera frame**: circle / square / rounded
-  square, ring none / white / neon (glow cached in a sprite) / gradient
-  (turns once per 4 s from `sc.now`) / pulse, ring colours; a tall panel
-  cannot be round (said). **No live zoom** (removed on the owner's word —
+  square; rings still (none, white, solid, double, dashed, neon — glow
+  cached in a sprite) and moving (turning gradient, pulse, rainbow, comet,
+  orbiting dots, marching dashes — a dash pattern whose offset moves round
+  any shape — and "moves with your voice" from the mic meter,
+  `Scene.level`); 16 colours, any colour from a picker, 12 gradients
+  (`ringColor` `g:<id>`, `RING_GRADIENTS`); a tall panel cannot be round
+  (said). **Ready-made background pictures** (`scenes.ts`, 12 scenes painted
+  in the browser at a third of their size and stretched — a real room's
+  soft focus; seeded, so the swatch is what is recorded) behind the screen
+  (`Backdrop` `scene`) and behind the person (`fx.bg` `scene`). **No live zoom** (removed on the owner's word —
   the pointer is followed after processing): `PointerLog` reads a 320-px
   grey copy 8×/s while recording (three looks, reused buffers, ~0.4 ms) and
   notes the pointer and likely clicks; `LayoutLog` notes where screen and
@@ -228,18 +252,32 @@ export is a canvas recording; Video Studio is the real one.
   Document Picture-in-Picture window (Chrome/Edge), opened by the Start press
   (a click is needed; the share picker uses it up after), inline styles only.
   **Camera look** (`cameraFx.ts`, live, all modes — camera-only now goes
-  through the canvas too): brightness/contrast/colour/warmth (canvas
-  `filter`, offered only where it exists), night view, "smooth skin" (a
-  shrunk-and-stretched soft-focus copy — never a filter blur), and **behind
-  you**: blur %, remove (a see-through cut-out over the screen in a bubble, a
-  colour in camera-only) or the person's picture. The person-finder is
+  through the canvas too): brightness/contrast/colour/hue (canvas
+  `filter`, offered only where it exists), warmth (a `multiply` colour, no
+  longer sepia), night view, "smooth skin" (a shrunk-and-stretched
+  soft-focus copy — never a filter blur), **Auto look** (a 48-px copy
+  measured twice a second, the middle weighted: exposure, grey-world white
+  balance two thirds of the way, contrast and colour where flat — eased,
+  the sliders on top, said in words), and **behind you**: blur %, remove
+  (a see-through cut-out over the screen in a bubble, a colour in
+  camera-only), a ready-made scene or the person's picture. **The outline**
+  (blur used to eat into the face): each look blended with the last (up at
+  once, down over two looks), cut at 0.25–0.6, holes not reachable from the
+  edge and under 1/40 of the picture filled, grown a pixel, up to 30 looks
+  a second where cheap. The person-finder is
   MediaPipe's selfie segmenter (`segmenter.ts`, `@mediapipe/tasks-vision`
   pinned, model in `src/assets/models`, Apache-2.0), its own lazy chunk (11 MB
   wasm, fetched only when a background is picked; CSP has
   `'wasm-unsafe-eval'` for it). It looks at ≤256 px, never more than a quarter
   of the time (interval ≥ 4× a look's cost), and moves from GPU to CPU when GPU
   looks are slow (emulated graphics: 267 ms vs 17 ms). **Title card and
-  logo** (`Brand`, sprites drawn once, restored like the bubble). **Studio
+  logo** (`Brand`, sprites drawn once, restored like the bubble): both
+  anywhere (`x/y` 0–1 of the room inside the margin, `placeBox`/`placeAt`),
+  dragged on the preview (`Compositor.logoBox`/`cardBox` are what a press
+  grabs) or nudged; card 50–200 %; logo 3–40 % of the short side, round
+  corners 0–50, see-through, background removed in the browser
+  (`pictureCut.ts`, the editor Logo panel's own cut). Old prefs' corner and
+  S/M/L are read as the same place and size. **Studio
   Sound** is not done live: Save sets `audio.studio` on the new project's
   version 1 (`editVideo`), so every export has the engine's chain; the browser
   keeps echo/noise suppression and `voiceIsolation` where offered. After Save
@@ -352,6 +390,14 @@ export is a canvas recording; Video Studio is the real one.
   preview (planned), publishing (none — "Ready to publish manually").
 - **Don't edit `worker/` while `test:videoe2e` runs** — its wrangler rebuilds on
   change and the run dies. `STOP_AFTER=player` ends it after the player check.
+- **The e2e's player check runs in a browser context of its own**: the
+  editor already open had read the H.264 proxy from the same signed link,
+  and Chromium's media player keeps those bytes in the page's memory (not
+  the HTTP cache — clearing it and reloading did nothing), so after the
+  test swapped in the VP9 copy it read an MP4 head followed by WebM ("no
+  supported streams") and the preview never started; the suite stopped
+  there. Production never changes a proxy under its link. **Don't rebuild
+  `dist/` while it runs either** — wrangler reloads and the run dies.
 - `npm run test:videoe2e` (self-contained: engine :8873, Whisper mock :8874, Gemini
   mock :8875, Openverse mock :8876, wrangler :8953, `.wrangler-video`, needs ffmpeg +
   a `VITE_BASE=/` build; recordings are generated and cached there) drives the

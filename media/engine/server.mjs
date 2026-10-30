@@ -436,12 +436,17 @@ async function prepare(job, dir) {
     }
   }
 
-  /* The editor's copy: 540 lines, a keyframe every second for snappy seeking,
-     faststart so it plays while it loads. Never shown as the final quality. */
-  const ph = num(p.proxyHeight, 540, 240, 1080);
+  /* The editor's copy: 540 lines unless asked (the Worker asks 720 — at 540
+     and CRF 28 a screen recording's text was a blur in the editor, which the
+     owner read as a bad player), a keyframe every second for snappy seeking,
+     faststart so it plays while it loads. Never shown as the final quality.
+     Never taller than the source: scaling a 480p recording up costs bytes
+     and shows nothing more. */
+  const ph = 2 * Math.floor(Math.min(num(p.proxyHeight, 540, 240, 1080), Math.max(240, Math.min(info.width, info.height) || 540)) / 2);
+  const crf = num(p.proxyCrf, 28, 18, 32);
   const portrait = info.height > info.width;
   const scale = portrait ? `scale=${ph}:-2` : `scale=-2:${ph}`;
-  await exec(FFMPEG, [...base, ...inVideo(src), '-vf', `${scale},fps=30`, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28', '-g', '30',
+  await exec(FFMPEG, [...base, ...inVideo(src), '-vf', `${scale},fps=30`, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', String(crf), '-g', '30',
     '-pix_fmt', 'yuv420p', ...(info.hasAudio ? ['-c:a', 'aac', '-b:a', '96k', '-ac', '2'] : ['-an']), '-movflags', '+faststart',
     '-progress', 'pipe:1', '-nostats', path.join(dir, 'proxy.mp4')], job, { onLine: progressTo(job, 'proxy', info.duration) });
   files.proxy = await upload(job, path.join(dir, 'proxy.mp4'), 'proxy.mp4', 'video/mp4');

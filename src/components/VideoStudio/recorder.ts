@@ -6,12 +6,16 @@
  * (where the pointer went and clicked, read from the picture), plain-language
  * errors and the clock that keeps drawing while the tab is in the background.
  *
- * Everything here runs in the browser and only after the person presses a
- * button: nothing asks for a camera, a microphone or a screen on its own.
+ * Everything here runs in the browser. Opening the recorder (a press) asks
+ * for the camera and microphone it needs straight away, so the preview shows
+ * the person before they start (the owner's call, 2026-10); the screen is
+ * only ever asked for by Start.
  */
 import { fixWebmDuration } from '../../lib/webmDuration';
 import ClockWorker from './recorderClock.worker.ts?worker';
-import { CameraFx, NO_FX, type CamFx, type CamBg } from './cameraFx';
+import { CameraFx, NO_FX, sceneOr, type CamFx, type CamBg } from './cameraFx';
+import { sceneLayer, isScene, type SceneId } from './scenes';
+import { pic, type Feed } from './trackFeed';
 import type { ScreenMeta, ScreenSeg, NBox } from '../../services/videoStudio';
 
 export type RecMode = 'screen' | 'screen-cam' | 'cam';
@@ -72,16 +76,23 @@ export function support(): Support {
 
 /* ── Frame rate, resolution, quality ───────────────────────────────────── */
 
-export const FPS = [24, 30, 50, 60] as const;
+/* 15 and 20 are for a slow computer or a talk over slides, where nothing moves fast and every frame saved is work saved. */
+export const FPS = [15, 20, 24, 25, 30, 50, 60] as const;
 export type Fps = typeof FPS[number];
-/** The recording's long side at most — the screen's own size when it is smaller. */
-export const RES = { '720': 1280, '1080': 1920, '1440': 2560, '2160': 3840 } as const;
+/** The recording's long side at most — the screen's own size when it is smaller. Below 720p for a slow computer or a small file. */
+export const RES = { '360': 640, '480': 854, '540': 960, '720': 1280, '1080': 1920, '1440': 2560, '2160': 3840 } as const;
 export type Res = keyof typeof RES;
-export const RES_LABEL: Record<Res, string> = { '720': '720p', '1080': '1080p', '1440': '1440p', '2160': '4K' };
-/* Bits a pixel at 30 fps, and the ceiling: text on a screen needs about 0.07 to stay sharp. */
-export const QUALITY = { light: { bpp: 0.045, max: 4e6 }, standard: { bpp: 0.07, max: 8e6 }, high: { bpp: 0.11, max: 16e6 } } as const;
+export const RES_LABEL: Record<Res, string> = { '360': '360p', '480': '480p', '540': '540p', '720': '720p', '1080': '1080p', '1440': '1440p', '2160': '4K' };
+/* Bits a pixel at 30 fps, the ceiling and the floor: text on a screen needs about 0.07 to stay sharp; Data saver keeps the file smallest and lets fine text soften. */
+export const QUALITY = {
+  saver: { bpp: 0.03, max: 1.5e6, min: 0.35e6 }, light: { bpp: 0.045, max: 4e6, min: 1e6 }, standard: { bpp: 0.07, max: 8e6, min: 1e6 },
+  high: { bpp: 0.11, max: 16e6, min: 1e6 }, best: { bpp: 0.16, max: 25e6, min: 2e6 },
+} as const;
 export type Quality = keyof typeof QUALITY;
-export const CAM_RES = { '480': { width: 640, height: 480 }, '720': { width: 1280, height: 720 }, '1080': { width: 1920, height: 1080 } } as const;
+export const CAM_RES = {
+  '240': { width: 320, height: 240 }, '360': { width: 640, height: 360 }, '480': { width: 640, height: 480 }, '540': { width: 960, height: 540 },
+  '720': { width: 1280, height: 720 }, '1080': { width: 1920, height: 1080 },
+} as const;
 export type CamRes = keyof typeof CAM_RES;
 export type CursorMode = 'always' | 'motion' | 'never';
 
@@ -128,7 +139,7 @@ export function mediaError(e: unknown, what: 'screen' | 'camera' | 'microphone' 
 
 /* ── The frame: background, padding, roundness, shadow ─────────────────── */
 
-export type Backdrop = { kind: 'none' } | { kind: 'color'; color: string } | { kind: 'gradient'; id: GradientId } | { kind: 'image' };
+export type Backdrop = { kind: 'none' } | { kind: 'color'; color: string } | { kind: 'gradient'; id: GradientId } | { kind: 'image' } | { kind: 'scene'; id: SceneId };
 /** padding, radius: percent of the frame's short side; shadow 0–100. */
 export interface Look { bg: Backdrop; padding: number; radius: number; shadow: number }
 export const FRAMED = { padding: 7, radius: 2.2, shadow: 60 };
@@ -173,6 +184,7 @@ export function gradientCss(id: GradientId): string {
 function paintBackdrop(ctx: Ctx2D, W: number, H: number, bg: Backdrop, image: ImageBitmap | null) {
   if (bg.kind === 'color') { ctx.fillStyle = bg.color; ctx.fillRect(0, 0, W, H); return; }
   if (bg.kind === 'image' && image) { coverImage(ctx, image, W, H); return; }
+  if (bg.kind === 'scene') { ctx.drawImage(sceneLayer(bg.id, W, H), 0, 0); return; }
   if (bg.kind !== 'gradient') { ctx.fillStyle = NO_BG_FILL; ctx.fillRect(0, 0, W, H); return; }
   const g: Gradient = GRADIENTS[bg.id];
   /* CSS angles: 0deg points up, clockwise; the line is long enough to reach the corners, as CSS's is. */
@@ -228,10 +240,37 @@ export interface Rect { x: number; y: number; w: number; h: number }
 
 export type CamShape = 'circle' | 'square' | 'rounded';
 export const SHAPES: readonly CamShape[] = ['circle', 'square', 'rounded'];
-/** Round the camera: none, the thin white line, a neon glow, a turning gradient, or a neon glow that breathes. */
-export type Ring = 'none' | 'white' | 'neon' | 'gradient' | 'pulse';
-export const RINGS: readonly Ring[] = ['none', 'white', 'neon', 'gradient', 'pulse'];
-export const RING_COLORS: readonly string[] = ['#22d3ee', '#a855f7', '#f472b6', '#facc15', '#4ade80', '#ffffff'];
+/**
+ * Round the camera. Still: none, the thin white line, a solid line, a double
+ * line, dashes, neon. Moving: a turning gradient, a breathing neon, a turning
+ * rainbow, a comet running round, dots and dashes marching round, and a ring
+ * that swells with the voice (the microphone's level).
+ */
+export const RINGS_STILL = ['none', 'white', 'solid', 'double', 'dashed', 'neon'] as const;
+export const RINGS_MOVING = ['gradient', 'pulse', 'rainbow', 'comet', 'dots', 'march', 'voice'] as const;
+export type Ring = typeof RINGS_STILL[number] | typeof RINGS_MOVING[number];
+export const RINGS: readonly Ring[] = [...RINGS_STILL, ...RINGS_MOVING];
+/* The first five are the turning gradient's neighbours (ringStops) — keep their order. */
+export const RING_COLORS: readonly string[] = [
+  '#22d3ee', '#a855f7', '#f472b6', '#facc15', '#4ade80', '#ffffff',
+  '#ef4444', '#f97316', '#fbbf24', '#84cc16', '#14b8a6', '#0ea5e9', '#3b82f6', '#6366f1', '#e11d48', '#000000',
+];
+/** Gradient colourings for any ring, chosen as `g:<id>` in place of a colour. */
+export const RING_GRADIENTS = {
+  sunset: ['#f97316', '#db2777', '#7c3aed'], ocean: ['#22d3ee', '#3b82f6', '#1e3a8a'], aurora: ['#22d3ee', '#a855f7', '#4ade80'],
+  candy: ['#f0abfc', '#93c5fd', '#fbcfe8'], fire: ['#fde047', '#f97316', '#dc2626'], mint: ['#a7f3d0', '#10b981', '#0ea5e9'],
+  gold: ['#fef08a', '#f59e0b', '#b45309'], neon: ['#f472b6', '#22d3ee', '#a3e635'], royal: ['#1e40af', '#7c3aed', '#db2777'],
+  ice: ['#ffffff', '#bae6fd', '#60a5fa'], peach: ['#fde68a', '#fca5a5', '#f9a8d4'], forest: ['#bef264', '#16a34a', '#14532d'],
+} as const;
+export type RingGradient = keyof typeof RING_GRADIENTS;
+const RAINBOW = ['#ef4444', '#f97316', '#facc15', '#4ade80', '#22d3ee', '#3b82f6', '#a855f7', '#ef4444'];
+/** A ring colour as chosen: a `#rrggbb` (any, from the swatches or the picker) or `g:<gradient>`. */
+export const okRingColor = (v: unknown): v is string => typeof v === 'string' && (/^#[0-9a-f]{6}$/i.test(v) || (v.startsWith('g:') && v.slice(2) in RING_GRADIENTS));
+const gradOf = (c: string): readonly string[] | null => c.startsWith('g:') ? RING_GRADIENTS[c.slice(2) as RingGradient] ?? null : null;
+/** One colour standing for the choice (a glow's colour, a swatch's): the gradient's first. */
+export const ringSolid = (c: string) => gradOf(c)?.[0] ?? c;
+/** The CSS for a ring colour's swatch. */
+export const ringCss = (c: string) => { const g = gradOf(c); return g ? `conic-gradient(${[...g, g[0]].join(', ')})` : c; };
 export interface CamFrame { shape: CamShape; ring: Ring; ringColor: string }
 export const DEFAULT_FRAME: CamFrame = { shape: 'circle', ring: 'white', ringColor: '#22d3ee' };
 
@@ -276,9 +315,19 @@ export function ringSize(r: Rect, ring: Ring, short: number): { lw: number; glow
   if (ring === 'none') return { lw: 0, glow: 0, ext: 0 };
   /* A big panel's ring is as thick as a large bubble's, not a third of the screen's width. */
   const base = Math.min(r.w, r.h, short * 0.3);
-  const lw = Math.max(2, Math.round(base / (ring === 'white' ? 45 : ring === 'gradient' ? 24 : 36)));
+  const div = ring === 'white' ? 45 : ring === 'double' ? 44 : ring === 'neon' || ring === 'pulse' ? 36 : ring === 'voice' ? 32 : 24;
+  const lw = Math.max(2, Math.round(base / div));
   const glow = ring === 'neon' || ring === 'pulse' ? Math.max(4, Math.round(base / 10)) : 0;
-  return { lw, glow, ext: glow * 2 + lw };
+  /* How far past the edge it can reach: the double's outer line, the voice ring at its loudest, a dot's round end. */
+  const ext = ring === 'double' ? lw * 4 : ring === 'voice' ? lw * 6 : ring === 'dots' ? lw * 2 : glow * 2 + lw;
+  return { lw, glow, ext };
+}
+
+/** The length round a camera's edge (where the moving dashes, dots and comet travel). */
+function perimeter(r: Rect, k: number, circle: boolean): number {
+  if (circle) return Math.PI * Math.min(r.w, r.h);
+  const kk = Math.min(k, r.w / 2, r.h / 2);
+  return 2 * (r.w + r.h) - (8 - 2 * Math.PI) * kk;
 }
 
 /* The turning ring's colours: the chosen one and its two neighbours on the swatch row, back to the chosen one. */
@@ -406,9 +455,9 @@ function wrap(c: Ctx2D, text: string, max: number, lines: number): string[] {
   return out.map(l => { let x = l; while (x.length > 1 && c.measureText(x).width > max) x = x.slice(0, -2) + '…'; return x; });
 }
 
-function paintCard(W: number, H: number, title: string, desc: string): Cv {
-  const short = Math.min(W, H), pad = Math.round(short * 0.022), ts = Math.round(short * 0.036), ds = Math.round(short * 0.025);
-  const maxText = Math.round(W * 0.42);
+function paintCard(W: number, H: number, title: string, desc: string, scale = 1): Cv {
+  const short = Math.min(W, H) * scale, pad = Math.round(short * 0.022), ts = Math.round(short * 0.036), ds = Math.round(short * 0.025);
+  const maxText = Math.round(Math.min(W * 0.8, W * 0.42 * scale));
   const font = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
   const probe = layerCanvas(4, 4).getContext('2d') as Ctx2D;
   probe.font = `700 ${ts}px ${font}`;
@@ -433,17 +482,44 @@ function paintCard(W: number, H: number, title: string, desc: string): Cv {
   return c;
 }
 
+/**
+ * The title card and the logo. Both sit anywhere: x/y are 0–1 across the
+ * room left once the box and a margin are taken out (0,0 top left, 1,1
+ * bottom right), like the bubble — dragged on the preview or nudged.
+ */
 export interface Brand {
-  /** The title card: a title and a line or two of description, low or high on the left. */
-  card: boolean; title: string; desc: string; cardPos: 'bl' | 'tl';
-  logoCorner: Corner; logoSize: BubbleSize;
+  card: boolean; title: string; desc: string;
+  cardX: number; cardY: number;
+  /** The card's size, 50–200 % of the standard. */
+  cardScale: number;
+  logoX: number; logoY: number;
+  /** The logo's height as a percentage of the video's short side (3–40). */
+  logoScale: number;
+  /** 0 square … 50 a circle or pill. */
+  logoRadius: number;
+  /** 10–100 %. */
+  logoOpacity: number;
+  /** The logo's plain background taken out (done in this browser). */
+  logoCut: boolean;
 }
-export const NO_BRAND: Brand = { card: false, title: '', desc: '', cardPos: 'bl', logoCorner: 'tr', logoSize: 'M' };
+export const NO_BRAND: Brand = { card: false, title: '', desc: '', cardX: 0, cardY: 1, cardScale: 100, logoX: 1, logoY: 0, logoScale: 10, logoRadius: 0, logoOpacity: 100, logoCut: false };
+/** The margin round the title card and the logo. */
+const brandMargin = (W: number, H: number) => Math.round(Math.min(W, H) * 0.035);
+/** A w×h box placed at fractions x/y of the room left inside the margin. */
+export function placeBox(W: number, H: number, w: number, h: number, x: number, y: number): Rect {
+  const m = brandMargin(W, H);
+  return { x: Math.round(m + x * Math.max(0, W - 2 * m - w)), y: Math.round(m + y * Math.max(0, H - 2 * m - h)), w, h };
+}
+/** The fractions that put a w×h box's top-left at (left, top) — the inverse of placeBox, clamped onto the picture. */
+export function placeAt(W: number, H: number, w: number, h: number, left: number, top: number): { x: number; y: number } {
+  const m = brandMargin(W, H), c = (v: number) => Math.min(1, Math.max(0, v));
+  return { x: c((left - m) / Math.max(1, W - 2 * m - w)), y: c((top - m) / Math.max(1, H - 2 * m - h)) };
+}
 
 /** Everything one frame is drawn from. */
 export interface Scene {
-  screen: HTMLVideoElement | null;
-  cam: HTMLVideoElement | null;
+  screen: Feed | null;
+  cam: Feed | null;
   /** Camera only: the camera fills the frame, no bubble and no screen frame. */
   camOnly: boolean;
   look: Look; image: ImageBitmap | null;
@@ -452,6 +528,8 @@ export interface Scene {
   bubble: Bubble; frame: CamFrame;
   fx: CamFx; camBg: ImageBitmap | null;
   brand: Brand; logo: ImageBitmap | null;
+  /** The microphone's level, 0–1 (the voice ring). */
+  level: number;
   now: number;
 }
 
@@ -487,6 +565,9 @@ export class Compositor {
   private insetKey = '';
   private card: Cv | null = null;
   private cardKey = '';
+  /** The logo at its size, rounded and see-through as chosen. */
+  private logoSprite: Cv | null = null;
+  private logoKey = '';
   private dirty: Rect[] = [];
   /* A replaced picture of the same size must still repaint the layer. */
   private ids = new WeakMap<ImageBitmap, number>();
@@ -497,13 +578,16 @@ export class Compositor {
   box: Rect = { x: 0, y: 0, w: 0, h: 0 };
   /** Where the camera was last drawn, in canvas pixels (null when it was not). */
   camBox: Rect | null = null;
+  /** Where the title card and the logo were last drawn (what dragging them on the preview grabs). */
+  cardBox: Rect | null = null;
+  logoBox: Rect | null = null;
 
   /** The canvas was resized (which clears it): paint the background again on the next frame. */
   invalidate() { this.layerKey = ''; }
 
   draw(ctx: CanvasRenderingContext2D, sc: Scene) {
     const W = ctx.canvas.width, H = ctx.canvas.height, short = Math.min(W, H);
-    const cam = sc.cam && sc.cam.videoWidth ? sc.cam : null;
+    const cam = sc.cam && sc.cam.videoWidth && (!('frame' in sc.cam) || sc.cam.frame) ? sc.cam : null;
     if (sc.camOnly) {
       const r: Rect = { x: 0, y: 0, w: W, h: H };
       this.box = r; this.camBox = cam ? r : null;
@@ -514,7 +598,7 @@ export class Compositor {
       return;
     }
     const look = sc.look, framed = look.bg.kind !== 'none';
-    const sv = sc.screen && sc.screen.videoWidth ? sc.screen : null;
+    const sv = sc.screen && sc.screen.videoWidth && (!('frame' in sc.screen) || sc.screen.frame) ? sc.screen : null;
     const cutout = sc.fx.bg === 'remove';
     const L = layoutRects(W, H, sc.layout, look, sv ? sv.videoWidth / sv.videoHeight : W / H, cam ? cam.videoWidth / cam.videoHeight : null, sc.bubble, cutout);
     const presenter = L.panel && sc.layout === 'presenter';
@@ -533,7 +617,7 @@ export class Compositor {
         /* A panel is a solid box: a removed background gets its colour behind the person, never see-through — nothing under a panel is put back each frame. */
         this.fx.draw(ctx, cam, L.cam, sc.bubble.mirror, sc.fx, sc.camBg, false, sc.now);
         /* Filling the whole frame (presenter, background off) it has no corners and no ring. */
-        if (!camFull) { this.patches(ctx, L.cam, kC); this.drawRing(ctx, L.cam, kC, false, sc.frame, sc.now, true); }
+        if (!camFull) { this.patches(ctx, L.cam, kC); this.drawRing(ctx, L.cam, kC, false, sc.frame, sc.now, true, sc.level); }
       } else this.drawBubble(ctx, W, H, cam, L.cam, sc, cutout);
     }
     if (presenter) this.drawInset(ctx, sv, L.screen, kS, short);
@@ -562,8 +646,8 @@ export class Compositor {
     if (x1 > x0 && y1 > y0) this.dirty.push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
   }
 
-  private drawScreen(ctx: CanvasRenderingContext2D, sv: HTMLVideoElement | null, r: Rect, k: number, framed: boolean) {
-    if (sv) ctx.drawImage(sv, r.x, r.y, r.w, r.h);
+  private drawScreen(ctx: CanvasRenderingContext2D, sv: Feed | null, r: Rect, k: number, framed: boolean) {
+    if (sv) ctx.drawImage(pic(sv), r.x, r.y, r.w, r.h);
     else { ctx.fillStyle = framed ? '#1b1d26' : '#101117'; ctx.fillRect(r.x, r.y, r.w, r.h); }
     this.patches(ctx, r, k);
   }
@@ -575,7 +659,7 @@ export class Compositor {
     for (const [x, y] of [[r.x, r.y], [r.x + r.w - c, r.y], [r.x, r.y + r.h - c], [r.x + r.w - c, r.y + r.h - c]]) ctx.drawImage(this.holed, x, y, c, c, x, y, c, c);
   }
 
-  private drawBubble(ctx: CanvasRenderingContext2D, W: number, H: number, cam: HTMLVideoElement, br: Rect, sc: Scene, cutout: boolean) {
+  private drawBubble(ctx: CanvasRenderingContext2D, W: number, H: number, cam: Feed, br: Rect, sc: Scene, cutout: boolean) {
     const b = sc.bubble;
     /* A removed background in a bubble is a cut-out: the person stands over the screen, no frame or ring round them. */
     if (cutout) {
@@ -604,61 +688,122 @@ export class Compositor {
     ctx.clip();
     this.fx.draw(ctx, cam, br, b.mirror, sc.fx, sc.camBg, false, sc.now);
     ctx.restore();
-    this.drawRing(ctx, br, k, circle, f, sc.now, false);
+    this.drawRing(ctx, br, k, circle, f, sc.now, false, sc.level);
   }
 
   /**
-   * The ring round the camera. White and the turning gradient are one stroke
-   * a frame (the gradient's angle read from the clock, a turn every four
-   * seconds). Neon's glow is blurred once into a sprite and copied — a
-   * shadow blur each frame is what slow computers cannot afford — and a
-   * breathing ring is the same sprite drawn fainter and brighter. Round a
-   * panel only the strips the ring covers are copied, and put back next frame.
+   * The ring round the camera. The lines are one or two strokes a frame
+   * (a gradient's angle read from the clock, a turn every four seconds);
+   * the moving dashes, dots and comet are the same stroke with a dash pattern
+   * whose offset moves round the edge — any shape, no per-dot drawing. Neon's
+   * glow is blurred once into a sprite and copied — a shadow blur each frame
+   * is what slow computers cannot afford — and a breathing ring is the same
+   * sprite drawn fainter and brighter. Round a panel only the strips the ring
+   * covers are copied, and put back next frame.
    */
-  private drawRing(ctx: CanvasRenderingContext2D, r: Rect, k: number, circle: boolean, f: CamFrame, now: number, panel: boolean) {
+  private drawRing(ctx: CanvasRenderingContext2D, r: Rect, k: number, circle: boolean, f: CamFrame, now: number, panel: boolean, level = 0) {
     if (f.ring === 'none') return;
     const W = ctx.canvas.width, H = ctx.canvas.height;
     const { lw, glow, ext } = ringSize(r, f.ring, Math.min(W, H));
     if (panel) for (const b of bandRects(r, ext, 0)) this.dirtyRect(b, W, H);
-    if (f.ring === 'white') {
-      edgePath(ctx, r, k, circle);
-      ctx.lineWidth = lw; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.stroke();
-      return;
+    const turn = (now / 4000 % 1) * Math.PI * 2;
+    const stroke = (paint: string | CanvasGradient, width: number, rr: Rect = r, kk = k) => { edgePath(ctx, rr, kk, circle); ctx.lineWidth = width; ctx.strokeStyle = paint; ctx.stroke(); };
+    ctx.save();
+    switch (f.ring) {
+      case 'white': stroke('rgba(255,255,255,.9)', lw); break;
+      case 'solid': stroke(this.paint(ctx, r, f.ringColor, 0), lw); break;
+      case 'double': {
+        const d = lw * 2.2;
+        stroke(this.paint(ctx, r, f.ringColor, 0), lw);
+        stroke(this.paint(ctx, r, f.ringColor, Math.PI), lw, { x: r.x - d, y: r.y - d, w: r.w + 2 * d, h: r.h + 2 * d }, k > 0 ? k + d : 0);
+        break;
+      }
+      case 'dashed': case 'march': {
+        const P = perimeter(r, k, circle), n = Math.max(8, Math.round(P / (lw * 4.2)));
+        ctx.setLineDash([P / n * 0.62, P / n * 0.38]);
+        if (f.ring === 'march') ctx.lineDashOffset = -(now / 1000) * (P / 6);
+        stroke(this.paint(ctx, r, f.ringColor, f.ring === 'march' ? turn : 0), lw);
+        break;
+      }
+      case 'dots': {
+        const P = perimeter(r, k, circle), n = Math.max(10, Math.round(P / (lw * 3.4)));
+        ctx.setLineDash([0.001, P / n]); ctx.lineCap = 'round';
+        ctx.lineDashOffset = -(now / 1000) * (P / 8);
+        stroke(this.paint(ctx, r, f.ringColor, turn), lw * 1.5);
+        break;
+      }
+      case 'comet': {
+        /* A faint track, and a bright head with a tail fading behind it — three dashes ending at the same point. */
+        const P = perimeter(r, k, circle), head = ((now / 2200) % 1) * P;
+        ctx.globalAlpha = 0.22; stroke(this.paint(ctx, r, f.ringColor, 0), lw * 0.7);
+        ctx.lineCap = 'round';
+        for (const [len, a, wk] of [[0.3, 0.25, 0.8], [0.18, 0.55, 1], [0.07, 1, 1.25]] as const) {
+          ctx.globalAlpha = a;
+          ctx.setLineDash([P * len, P * (1 - len)]);
+          ctx.lineDashOffset = -(head - P * len);
+          stroke(this.paint(ctx, r, f.ringColor, turn), lw * wk);
+        }
+        break;
+      }
+      case 'gradient': case 'rainbow': {
+        const stops = f.ring === 'rainbow' ? RAINBOW : gradOf(f.ringColor) ? [...gradOf(f.ringColor)!, gradOf(f.ringColor)![0]] : ringStops(f.ringColor);
+        stroke(this.conic(ctx, r, stops, turn), lw);
+        break;
+      }
+      case 'voice': {
+        /* Thicker and brighter as the voice rises; a faint second ring swells out on the loudest moments. */
+        const v = Math.min(1, Math.max(0, level));
+        const paint = this.paint(ctx, r, f.ringColor, turn);
+        stroke(paint, lw * (1 + v * 1.6));
+        if (v > 0.08) {
+          const d = lw * (1.5 + v * 3);
+          ctx.globalAlpha = 0.15 + v * 0.5;
+          stroke(paint, Math.max(1, lw * 0.6), { x: r.x - d, y: r.y - d, w: r.w + 2 * d, h: r.h + 2 * d }, k > 0 ? k + d : 0);
+        }
+        break;
+      }
+      default: {
+        /* neon and pulse */
+        const P = ext, color = ringSolid(f.ringColor);
+        const key = `${r.w}x${r.h}|${k}|${circle}|${f.ringColor}|${glow}|${lw}`;
+        if (key !== this.glowKey || !this.glow) {
+          this.glow = sizedLayer(this.glow, r.w + 2 * P, r.h + 2 * P);
+          const gc = this.glow.getContext('2d') as Ctx2D;
+          gc.clearRect(0, 0, this.glow.width, this.glow.height);
+          gc.shadowColor = color; gc.shadowBlur = glow;
+          gc.strokeStyle = this.paint(gc, { x: P, y: P, w: r.w, h: r.h }, f.ringColor, 0); gc.lineWidth = lw;
+          edgePath(gc, { x: P, y: P, w: r.w, h: r.h }, k, circle);
+          gc.stroke(); gc.stroke();
+          gc.shadowBlur = 0; gc.shadowColor = 'transparent';
+          this.glowKey = key;
+        }
+        ctx.globalAlpha = f.ring === 'pulse' ? 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(now / 1700 * Math.PI * 2)) : 1;
+        const ox = r.x - P, oy = r.y - P;
+        if (panel) { for (const b of bandRects(r, P, P + k)) if (b.w > 0 && b.h > 0) ctx.drawImage(this.glow, b.x - ox, b.y - oy, b.w, b.h, b.x, b.y, b.w, b.h); }
+        else ctx.drawImage(this.glow, ox, oy);
+        ctx.globalAlpha = 1;
+        /* The tube itself stays lit while its glow breathes: the colour, with a paler core. */
+        stroke(this.paint(ctx, r, f.ringColor, 0), lw);
+        stroke('rgba(255,255,255,.6)', Math.max(1, lw * 0.4));
+      }
     }
-    if (f.ring === 'gradient') {
-      const a = (now / 4000 % 1) * Math.PI * 2, cx = r.x + r.w / 2, cy = r.y + r.h / 2;
-      let g: CanvasGradient;
-      /* Conic gradients arrived in Chrome 99, Safari 16.4 and Firefox 112; before that a turning linear one. */
-      if (typeof ctx.createConicGradient === 'function') g = ctx.createConicGradient(a, cx, cy);
-      else { const dx = Math.cos(a) * r.w / 2, dy = Math.sin(a) * r.h / 2; g = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy); }
-      const stops = ringStops(f.ringColor);
-      stops.forEach((c, i) => g.addColorStop(i / (stops.length - 1), c));
-      edgePath(ctx, r, k, circle);
-      ctx.lineWidth = lw; ctx.strokeStyle = g; ctx.stroke();
-      return;
-    }
-    const P = ext;
-    const key = `${r.w}x${r.h}|${k}|${circle}|${f.ringColor}|${glow}|${lw}`;
-    if (key !== this.glowKey || !this.glow) {
-      this.glow = sizedLayer(this.glow, r.w + 2 * P, r.h + 2 * P);
-      const gc = this.glow.getContext('2d') as Ctx2D;
-      gc.clearRect(0, 0, this.glow.width, this.glow.height);
-      gc.shadowColor = f.ringColor; gc.shadowBlur = glow;
-      gc.strokeStyle = f.ringColor; gc.lineWidth = lw;
-      edgePath(gc, { x: P, y: P, w: r.w, h: r.h }, k, circle);
-      gc.stroke(); gc.stroke();
-      gc.shadowBlur = 0; gc.shadowColor = 'transparent';
-      this.glowKey = key;
-    }
-    ctx.globalAlpha = f.ring === 'pulse' ? 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(now / 1700 * Math.PI * 2)) : 1;
-    const ox = r.x - P, oy = r.y - P;
-    if (panel) { for (const b of bandRects(r, P, P + k)) if (b.w > 0 && b.h > 0) ctx.drawImage(this.glow, b.x - ox, b.y - oy, b.w, b.h, b.x, b.y, b.w, b.h); }
-    else ctx.drawImage(this.glow, ox, oy);
-    ctx.globalAlpha = 1;
-    /* The tube itself stays lit while its glow breathes: the colour, with a paler core. */
-    edgePath(ctx, r, k, circle);
-    ctx.lineWidth = lw; ctx.strokeStyle = f.ringColor; ctx.stroke();
-    ctx.lineWidth = Math.max(1, lw * 0.4); ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.stroke();
+    ctx.restore();
+  }
+
+  /** A ring colour's paint: the colour itself, or its gradient turned by `angle` round the box's middle. */
+  private paint(ctx: Ctx2D, r: Rect, color: string, angle: number): string | CanvasGradient {
+    const g = gradOf(color);
+    return g ? this.conic(ctx, r, [...g, g[0]], angle) : color;
+  }
+
+  private conic(ctx: Ctx2D, r: Rect, stops: readonly string[], angle: number): CanvasGradient {
+    const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+    let g: CanvasGradient;
+    /* Conic gradients arrived in Chrome 99, Safari 16.4 and Firefox 112; before that a turning linear one. */
+    if (typeof ctx.createConicGradient === 'function') g = ctx.createConicGradient(angle, cx, cy);
+    else { const dx = Math.cos(angle) * r.w / 2, dy = Math.sin(angle) * r.h / 2; g = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy); }
+    stops.forEach((c, i) => g.addColorStop(i / (stops.length - 1), c));
+    return g;
   }
 
   /**
@@ -667,7 +812,7 @@ export class Compositor {
    * clipped to its roundness (corner patches would cut from the background,
    * not from the camera) and its shadow is a sprite copied as four strips.
    */
-  private drawInset(ctx: CanvasRenderingContext2D, sv: HTMLVideoElement | null, r: Rect, k: number, short: number) {
+  private drawInset(ctx: CanvasRenderingContext2D, sv: Feed | null, r: Rect, k: number, short: number) {
     const blur = Math.max(2, Math.round(short * 0.012)), P = blur * 2;
     const key = `${r.w}x${r.h}|${k}|${blur}`;
     if (key !== this.insetKey || !this.inset) {
@@ -683,33 +828,50 @@ export class Compositor {
     for (const b of bandRects(r, P, 0)) if (b.w > 0 && b.h > 0) ctx.drawImage(this.inset, b.x - ox, b.y - oy, b.w, b.h, b.x, b.y, b.w, b.h);
     ctx.save();
     if (k > 0) { roundPath(ctx, r, k); ctx.clip(); }
-    if (sv) ctx.drawImage(sv, r.x, r.y, r.w, r.h);
+    if (sv) ctx.drawImage(pic(sv), r.x, r.y, r.w, r.h);
     else { ctx.fillStyle = '#1b1d26'; ctx.fillRect(r.x, r.y, r.w, r.h); }
     ctx.restore();
   }
 
   private drawBrand(ctx: CanvasRenderingContext2D, W: number, H: number, sc: Scene) {
     this.drawCard(ctx, W, H, sc.brand);
+    this.logoBox = null;
     if (!sc.logo) return;
-    const short = Math.min(W, H);
-    const L = sc.logo, lh = Math.round(short * { S: 0.07, M: 0.1, L: 0.14 }[sc.brand.logoSize]);
-    const lw = Math.min(Math.round(W * 0.3), Math.round(lh * L.width / L.height)), lh2 = Math.round(lw * L.height / L.width);
-    const m = Math.round(short * 0.035), c = CORNERS[sc.brand.logoCorner];
-    const box = { x: Math.round(m + c.x * (W - 2 * m - lw)), y: Math.round(m + c.y * (H - 2 * m - lh2)), w: lw, h: lh2 };
-    ctx.drawImage(L, box.x, box.y, box.w, box.h);
+    const br = sc.brand, L = sc.logo, short = Math.min(W, H);
+    /* The height chosen; a wide logo is held to most of the width. */
+    let lh = Math.max(4, Math.round(short * br.logoScale / 100));
+    let lw = Math.round(lh * L.width / L.height);
+    if (lw > W * 0.8) { lw = Math.round(W * 0.8); lh = Math.round(lw * L.height / L.width); }
+    const box = placeBox(W, H, lw, lh, br.logoX, br.logoY);
+    /* Rounded and see-through once into a sprite per size: a clip and alpha each frame is what a slow computer cannot spare. */
+    const key = `${this.idOf(L)}|${lw}x${lh}|${br.logoRadius}|${br.logoOpacity}`;
+    if (key !== this.logoKey || !this.logoSprite) {
+      this.logoSprite = sizedLayer(this.logoSprite, lw, lh);
+      const g = this.logoSprite.getContext('2d') as Ctx2D;
+      g.clearRect(0, 0, lw, lh);
+      g.save();
+      if (br.logoRadius > 0) { roundPath(g, { x: 0, y: 0, w: lw, h: lh }, Math.min(lw, lh) * br.logoRadius / 100); g.clip(); }
+      g.globalAlpha = br.logoOpacity / 100;
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(L, 0, 0, lw, lh);
+      g.restore();
+      this.logoKey = key;
+    }
+    ctx.drawImage(this.logoSprite, box.x, box.y);
+    this.logoBox = box;
     this.dirtyRect(box, W, H);
   }
 
   /** The title card, drawn once into a sprite per wording and size, then copied each frame. */
   private drawCard(ctx: CanvasRenderingContext2D, W: number, H: number, br: Brand) {
     const title = br.title.trim(), desc = br.desc.trim();
+    this.cardBox = null;
     if (!br.card || (!title && !desc)) return;
-    const short = Math.min(W, H);
-    const key = `${W}x${H}|${title}|${desc}`;
-    if (key !== this.cardKey || !this.card) { this.card = paintCard(W, H, title, desc); this.cardKey = key; }
-    const m = Math.round(short * 0.035);
-    const box = { x: m, y: br.cardPos === 'tl' ? m : H - m - this.card.height, w: this.card.width, h: this.card.height };
+    const key = `${W}x${H}|${title}|${desc}|${br.cardScale}`;
+    if (key !== this.cardKey || !this.card) { this.card = paintCard(W, H, title, desc, br.cardScale / 100); this.cardKey = key; }
+    const box = placeBox(W, H, this.card.width, this.card.height, br.cardX, br.cardY);
     ctx.drawImage(this.card, box.x, box.y);
+    this.cardBox = box;
     this.dirtyRect(box, W, H);
   }
 
@@ -762,7 +924,7 @@ export function frameSize(w: number, h: number, long = 1920): { w: number; h: nu
  */
 export function bitrateFor(w: number, h: number, fps = 30, quality: Quality = 'standard'): number {
   const q = QUALITY[quality];
-  return Math.round(Math.min(q.max, Math.max(1e6, w * h * 30 * q.bpp * Math.pow(fps / 30, 0.6))));
+  return Math.round(Math.min(q.max, Math.max(q.min, w * h * 30 * q.bpp * Math.pow(fps / 30, 0.6))));
 }
 
 /* ── Where the pointer went ────────────────────────────────────────────── */
@@ -830,7 +992,7 @@ export class PointerLog {
   reset() { this.looks = 0; this.last = -1e9; }
 
   /** One look, at most eight a second; `now` is the clock (ms), `t` the recording's time (s). */
-  look(v: HTMLVideoElement, now: number, t: number) {
+  look(v: Feed, now: number, t: number) {
     if (now - this.last < 125) return;
     const vw = v.videoWidth, vh = v.videoHeight;
     if (!vw || !vh) return;
@@ -848,7 +1010,7 @@ export class PointerLog {
     const c = this.c;
     if (!c) return;
     let px: Uint8ClampedArray;
-    try { c.drawImage(v, 0, 0, SW, SH); px = c.getImageData(0, 0, SW, SH).data; } catch { return; }
+    try { c.drawImage(pic(v), 0, 0, SW, SH); px = c.getImageData(0, 0, SW, SH).data; } catch { return; }
     /* The new look goes into the oldest buffer; the last look is what it is compared with. */
     const old = this.cur, older = this.prev, g = this.prev2;
     this.cur = g; this.prev = old; this.prev2 = older;
@@ -1032,7 +1194,11 @@ export function readPrefs(raw: unknown, base: Prefs = defaultPrefs()): Prefs {
   const str = (v: unknown, max: number) => typeof v === 'string' ? v.slice(0, max) : '';
   const bgOf = (b: Record<string, unknown>): Backdrop => b.kind === 'color' && typeof b.color === 'string' && /^#[0-9a-f]{6}$/i.test(b.color) ? { kind: 'color', color: b.color }
     : b.kind === 'gradient' && typeof b.id === 'string' && b.id in GRADIENTS ? { kind: 'gradient', id: b.id as GradientId }
-      : { kind: 'none' };
+      : b.kind === 'scene' && isScene(b.id) ? { kind: 'scene', id: b.id }
+        : { kind: 'none' };
+  /* Saved before the logo and card could sit anywhere: a corner and S/M/L, read as the same place and size. */
+  const oldCorner = CORNERS[br.logoCorner as Corner] as { x: number; y: number } | undefined;
+  const oldSize = ({ S: 7, M: 10, L: 14 } as Record<string, number>)[br.logoSize as string];
   const bg = bgOf(obj(l.bg)), last = bgOf(obj(o.lastBg));
   return {
     fps: pick(o.fps, FPS, base.fps),
@@ -1043,19 +1209,24 @@ export function readPrefs(raw: unknown, base: Prefs = defaultPrefs()): Prefs {
     /* Saved before there was a switch: the background then in use is the one to bring back. */
     lastBg: last.kind !== 'none' ? last : bg.kind !== 'none' ? bg : base.lastBg,
     layout: pick(o.layout, LAYOUTS, base.layout),
-    frame: { shape: pick(fr.shape, SHAPES, base.frame.shape), ring: pick(fr.ring, RINGS, base.frame.ring), ringColor: pick(fr.ringColor, RING_COLORS, base.frame.ringColor) },
+    frame: { shape: pick(fr.shape, SHAPES, base.frame.shape), ring: pick(fr.ring, RINGS, base.frame.ring), ringColor: okRingColor(fr.ringColor) ? fr.ringColor : base.frame.ringColor },
     cursor: pick(o.cursor, ['always', 'motion', 'never'] as CursorMode[], base.cursor),
     float: typeof o.float === 'boolean' ? o.float : base.float,
     fx: {
       bright: num(f.bright, -50, 50, 0), contrast: num(f.contrast, -50, 50, 0), sat: num(f.sat, -50, 50, 0), warmth: num(f.warmth, -50, 50, 0),
+      hue: num(f.hue, -50, 50, 0), auto: f.auto === true,
       soften: num(f.soften, 0, 100, 0), night: f.night === true,
-      /* A picture is never remembered, so neither is choosing one. */
-      bg: pick(f.bg, ['none', 'blur', 'remove'] as CamBg[], 'none'), blur: num(f.blur, 0, 100, NO_FX.blur),
+      /* The person's own picture is never remembered, so neither is choosing one; a ready-made scene is. */
+      bg: pick(f.bg, ['none', 'blur', 'remove', 'scene'] as CamBg[], 'none'), blur: num(f.blur, 0, 100, NO_FX.blur),
       bgColor: typeof f.bgColor === 'string' && /^#[0-9a-f]{6}$/i.test(f.bgColor) ? f.bgColor : NO_FX.bgColor,
+      scene: sceneOr(f.scene),
     },
     brand: {
-      card: br.card === true, title: str(br.title, 60), desc: str(br.desc, 140), cardPos: pick(br.cardPos, ['bl', 'tl'] as const, 'bl'),
-      logoCorner: pick(br.logoCorner, Object.keys(CORNERS) as Corner[], NO_BRAND.logoCorner), logoSize: pick(br.logoSize, ['S', 'M', 'L'] as BubbleSize[], 'M'),
+      card: br.card === true, title: str(br.title, 60), desc: str(br.desc, 140),
+      cardX: num(br.cardX, 0, 1, NO_BRAND.cardX), cardY: num(br.cardY, 0, 1, br.cardPos === 'tl' ? 0 : NO_BRAND.cardY), cardScale: num(br.cardScale, 50, 200, 100),
+      logoX: num(br.logoX, 0, 1, oldCorner?.x ?? NO_BRAND.logoX), logoY: num(br.logoY, 0, 1, oldCorner?.y ?? NO_BRAND.logoY),
+      logoScale: num(br.logoScale, 3, 40, oldSize ?? NO_BRAND.logoScale), logoRadius: num(br.logoRadius, 0, 50, 0), logoOpacity: num(br.logoOpacity, 10, 100, 100),
+      logoCut: br.logoCut === true,
     },
     studio: typeof o.studio === 'boolean' ? o.studio : base.studio,
     isolate: typeof o.isolate === 'boolean' ? o.isolate : base.isolate,

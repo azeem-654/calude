@@ -148,10 +148,17 @@ export function TranscriptPanel({ ctx, sentences }: { ctx: EditorCtx; sentences:
   }, [sentences, words, speakers, clip?.s, clip?.e]); // eslint-disable-line react-hooks/exhaustive-deps
   /* A small frame at each scene's start, from the filmstrip the engine made. */
   const strip = ctx.view.source.filmstrip;
+  /* One style object per tile, kept: a new object each render told every
+     paragraph's memo it had changed, so the whole transcript — thousands of
+     words — redrew ten times a second while the video played, and the
+     preview stuttered under it. */
+  const thumbCache = useMemo(() => new Map<number, React.CSSProperties>(), [strip?.url, strip?.tiles, strip?.every, strip?.w, strip?.h]); // eslint-disable-line react-hooks/exhaustive-deps
   const thumbAt = (t: number): React.CSSProperties | null => {
     if (!strip) return null;
     const k = Math.min(strip.tiles - 1, Math.max(0, Math.floor(t / strip.every)));
-    return { backgroundImage: `url("${strip.url}")`, backgroundSize: `${strip.tiles * 100}% 100%`, backgroundPosition: `${strip.tiles > 1 ? (k / (strip.tiles - 1)) * 100 : 0}% 0`, aspectRatio: `${strip.w} / ${strip.h}` };
+    let st = thumbCache.get(k);
+    if (!st) { st = { backgroundImage: `url("${strip.url}")`, backgroundSize: `${strip.tiles * 100}% 100%`, backgroundPosition: `${strip.tiles > 1 ? (k / (strip.tiles - 1)) * 100 : 0}% 0`, aspectRatio: `${strip.w} / ${strip.h}` }; thumbCache.set(k, st); }
+    return st;
   };
 
   const hits = useMemo(() => {

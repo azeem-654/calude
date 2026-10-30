@@ -414,7 +414,10 @@ async function buildPrepare(env: Env, origin: string, p: ProjectRow) {
   const prefix = projectPrefix(p.account_id, p.id);
   return {
     op: 'prepare' as const,
-    params: { chunkSeconds: 180, proxyHeight: 540, maxDuration: 3 * 3600, maxBytes: 12e9 },
+    /* The editor's copy at 720 lines and CRF 23: at 540 / 28 a screen recording's text was a blur in the
+       editor's preview. About twice the bytes, still a fraction of the source; the engine never makes it
+       taller than the recording. Only the preview — never what is exported. */
+    params: { chunkSeconds: 180, proxyHeight: 720, proxyCrf: 23, maxDuration: 3 * 3600, maxBytes: 12e9 },
     inputs: { source: await fileUrl(env, origin, p.account_id, src.key, 8 * 3600) },
     upload: await uploadPrefixUrl(env, origin, p.account_id, `${prefix}prep/`, 8 * 3600),
   };

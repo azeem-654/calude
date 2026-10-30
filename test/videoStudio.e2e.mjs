@@ -323,6 +323,8 @@ for (let i = 1, since = prog[0]?.t ?? 0; i < prog.length; i++) { if (prog[i].sho
 ok('…and never looks frozen: the number moves at least every 6 seconds', still < 6000, { still, stillAt });
 console.log(`  (progress screen: ${prog.length} samples over ${Math.round((Date.now() - tP0) / 1000)} s, longest still ${still} ms at ${stillAt})`);
 await page.getByTestId('vs-editor').waitFor({ timeout: 30_000 });
+/* The transcript is fetched after the editor draws: waited for, not counted the instant the editor appears. */
+await page.getByTestId('vs-transcript').waitFor({ timeout: 30_000 }).catch(() => {});
 ok('4 · the editor opens when the video and its transcript are ready', (await page.locator('.vs-w').count()) > 50 || (await page.getByTestId('vs-transcript').count()) === 1);
 
 /* Wait for the whole package. The open page polls, which advances the jobs. */
@@ -383,10 +385,23 @@ ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and 
     return (await fetch(`${u}&op=mpu-complete&uploadId=${encodeURIComponent(uploadId)}`, { method: 'POST', body: JSON.stringify({ parts }) })).ok;
   };
   ok('(the proxy in R2 is now the same picture as VP9, written through the Worker like an engine output)', await putProxy(fs.readFileSync(webm), 'video/webm'));
-  const src0 = await page.getByTestId('vs-video').getAttribute('data-src');
+  /*
+   * Watched in a browser of its own. The editor already open here has read
+   * the H.264 proxy from the same signed link (stable within the hour), and
+   * Chromium's media player keeps what it read in the page's memory — not
+   * in the HTTP cache, so clearing that and reloading did nothing: it kept
+   * its first 3 MB of MP4, asked only for the rest, and found WebM bytes
+   * after an MP4 head ("no supported streams"). The preview never started
+   * and every check after it failed with it. A fresh browser context has no
+   * such memory; it signs in and opens the same project.
+   */
+  const pctx = await br.newContext({ viewport: { width: 1280, height: 900 } });
+  const pv = steady(await pctx.newPage());
+  await signIn(pv, OWNER);
+  const src0 = (await v('get', { projectId: PID })).source.proxyUrl;
   /* What the Worker answered for the proxy while it played. */
   const answers = [];
-  page.on('response', r => { if (r.url() === src0 && r.request().headers().range) answers.push({ status: r.status(), range: r.headers()['content-range'] ?? '' }); });
+  pv.on('response', r => { if (r.url() === src0 && r.request().headers().range) answers.push({ status: r.status(), range: r.headers()['content-range'] ?? '' }); });
   /* A cleaned recording has a cut every few seconds. Twenty more — the
      second word of every sentence in the first minute and a half — so the
      preview has to cross well over ten cuts while it is watched. */
@@ -395,14 +410,12 @@ ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and 
     .map(w => ({ op: 'cut.add', s: Math.round((w.s - 0.04) * 100) / 100, e: Math.round((w.e + 0.04) * 100) / 100, reason: 'Many cuts (test)' }));
   const many = await v('edit', { projectId: PID, baseVersion: base0.docVersion, ops: extra, note: 'many cuts' });
   ok('(twenty more cuts in the first minute and a half)', many.success && extra.length >= 15, { n: extra.length, many: many.error });
-  /* The browser kept the first megabyte of the H.264 proxy from earlier visits (the same signed link within the hour); the bytes changed under it only because this test changed them. */
-  { const cdp = await ctx.newCDPSession(page); await cdp.send('Network.clearBrowserCache'); await cdp.detach(); }
-  await page.reload({ waitUntil: 'networkidle' });
-  await page.getByTestId('vs-play').waitFor({ timeout: 15_000 });
-  await page.waitForTimeout(1500);
+  await pv.goto(`${B}/video-studio/${PID}`, { waitUntil: 'networkidle' });
+  await pv.getByTestId('vs-play').waitFor({ timeout: 15_000 });
+  await pv.waitForTimeout(1500);
   /* What a viewer would notice: the element on screen waiting for data, or
      a gap between two frames it presented, while it is meant to be playing. */
-  await page.evaluate(() => {
+  await pv.evaluate(() => {
     const vids = [...document.querySelectorAll('[data-testid="vs-video"] video, video[data-testid="vs-video"]')];
     const shown = el => vids.length === 1 || el.classList.contains('on');
     const m = window.__vsm = { waiting: 0, frames: [], on: false };
@@ -412,13 +425,13 @@ ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and 
       el.requestVideoFrameCallback(cb);
     }
   });
-  const shownTime = () => page.evaluate(() => { const d = document.querySelector('[data-testid="vs-video"]'); const e = d.matches('video') ? d : d.querySelector('video.on'); return { t: e.currentTime, paused: e.paused, src: d.dataset.src }; });
-  await page.evaluate(() => { window.__vsm.on = true; window.__vsm.t0 = performance.now(); });
-  await page.getByTestId('vs-play').click();
+  const shownTime = () => pv.evaluate(() => { const d = document.querySelector('[data-testid="vs-video"]'); const e = d.matches('video') ? d : d.querySelector('video.on'); return { t: e.currentTime, paused: e.paused, src: d.dataset.src }; });
+  await pv.evaluate(() => { window.__vsm.on = true; window.__vsm.t0 = performance.now(); });
+  await pv.getByTestId('vs-play').click();
   const cuts = (await v('get', { projectId: PID })).doc.cuts.filter(c => c.state === 'approved');
   const samples = [];
   for (let i = 0; i < 160; i++) { samples.push(await shownTime()); await sleep(250); }
-  const meter = await page.evaluate(() => { const m = window.__vsm; m.on = false; const d = document.querySelector('[data-testid="vs-video"]'); return { waiting: m.waiting, frames: m.frames, swaps: d.dataset.swaps ?? '-', waits: d.dataset.waits ?? '-' }; });
+  const meter = await pv.evaluate(() => { const m = window.__vsm; m.on = false; const d = document.querySelector('[data-testid="vs-video"]'); return { waiting: m.waiting, frames: m.frames, swaps: d.dataset.swaps ?? '-', waits: d.dataset.waits ?? '-' }; });
   const last = samples[samples.length - 1];
   const inCut = samples.filter(x => !x.paused && cuts.some(c => x.t > c.s + 0.2 && x.t < c.e - 0.2));
   const crossed = cuts.filter(c => c.s > samples[0].t && c.e < last.t).length;
@@ -438,9 +451,10 @@ ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and 
   ok('…crossing more than ten cuts', crossed >= 10, crossed);
   ok('…without a stall: the picture never waits for data and no two frames are more than 250 ms apart', meter.waiting === 0 && long.length === 0 && meter.frames.length > 400, { waiting: meter.waiting, long: long.map(Math.round).slice(0, 8), frames: meter.frames.length });
   ok('…and never shows what was cut (the opening silence, the fillers, the twenty words)', inCut.length === 0 && samples[2].t > 2, { inCut: inCut.slice(0, 3), first: samples.slice(0, 3) });
-  const label = await page.getByTestId('vs-time').innerText();
+  const label = await pv.getByTestId('vs-time').innerText();
   ok('…with the edited video\'s clock on the transport, to a tenth of a second (00:12.3 / 18:40.0)', /^\d\d:\d\d\.\d \/ \d\d:\d\d\.\d$/.test(label.trim()), label);
-  await page.getByTestId('vs-play').click();
+  await pv.getByTestId('vs-play').click();
+  await pctx.close();
   ok('(the proxy is put back as it was)', await putProxy(fs.readFileSync(proxyFile), 'video/mp4'));
   await v('goto_version', { projectId: PID, version: base0.docVersion });
   await page.reload({ waitUntil: 'networkidle' });

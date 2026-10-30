@@ -42,18 +42,21 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import {
   MonitorPlay, Camera, Mic, MicOff, Pause, Play, Square, Circle, Download, RotateCcw, Trash2, UploadCloud, X, AlertCircle, Check, Loader, Volume2, Info,
-  ImagePlus, RefreshCw, VideoOff, PictureInPicture2, MousePointer2,
+  ImagePlus, RefreshCw, VideoOff, PictureInPicture2, MousePointer2, Wand2, ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
 } from 'lucide-react';
 import { ProjectProgress } from './ProcessingProgress';
 import { createVideoProject, uploadVideo, renameVideoProject, deleteVideoProject, editVideo, saveScreenMeta, bytesLabel, type VideoRequest, type ScreenMeta } from '../../services/videoStudio';
 import {
   support, mediaError, fileSlug, bubbleAt, frameSize, bitrateFor, finishFile, startClock, stopStreams, msClock, CORNERS,
   Compositor, PointerLog, LayoutLog, screenMeta, layoutRects, loadBackdrop, readPrefs, defaultPrefs, slowComputer, gradientCss,
-  FPS, RES, RES_LABEL, CAM_RES, COLORS, GRADIENTS, LAYOUTS, SHAPES, RINGS, RING_COLORS,
+  FPS, RES, RES_LABEL, CAM_RES, COLORS, GRADIENTS, LAYOUTS, SHAPES, RINGS_STILL, RINGS_MOVING, RING_COLORS, RING_GRADIENTS, ringCss, placeAt,
   type RecMode, type Bubble, type Corner, type BubbleSize, type Prefs, type Look, type Res, type Quality, type CamRes, type CursorMode, type GradientId, type Brand,
-  type Layout, type CamShape, type Ring, type CamFrame,
+  type Layout, type CamShape, type Ring, type CamFrame, type RingGradient,
 } from './recorder';
 import { canGrade, NO_FX, type CamFx, type CamBg } from './cameraFx';
+import { SCENES, SCENE_LABEL, sceneThumb } from './scenes';
+import { feedOf, type TrackFeed } from './trackFeed';
+import { readPicture, cutOutBackground } from './pictureCut';
 
 type Phase = 'setup' | 'starting' | 'countdown' | 'recording' | 'paused' | 'finishing' | 'review';
 type SaveState = { state: 'idle' } | { state: 'saving'; sent: number; total: number } | { state: 'saved'; projectId: string } | { state: 'failed'; error: string };
@@ -75,9 +78,9 @@ const MODES: { key: RecMode; label: string; help: string; icon: typeof MonitorPl
   { key: 'cam', label: 'Camera only', help: 'Just you, no screen', icon: Camera },
 ];
 const CORNER_LABEL: Record<Corner, string> = { tl: 'Top left', tr: 'Top right', bl: 'Bottom left', br: 'Bottom right' };
-const QUALITY_LABEL: Record<Quality, string> = { light: 'Light', standard: 'Standard', high: 'High' };
+const QUALITY_LABEL: Record<Quality, string> = { saver: 'Data saver', light: 'Light', standard: 'Standard', high: 'High', best: 'Best' };
 const CURSOR_LABEL: Record<CursorMode, string> = { always: 'Always shown', motion: 'Only while moving', never: 'Hidden' };
-const CAM_LABEL: Record<CamRes, string> = { '480': '480p', '720': '720p', '1080': '1080p' };
+const CAM_LABEL: Record<CamRes, string> = { '240': '240p', '360': '360p', '480': '480p', '540': '540p', '720': '720p', '1080': '1080p' };
 const gradientLabel = (id: GradientId) => id[0].toUpperCase() + id.slice(1);
 const LAYOUT_LABEL: Record<Layout, string> = { bubble: 'Bubble', 'speaker-left': 'Speaker left', 'speaker-right': 'Speaker right', presenter: 'Presenter', split: 'Side by side' };
 const LAYOUT_HELP: Record<Layout, string> = {
@@ -88,7 +91,11 @@ const LAYOUT_HELP: Record<Layout, string> = {
   split: 'You and your screen side by side, the same size.',
 };
 const SHAPE_LABEL: Record<CamShape, string> = { circle: 'Circle', square: 'Square', rounded: 'Rounded square' };
-const RING_LABEL: Record<Ring, string> = { none: 'No ring', white: 'White', neon: 'Neon', gradient: 'Turning gradient', pulse: 'Pulsing neon' };
+const RING_LABEL: Record<Ring, string> = {
+  none: 'No ring', white: 'White line', solid: 'Solid', double: 'Double', dashed: 'Dashed', neon: 'Neon',
+  gradient: 'Turning gradient', pulse: 'Pulsing neon', rainbow: 'Rainbow', comet: 'Comet', dots: 'Orbiting dots', march: 'Marching dashes', voice: 'Moves with your voice',
+};
+const ringGradLabel = (id: RingGradient) => id[0].toUpperCase() + id.slice(1);
 
 /* A per-browser convenience: the frame rate, quality and look somebody chose last time. Never the picture. */
 const PREFS_KEY = 'crm_rec_prefs';
@@ -159,7 +166,6 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   const phaseRef = useRef<Phase>('setup');
   const bubbleRef = useRef(bubble);
   const modeRef = useRef(mode);
-  const drag = useRef(false);
   const project = useRef<{ id: string; name: string } | null>(null);
   const file = useRef<File | null>(null);
   const upload = useRef<AbortController | null>(null);
@@ -186,6 +192,17 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   const camBgFile = useRef<HTMLInputElement>(null);
   const logoFile = useRef<HTMLInputElement>(null);
   const stats = useRef({ last: 0, late: 0, ticks: 0, warned: false, n: 0 });
+  /* The screen and the camera read frame by frame from their tracks (trackFeed.ts says why); null where a browser cannot, and the element is drawn. */
+  const screenFeed = useRef<TrackFeed | null>(null);
+  const camFeed = useRef<TrackFeed | null>(null);
+  /** The microphone's level, smoothed (the voice ring). */
+  const level = useRef(0);
+  /** The logo as read (before any background is taken out), so the cut can be switched off again. */
+  const logoBase = useRef<HTMLCanvasElement | null>(null);
+  /** What is being dragged on the preview. */
+  const dragWhat = useRef<{ what: 'bubble' | 'logo' | 'card'; dx: number; dy: number } | null>(null);
+  const [autoSays, setAutoSays] = useState('');
+  const [logoNote, setLogoNote] = useState('');
   const fitKey = useRef('');
   phaseRef.current = phase;
   bubbleRef.current = bubble;
@@ -196,8 +213,8 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   const setPref = <K extends keyof Prefs>(k: K, v: Prefs[K]) => setPrefs(p => ({ ...p, [k]: v }));
   const setLook = (l: Partial<Look>) => {
     if (l.bg && l.bg.kind !== 'none') lastImage.current = l.bg.kind === 'image';
-    /* A colour or gradient is remembered as the one to bring back; a picture never is (it is not kept). */
-    const keep = l.bg && (l.bg.kind === 'color' || l.bg.kind === 'gradient') ? { lastBg: l.bg } : {};
+    /* A colour, gradient or ready-made picture is remembered as the one to bring back; the person's own picture never is (it is not kept). */
+    const keep = l.bg && (l.bg.kind === 'color' || l.bg.kind === 'gradient' || l.bg.kind === 'scene') ? { lastBg: l.bg } : {};
     setPrefs(p => ({ ...p, ...keep, look: { ...p.look, ...l } }));
   };
   const setFrame = (f: Partial<CamFrame>) => setPrefs(p => ({ ...p, frame: { ...p.frame, ...f } }));
@@ -249,7 +266,12 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     return audio.current;
   };
 
-  const stopCam = () => { stopStreams(cam.current); cam.current = null; attach(camVid.current, null); setCamOn(false); };
+  const setFeed = (which: 'screen' | 'cam', s: MediaStream | null) => {
+    const ref = which === 'screen' ? screenFeed : camFeed;
+    ref.current?.close();
+    ref.current = feedOf(s);
+  };
+  const stopCam = () => { stopStreams(cam.current); cam.current = null; setFeed('cam', null); attach(camVid.current, null); setCamOn(false); };
   const stopMic = () => { stopStreams(micS.current); micS.current = null; meter.current = null; setMicOn(false); };
 
   /** The camera and/or microphone, asked for together (one browser prompt) when both are needed. */
@@ -271,6 +293,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
       if (c) {
         cam.current = new MediaStream(s.getVideoTracks());
         attach(camVid.current, cam.current);
+        setFeed('cam', cam.current);
         cam.current.getVideoTracks()[0]?.addEventListener('ended', () => {
           setCamOn(false);
           if (modeRef.current === 'cam' && (phaseRef.current === 'recording' || phaseRef.current === 'paused')) stop('The camera stopped (unplugged or taken by another app), so the recording stopped.');
@@ -304,6 +327,28 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   useEffect(() => { if (phaseRef.current === 'setup' && mode === 'screen' && cam.current) stopCam(); }, [mode]);
   useEffect(() => { if (phaseRef.current === 'setup' && !mic && micS.current) stopMic(); }, [mic]);
 
+  /*
+   * The camera and microphone this mode needs are switched on as soon as the
+   * recorder is open (the owner's call): the preview shows the person, in
+   * place, without a "Check camera" press first. Asked once per mode and
+   * choice — a refusal is said, and the button below asks again.
+   */
+  const autoAsked = useRef('');
+  useEffect(() => {
+    if (phase !== 'setup' || !sup.devices || !sup.secure) return;
+    const want = `${mode}|${mic}`;
+    if (autoAsked.current === want) return;
+    autoAsked.current = want;
+    if ((needsCam && !live(cam.current)) || (mic && !live(micS.current))) void ensureDevices(needsCam, mic);
+  }, [phase, mode, mic]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* What the auto look is doing, said in words, once a second while it runs. */
+  useEffect(() => {
+    if (!prefs.fx.auto || !camOn) { setAutoSays(''); return; }
+    const t = setInterval(() => setAutoSays(comp.current.fx.autoSummary()), 1000);
+    return () => clearInterval(t);
+  }, [prefs.fx.auto, camOn]);
+
   /* ── The frame clock: the composite, the pointer log and the microphone meter ── */
   /* An opaque canvas: the browser skips blending it with the page, a measurable saving per frame on a small graphics chip. */
   const getCtx = () => {
@@ -323,8 +368,8 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     const capturingNow = ph === 'countdown' || ph === 'recording' || ph === 'paused';
     if (cv && ph !== 'review' && ph !== 'finishing') {
       const camOnly = modeRef.current === 'cam';
-      const scr = !camOnly && display.current ? screenVid.current : null;
-      const face = modeRef.current !== 'screen' && live(cam.current) && !camHiddenRef.current ? camVid.current : null;
+      const scr = !camOnly && display.current ? screenFeed.current ?? screenVid.current : null;
+      const face = modeRef.current !== 'screen' && live(cam.current) && !camHiddenRef.current ? camFeed.current ?? camVid.current : null;
       /* Camera only: the frame takes the camera's own shape while choosing, so what is seen is what is recorded. */
       if (camOnly && face?.videoWidth && !capturingNow) {
         const fs = frameSize(face.videoWidth, face.videoHeight);
@@ -342,7 +387,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
             screen: scr, cam: face, camOnly, look: p.look, image: p.look.bg.kind === 'image' ? imageRef.current : null,
             layout: modeRef.current === 'screen-cam' ? p.layout : 'bubble',
             bubble: bubbleRef.current, frame: p.frame, fx: p.fx, camBg: p.fx.bg === 'image' ? camBgRef.current : null,
-            brand: p.brand, logo: logoRef.current, now,
+            brand: p.brand, logo: logoRef.current, level: level.current, now,
           });
           canvasTrack.current?.requestFrame();
         }
@@ -377,6 +422,9 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
       let peak = 0;
       for (const v of mt.buf) peak = Math.max(peak, Math.abs(v - 128));
       el.style.width = `${Math.min(100, Math.round(peak / 128 * 160))}%`;
+      /* Quick up, slow down — the voice ring swells with a word and settles between them. */
+      const lv = Math.min(1, peak / 128 * 2.2);
+      level.current = lv > level.current ? lv : level.current * 0.85 + lv * 0.15;
     }
   };
   useEffect(() => startClock(prefs.fps, () => tick.current()), [prefs.fps]);
@@ -390,6 +438,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   const releaseCapture = () => {
     stopStreams(display.current, cam.current, micS.current, canvasStream.current, mixOut.current?.stream);
     display.current = cam.current = micS.current = canvasStream.current = null;
+    setFeed('screen', null); setFeed('cam', null);
     mixOut.current = null; meter.current = null; canvasTrack.current = null; dispSrc.current = null;
     attach(screenVid.current, null); attach(camVid.current, null);
     setCamOn(false); setMicOn(false); setMicMuted(false); setCamHidden(false);
@@ -403,6 +452,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     if (r && r.state !== 'inactive') { r.onstop = null; try { r.stop(); } catch { /* gone */ } }
     upload.current?.abort();
     stopStreams(display.current, cam.current, micS.current, canvasStream.current, mixOut.current?.stream);
+    screenFeed.current?.close(); camFeed.current?.close();
     if (audio.current && audio.current.state !== 'closed') void audio.current.close().catch(() => {});
     if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     try { pipRef.current?.close(); } catch { /* gone */ }
@@ -491,7 +541,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     setError(''); setNote('');
     const me = ++run.current;
     setPhase('starting');
-    const back = (msg: string) => { if (msg) setError(msg); stopStreams(display.current); display.current = null; attach(screenVid.current, null); setPhase('setup'); };
+    const back = (msg: string) => { if (msg) setError(msg); stopStreams(display.current); display.current = null; setFeed('screen', null); attach(screenVid.current, null); setPhase('setup'); };
     /* Opened first, while this press still counts as one: the share picker uses it up. If the picker then
        refuses for want of a press, the message asks for Start again — and the window is already open. */
     if (prefs.float && sup.pip) await openPip();
@@ -510,6 +560,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     if (run.current !== me) return;
     if (shared && screenVid.current) {
       attach(screenVid.current, shared);
+      setFeed('screen', shared);
       await metadata(screenVid.current);
       if (canvasRef.current) {
         const s = frameSize(screenVid.current.videoWidth, screenVid.current.videoHeight, RES[prefs.res]);
@@ -628,6 +679,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
       display.current = s;
       s.getVideoTracks()[0]?.addEventListener('ended', shareEnded);
       attach(screenVid.current, s);
+      setFeed('screen', s);
       connectScreenSound(s);
       /* A different picture: no comparing across the switch. */
       plog.current.reset();
@@ -661,13 +713,26 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     if (!f) return;
     if (!f.type.startsWith('image/')) { setError('That file is not a picture. Choose a PNG, JPG or WebP.'); return; }
     try {
-      const bmp = await loadBackdrop(f);
       const shown = { url: URL.createObjectURL(f), name: f.name };
-      if (which === 'camBg') { camBgRef.current = bmp; setCamBg(shown); setFx({ bg: 'image' }); }
-      else { logoRef.current = bmp; setLogo(shown); }
+      if (which === 'camBg') { camBgRef.current = await loadBackdrop(f); setCamBg(shown); setFx({ bg: 'image' }); }
+      else {
+        logoBase.current = await readPicture(f);
+        await cutLogo(prefsRef.current.brand.logoCut);
+        setLogo(shown);
+      }
       setError('');
     } catch { setError('That picture could not be read. Try a PNG, JPG or WebP.'); }
   };
+  /** The logo drawn into the recording: as read, or with its plain background taken out (pictureCut.ts — the editor's own cut). */
+  const cutLogo = async (cut: boolean) => {
+    const base = logoBase.current;
+    if (!base) return;
+    const r = cut ? cutOutBackground(base, 40) : { canvas: base, changed: false };
+    logoRef.current = await createImageBitmap(r.canvas);
+    setLogoNote(cut && !r.changed ? 'No plain background was found round the edge of this logo, so nothing was taken out (a photo behind a logo is not removed).' : '');
+  };
+  const setLogoCut = (cut: boolean) => { setBrand({ logoCut: cut }); void cutLogo(cut); };
+  const dropLogo = () => { logoRef.current = null; logoBase.current = null; setLogo(null); setLogoNote(''); };
   const removeImage = () => {
     /* The background stays on, as the switch says: the last colour or gradient comes back. */
     if (prefs.look.bg.kind === 'image') setLook({ bg: prefs.lastBg });
@@ -683,6 +748,8 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     urlRef.current = '';
     setResult(null); setSave({ state: 'idle' }); setName(''); setNote(''); setError('');
     project.current = null; file.current = null; meta.current = null; metaSent.current = '';
+    /* Back to choosing: the camera comes on again for the next take. */
+    autoAsked.current = '';
     setPhase('setup');
   };
   const retake = () => {
@@ -745,17 +812,63 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     } finally { setBusy(false); }
   };
 
-  /* ── Dragging the bubble on the preview ── */
-  const dragTo = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const cv = canvasRef.current, cv2 = camVid.current;
-    if (!cv || !cv2?.videoWidth) return;
+  /* ── Dragging on the preview: the logo or the title card where they are grabbed, the bubble anywhere else ── */
+  const canvasPoint = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const cv = canvasRef.current;
+    if (!cv) return null;
     const box = cv.getBoundingClientRect();
     /* The canvas is drawn object-fit: contain — find the picture inside its box. */
     const s = Math.min(box.width / cv.width, box.height / cv.height);
     const ox = (box.width - cv.width * s) / 2, oy = (box.height - cv.height * s) / 2;
-    const px = (e.clientX - box.left - ox) / s, py = (e.clientY - box.top - oy) / s;
-    setBubble(b => ({ ...b, ...bubbleAt(cv.width, cv.height, b, cv2.videoWidth / cv2.videoHeight, px, py, prefsRef.current.fx.bg === 'remove') }));
+    return { x: (e.clientX - box.left - ox) / s, y: (e.clientY - box.top - oy) / s, W: cv.width, H: cv.height };
   };
+  const inBox = (p: { x: number; y: number }, r: { x: number; y: number; w: number; h: number } | null) => !!r && p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+  const dragStart = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const p = canvasPoint(e);
+    if (!p) return;
+    const c = comp.current;
+    const hit = inBox(p, c.logoBox) ? 'logo' : inBox(p, c.cardBox) ? 'card' : canDrag ? 'bubble' : null;
+    if (!hit) return;
+    const r = hit === 'logo' ? c.logoBox! : hit === 'card' ? c.cardBox! : null;
+    dragWhat.current = { what: hit, dx: r ? p.x - r.x : 0, dy: r ? p.y - r.y : 0 };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragTo(e);
+  };
+  const dragTo = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const d = dragWhat.current, p = canvasPoint(e);
+    if (!d || !p) return;
+    if (d.what === 'bubble') {
+      const cv2 = camVid.current;
+      if (!cv2?.videoWidth) return;
+      setBubble(b => ({ ...b, ...bubbleAt(p.W, p.H, b, cv2.videoWidth / cv2.videoHeight, p.x, p.y, prefsRef.current.fx.bg === 'remove') }));
+      return;
+    }
+    const r = d.what === 'logo' ? comp.current.logoBox : comp.current.cardBox;
+    if (!r) return;
+    const at = placeAt(p.W, p.H, r.w, r.h, p.x - d.dx, p.y - d.dy);
+    setBrand(d.what === 'logo' ? { logoX: at.x, logoY: at.y } : { cardX: at.x, cardY: at.y });
+  };
+  /** The pointer's look over the preview: a hand over what can be dragged. */
+  const hover = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (dragWhat.current) return;
+    const p = canvasPoint(e);
+    const over = !!p && (inBox(p, comp.current.logoBox) || inBox(p, comp.current.cardBox));
+    e.currentTarget.style.cursor = over || canDrag ? 'grab' : 'default';
+  };
+  /** Arrow nudges for the logo or card: one per cent of the room, five with Shift. */
+  const nudge = (what: 'logo' | 'card', dx: number, dy: number, big: boolean) => {
+    const k = big ? 0.05 : 0.01, c = (v: number) => Math.min(1, Math.max(0, v));
+    setPrefs(p => ({ ...p, brand: what === 'logo' ? { ...p.brand, logoX: c(p.brand.logoX + dx * k), logoY: c(p.brand.logoY + dy * k) } : { ...p.brand, cardX: c(p.brand.cardX + dx * k), cardY: c(p.brand.cardY + dy * k) } }));
+  };
+  /* A plain function, not a component: a component made inside render is a new type each render, remounted, and the pressed arrow loses focus. */
+  const nudgeRow = (what: 'logo' | 'card', label: string) => (
+    <span className="vs-rec-nudge" role="group" aria-label={`Move the ${label}`}>
+      <button type="button" className="vs-chip" onClick={e => nudge(what, -1, 0, e.shiftKey)} aria-label={`Move the ${label} left`} data-testid={`rec-${what}-left`}><ArrowLeft size={13} /></button>
+      <button type="button" className="vs-chip" onClick={e => nudge(what, 0, -1, e.shiftKey)} aria-label={`Move the ${label} up`}><ArrowUp size={13} /></button>
+      <button type="button" className="vs-chip" onClick={e => nudge(what, 0, 1, e.shiftKey)} aria-label={`Move the ${label} down`}><ArrowDown size={13} /></button>
+      <button type="button" className="vs-chip" onClick={e => nudge(what, 1, 0, e.shiftKey)} aria-label={`Move the ${label} right`}><ArrowRight size={13} /></button>
+    </span>
+  );
 
   /* ── What is on screen ── */
   const corner = (Object.keys(CORNERS) as Corner[]).find(k => CORNERS[k].x === bubble.x && CORNERS[k].y === bubble.y);
@@ -774,8 +887,10 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   const frameHint = cutout ? 'With the background behind you removed, you stand over the screen with no frame, so the shape and ring are not drawn.'
     : layout === 'presenter' && !framed ? 'With the background off you fill the whole video, so there is no frame or ring round you; switch the background on to frame yourself.'
       : layout !== 'bubble' && frame.shape === 'circle' ? 'A tall panel cannot be round, so in this layout a circle is drawn as a rounded panel.'
-        : frame.ring === 'gradient' ? 'The gradient ring turns slowly, in the recording too.'
-          : frame.ring === 'pulse' ? 'The neon glow breathes gently, in the recording too.' : '';
+        : frame.ring === 'gradient' || frame.ring === 'rainbow' ? 'The ring turns slowly, in the recording too.'
+          : frame.ring === 'pulse' ? 'The neon glow breathes gently, in the recording too.'
+            : frame.ring === 'voice' ? (mic ? 'The ring swells as you speak, in the recording too.' : 'The ring moves with your microphone — switch the microphone on for it to move.')
+              : frame.ring === 'comet' || frame.ring === 'dots' || frame.ring === 'march' ? 'It runs round the camera, in the recording too.' : '';
   /* What a minute costs on disk, on a 16:9 screen — what the person weighs when choosing. */
   const perMin = (() => {
     const d = mode === 'cam' ? CAM_RES[prefs.camRes] : { width: RES[prefs.res], height: Math.round(RES[prefs.res] * 9 / 16) };
@@ -808,18 +923,18 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
             <canvas
               ref={canvasRef} width={1280} height={720} data-testid="rec-canvas"
               className={showCanvas ? '' : 'vs-rec-hidden'}
-              onPointerDown={e => { if (!canDrag) return; drag.current = true; e.currentTarget.setPointerCapture(e.pointerId); dragTo(e); }}
-              onPointerMove={e => { if (drag.current) dragTo(e); }}
-              onPointerUp={() => { drag.current = false; }} onPointerCancel={() => { drag.current = false; }}
-              style={{ cursor: canDrag ? 'grab' : 'default' }}
+              onPointerDown={dragStart}
+              onPointerMove={e => { if (dragWhat.current) dragTo(e); else hover(e); }}
+              onPointerUp={() => { dragWhat.current = null; }} onPointerCancel={() => { dragWhat.current = null; }}
+              style={{ cursor: canDrag ? 'grab' : 'default', touchAction: 'none' }}
               aria-label="Preview of what is recorded"
             />
             <video ref={camVid} muted playsInline autoPlay className="vs-rec-hidden" data-testid="rec-cam" />
             <video ref={screenVid} muted playsInline autoPlay className="vs-rec-hidden" />
             {phase === 'review' && result && <video src={result.url} controls playsInline data-testid="rec-playback" />}
             {phase !== 'review' && mode === 'screen' && !display.current && <p className={`vs-rec-hint${framed ? ' on-bg' : ''}`}>Press <b>Start recording</b>, then choose a screen, window or tab to share.</p>}
-            {phase !== 'review' && mode === 'screen-cam' && !display.current && <p className={`vs-rec-hint${framed ? ' on-bg' : ''}`}>Your screen appears here when you press <b>Start recording</b>.{camOn ? (layout === 'bubble' ? ' Drag your bubble to place it.' : '') : <> Press <b>Check camera</b> to see yourself in place.</>}</p>}
-            {phase !== 'review' && mode === 'cam' && !camOn && <p className="vs-rec-hint">Press <b>Check camera</b> to see yourself before you start.</p>}
+            {phase !== 'review' && mode === 'screen-cam' && !display.current && <p className={`vs-rec-hint${framed ? ' on-bg' : ''}`}>Your screen appears here when you press <b>Start recording</b>.{camOn ? (layout === 'bubble' ? ' Drag your bubble to place it.' : '') : <> Your camera turns on here — allow it when the browser asks.</>}</p>}
+            {phase !== 'review' && mode === 'cam' && !camOn && <p className="vs-rec-hint">Turning your camera on — allow it when the browser asks.</p>}
             {phase === 'countdown' && <div className="vs-rec-count" aria-live="assertive" data-testid="rec-countdown">{count}</div>}
           </div>
 
@@ -924,13 +1039,14 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
                     <div className="vs-chips" role="group" aria-label="Camera resolution">
                       {(Object.keys(CAM_RES) as CamRes[]).map(k => <button key={k} type="button" className="vs-chip" aria-pressed={prefs.camRes === k} onClick={() => setPref('camRes', k)} data-testid={`rec-camres-${k}`}>{CAM_LABEL[k]}</button>)}
                     </div>
-                    <small className="vs-sub" style={{ margin: 0 }}>{mode === 'cam' ? 'The camera gives the nearest size it has.' : layout === 'bubble' ? 'The bubble is small, so 480p or 720p looks the same and is lighter on the computer.' : 'You are large in this layout, so 720p or 1080p keeps you sharp.'}</small>
+                    <small className="vs-sub" style={{ margin: 0 }}>{mode === 'cam' ? 'The camera gives the nearest size it has. 240p–360p keep a slow computer or connection light.' : layout === 'bubble' ? 'The bubble is small, so 360p–720p looks the same and is lighter on the computer.' : 'You are large in this layout, so 720p or 1080p keeps you sharp.'}</small>
                   </div>
                 )}
                 {phase === 'setup' && (needsCam || mic) && sup.devices && (
                   <div>
+                    {/* On by itself when the recorder opens; this asks again after a refusal or an unplugged device. */}
                     <button type="button" className="vs-btn" onClick={() => { setError(''); void ensureDevices(needsCam, mic); }} disabled={(!needsCam || camOn) && (!mic || micOn)} data-testid="rec-preview-btn">
-                      <Camera size={15} /> {needsCam ? (camOn && (!mic || micOn) ? 'Camera is on' : mic ? 'Check camera and microphone' : 'Check camera') : micOn ? 'Microphone is on' : 'Check microphone'}
+                      <Camera size={15} /> {needsCam ? (camOn && (!mic || micOn) ? (mic ? 'Camera and microphone are on' : 'Camera is on') : mic ? 'Turn on camera and microphone' : 'Turn on camera') : micOn ? 'Microphone is on' : 'Turn on microphone'}
                     </button>
                   </div>
                 )}
@@ -967,13 +1083,26 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
                       {SHAPES.map(k => <button key={k} type="button" className="vs-chip" aria-pressed={frame.shape === k} onClick={() => setFrame({ shape: k })} data-testid={`rec-shape-${k}`}>{SHAPE_LABEL[k]}</button>)}
                       <button type="button" className="vs-chip" aria-pressed={bubble.mirror} onClick={() => setBubble(b => ({ ...b, mirror: !b.mirror }))}>Mirror</button>
                     </div>
+                    <small className="vs-sub" style={{ margin: 0 }}>Ring</small>
                     <div className="vs-chips" role="group" aria-label="Ring round the camera">
-                      {RINGS.map(k => <button key={k} type="button" className="vs-chip" aria-pressed={frame.ring === k} onClick={() => setFrame({ ring: k })} data-testid={`rec-ring-${k}`}>{RING_LABEL[k]}</button>)}
+                      {RINGS_STILL.map(k => <button key={k} type="button" className="vs-chip" aria-pressed={frame.ring === k} onClick={() => setFrame({ ring: k })} data-testid={`rec-ring-${k}`}>{RING_LABEL[k]}</button>)}
                     </div>
-                    {frame.ring !== 'none' && frame.ring !== 'white' && (
-                      <div className="vs-rec-swatches" role="group" aria-label="Ring colour">
-                        {RING_COLORS.map(c => <button key={c} type="button" className="vs-rec-sw vs-rec-ring-sw" style={{ background: c, color: c }} aria-pressed={frame.ringColor === c} aria-label={`Ring colour ${c}`} onClick={() => setFrame({ ringColor: c })} data-testid={`rec-ring-colour-${c.slice(1)}`} />)}
-                      </div>
+                    <small className="vs-sub" style={{ margin: 0 }}>Animated ring</small>
+                    <div className="vs-chips" role="group" aria-label="Animated ring round the camera">
+                      {RINGS_MOVING.map(k => <button key={k} type="button" className="vs-chip" aria-pressed={frame.ring === k} onClick={() => setFrame({ ring: k })} data-testid={`rec-ring-${k}`}>{RING_LABEL[k]}</button>)}
+                    </div>
+                    {frame.ring !== 'none' && frame.ring !== 'white' && frame.ring !== 'rainbow' && (
+                      <>
+                        <div className="vs-rec-swatches" role="group" aria-label="Ring colour">
+                          {RING_COLORS.map(c => <button key={c} type="button" className="vs-rec-sw vs-rec-ring-sw" style={{ background: c, color: c }} aria-pressed={frame.ringColor === c} aria-label={`Ring colour ${c}`} onClick={() => setFrame({ ringColor: c })} data-testid={`rec-ring-colour-${c.slice(1)}`} />)}
+                          <label className="vs-rec-sw vs-rec-pick" title="Any colour" style={{ background: frame.ringColor.startsWith('#') ? frame.ringColor : undefined }}>
+                            <input type="color" value={frame.ringColor.startsWith('#') ? frame.ringColor : '#22d3ee'} onChange={e => setFrame({ ringColor: e.target.value })} aria-label="Pick any ring colour" data-testid="rec-ring-pick" />
+                          </label>
+                        </div>
+                        <div className="vs-rec-swatches" role="group" aria-label="Ring gradient">
+                          {(Object.keys(RING_GRADIENTS) as RingGradient[]).map(id => <button key={id} type="button" className="vs-rec-sw vs-rec-ring-sw" style={{ background: ringCss(`g:${id}`) }} aria-pressed={frame.ringColor === `g:${id}`} title={`${ringGradLabel(id)} gradient`} aria-label={`${ringGradLabel(id)} gradient ring`} onClick={() => setFrame({ ringColor: `g:${id}` })} data-testid={`rec-ring-grad-${id}`} />)}
+                        </div>
+                      </>
                     )}
                     {frameHint && <small className="vs-sub" style={{ margin: 0 }} data-testid="rec-frame-hint">{frameHint}</small>}
                   </div>
@@ -982,31 +1111,52 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
                 {needsCam && (
                   <div className="vs-col" style={{ gap: 8 }} data-testid="rec-camfx">
                     <b className="vs-rec-h">Camera look <small className="vs-sub" style={{ margin: 0, fontWeight: 500 }}>— {camOn ? 'see it on the preview' : 'check the camera to see it'}; changes live</small></b>
+                    {canGrade() && (
+                      <div className="vs-col" style={{ gap: 4 }}>
+                        <button type="button" className="vs-btn sm" aria-pressed={fx.auto} onClick={() => setFx({ auto: !fx.auto })} data-testid="rec-fx-auto">
+                          <Wand2 size={14} /> {fx.auto ? 'Auto look is on' : 'Auto-fix my camera look'}
+                        </button>
+                        <small className="vs-sub" style={{ margin: 0 }} data-testid="rec-fx-auto-says">
+                          {fx.auto ? (autoSays ? `Auto: ${autoSays}. It keeps adjusting as the light changes; the sliders below add to it.` : 'Measuring your camera…')
+                            : 'Fixes the light, colour balance (a yellow or blue cast), contrast and colour for you, and keeps adjusting as the light changes.'}
+                        </small>
+                      </div>
+                    )}
                     {canGrade() ? (
                       <div className="vs-rec-sliders">
                         <label>Brightness<input type="range" min={-50} max={50} step={1} value={fx.bright} onChange={e => setFx({ bright: Number(e.target.value) })} data-testid="rec-fx-bright" /></label>
                         <label>Contrast<input type="range" min={-50} max={50} step={1} value={fx.contrast} onChange={e => setFx({ contrast: Number(e.target.value) })} /></label>
                         <label>Colour<input type="range" min={-50} max={50} step={1} value={fx.sat} onChange={e => setFx({ sat: Number(e.target.value) })} /></label>
-                        <label>Warmth<input type="range" min={-50} max={50} step={1} value={fx.warmth} onChange={e => setFx({ warmth: Number(e.target.value) })} /></label>
+                        <label>Warmth<input type="range" min={-50} max={50} step={1} value={fx.warmth} onChange={e => setFx({ warmth: Number(e.target.value) })} data-testid="rec-fx-warmth" /></label>
+                        <label>Hue<input type="range" min={-50} max={50} step={1} value={fx.hue} onChange={e => setFx({ hue: Number(e.target.value) })} data-testid="rec-fx-hue" /></label>
                         <label>Smooth skin<input type="range" min={0} max={100} step={5} value={fx.soften} onChange={e => setFx({ soften: Number(e.target.value) })} data-testid="rec-fx-soften" /></label>
                       </div>
                     ) : <small className="vs-sub" style={{ margin: 0 }}>This browser cannot colour-grade the camera (Safari 18 and newer, Chrome, Edge and Firefox can).</small>}
                     <div className="vs-chips">
                       {canGrade() && <button type="button" className="vs-chip" aria-pressed={fx.night} onClick={() => setFx({ night: !fx.night })} data-testid="rec-fx-night">Night view</button>}
                       {mode === 'cam' && <button type="button" className="vs-chip" aria-pressed={bubble.mirror} onClick={() => setBubble(b => ({ ...b, mirror: !b.mirror }))}>Mirror</button>}
-                      <button type="button" className="vs-chip" onClick={() => setPrefs(p => ({ ...p, fx: { ...NO_FX, bg: p.fx.bg, blur: p.fx.blur, bgColor: p.fx.bgColor } }))}>Reset look</button>
+                      <button type="button" className="vs-chip" onClick={() => setPrefs(p => ({ ...p, fx: { ...NO_FX, bg: p.fx.bg, blur: p.fx.blur, bgColor: p.fx.bgColor, scene: p.fx.scene } }))}>Reset look</button>
                     </div>
                     <small className="vs-sub" style={{ margin: 0 }}>Smooth skin lays a soft focus over the camera picture; night view brightens a dark room. Both are in the recording.</small>
                     <b className="vs-rec-h" style={{ marginTop: 4 }}>Behind you</b>
                     <div className="vs-chips" role="group" aria-label="Camera background">
-                      {(['none', 'blur', 'remove', 'image'] as CamBg[]).map(k => (
+                      {(['none', 'blur', 'remove', 'scene', 'image'] as CamBg[]).map(k => (
                         <button key={k} type="button" className="vs-chip" aria-pressed={fx.bg === k} data-testid={`rec-fx-bg-${k}`}
                           onClick={() => k === 'image' && !camBg ? camBgFile.current?.click() : setFx({ bg: k })}>
-                          {k === 'none' ? 'As it is' : k === 'blur' ? 'Blur' : k === 'remove' ? 'Remove' : camBg ? 'My picture' : 'A picture…'}
+                          {k === 'none' ? 'As it is' : k === 'blur' ? 'Blur' : k === 'remove' ? 'Remove' : k === 'scene' ? 'A background picture' : camBg ? 'My picture' : 'My own picture…'}
                         </button>
                       ))}
                       <input ref={camBgFile} type="file" accept="image/png,image/jpeg,image/webp,image/avif" hidden onChange={e => { void pickPicture(e.target.files?.[0], 'camBg'); e.target.value = ''; }} data-testid="rec-fx-bg-file" />
                     </div>
+                    {fx.bg === 'scene' && (
+                      <div className="vs-rec-scenes" role="group" aria-label="Background picture behind you">
+                        {SCENES.map(id => (
+                          <button key={id} type="button" className="vs-rec-scene" aria-pressed={fx.scene === id} onClick={() => setFx({ scene: id })} data-testid={`rec-fx-scene-${id}`} title={SCENE_LABEL[id]}>
+                            <img src={sceneThumb(id)} alt="" /><small>{SCENE_LABEL[id]}</small>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     {fx.bg === 'blur' && <div className="vs-rec-sliders"><label>Blur {fx.blur}%<input type="range" min={0} max={100} step={5} value={fx.blur} onChange={e => setFx({ blur: Number(e.target.value) })} data-testid="rec-fx-blur" /></label></div>}
                     {fx.bg === 'remove' && (mode === 'cam' || layout !== 'bubble') && (
                       <div className="vs-rec-swatches" role="group" aria-label="Colour behind you">
@@ -1032,28 +1182,41 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
 
                 <div className="vs-col" style={{ gap: 8 }} data-testid="rec-brand">
                   <b className="vs-rec-h">Title and logo <small className="vs-sub" style={{ margin: 0, fontWeight: 500 }}>— on the video, changes live</small></b>
-                  <label className="vs-rec-check"><input type="checkbox" checked={brand.card} onChange={e => setBrand({ card: e.target.checked })} data-testid="rec-card" /> Show a title card on the left</label>
+                  <label className="vs-rec-check"><input type="checkbox" checked={brand.card} onChange={e => setBrand({ card: e.target.checked })} data-testid="rec-card" /> Show a title card</label>
                   {brand.card && (
                     <>
                       <input className="vs-input" placeholder="Title — e.g. How to book a call" value={brand.title} maxLength={60} onChange={e => setBrand({ title: e.target.value })} aria-label="Title" data-testid="rec-card-title" />
                       <textarea className="vs-input" placeholder="A line or two of description" value={brand.desc} maxLength={140} rows={2} onChange={e => setBrand({ desc: e.target.value })} aria-label="Description" data-testid="rec-card-desc" />
-                      <div className="vs-chips">
-                        <button type="button" className="vs-chip" aria-pressed={brand.cardPos === 'bl'} onClick={() => setBrand({ cardPos: 'bl' })}>Bottom left</button>
-                        <button type="button" className="vs-chip" aria-pressed={brand.cardPos === 'tl'} onClick={() => setBrand({ cardPos: 'tl' })}>Top left</button>
+                      <div className="vs-chips" role="group" aria-label="Where the title card sits">
+                        {(Object.keys(CORNERS) as Corner[]).map(k => <button key={k} type="button" className="vs-chip" aria-pressed={brand.cardX === CORNERS[k].x && brand.cardY === CORNERS[k].y} onClick={() => setBrand({ cardX: CORNERS[k].x, cardY: CORNERS[k].y })} data-testid={`rec-card-${k}`}>{CORNER_LABEL[k]}</button>)}
+                        {nudgeRow('card', 'title card')}
+                      </div>
+                      <div className="vs-rec-sliders">
+                        <label>Size {brand.cardScale}%<input type="range" min={50} max={200} step={5} value={brand.cardScale} onChange={e => setBrand({ cardScale: Number(e.target.value) })} data-testid="rec-card-size" /></label>
                       </div>
                     </>
                   )}
                   <div className="vs-row" style={{ gap: 6 }}>
                     <button type="button" className="vs-btn sm" onClick={() => logoFile.current?.click()} data-testid="rec-logo-btn"><ImagePlus size={14} /> {logo ? 'Replace logo' : 'Add a logo'}</button>
-                    {logo && <><img src={logo.url} alt="" className="vs-rec-logo" /><button type="button" className="vs-chip" onClick={() => { logoRef.current = null; setLogo(null); }}>Remove</button></>}
+                    {logo && <><img src={logo.url} alt="" className="vs-rec-logo" /><button type="button" className="vs-chip" onClick={dropLogo}>Remove</button></>}
                     <input ref={logoFile} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/avif" hidden onChange={e => { void pickPicture(e.target.files?.[0], 'logo'); e.target.value = ''; }} data-testid="rec-logo-file" />
                   </div>
                   {logo && (
-                    <div className="vs-chips">
-                      {(Object.keys(CORNERS) as Corner[]).map(k => <button key={k} type="button" className="vs-chip" aria-pressed={brand.logoCorner === k} onClick={() => setBrand({ logoCorner: k })}>{CORNER_LABEL[k]}</button>)}
-                      {(['S', 'M', 'L'] as BubbleSize[]).map(z => <button key={z} type="button" className="vs-chip" aria-pressed={brand.logoSize === z} onClick={() => setBrand({ logoSize: z })}>{z === 'S' ? 'Small' : z === 'M' ? 'Medium' : 'Large'}</button>)}
-                    </div>
+                    <>
+                      <div className="vs-chips" role="group" aria-label="Where the logo sits">
+                        {(Object.keys(CORNERS) as Corner[]).map(k => <button key={k} type="button" className="vs-chip" aria-pressed={brand.logoX === CORNERS[k].x && brand.logoY === CORNERS[k].y} onClick={() => setBrand({ logoX: CORNERS[k].x, logoY: CORNERS[k].y })} data-testid={`rec-logo-${k}`}>{CORNER_LABEL[k]}</button>)}
+                        {nudgeRow('logo', 'logo')}
+                      </div>
+                      <div className="vs-rec-sliders">
+                        <label>Size {brand.logoScale}%<input type="range" min={3} max={40} step={1} value={brand.logoScale} onChange={e => setBrand({ logoScale: Number(e.target.value) })} data-testid="rec-logo-size" /></label>
+                        <label>Round corners {brand.logoRadius}%<input type="range" min={0} max={50} step={1} value={brand.logoRadius} onChange={e => setBrand({ logoRadius: Number(e.target.value) })} data-testid="rec-logo-round" /></label>
+                        <label>See-through {100 - brand.logoOpacity}%<input type="range" min={10} max={100} step={5} value={brand.logoOpacity} onChange={e => setBrand({ logoOpacity: Number(e.target.value) })} data-testid="rec-logo-opacity" /></label>
+                      </div>
+                      <label className="vs-rec-check"><input type="checkbox" checked={brand.logoCut} onChange={e => setLogoCut(e.target.checked)} data-testid="rec-logo-cut" /> <Wand2 size={15} /> Remove the logo’s background</label>
+                      {logoNote && <small className="vs-sub" style={{ margin: 0 }} data-testid="rec-logo-note">{logoNote}</small>}
+                    </>
                   )}
+                  {(logo || brand.card) && <small className="vs-sub" style={{ margin: 0 }}>Drag the {logo && brand.card ? 'logo or the title card' : logo ? 'logo' : 'title card'} on the preview to place it anywhere; the arrows nudge it (Shift for bigger steps).</small>}
                   <small className="vs-sub" style={{ margin: 0 }}>A transparent PNG logo looks best. Pictures stay in this browser and are drawn into the recording.</small>
                 </div>
 
@@ -1077,6 +1240,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
                         <div className="vs-rec-swatches" role="group" aria-label="Background">
                           {COLORS.map(c => <button key={c} type="button" className="vs-rec-sw" style={{ background: c }} aria-pressed={look.bg.kind === 'color' && look.bg.color === c} aria-label={`Colour ${c}`} onClick={() => setLook({ bg: { kind: 'color', color: c } })} />)}
                           {(Object.keys(GRADIENTS) as GradientId[]).map(id => <button key={id} type="button" className="vs-rec-sw" style={{ background: gradientCss(id) }} aria-pressed={look.bg.kind === 'gradient' && look.bg.id === id} title={gradientLabel(id)} aria-label={`${gradientLabel(id)} gradient`} onClick={() => setLook({ bg: { kind: 'gradient', id } })} data-testid={`rec-bg-${id}`} />)}
+                          {SCENES.map(id => <button key={id} type="button" className="vs-rec-sw img" style={{ backgroundImage: `url(${sceneThumb(id)})` }} aria-pressed={look.bg.kind === 'scene' && look.bg.id === id} title={SCENE_LABEL[id]} aria-label={`${SCENE_LABEL[id]} picture`} onClick={() => setLook({ bg: { kind: 'scene', id } })} data-testid={`rec-bg-scene-${id}`} />)}
                           <button type="button" className="vs-rec-sw img" style={image ? { backgroundImage: `url(${image.url})` } : undefined} aria-pressed={look.bg.kind === 'image'}
                             title={image ? `Your picture: ${image.name}` : 'Use your own picture'} aria-label={image ? 'Your picture' : 'Choose a picture'}
                             onClick={() => image ? setLook({ bg: { kind: 'image' } }) : fileRef.current?.click()} data-testid="rec-bg-image">{!image && <ImagePlus size={15} />}</button>
@@ -1133,7 +1297,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
                       {(Object.keys(QUALITY_LABEL) as Quality[]).map(k => <button key={k} type="button" className="vs-chip" aria-pressed={prefs.quality === k} onClick={() => setPref('quality', k)} data-testid={`rec-q-${k}`}>{QUALITY_LABEL[k]}</button>)}
                     </div>
                     <small className="vs-sub" style={{ margin: 0 }} data-testid="rec-permin">
-                      About {bytesLabel(perMin)} a minute{mode !== 'cam' ? ' (a smaller screen records at its own size)' : ''}. {SLOW ? 'Set lighter to suit this computer. ' : ''}60 fps, 1440p and 4K need a fast computer; if the recording looks jerky, choose 30 fps, 720p and Light.
+                      About {bytesLabel(perMin)} a minute{mode !== 'cam' ? ' (a smaller screen records at its own size)' : ''}. {SLOW ? 'Set lighter to suit this computer. ' : ''}60 fps, 1440p, 4K and Best need a fast computer; if the recording looks jerky, choose 30 fps (or 15–24), 720p or lower, and Light or Data saver.
                     </small>
                   </div>
                 )}
