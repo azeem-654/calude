@@ -397,6 +397,8 @@ ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and 
    */
   const pctx = await br.newContext({ viewport: { width: 1280, height: 900 } });
   const pv = steady(await pctx.newPage());
+  /* Nor its own disk cache: Chrome stitches cached ranges into one long 206 of its own, which read as the Worker answering too much. */
+  { const cdp = await pctx.newCDPSession(pv); await cdp.send('Network.setCacheDisabled', { cacheDisabled: true }); }
   await signIn(pv, OWNER);
   const src0 = (await v('get', { projectId: PID })).source.proxyUrl;
   /* What the Worker answered for the proxy while it played. */
@@ -597,7 +599,9 @@ await page.getByTestId('vs-search').fill('');
   await page.getByTestId('vs-timeline').waitFor({ timeout: 20_000 });
 
   /* Blocks: every phrase and every gap can be selected. */
-  for (let i = 0; i < 8; i++) await page.locator('[aria-label="Zoom the timeline in"]').click();
+  /* In until a phrase is wide enough to press: on an 18-minute recording eight presses (376%) still left every block at 14 px. */
+  const widest = () => page.evaluate(() => Math.max(0, ...[...document.querySelectorAll('[data-block="phrase"]')].map(b => b.getBoundingClientRect().width)));
+  for (let i = 0; i < 40 && (i < 8 || (await widest()) <= 40); i++) await page.locator('[aria-label="Zoom the timeline in"]').click();
   await page.waitForTimeout(300);
   const phrases = page.locator('[data-block="phrase"]'), gaps = page.locator('[data-block="gap"]');
   ok('the timeline has a block for every phrase and a "…" block for every gap between them', (await phrases.count()) > 100 && (await gaps.count()) > 20, { phrases: await phrases.count(), gaps: await gaps.count() });
