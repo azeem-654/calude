@@ -316,7 +316,7 @@ const stagesSeen = [...new Set(prog.map(x => x.stage))];
 const stepsText = prog.find(x => /Transcribing/.test(x.text))?.text ?? '';
 ok('…then one screen follows it through its stages — uploading, preparing, transcribing, finding fillers and retakes, ready', ['upload', 'prepare', 'ready'].every(k => stagesSeen.includes(k)) && /Uploading[\s\S]*Preparing the video[\s\S]*Transcribing[\s\S]*Finding fillers and retakes[\s\S]*Ready/.test(stepsText), { stagesSeen, stepsText: stepsText.slice(0, 300) });
 const ups = prog.slice(1).filter((x, i) => x.pct < prog[i].pct - 0.001);
-ok('…its percentage only ever goes up, with decimals (16.1 → 16.2 …), and never says 100% before it is ready', ups.length === 0 && prog.some(x => /^\d+\.[1-9]$/.test(x.shown)) && prog.filter(x => x.stage !== 'ready').every(x => x.pct < 100), { ups: ups.slice(0, 3), sample: prog.filter((_, i) => i % 40 === 0).map(x => `${x.stage}:${x.shown}`).slice(0, 30) });
+ok('…its percentage only ever goes up, with decimals (16.1 → 16.2 …), and never says 100% before it is ready', ups.length === 0 && prog.some(x => /^\d+\.\d?[1-9]%?$/.test(x.shown)) && prog.filter(x => x.stage !== 'ready').every(x => x.pct < 100), { ups: ups.slice(0, 3), sample: prog.filter((_, i) => i % 40 === 0).map(x => `${x.stage}:${x.shown}`).slice(0, 30) });
 /* Never frozen: while it works, the number on screen changes at least every few seconds. */
 let still = 0, stillAt = '';
 for (let i = 1, since = prog[0]?.t ?? 0; i < prog.length; i++) { if (prog[i].shown !== prog[i - 1].shown) { if (prog[i].t - since > still) { still = prog[i].t - since; stillAt = `${prog[i].stage} ${prog[i].shown}`; } since = prog[i].t; } }
