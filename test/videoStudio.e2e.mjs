@@ -539,9 +539,12 @@ await page.getByTestId('vs-search').fill('');
   for (let i = 0; i < 40; i++) { d6 = await at(); if (d6.doc.cuts.find(c => c.id === c2)?.state === 'approved') break; await sleep(300); }
   ok('approving a suggestion changes the transcript at once (under half a second), and is saved behind it', wordCut && shownIn < 500 && d6.doc.cuts.find(c => c.id === c2)?.state === 'approved', { shownIn, wordCut });
   /* A save the server refuses is taken back on screen, with a word why. */
-  await page.route(u => u.href.endsWith('/api/video.php'), async route => {
+  /* One predicate, kept: unroute matches the very function passed to route — a new arrow left saves refused for the rest of the run. */
+  const videoApi = u => u.href.endsWith('/api/video.php');
+  await page.route(videoApi, async route => {
     const b = JSON.parse(route.request().postData() || '{}');
-    if (b.action === 'edit') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: false, error: 'Saving is switched off for this test.' }) });
+    /* As long as a real refusal takes to come back: answered at once, the change and its undo landed in the same frame and nothing was ever seen to go. */
+    if (b.action === 'edit') { await sleep(700); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: false, error: 'Saving is switched off for this test.' }) }); }
     return route.continue();
   });
   const chip3 = page.locator('.vs-chipin.prop').first();
@@ -553,7 +556,7 @@ await page.getByTestId('vs-search').fill('');
   await page.getByTestId('vs-assistant').getByText('It has been undone on screen').waitFor({ timeout: 8000 }).catch(() => {});
   const back = await page.evaluate(id => !!document.querySelector(`[data-chip="${id}"].prop`), c3);
   ok('…and a save that fails is rolled back on screen with a message', gone && back && /Saving is switched off for this test\. It has been undone on screen/.test(await page.getByTestId('vs-assistant').innerText()), { gone, back });
-  await page.unroute(u => u.href.endsWith('/api/video.php'));
+  await page.unroute(videoApi);
   await v('edit', { projectId: PID, baseVersion: d6.docVersion, ops: [{ op: 'cut.set', id: chipId, state: 'proposed' }, { op: 'cut.set', id: c2, state: 'proposed' }], note: 'test: back to proposed' });
   await page.reload({ waitUntil: 'networkidle' });
   await openPanel(page, 'transcript');
