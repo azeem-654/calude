@@ -9,10 +9,10 @@
  * filters, a zoom, the words animated) and says where it is only close.
  */
 import { useState } from 'react';
-import { RotateCcw, Plus, Trash2, Play, ScanFace, Mic2, Loader, Type, Wand2, Clapperboard, Info, SunMedium, Square, Pipette, Sparkles } from 'lucide-react';
+import { RotateCcw, Plus, Trash2, Play, ScanFace, Mic2, Loader, Type, Wand2, Clapperboard, Info, SunMedium, Square, Pipette, Sparkles, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 import {
-  lookOf, motionOf, trackingOf, cssLook, clock, renderOutputs, trackNow, FILTER_PRESETS, effectsOf,
-  type Look, type Motion, type Overlay, type TrackMode, type EffectKey,
+  lookOf, motionOf, trackingOf, cssLook, clock, renderOutputs, trackNow, FILTER_PRESETS, effectsOf, overlayPlace, OVERLAY_FONTS, OVERLAY_ICONS,
+  type Look, type Motion, type Overlay, type OverlayFont, type TrackMode, type EffectKey, type Op,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
 import EffectRow, { FxSlider } from './EffectRow';
@@ -255,54 +255,147 @@ export function VisualEffectsPanel({ ctx }: { ctx: EditorCtx }) {
 
 /* ── Text ─────────────────────────────────────────────────────────────────── */
 
-const STYLE_NAME: Record<Overlay['style'], string> = { title: 'Title', lower: 'Lower third', cta: 'Call to action', label: 'Label', quote: 'Quote' };
+const STYLE_NAME: Record<Overlay['style'], string> = {
+  title: 'Title', subtitle: 'Description', lower: 'Lower third', cta: 'Call to action', label: 'Label', quote: 'Quote', ticker: 'Scrolling ticker', camlabel: 'Name under camera',
+};
 const ANIM_NAME: Record<Overlay['anim'], string> = { none: 'None', fade: 'Fade', pop: 'Pop', slide: 'Slide in', reveal: 'Reveal' };
+const FONT_NAME: Record<OverlayFont, string> = { sans: 'Clean', serif: 'Classic serif', display: 'Display', condensed: 'Condensed' };
+/* The nine places of the grid, as the centre of the words in % of the frame. */
+const GRID: [number, number][] = [[18, 12], [50, 12], [82, 12], [18, 50], [50, 50], [82, 50], [18, 86], [50, 86], [82, 86]];
+
+/** What one press of a preset adds: the words, how long, and where. */
+type Preset = { key: string; label: string; hint: string; make: (t: string, s: number, e: number, cam: { x: number; y: number } | null) => Extract<Op, { op: 'overlay.add' }>[] };
+const PRESETS: Preset[] = [
+  { key: 'title', label: 'Title + description', hint: 'A heading with a line under it', make: (t, s, e) => {
+    const [a, ...rest] = t.split(/\s*[|\n]\s*/);
+    const out: Extract<Op, { op: 'overlay.add' }>[] = [{ op: 'overlay.add', s, e, text: a, style: 'title', position: 'top', anim: 'pop' }];
+    if (rest.join(' ').trim()) out.push({ op: 'overlay.add', s, e, text: rest.join(' ').trim(), style: 'subtitle', position: 'top', anim: 'fade' });
+    return out;
+  } },
+  { key: 'lower', label: 'Lower third', hint: 'Your name or a point, bottom left', make: (t, s, e) => [{ op: 'overlay.add', s, e, text: t, style: 'lower', anim: 'slide', position: 'bottom' }] },
+  { key: 'ticker', label: 'Scrolling ticker', hint: 'Words crossing a band, like the news', make: (t, s, e) => [{ op: 'overlay.add', s, e, text: t, style: 'ticker', anim: 'none', position: 'bottom', speed: 12, bg: '#111827' }] },
+  { key: 'camlabel', label: 'Name under camera', hint: 'A tag under your camera bubble', make: (t, s, e, cam) => [{ op: 'overlay.add', s, e, text: t, style: 'camlabel', anim: 'fade', position: 'bottom', ...(cam ? { x: cam.x, y: cam.y } : {}) }] },
+  { key: 'cta', label: 'Call to action', hint: 'A pill button, bottom centre', make: (t, s, e) => [{ op: 'overlay.add', s, e, text: t, style: 'cta', anim: 'pop', position: 'bottom' }] },
+  { key: 'label', label: 'Label', hint: 'A small tag, top left', make: (t, s, e) => [{ op: 'overlay.add', s, e, text: t, style: 'label', anim: 'fade', position: 'top' }] },
+  { key: 'quote', label: 'Quote', hint: 'Italic words in quotes', make: (t, s, e) => [{ op: 'overlay.add', s, e, text: t, style: 'quote', anim: 'fade', position: 'middle' }] },
+];
 
 export function TextPanel({ ctx }: { ctx: EditorCtx }) {
   const [draft, setDraft] = useState('');
-  const [style, setStyle] = useState<Overlay['style']>('title');
-  const [len, setLen] = useState(3);
+  const [preset, setPreset] = useState('title');
+  const [len, setLen] = useState<number>(4);
+  const [open, setOpen] = useState<string | null>(null);
   const ovs = [...(ctx.doc.overlays ?? [])].sort((a, b) => a.s - b.s);
+  /* Under the camera: from where the Screen Recorder drew it at this moment, centred just below it (inside the frame). */
+  const camSpot = (() => {
+    const segs = ctx.screen?.segs ?? [];
+    const g = [...segs].reverse().find(x => x.t <= ctx.time && x.cam) ?? segs.find(x => x.cam);
+    if (!g?.cam) return null;
+    const [x, y, w, h] = g.cam;
+    return { x: Math.round((x + w / 2) * 1000) / 10, y: Math.min(94, Math.round((y + h) * 1000) / 10 + 4) };
+  })();
+  const pr = PRESETS.find(p => p.key === preset)!;
   const add = () => {
     const t = draft.trim();
     if (!t) return;
-    const s = Math.max(0, ctx.time);
-    void ctx.apply([{ op: 'overlay.add', s, e: Math.min(ctx.duration, s + len), text: t, style, anim: style === 'lower' ? 'slide' : 'pop', position: style === 'cta' ? 'bottom' : 'top' }], `Words on screen: “${t.slice(0, 30)}”`).then(ok => ok && setDraft(''));
+    const whole = len === 0;
+    const s = whole ? 0 : Math.max(0, ctx.time);
+    const e = whole ? ctx.duration : Math.min(ctx.duration, s + len);
+    void ctx.apply(pr.make(t, s, e, camSpot), `${pr.label}: “${t.slice(0, 30)}”`).then(ok => ok && setDraft(''));
   };
   const patch = (id: string, p: Partial<Overlay>, note: string) => void ctx.apply([{ op: 'overlay.update', id, patch: p }], note);
+  const placeOf = (o: Overlay) => overlayPlace(o, false);
+  const nudge = (o: Overlay, dx: number, dy: number, big: boolean) => {
+    const c = placeOf(o), k = big ? 5 : 1;
+    patch(o.id, { x: Math.max(0, Math.min(100, c.x + dx * k)), y: Math.max(0, Math.min(100, c.y + dy * k)) }, `Words moved ${k}%`);
+  };
   return (
     <div className="vs-col" data-testid="vs-text-panel">
-      <div className="vs-item">
-        <div className="vs-row"><Type size={15} color="#c084fc" /><b>Add words at {clock(ctx.time)}</b></div>
-        <input className="vs-input" placeholder="e.g. 3 ways to get more leads" value={draft} maxLength={120} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }} data-field="video.overlayText" data-testid="vs-overlay-text" />
-        <div className="vs-chips">{(Object.keys(STYLE_NAME) as Overlay['style'][]).map(s => <button key={s} type="button" className="vs-chip" aria-pressed={style === s} onClick={() => setStyle(s)}>{STYLE_NAME[s]}</button>)}</div>
-        <div className="vs-row">
+      <div className="vs-item vs-col" style={{ gap: 8 }}>
+        <div className="vs-row"><Type size={15} color="#c084fc" /><b>Add text at {clock(ctx.time)}</b></div>
+        <div className="vs-preset-grid" role="radiogroup" aria-label="What kind of text">
+          {PRESETS.map(p => (
+            <button key={p.key} type="button" role="radio" aria-checked={preset === p.key} className="vs-preset" onClick={() => setPreset(p.key)} data-preset={p.key}>
+              <b>{p.label}</b><small>{p.key === 'camlabel' && !camSpot ? 'Bottom left (no camera noted)' : p.hint}</small>
+            </button>
+          ))}
+        </div>
+        {preset === 'ticker' ? (
+          <textarea className="vs-textarea" rows={2} placeholder="e.g. ★ New: book a free call this week ★ 20% off for new clients" value={draft} maxLength={300} onChange={e => setDraft(e.target.value)} data-field="video.overlayText" data-testid="vs-overlay-text" />
+        ) : (
+          <input className="vs-input" placeholder={preset === 'title' ? 'Title | description (a | splits them)' : 'e.g. 3 ways to get more leads'} value={draft} maxLength={preset === 'title' ? 240 : 120}
+            onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') add(); }} data-field="video.overlayText" data-testid="vs-overlay-text" />
+        )}
+        <div className="vs-row" style={{ flexWrap: 'wrap' }}>
           <span className="vs-kbd">On screen for</span>
-          {[2, 3, 5, 8].map(n => <button key={n} type="button" className="vs-chip" aria-pressed={len === n} onClick={() => setLen(n)}>{n} s</button>)}
+          {[2, 4, 8, 15, 0].map(n => <button key={n} type="button" className="vs-chip" aria-pressed={len === n} onClick={() => setLen(n)}>{n ? `${n} s` : 'Whole video'}</button>)}
           <span className="vs-spacer" />
           <button type="button" className="vs-btn ai sm" disabled={!draft.trim()} onClick={add} data-act="overlay-add"><Plus size={13} /> Add</button>
         </div>
         <span className="vs-kbd">Placed on the recording: it stays with its moment in every video that keeps it, through any cut.</span>
       </div>
-      {!ovs.length && <p className="vs-sub" style={{ margin: 0 }}>No words on screen yet. Move the playhead to where they should appear and add them here.</p>}
-      {ovs.map(o => (
-        <div key={o.id} className="vs-item" data-overlay={o.id}>
-          <div className="vs-row">
-            <span className="vs-badge processing">{clock(o.s)}–{clock(o.e)}</span>
-            <input className="vs-input" style={{ flex: 1, minWidth: 120, padding: '5px 8px' }} defaultValue={o.text} key={`${o.id}:${o.text}`} aria-label="Words"
-              onBlur={e => { const v = e.target.value.trim(); if (v && v !== o.text) patch(o.id, { text: v }, 'Words changed'); }} />
-            <button type="button" className="vs-btn ghost sm" aria-label="Play from here" onClick={() => ctx.seek(Math.max(0, o.s - 0.5))}><Play size={13} /></button>
-            <button type="button" className="vs-btn ghost sm danger" aria-label="Remove" onClick={() => void ctx.apply([{ op: 'overlay.remove', id: o.id }], 'Words removed')}><Trash2 size={13} /></button>
+      {!ovs.length && <p className="vs-sub" style={{ margin: 0 }}>No text yet. Move the playhead to where it should appear, pick a kind and add it.</p>}
+      {ovs.map(o => {
+        const c = placeOf(o);
+        const expanded = open === o.id;
+        return (
+          <div key={o.id} className="vs-item" data-overlay={o.id}>
+            <div className="vs-row">
+              <span className="vs-badge processing">{clock(o.s)}–{clock(o.e)}</span>
+              {o.style === 'ticker'
+                ? <textarea className="vs-textarea" style={{ flex: 1, minWidth: 120, padding: '5px 8px' }} rows={1} defaultValue={o.text} key={`${o.id}:${o.text}`} aria-label="Words" maxLength={300}
+                    onBlur={e => { const v = e.target.value.trim(); if (v && v !== o.text) patch(o.id, { text: v }, 'Words changed'); }} />
+                : <input className="vs-input" style={{ flex: 1, minWidth: 120, padding: '5px 8px' }} defaultValue={o.text} key={`${o.id}:${o.text}`} aria-label="Words" maxLength={120}
+                    onBlur={e => { const v = e.target.value.trim(); if (v && v !== o.text) patch(o.id, { text: v }, 'Words changed'); }} />}
+              <button type="button" className="vs-btn ghost sm" aria-label="Play from here" onClick={() => ctx.seek(Math.max(0, o.s - 0.5))}><Play size={13} /></button>
+              <button type="button" className="vs-btn ghost sm danger" aria-label="Remove" onClick={() => void ctx.apply([{ op: 'overlay.remove', id: o.id }], 'Words removed')}><Trash2 size={13} /></button>
+            </div>
+            <div className="vs-row" style={{ gap: 6, flexWrap: 'wrap' }}>
+              <select className="vs-select" style={{ width: 'auto' }} value={o.style} aria-label="Kind" onChange={e => patch(o.id, { style: e.target.value as Overlay['style'] }, 'Kind of text')}>{(Object.keys(STYLE_NAME) as Overlay['style'][]).map(st => <option key={st} value={st}>{STYLE_NAME[st]}</option>)}</select>
+              <select className="vs-select" style={{ width: 'auto' }} value={o.font ?? 'sans'} aria-label="Font" onChange={e => patch(o.id, { font: e.target.value as OverlayFont }, 'Font')}>{OVERLAY_FONTS.map(f => <option key={f} value={f}>{FONT_NAME[f]}</option>)}</select>
+              <button type="button" className="vs-chip" aria-pressed={o.bold ?? o.style !== 'subtitle'} onClick={() => patch(o.id, { bold: !(o.bold ?? o.style !== 'subtitle') }, 'Bold')} aria-label="Bold"><b>B</b></button>
+              <button type="button" className="vs-chip" aria-pressed={o.italic ?? o.style === 'quote'} onClick={() => patch(o.id, { italic: !(o.italic ?? o.style === 'quote') }, 'Italic')} aria-label="Italic"><i>I</i></button>
+              <input type="color" value={o.color} aria-label="Text colour" onChange={e => patch(o.id, { color: e.target.value }, 'Text colour')} />
+              <input type="color" value={o.bg} aria-label="Box colour" onChange={e => patch(o.id, { bg: e.target.value }, 'Box colour')} />
+              <button type="button" className="vs-btn ghost sm" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : o.id)} data-act="overlay-more">{expanded ? 'Less' : 'Place & size'}</button>
+            </div>
+            {expanded && (
+              <div className="vs-col" style={{ gap: 8, marginTop: 4 }}>
+                {o.style !== 'ticker' && (
+                  <div className="vs-row" style={{ gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    <div className="vs-place-grid" role="group" aria-label="Place on the frame">
+                      {GRID.map(([x, y], n) => <button key={n} type="button" aria-label={`Place ${n + 1}`} aria-pressed={Math.abs(c.x - x) < 6 && Math.abs(c.y - y) < 6} onClick={() => patch(o.id, { x, y }, 'Words placed')} />)}
+                    </div>
+                    <div className="vs-nudge">
+                      <button type="button" className="vs-btn sm" aria-label="Move up" onClick={e => nudge(o, 0, -1, e.shiftKey)}><ArrowUp size={13} /></button>
+                      <div className="vs-row" style={{ gap: 4 }}>
+                        <button type="button" className="vs-btn sm" aria-label="Move left" onClick={e => nudge(o, -1, 0, e.shiftKey)}><ArrowLeft size={13} /></button>
+                        <span className="vs-kbd">{c.x}%, {c.y}%</span>
+                        <button type="button" className="vs-btn sm" aria-label="Move right" onClick={e => nudge(o, 1, 0, e.shiftKey)}><ArrowRight size={13} /></button>
+                      </div>
+                      <button type="button" className="vs-btn sm" aria-label="Move down" onClick={e => nudge(o, 0, 1, e.shiftKey)}><ArrowDown size={13} /></button>
+                    </div>
+                  </div>
+                )}
+                {o.style === 'ticker' && <FxSlider label="Height on the frame" value={c.y} min={5} max={95} unit="%" onSave={v => patch(o.id, { y: v, x: 50 }, 'Ticker moved')} />}
+                <FxSlider label="Size" value={o.size ?? 100} min={40} max={300} step={5} unit="%" onSave={v => patch(o.id, { size: v }, `Text size ${v}%`)} />
+                {o.style === 'ticker' && <FxSlider label="One pass takes" value={o.speed ?? 12} min={4} max={40} unit=" s" onSave={v => patch(o.id, { speed: v }, 'Ticker speed')} />}
+                <div className="vs-row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                  <select className="vs-select" style={{ width: 'auto' }} value={o.anim} aria-label="Animation" onChange={e => patch(o.id, { anim: e.target.value as Overlay['anim'] }, 'Animation')}>{(Object.keys(ANIM_NAME) as Overlay['anim'][]).map(a => <option key={a} value={a}>{ANIM_NAME[a]}</option>)}</select>
+                  <button type="button" className="vs-btn ghost sm" onClick={() => patch(o.id, { s: Math.min(ctx.time, o.e - 0.5) }, 'Text starts here')}>Start at playhead</button>
+                  <button type="button" className="vs-btn ghost sm" onClick={() => patch(o.id, { e: Math.max(ctx.time, o.s + 0.5) }, 'Text ends here')}>End at playhead</button>
+                </div>
+                <div className="vs-field-label">Icon before the words</div>
+                <div className="vs-chips">
+                  <button type="button" className="vs-chip" aria-pressed={!o.icon} onClick={() => patch(o.id, { icon: '' }, 'No icon')}>None</button>
+                  {OVERLAY_ICONS.map(ic => <button key={ic} type="button" className="vs-chip" aria-pressed={o.icon === ic} onClick={() => patch(o.id, { icon: ic }, `Icon ${ic}`)}>{ic}</button>)}
+                </div>
+                {(o.x !== undefined || o.y !== undefined) && <button type="button" className="vs-btn ghost sm" style={{ justifySelf: 'start' }} onClick={() => patch(o.id, { position: o.position }, 'Words back to their place')}>Back to the kind's own place</button>}
+              </div>
+            )}
           </div>
-          <div className="vs-row" style={{ gap: 6 }}>
-            <select className="vs-select" style={{ width: 'auto' }} value={o.style} aria-label="Style" onChange={e => patch(o.id, { style: e.target.value as Overlay['style'] }, 'Style')}>{(Object.keys(STYLE_NAME) as Overlay['style'][]).map(s => <option key={s} value={s}>{STYLE_NAME[s]}</option>)}</select>
-            <select className="vs-select" style={{ width: 'auto' }} value={o.anim} aria-label="Animation" onChange={e => patch(o.id, { anim: e.target.value as Overlay['anim'] }, 'Animation')}>{(Object.keys(ANIM_NAME) as Overlay['anim'][]).map(s => <option key={s} value={s}>{ANIM_NAME[s]}</option>)}</select>
-            <select className="vs-select" style={{ width: 'auto' }} value={o.position} aria-label="Position" onChange={e => patch(o.id, { position: e.target.value as Overlay['position'] }, 'Position')}><option value="top">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option></select>
-            <input type="color" value={o.color} aria-label="Text colour" onChange={e => patch(o.id, { color: e.target.value }, 'Text colour')} />
-            <input type="color" value={o.bg} aria-label="Box colour" onChange={e => patch(o.id, { bg: e.target.value }, 'Box colour')} />
-          </div>
-        </div>
-      ))}
+        );
+      })}
       <RenderHint ctx={ctx} />
     </div>
   );

@@ -11,7 +11,7 @@
  * Everything returns plain numbers; the engine turns them into filters it
  * owns, so nothing from a request becomes filter text.
  */
-import type { Overlay, Sentence } from './edit';
+import type { LogoSettings, Overlay, Sentence } from './edit';
 import { toOutput, keptLength } from './edit';
 
 /** One keyframe of a track: time, centre x, centre y, face height (all 0–1 of the frame), 1 where the shot cuts. */
@@ -139,33 +139,60 @@ function assColour(hex: string, alpha = 0): string {
 /** What was typed, never an override tag: braces and backslashes are made harmless. */
 const safe = (s: string) => s.replace(/[{}]/g, m => (m === '{' ? '(' : ')')).replace(/\\/g, '/').replace(/[\r\n]+/g, ' ');
 
+/** The font family a renderer is asked for (fonts-noto-core in the engine); "condensed" is Noto Sans narrowed. */
+export const OVERLAY_FAMILY: Record<string, string> = { sans: 'Noto Sans', serif: 'Noto Serif', display: 'Noto Sans Display', condensed: 'Noto Sans' };
+/** A style's own size, as a share of the frame's shorter side — the preview reads the same numbers. */
+export const OVERLAY_SIZE: Record<Overlay['style'], number> = { title: 0.085, subtitle: 0.045, lower: 0.05, cta: 0.058, label: 0.04, quote: 0.062, ticker: 0.042, camlabel: 0.036 };
+/** Where an overlay's centre sits, in % of the frame: the customer's place, else its style's. */
+export function overlayPlace(ov: Pick<Overlay, 'style' | 'position' | 'x' | 'y'>, tall: boolean): { x: number; y: number; left: boolean } {
+  const left = ov.style === 'lower' || ov.style === 'label' || ov.style === 'camlabel';
+  if (ov.x !== undefined || ov.y !== undefined) return { x: ov.x ?? 50, y: ov.y ?? 50, left: false };
+  const y = ov.style === 'label' ? 7 : ov.style === 'ticker' ? 94 : ov.style === 'camlabel' ? 90
+    : ov.position === 'top' ? (ov.style === 'subtitle' ? 21 : 13) : ov.position === 'middle' ? (ov.style === 'subtitle' ? 58 : 50) : tall ? (ov.style === 'subtitle' ? 72 : 66) : (ov.style === 'subtitle' ? 87 : 80);
+  return { x: left ? 6 : 50, y, left };
+}
+
 export function overlayAss(overlays: Overlay[], keeps: [number, number][], width: number, height: number, speed = 1): string {
   const m = Math.min(width, height);
-  const sizes: Record<Overlay['style'], number> = { title: 0.085, lower: 0.05, cta: 0.058, label: 0.04, quote: 0.062 };
-  const yFor = (p: Overlay['position']) => Math.round(height * (p === 'top' ? 0.13 : p === 'middle' ? 0.5 : height > width ? 0.66 : 0.8));
   const events: string[] = [];
   const styles: string[] = [];
   overlays.slice(0, 200).forEach((ov, i) => {
     const span = overlaySpan(ov, keeps);
     if (!span) return;
     const [a, b] = [span[0] / speed, span[1] / speed];
-    const size = Math.round(m * sizes[ov.style]);
-    const boxed = ov.style === 'lower' || ov.style === 'cta' || ov.style === 'label';
+    const size = Math.round(m * (OVERLAY_SIZE[ov.style] ?? 0.06) * (ov.size ?? 100) / 100);
+    const boxed = ov.style === 'lower' || ov.style === 'cta' || ov.style === 'label' || ov.style === 'camlabel';
     const name = `O${i}`;
+    const font = OVERLAY_FAMILY[ov.font ?? 'sans'] ?? 'Noto Sans';
+    const bold = ov.bold ?? ov.style !== 'subtitle';
+    const italic = ov.italic ?? ov.style === 'quote';
     /* Boxed styles draw an opaque box in the overlay's own colour (BorderStyle 3); the rest are bold with a thick dark outline. */
-    styles.push(`Style: ${name},Noto Sans,${size},${assColour(ov.color)},${assColour(ov.bg)},${assColour(boxed ? ov.bg : '#000000')},${assColour(boxed ? ov.bg : '#000000', boxed ? 0 : 0x70)},-1,${ov.style === 'quote' ? -1 : 0},0,0,100,100,${ov.style === 'title' ? 1 : 0},0,${boxed ? 3 : 1},${boxed ? Math.round(size * 0.34) : Math.max(3, Math.round(size / 11))},${boxed ? 0 : Math.max(1, Math.round(size / 26))},5,0,0,0,1`);
-    const left = ov.style === 'lower' || ov.style === 'label';
-    const x = left ? Math.round(width * 0.06) : Math.round(width / 2);
-    const y = ov.style === 'label' ? Math.round(height * 0.07) : yFor(ov.position);
-    const an = left ? 4 : 5;
+    styles.push(`Style: ${name},${font},${size},${assColour(ov.color)},${assColour(ov.bg)},${assColour(boxed ? ov.bg : '#000000')},${assColour(boxed ? ov.bg : '#000000', boxed ? 0 : 0x70)},${bold ? -1 : 0},${italic ? -1 : 0},0,0,${ov.font === 'condensed' ? 82 : 100},100,${ov.style === 'title' ? 1 : 0},0,${boxed ? 3 : 1},${boxed ? Math.round(size * 0.34) : Math.max(3, Math.round(size / 11))},${boxed ? 0 : Math.max(1, Math.round(size / 26))},5,0,0,0,1`);
+    const place = overlayPlace(ov, height > width);
+    const x = Math.round((width * place.x) / 100), y = Math.round((height * place.y) / 100);
+    const an = place.left ? 4 : 5;
     const dur = Math.max(0.3, b - a);
     const ms = (s: number) => Math.round(s * 1000);
-    const words = ov.style === 'quote' ? `“${safe(ov.text)}”` : safe(ov.text);
+    const icon = ov.icon ? `${ov.icon} ` : '';
+    const words = icon + (ov.style === 'quote' ? `“${safe(ov.text)}”` : safe(ov.text));
+    if (ov.style === 'ticker') {
+      /* A band across the frame, and the words crossing it right to left, pass after pass. The width
+         of the words is estimated (no measuring in a script), generously, so a pass never cuts one off. */
+      const band = Math.round(size * 1.9), top = Math.max(0, Math.min(height - band, y - Math.round(band / 2)));
+      events.push(`Dialogue: 0,${assTime(a)},${assTime(b)},${name},,0,0,0,,{\\an7\\pos(0,${top})\\bord0\\shad0\\1c${assColour(ov.bg).replace(/^&H00/, '&H')}&\\1a&H18&\\p1}m 0 0 l ${width} 0 ${width} ${band} 0 ${band}{\\p0}`);
+      const tw = Math.round([...words].length * size * 0.62 * (ov.font === 'condensed' ? 0.82 : 1)) + size;
+      const pass = Math.max(2, (ov.speed ?? 12) * (width + tw) / width);
+      for (let t = a, n = 0; t < b && n < 400; t += pass, n++) {
+        const e = Math.min(b, t + pass);
+        events.push(`Dialogue: 1,${assTime(t)},${assTime(e)},${name},,0,0,0,,{\\an4\\bord0\\shad0\\move(${width},${top + Math.round(band / 2)},${-tw},${top + Math.round(band / 2)},0,${ms(pass)})}${words}`);
+      }
+      return;
+    }
     let tags = `\\an${an}\\pos(${x},${y})`;
     switch (ov.anim) {
       case 'fade': tags += '\\fad(250,250)'; break;
-      case 'pop': tags += `\\fscx60\\fscy60\\t(0,160,\\fscx110\\fscy110)\\t(160,260,\\fscx100\\fscy100)\\fad(100,180)`; break;
-      case 'slide': tags = `\\an${an}\\move(${left ? -Math.round(width * 0.4) : x},${y + (left ? 0 : Math.round(height * 0.06))},${x},${y},0,${Math.min(320, ms(dur) / 2)})\\fad(120,200)`; break;
+      case 'pop': tags += `\\fscx${ov.font === 'condensed' ? 49 : 60}\\fscy60\\t(0,160,\\fscx${ov.font === 'condensed' ? 90 : 110}\\fscy110)\\t(160,260,\\fscx${ov.font === 'condensed' ? 82 : 100}\\fscy100)\\fad(100,180)`; break;
+      case 'slide': tags = `\\an${an}\\move(${place.left ? -Math.round(width * 0.4) : x},${y + (place.left ? 0 : Math.round(height * 0.06))},${x},${y},0,${Math.min(320, ms(dur) / 2)})\\fad(120,200)`; break;
       case 'reveal': return events.push(`Dialogue: 1,${assTime(a)},${assTime(b)},${name},,0,0,0,,{${tags}\\fad(0,200)}{\\kf${Math.min(Math.round(dur * 60), 120)}}${words}`);
       default: break;
     }
@@ -180,6 +207,25 @@ export function overlayAss(overlays: Overlay[], keeps: [number, number][], width
     '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
     ...events, '',
   ].join('\n');
+}
+
+/* ── The logo ────────────────────────────────────────────────────────────── */
+
+/**
+ * The logo's box in a frame, in pixels (even numbers): its width a share of
+ * the frame's, its height from the picture's own shape, in a corner with a
+ * margin or with its centre where the customer put it — always inside the
+ * frame. The engine is sent these numbers; the preview draws the same box.
+ */
+export function logoBox(l: Pick<LogoSettings, 'w' | 'h' | 'corner' | 'x' | 'y' | 'size' | 'margin'>, W: number, H: number): { x: number; y: number; w: number; h: number } {
+  const ev = (n: number) => Math.max(2, Math.round(n / 2) * 2);
+  let w = ev((W * l.size) / 100), h = ev((w * l.h) / Math.max(1, l.w));
+  if (h > H * 0.6) { h = ev(H * 0.6); w = ev((h * l.w) / Math.max(1, l.h)); }
+  const mx = Math.round((Math.min(W, H) * l.margin) / 100);
+  let x: number, y: number;
+  if (l.corner === 'custom') { x = Math.round((W * l.x) / 100 - w / 2); y = Math.round((H * l.y) / 100 - h / 2); }
+  else { x = l.corner.endsWith('l') ? mx : W - w - mx; y = l.corner.startsWith('t') ? mx : H - h - mx; }
+  return { x: Math.max(0, Math.min(W - w, x)), y: Math.max(0, Math.min(H - h, y)), w, h };
 }
 
 /**

@@ -17,7 +17,7 @@ import { validatePicks, fallbackPicks, findSection, cleanMeta, fallbackMeta, dis
 import { looksLikeAudio, licenseLabel, musicQuery } from '../worker/src/lib/video/music';
 import { parseVideoCommand } from '../worker/src/lib/video/commands';
 import { checkPng } from '../worker/src/lib/video/png';
-import { cameraPath, cutTimes, punchSpans, overlayAss, overlaySpan, trackAt, cssLook, cssEffects, skinBox, type TrackRow } from '../worker/src/lib/video/motion';
+import { cameraPath, cutTimes, punchSpans, overlayAss, overlaySpan, overlayPlace, logoBox, trackAt, cssLook, cssEffects, skinBox, type TrackRow } from '../worker/src/lib/video/motion';
 import { layoutOptions, layoutPlan } from '../worker/src/lib/video/layouts';
 import { toXmeml, editorialScore } from '../worker/src/lib/video/xml';
 import { pickHighlight, thumbWords, cleanThumbSpec, renderSpec } from '../worker/src/lib/video/pipeline';
@@ -722,6 +722,52 @@ console.log('\nTrending thumbnails: one plan for the engine and the preview');
   ok('limits hold and junk answers change nothing', checkReshape({ changed: { title: 'x'.repeat(300) } }, sent, 'longer', { title: 100 }).changed.title.length === 100 && Object.keys(checkReshape('nonsense', sent, ask).changed).length === 0);
   const pr = reshapePrompt('make it } shorter', sent, 'the video');
   ok('the prompt fences the request and the texts, and forbids invented links', /<<<REQUEST/.test(pr) && /<<<TEXTS/.test(pr) && /Never invent .*links/.test(pr) && pr.includes('"title":"Book calls fast"'));
+}
+
+
+/* ── Text placed anywhere, the ticker, the logo, sound repairs, zoom sensitivity (2026-10) ── */
+{
+  const doc0 = newDoc(parseRequest('a video'));
+  const d1 = applyOps(doc0, [
+    { op: 'overlay.add', s: 2, e: 8, text: 'Big title', style: 'title', x: 140, y: 30, size: 900, font: 'serif', icon: '★', bold: false },
+    { op: 'overlay.add', s: 0, e: 60, text: 'Breaking: new offer this week', style: 'ticker', speed: 2 },
+    { op: 'overlay.add', s: 1, e: 4, text: 'x', style: 'title', icon: '<script>' as never, font: 'comic' as never },
+  ], 60).doc;
+  const [t, tk, bad] = d1.overlays!;
+  ok('words can be placed anywhere, sized and styled — every number clamped, fonts and icons only from their lists',
+    t.x === 100 && t.y === 30 && t.size === 300 && t.font === 'serif' && t.icon === '★' && t.bold === false && bad.icon === '' && bad.font === undefined && tk.speed === 4, d1.overlays);
+  const d2 = applyOps(d1, [{ op: 'overlay.update', id: t.id, patch: { position: 'bottom' } }], 60).doc;
+  ok('choosing Top / Middle / Bottom again puts the words back on their own place', d2.overlays![0].x === undefined && overlayPlace(d2.overlays![0], false).y === 80);
+  const keeps: [number, number][] = [[0, 60]];
+  const ass = overlayAss(d1.overlays!, keeps, 1920, 1080);
+  ok('the ticker is a band and passes of words crossing it, start to end', /\\p1\}m 0 0 l 1920 0/.test(ass) && (ass.match(/\\move\(1920,/g) ?? []).length >= 5 && /Noto Serif/.test(ass) && ass.includes('★ Big title'), ass.slice(0, 400));
+  ok('a placed title sits where it was put (centre at 100%, 30%)', ass.includes('\\an5\\pos(1920,324)'));
+  const b = logoBox({ w: 400, h: 200, corner: 'tr', x: 0, y: 0, size: 10, margin: 3 }, 1920, 1080);
+  ok('a logo in the top-right corner: its width a share of the frame, its shape kept, inside the margin', b.w === 192 && b.h === 96 && b.x === 1920 - 192 - 32 && b.y === 32, b);
+  const c = logoBox({ w: 100, h: 100, corner: 'custom', x: 99, y: 50, size: 20, margin: 0 }, 1920, 1080);
+  ok('placed anywhere, it never leaves the frame', c.x + c.w <= 1920 && c.x === 1920 - c.w, c);
+  const noLogo = applyOps(doc0, [{ op: 'logo.patch', patch: { size: 20 } }], 60);
+  ok('the logo cannot be changed before there is one', noLogo.refused.length === 1);
+  const withLogo = applyOps(doc0, [{ op: 'logo.set', logo: { key: 'v/a/p/logo/up-1/logo.png', w: 512, h: 256, name: 'Acme', bgRemoved: true } }, { op: 'logo.patch', patch: { size: 99, radius: 80, opacity: 1, corner: 'bl' } }], 60).doc;
+  ok('logo settings are clamped (size 40%, roundness 50%, see-through at least 10%)', withLogo.logo!.size === 40 && withLogo.logo!.radius === 50 && withLogo.logo!.opacity === 10 && withLogo.logo!.corner === 'bl');
+  const src = { key: 'v/a/p/source.mp4', probe: { duration: 60, width: 1280, height: 720, fps: 30, vcodec: 'h264', acodec: 'aac', hasAudio: true, format: 'mp4', rotation: 0 } };
+  const long = { kind: 'long' as const, clip_id: '' };
+  const h0 = renderSpec(doc0, src, long, null)!.hash, hl = renderSpec(withLogo, src, long, null)!;
+  ok('a logo is part of what a video depends on, and is sent in its box', hl.hash !== h0 && !!hl.logo && renderSpec(applyOps(withLogo, [{ op: 'logo.patch', patch: { applyTo: 'shorts' } }], 60).doc, src, long, null)!.hash === h0);
+  const a1 = applyOps(doc0, [{ op: 'audio.set', patch: { hum: '60', declick: true, gate: true } }], 60).doc;
+  const a2 = applyOps(a1, [{ op: 'audio.set', patch: { hum: '55' as never } }], 60).doc;
+  ok('hum, clicks and the room between sentences are on the edit and in the hash; a made-up hum is ignored',
+    a1.audio.hum === '60' && a1.audio.declick && a1.audio.gate && a2.audio.hum === '60' && renderSpec(a1, src, long, null)!.hash !== h0);
+
+  const meta = cleanScreenMeta({ w: 1920, h: 1080, dur: 60, segs: [{ t: 0, layout: 'bubble', screen: [0, 0, 1, 1], cam: null, shape: 'circle' }],
+    path: [[0, 0.1, 0.1], [10, 0.12, 0.1], [10.6, 0.5, 0.5], [20, 0.5, 0.5], [40, 0.5, 0.5], [40.5, 0.7, 0.5]], clicks: [[11, 0.5, 0.5], [40.6, 0.7, 0.5]] })!;
+  const sentences = [
+    { s: 9.5, e: 12, text: 'Now open the page with your orders.' },
+    { s: 39, e: 42, text: 'Right, so that is how it goes.' },
+  ];
+  const normal = autoFocus(meta, sentences, 60, 'normal'), high = autoFocus(meta, sentences, 60, 'high'), low = autoFocus(meta, sentences, 60, 'low');
+  ok('sensitive picks more moments — a click said nothing about counts — balanced and low fewer', high.length === 2 && normal.length === 1 && low.length <= normal.length, { high, normal, low });
+  ok('…and the sensitivity is a setting on the edit', pointerOf(applyOps(doc0, [{ op: 'pointer.set', patch: { sensitivity: 'low' } }], 60).doc).sensitivity === 'low' && pointerOf(doc0).sensitivity === 'high');
 }
 
 console.log(`\n${pass} passed, ${failN} failed`);

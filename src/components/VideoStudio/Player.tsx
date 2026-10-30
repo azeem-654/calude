@@ -30,7 +30,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, Music2, Gauge, Circle, Scissors, Minus, Plus, MousePointer2, Hand } from 'lucide-react';
 import {
-  keepRanges, clipKeeps, keptLength, retimeWords, cuesOf, toOutput, toSource, clock, isRtl, lookOf, motionOf, trackingOf, cssLook, punchSpans, cutTimes, trackAt, overlaySpan, sentencesOf,
+  keepRanges, clipKeeps, keptLength, retimeWords, cuesOf, toOutput, toSource, clock, isRtl, lookOf, motionOf, trackingOf, cssLook, punchSpans, cutTimes, trackAt, overlaySpan, overlayPlace, OVERLAY_SIZE, OVERLAY_FAMILY, logoBox, logoFor, sentencesOf,
   effectsOf, effectsOn, cssEffects, layoutPlan, dimsFor, LAYOUT_LABEL, type LayoutPlan,
   pointerOf, pointerInFrame, focusWindows, zoomPlan, zoomAt, screenPlan, followPath, followAt, screenLayoutFor, frameMap, resolveCursor, type ScreenPlan, type ZoomPlan,
 } from '../../services/videoStudio';
@@ -173,6 +173,7 @@ export default function Player({ ctx, transport, below }: {
   const keeps = useMemo(() => keepsNow, [keepsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const errors = useRef(0);
   const kind = clip ? 'short' as const : 'long' as const;
+  const logo = logoFor(doc, kind);
   const look = lookOf(doc, kind), motion = motionOf(doc, kind);
   /* A Short laid out as "speaker" follows the speaker, as its render will. */
   const tracking = clip?.layout === 'speaker' ? 'speaker' : trackingOf(doc, kind);
@@ -449,12 +450,34 @@ export default function Player({ ctx, transport, below }: {
           {(plan || splan) && <canvas ref={layoutRef} className="vse-layout" data-testid="vs-layout-preview" data-layout={plan?.kind ?? splan!.kind} aria-label={`${LAYOUT_LABEL[plan?.kind ?? splan!.kind]} — preview`} />}
           {pointerLive && pwins.length > 0 && <div ref={ptrRef} className="vse-ptr" hidden data-testid="vs-pointer-preview" style={{ ['--ptr' as string]: ptr.color, ['--ptrk' as string]: String(ptr.size * frameH / 1080) }}><i /></div>}
           <div ref={shadeRef} className="vse-shade" />
-          {words.map(({ o, span }) => out !== null && out >= span![0] && out < span![1] && (
-            <div key={o.id} className={`vse-ov ${o.style} pos-${o.position} anim-${o.anim}`} data-testid="vs-overlay"
-              style={{ fontSize: Math.max(10, frameH * ({ title: 0.075, lower: 0.042, cta: 0.05, label: 0.034, quote: 0.055 }[o.style] ?? 0.06) * (ratio < 1 ? 0.62 : 1)), color: o.color, ['--ovbg' as string]: o.bg }}>
-              <span>{o.style === 'quote' ? `“${o.text}”` : o.text}</span>
-            </div>
-          ))}
+          {words.map(({ o, span }) => {
+            if (out === null || out < span![0] || out >= span![1]) return null;
+            /* The same place and size the engine's script uses (overlayPlace, OVERLAY_SIZE), on the frame's own pixels. */
+            const pl = overlayPlace(o, ratio < 1);
+            const fs = Math.max(8, Math.min(frameH, frameH * ratio) * (OVERLAY_SIZE[o.style] ?? 0.06) * (o.size ?? 100) / 100);
+            const txt = (o.icon ? `${o.icon} ` : '') + (o.style === 'quote' ? `“${o.text}”` : o.text);
+            const font: React.CSSProperties = {
+              fontFamily: `'${OVERLAY_FAMILY[o.font ?? 'sans'] ?? 'Noto Sans'}', system-ui, sans-serif`,
+              fontWeight: (o.bold ?? o.style !== 'subtitle') ? 800 : 500, fontStyle: (o.italic ?? o.style === 'quote') ? 'italic' : 'normal',
+              ...(o.font === 'condensed' ? { fontStretch: 'condensed', letterSpacing: '-0.02em' } : {}),
+            };
+            return o.style === 'ticker' ? (
+              <div key={o.id} className="vse-ov ticker" data-testid="vs-overlay" data-style="ticker"
+                style={{ top: `${pl.y}%`, fontSize: fs, color: o.color, ['--ovbg' as string]: o.bg, ['--tk' as string]: `${o.speed ?? 12}s`, ...font }}>
+                <span>{txt}</span>
+              </div>
+            ) : (
+              <div key={o.id} className={`vse-ov placed ${o.style} anim-${o.anim} ${pl.left ? 'left' : ''}`} data-testid="vs-overlay" data-style={o.style}
+                style={{ left: `${pl.x}%`, top: `${pl.y}%`, fontSize: fs, color: o.color, ['--ovbg' as string]: o.bg, ...font }}>
+                <span>{txt}</span>
+              </div>
+            );
+          })}
+          {logo && ctx.view.source.logoUrl && (() => {
+            const W = frameH * ratio, b = logoBox(logo, W, frameH);
+            return <img className="vse-logo" src={ctx.view.source.logoUrl} alt="" data-testid="vs-logo-preview"
+              style={{ left: b.x, top: b.y, width: b.w, height: b.h, borderRadius: Math.min(b.w, b.h) * logo.radius / 100, opacity: logo.opacity / 100 }} />;
+          })()}
           {cue && (
             <div className={`vs-cap ${style.box ? 'box' : ''}`} data-testid="vs-caption" dir={isRtl(cue.text) ? 'rtl' : 'ltr'}
               style={{

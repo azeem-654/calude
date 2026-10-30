@@ -38,6 +38,7 @@ import { GoalGrid, GoalOptions, defaultResult, type GoalKey, type WizardResult }
 import VideoEditor from './VideoEditor';
 import { MediaLibrary, ExportsList, ReadyToPublish } from './VideoLibrary';
 import BrandKit from './BrandKit';
+import StudioHome from './StudioHome';
 import './videoStudio.css';
 
 const QuickShorts = lazy(() => import('../VideoShorts/VideoShorts'));
@@ -82,25 +83,6 @@ export function CapabilityPanel({ caps, usage, onClose }: { caps: Capability[]; 
         )}
       </div>
     </div>
-  );
-}
-
-function ProjectCardView({ p, onOpen }: { p: ProjectSummary; onOpen: () => void }) {
-  const label = p.status === 'ready' ? 'Ready' : p.status === 'failed' ? 'Failed' : p.status === 'draft' ? 'Needs a video' : p.status === 'uploading' ? 'Uploading' : 'Processing';
-  const cls = p.status === 'ready' ? 'approved' : p.status === 'failed' ? 'failed' : p.status === 'draft' ? '' : 'processing';
-  return (
-    <button type="button" className="vs-card vs-proj" onClick={onOpen} data-testid="vs-project-card">
-      <div className="vs-poster" style={p.posterUrl ? { backgroundImage: `url("${p.posterUrl}")` } : undefined}>
-        <span className={`vs-badge ${cls}`}>{label}</span>
-        {p.duration > 0 && <span className="vs-dur">{clock(p.duration)}</span>}
-        {!p.posterUrl && <Clapperboard size={34} color="#3b3f48" style={{ position: 'absolute', inset: 0, margin: 'auto' }} />}
-      </div>
-      <div className="vs-proj-body">
-        <b>{p.name}</b>
-        <span>{p.shorts ? `${p.shorts} Short${p.shorts === 1 ? '' : 's'}` : 'No Shorts yet'}{p.approved ? ` · ${p.approved} approved` : ''}{p.autopilotProjectName ? ` · ${p.autopilotProjectName}` : ''}</span>
-        {p.status === 'failed' && p.error && <span style={{ color: 'var(--bad)' }}>{p.error.slice(0, 120)}</span>}
-      </div>
-    </button>
   );
 }
 
@@ -208,21 +190,9 @@ export default function VideoStudio() {
           {tab === 'projects' && (
             error ? <div className="vs-note bad">{error}</div>
               : !projects ? <p className="vs-sub"><Loader size={14} className="spin" /> Loading…</p>
-                : (
-                  <div className="vs-col" style={{ gap: 22 }}>
-                    <div className="vs-card" style={{ background: 'linear-gradient(135deg, rgba(139,92,246,.12), rgba(236,72,153,.06) 60%, transparent)' }}>
-                      <GoalGrid onTab={t => go(t)} onPick={pickGoal} />
-                    </div>
-                    {projects.length > 0 && (
-                      <div className="vs-col">
-                        <h2 style={{ margin: 0, fontSize: 17 }}>Your video projects</h2>
-                        <div className="vs-grid">
-                          {projects.map(p => <ProjectCardView key={p.id} p={p} onOpen={() => navigate(`/video-studio/${p.id}`)} />)}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )
+                : <StudioHome projects={projects} usage={usage}
+                    onRecord={() => { setTab('media'); setParams({ tab: 'media', record: '1' }, { replace: true }); }}
+                    onUpload={() => startNew()} onGoal={pickGoal} onTab={t => go(t)} onOpen={pid => navigate(`/video-studio/${pid}`)} />
           )}
           {tab === 'quick-shorts' && <div className="vs-note" data-testid="vs-quick-note"><Link2 size={15} /> <span><b>Quick Shorts</b> makes a Short from a topic, a link or a script — no recording needed. To cut Shorts from a recording you made, start a <button type="button" className="vs-btn ghost sm" onClick={() => startNew()}>new video project</button>.</span></div>}
           {tab === 'repurpose' && <div className="vs-note" data-testid="vs-repurpose-note"><Rocket size={15} /> <span><b>Repurpose</b> turns one video idea into a campaign across channels. To write posts, an article and emails from a recording, open its project and use <b>Reuse</b>, or choose “Repurpose into posts, emails and a blog” when you start one.</span></div>}

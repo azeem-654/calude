@@ -35,7 +35,7 @@ import { searchMusic, trackById, storeTrack, musicQuery, looksLikeAudio } from '
 import { checkPng } from '../lib/video/png';
 import { brandOf, kitOf, saveKit } from '../lib/video/brand';
 import { cleanOembed, parseYoutubeUrl, youtubeThumb, YOUTUBE_WAY_FORWARD } from '../lib/video/youtube';
-import { autoFocus, cleanScreenMeta, type ScreenRef } from '../lib/video/pointer';
+import { autoFocus, cleanScreenMeta, pointerOf, type ScreenRef } from '../lib/video/pointer';
 import {
   advanceProject, cancelProject, enqueue, originOf, outputsOf, parse, readTranscript, renderSpec, stagesOf, syncOutputs, queueAfterEdit,
   recreditOutputs, type Extras, type JobRow, type OutputRow, type ProjectRow, type Source, type Thumb,
@@ -46,7 +46,7 @@ interface Req {
   token?: string; accountId?: string; action?: string;
   projectId?: string; outputId?: string; name?: string; prompt?: string; settings?: Partial<VideoRequest> & { language?: string };
   autopilotProjectId?: string; workflowId?: string; spec?: unknown; playhead?: number;
-  size?: number; type?: string; fileKey?: string; uploadId?: string;
+  size?: number; type?: string; bgRemoved?: boolean; fileKey?: string; uploadId?: string;
   baseVersion?: number; ops?: Op[]; note?: string; version?: number; preset?: string;
   text?: string; selection?: { s: number; e: number } | null; clipId?: string | null;
   outputIds?: string[]; headline?: string; index?: number; status?: string; publishAt?: string | null;
@@ -195,6 +195,7 @@ async function projectView(env: Env, origin: string, p: ProjectRow, opts: { ligh
       trackUrl: src.track?.key && sendDoc ? await fileUrl(env, origin, p.account_id, src.track.key, 4 * 3600) : '',
       screenUrl: ex.screen?.key && sendDoc ? await fileUrl(env, origin, p.account_id, ex.screen.key, 4 * 3600) : '',
       posterUrl: src.poster ? await fileUrl(env, origin, p.account_id, src.poster, 4 * 3600) : '',
+      logoUrl: doc?.logo?.key ? await fileUrl(env, origin, p.account_id, doc.logo.key, 4 * 3600) : '',
       waveUrl: src.wave && sendDoc ? await fileUrl(env, origin, p.account_id, src.wave, 4 * 3600) : '',
       filmstrip: src.filmstrip ? { url: await fileUrl(env, origin, p.account_id, src.filmstrip.key, 4 * 3600), every: src.filmstrip.every, tiles: src.filmstrip.tiles, w: src.filmstrip.w, h: src.filmstrip.h } : null,
       silences: sendDoc ? src.silences ?? [] : undefined,
@@ -670,8 +671,9 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
 
     case 'edit': {
       /* A track and its licence are set only by the server (music_choose,
-         music_attach); a browser may change how it plays, not what it is. */
-      const ops = (Array.isArray(d.ops) ? d.ops.slice(0, 200) : []).filter(o => o?.op !== 'music.set');
+         music_attach); a browser may change how it plays, not what it is.
+         The same for the logo's picture (logo_attach). */
+      const ops = (Array.isArray(d.ops) ? d.ops.slice(0, 200) : []).filter(o => o?.op !== 'music.set' && o?.op !== 'logo.set');
       if (!ops.length) return fail('Nothing to change.');
       const r = await saveEdit(env, p, d.baseVersion, ops, s(d.note, 200) || 'Edited', user.email);
       if (!r.ok) return json({ success: false, conflict: true, error: 'This project changed in another window — showing the latest version.', doc: r.doc, docVersion: r.version });
@@ -925,6 +927,39 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
         note: bytes.length > 2 * 1024 * 1024 ? `It is ${(bytes.length / 1048576).toFixed(1)} MB; YouTube accepts custom thumbnails up to 2 MB, so it will need making smaller (as a JPEG, say) before it goes on YouTube.` : '' });
     }
 
+    /* The logo: the browser sends a PNG it made (converted, background taken
+       out when asked) through a signed link; the server checks the bytes
+       before the picture is the project's logo. */
+    case 'logo_upload_url': {
+      if (!env.VIDEO) return fail('Video storage is not set up yet.', 503, { code: 'no_storage' });
+      const room = await refusal(env, accountId, { bytes: 4e6 });
+      if (room) return fail(room, 402, { code: 'allowance' });
+      const prefix = `${projectPrefix(accountId, p.id)}logo/up-${crypto.randomUUID().slice(0, 8)}/`;
+      return json({ success: true, url: `${origin}/api/video-file.php?t=${await sign(env, { a: accountId, k: prefix, m: 'put' }, 1800)}`, key: `${prefix}logo.png` });
+    }
+
+    case 'logo_attach': {
+      if (!env.VIDEO) return fail('Video storage is not set up yet.', 503, { code: 'no_storage' });
+      const key = s(d.key, 300);
+      if (!key.startsWith(`${projectPrefix(accountId, p.id)}logo/up-`) || !key.endsWith('/logo.png') || key.includes('..')) return fail('That upload is not part of this project.', 403);
+      const head = await env.VIDEO.head(key);
+      if (!head) return fail('The logo did not arrive — try again.', 200, { code: 'not_uploaded', field: 'video.logo' });
+      if (head.size > 4 * 1024 * 1024) { await env.VIDEO.delete(key).catch(() => null); return fail('That logo is over 4 MB, so it was not kept.', 200, { code: 'too_big', field: 'video.logo' }); }
+      const obj = await env.VIDEO.get(key);
+      const bytes = obj ? new Uint8Array(await obj.arrayBuffer()) : new Uint8Array();
+      const chk = checkPng(bytes);
+      if (!chk.ok || chk.width > 4096 || chk.height > 4096) {
+        await env.VIDEO.delete(key).catch(() => null);
+        return fail(`That logo could not be used (${chk.ok ? 'over 4096 pixels' : chk.reason}).`, 200, { code: 'not_png', field: 'video.logo' });
+      }
+      const r = await saveEdit(env, p, d.baseVersion, [{ op: 'logo.set', logo: { key, w: chk.width, h: chk.height, name: s(d.name, 80) || 'Logo', bgRemoved: !!d.bgRemoved } }], `Logo: ${s(d.name, 60) || 'added'}`, user.email);
+      if (!r.ok) { await env.VIDEO.delete(key).catch(() => null); return json({ success: false, conflict: true, error: 'This project changed in another window — showing the latest version.', doc: r.doc, docVersion: r.version }); }
+      /* The picture it replaced is kept: an older version (Undo) may still name it. */
+      const refusedRender = await afterEdit(env, origin, p, r.doc);
+      kick(p.id);
+      return json({ success: true, doc: r.doc, docVersion: r.version, note: refusedRender });
+    }
+
     case 'track_now': {
       const src = parse<Source>(p.source, {});
       if (!src.proxy) return fail('The video has to be prepared first.');
@@ -976,7 +1011,7 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       const tr = !doc?.pointer?.ran ? await readTranscript(env, p) : null;
       if (tr) {
         const duration = parse<Source>(p.source, {}).probe?.duration ?? tr.duration;
-        const r = await saveEdit(env, p, undefined, [{ op: 'pointer.focus.set', list: autoFocus(meta, sentencesOf(tr.words), duration) }], 'Moments to follow the pointer, picked from what you said and where you clicked', 'Video Studio');
+        const r = await saveEdit(env, p, undefined, [{ op: 'pointer.focus.set', list: autoFocus(meta, sentencesOf(tr.words), duration, pointerOf(doc ?? {}).sensitivity) }], 'Moments to follow the pointer, picked from what you said and where you clicked', 'Video Studio');
         if (r.ok) await afterEdit(env, origin, p, r.doc);
       }
       return json({ success: true, screen: ref });

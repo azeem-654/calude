@@ -25,16 +25,19 @@
  * bar along the bottom of the screen.
  */
 import { OverallProgress } from './ProcessingProgress';
+import ActivityPanel, { type ChangeItem } from './ActivityPanel';
+import ExportDialog from './ExportDialog';
+import LogoPanel from './LogoPanel';
 import { askConfirm } from '../shared/ConfirmDialog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Home, Undo2, Redo2, Loader, Bot, ShieldCheck, Trash2, RefreshCw, Upload, AlertCircle, Check, X, Search, Plus, History, Music2, ChevronDown,
-  FolderOpen, Sparkles, SlidersHorizontal, Shapes, Captions as CaptionsIcon, Images, Clapperboard, Download, Keyboard, LayoutGrid, PaintBucket, Film,
+  FolderOpen, Sparkles, SlidersHorizontal, Shapes, Captions as CaptionsIcon, Images, Clapperboard, Download, Keyboard, LayoutGrid, PaintBucket, Film, Activity, ArrowRight,
 } from 'lucide-react';
 import {
   getVideoProject, videoStatus, editVideo, applyOps, gotoVersion, renameVideoProject, retryVideo, cancelVideo, deleteVideoProject, renderOutputs,
-  loadTranscript, loadWave, loadTrack, loadScreen, type ScreenMeta, uploadVideo, sentencesOf, clock, bytesLabel, keepRanges, clipKeeps, keptLength, STATUS_LABEL,
+  loadTranscript, loadWave, loadTrack, loadScreen, lookOf, type ScreenMeta, uploadVideo, sentencesOf, clock, bytesLabel, keepRanges, clipKeeps, keptLength, STATUS_LABEL,
   type ProjectView, type Transcript, type VideoDoc, type Op, type Clip, type UploadProgress, type Capability, type TrackFile,
 } from '../../services/videoStudio';
 import { TranscriptPanel, CleanupPanel, ShortsPanel, CaptionsPanel } from './EditorPanels';
@@ -59,18 +62,20 @@ const SHORTCUTS: [string, [string, string][]][] = [
 ];
 
 /** The rail's groups (Descript's): each opens its panel beside the rail. */
-export type Group = 'project' | 'ai' | 'properties' | 'elements' | 'captions' | 'media';
-type Sub = 'shorts' | 'reuse' | 'tools' | 'cleanup' | 'video' | 'adjust' | 'effects' | 'animation' | 'tracking' | 'pointer' | 'audio' | 'text' | 'music' | 'captions' | 'media';
+export type Group = 'activity' | 'project' | 'ai' | 'properties' | 'elements' | 'captions' | 'media';
+type Sub = 'activity' | 'shorts' | 'reuse' | 'tools' | 'cleanup' | 'video' | 'adjust' | 'effects' | 'animation' | 'tracking' | 'pointer' | 'audio' | 'text' | 'logo' | 'music' | 'captions' | 'media';
 export type PanelTab = Sub | 'transcript' | 'assistant' | 'versions' | 'exports';
 const RAIL: { key: Group; label: string; icon: typeof Film }[] = [
+  { key: 'activity', label: 'Progress', icon: Activity },
   { key: 'project', label: 'Project', icon: FolderOpen }, { key: 'ai', label: 'AI Tools', icon: Sparkles }, { key: 'properties', label: 'Properties', icon: SlidersHorizontal },
   { key: 'elements', label: 'Elements', icon: Shapes }, { key: 'captions', label: 'Captions', icon: CaptionsIcon }, { key: 'media', label: 'Media', icon: Images },
 ];
 const SUBS: Record<Group, { key: Sub; label: string }[]> = {
+  activity: [{ key: 'activity', label: 'Progress' }],
   project: [{ key: 'shorts', label: 'Compositions' }, { key: 'reuse', label: 'Reuse' }],
   ai: [{ key: 'tools', label: 'AI Tools' }, { key: 'cleanup', label: 'Cleanup' }],
   properties: [{ key: 'video', label: 'Video' }, { key: 'adjust', label: 'Adjust' }, { key: 'effects', label: 'Effects' }, { key: 'animation', label: 'Animation' }, { key: 'tracking', label: 'Tracking' }, { key: 'pointer', label: 'Pointer' }, { key: 'audio', label: 'Audio' }],
-  elements: [{ key: 'text', label: 'Text' }, { key: 'music', label: 'Music' }],
+  elements: [{ key: 'text', label: 'Text' }, { key: 'logo', label: 'Logo' }, { key: 'music', label: 'Music' }],
   captions: [{ key: 'captions', label: 'Captions' }],
   media: [{ key: 'media', label: 'Media' }],
 };
@@ -312,10 +317,55 @@ function CompositionMenu({ ctx }: { ctx: EditorCtx }) {
   );
 }
 
+/* ── The guided path ──────────────────────────────────────────────────────── */
+
+/**
+ * Editing as a path of steps, each opening its own panel with one line on
+ * what it does — for someone who does not know where to start. A tick means
+ * that step has something set (read from the document), not that it was
+ * "finished": every step can be skipped and come back to.
+ */
+const GUIDE: { key: Sub | 'exports'; label: string; what: string; set: (d: VideoDoc, v: ProjectView) => boolean; screenOnly?: boolean }[] = [
+  { key: 'cleanup', label: 'Clean up', what: 'Remove filler words, long pauses and retakes — or strike words in the script on the left.', set: d => d.cuts.some(c => c.state === 'approved') },
+  { key: 'audio', label: 'Sound', what: 'Studio Sound, background noise, hum, clicks and even loudness — applied when the video is made.', set: d => !!d.audio.studio || d.audio.denoise !== 'off' || (!!d.audio.hum && d.audio.hum !== 'off') || !!d.audio.declick || !!d.audio.gate },
+  { key: 'adjust', label: 'Look', what: 'Colour, brightness and a filter for the picture.', set: d => !!d.look && JSON.stringify(d.look.long) !== JSON.stringify(lookOf({}, 'long')) },
+  { key: 'pointer', label: 'Zoom', what: 'Zoom in where you click and talk about the screen (Screen Recorder recordings).', set: d => !!d.pointer?.focus.length, screenOnly: true },
+  { key: 'text', label: 'Text', what: 'A title and description, a lower third, a scrolling ticker or a name under your camera — placed and sized as you like.', set: d => !!d.overlays?.length },
+  { key: 'logo', label: 'Logo', what: 'Your logo in a corner or anywhere, any size, rounded, with its background taken out.', set: d => !!d.logo?.on },
+  { key: 'captions', label: 'Captions', what: 'Words on screen as you speak, in your style.', set: d => d.captions.on },
+  { key: 'exports', label: 'Export', what: 'Make the video and download it.', set: (_d, v) => v.outputs.some(o => o.rendered && !o.stale) },
+];
+
+function GuidePath({ ctx, sub, go }: { ctx: EditorCtx; sub: Sub; go: (t: PanelTab) => void }) {
+  const steps = GUIDE.filter(g => !g.screenOnly || ctx.screen);
+  const at = steps.findIndex(g => g.key === sub);
+  const here = at >= 0 ? steps[at] : null;
+  const next = at >= 0 ? steps[at + 1] : null;
+  return (
+    <div className="vs-guide" data-testid="vs-guide">
+      <ol className="vs-guide-steps">
+        {steps.map((g, i) => (
+          <li key={g.key}>
+            <button type="button" aria-current={g.key === sub ? 'step' : undefined} className={g.set(ctx.doc, ctx.view) ? 'set' : ''} onClick={() => go(g.key as PanelTab)} data-guide={g.key} title={g.what}>
+              <i>{g.set(ctx.doc, ctx.view) ? <Check size={10} /> : i + 1}</i><span>{g.label}</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+      {here && (
+        <div className="vs-guide-here">
+          <span><b>Step {at + 1} · {here.label}.</b> {here.what}</span>
+          {next && <button type="button" className="vs-btn ghost sm" onClick={() => go(next.key as PanelTab)} data-act="guide-next">Next: {next.label} <ArrowRight size={13} /></button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── The panel beside the rail ────────────────────────────────────────────── */
 
-function SidePanel({ ctx, group, sub, setSub, onClose, messages, commandRef }: {
-  ctx: EditorCtx; group: Group; sub: Sub; setSub: (s: Sub) => void; onClose: () => void; messages: ChatMsg[]; commandRef: React.RefObject<HTMLInputElement | null>;
+function SidePanel({ ctx, group, sub, setSub, onClose, messages, commandRef, activity }: {
+  ctx: EditorCtx; group: Group; sub: Sub; setSub: (s: Sub) => void; onClose: () => void; messages: ChatMsg[]; commandRef: React.RefObject<HTMLInputElement | null>; activity: React.ReactNode;
 }) {
   const subs = SUBS[group];
   const sentences = useMemo(() => ctx.transcript ? sentencesOf(ctx.transcript.words) : [], [ctx.transcript]);
@@ -332,6 +382,8 @@ function SidePanel({ ctx, group, sub, setSub, onClose, messages, commandRef }: {
         </div>
       )}
       <div className="vse-scroll">
+        {group !== 'activity' && group !== 'media' && group !== 'project' && <GuidePath ctx={ctx} sub={sub} go={t => setSub(t as Sub)} />}
+        {sub === 'activity' && activity}
         {sub === 'shorts' && <ShortsPanel ctx={ctx} sentences={sentences} />}
         {sub === 'reuse' && <ReusePanel ctx={ctx} />}
         {sub === 'tools' && (
@@ -349,6 +401,7 @@ function SidePanel({ ctx, group, sub, setSub, onClose, messages, commandRef }: {
         {sub === 'pointer' && <PointerPanel ctx={ctx} />}
         {sub === 'audio' && <AudioPanel ctx={ctx} />}
         {sub === 'text' && <TextPanel ctx={ctx} />}
+        {sub === 'logo' && <LogoPanel ctx={ctx} />}
         {sub === 'music' && <MusicPanel ctx={ctx} />}
         {sub === 'captions' && <CaptionsPanel ctx={ctx} />}
         {sub === 'media' && <MediaPanel ctx={ctx} />}
@@ -385,6 +438,7 @@ export default function VideoEditor({ id }: { id: string }) {
   const [showCaps, setShowCaps] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
   const [showHistory, setShowHistory] = useState(asked === 'versions');
+  const [showExport, setShowExport] = useState(false);
   const [name, setName] = useState('');
   const [transportEl, setTransportEl] = useState<HTMLDivElement | null>(null);
   const transcriptUrlSeen = useRef('');
@@ -399,7 +453,7 @@ export default function VideoEditor({ id }: { id: string }) {
     const g = groupOf(t);
     if (g) { openGroup(g, t as Sub); setParams(t === 'tools' ? {} : { tab: t }, { replace: true }); return; }
     if (t === 'versions') setShowHistory(true);
-    else if (t === 'exports') document.getElementById('vs-outputs-board')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else if (t === 'exports') setShowExport(true);
     else if (t === 'assistant') { openGroup('ai', 'tools'); setTimeout(() => commandRef.current?.focus(), 50); }
     else if (t === 'transcript') document.querySelector<HTMLElement>('[data-testid="vs-tr-text"]')?.focus();
   }, [setParams, openGroup]);
@@ -472,6 +526,15 @@ export default function VideoEditor({ id }: { id: string }) {
     return () => clearTimeout(t);
   }, [view, moving, id, absorb]);
 
+  /* When something starts moving (a render pressed, the first processing), the progress opens on the
+     right — wide screens only, where it does not cover the video. */
+  const wasMoving = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (wasMoving.current === false && moving && !narrow()) { setGroup('activity'); setSub('activity'); }
+    if (wasMoving.current === null && moving && !narrow() && !groupOf(asked)) { setGroup('activity'); setSub('activity'); }
+    if (view) wasMoving.current = moving;
+  }, [moving, view]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const refresh = useCallback(async () => { const asked = epoch.current; const r = await videoStatus(id, -1); if (r.success) await absorb(r, asked); }, [id, absorb]);
 
   /*
@@ -492,6 +555,18 @@ export default function VideoEditor({ id }: { id: string }) {
   const queue = useRef<{ ops: Op[]; note: string }[]>([]);
   const chain = useRef<Promise<unknown>>(Promise.resolve());
   const durationRef = useRef(0);
+  /* How many saves and version moves are still on their way — the spinner, and the "Your changes" list in the activity panel. */
+  const inflight = useRef(0);
+  const [changes, setChanges] = useState<ChangeItem[]>([]);
+  const track1 = useCallback((note: string) => {
+    const it: ChangeItem = { id: Math.random().toString(36).slice(2), note, state: 'queued', at: Date.now() };
+    setChanges(cs => [...cs, it].slice(-8));
+    return (patch: Partial<ChangeItem>) => setChanges(cs => cs.map(c => (c.id === it.id ? { ...c, ...patch } : c)));
+  }, []);
+  const settle = useCallback(() => { inflight.current = Math.max(0, inflight.current - 1); if (!inflight.current) { setBusy(false); void refresh(); } }, [refresh]);
+  /* The newest version there is: an edit after an undo drops the redo branch, so it is the edit's own version. */
+  const maxRef = useRef(0);
+  if (view && view.maxVersion > maxRef.current && !inflight.current) maxRef.current = view.maxVersion;
   const apply = useCallback(async (ops: Op[], note: string) => {
     if (!ops.length || !docRef.current) return false;
     if (!queue.current.length) confirmed.current = docRef.current;
@@ -502,44 +577,88 @@ export default function VideoEditor({ id }: { id: string }) {
     docRef.current = local;
     setDoc(local);
     setBusy(true);
+    inflight.current++;
+    const mark = track1(note);
     const run = chain.current.then(async () => {
+      mark({ state: 'saving' });
       const r = await editVideo(id, versionRef.current, ops, note);
       epoch.current++;
       queue.current = queue.current.filter(x => x !== item);
       if (r.success) {
         confirmed.current = r.doc;
         versionRef.current = r.docVersion;
+        maxRef.current = r.docVersion;
         setVersion(r.docVersion);
         /* The server's document is the truth (its ids, its clamping) — with any edits still on their way laid over it. */
         const shown = queue.current.reduce((d, q) => applyOps(d, q.ops, durationRef.current).doc, r.doc);
         docRef.current = shown; setDoc(shown);
+        mark({ state: r.refused?.length ? 'failed' : 'done', version: r.docVersion, why: r.refused?.join('; ') });
         if (r.refused?.length) say({ who: 'ai', text: `Not done: ${r.refused.join('; ')}.` });
         if (r.note) say({ who: 'ai', text: r.note });
-        if (!queue.current.length) { setBusy(false); void refresh(); }
+        settle();
         return true;
       }
       const base = r.conflict && r.doc ? r.doc as VideoDoc : confirmed.current;
       if (r.conflict && r.doc) { confirmed.current = base; const v = Number((r as { docVersion?: number }).docVersion); if (v) { versionRef.current = v; setVersion(v); } }
       if (base) { const shown = queue.current.reduce((d, q) => applyOps(d, q.ops, durationRef.current).doc, base); docRef.current = shown; setDoc(shown); }
-      if (!queue.current.length) setBusy(false);
+      mark({ state: 'failed', why: r.error ?? 'not saved' });
+      settle();
       say({ who: 'ai', text: `${r.error ?? 'That change could not be saved.'} It has been undone on screen.` });
       return false;
     });
-    chain.current = run.catch(() => false);
+    chain.current = run.catch(() => { settle(); return false; });
     return run;
-  }, [id, refresh, say]);
+  }, [id, say, settle, track1]);
+
+  /*
+   * ── Undo and redo, one version per press ──
+   *
+   * A press made while a cut was still saving used to be thrown away (an undo
+   * then would have gone back from the version before the save), so deleting
+   * five words and pressing Ctrl+Z five times brought back one or two. Now
+   * every press joins the same line as the saves: it runs after whatever was
+   * pressed before it, and moves exactly one version from wherever the last
+   * step left it.
+   */
+  const step = useCallback((d: 1 | -1) => {
+    setBusy(true);
+    inflight.current++;
+    const mark = track1(d < 0 ? 'Undo' : 'Redo');
+    const run = chain.current.then(async () => {
+      const to = versionRef.current + d;
+      if (to < 1 || to > maxRef.current) { mark({ state: 'failed', why: d < 0 ? 'nothing older to undo' : 'nothing newer to redo' }); settle(); return; }
+      mark({ state: 'saving' });
+      epoch.current++;
+      const r = await gotoVersion(id, to);
+      epoch.current++;
+      if (r.success) {
+        versionRef.current = r.docVersion;
+        confirmed.current = r.doc;
+        const shown = queue.current.reduce((dd, q) => applyOps(dd, q.ops, durationRef.current).doc, r.doc);
+        docRef.current = shown; setDoc(shown); setVersion(r.docVersion);
+        mark({ state: 'done', version: r.docVersion });
+      } else mark({ state: 'failed', why: r.error ?? 'could not move' });
+      settle();
+    });
+    chain.current = run.catch(() => settle());
+  }, [id, settle, track1]);
 
   const go = useCallback(async (v: number) => {
-    if (!view || v < 1 || v > view.maxVersion) return;
+    if (!view || v < 1 || v > maxRef.current) return;
+    inflight.current++;
     setBusy(true);
-    epoch.current++;
-    const r = await gotoVersion(id, v);
-    setBusy(false);
-    epoch.current++;
-    if (r.success) { setDoc(r.doc); setVersion(r.docVersion); void refresh(); }
-  }, [id, view, refresh]);
+    const run = chain.current.then(async () => {
+      epoch.current++;
+      const r = await gotoVersion(id, v);
+      epoch.current++;
+      if (r.success) { versionRef.current = r.docVersion; docRef.current = r.doc; setDoc(r.doc); setVersion(r.docVersion); }
+      settle();
+    });
+    chain.current = run.catch(() => settle());
+    await run;
+  }, [id, view, settle]);
 
-  const adopt = useCallback((d: VideoDoc, v: number) => { epoch.current++; setDoc(d); setVersion(v); }, []);
+  const adopt = useCallback((d: VideoDoc, v: number) => { epoch.current++; versionRef.current = v; maxRef.current = v; docRef.current = d; setDoc(d); setVersion(v); }, []);
 
   const seek = useCallback((t: number) => {
     /* Negative numbers are the player telling us where it is (−1 − time);
@@ -572,14 +691,13 @@ export default function VideoEditor({ id }: { id: string }) {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       if (e.key === '?' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); setShowKeys(k => !k); return; }
-      /* While a save is on its way the version here is the one before it; an undo now would go back two. */
-      if ((e.metaKey || e.ctrlKey) && busy && /^[zy]$/i.test(e.key)) { e.preventDefault(); return; }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); void go(e.shiftKey ? version + 1 : version - 1); }
-      else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); void go(version + 1); }
+      /* Each press is one step, queued behind any save still on its way (step). */
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); step(e.shiftKey ? 1 : -1); }
+      else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); step(1); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [go, version, busy]);
+  }, [step]);
 
   const duration = view?.source.probe?.duration ?? transcript?.duration ?? 0;
   durationRef.current = duration;
@@ -607,8 +725,8 @@ export default function VideoEditor({ id }: { id: string }) {
     <div className={`vse ${group ? 'with-panel' : ''}`} data-testid="vs-editor" data-status={st}>
       <header className="vse-top">
         <Link to="/video-studio" className="vs-btn ghost sm" aria-label="Back to Video Studio" title="Video Studio"><Home size={16} /></Link>
-        <button type="button" className="vs-btn ghost sm" disabled={version <= 1} onClick={() => void go(version - 1)} aria-label="Undo" title="Undo (Ctrl+Z)"><Undo2 size={15} /></button>
-        <button type="button" className="vs-btn ghost sm" disabled={version >= view.maxVersion} onClick={() => void go(version + 1)} aria-label="Redo" title="Redo (Ctrl+Y or Ctrl+Shift+Z)"><Redo2 size={15} /></button>
+        <button type="button" className="vs-btn ghost sm" disabled={version <= 1 && !busy} onClick={() => step(-1)} aria-label="Undo" title="Undo (Ctrl+Z)" data-act="undo"><Undo2 size={15} /></button>
+        <button type="button" className="vs-btn ghost sm" disabled={version >= view.maxVersion && !busy} onClick={() => step(1)} aria-label="Redo" title="Redo (Ctrl+Y or Ctrl+Shift+Z)" data-act="redo"><Redo2 size={15} /></button>
         {busy && <Loader size={14} className="spin" />}
         <nav className="vse-crumbs" aria-label="Where you are">
           <Link to="/video-studio" className="crumb">Video Studio</Link><span className="sep">/</span>
@@ -657,16 +775,22 @@ export default function VideoEditor({ id }: { id: string }) {
           ) : (
             <div className="vse-player"><div className="vse-screen" style={{ minHeight: 240 }}><span className="vs-kbd"><Loader size={14} className="spin" /> The preview appears when the video is prepared.</span></div></div>
           )}
-        {working && hasSource && <StagesCard view={view} onRetry={() => void retryVideo(id).then(refresh)} onCancel={() => void cancelVideo(id).then(refresh)} />}
+        {working && hasSource && !group && (
+          <button type="button" className="vse-work-pill" onClick={() => openGroup('activity')} data-act="open-activity">
+            <Loader size={14} className="spin" /> {view.stages.find(x => x.state === 'active')?.label ?? 'Working'}… <b>See progress</b>
+          </button>
+        )}
       </main>
 
       <aside className="vse-side">
-        {group && <SidePanel ctx={ctx} group={group} sub={SUBS[group].some(x => x.key === sub) ? sub : SUBS[group][0].key} setSub={s => setTab(s)} onClose={() => setGroup(null)} messages={messages} commandRef={commandRef} />}
+        {group && <SidePanel ctx={ctx} group={group} sub={SUBS[group].some(x => x.key === sub) ? sub : SUBS[group][0].key} setSub={s => setTab(s)} onClose={() => setGroup(null)} messages={messages} commandRef={commandRef}
+          activity={<ActivityPanel view={view} doc={doc} changes={changes} onRetry={() => void retryVideo(id).then(refresh)} onCancel={() => void cancelVideo(id).then(refresh)} />} />}
         <nav className="vse-rail" aria-label="Panels">
           {RAIL.map(r => (
             <button key={r.key} type="button" className="vse-rail-btn" aria-pressed={group === r.key} onClick={() => railClick(r.key)} data-rail={r.key} title={r.label}>
               <r.icon size={18} /><span>{r.label}</span>
               {r.key === 'ai' && proposed ? <i className="dot" /> : null}
+              {r.key === 'activity' && (working || busy) ? <i className="dot live" /> : null}
             </button>
           ))}
         </nav>
@@ -677,6 +801,7 @@ export default function VideoEditor({ id }: { id: string }) {
       {hasSource && duration > 0 && <section className="vse-time"><Timeline ctx={ctx} wave={wave} /></section>}
 
       {showCaps && caps && <CapabilityPanel caps={caps} usage={null} onClose={() => setShowCaps(false)} />}
+      {showExport && <ExportDialog ctx={ctx} onClose={() => setShowExport(false)} onBoard={() => { setShowExport(false); document.getElementById('vs-outputs-board')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />}
       {showKeys && (
         <div className="vs-modal-back" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick={() => setShowKeys(false)}>
           <div className="vs-modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()} data-testid="vs-shortcuts">

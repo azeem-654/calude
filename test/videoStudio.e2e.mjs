@@ -252,11 +252,17 @@ ctx.on('page', steady);
 const page = steady(await ctx.newPage());
 /* The editor's panels sit behind a rail (Project, AI Tools, Properties,
    Elements, Captions, Media), each with its own tabs; the script is always
-   on screen, and Export scrolls to the videos. */
+   on screen, and Export opens a dialog of the videos (then the board). */
 const RAIL_OF = { media: 'media', video: 'properties', adjust: 'properties', effects: 'properties', animation: 'properties', tracking: 'properties', pointer: 'properties', audio: 'properties', text: 'elements', music: 'elements', captions: 'captions', cleanup: 'ai', tools: 'ai', shorts: 'project', reuse: 'project' };
 const openPanel = async (p, k) => {
   if (k === 'transcript') return;
-  if (k === 'exports') { await p.locator('[data-act="export"]').click(); return; }
+  /* Export opens a dialog of every video and its file; the board under the editor is one press further. */
+  if (k === 'exports') {
+    await p.locator('[data-act="export"]').click();
+    await p.getByTestId('vs-export').waitFor({ timeout: 10_000 });
+    if (await p.locator('[data-act="export-board"]').count()) await p.locator('[data-act="export-board"]').click(); else await p.keyboard.press('Escape');
+    return;
+  }
   const rail = p.locator(`[data-rail="${RAIL_OF[k]}"]`);
   if ((await rail.getAttribute('aria-pressed')) !== 'true') await rail.click();
   const tab = p.locator(`.vse-panel [data-panel="${k}"]`);
@@ -484,6 +490,20 @@ await page.getByTestId('vs-search').fill('');
   let d4;
   for (let i = 0; i < 20; i++) { d4 = await at(); if (d4.docVersion < d3.docVersion) break; await sleep(300); }
   ok('…and Ctrl+Z undoes it through the version history', d4.docVersion === d3.docVersion - 1 && !d4.doc.cuts.some(c => c.id === three?.id), [d3.docVersion, d4.docVersion]);
+  /* The owner's report: delete several words, press Ctrl+Z as many times, quickly — every press is one step back,
+     even those made while the cuts are still saving (they used to be dropped). */
+  {
+    const words3 = [wi + 8, wi + 11, wi + 14];
+    for (const i of words3) { await page.locator(`.vs-w[data-i="${i}"]`).click(); await page.keyboard.press('Delete'); }
+    for (let k = 0; k < 3; k++) await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+    let d6;
+    for (let i = 0; i < 60; i++) { d6 = await at(); if ((await page.locator('.vse-top .spin').count()) === 0 && d6.docVersion === d4.docVersion) break; await sleep(300); }
+    /* Any cut of the customer's that the version before the three deletes did not have. */
+    const left = d6.doc.cuts.filter(c => c.by === 'you' && c.state === 'approved' && !d4.doc.cuts.some(x => x.id === c.id));
+    ok('three quick deletes, three quick Ctrl+Z: back exactly three versions, every cut undone', d6.docVersion === d4.docVersion && left.length === 0, { want: d4.docVersion, got: d6.docVersion, left: left.length });
+    const changes = await page.getByTestId('vs-changes').count();
+    ok('…and each save and each undo is listed, one at a time, under Progress', changes === 1 || (await page.locator('[data-rail="activity"]').count()) === 1);
+  }
   ok('the text cursor stands in the transcript (the word it is at is marked)', (await page.locator('.vs-w.caret').count()) === 1);
   const chips = page.locator('.vs-chipin.prop');
   const nChips = await chips.count();

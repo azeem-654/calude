@@ -121,6 +121,12 @@ export interface AudioSettings {
    */
   studio?: boolean;
   strength?: number;
+  /** Mains hum (50 Hz in most of the world, 60 Hz in the Americas) and its harmonics notched out. */
+  hum?: 'off' | '50' | '60';
+  /** Clicks, pops and mouth noises repaired (FFmpeg adeclick). */
+  declick?: boolean;
+  /** Room noise between sentences pulled down (a gentle gate — words untouched). */
+  gate?: boolean;
 }
 
 /**
@@ -199,13 +205,62 @@ export interface Overlay {
   s: number;
   e: number;
   text: string;
-  style: 'title' | 'lower' | 'cta' | 'label' | 'quote';
+  /**
+   * title and subtitle ("description") are a heading and the line under it;
+   * ticker scrolls across a band (`speed` seconds a pass); camlabel is a name
+   * tag placed under the camera (the panel puts it where the camera was).
+   */
+  style: 'title' | 'lower' | 'cta' | 'label' | 'quote' | 'subtitle' | 'ticker' | 'camlabel';
   position: 'top' | 'middle' | 'bottom';
   anim: 'none' | 'fade' | 'pop' | 'slide' | 'reveal';
   color: string;
   bg: string;
+  /** Where its centre sits, % of the frame, once the customer placed it (absent: `position`). */
+  x?: number;
+  y?: number;
+  /** Size, % of the style's own (40–300). */
+  size?: number;
+  font?: OverlayFont;
+  bold?: boolean;
+  italic?: boolean;
+  /** A symbol before the words, from OVERLAY_ICONS only. */
+  icon?: string;
+  /** A ticker's seconds for one pass across the screen (4–40). */
+  speed?: number;
 }
-export const OVERLAY_STYLES: Overlay['style'][] = ['title', 'lower', 'cta', 'label', 'quote'];
+export type OverlayFont = 'sans' | 'serif' | 'display' | 'condensed';
+export const OVERLAY_FONTS: OverlayFont[] = ['sans', 'serif', 'display', 'condensed'];
+/** Symbols every renderer here has a glyph for (Noto, through fontconfig's fallback). */
+export const OVERLAY_ICONS = ['★', '✓', '➜', '●', '♥', '☎', '✉', '⚡', '▶', '✦', '☀', '⌚'];
+export const OVERLAY_STYLES: Overlay['style'][] = ['title', 'subtitle', 'lower', 'cta', 'label', 'quote', 'ticker', 'camlabel'];
+
+/**
+ * The customer's logo on the video. The picture (`key`) is set only by the
+ * server, after it checked the PNG it was sent (`logo_attach`): the browser
+ * converts the file, and takes its background out when asked, before it
+ * leaves. Where it sits, its size, roundness and see-through are the
+ * customer's — a corner with a margin, or anywhere (`custom`, its centre in
+ * % of the frame).
+ */
+export interface LogoSettings {
+  key: string; w: number; h: number; name: string; bgRemoved: boolean;
+  on: boolean;
+  corner: 'tl' | 'tr' | 'bl' | 'br' | 'custom';
+  x: number; y: number;
+  /** Width, % of the frame's width (3–40). */
+  size: number;
+  /** Corner rounding, % of its shorter side (0–50: 50 is a circle or a pill). */
+  radius: number;
+  /** 10–100. */
+  opacity: number;
+  /** Inset from the corner, % of the frame (0–15). */
+  margin: number;
+  applyTo: 'all' | 'long' | 'shorts';
+}
+export const LOGO_DEFAULT: Omit<LogoSettings, 'key' | 'w' | 'h' | 'name' | 'bgRemoved'> = { on: true, corner: 'tr', x: 88, y: 10, size: 12, radius: 0, opacity: 100, margin: 3, applyTo: 'all' };
+/** The logo that goes on this kind of video, if any. */
+export const logoFor = (doc: Pick<VideoDoc, 'logo'>, kind: 'long' | 'short'): LogoSettings | null =>
+  doc.logo && doc.logo.on && doc.logo.key && (doc.logo.applyTo === 'all' || (doc.logo.applyTo === 'long' ? kind === 'long' : kind === 'short')) ? doc.logo : null;
 export const OVERLAY_ANIMS: Overlay['anim'][] = ['none', 'fade', 'pop', 'slide', 'reveal'];
 
 /**
@@ -296,6 +351,8 @@ export interface VideoDoc {
   splits?: number[];
   /** Following the pointer of a Screen Recorder recording: the moments, the drawn pointer, click sounds (pointer.ts). */
   pointer?: PointerSettings;
+  /** The customer's logo on the videos (LogoSettings); absent: none. */
+  logo?: LogoSettings | null;
 }
 
 /* ── The request, read from what somebody typed ─────────────────────────── */
@@ -571,7 +628,10 @@ export type Op =
   | { op: 'motion.set'; target: 'long' | 'short'; patch: Partial<Motion> }
   | { op: 'tracking.set'; target: 'long' | 'short'; mode: TrackMode }
   | { op: 'effects.set'; target: 'long' | 'short'; effect: EffectKey; patch: Record<string, unknown>; remove?: boolean }
-  | { op: 'overlay.add'; s: number; e: number; text: string; style?: Overlay['style']; position?: Overlay['position']; anim?: Overlay['anim']; color?: string; bg?: string }
+  | { op: 'overlay.add'; s: number; e: number; text: string; style?: Overlay['style']; position?: Overlay['position']; anim?: Overlay['anim']; color?: string; bg?: string } & Partial<Pick<Overlay, 'x' | 'y' | 'size' | 'font' | 'bold' | 'italic' | 'icon' | 'speed'>>
+  | { op: 'logo.set'; logo: Pick<LogoSettings, 'key' | 'w' | 'h' | 'name' | 'bgRemoved'> }
+  | { op: 'logo.patch'; patch: Partial<Omit<LogoSettings, 'key' | 'w' | 'h' | 'name' | 'bgRemoved'>> }
+  | { op: 'logo.remove' }
   | { op: 'overlay.update'; id: string; patch: Partial<Omit<Overlay, 'id'>> }
   | { op: 'overlay.remove'; id: string }
   | { op: 'clip.duplicate'; id: string }
@@ -588,6 +648,19 @@ const HEX = /^#[0-9a-fA-F]{6}$/;
 const clamp = (n: unknown, lo: number, hi: number, d: number) => { const x = Number(n); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d; };
 const text = (v: unknown, max: number) => String(v ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max);
 let seq = 0;
+/** An overlay's placement and type, each clamped or dropped — never text that reaches a renderer unchecked. */
+function overlayExtras(cur: Partial<Overlay>, p: Partial<Overlay>): Partial<Overlay> {
+  const r: Partial<Overlay> = {};
+  if (p.x !== undefined && Number.isFinite(Number(p.x))) r.x = Math.round(clamp(p.x, 0, 100, cur.x ?? 50) * 10) / 10;
+  if (p.y !== undefined && Number.isFinite(Number(p.y))) r.y = Math.round(clamp(p.y, 0, 100, cur.y ?? 50) * 10) / 10;
+  if (p.size !== undefined) r.size = Math.round(clamp(p.size, 40, 300, cur.size ?? 100));
+  if (p.font && OVERLAY_FONTS.includes(p.font)) r.font = p.font;
+  if (typeof p.bold === 'boolean') r.bold = p.bold;
+  if (typeof p.italic === 'boolean') r.italic = p.italic;
+  if (p.icon !== undefined) r.icon = OVERLAY_ICONS.includes(p.icon) ? p.icon : '';
+  if (p.speed !== undefined) r.speed = Math.round(clamp(p.speed, 4, 40, cur.speed ?? 12));
+  return r;
+}
 export const newId = (p: string) => `${p}${Date.now().toString(36)}${(seq++ % 1296).toString(36).padStart(2, '0')}${Math.random().toString(36).slice(2, 6)}`;
 
 function cleanStyle(cur: CaptionStyle, patch: Partial<CaptionStyle>): CaptionStyle {
@@ -766,6 +839,9 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
         if (p.volume !== undefined) d.audio.volume = Math.round(clamp(p.volume, 0.5, 1.5, 1) * 100) / 100;
         if (typeof p.studio === 'boolean') d.audio.studio = p.studio;
         if (p.strength !== undefined) d.audio.strength = Math.round(clamp(p.strength, 0, 100, 60));
+        if (p.hum && ['off', '50', '60'].includes(p.hum)) d.audio.hum = p.hum;
+        if (typeof p.declick === 'boolean') d.audio.declick = p.declick;
+        if (typeof p.gate === 'boolean') d.audio.gate = p.gate;
         break;
       }
       case 'music.set': {
@@ -853,7 +929,7 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
       }
       case 'overlay.add': {
         const r = range(o.s, o.e);
-        const t = text(o.text, 120);
+        const t = text(o.text, o.style === 'ticker' ? 300 : 120);
         if (!r || r[1] - r[0] < 0.3) { refused.push('words on screen need at least a third of a second'); break; }
         if (!t) { refused.push('words on screen need some words'); break; }
         if ((d.overlays ?? []).length >= 200) { refused.push('at most 200 overlays'); break; }
@@ -864,6 +940,7 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
           anim: OVERLAY_ANIMS.includes(o.anim as Overlay['anim']) ? o.anim! : 'pop',
           color: o.color && HEX.test(o.color) ? o.color : '#ffffff',
           bg: o.bg && HEX.test(o.bg) ? o.bg : '#7c3aed',
+          ...overlayExtras({}, o),
         }];
         break;
       }
@@ -874,14 +951,39 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
         const r = range(p.s ?? ov.s, p.e ?? ov.e);
         if (!r || r[1] - r[0] < 0.3) { refused.push('words on screen need at least a third of a second'); break; }
         [ov.s, ov.e] = r;
-        if (p.text !== undefined) ov.text = text(p.text, 120) || ov.text;
+        if (p.text !== undefined) ov.text = text(p.text, (p.style ?? ov.style) === 'ticker' ? 300 : 120) || ov.text;
         if (p.style && OVERLAY_STYLES.includes(p.style)) ov.style = p.style;
         if (p.position && ['top', 'middle', 'bottom'].includes(p.position)) ov.position = p.position;
         if (p.anim && OVERLAY_ANIMS.includes(p.anim)) ov.anim = p.anim;
         if (p.color && HEX.test(p.color)) ov.color = p.color;
         if (p.bg && HEX.test(p.bg)) ov.bg = p.bg;
+        Object.assign(ov, overlayExtras(ov, p));
+        /* Choosing Top / Middle / Bottom again puts it back on the style's own place. */
+        if (p.position && p.x === undefined && p.y === undefined) { delete ov.x; delete ov.y; }
         break;
       }
+      case 'logo.set': {
+        const l = o.logo;
+        if (!l || typeof l.key !== 'string' || !l.key) { refused.push('no logo to add'); break; }
+        d.logo = { ...LOGO_DEFAULT, ...(d.logo ?? {}), key: l.key, w: Math.round(clamp(l.w, 1, 4096, 512)), h: Math.round(clamp(l.h, 1, 4096, 512)), name: text(l.name, 80) || 'Logo', bgRemoved: !!l.bgRemoved, on: true };
+        break;
+      }
+      case 'logo.patch': {
+        if (!d.logo) { refused.push('there is no logo to change — add one first'); break; }
+        const p = o.patch ?? {};
+        const g = d.logo;
+        if (typeof p.on === 'boolean') g.on = p.on;
+        if (p.corner && ['tl', 'tr', 'bl', 'br', 'custom'].includes(p.corner)) g.corner = p.corner;
+        if (p.x !== undefined) g.x = Math.round(clamp(p.x, 0, 100, g.x) * 10) / 10;
+        if (p.y !== undefined) g.y = Math.round(clamp(p.y, 0, 100, g.y) * 10) / 10;
+        if (p.size !== undefined) g.size = Math.round(clamp(p.size, 3, 40, g.size) * 10) / 10;
+        if (p.radius !== undefined) g.radius = Math.round(clamp(p.radius, 0, 50, g.radius));
+        if (p.opacity !== undefined) g.opacity = Math.round(clamp(p.opacity, 10, 100, g.opacity));
+        if (p.margin !== undefined) g.margin = Math.round(clamp(p.margin, 0, 15, g.margin) * 10) / 10;
+        if (p.applyTo && ['all', 'long', 'shorts'].includes(p.applyTo)) g.applyTo = p.applyTo;
+        break;
+      }
+      case 'logo.remove': d.logo = null; break;
       case 'overlay.remove': d.overlays = (d.overlays ?? []).filter(x => x.id !== o.id); break;
       case 'clip.duplicate': {
         const c = d.clips.find(x => x.id === o.id);

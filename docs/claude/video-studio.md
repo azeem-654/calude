@@ -286,9 +286,69 @@ export is a canvas recording; Video Studio is the real one.
   to the publishing texts (`publish_save`) and the board's words
   (`meta_update`: title, description, hashtags, pinned comment, CTA, tags,
   keywords), this video or every video, with Undo.
+- **The front page** (`StudioHome.tsx`, 2026-10, after Descript / Loom /
+  Riverside / VEED): a hero with the ways to start — **Record your screen &
+  camera** first and biggest (`vs-record-card` → `?tab=media&record=1`), then
+  upload, Long → Shorts, YouTube link, Quick Shorts, Repurpose — real counts
+  (projects, ready, working, the month's minutes from `usage`), the projects
+  as searchable, filterable picture tiles, and the goals folded under "Start
+  from a goal" (open when there are no projects).
+- **Progress is on the right** (`ActivityPanel.tsx`, rail group **Progress**,
+  opens by itself on wide screens when something starts moving; a pill under
+  the player on phones/closed panel). Every stage counts in the overall
+  number (weighted), and `stagesOf` now lists **`track`** (finding faces):
+  it kept the project "processing" while the old four-band bar said "Ready
+  100%", which is the "stuck at 100%" the owner saw. Each running stage opens
+  into the engine's own steps (`job.stage`: download, probe, sound, audio,
+  proxy, poster, filmstrip / loudness pass 1, render, check, upload /
+  frame, thumbnail n of m); a step is done only because a later one started.
+  The render's sound fixes, captions, text and logo are **one FFmpeg pass**,
+  shown as "In this pass" chips with the pass's percentage — never as steps
+  finishing separately. `OverallProgress` (recorder) no longer says Ready
+  until the project is. **Your changes** lists each save and undo in order.
+- **Undo is one version per press** (`step` in `VideoEditor.tsx`): saves,
+  undos and version jumps share one promise chain (`chain`), so a Ctrl+Z
+  pressed while a cut is still saving waits its turn instead of being thrown
+  away (it was: five deletes and five Ctrl+Z brought back one or two).
+  `maxRef` is the newest version (an edit after an undo is the new top).
+- **Export is a dialog** (`ExportDialog.tsx`): every video, its state,
+  Download MP4/SRT, Render / Render again, and **Make the video** when there
+  is no long output — a Screen Recorder save has `long: false, shorts: 0`, so
+  Export used to scroll to an empty board. Escape closes it; "Thumbnails,
+  words and more" goes on to the board.
+- **The guided path** (`GuidePath` in `VideoEditor.tsx`): Clean up → Sound →
+  Look → Zoom (screen recordings) → Text → Logo → Captions → Export, above
+  every editing panel, one line on what each does, a tick where something is
+  set (read from the doc), "Next".
+- **Text anywhere** (`Overlay.x/y/size/font/bold/italic/icon/speed`, clamped
+  in `overlayExtras`; styles `subtitle` "Description", `ticker`, `camlabel`
+  "Name under camera"): `overlayPlace` and `OVERLAY_SIZE` are shared by the
+  ASS script and the preview. The ticker is a `\p1` band plus passes of
+  `\move` (text width estimated, generously); fonts are Noto Sans / Serif /
+  Display, "condensed" is ScaleX 82; icons only from `OVERLAY_ICONS`. The
+  camera name tag is placed from the Screen Recorder's camera box.
+- **The logo** (`doc.logo`, `LogoPanel.tsx`): the browser reads the picture,
+  takes the background out when asked (flood fill from the edges in the edge
+  colour, soft boundary, trimmed — a photo background is not removed, and
+  the preview says so), uploads a PNG through `logo_upload_url`;
+  `logo_attach` checks it (`checkPng`, ≤4096 px, ≤4 MB) and is the only way
+  `logo.set` happens (filtered from browser edits like `music.set`). Corner +
+  margin or anywhere (1 % nudges, Shift 5 %), size 3–40 % of the width,
+  roundness 0–50 %, see-through, long/Shorts/all. `logoBox` (motion.ts) is
+  the box for the engine (`logoFilter`: scale, `geq` alpha mask for the
+  corners, `colorchannelmixer`, overlaid last) and the preview; in the hash.
+- **Sound repairs** (`audio.hum` 50/60 Hz notches ×4 harmonics, `declick`
+  adeclick, `gate` a soft agate) in both chains (`repairChain`), plus "Best
+  voice in one click" and **Apply now** (renders the changed videos and opens
+  Progress).
+- **Zoom sensitivity** (`pointer.sensitivity`, default `high`; `autoFocus`
+  `SENSE`): high takes any screen talk with pointer work, and clicks said
+  nothing about, ~3 a minute; normal is the old rule; low the clearest. More
+  action words (show, open, page, screen, enable, edit…). Choosing one in the
+  Pointer panel picks again, keeping the customer's own.
 - **Honest gaps**, shown on the **What works** panel: speaker labels, eye contact
   (researched 2026-10: NVIDIA Maxine is gRPC-only, Sieve's API no longer
-  documented — no adapter), background removal (no provider), before/after audio
+  documented — no adapter), background removal from the video (no provider; a logo's plain background is removed in the browser), before/after audio
   preview (planned), publishing (none — "Ready to publish manually").
 - **Don't edit `worker/` while `test:videoe2e` runs** — its wrangler rebuilds on
   change and the run dies. `STOP_AFTER=player` ends it after the player check.

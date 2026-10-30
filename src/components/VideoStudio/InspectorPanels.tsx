@@ -155,6 +155,23 @@ export function AudioPanel({ ctx }: { ctx: EditorCtx }) {
           summary={music ? (music.duck ? `“${music.title.slice(0, 28)}” dips under speech` : 'The music plays at its own level throughout') : undefined}
           onToggle={on => void ctx.apply([{ op: 'music.patch', patch: { duck: on } }], on ? 'Music lowered under speech' : 'Music at its own level')} />
       </div>
+      <button type="button" className="vs-improve vs-oneclick" onClick={() => set({ studio: true, strength: 70, declick: true, gate: true }, 'Best voice: Studio Sound, clicks repaired, room lowered')} data-act="best-voice">
+        <Wand2 size={20} /><span><b>Best voice in one click</b><small>Studio Sound at 70%, clicks and pops repaired, room noise between sentences lowered. Each can be changed below.</small></span>
+      </button>
+      <div className="vs-group"><b>Repairs</b>
+        <div className="vs-label">Electrical hum
+          <div className="vs-chips" role="radiogroup" aria-label="Hum removal">
+            {([['off', 'Off'], ['50', '50 Hz (Europe, Asia, Africa, Australia)'], ['60', '60 Hz (Americas)']] as const).map(([k, l]) => (
+              <button key={k} type="button" role="radio" aria-checked={(a.hum ?? 'off') === k} aria-pressed={(a.hum ?? 'off') === k} className="vs-chip" data-hum={k} onClick={() => set({ hum: k }, k === 'off' ? 'Hum removal off' : `${k} Hz hum removed`)}>{l}</button>
+            ))}
+          </div>
+          <span className="vs-kbd" style={{ fontWeight: 500 }}>A low buzz from lights or a cable. It and three of its overtones are notched out narrowly, so the voice keeps its body. Pick the mains frequency where you recorded.</span>
+        </div>
+        <label className="vs-opt"><input type="checkbox" checked={!!a.declick} onChange={e => set({ declick: e.target.checked }, e.target.checked ? 'Clicks and pops repaired' : 'Click repair off')} data-testid="vs-declick" />
+          <span><b>Repair clicks and pops</b><br /><small className="vs-kbd">Mouth clicks, plosive pops and digital ticks are found and filled in from the sound either side.</small></span></label>
+        <label className="vs-opt"><input type="checkbox" checked={!!a.gate} onChange={e => set({ gate: e.target.checked }, e.target.checked ? 'Room noise between sentences lowered' : 'Room noise as recorded')} data-testid="vs-gate" />
+          <span><b>Quiet the room between sentences</b><br /><small className="vs-kbd">When nobody is speaking the room is turned down (never to silence); words are untouched.</small></span></label>
+      </div>
       <div className={`vs-label ${studio ? 'vs-dim' : ''}`}>Background noise reduction
         <div className="vs-chips" role="radiogroup" aria-label="Noise reduction">
           {NOISE.map(n => <button key={n.key} type="button" role="radio" aria-checked={a.denoise === n.key} className="vs-chip" aria-pressed={a.denoise === n.key} data-denoise={n.key} onClick={() => set({ denoise: n.key }, `Noise reduction: ${n.label.toLowerCase()}`)}>{n.label}</button>)}
@@ -169,8 +186,39 @@ export function AudioPanel({ ctx }: { ctx: EditorCtx }) {
       </label>
       <label className="vs-opt"><input type="checkbox" checked={a.loudnorm || studio} disabled={studio} onChange={e => set({ loudnorm: e.target.checked }, e.target.checked ? 'Loudness evened out' : 'Loudness as recorded')} />
         <span><b>Even loudness</b><br /><small className="vs-kbd">Every video at −16 LUFS (true peak −1.5 dB), measured over the whole edit and then applied — the level podcasts and the platforms play at.{studio ? ' Always on with Studio Sound.' : ''}</small></span></label>
-      <div className="vs-note"><Sparkles size={15} /> <span>These are applied when the videos render — the preview plays the recording's own sound. Or just ask the assistant: “remove the background noise in all the videos”.</span></div>
+      <div className="vs-note"><Sparkles size={15} /> <span>These are applied when the videos are made — the preview plays the recording's own sound. Or just ask the assistant: “remove the background noise in all the videos”.</span></div>
+      <ApplyNow ctx={ctx} />
       <RenderHint ctx={ctx} />
+    </div>
+  );
+}
+
+/**
+ * "Apply to the video now": the sound settings are heard only in a made file,
+ * so this makes it — and opens Progress, where each step of the pass (hum,
+ * clicks, Studio Sound, the two loudness passes) shows as it runs. With no
+ * video made yet it opens Export, which can make the long one.
+ */
+function ApplyNow({ ctx }: { ctx: EditorCtx }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const outs = ctx.view.outputs;
+  const changed = outs.filter(o => o.stale || !o.rendered);
+  const go = async () => {
+    if (!outs.length) { ctx.setTab('exports'); return; }
+    setBusy(true); setErr('');
+    const r = await renderOutputs(ctx.view.project.id, changed.map(o => o.id));
+    setBusy(false);
+    if (!r.success) { setErr(r.error ?? 'Could not start.'); return; }
+    ctx.setTab('activity');
+    void ctx.refresh();
+  };
+  return (
+    <div className="vs-col" style={{ gap: 6 }}>
+      <button type="button" className="vs-btn ai" disabled={busy || (outs.length > 0 && !changed.length)} onClick={() => void go()} data-act="apply-now">
+        {busy ? <Loader size={14} className="spin" /> : <Wand2 size={14} />} {!outs.length ? 'Make the video with this sound' : changed.length ? `Apply to ${changed.length === 1 ? 'the video' : `${changed.length} videos`} now` : 'Every video already has this sound'}
+      </button>
+      {err && <div className="vs-note bad">{err}</div>}
     </div>
   );
 }

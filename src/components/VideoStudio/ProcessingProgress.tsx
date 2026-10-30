@@ -18,14 +18,18 @@ export function OverallProgress({ view }: { view: ProjectView }) {
     return bandsFor(origin).filter((b, i) => i === 0 || keys.split(',').includes(b.key));
   }, [keys]);
   const r = readProgress(bands, view, null);
-  const done = r.done || view.project.status === 'ready';
-  const shown = useCreep(r.value, r.ceiling, done);
+  /* The four bands can all be done while the project is still processing
+     (faces, renders, thumbnails): that used to read "Ready 100%" over a
+     screen that was still busy. Only the project's own status says ready. */
+  const done = view.project.status === 'ready' || (r.done && view.project.status !== 'processing');
+  const after = r.done && !done ? view.stages.find(s => s.state === 'active') ?? view.stages.find(s => s.state === 'waiting') : null;
+  const shown = useCreep(r.done && !done ? 99 : r.value, r.done && !done ? 99.8 : r.ceiling, done);
   const band = bands[Math.min(r.index, bands.length - 1)];
   const failed = r.failed || (view.project.status === 'failed' ? view.project.error || 'Processing stopped.' : '');
   return (
     <div className="vs-overall" data-testid="vs-overall" data-pct={shown.toFixed(2)}>
       <div className="vs-row" style={{ gap: 8 }}>
-        <span className="vs-overall-what">{failed ? 'Stopped' : done ? 'Ready' : `${band.label}…`}</span>
+        <span className="vs-overall-what">{failed ? 'Stopped' : done ? 'Ready' : r.done ? `${after?.label ?? 'Finishing'}…` : `${band.label}…`}</span>
         <span className="vs-spacer" />
         <b className="vs-overall-pct" data-testid="vs-overall-pct">{done ? '100.00' : shown.toFixed(2)}%</b>
       </div>

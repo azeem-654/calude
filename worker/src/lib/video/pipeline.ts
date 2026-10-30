@@ -32,10 +32,10 @@ import { nowIso } from '../db';
 import { aiBudget, askGeminiParts, extractJson, loadAiKey } from '../ai';
 import { recordAgentRun, repurposeRecording } from '../projectAgents';
 import {
-  dimsFor, hashOf, keepRanges, keptLength, mutedIn, clipKeeps, retimeWords, sentencesOf, toOutput, clock, lookOf, motionOf, trackingOf, effectsOf, effectsOn,
-  type Clip, type Effects, type Look, type Motion, type MusicTrack, type Overlay, type Sentence, type TrackMode, type Transcript, type VideoDoc, type Word,
+  dimsFor, hashOf, logoFor, keepRanges, keptLength, mutedIn, clipKeeps, retimeWords, sentencesOf, toOutput, clock, lookOf, motionOf, trackingOf, effectsOf, effectsOn,
+  type Clip, type Effects, type Look, type LogoSettings, type Motion, type MusicTrack, type Overlay, type Sentence, type TrackMode, type Transcript, type VideoDoc, type Word,
 } from './edit';
-import { cameraPath, cutTimes, overlayAss, overlaySpan, punchSpans, skinBox, type TrackFile } from './motion';
+import { cameraPath, cutTimes, logoBox, overlayAss, overlaySpan, punchSpans, skinBox, type TrackFile } from './motion';
 import { layoutPlan } from './layouts';
 import {
   autoFocus, focusWindows, followAt, followPath, frameMap, pointerAss, screenLayoutFor, pointerMarks, pointerOf, resolveCursor, screenPlan, sfxEvents, zoomAt, zoomPlan,
@@ -598,7 +598,7 @@ async function analyzeStep(env: Env, origin: string, job: JobRow, p: ProjectRow)
   if (screenRef && !doc.pointer?.ran) {
     const meta = await readScreen(env, screenRef);
     if (meta) {
-      const list = autoFocus(meta, sentences, duration);
+      const list = autoFocus(meta, sentences, duration, pointerOf(doc).sensitivity);
       doc = applyOps(doc, [{ op: 'pointer.focus.set', list }], duration).doc;
       notes.push(list.length ? `${list.length} moment${list.length === 1 ? '' : 's'} to follow the pointer in ${list.length === 1 ? 'was' : 'were'} picked from what you said and where you clicked.` : 'No moment stood out to follow the pointer in — mark your own on the timeline.');
     }
@@ -695,6 +695,8 @@ export interface RenderSpec {
   pointer: PointerSettings | null;
   /** The Screen Recorder's notes, when this render needs them. */
   screen: ScreenRef | null;
+  /** The customer's logo on this kind of video; null when off or not for it. */
+  logo: LogoSettings | null;
 }
 
 /** The music that goes under this kind of video, if any. */
@@ -749,8 +751,10 @@ export function renderSpec(doc: VideoDoc, src: Source, out: Pick<OutputRow, 'kin
     ...(pointer ? { ptr: { f: focusWindows(pointer.focus, keeps).map(w => [w.a, w.b, w.range.cursor, w.range.moment]), z: pointer.zoom, c: pointer.cursor, sz: pointer.size, col: pointer.color, k: pointer.click, m: pointer.moments, v: pointer.volume }, sk: screen?.key } : {}),
   };
   const mutes = mutedIn(doc, keeps);
-  const hash = hashOf({ keeps, width, height, mode, x: reframe.x, y: reframe.y, captionsKey, audio: doc.audio, ...(musicKey ? { musicKey } : {}), ...extra, ...(mutes.length ? { mutes } : {}), v: 1 });
-  return { hash, keeps, width, height, mode, x: reframe.x, y: reframe.y, kind, clip, music, look, motion, tracking, overlays, effects, layout, mutes, screenLayout, pointer, screen: screenLayout || pointer ? screen : null };
+  const logo = logoFor(doc, kind);
+  const logoKey = logo ? { k: logo.key, b: logoBox(logo, width, height), r: logo.radius, o: logo.opacity } : null;
+  const hash = hashOf({ keeps, width, height, mode, x: reframe.x, y: reframe.y, captionsKey, audio: doc.audio, ...(musicKey ? { musicKey } : {}), ...extra, ...(mutes.length ? { mutes } : {}), ...(logoKey ? { logoKey } : {}), v: 1 });
+  return { hash, keeps, width, height, mode, x: reframe.x, y: reframe.y, kind, clip, music, look, motion, tracking, overlays, effects, layout, mutes, screenLayout, pointer, screen: screenLayout || pointer ? screen : null, logo };
 }
 
 /**
@@ -1003,10 +1007,12 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
         transition: m.transition, cuts: m.transition !== 'none' ? cutTimes(spec.keeps) : [],
         fadeIn: m.fadeIn, fadeOut: m.fadeOut, progressBar: m.progressBar, accent: doc.captions[spec.kind].highlight,
         overlayAss: spec.overlays.length ? overlayAss(spec.overlays, spec.keeps, spec.width, spec.height, speed) : '',
+        logo: spec.logo ? { ...logoBox(spec.logo, spec.width, spec.height), radius: spec.logo.radius, opacity: spec.logo.opacity } : null,
       },
       inputs: {
         source: await fileUrl(env, origin, p.account_id, src.key!, 8 * 3600),
         ...(spec.music ? { music: await fileUrl(env, origin, p.account_id, spec.music.key, 8 * 3600) } : {}),
+        ...(spec.logo ? { logo: await fileUrl(env, origin, p.account_id, spec.logo.key, 8 * 3600) } : {}),
       },
       upload: await uploadPrefixUrl(env, origin, p.account_id, dir, 8 * 3600),
     };
@@ -1255,6 +1261,9 @@ export function stagesOf(p: ProjectRow, jobs: JobRow[], outs: OutputRow[], uploa
       : { key: 'upload', label: 'Uploading source', state: src.key ? 'done' : upload ? 'active' : 'waiting', pct: null, note: src.name ?? '' },
     { key: 'prepare', label: 'Preparing video', state: st(of('prepare')), pct: pctOf(of('prepare')), note: noteOf(of('prepare')) },
     { key: 'transcribe', label: 'Transcribing', state: src.probe && !src.probe.hasAudio ? 'skipped' : st(of('transcribe')), pct: pctOf(of('transcribe')), note: noteOf(of('transcribe')) },
+    /* Finding faces runs beside transcription and keeps the project "processing";
+       left off this list, the bar read "Ready 100%" while it was still going. */
+    ...(of('track').length ? [{ key: 'track', label: 'Finding faces and the speaker', state: st(of('track')) === 'failed' ? 'skipped' as const : st(of('track')), pct: pctOf(of('track')), note: noteOf(of('track')) }] : []),
     { key: 'analyze', label: 'Analyzing topics and cleanup', state: st(of('analyze')), pct: null, note: noteOf(of('analyze')) },
     { key: 'shorts', label: doc?.shorts.count ? `Finding ${doc.shorts.count} Shorts` : 'Finding Shorts', state: doc?.shorts.count ? st(of('analyze')) : 'skipped', pct: null, note: '' },
     { key: 'metadata', label: 'Writing titles and descriptions', state: st(of('metadata')), pct: null, note: noteOf(of('metadata')) },

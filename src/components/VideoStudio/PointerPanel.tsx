@@ -26,7 +26,7 @@ import { useRef } from 'react';
 import { MousePointer2, Play, Plus, Trash2, Wand2, Volume2, Info } from 'lucide-react';
 import {
   pointerOf, autoFocus, sentencesOf, clock, sfxSample, SFX_LENGTH, CURSOR_STYLES, CURSOR_LABEL, CLICK_SOUNDS, SOUND_LABEL,
-  type CursorStyle, type ClickSound, type Moment, type Op,
+  type CursorStyle, type ClickSound, type Sensitivity, type Moment, type Op,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
 import { RenderHint } from './InspectorPanels';
@@ -72,11 +72,14 @@ export default function PointerPanel({ ctx }: { ctx: EditorCtx }) {
     const st = sentences.find(x => ctx.time >= x.s - 0.2 && ctx.time <= x.e + 0.2);
     return st ? { s: Math.max(0, st.s - 0.4), e: Math.min(duration, st.e + 0.6) } : { s: Math.max(0, ctx.time - 1), e: Math.min(duration, ctx.time + 4) };
   })();
-  const again = () => {
+  const again = (sense: Sensitivity = p.sensitivity ?? 'high') => {
     if (!ctx.screen) return;
-    const auto = autoFocus(ctx.screen, sentences, duration);
+    const auto = autoFocus(ctx.screen, sentences, duration, sense);
     /* Picked again: the customer's own stretches stay, the earlier picks are replaced. */
-    void ctx.apply([{ op: 'pointer.focus.set', list: [...p.focus.filter(r => r.by === 'you'), ...auto] }], `Picked ${auto.length} moment${auto.length === 1 ? '' : 's'} to follow the pointer`);
+    void ctx.apply([
+      ...(sense !== p.sensitivity ? [{ op: 'pointer.set' as const, patch: { sensitivity: sense } }] : []),
+      { op: 'pointer.focus.set', list: [...p.focus.filter(r => r.by === 'you'), ...auto] },
+    ], `Picked ${auto.length} moment${auto.length === 1 ? '' : 's'} to follow the pointer (${sense} sensitivity)`);
   };
   const auto = p.focus.filter(r => r.by === 'auto').length;
 
@@ -92,6 +95,15 @@ export default function PointerPanel({ ctx }: { ctx: EditorCtx }) {
         <label className="vs-opt"><input type="checkbox" checked={p.shorts} onChange={e => set({ shorts: e.target.checked }, e.target.checked ? 'Pointer: Shorts' : 'Pointer: not in the Shorts')} /> Shorts (pointer drawn)</label>
       </div>
 
+      <div className="vs-col" style={{ gap: 6 }} data-testid="vs-ptr-sense">
+        <b>How readily to zoom</b>
+        <div className="vs-chips" role="radiogroup" aria-label="Sensitivity">
+          {([['low', 'Only the clearest'], ['normal', 'Balanced'], ['high', 'Sensitive']] as const).map(([k, l]) => (
+            <button key={k} type="button" role="radio" className="vs-chip" aria-checked={(p.sensitivity ?? 'high') === k} aria-pressed={(p.sensitivity ?? 'high') === k} onClick={() => again(k)} data-sense={k} disabled={!ctx.screen}>{l}</button>
+          ))}
+        </div>
+        <small className="vs-kbd" style={{ fontWeight: 500 }}>Sensitive picks any moment where you talk about the screen (“click”, “open”, “this page”, “you can see”) while the pointer moves or clicks — and clicks you say nothing about — up to about three a minute. Choosing one picks again; your own moments stay.</small>
+      </div>
       <div className="vs-col" style={{ gap: 6 }}>
         <div className="vs-row"><b>Moments to follow</b><span className="vs-kbd">{p.focus.length ? `${p.focus.length} · ${auto} picked, ${p.focus.length - auto} yours` : 'none yet'}</span></div>
         <small className="vs-kbd" style={{ fontWeight: 500 }}>
@@ -125,7 +137,7 @@ export default function PointerPanel({ ctx }: { ctx: EditorCtx }) {
         <div className="vs-row" style={{ gap: 6 }}>
           <button type="button" className="vs-btn sm" data-act="ptr-add-here" onClick={() => void ctx.apply([{ op: 'pointer.focus.add', s: here.s, e: here.e }], `Follow the pointer ${clock(here.s)}–${clock(here.e)}`)}><Plus size={13} /> Follow it here ({clock(here.s)})</button>
           {selected && <button type="button" className="vs-btn sm" data-act="ptr-add-sel" onClick={() => void ctx.apply([{ op: 'pointer.focus.add', s: selected.s, e: selected.e }], `Follow the pointer ${clock(selected.s)}–${clock(selected.e)}`)}><Plus size={13} /> Follow it over the selected words</button>}
-          <button type="button" className="vs-btn sm" data-act="ptr-again" disabled={!ctx.screen} onClick={again} title={ctx.screen ? 'Keeps yours, replaces the picked ones' : 'Loading the recording’s notes…'}><Wand2 size={13} /> Pick the moments again</button>
+          <button type="button" className="vs-btn sm" data-act="ptr-again" disabled={!ctx.screen} onClick={() => again()} title={ctx.screen ? 'Keeps yours, replaces the picked ones' : 'Loading the recording’s notes…'}><Wand2 size={13} /> Pick the moments again</button>
         </div>
         <small className="vs-kbd" style={{ fontWeight: 500 }}>On the timeline: drag across a stretch and press <b>Follow the pointer</b> (or F); drag a moment to move it, its edges to resize it.</small>
       </div>

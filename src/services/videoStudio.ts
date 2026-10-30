@@ -16,12 +16,12 @@ import type { VideoMeta } from '../../worker/src/lib/video/shorts';
 export * from '../../worker/src/lib/video/edit';
 export { cuesOf, isRtl, type Cue } from '../../worker/src/lib/video/captions';
 export { cleanupSummary, isFiller, findFillers, fillerCounts, FILLER_KINDS, FILLER_INFO, DEFAULT_FILLERS, type FillerKind } from '../../worker/src/lib/video/cleanup';
-export { cameraPath, cutTimes, punchSpans, overlaySpan, trackAt, cssLook, cssEffects, type TrackFile, type TrackRow } from '../../worker/src/lib/video/motion';
+export { cameraPath, cutTimes, punchSpans, overlaySpan, overlayPlace, logoBox, OVERLAY_SIZE, OVERLAY_FAMILY, trackAt, cssLook, cssEffects, type TrackFile, type TrackRow } from '../../worker/src/lib/video/motion';
 export { layoutOptions, layoutPlan, LAYOUT_LABEL, type LayoutPlan, type LayoutOption } from '../../worker/src/lib/video/layouts';
 export {
   autoFocus, pointerOf, pointerAt, pointerInFrame, segAt, focusWindows, zoomPlan, zoomAt, zoomLevel, screenPlan, screenLayoutOptions, followPath, followAt,
   resolveCursor, cursorFor, momentFor, screenLayoutFor, frameMap, sfxSample, SFX_LENGTH, CURSOR_STYLES, CURSOR_LABEL, CLICK_SOUNDS, SOUND_LABEL, POINTER_DEFAULT,
-  type ScreenMeta, type ScreenSeg, type ScreenRef, type NBox, type CamShape, type FocusRange, type PointerSettings, type CursorStyle, type ClickSound, type Moment, type ZoomPlan, type ScreenPlan,
+  type ScreenMeta, type ScreenSeg, type ScreenRef, type NBox, type CamShape, type FocusRange, type PointerSettings, type CursorStyle, type ClickSound, type Moment, type ZoomPlan, type ScreenPlan, type Sensitivity,
 } from '../../worker/src/lib/video/pointer';
 export { toXmeml, editorialScore } from '../../worker/src/lib/video/xml';
 export type { VideoMeta } from '../../worker/src/lib/video/shorts';
@@ -89,7 +89,10 @@ export interface ProjectView {
     wayForward?: string;
   };
   request: (VideoRequest & { language?: string }) | null;
-  source: { name: string; bytes: number; probe: Probe | null; proxyUrl: string; posterUrl: string; waveUrl: string; silences?: [number, number][];
+  source: {
+    /** A signed link to the logo picture (doc.logo), for the preview. */
+    logoUrl?: string;
+    name: string; bytes: number; probe: Probe | null; proxyUrl: string; posterUrl: string; waveUrl: string; silences?: [number, number][];
     filmstrip?: { url: string; every: number; tiles: number; w: number; h: number } | null;
     track?: TrackStatus | null; trackUrl?: string;
     /** A Screen Recorder recording's notes (layout, pointer path, clicks) — signed, when there are any. */
@@ -212,6 +215,26 @@ export async function applyDesignAsThumb(target: { projectId: string; outputId: 
   return { ok: true, note: a.note ?? '' };
 }
 export const trackNow = (projectId: string) => call('track_now', { projectId });
+
+/**
+ * The logo: made a PNG here (any picture the browser can open — and with its
+ * background taken out first when asked), sent straight to storage through a
+ * signed link, then checked by the server from its bytes, which is what sets
+ * it on the project. `onStep` reports each step as it happens.
+ */
+export async function uploadLogo(projectId: string, baseVersion: number, png: Blob, name: string, bgRemoved: boolean, onStep: (s: 'link' | 'upload' | 'check') => void):
+  Promise<{ ok: true; doc: VideoDoc; docVersion: number } | { ok: false; error: string }> {
+  onStep('link');
+  const u = await call<{ url: string; key: string }>('logo_upload_url', { projectId });
+  if (!u.success) return { ok: false, error: u.error ?? 'The upload could not start.' };
+  onStep('upload');
+  const put = await fetch(`${u.url}&name=logo.png&type=image/png`, { method: 'PUT', body: png }).then(r => r.json()).catch(() => ({ success: false })) as { success?: boolean };
+  if (!put.success) return { ok: false, error: 'The logo did not upload — try again.' };
+  onStep('check');
+  const a = await call<{ doc: VideoDoc; docVersion: number }>('logo_attach', { projectId, key: u.key, name, bgRemoved, baseVersion });
+  if (!a.success) return { ok: false, error: a.error ?? 'The logo was not accepted.' };
+  return { ok: true, doc: a.doc, docVersion: a.docVersion };
+}
 export async function loadScreen(url: string): Promise<import('../../worker/src/lib/video/pointer').ScreenMeta | null> {
   if (!url) return null;
   try { const r = await fetch(url); return r.ok ? await r.json() : null; } catch { return null; }

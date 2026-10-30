@@ -176,9 +176,12 @@ export interface PointerSettings {
   long: boolean;
   shorts: boolean;
   focus: FocusRange[];
+  /** How readily a moment is picked (autoFocus): low — only the clearest; high — any click or pointer work while you talk about the screen. */
+  sensitivity?: Sensitivity;
 }
+export type Sensitivity = 'low' | 'normal' | 'high';
 export const POINTER_DEFAULT: PointerSettings = {
-  on: true, ran: false, zoom: 1.8, cursor: 'auto', size: 1, color: '#facc15', click: 'none', moments: false, volume: 0.6, long: true, shorts: true, focus: [],
+  on: true, ran: false, zoom: 1.8, cursor: 'auto', size: 1, color: '#facc15', click: 'none', moments: false, volume: 0.6, long: true, shorts: true, focus: [], sensitivity: 'high',
 };
 export const pointerOf = (doc: { pointer?: Partial<PointerSettings> | null }): PointerSettings => ({ ...POINTER_DEFAULT, ...(doc.pointer ?? {}), focus: doc.pointer?.focus ?? [] });
 
@@ -229,6 +232,7 @@ export function applyPointerOp(cur: PointerSettings | undefined | null, o: Point
       if (x.volume !== undefined) p.volume = r2(num(x.volume, 0, 1, p.volume));
       if (typeof x.long === 'boolean') p.long = x.long;
       if (typeof x.shorts === 'boolean') p.shorts = x.shorts;
+      if (x.sensitivity === 'low' || x.sensitivity === 'normal' || x.sensitivity === 'high') p.sensitivity = x.sensitivity;
       return { next: p };
     }
     case 'pointer.focus.add': {
@@ -272,7 +276,7 @@ export function applyPointerOp(cur: PointerSettings | undefined | null, o: Point
 
 /* ── Which moments to follow: the words and the clicks together ──────────── */
 
-const ACTION = /\b(click(?:ing|ed|s)?|tap|press|select|choose|pick|open|go(?:ing)? (?:to|into|over)|head (?:to|over)|navigate|type|enter|fill(?: in| out)?|drag|drop|scroll|hover|toggle|switch|turn (?:on|off)|save|submit|upload|download|add|create|set up|setup|configure|connect|paste|copy|delete|remove|search|button|menu|tab|field|link|icon|settings|dashboard|option|dropdown|checkbox|sidebar|toolbar)\b/gi;
+const ACTION = /\b(click(?:ing|ed|s)?|tap|press|select|choose|pick|open|show|check|find|enable|disable|edit|update|change|publish|share|send|install|log ?in|sign ?in|login|page|screen|window|panel|form|card|zoom|go(?:ing)? (?:to|into|over)|head (?:to|over)|navigate|type|enter|fill(?: in| out)?|drag|drop|scroll|hover|toggle|switch|turn (?:on|off)|save|submit|upload|download|add|create|set up|setup|configure|connect|paste|copy|delete|remove|search|button|menu|tab|field|link|icon|settings|dashboard|option|dropdown|checkbox|sidebar|toolbar)\b/gi;
 const POINTING = /\b(right here|over here|up here|down here|this (?:one|button|link|box|field|menu|tab|icon|option|page|section|part)|you can see|notice|look at|watch (?:this|how)|as you can see)\b/gi;
 
 /** The pointer that suits what is being said: a hand for pressing, a ring for typing, a spotlight for looking. */
@@ -311,20 +315,33 @@ const travel = (m: Pick<ScreenMeta, 'path'>, s: number, e: number) => {
  * seen, and only the strongest are kept — about one and a half a minute.
  * With no transcript, the clicks alone mark them, and the reason says so.
  */
-export function autoFocus(m: Pick<ScreenMeta, 'path' | 'clicks' | 'dur'>, sentences: Pick<Sentence, 's' | 'e' | 'text'>[], duration: number): FocusRange[] {
+/**
+ * How readily a sentence becomes a moment. Normal is the rule above. High
+ * (the default since the owner found moments missed) also takes a sentence
+ * about the screen with any pointer work under it, and a click said nothing
+ * about, and keeps about three a minute; low keeps only the clearest.
+ */
+const SENSE: Record<Sensitivity, { per: number; did: number; sum: number; pad: number; alone: boolean }> = {
+  low: { per: 0.8, did: 2, sum: 5, pad: 0.4, alone: false },
+  normal: { per: 1.5, did: 2, sum: 4, pad: 0.4, alone: false },
+  high: { per: 3, did: 1, sum: 2, pad: 0.8, alone: true },
+};
+
+export function autoFocus(m: Pick<ScreenMeta, 'path' | 'clicks' | 'dur'>, sentences: Pick<Sentence, 's' | 'e' | 'text'>[], duration: number, sensitivity: Sensitivity = 'normal'): FocusRange[] {
   const dur = Math.max(1, duration || m.dur);
-  const cap = Math.min(40, Math.max(2, Math.round(dur / 60 * 1.5)));
+  const T = SENSE[sensitivity] ?? SENSE.normal;
+  const cap = Math.min(80, Math.max(2, Math.round(dur / 60 * T.per)));
   type Pick_ = { s: number; e: number; score: number; text: string; clicks: number; words: string[] };
   const picks: Pick_[] = [];
   if (sentences.length) {
     for (const st of sentences) {
-      const clicks = m.clicks.filter(c => c[0] >= st.s - 0.4 && c[0] <= st.e + 0.4).length;
+      const clicks = m.clicks.filter(c => c[0] >= st.s - T.pad && c[0] <= st.e + T.pad).length;
       const moved = travel(m, st.s, st.e);
       const acts = [...st.text.matchAll(ACTION)].map(x => x[0].toLowerCase());
       const points = [...st.text.matchAll(POINTING)].length;
       const said = Math.min(3, acts.length) + Math.min(2, points * 2);
       const did = Math.min(4, clicks * 2) + (moved > 0.08 ? 1 : 0) + (moved > 0.25 ? 1 : 0);
-      if (did >= 2 && said >= 1 && said + did >= 4) picks.push({ s: st.s, e: st.e, score: said + did, text: st.text, clicks, words: [...new Set(acts)].slice(0, 2) });
+      if (did >= T.did && said + did >= T.sum && (said >= 1 || (T.alone && clicks >= 1))) picks.push({ s: st.s, e: st.e, score: said + did, text: st.text, clicks, words: [...new Set(acts)].slice(0, 2) });
     }
   } else {
     for (const c of m.clicks) picks.push({ s: c[0] - 1.5, e: c[0] + 2, score: 2, text: '', clicks: 1, words: [] });

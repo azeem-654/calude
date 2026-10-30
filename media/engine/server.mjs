@@ -607,23 +607,42 @@ const hasRnn = () => /^[\w./-]+$/.test(RNN_MODEL) && fs.existsSync(RNN_MODEL);
  * Without it, the older noise levels and "voice clarity" as before. Nothing
  * here can rebuild a voice that clipped or dropped out — the screen says so.
  */
+/**
+ * Repairs that come before any noise reduction, in either chain: mains hum
+ * (the base and three harmonics notched narrowly, so a voice keeps its body)
+ * and clicks and pops (adeclick). Numbers only, from a fixed list.
+ */
+function repairChain(audio) {
+  const out = [];
+  const hz = audio.hum === '50' ? 50 : audio.hum === '60' ? 60 : 0;
+  if (hz) for (const k of [1, 2, 3, 4]) out.push(`bandreject=f=${hz * k}:width_type=q:w=${k === 1 ? 6 : 10}`);
+  if (audio.declick) out.push('adeclick=w=55:o=75:t=2');
+  return out;
+}
+/** Room noise between sentences pulled down a little — a soft gate that never closes on a word. */
+const GATE = 'agate=threshold=0.012:ratio=2.5:range=0.25:attack=8:release=250:knee=3';
+
 function voiceChain(audio) {
+  const repair = repairChain(audio);
   if (audio.studio) {
     const k = num(audio.strength, 60, 0, 100) / 100;
     return [
       'highpass=f=80:poles=2',
+      ...repair,
       hasRnn() ? `arnndn=m=${RNN_MODEL}:mix=${(0.5 + 0.5 * k).toFixed(2)}` : `afftdn=nr=${(10 + 16 * k).toFixed(1)}:nf=-40:tn=1`,
       `deesser=i=${(0.25 + 0.3 * k).toFixed(2)}`,
       `equalizer=f=250:t=q:w=1.1:g=${(-1 - 2 * k).toFixed(1)}`,
       `equalizer=f=3500:t=q:w=1.4:g=${(1 + 2.5 * k).toFixed(1)}`,
+      ...(audio.gate ? [GATE] : []),
       `acompressor=threshold=${(0.14 - 0.06 * k).toFixed(3)}:ratio=${(2 + 2 * k).toFixed(1)}:attack=6:release=120:knee=3:makeup=${(1.2 + 0.6 * k).toFixed(2)}`,
     ];
   }
   /* Natural first: each level removes more steady noise (fans, hum, hiss) and
      the strongest also takes off the top end where hiss lives. */
   const DENOISE = { light: 'afftdn=nr=10:nf=-42', medium: 'afftdn=nr=18:nf=-38:tn=1', strong: 'afftdn=nr=26:nf=-34:tn=1,lowpass=f=11000' };
-  const voice = ['highpass=f=70'];
+  const voice = ['highpass=f=70', ...repair];
   if (DENOISE[audio.denoise]) voice.push(DENOISE[audio.denoise]);
+  if (audio.gate) voice.push(GATE);
   if (audio.voice) voice.push('equalizer=f=3200:t=q:w=1.2:g=2.5', 'deesser=i=0.35', 'acompressor=threshold=0.08:ratio=3:attack=8:release=120:makeup=1.5');
   return voice;
 }
@@ -899,6 +918,25 @@ function greenFilter(g, W, H, fps) {
  * zooms are a `zoompan` expression built here from time spans. A crop's size
  * never changes mid-stream (that stalls FFmpeg) — only where it sits.
  */
+/** The logo's box, numbers only, inside the frame; null when there is none. */
+function cleanLogo(l, W, H) {
+  if (!l || typeof l !== 'object') return null;
+  const w = even(num(l.w, 0, 2, W)), h = even(num(l.h, 0, 2, H));
+  if (!w || !h) return null;
+  return { x: Math.round(num(l.x, 0, 0, W - w)), y: Math.round(num(l.y, 0, 0, H - h)), w, h, radius: num(l.radius, 0, 0, 50), opacity: num(l.opacity, 100, 10, 100) };
+}
+/** Scaled to its box, corners rounded by an alpha mask (soft by half a pixel), made see-through. */
+function logoFilter(l) {
+  const parts = [`scale=${l.w}:${l.h}:flags=lanczos`, 'format=rgba'];
+  const R = Math.round((Math.min(l.w, l.h) * l.radius) / 100);
+  if (R > 0) {
+    const d = `hypot(max(0,max(${R}-X,X-(W-1-${R}))),max(0,max(${R}-Y,Y-(H-1-${R}))))`;
+    parts.push(`geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='alpha(X,Y)*clip(${R}+0.5-${d},0,1)'`);
+  }
+  if (l.opacity < 100) parts.push(`colorchannelmixer=aa=${(l.opacity / 100).toFixed(2)}`);
+  return parts.join(',');
+}
+
 async function render(job, dir) {
   const p = job.params;
   const src = job.inputs.source;
@@ -1007,7 +1045,8 @@ async function render(job, dir) {
   const bar = p.progressBar ? `,drawbox=x=0:y=ih-${Math.max(6, Math.round(H * 0.008))}:w='iw*t/${outTotal.toFixed(3)}':h=${Math.max(6, Math.round(H * 0.008))}:color=${HEX.test(String(p.accent)) ? String(p.accent).replace('#', '0x') : '0xa855f7'}:t=fill` : '';
   const pace = speed !== 1 ? `,setpts=PTS/${speed},fps=${fps}` : '';
   const after = [...look, ...colorFilters(fx.color), ...appearanceFilters(fx.appearance)];
-  const graph = [`[0:v]setpts=PTS-STARTPTS,fps=${fps},select='${sel}',setpts=N/${fps}/TB,${send}${skin}${frame}${greenFilter(fx.green, W, H, fps)}${zoom}${after.length ? `,${after.join(',')}` : ''}${trans}${pace}${subs}${fades}${bar},format=yuv420p[v]`];
+  const logo = cleanLogo(p.logo, W, H);
+  const graph = [`[0:v]setpts=PTS-STARTPTS,fps=${fps},select='${sel}',setpts=N/${fps}/TB,${send}${skin}${frame}${greenFilter(fx.green, W, H, fps)}${zoom}${after.length ? `,${after.join(',')}` : ''}${trans}${pace}${subs}${fades}${bar},format=yuv420p[${logo && job.inputs.logo ? 'v0' : 'v'}]`];
   const hasAudio = p.hasAudio !== false;
   const audio = p.audio ?? {};
   const voice = voiceChain(audio);
@@ -1060,9 +1099,12 @@ async function render(job, dir) {
       : `,${LN},aresample=48000`;
   }
   graph.push(...sound.map(g => g.replace(/@LEVEL@/g, `${level}${afades}`)));
+  /* The logo goes on last, over everything (captions included), as one still picture held for the whole video. */
+  const logoIn = logo && job.inputs.logo ? inImage(job.inputs.logo) : [];
+  if (logoIn.length) graph.push(`[${musicIn.length ? 2 : 1}:v]${logoFilter(logo)}[lg]`, `[v0][lg]overlay=${logo.x}:${logo.y}:format=auto,format=yuv420p[v]`);
   await fsp.writeFile(path.join(dir, 'graph.txt'), graph.join(';'));
   const out = path.join(dir, 'out.mp4');
-  await exec(FFMPEG, [...base, '-ss', String(s0), '-t', String(end - s0 + 0.05), ...inVideo(src), ...musicIn,
+  await exec(FFMPEG, [...base, '-ss', String(s0), '-t', String(end - s0 + 0.05), ...inVideo(src), ...musicIn, ...logoIn,
     '-filter_complex_script', path.join(dir, 'graph.txt'), '-map', '[v]', ...(withAudio ? ['-map', '[a]'] : []),
     '-c:v', 'libx264', '-preset', String(p.preset ?? 'veryfast').replace(/[^a-z]/g, '') || 'veryfast', '-crf', String(num(p.crf, 21, 14, 32)),
     '-profile:v', 'high', '-r', String(fps), ...(withAudio ? ['-c:a', 'aac', '-b:a', '160k', '-ac', '2'] : []), '-t', outTotal.toFixed(3),
