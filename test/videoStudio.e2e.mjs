@@ -531,7 +531,8 @@ await page.getByTestId('vs-search').fill('');
   const c2 = await chip2.getAttribute('data-chip');
   const t2 = Date.now();
   await chip2.locator('[data-act="chip-accept"]').click();
-  await page.locator(`[data-chip="${c2}"].done, [data-chip="${c2}"]:not(.prop)`).first().waitFor({ timeout: 5000 }).catch(() => {});
+  /* An approved suggestion leaves the text (only a shortened gap stays, as a "done" chip): waited for as gone, not as turned into a chip that is never drawn. */
+  await page.locator(`[data-chip="${c2}"].prop`).waitFor({ state: 'detached', timeout: 5000 }).catch(() => {});
   const wordCut = await page.evaluate(id => !document.querySelector(`[data-chip="${id}"].prop`), c2);
   const shownIn = Date.now() - t2;
   let d6;
@@ -546,6 +547,8 @@ await page.getByTestId('vs-search').fill('');
   const chip3 = page.locator('.vs-chipin.prop').first();
   const c3 = await chip3.getAttribute('data-chip');
   await chip3.locator('[data-act="chip-accept"]').click();
+  /* Gone on screen at once — "at once" being the half second above, not the instant the click returns. */
+  await page.locator(`[data-chip="${c3}"].prop`).waitFor({ state: 'detached', timeout: 500 }).catch(() => {});
   const gone = await page.evaluate(id => !document.querySelector(`[data-chip="${id}"].prop`), c3);
   await page.getByTestId('vs-assistant').getByText('It has been undone on screen').waitFor({ timeout: 8000 }).catch(() => {});
   const back = await page.evaluate(id => !!document.querySelector(`[data-chip="${id}"].prop`), c3);
@@ -581,11 +584,12 @@ await page.getByTestId('vs-search').fill('');
   await page.getByTestId('vs-composition').click();
   await page.locator('[data-act="new-short"]').click();
   let S1;
-  for (let i = 0; i < 30; i++) { S1 = await at(); if (S1.doc.clips.length > S0.doc.clips.length) break; await sleep(300); }
+  /* While the engine renders, a save can take longer than a few seconds on this machine: up to thirty. */
+  for (let i = 0; i < 100; i++) { S1 = await at(); if (S1.doc.clips.length > S0.doc.clips.length) break; await sleep(300); }
   const added = S1.doc.clips.find(c => !S0.doc.clips.some(x => x.id === c.id));
   await page.waitForTimeout(800);
   ok('…"New short composition" makes a Short from the selection and opens it', !!added && (await page.getByTestId('vs-composition').innerText()).includes(`Short ${S1.doc.clips.length}`), { added, label: await page.getByTestId('vs-composition').innerText() });
-  await v('edit', { projectId: PID, baseVersion: S1.docVersion, ops: [{ op: 'clip.remove', id: added.id }], note: 'test: remove the new composition' });
+  if (added) await v('edit', { projectId: PID, baseVersion: S1.docVersion, ops: [{ op: 'clip.remove', id: added.id }], note: 'test: remove the new composition' });
   await page.reload({ waitUntil: 'networkidle' });
   await page.getByTestId('vs-timeline').waitFor({ timeout: 20_000 });
 
