@@ -87,7 +87,7 @@ export default function ExportDialog({ ctx, onClose, onBoard }: { ctx: EditorCtx
         {!long && (
           <div className="vs-exp-row" data-export="long" data-state="none">
             <span className="vs-exp-ic"><Clapperboard size={16} /></span>
-            <div className="vs-exp-main"><b>Long video</b><small>{clock(keptLength(keepRanges(ctx.duration, doc)))} after your cuts · not made yet</small></div>
+            <div className="vs-exp-main"><b>Long video</b><small>{ctx.duration ? `${clock(keptLength(keepRanges(ctx.duration, doc)))} after your cuts · not made yet` : 'Add or record a video first'}</small></div>
             <div className="vs-exp-acts">
               <button type="button" className="vs-btn primary sm" disabled={!!busy || !ctx.duration} onClick={() => void makeLong()} data-act="make-long">
                 {busy === 'long' ? <Loader size={13} className="spin" /> : <Plus size={13} />} Make the video

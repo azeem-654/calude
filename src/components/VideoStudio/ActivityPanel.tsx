@@ -106,7 +106,9 @@ export default function ActivityPanel({ view, doc, changes, onRetry, onCancel }:
     return { value, open };
   }, [stages, view.jobs]); // eslint-disable-line react-hooks/exhaustive-deps
   const busy = st === 'processing' || st === 'uploading' || view.jobs.some(j => j.state === 'queued' || j.state === 'running');
-  const done = !busy && st !== 'failed';
+  /* A project with no video yet has nothing done — never "All done". */
+  const empty = st === 'draft' && !view.source.probe;
+  const done = !busy && st !== 'failed' && !empty;
   const active = stages.find(s => s.state === 'active') ?? stages.find(s => s.state === 'waiting' && busy);
   const shown = useCreep(done ? 100 : reading.value, done ? 100 : Math.min(99.6, reading.value + 8), done);
   const eta = useEta(busy ? reading.value : null, 100);
@@ -135,13 +137,13 @@ export default function ActivityPanel({ view, doc, changes, onRetry, onCancel }:
     <div className="vs-col vs-activity" style={{ gap: 12 }} data-testid="vs-activity" data-busy={busy ? '1' : '0'}>
       <div className="vs-act-head">
         <div className="vs-row" style={{ gap: 8 }}>
-          <b className="vs-act-title">{st === 'failed' ? 'Stopped' : done ? 'All done' : active ? `${active.label}…` : 'Working…'}</b>
+          <b className="vs-act-title">{st === 'failed' ? 'Stopped' : empty ? 'Waiting for a video' : done ? 'All done' : active ? `${active.label}…` : 'Working…'}</b>
           <span className="vs-spacer" />
-          <b className="vs-act-pct" data-testid="vs-activity-pct">{shown.toFixed(1)}%</b>
+          <b className="vs-act-pct" data-testid="vs-activity-pct">{empty ? '0.0' : shown.toFixed(1)}%</b>
         </div>
-        <div className="vs-ps-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.floor(shown)} aria-label="Everything being done to this video"><i style={{ width: `${shown}%` }} /></div>
+        <div className="vs-ps-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={empty ? 0 : Math.floor(shown)} aria-label="Everything being done to this video"><i style={{ width: `${empty ? 0 : shown}%` }} /></div>
         <div className="vs-row" style={{ gap: 6 }}>
-          <span className="vs-kbd">{busy ? (eta !== null ? etaWords(eta) : 'working — one step at a time') : st === 'failed' ? 'something stopped — see below' : 'nothing is running'}</span>
+          <span className="vs-kbd">{busy ? (eta !== null ? etaWords(eta) : 'working — one step at a time') : st === 'failed' ? 'something stopped — see below' : empty ? 'add or record a video to start' : 'nothing is running'}</span>
           <span className="vs-spacer" />
           {st === 'failed' && <button type="button" className="vs-btn sm" onClick={onRetry}><RefreshCw size={13} /> Try again</button>}
           {st === 'processing' && <button type="button" className="vs-btn ghost sm" onClick={onCancel}>Cancel</button>}

@@ -70,12 +70,14 @@ export default function StudioHome({ projects, usage, onRecord, onUpload, onGoal
             </span>
             <span className="vs-start-go">Start recording →</span>
           </button>
-          {starts.map(s => (
-            <button key={s.key} type="button" className="vs-start" onClick={s.act} data-start={s.key}>
-              <span className="vs-start-ic"><s.icon size={18} /></span>
-              <span className="vs-start-text"><b>{s.title}</b><small>{s.blurb}</small></span>
-            </button>
-          ))}
+          <div className="vs-starts-rest">
+            {starts.map(s => (
+              <button key={s.key} type="button" className="vs-start" onClick={s.act} data-start={s.key}>
+                <span className="vs-start-ic"><s.icon size={18} /></span>
+                <span className="vs-start-text"><b>{s.title}</b><small>{s.blurb}</small></span>
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 

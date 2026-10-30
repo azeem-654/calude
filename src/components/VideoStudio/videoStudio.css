@@ -1001,8 +1001,10 @@ html[data-theme="dark"] .vs canvas.vse-layout { filter: none; }
 .vs-hero-kicker { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 750; color: var(--accent); background: var(--accent-soft); border-radius: 99px; padding: 4px 10px; }
 .vs-hero h2 { margin: 10px 0 6px; font-size: clamp(24px, 3.4vw, 36px); line-height: 1.1; letter-spacing: -.03em; font-weight: 850; }
 .vs-hero p { margin: 0; color: var(--muted); max-width: 720px; font-size: 14.5px; line-height: 1.55; }
-.vs-starts { display: grid; gap: 12px; grid-template-columns: minmax(0, 1.35fr) repeat(auto-fill, minmax(min(100%, 200px), 1fr)); }
-@media (max-width: 1100px) { .vs-starts { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); } .vs-start.feature { grid-column: 1 / -1; } }
+/* The record card is its own column; the other ways in fill a grid beside it (stacked under it on narrow screens). */
+.vs-starts { display: grid; gap: 12px; grid-template-columns: minmax(260px, 1fr) minmax(0, 2fr); align-items: stretch; }
+.vs-starts-rest { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); align-content: start; }
+@media (max-width: 900px) { .vs-starts { grid-template-columns: minmax(0, 1fr); } }
 .vs-start { position: relative; text-align: left; border: 1px solid var(--line); background: rgba(255, 255, 255, .78); backdrop-filter: blur(8px); border-radius: 18px; padding: 14px; cursor: pointer; color: var(--ink);
   display: grid; gap: 10px; align-content: start; transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; min-width: 0; }
 .vs-start:hover { transform: translateY(-2px); border-color: rgba(124, 58, 237, .35); box-shadow: 0 18px 36px -24px rgba(76, 29, 149, .55); }
@@ -1011,7 +1013,7 @@ html[data-theme="dark"] .vs canvas.vse-layout { filter: none; }
 .vs-start-text { display: grid; gap: 3px; min-width: 0; }
 .vs-start-text b { font-size: 14.5px; letter-spacing: -.01em; }
 .vs-start-text small { color: var(--muted); font-size: 12.5px; line-height: 1.45; }
-.vs-start.feature { grid-row: span 2; color: #fff; border: 0; padding: 18px; gap: 14px;
+.vs-start.feature { color: #fff; border: 0; padding: 18px; gap: 14px;
   background: linear-gradient(140deg, #4c1d95 0%, #7c3aed 42%, #db2777 100%); box-shadow: 0 24px 50px -28px rgba(124, 58, 237, .95); }
 .vs-start.feature .vs-start-text b { font-size: 19px; }
 .vs-start.feature .vs-start-text small { color: rgba(255, 255, 255, .86); font-size: 13.5px; }
@@ -1112,7 +1114,7 @@ html[data-theme="dark"] .vs canvas.vse-layout { filter: none; }
 
 /* ── The guided path ── */
 .vs-guide { display: grid; gap: 8px; margin-bottom: 12px; }
-.vs-guide-steps { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.vs-guide-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
 .vs-guide-steps::-webkit-scrollbar { display: none; }
 .vs-guide-steps button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: var(--raise); border-radius: 99px; padding: 4px 9px 4px 4px; font-size: 11.5px; font-weight: 650; color: var(--muted); cursor: pointer; white-space: nowrap; }
 .vs-guide-steps button i { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 10.5px; font-weight: 800; background: var(--soft); color: var(--muted); }
