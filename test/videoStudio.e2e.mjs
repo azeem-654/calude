@@ -620,7 +620,8 @@ await page.getByTestId('vs-search').fill('');
   await blockAt(wide[4]).click({ modifiers: ['Shift'] });
   await page.waitForTimeout(200);
   ok('…Shift-click extends the selection over the blocks between', (await page.locator('[data-block][aria-pressed="true"]').count()) >= 3);
-  const G = await page.evaluate(() => { const b = [...document.querySelectorAll('[data-block="gap"]')].find(x => Number(x.dataset.e) - Number(x.dataset.s) > 0.6 && !x.classList.contains('cut') && x.getBoundingClientRect().width > 6); return b ? Number(b.dataset.i) : -1; });
+  /* Cleanup has already shortened every silence over 0.6 s; the untouched ones are about half a second — still more than the 0.3 s it leaves. */
+  const G = await page.evaluate(() => { const b = [...document.querySelectorAll('[data-block="gap"]')].find(x => Number(x.dataset.e) - Number(x.dataset.s) > 0.45 && !x.classList.contains('cut') && x.getBoundingClientRect().width > 6); return b ? Number(b.dataset.i) : -1; });
   const gap = page.locator(`[data-block="gap"][data-i="${G}"]`);
   await gap.scrollIntoViewIfNeeded();
   await gap.click();
