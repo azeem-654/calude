@@ -448,8 +448,16 @@ ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and 
   const still = samples.slice(4).map((x, i) => [i + 4, x.t - samples[i + 3].t]).filter(([, d]) => d < 0.05);
   ok('…its clock moves on in every quarter second of the forty (never a stop, never a freeze)', still.length === 0, still.slice(0, 6));
   const capped = answers.filter(a => a.status === 206 && /^bytes \d+-\d+\/\d+$/.test(a.range));
-  const sizes = capped.map(a => { const [, x, y] = /bytes (\d+)-(\d+)/.exec(a.range); return Number(y) - Number(x) + 1; });
-  ok('…read through the real Worker in short range answers (206, at most 4 MB each, never the whole file held open)', capped.length >= 2 && sizes.every(n => n <= 4 * 1024 * 1024) && answers.every(a => a.status === 206), answers.slice(0, 8));
+  /* The sizes are asked of the Worker itself, with the open ranges the player asked for: what Playwright
+     reports for a media request can be Chrome's media layer stitching what it already held onto a
+     shorter answer ("bytes 3145728-<end>" while the Worker sent 4 MB), never what the Worker sent. */
+  const sizes = [];
+  for (const a of capped.slice(0, 6)) {
+    const from = /bytes (\d+)-/.exec(a.range)[1];
+    const r = await fetch(src0, { headers: { Range: `bytes=${from}-`, Connection: 'close' } });
+    sizes.push((await r.arrayBuffer()).byteLength);
+  }
+  ok('…read through the real Worker in short range answers (206, at most 4 MB each, never the whole file held open)', capped.length >= 2 && sizes.every(n => n <= 4 * 1024 * 1024) && answers.every(a => a.status === 206), { answers: answers.slice(0, 8), sizes });
   ok('…crossing more than ten cuts', crossed >= 10, crossed);
   ok('…without a stall: the picture never waits for data and no two frames are more than 250 ms apart', meter.waiting === 0 && long.length === 0 && meter.frames.length > 400, { waiting: meter.waiting, long: long.map(Math.round).slice(0, 8), frames: meter.frames.length });
   ok('…and never shows what was cut (the opening silence, the fillers, the twenty words)', inCut.length === 0 && samples[2].t > 2, { inCut: inCut.slice(0, 3), first: samples.slice(0, 3) });
@@ -621,7 +629,10 @@ await page.getByTestId('vs-search').fill('');
   await page.waitForTimeout(200);
   ok('…Shift-click extends the selection over the blocks between', (await page.locator('[data-block][aria-pressed="true"]').count()) >= 3);
   /* Cleanup has already shortened every silence over 0.6 s; the untouched ones are about half a second — still more than the 0.3 s it leaves. */
-  const G = await page.evaluate(() => { const b = [...document.querySelectorAll('[data-block="gap"]')].find(x => Number(x.dataset.e) - Number(x.dataset.s) > 0.45 && !x.classList.contains('cut') && x.getBoundingClientRect().width > 6); return b ? Number(b.dataset.i) : -1; });
+  const findGap = () => page.evaluate(() => { const b = [...document.querySelectorAll('[data-block="gap"]')].find(x => Number(x.dataset.e) - Number(x.dataset.s) > 0.45 && !x.classList.contains('cut') && x.getBoundingClientRect().width > 6); return b ? Number(b.dataset.i) : -1; });
+  /* Half a second is a few pixels at the zoom the phrases needed: in further until one can be pressed. */
+  let G = await findGap();
+  for (let i = 0; i < 20 && G < 0; i++) { await page.locator('[aria-label="Zoom the timeline in"]').click(); await page.waitForTimeout(80); G = await findGap(); }
   const gap = page.locator(`[data-block="gap"][data-i="${G}"]`);
   await gap.scrollIntoViewIfNeeded();
   await gap.click();
