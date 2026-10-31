@@ -813,9 +813,12 @@ ok('…and renders again', reOut.version > outBefore.version && !reOut.stale, re
   ok('11 · every thumbnail downloads as a real PNG (signature, IHDR, IEND, size, type, .png)', pngs === Math.min(15, all.length), bad);
   ok('…and says it was checked', all.every(({ t }) => t.verified && /PNG \d+×\d+/.test(t.check)));
   const decode = path.join(state, 'decoded.png');
-  const t0x = await download(all[0].t.downloadUrl, 'thumb.png');
-  execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', t0x.file, decode]);
-  ok('…and decodes', fs.statSync(decode).size > 1000);
+  /* No thumbnails (a job that lost its three tries to local wrangler restarting) is the failure above — not a crash that ends the run. */
+  if (all.length) {
+    const t0x = await download(all[0].t.downloadUrl, 'thumb.png');
+    execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', t0x.file, decode]);
+  }
+  ok('…and decodes', all.length > 0 && fs.statSync(decode).size > 1000);
   await openPanel(page, 'exports');
   const long = page.locator('[data-kind="long"][data-testid="vs-board-row"]');
   await long.locator('[data-act="board-more-thumbs"]').click();
