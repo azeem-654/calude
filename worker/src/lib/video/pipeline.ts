@@ -189,9 +189,23 @@ async function setProject(env: Env, id: string, patch: Partial<ProjectRow>): Pro
     .bind(...cols.map(c => patch[c] as unknown), nowIso(), id).run();
 }
 
+/**
+ * A failure of the road, not of the work: the engine could not reach the
+ * Worker for its input or its upload (refused, a 5xx, a timeout, a dropped
+ * connection). Those spend no attempt for the job's first two hours — three
+ * attempts went in two minutes while a deploy or a restart was under way,
+ * and a long video's render failed for good with nothing wrong with it.
+ */
+export const TRANSIENT = /connection refused|server returned 5\d\d|5xx server error|timed? ?out|network connection lost|econnreset|connection reset|socket hang up/i;
+
 /** Retry later with back-off; past the last attempt the job fails for good. */
 async function failAttempt(env: Env, job: JobRow, error: string, terminal = false): Promise<void> {
-  const attempts = job.attempts;
+  let attempts = job.attempts;
+  if (!terminal && attempts >= job.max_attempts && TRANSIENT.test(error) && Date.now() - Date.parse(job.created_at) < 2 * 3600_000) {
+    attempts = Math.max(0, job.max_attempts - 1);
+    await save(env, job, { state: 'queued', attempts, error: error.slice(0, 600), engine_ref: '', next_at: later(60), progress: null });
+    return;
+  }
   if (terminal || attempts >= job.max_attempts) {
     await save(env, job, { state: 'failed', attempts, error: error.slice(0, 600), engine_ref: '', finished_at: nowIso() });
     await onJobFailed(env, job, error);

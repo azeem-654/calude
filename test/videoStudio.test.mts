@@ -20,7 +20,7 @@ import { checkPng } from '../worker/src/lib/video/png';
 import { cameraPath, cutTimes, punchSpans, overlayAss, overlaySpan, overlayPlace, logoBox, trackAt, cssLook, cssEffects, skinBox, type TrackRow } from '../worker/src/lib/video/motion';
 import { layoutOptions, layoutPlan } from '../worker/src/lib/video/layouts';
 import { toXmeml, editorialScore } from '../worker/src/lib/video/xml';
-import { pickHighlight, thumbWords, cleanThumbSpec, renderSpec, withoutStrangeLinks } from '../worker/src/lib/video/pipeline';
+import { pickHighlight, thumbWords, cleanThumbSpec, renderSpec, withoutStrangeLinks, TRANSIENT } from '../worker/src/lib/video/pipeline';
 import { thumbPlan, normaliseSpec, lineRect, TREND_LAYOUTS, STICKERS } from '../media/engine/thumbLayout.mjs';
 import { parseYoutubeUrl, youtubeRefusal, cleanOembed, youtubeThumb, YOUTUBE_WAY_FORWARD } from '../worker/src/lib/video/youtube';
 import {
@@ -693,6 +693,7 @@ console.log('\nTrending thumbnails: one plan for the engine and the preview');
     const w = withoutStrangeLinks(m, 'we look at the crm and how to find my solution', 'https://protectedcentral.com');
     ok('a web address nobody said is taken out of the words written for a video; the business\'s own site stays', w.titles.length === 1 && w.titles[0] === 'A walk through the CRM' && !/fema/i.test(w.description + w.pinnedComment + w.cta) && /protectedcentral\.com\/book/.test(w.description) && /We look at the CRM\./.test(w.description), w);
   }
+  ok('a render that could not reach the Worker (refused, a 5xx) spends no attempt; a broken file does', TRANSIENT.test('ffmpeg exited 145: [tcp @ 0x1] Connection to tcp://localhost:8953 failed: Connection refused') && TRANSIENT.test('Error opening input: Server returned 5XX Server Error reply') && !TRANSIENT.test('nothing to render: every part is cut') && !TRANSIENT.test('Invalid data found when processing input'));
   /* The drawn pointer and the sounds. */
   const place = (t: number, x: number, y: number): [number, number] => [x * 1920, y * 1080];
   const { marks, clicks } = pointerMarks(meta, keeps, wins, 1, place, sentences, { click: 'click', moments: true });
