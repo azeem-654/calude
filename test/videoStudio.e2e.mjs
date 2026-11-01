@@ -717,6 +717,12 @@ await page.getByTestId('vs-search').fill('');
   await page.locator('[data-act="translate"]').click();
   for (let i = 0; i < 100 && /Translating the captions/.test(await page.getByTestId('vs-ops').innerText().catch(() => '')) && (await page.locator('[data-op="running"]').count()); i++) await sleep(300);
   await openPanel(page, 'tools');
+  /* Many AI calls in a row: a restart of local wrangler in the middle loses the translation (said under Progress) — press it once more then. */
+  if (!(await page.getByTestId('vs-translations').count()) && !(await page.locator('[data-op="running"]').count()) && restarts) {
+    await page.locator('[data-act="translate"]').click();
+    for (let i = 0; i < 100 && (await page.locator('[data-op="running"]').count()); i++) await sleep(300);
+    await openPanel(page, 'tools');
+  }
   await page.getByTestId('vs-translations').waitFor({ timeout: 30_000 });
   const tr = (await at()).extras?.translations?.Spanish;
   const srtHref = await page.getByTestId('vs-translations').locator('a', { hasText: 'SRT' }).getAttribute('href');
