@@ -579,7 +579,11 @@ export default function VideoEditor({ id }: { id: string }) {
      right — wide screens only, where it does not cover the video. */
   const wasMoving = useRef<boolean | null>(null);
   useEffect(() => {
-    if (wasMoving.current === false && moving && !narrow()) { setGroup('activity'); setSub('activity'); }
+    /* Not over a panel the customer is using (they were typing to the assistant
+       when a render started and lost it): every panel shows what is being
+       worked on in its top strip (NowStrip); Progress opens here only when
+       no panel is open. */
+    if (wasMoving.current === false && moving && !narrow() && !group) { setGroup('activity'); setSub('activity'); }
     if (wasMoving.current === null && moving && !narrow() && !groupOf(asked)) { setGroup('activity'); setSub('activity'); }
     if (view) wasMoving.current = moving;
   }, [moving, view]); // eslint-disable-line react-hooks/exhaustive-deps

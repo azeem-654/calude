@@ -332,7 +332,7 @@ export is a canvas recording; Video Studio is the real one.
   as searchable, filterable picture tiles, and the goals folded under "Start
   from a goal" (open when there are no projects).
 - **Progress is on the right** (`ActivityPanel.tsx`, rail group **Progress**,
-  opens by itself on wide screens when something starts moving; a pill under
+  opens by itself on wide screens when something starts moving — since 2026-11 only when no panel is open (a panel in use keeps its place and shows the `vs-now` strip); a pill under
   the player on phones/closed panel). Every stage counts in the overall
   number (weighted), and `stagesOf` now lists **`track`** (finding faces):
   it kept the project "processing" while the old four-band bar said "Ready

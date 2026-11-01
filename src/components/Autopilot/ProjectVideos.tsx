@@ -17,10 +17,20 @@ const LINE = '#e6e9f0';
 export default function ProjectVideos({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
   const [videos, setVideos] = useState<ProjectSummary[] | null>(null);
+  /* Asked again after a failed answer (it used to stay empty for good), and
+     every 20 s while a video is still being made, so "Processing…" becomes
+     "✨ 4 Shorts created" without a reload — the work goes on in the cloud. */
   useEffect(() => {
-    let alive = true;
-    void listVideoProjects().then(r => { if (alive) setVideos(r.success ? (r.projects ?? []).filter(p => p.autopilotProjectId === projectId) : []); });
-    return () => { alive = false; };
+    let alive = true, timer = 0, fails = 0;
+    const look = async () => {
+      const r = await listVideoProjects();
+      if (!alive) return;
+      if (r.success) { fails = 0; const mine = (r.projects ?? []).filter(p => p.autopilotProjectId === projectId); setVideos(mine); if (mine.some(v => v.status !== 'ready' && v.status !== 'failed')) timer = window.setTimeout(look, 20_000); }
+      else if (++fails <= 4) timer = window.setTimeout(look, 2_000 * fails);
+      else setVideos(v => v ?? []);
+    };
+    void look();
+    return () => { alive = false; clearTimeout(timer); };
   }, [projectId]);
   return (
     <div style={{ border: `1px solid ${LINE}`, borderRadius: 14, padding: 12, display: 'grid', gap: 10, marginBottom: 12 }} data-testid="project-videos">

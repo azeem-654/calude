@@ -1010,6 +1010,7 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
 
 /* ── Noise and music, asked for in one sentence (the request that was refused) ── */
 {
+  await openPanel(page, 'tools');
   await page.getByTestId('vs-command').fill('remove the background noise completely and also add upbeat background music to all the videos');
   await page.getByTestId('vs-command').press('Enter');
   await page.waitForTimeout(4000);
