@@ -553,7 +553,9 @@ export default function VideoEditor({ id }: { id: string }) {
   }, [doc, narrate, transcript, wave]);
 
   const load = useCallback(async () => {
-    const r = await getVideoProject(id);
+    /* A dropped connection or a server restarting is not "could not open": asked again a few times first. A refusal with a code (not found, no access) is final. */
+    let r = await getVideoProject(id);
+    for (let i = 0; i < 4 && !r.success && !r.code; i++) { await new Promise(res => setTimeout(res, 1500 * (i + 1))); r = await getVideoProject(id); }
     if (!r.success) { setError(r.error ?? 'Could not open the project.'); return; }
     setName(r.project.name);
     await absorb(r);
