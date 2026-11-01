@@ -398,7 +398,7 @@ export default {
        wait never delays a campaign send, and the main tick's order stays as
        it is below. */
     if (event.cron === VIDEO_CRON) {
-      ctx.waitUntil(runVideoJobs(env, 52_000)
+      ctx.waitUntil(runVideoJobs(env, 52_000, true)
         .then(v => { if (v.ran) console.log(`[cron] video minute: ${v.ran} job step(s)`); })
         .catch(e => console.log(`[cron] video minute: ${String(e)}`)));
       return;

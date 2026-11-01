@@ -251,9 +251,10 @@ async function advanceLoop(env: Env, origin: string, projectId: string, budgetMs
  * budget is spent: each pass runs what is due, and when only engine jobs
  * are left running it waits a few seconds and asks again. Wall-clock spent
  * waiting costs no CPU; the lease stops two ticks (or a tick and an open
- * editor) working the same job.
+ * editor) working the same job. Only the video minute waits (`wait`): the
+ * main tick goes on to its campaign sends.
  */
-export async function runVideoJobs(env: Env, budgetMs = 25_000): Promise<{ ran: number }> {
+export async function runVideoJobs(env: Env, budgetMs = 25_000, wait = false): Promise<{ ran: number }> {
   const origin = originOf(env);
   if (!origin || !env.VIDEO) return { ran: 0 };
   const until = Date.now() + budgetMs;
@@ -274,7 +275,7 @@ export async function runVideoJobs(env: Env, budgetMs = 25_000): Promise<{ ran: 
       `SELECT MIN(next_at) AS at FROM crm_video_jobs WHERE state IN ('queued','running')`,
     ).first<{ at: string | null }>().catch(() => null);
     const at = soon?.at ? Date.parse(soon.at) : NaN;
-    if (!Number.isFinite(at) || at > until - 2_000) break;
+    if (!wait || !Number.isFinite(at) || at > until - 2_000) break;
     await new Promise(r => setTimeout(r, Math.min(5_000, Math.max(500, at - Date.now()))));
   }
   return { ran };
