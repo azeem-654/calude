@@ -964,7 +964,9 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
 {
   await page.goto(`${B}/autopilot?project=${AP}&tab=assets`, { waitUntil: 'networkidle' });
   await page.getByTestId('project-videos').waitFor({ timeout: 15_000 }).catch(() => {});
-  const assets = await page.getByTestId('project-videos').innerText().catch(() => '');
+  /* The heading draws before the list: wait for the list itself. */
+  let assets = '';
+  for (let i = 0; i < 40 && !/Shorts created/.test(assets); i++) { assets = await page.getByTestId('project-videos').innerText().catch(() => ''); if (!/Shorts created/.test(assets)) await sleep(500); }
   ok('16 · the Autopilot project\'s Assets tab shows the video and "✨ 4 Shorts created"', /Weekly growth show/.test(assets) && /4 Shorts created/.test(assets), assets.slice(0, 300));
   const runs = await api('autopilot.php', { token: T, accountId: A, action: 'agent_runs', projectId: AP });
   const lines = (runs.runs ?? []).map(r => `${r.detail} → ${r.link?.route ?? ''}`);
