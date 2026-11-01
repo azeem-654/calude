@@ -993,7 +993,13 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   /* Going to a version also re-credits and re-queues the videos, which takes
      a moment while the engine is busy: wait for it rather than a fixed time. */
   let undone;
+  const r0 = restarts;
   for (let i = 0; i < 40; i++) { undone = await v('get', { projectId: PID }); if (undone.docVersion !== before) break; await sleep(500); }
+  /* Local wrangler restarted under the press (its request refused, said under Progress): press it once more. */
+  if (undone.docVersion === before && restarts !== r0) {
+    await page.getByRole('button', { name: 'Undo' }).click();
+    for (let i = 0; i < 40; i++) { undone = await v('get', { projectId: PID }); if (undone.docVersion !== before) break; await sleep(500); }
+  }
   ok('undo goes back a version — straight after an assistant command, too', undone.docVersion === before - 1 && undone.doc.music.volume === after.doc.music.volume, { before, undone: undone.docVersion, vol: [after.doc.music?.volume, undone.doc.music?.volume] });
   await page.getByRole('button', { name: 'Redo' }).click();
   let redone;
