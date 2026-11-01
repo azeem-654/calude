@@ -710,6 +710,8 @@ await page.getByTestId('vs-search').fill('');
   for (let i = 0; i < 30; i++) { A3 = await at(); if (A3.doc.clips.length > C0) break; await sleep(300); }
   const reelClip = A3.doc.clips[A3.doc.clips.length - 1];
   ok('"Find highlights" lists whole-sentence moments, and they become a highlight reel — one Short made of its parts', hl >= 2 && reelClip?.parts?.length === hl && reelClip.title === 'Highlight reel', { hl, reelClip });
+  /* Putting the reel together opened Progress on it; back to AI Tools. */
+  await openPanel(page, 'tools');
   await page.locator('[data-tool="translate"]').click();
   await page.getByTestId('vs-translate-lang').selectOption('Spanish');
   await page.locator('[data-act="translate"]').click();
