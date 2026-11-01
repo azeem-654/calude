@@ -32,7 +32,7 @@ import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, Music2
 import {
   keepRanges, clipKeeps, keptLength, retimeWords, cuesOf, toOutput, toSource, clock, isRtl, lookOf, motionOf, trackingOf, cssLook, punchSpans, cutTimes, trackAt, overlaySpan, overlayPlace, OVERLAY_SIZE, OVERLAY_FAMILY, logoBox, logoFor, sentencesOf,
   effectsOf, effectsOn, cssEffects, layoutPlan, dimsFor, LAYOUT_LABEL, type LayoutPlan,
-  pointerOf, pointerInFrame, focusWindows, zoomPlan, zoomAt, screenPlan, followPath, followAt, screenLayoutFor, frameMap, resolveCursor, type ScreenPlan, type ZoomPlan,
+  pointerOf, pointerInFrame, focusWindows, zoomPlan, zoomAt, screenPlan, followPath, followAt, wideSpans, isWide, screenLayoutFor, frameMap, resolveCursor, type ScreenPlan, type ZoomPlan,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
 import { Deck } from './deck';
@@ -107,10 +107,12 @@ function drawLayout(c: HTMLCanvasElement, v: HTMLVideoElement, plan: LayoutPlan,
 
 /**
  * A Screen Recorder Short laid out round the pointer: the camera's box whole
- * on a blurred copy of itself in the top third (screencam), and the window
- * at its place along the follow path — the boxes the render is sent.
+ * on a blurred copy of itself in a third of the height (under the screen
+ * unless asked for on top), the window at its place along the follow path —
+ * and, in a whole-screen moment, the screen fitted whole with the camera
+ * stepped aside. The boxes the render is sent.
  */
-function drawScreenLayout(c: HTMLCanvasElement, v: HTMLVideoElement, plan: ScreenPlan, at: [number, number] | null) {
+function drawScreenLayout(c: HTMLCanvasElement, v: HTMLVideoElement, plan: ScreenPlan, at: [number, number] | null, wide = false) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const W = Math.round(c.clientWidth * dpr), H = Math.round(c.clientHeight * dpr);
   if (!W || !H) return;
@@ -118,20 +120,23 @@ function drawScreenLayout(c: HTMLCanvasElement, v: HTMLVideoElement, plan: Scree
   const g = c.getContext('2d');
   if (!g || v.readyState < 2 || !v.videoWidth) return;
   const kx = v.videoWidth / plan.src[0], ky = v.videoHeight / plan.src[1];
-  const top = Math.round(H * plan.top / plan.out[1]);
   g.clearRect(0, 0, W, H);
-  if (plan.cam && top > 0) {
-    const [x, y, w, h] = plan.cam;
-    g.save(); g.beginPath(); g.rect(0, 0, W, top); g.clip();
-    const cover = Math.max(W / w, top / h), fit = Math.min(W / w, top / h);
+  /* A box of the recording fitted into a band, on a blurred copy of itself. */
+  const fitted = (x: number, y: number, w: number, h: number, by: number, bh: number) => {
+    g.save(); g.beginPath(); g.rect(0, by, W, bh); g.clip();
+    const cover = Math.max(W / w, bh / h), fit = Math.min(W / w, bh / h);
     g.filter = 'blur(14px) brightness(.75)';
-    g.drawImage(v, x * kx, y * ky, w * kx, h * ky, (W - w * cover) / 2, (top - h * cover) / 2, w * cover, h * cover);
+    g.drawImage(v, x * kx, y * ky, w * kx, h * ky, (W - w * cover) / 2, by + (bh - h * cover) / 2, w * cover, h * cover);
     g.filter = 'none';
-    g.drawImage(v, x * kx, y * ky, w * kx, h * ky, (W - w * fit) / 2, (top - h * fit) / 2, w * fit, h * fit);
+    g.drawImage(v, x * kx, y * ky, w * kx, h * ky, (W - w * fit) / 2, by + (bh - h * fit) / 2, w * fit, h * fit);
     g.restore();
-  }
+  };
+  if (wide) { const [rx, ry, rw, rh] = plan.region; fitted(rx, ry, rw, rh, 0, H); return; }
+  const band = Math.round(H * plan.top / plan.out[1]);
+  const camY = plan.camAt === 'top' ? 0 : H - band, scrY = plan.camAt === 'top' ? band : 0;
+  if (plan.cam && band > 0) { const [x, y, w, h] = plan.cam; fitted(x, y, w, h, camY, band); }
   const [cw, ch] = plan.crop, [x, y] = at ?? [plan.region[0], plan.region[1]];
-  g.drawImage(v, x * kx, y * ky, cw * kx, ch * ky, 0, top, W, H - top);
+  g.drawImage(v, x * kx, y * ky, cw * kx, ch * ky, 0, scrY, W, H - band);
 }
 
 export default function Player({ ctx, transport, below }: {
@@ -230,6 +235,7 @@ export default function Player({ ctx, transport, below }: {
   const splan: ScreenPlan | null = useMemo(() => screenL && scr && probe && outDims && clip ? screenPlan(screenL, scr, clip.s, clip.e, probe.width, probe.height, outDims.width, outDims.height) : null,
     [screenL, scr, probe, outDims?.width, outDims?.height, clip?.s, clip?.e]); // eslint-disable-line react-hooks/exhaustive-deps
   const spath = useMemo(() => splan && scr ? followPath(scr, keeps, splan) : null, [splan, scr, keeps]);
+  const swide = useMemo(() => splan && scr ? wideSpans(scr, keeps, splan) : null, [splan, scr, keeps]);
   const pwins = useMemo(() => scr && sref && ptr.on && (clip ? ptr.shorts && !!splan : ptr.long && tracking === 'off') ? focusWindows(ptr.focus, keeps) : [],
     [scr, sref, doc.pointer, clip, splan, keeps, tracking]); // eslint-disable-line react-hooks/exhaustive-deps
   const fmap = useMemo(() => probe && outDims ? frameMap(cropping ? 'crop' : fit ? 'fit' : 'source', probe.width, probe.height, outDims.width, outDims.height, reframe.x, reframe.y) : null,
@@ -239,7 +245,7 @@ export default function Player({ ctx, transport, below }: {
   const sentencesAll = useMemo(() => transcript ? sentencesOf(transcript.words) : [], [transcript]);
   const pcursors = useMemo(() => pwins.map(w => resolveCursor(w.range, ptr.cursor, sentencesAll)), [pwins, ptr.cursor, sentencesAll]);
   const ptrRef = useRef<HTMLDivElement>(null);
-  const pointerLive = scr && (zplan || splan) ? { scr, zplan, splan, spath, pwins, pcursors, fmap, out: outDims!, size: ptr.size, color: ptr.color } : null;
+  const pointerLive = scr && (zplan || splan) ? { scr, zplan, splan, spath, swide, pwins, pcursors, fmap, out: outDims!, size: ptr.size, color: ptr.color } : null;
   const live = useRef({ keeps, total, speed, motion, spans, cuts, followRows, objPos, report, plan, shadow: fx.shadow ?? null, mutes, muted, pointerLive });
   live.current = { keeps, total, speed, motion, spans, cuts, followRows, objPos, report, plan, shadow: fx.shadow ?? null, mutes, muted, pointerLive };
 
@@ -275,7 +281,7 @@ export default function Player({ ctx, transport, below }: {
         wrap.style.transformOrigin = '50% 40%';
         wrap.style.transform = z !== 1 && !P?.zplan ? `scale(${z.toFixed(3)})` : '';
       }
-      if (P?.splan && layoutRef.current) drawScreenLayout(layoutRef.current, a.classList.contains('on') ? a : b, P.splan, P.spath ? followAt(P.spath, o) : null);
+      if (P?.splan && layoutRef.current) drawScreenLayout(layoutRef.current, a.classList.contains('on') ? a : b, P.splan, P.spath ? followAt(P.spath, o) : null, isWide(P.swide, o));
       /* The drawn pointer, where the render draws it, inside the moments only. */
       const pe = ptrRef.current;
       if (pe) {
@@ -284,9 +290,10 @@ export default function Player({ ctx, transport, below }: {
         let pos: [number, number] | null = null;
         if (f && P) {
           if (P.splan && P.spath) {
-            const at = followAt(P.spath, o), [cw, ch] = P.splan.crop, top = P.splan.top, [W, H] = P.splan.out;
-            if (at) pos = [(f[0] * P.splan.src[0] - at[0]) * (W / cw), top + (f[1] * P.splan.src[1] - at[1]) * ((H - top) / ch)];
-            if (pos && (pos[1] < top || pos[0] < 0 || pos[0] > W)) pos = null;
+            const at = isWide(P.swide, o) ? null : followAt(P.spath, o), [cw, ch] = P.splan.crop, top = P.splan.top, [W, H] = P.splan.out;
+            const y0 = P.splan.camAt === 'top' ? top : 0;
+            if (at) pos = [(f[0] * P.splan.src[0] - at[0]) * (W / cw), y0 + (f[1] * P.splan.src[1] - at[1]) * ((H - top) / ch)];
+            if (pos && (pos[1] < y0 || pos[1] > y0 + H - top || pos[0] < 0 || pos[0] > W)) pos = null;
           } else if (P.fmap) {
             const [px, py] = P.fmap(f[0], f[1]);
             pos = zv ? [(px - zv.x) * zv.z, (py - zv.y) * zv.z] : [px, py];

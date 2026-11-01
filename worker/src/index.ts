@@ -42,6 +42,8 @@ import { handleVideo } from './routes/video';
 import { handleVideoFile } from './routes/videoFile';
 import { handleMedia, handleMediaPhoto } from './routes/media';
 import { runVideoJobs } from './lib/video/pipeline';
+/** The every-minute tick that only advances Video Studio jobs (wrangler.jsonc). */
+const VIDEO_CRON = '* * * * *';
 import { handleSetup } from './routes/setup';
 import { handleWhitelabel } from './routes/whitelabel';
 import { handleModeration } from './routes/moderation';
@@ -391,6 +393,16 @@ export default {
    */
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     await useWrapKey(env);
+    /* Video Studio's own minute: processing goes on in the cloud with nobody's
+       editor open (runVideoJobs). Kept off the main tick so a long render
+       wait never delays a campaign send, and the main tick's order stays as
+       it is below. */
+    if (event.cron === VIDEO_CRON) {
+      ctx.waitUntil(runVideoJobs(env, 52_000)
+        .then(v => { if (v.ran) console.log(`[cron] video minute: ${v.ran} job step(s)`); })
+        .catch(e => console.log(`[cron] video minute: ${String(e)}`)));
+      return;
+    }
     ctx.waitUntil((async () => {
       const started = Date.now();
 

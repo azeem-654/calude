@@ -425,7 +425,10 @@ async function prepare(job, dir) {
       if (!cuts.length || at - cuts[cuts.length - 1] > 20) cuts.push(Math.round(at * 100) / 100);
     }
     const list = path.join(dir, 'chunks.csv');
-    await exec(FFMPEG, [...base, ...inVideo(src), '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'libmp3lame', '-b:a', '48k',
+    /* The transcriber hears the voice with the room taken out: noise is where
+       Whisper makes words up. RNNoise at 48 kHz, then down to Whisper's 16. */
+    const clean = hasRnn() ? ['-af', `highpass=f=80,aresample=48000,arnndn=m=${RNN_MODEL}:mix=0.9`] : [];
+    await exec(FFMPEG, [...base, ...inVideo(src), '-vn', ...clean, '-ac', '1', '-ar', '16000', '-c:a', 'libmp3lame', '-b:a', '48k',
       '-f', 'segment', ...(cuts.length ? ['-segment_times', cuts.join(',')] : []), '-segment_list', list, '-segment_list_type', 'csv',
       '-reset_timestamps', '1', path.join(dir, 'chunk-%03d.mp3')], job);
     const rows = (await fsp.readFile(list, 'utf8')).trim().split('\n').filter(Boolean);
@@ -624,6 +627,13 @@ function repairChain(audio) {
   if (audio.declick) out.push('adeclick=w=55:o=75:t=2');
   return out;
 }
+/**
+ * RNNoise at `mix` (1 = all of it), on 48 kHz sound — the rate its network
+ * was trained at; a 44.1 kHz recording went in as it was. Without the model,
+ * the FFT denoiser given.
+ */
+const rnn = (mix, fallback) => hasRnn() ? ['aresample=48000', `arnndn=m=${RNN_MODEL}:mix=${mix.toFixed(2)}`] : [fallback];
+
 /** Room noise between sentences pulled down a little — a soft gate that never closes on a word. */
 const GATE = 'agate=threshold=0.012:ratio=2.5:range=0.25:attack=8:release=250:knee=3';
 
@@ -634,7 +644,7 @@ function voiceChain(audio) {
     return [
       'highpass=f=80:poles=2',
       ...repair,
-      hasRnn() ? `arnndn=m=${RNN_MODEL}:mix=${(0.5 + 0.5 * k).toFixed(2)}` : `afftdn=nr=${(10 + 16 * k).toFixed(1)}:nf=-40:tn=1`,
+      ...rnn(Math.min(1, 0.7 + 0.6 * k), `afftdn=nr=${(10 + 16 * k).toFixed(1)}:nf=-40:tn=1`),
       `deesser=i=${(0.25 + 0.3 * k).toFixed(2)}`,
       `equalizer=f=250:t=q:w=1.1:g=${(-1 - 2 * k).toFixed(1)}`,
       `equalizer=f=3500:t=q:w=1.4:g=${(1 + 2.5 * k).toFixed(1)}`,
@@ -642,12 +652,22 @@ function voiceChain(audio) {
       `acompressor=threshold=${(0.14 - 0.06 * k).toFixed(3)}:ratio=${(2 + 2 * k).toFixed(1)}:attack=6:release=120:knee=3:makeup=${(1.2 + 0.6 * k).toFixed(2)}`,
     ];
   }
-  /* Natural first: each level removes more steady noise (fans, hum, hiss) and
-     the strongest also takes off the top end where hiss lives. */
-  const DENOISE = { light: 'afftdn=nr=10:nf=-42', medium: 'afftdn=nr=18:nf=-38:tn=1', strong: 'afftdn=nr=26:nf=-34:tn=1,lowpass=f=11000' };
+  /* The levels are RNNoise too, wherever its model is in the image: measured
+     on speech under fan noise and hiss (2026-11), the FFT denoiser at
+     "medium" lifted speech-to-noise from 3 dB to 4 dB and smeared the voice,
+     where RNNoise at full strength reached 36 dB with the voice as close to
+     the clean one as a partial mix — a partial mix only lets the noise back
+     in (0.85 stopped at 18 dB). Running a spectral denoiser after RNNoise
+     added 1 dB and took the voice's edges, so nothing follows it. Strong
+     also pulls the room down between sentences (the soft gate). */
+  const DENOISE = {
+    light: rnn(0.75, 'afftdn=nr=10:nf=-42'),
+    medium: rnn(1, 'afftdn=nr=18:nf=-38:tn=1'),
+    strong: [...rnn(1, 'afftdn=nr=26:nf=-34:tn=1,lowpass=f=11000'), GATE],
+  };
   const voice = ['highpass=f=70', ...repair];
-  if (DENOISE[audio.denoise]) voice.push(DENOISE[audio.denoise]);
-  if (audio.gate) voice.push(GATE);
+  if (DENOISE[audio.denoise]) voice.push(...DENOISE[audio.denoise]);
+  if (audio.gate && !(audio.denoise === 'strong')) voice.push(GATE);
   if (audio.voice) voice.push('equalizer=f=3200:t=q:w=1.2:g=2.5', 'deesser=i=0.35', 'acompressor=threshold=0.08:ratio=3:attack=8:release=120:makeup=1.5');
   return voice;
 }
@@ -818,10 +838,14 @@ function layoutFrame(l, W, H, srcW, srcH, sh, fps) {
 /**
  * A Screen Recorder Short laid out round the pointer (the Worker's
  * pointer.ts `screenPlan` / `followPath` — numbers only):
- *   screencam  the camera's box, whole, on a blurred copy of itself in the
- *              top `top` pixels; below it the screen — a window of `crop`
- *              pixels moved along `path` and scaled to fill
+ *   screencam  the camera's box, whole, on a blurred copy of itself in a
+ *              band `top` pixels high — under the screen (`camAt` bottom,
+ *              the default) or over it; the screen is a window of `crop`
+ *              pixels moved along `path` and scaled to fill the rest
  *   follow     the whole frame is that window
+ *   wide       stretches where the whole screen (`region`) is shown instead,
+ *              fitted on a blurred copy of itself — the camera steps aside
+ *              and comes back after (an overlay switched on by time)
  * The window keeps its size; only where it sits moves, through sendcmd, as
  * a crop that follows a face does (a crop that changes size stalls FFmpeg).
  */
@@ -839,7 +863,13 @@ function cleanScreenLayout(l, srcW, srcH, W, H) {
   }
   const path = (Array.isArray(l.path) ? l.path : []).slice(0, 40000)
     .map(r => [num(r?.[0], 0, 0, 1e6), Math.round(num(r?.[1], 0, 0, srcW - cw)), Math.round(num(r?.[2], 0, 0, srcH - ch))]).sort((a, b) => a[0] - b[0]);
-  return { kind: l.kind, crop: [cw, ch], top, cam, path };
+  const camAt = l.camAt === 'top' ? 'top' : 'bottom';
+  const rb = Array.isArray(l.region) ? l.region : [];
+  const rw = even(num(rb[2], srcW, 16, srcW)), rh = even(num(rb[3], srcH, 16, srcH));
+  const region = [Math.round(num(rb[0], 0, 0, srcW - rw)), Math.round(num(rb[1], 0, 0, srcH - rh)), rw, rh];
+  const wide = (Array.isArray(l.wide) ? l.wide : []).slice(0, 60)
+    .map(r => [num(r?.[0], 0, 0, 1e6), num(r?.[1], 0, 0, 1e6)]).filter(([a, b]) => b - a >= 0.5).sort((a, b) => a[0] - b[0]);
+  return { kind: l.kind, crop: [cw, ch], top, cam, camAt, region, wide, path };
 }
 
 function screenFrame(l, W, H, fps, cmds) {
@@ -848,9 +878,17 @@ function screenFrame(l, W, H, fps, cmds) {
   let last = [x0, y0];
   for (const [t, x, y] of l.path) if (x !== last[0] || y !== last[1]) { cmds.push([t, `crop@ptr x ${x}, crop@ptr y ${y}`]); last = [x, y]; }
   const win = h => `crop@ptr=${cw}:${ch}:${x0}:${y0},scale=${W}:${h},setsar=1`;
-  if (l.kind === 'follow') return win(H);
+  /* Whole-screen stretches: numbers only, joined into one enable expression. */
+  const wide = l.wide?.length ? l.wide.map(([a, b]) => `between(t,${a.toFixed(2)},${b.toFixed(2)})`).join('+') : '';
+  const [rx, ry, rw, rh] = l.region ?? [0, 0, 0, 0];
+  const whole = wide && rw >= 16 && rh >= 16 ? `[scw0]crop=${rw}:${rh}:${rx}:${ry},${fitFrame('scw', W, H, rw, rh, null, fps, '[scw]')}` : '';
+  if (l.kind === 'follow') {
+    return whole ? `split[sc2][scw0];[sc2]${win(H)}[scv];${whole};[scv][scw]overlay=0:0:enable='${wide}'` : win(H);
+  }
   const [cx, cy, bw, bh] = l.cam;
-  return `split[sc1][sc2];[sc1]crop=${bw}:${bh}:${cx}:${cy},${fitFrame('sct', W, l.top, bw, bh, null, fps, '[sct]')};[sc2]${win(H - l.top)}[scb];[sct][scb]vstack`;
+  const stack = l.camAt === 'top' ? '[sct][scb]vstack' : '[scb][sct]vstack';
+  const base = `[sc1]crop=${bw}:${bh}:${cx}:${cy},${fitFrame('sct', W, l.top, bw, bh, null, fps, '[sct]')};[sc2]${win(H - l.top)}[scb];${stack}`;
+  return whole ? `split=3[sc1][sc2][scw0];${base}[scv];${whole};[scv][scw]overlay=0:0:enable='${wide}'` : `split[sc1][sc2];${base}`;
 }
 
 /**

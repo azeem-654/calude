@@ -303,7 +303,7 @@ export is a canvas recording; Video Studio is the real one.
   zoompan expression, same curve; only where the frame maps straight onto
   the recording — no face-tracked crop; it replaces the punch-in zoom); a
   tall Short of a recorder recording is laid out by itself (`screenLayoutFor`)
-  as **screencam** (camera box whole in the top third, the screen below in a
+  as **screencam** (camera box whole in a third of the height — under the screen since 2026-11 — the screen in a
   fixed-size window moved along `followPath` by `sendcmd crop@ptr`) or
   **follow** (no camera: the whole height). The drawn pointer — ring,
   spotlight (a hole cut by winding), big arrow, pointing hand, dot, or
@@ -384,6 +384,45 @@ export is a canvas recording; Video Studio is the real one.
   nothing about, ~3 a minute; normal is the old rule; low the clearest. More
   action words (show, open, page, screen, enable, edit…). Choosing one in the
   Pointer panel picks again, keeping the customer's own.
+- **2026-11 (the owner's list)** — what changed and why:
+  - **Processing is in the cloud.** A second cron, `* * * * *` (`VIDEO_CRON`
+    in `index.ts`), only runs `runVideoJobs(env, 52_000)`, which keeps passing
+    over due jobs for its whole budget and waits (no CPU) for a job due within
+    it. Before, with no editor open, a recording moved one step per five
+    minutes — "it only processes while my PC is on". Transcription runs three
+    pieces at a time (400 ms apart, in order — the e2e Whisper mock numbers
+    pieces as they arrive). The engine is `standard-3` (2 vCPU; was half a
+    vCPU).
+  - **The Screen Recorder does not watch processing**: Save uploads, then
+    goes to `/video-studio/<id>?tab=activity`. Its Studio Sound is strength 80
+    with the gate.
+  - **Noise** (measured on real speech under fan noise + hiss): RNNoise at
+    full mix ≈36 dB speech-to-noise; mix 0.85 ≈18 dB; the old FFT "medium"
+    ≈4 dB and smeared. So Studio Sound reaches mix 1 from strength 50, the
+    plain levels are RNNoise (light 0.75, medium 1, strong 1 + gate) with the
+    FFT only as the no-model fallback, nothing spectral after RNNoise (it cost
+    the voice for 1 dB), `aresample=48000` before it, and the transcription
+    pieces are denoised too. Whisper gets `vad_filter` and the business name
+    as `initial_prompt`, asked again plainly if refused.
+  - **Words for a video**: the prompt says the transcript can mishear and
+    forbids links not said; `withoutStrangeLinks` drops any domain that is
+    neither the business's site nor in the transcript ("www.fema.gov").
+  - **Screen Shorts**: the camera band is **under** the screen (`camAt`
+    'bottom'), and `wideSpans` picks whole-screen moments (pointer ranging
+    wider than the window in 2 s, or resting ≥5 s; not the first second, ≤45 %
+    of the Short) where the screen is fitted whole and the camera steps aside
+    (engine overlay with `enable`). Follow re-aims at 20 % off centre, glide
+    0.22 s. **No pointer is drawn by default** (`cursor: 'none'`; picked
+    moments carry `'auto'`, older picked moments' own shapes are ignored); a
+    click ripple is drawn only where a pointer is.
+  - **Editor**: the rail is icon tiles (Progress apart, a suggestion count on
+    AI Tools); the guide is a menu fixed above the panel (folds, remembered in
+    `crm_vs_guide`); a press in AI Tools is an `OpItem` (`ctx.task`) shown
+    under Progress — long ones (AI calls, cleanup) open Progress, which has
+    "← AI Tools"; AI Tools stays mounted (hidden) so its results survive; a
+    "working on" strip (`vs-now`) heads every other panel. Scenes and captions
+    on the timeline select like phrases and scroll the script to their first
+    word (`vs-reveal`).
 - **Honest gaps**, shown on the **What works** panel: speaker labels, eye contact
   (researched 2026-10: NVIDIA Maxine is gRPC-only, Sieve's API no longer
   documented — no adapter), background removal from the video (no provider; a logo's plain background is removed in the browser), before/after audio

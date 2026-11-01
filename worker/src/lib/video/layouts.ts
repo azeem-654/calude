@@ -26,7 +26,7 @@ export type Box = [number, number, number, number];
 
 export const LAYOUT_LABEL: Record<ShortLayout, string> = {
   speaker: 'Speaker (tracked)', screen: 'Screen only', split: 'Split: screen + camera', two: 'Split: both people', pip: 'Picture in picture',
-  screencam: 'Camera on top, screen follows the pointer', follow: 'Screen follows the pointer',
+  screencam: 'Screen follows the pointer, camera below', follow: 'Screen follows the pointer',
 };
 
 const peopleOf = (tf: TrackFile | null): Person[] => (tf?.people ?? []).filter(p => p.share >= 0.15).sort((a, b) => b.share - a.share);

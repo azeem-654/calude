@@ -28,7 +28,18 @@ type Item = { key: string; label: string; icon: typeof Film; hint: string; off?:
 
 const LANGS = ['Spanish', 'French', 'German', 'Portuguese', 'Italian', 'Turkish', 'Urdu', 'Arabic', 'Hindi', 'Dutch', 'Polish', 'Japanese', 'Chinese (Simplified)'];
 
-export default function AiTools({ ctx, onCleanup }: { ctx: EditorCtx; onCleanup: () => void }) {
+/* Presses that take a while (an AI call, a cleanup pass) open Progress, which
+   shows that very operation until it ends; switches that only change the
+   document (Studio Sound on, smooth cuts) stay here — they are saved at once
+   and listed under "Your changes". */
+const LONG = new Set(['cleanup-aggressive', 'cleanup-balanced', 'chapters', 'highlights', 'reel', 'reel-ai', 'translate', 'approve-filler words', 'approve-retakes']);
+const NAMES: Record<string, string> = {
+  'cleanup-aggressive': 'Planning the edit: fillers, retakes and long pauses', 'cleanup-balanced': 'Finding word gaps to shorten', chapters: 'Writing chapters from the transcript',
+  highlights: 'Finding highlights', reel: 'Putting the highlight reel together', 'reel-ai': 'Finding highlights for a reel', translate: 'Translating the captions',
+  'approve-filler words': 'Removing filler words', 'approve-retakes': 'Removing retakes',
+};
+
+export default function AiTools({ ctx, onCleanup, onStart }: { ctx: EditorCtx; onCleanup: () => void; onStart?: () => void }) {
   const { doc, view, transcript, duration } = ctx;
   const [busy, setBusy] = useState('');
   const [note, setNote] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
@@ -45,12 +56,19 @@ export default function AiTools({ ctx, onCleanup }: { ctx: EditorCtx; onCleanup:
   const faces = view.source.track?.summary?.faces ?? null;
   const motion = motionOf(doc, kind), fx = effectsOf(doc, kind);
   const prop = (k: string[]) => doc.cuts.filter(c => c.state === 'proposed' && k.includes(c.kind));
-  const say = (tone: 'ok' | 'bad', text: string) => setNote({ tone, text });
+  /* The last thing said is also the operation's ending under Progress. */
+  const last = { current: null as { tone: 'ok' | 'bad'; text: string } | null };
+  const say = (tone: 'ok' | 'bad', text: string) => { last.current = { tone, text }; setNote({ tone, text }); };
 
   const wrap = (key: string, fn: () => Promise<void>) => async () => {
     if (busy) return;
     setBusy(key); setNote(null);
-    try { await fn(); } catch (e) { say('bad', String((e as Error).message ?? e)); }
+    const end = ctx.task(NAMES[key] ?? key);
+    if (LONG.has(key)) onStart?.();
+    try {
+      await fn();
+      end(last.current?.tone === 'bad' ? 'failed' : 'done', last.current?.text);
+    } catch (e) { say('bad', String((e as Error).message ?? e)); end('failed', String((e as Error).message ?? e)); }
     setBusy('');
   };
   const cleanup = (preset: 'balanced' | 'aggressive', opts: { maxPause?: number | null } = {}, done = '') => wrap(`cleanup-${preset}`, async () => {

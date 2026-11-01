@@ -195,6 +195,18 @@ export function TranscriptPanel({ ctx, sentences }: { ctx: EditorCtx; sentences:
     }
   }, [playing, nowI]);
 
+  /* A block pressed on the timeline (a scene, a caption, a phrase): its first word is brought into view and the caret put there. */
+  useEffect(() => {
+    const on = (e: Event) => {
+      const i = (e as CustomEvent<number>).detail;
+      if (typeof i !== 'number' || i < 0) return;
+      setCaret(i);
+      box.current?.querySelector(`[data-i="${i}"]`)?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    };
+    window.addEventListener('vs-reveal', on);
+    return () => window.removeEventListener('vs-reveal', on);
+  }, []);
+
   if (!transcript) return <p className="vs-sub">The transcript appears here when transcription finishes — each word timed, so you can edit the video by editing the text.</p>;
   if (!words.length) return <div className="vs-note">No spoken words were found in this video, so there is nothing to transcribe or caption.</div>;
 

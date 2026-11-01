@@ -20,6 +20,10 @@
  * Each is the same operation the script's buttons send (`cut.add`,
  * `cut.restoreRange`, `mute.add`, `scene.split`), so undo, the preview and the
  * render see one edit. A drag on a lane still marks any stretch (I / O too).
+ *
+ * A press on a scene or a caption selects it the same way — every phrase in
+ * it — and the script scrolls to its first word (`vs-reveal`), so a block on
+ * the timeline and its words in the transcript are always found together.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Scissors, RotateCcw, Shield, Film, X, Play, Music2, Plus, Type, VolumeX, ChevronsLeft, ChevronsRight, SplitSquareHorizontal, Minimize2, MousePointer2 } from 'lucide-react';
@@ -74,7 +78,9 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
   const [sel, setSel] = useState<{ s: number; e: number } | null>(null);
   /** Selected blocks: from `a` (where Shift extends from) to `b`. */
   const [pick, setPick] = useState<{ a: number; b: number } | null>(null);
-  const drag = useRef<{ x0: number; t0: number; moved: boolean } | null>(null);
+  const drag = useRef<{ x0: number; t0: number; moved: boolean; hit: { s: number; e: number; name: string } | null } | null>(null);
+  /** What the selected blocks are called when a scene or a caption was pressed ("Scene 3"). */
+  const [pickName, setPickName] = useState('');
   const headRef = useRef<HTMLDivElement>(null);
   /* A Short's edge or an overlay being dragged: where it was, and where it is now. */
   const [held, setHeld] = useState<{ kind: 'clip' | 'ov' | 'ptr'; id: string; edge: 's' | 'e' | 'both'; x0: number; s: number; e: number; ns: number; ne: number } | null>(null);
@@ -205,13 +211,28 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
   /* A block counts as cut when nearly all of it is inside cuts, muted likewise. */
   const covered = (s: number, e: number, list: [number, number][]) => list.reduce((n, [a, b]) => n + Math.max(0, Math.min(b, e) - Math.max(a, s)), 0) >= (e - s) * 0.8;
 
+  /* The script scrolls to the first selected word — wherever it was pressed. */
+  const reveal = (i: number) => window.dispatchEvent(new CustomEvent('vs-reveal', { detail: i }));
   const choose = (i: number, extend: boolean) => {
     const next = extend && pick ? { a: pick.a, b: i } : { a: i, b: i };
-    setPick(next); setSel(null);
+    setPick(next); setSel(null); setPickName('');
     const a = Math.min(next.a, next.b), b = Math.max(next.a, next.b);
     const ws = blocks.slice(a, b + 1).filter(x => x.kind === 'phrase');
     ctx.setSelection(ws.length ? { i0: ws[0].w0, i1: ws[ws.length - 1].w1 } : null);
+    if (ws.length) reveal(ws[0].w0);
     if (!extend) ctx.seek(blocks[i].s);
+  };
+  /** A scene or a caption pressed: every block inside it (Shift adds to what is selected). */
+  const chooseSpan = (s: number, e: number, name: string, extend: boolean) => {
+    const inside = blocks.map((b, i) => [b, i] as const).filter(([b]) => b.e > s + 0.02 && b.s < e - 0.02).map(([, i]) => i);
+    if (!inside.length) { setPick(null); setSel({ s, e }); setPickName(name); ctx.seek(s); return; }
+    let a = inside[0], b = inside[inside.length - 1];
+    if (extend && pick) { a = Math.min(a, pick.a, pick.b); b = Math.max(b, pick.a, pick.b); }
+    setPick({ a, b }); setSel(null); setPickName(extend ? '' : name);
+    const ws = blocks.slice(a, b + 1).filter(x => x.kind === 'phrase');
+    ctx.setSelection(ws.length ? { i0: ws[0].w0, i1: ws[ws.length - 1].w1 } : null);
+    if (ws.length) reveal(ws[0].w0);
+    ctx.seek(extend ? blocks[a].s : s);
   };
   /* Selecting in the script clears a block selection that no longer matches it. */
   useEffect(() => {
@@ -227,7 +248,8 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
   const down = (e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('button, [data-block]')) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    drag.current = { x0: e.clientX, t0: at(e), moved: false };
+    const h = (e.target as HTMLElement).closest<HTMLElement>('[data-span-s]');
+    drag.current = { x0: e.clientX, t0: at(e), moved: false, hit: h ? { s: Number(h.dataset.spanS), e: Number(h.dataset.spanE), name: h.dataset.spanName ?? '' } : null };
   };
   const move = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
@@ -235,12 +257,13 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
     if (Math.abs(e.clientX - d.x0) > 4) d.moved = true;
     if (!d.moved) return;
     if (tool === 'scrub') { ctx.seek(at(e)); return; }
-    const t = at(e); setPick(null); setSel({ s: Math.min(d.t0, t), e: Math.max(d.t0, t) });
+    const t = at(e); setPick(null); setPickName(''); setSel({ s: Math.min(d.t0, t), e: Math.max(d.t0, t) });
   };
   const up = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = drag.current;
     drag.current = null;
     if (!d) return;
+    if (!d.moved && d.hit) { chooseSpan(d.hit.s, d.hit.e, d.hit.name, e.shiftKey); return; }
     if (!d.moved) { setSel(null); setPick(null); ctx.seek(at(e)); }
   };
 
@@ -281,7 +304,7 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
     const ws = blocks.slice(a, b + 1).filter(x2 => x2.kind === 'phrase');
     ctx.setSelection(ws.length ? { i0: ws[0].w0, i1: ws[ws.length - 1].w1 } : null);
   };
-  const label = pb.length === 1 ? (pb[0].kind === 'gap' ? `Gap · ${(pb[0].e - pb[0].s).toFixed(1)} s` : `“${pb[0].text.slice(0, 40)}${pb[0].text.length > 40 ? '…' : ''}”`) : `${pb.length} blocks`;
+  const label = pickName ? pickName : pb.length === 1 ? (pb[0].kind === 'gap' ? `Gap · ${(pb[0].e - pb[0].s).toFixed(1)} s` : `“${pb[0].text.slice(0, 40)}${pb[0].text.length > 40 ? '…' : ''}”`) : `${pb.length} blocks`;
   const isCut = pickRange ? covered(pickRange.s, pickRange.e, applied) : false;
   const isMuted = pickRange ? covered(pickRange.s, pickRange.e, mutes.map(m => [m.s, m.e] as [number, number])) : false;
 
@@ -355,7 +378,7 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
     <div className="vse-tl" data-testid="vs-timeline" data-tool={tool}>
       <div className="vse-tl-head">
         <b>{clip ? `Short ${doc.clips.indexOf(clip) + 1}` : 'Timeline'}</b>
-        <span className="vs-kbd vse-hide-sm">{clock(span)} · press a phrase or a gap to select it (Shift extends) · drag to mark a stretch · Ctrl+scroll to zoom</span>
+        <span className="vs-kbd vse-hide-sm">{clock(span)} · press a scene, caption, phrase or gap to select it and find it in the script (Shift adds) · drag to mark a stretch · Ctrl+scroll to zoom</span>
         <span className="vs-spacer" />
         <div className="vse-legend">
           <span><i style={{ background: '#e11d48' }} />Cut</span><span><i style={{ background: '#f59e0b' }} />Suggested</span><span><i style={{ background: '#0d9488' }} />Protected</span><span><i style={{ background: '#9ca3af' }} />Muted</span>
@@ -379,8 +402,9 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
               }) : view.source.posterUrl ? <div className="vse-frame" style={{ left: 0, width: W, backgroundImage: `url("${view.source.posterUrl}")`, backgroundSize: `auto ${ROW.scenes}px`, backgroundRepeat: 'repeat-x' }} /> : null}
               {shades('video')}
               {scenes.map(sc => (
-                <div key={sc.n} className={`vse-scene ${sc.split ? 'split' : ''}`} style={{ left: x(sc.s), width: Math.max(6, x(sc.e) - x(sc.s) - 2) }} data-scene={sc.n}
-                  title={`Scene ${sc.n} · ${clock(sc.s)}–${clock(sc.e)}${sc.split ? ' · split by you' : ''}`}>
+                <div key={sc.n} className={`vse-scene ${sc.split ? 'split' : ''} ${range && Math.abs(range.s - sc.s) < 0.5 && Math.abs(range.e - sc.e) < 0.5 ? 'on' : ''}`} style={{ left: x(sc.s), width: Math.max(6, x(sc.e) - x(sc.s) - 2) }} data-scene={sc.n}
+                  data-span-s={sc.s} data-span-e={sc.e} data-span-name={`Scene ${sc.n}`}
+                  title={`Scene ${sc.n} · ${clock(sc.s)}–${clock(sc.e)}${sc.split ? ' · split by you' : ''} — press to select it and find its words in the script`}>
                   <span className="n">{sc.n}</span>
                   {x(sc.e) - x(sc.s) > 70 && <span className="ws">{sc.words.map(w => <i key={w.i}>{w.w}</i>)}</span>}
                   {sc.split && <button type="button" className="unsplit" aria-label={`Join scene ${sc.n} to the one before`} onClick={() => void ctx.apply([{ op: 'scene.join', t: sc.s }], `Joined at ${clock(sc.s)}`)}><X size={10} /></button>}
@@ -392,7 +416,8 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
             <div className="vse-tl-name">Captions</div>
             <div className="vse-lane" style={{ width: W, height: ROW.caps }} onPointerDown={down} onPointerMove={move} onPointerUp={up}>
               {cues.map((c, i) => x(c.e) - x(c.s) >= 3 && (
-                <div key={i} className="vse-block cap" style={{ left: x(Math.max(c.s, t0)), width: Math.max(3, x(Math.min(c.e, t1)) - x(Math.max(c.s, t0)) - 1) }} title={c.text}>{x(c.e) - x(c.s) > 40 ? c.text : ''}</div>
+                <div key={i} className={`vse-block cap ${range && c.s >= range.s - 0.05 && c.e <= range.e + 0.05 ? 'on' : ''}`} style={{ left: x(Math.max(c.s, t0)), width: Math.max(3, x(Math.min(c.e, t1)) - x(Math.max(c.s, t0)) - 1) }}
+                  title={`${c.text} — press to select this caption's words`} data-cue={i} data-span-s={c.s} data-span-e={c.e} data-span-name={`Caption “${c.text.slice(0, 32)}${c.text.length > 32 ? '…' : ''}”`}>{x(c.e) - x(c.s) > 40 ? c.text : ''}</div>
               ))}
               {!cues.length && <span className="vse-lane-empty">{ctx.transcript ? 'No speech found' : 'Appears when transcribed'}</span>}
             </div>
@@ -531,7 +556,7 @@ export default function Timeline({ ctx, wave }: { ctx: EditorCtx; wave: Uint8Arr
             <button type="button" className="vs-btn sm" data-act="block-restore" onClick={() => void act([{ op: 'cut.restoreRange', s: pickRange.s - 0.05, e: pickRange.e + 0.05 }, { op: 'mute.restoreRange', s: pickRange.s - 0.05, e: pickRange.e + 0.05 }], `Restored ${clock(pickRange.s)}–${clock(pickRange.e)}`)}><RotateCcw size={13} /> Restore</button>
           )}
           <span className="vs-spacer" />
-          <button type="button" className="vs-btn ghost sm" aria-label="Clear the selection" onClick={() => { setPick(null); ctx.setSelection(null); }}><X size={13} /></button>
+          <button type="button" className="vs-btn ghost sm" aria-label="Clear the selection" onClick={() => { setPick(null); setPickName(''); ctx.setSelection(null); }}><X size={13} /></button>
         </div>
       ) : range && (
         <div className="vse-tl-actions" data-testid="vs-tl-actions">

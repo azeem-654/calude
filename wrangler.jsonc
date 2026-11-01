@@ -69,9 +69,11 @@
   // set for 09:00 goes out at 09:00-ish, and infrequent enough to stay well
   // inside the free tier. The work itself is idempotent per enrolment: a step
   // advances as soon as it is attempted, so a tick that overlaps the previous
-  // one cannot send the same message twice.
+  // one cannot send the same message twice. The every-minute one only moves
+  // Video Studio's jobs on (index.ts VIDEO_CRON), so a recording processes
+  // in the cloud with no editor open.
   "triggers": {
-    "crons": ["*/5 * * * *"]
+    "crons": ["*/5 * * * *", "* * * * *"]
   },
 
   // Where this deployment lives, as the scheduled run sees it.
@@ -182,7 +184,7 @@
       },
 
       "triggers": {
-        "crons": ["*/5 * * * *"]
+        "crons": ["*/5 * * * *", "* * * * *"]
       },
 
       // Its own bucket and engine, never the live ones (scripts/video-bindings.mjs).

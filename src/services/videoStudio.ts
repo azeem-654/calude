@@ -19,7 +19,7 @@ export { cleanupSummary, isFiller, findFillers, fillerCounts, FILLER_KINDS, FILL
 export { cameraPath, cutTimes, punchSpans, overlaySpan, overlayPlace, logoBox, OVERLAY_SIZE, OVERLAY_FAMILY, trackAt, cssLook, cssEffects, type TrackFile, type TrackRow } from '../../worker/src/lib/video/motion';
 export { layoutOptions, layoutPlan, LAYOUT_LABEL, type LayoutPlan, type LayoutOption } from '../../worker/src/lib/video/layouts';
 export {
-  autoFocus, pointerOf, pointerAt, pointerInFrame, segAt, focusWindows, zoomPlan, zoomAt, zoomLevel, screenPlan, screenLayoutOptions, followPath, followAt,
+  autoFocus, pointerOf, pointerAt, pointerInFrame, segAt, focusWindows, zoomPlan, zoomAt, zoomLevel, screenPlan, screenLayoutOptions, followPath, followAt, wideSpans, isWide,
   resolveCursor, cursorFor, momentFor, screenLayoutFor, frameMap, sfxSample, SFX_LENGTH, CURSOR_STYLES, CURSOR_LABEL, CLICK_SOUNDS, SOUND_LABEL, POINTER_DEFAULT,
   type ScreenMeta, type ScreenSeg, type ScreenRef, type NBox, type CamShape, type FocusRange, type PointerSettings, type CursorStyle, type ClickSound, type Moment, type ZoomPlan, type ScreenPlan, type Sensitivity,
 } from '../../worker/src/lib/video/pointer';

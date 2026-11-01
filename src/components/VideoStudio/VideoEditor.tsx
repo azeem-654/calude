@@ -25,7 +25,7 @@
  * bar along the bottom of the screen.
  */
 import { OverallProgress } from './ProcessingProgress';
-import ActivityPanel, { type ChangeItem } from './ActivityPanel';
+import ActivityPanel, { type ChangeItem, type OpItem } from './ActivityPanel';
 import ExportDialog from './ExportDialog';
 import LogoPanel from './LogoPanel';
 import { askConfirm } from '../shared/ConfirmDialog';
@@ -34,6 +34,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Home, Undo2, Redo2, Loader, Bot, ShieldCheck, Trash2, RefreshCw, Upload, AlertCircle, Check, X, Search, Plus, History, Music2, ChevronDown,
   FolderOpen, Sparkles, SlidersHorizontal, Shapes, Captions as CaptionsIcon, Images, Clapperboard, Download, Keyboard, LayoutGrid, PaintBucket, Film, Activity, ArrowRight,
+  Wand2, AudioLines, Palette, ZoomIn, Type, Stamp, Subtitles, Pin, PinOff,
 } from 'lucide-react';
 import {
   getVideoProject, videoStatus, editVideo, applyOps, gotoVersion, renameVideoProject, retryVideo, cancelVideo, deleteVideoProject, renderOutputs,
@@ -65,10 +66,14 @@ const SHORTCUTS: [string, [string, string][]][] = [
 export type Group = 'activity' | 'project' | 'ai' | 'properties' | 'elements' | 'captions' | 'media';
 type Sub = 'activity' | 'shorts' | 'reuse' | 'tools' | 'cleanup' | 'video' | 'adjust' | 'effects' | 'animation' | 'tracking' | 'pointer' | 'audio' | 'text' | 'logo' | 'music' | 'captions' | 'media';
 export type PanelTab = Sub | 'transcript' | 'assistant' | 'versions' | 'exports';
-const RAIL: { key: Group; label: string; icon: typeof Film }[] = [
-  { key: 'activity', label: 'Progress', icon: Activity },
-  { key: 'project', label: 'Project', icon: FolderOpen }, { key: 'ai', label: 'AI Tools', icon: Sparkles }, { key: 'properties', label: 'Properties', icon: SlidersHorizontal },
-  { key: 'elements', label: 'Elements', icon: Shapes }, { key: 'captions', label: 'Captions', icon: CaptionsIcon }, { key: 'media', label: 'Media', icon: Images },
+const RAIL: { key: Group; label: string; icon: typeof Film; hint: string; split?: boolean }[] = [
+  { key: 'activity', label: 'Progress', icon: Activity, hint: 'What is being worked on, step by step', split: true },
+  { key: 'project', label: 'Project', icon: FolderOpen, hint: 'Compositions and reuse' },
+  { key: 'ai', label: 'AI Tools', icon: Sparkles, hint: 'Clean up, sound, look and zoom — and the assistant' },
+  { key: 'properties', label: 'Properties', icon: SlidersHorizontal, hint: 'Video, look, effects, pointer, audio' },
+  { key: 'elements', label: 'Elements', icon: Shapes, hint: 'Text, logo, music' },
+  { key: 'captions', label: 'Captions', icon: CaptionsIcon, hint: 'Words on screen as you speak' },
+  { key: 'media', label: 'Media', icon: Images, hint: 'The long video, every Short, music' },
 ];
 const SUBS: Record<Group, { key: Sub; label: string }[]> = {
   activity: [{ key: 'activity', label: 'Progress' }],
@@ -106,6 +111,8 @@ export interface EditorCtx {
   adopt: (doc: VideoDoc, version: number) => void;
   /** What this install can do (capabilities) — the AI Tools grey out what is not set up. */
   caps: Capability[] | null;
+  /** An operation pressed here (an AI tool, a cleanup) shown under Progress while it runs: call the result when it ends. */
+  task: (label: string) => (state: 'done' | 'failed', detail?: string) => void;
 }
 
 /* ── Stages ───────────────────────────────────────────────────────────────── */
@@ -325,36 +332,59 @@ function CompositionMenu({ ctx }: { ctx: EditorCtx }) {
  * that step has something set (read from the document), not that it was
  * "finished": every step can be skipped and come back to.
  */
-const GUIDE: { key: Sub | 'exports'; label: string; what: string; set: (d: VideoDoc, v: ProjectView) => boolean; screenOnly?: boolean }[] = [
-  { key: 'cleanup', label: 'Clean up', what: 'Remove filler words, long pauses and retakes — or strike words in the script on the left.', set: d => d.cuts.some(c => c.state === 'approved') },
-  { key: 'audio', label: 'Sound', what: 'Studio Sound, background noise, hum, clicks and even loudness — applied when the video is made.', set: d => !!d.audio.studio || d.audio.denoise !== 'off' || (!!d.audio.hum && d.audio.hum !== 'off') || !!d.audio.declick || !!d.audio.gate },
-  { key: 'adjust', label: 'Look', what: 'Colour, brightness and a filter for the picture.', set: d => !!d.look && JSON.stringify(d.look.long) !== JSON.stringify(lookOf({}, 'long')) },
-  { key: 'pointer', label: 'Zoom', what: 'Zoom in where you click and talk about the screen (Screen Recorder recordings).', set: d => !!d.pointer?.focus.length, screenOnly: true },
-  { key: 'text', label: 'Text', what: 'A title and description, a lower third, a scrolling ticker or a name under your camera — placed and sized as you like.', set: d => !!d.overlays?.length },
-  { key: 'logo', label: 'Logo', what: 'Your logo in a corner or anywhere, any size, rounded, with its background taken out.', set: d => !!d.logo?.on },
-  { key: 'captions', label: 'Captions', what: 'Words on screen as you speak, in your style.', set: d => d.captions.on },
-  { key: 'exports', label: 'Export', what: 'Make the video and download it.', set: (_d, v) => v.outputs.some(o => o.rendered && !o.stale) },
+const GUIDE: { key: Sub | 'exports'; label: string; icon: typeof Film; what: string; set: (d: VideoDoc, v: ProjectView) => boolean; screenOnly?: boolean }[] = [
+  { key: 'cleanup', label: 'Clean up', icon: Wand2, what: 'Remove filler words, long pauses and retakes — or strike words in the script on the left.', set: d => d.cuts.some(c => c.state === 'approved') },
+  { key: 'audio', label: 'Sound', icon: AudioLines, what: 'Studio Sound, background noise, hum, clicks and even loudness — applied when the video is made.', set: d => !!d.audio.studio || d.audio.denoise !== 'off' || (!!d.audio.hum && d.audio.hum !== 'off') || !!d.audio.declick || !!d.audio.gate },
+  { key: 'adjust', label: 'Look', icon: Palette, what: 'Colour, brightness and a filter for the picture.', set: d => !!d.look && JSON.stringify(d.look.long) !== JSON.stringify(lookOf({}, 'long')) },
+  { key: 'pointer', label: 'Zoom', icon: ZoomIn, what: 'Zoom in where you click and talk about the screen (Screen Recorder recordings).', set: d => !!d.pointer?.focus.length, screenOnly: true },
+  { key: 'text', label: 'Text', icon: Type, what: 'A title and description, a lower third, a scrolling ticker or a name under your camera — placed and sized as you like.', set: d => !!d.overlays?.length },
+  { key: 'logo', label: 'Logo', icon: Stamp, what: 'Your logo in a corner or anywhere, any size, rounded, with its background taken out.', set: d => !!d.logo?.on },
+  { key: 'captions', label: 'Captions', icon: Subtitles, what: 'Words on screen as you speak, in your style.', set: d => d.captions.on },
+  { key: 'exports', label: 'Export', icon: Download, what: 'Make the video and download it.', set: (_d, v) => v.outputs.some(o => o.rendered && !o.stale) },
 ];
 
+/**
+ * The steps as a menu fixed to the top of the panel: every step one press
+ * away while the settings under it scroll (it used to be a row of small
+ * pills that scrolled away with them). It folds to one line and stays the
+ * way the customer left it.
+ */
 function GuidePath({ ctx, sub, go }: { ctx: EditorCtx; sub: Sub; go: (t: PanelTab) => void }) {
   const steps = GUIDE.filter(g => !g.screenOnly || ctx.screen);
   const at = steps.findIndex(g => g.key === sub);
   const here = at >= 0 ? steps[at] : null;
   const next = at >= 0 ? steps[at + 1] : null;
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem('crm_vs_guide') !== 'closed'; } catch { return true; } });
+  const flip = () => setOpen(o => { try { localStorage.setItem('crm_vs_guide', o ? 'closed' : 'open'); } catch { /* private window */ } return !o; });
+  const done = steps.filter(g => g.set(ctx.doc, ctx.view)).length;
   return (
-    <div className="vs-guide" data-testid="vs-guide">
-      <ol className="vs-guide-steps">
-        {steps.map((g, i) => (
-          <li key={g.key}>
-            <button type="button" aria-current={g.key === sub ? 'step' : undefined} className={g.set(ctx.doc, ctx.view) ? 'set' : ''} onClick={() => go(g.key as PanelTab)} data-guide={g.key} title={g.what}>
-              <i>{g.set(ctx.doc, ctx.view) ? <Check size={10} /> : i + 1}</i><span>{g.label}</span>
-            </button>
-          </li>
-        ))}
-      </ol>
+    <div className={`vs-guide ${open ? 'open' : ''}`} data-testid="vs-guide">
+      <div className="vs-guide-bar">
+        <span className="vs-guide-title">{here ? <><b>Step {at + 1} of {steps.length}</b> · {here.label}</> : <><b>Edit step by step</b> · {done} of {steps.length} set</>}</span>
+        <span className="vs-spacer" />
+        <button type="button" className="vs-guide-pin" onClick={flip} aria-expanded={open} aria-label={open ? 'Fold the steps menu' : 'Show the steps menu'} title={open ? 'Fold the menu' : 'Show the menu'} data-act="guide-pin">
+          {open ? <PinOff size={13} /> : <Pin size={13} />}<ChevronDown size={13} style={{ transform: open ? 'rotate(180deg)' : undefined }} />
+        </button>
+      </div>
+      {open && (
+        <ol className="vs-guide-menu" role="menu">
+          {steps.map((g, i) => {
+            const set = g.set(ctx.doc, ctx.view);
+            return (
+              <li key={g.key}>
+                <button type="button" role="menuitem" aria-current={g.key === sub ? 'step' : undefined} className={set ? 'set' : ''} onClick={() => go(g.key as PanelTab)} data-guide={g.key} title={g.what}>
+                  <i><g.icon size={15} /></i>
+                  <span>{g.label}</span>
+                  <em>{set ? <Check size={10} /> : i + 1}</em>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
       {here && (
         <div className="vs-guide-here">
-          <span><b>Step {at + 1} · {here.label}.</b> {here.what}</span>
+          <span>{here.what}</span>
           {next && <button type="button" className="vs-btn ghost sm" onClick={() => go(next.key as PanelTab)} data-act="guide-next">Next: {next.label} <ArrowRight size={13} /></button>}
         </div>
       )}
@@ -362,10 +392,25 @@ function GuidePath({ ctx, sub, go }: { ctx: EditorCtx; sub: Sub; go: (t: PanelTa
   );
 }
 
+/** One line at the top of every panel while something is being worked on — the operation pressed, or the stage the server is on — opening Progress. */
+function NowStrip({ ops, view, onOpen }: { ops: OpItem[]; view: ProjectView; onOpen: () => void }) {
+  const op = [...ops].reverse().find(o => o.state === 'running');
+  const stage = view.stages.find(x => x.state === 'active');
+  const render = view.jobs.find(j => j.kind === 'render' && j.state === 'running');
+  if (!op && !stage && !render) return null;
+  const label = op ? op.label : render ? `Rendering${typeof render.progress === 'number' ? ` · ${Math.round(render.progress)}%` : ''}` : `${stage!.label}${stage!.pct !== null ? ` · ${stage!.pct}%` : ''}`;
+  return (
+    <button type="button" className="vs-now" onClick={onOpen} data-testid="vs-now" title="See every step under Progress">
+      <Loader size={13} className="spin" /><span>{label}…</span><b>Progress</b><ArrowRight size={12} />
+      <i className="vs-now-bar" />
+    </button>
+  );
+}
+
 /* ── The panel beside the rail ────────────────────────────────────────────── */
 
-function SidePanel({ ctx, group, sub, setSub, onClose, messages, commandRef, activity }: {
-  ctx: EditorCtx; group: Group; sub: Sub; setSub: (s: Sub) => void; onClose: () => void; messages: ChatMsg[]; commandRef: React.RefObject<HTMLInputElement | null>; activity: React.ReactNode;
+function SidePanel({ ctx, group, sub, setSub, onClose, messages, commandRef, activity, ops }: {
+  ctx: EditorCtx; group: Group; sub: Sub; setSub: (s: Sub) => void; onClose: () => void; messages: ChatMsg[]; commandRef: React.RefObject<HTMLInputElement | null>; activity: React.ReactNode; ops: OpItem[];
 }) {
   const subs = SUBS[group];
   const sentences = useMemo(() => ctx.transcript ? sentencesOf(ctx.transcript.words) : [], [ctx.transcript]);
@@ -381,17 +426,19 @@ function SidePanel({ ctx, group, sub, setSub, onClose, messages, commandRef, act
           {subs.map(x => <button key={x.key} type="button" role="tab" className="vs-ptab" aria-selected={sub === x.key} onClick={() => setSub(x.key)} data-panel={x.key}>{x.label}</button>)}
         </div>
       )}
+      {group !== 'activity' && <NowStrip ops={ops} view={ctx.view} onOpen={() => setSub('activity')} />}
+      {group !== 'activity' && group !== 'media' && group !== 'project' && <GuidePath ctx={ctx} sub={sub} go={t => setSub(t as Sub)} />}
       <div className="vse-scroll">
-        {group !== 'activity' && group !== 'media' && group !== 'project' && <GuidePath ctx={ctx} sub={sub} go={t => setSub(t as Sub)} />}
         {sub === 'activity' && activity}
         {sub === 'shorts' && <ShortsPanel ctx={ctx} sentences={sentences} />}
         {sub === 'reuse' && <ReusePanel ctx={ctx} />}
-        {sub === 'tools' && (
-          <div className="vs-col">
-            <AiTools ctx={ctx} onCleanup={() => setSub('cleanup')} />
-            <AssistantPanel ctx={ctx} messages={messages} inputRef={commandRef} />
-          </div>
-        )}
+        {/* Kept mounted while another panel is open: an AI tool still working
+            (highlights, a translation) finishes and keeps its result while the
+            customer watches it under Progress. */}
+        <div className="vs-col" hidden={sub !== 'tools'}>
+          <AiTools ctx={ctx} onCleanup={() => setSub('cleanup')} onStart={() => setSub('activity')} />
+          <AssistantPanel ctx={ctx} messages={messages} inputRef={commandRef} />
+        </div>
         {sub === 'cleanup' && <CleanupPanel ctx={ctx} />}
         {sub === 'video' && <VideoPanel ctx={ctx} />}
         {sub === 'adjust' && <AdjustPanel ctx={ctx} />}
@@ -558,6 +605,15 @@ export default function VideoEditor({ id }: { id: string }) {
   /* How many saves and version moves are still on their way — the spinner, and the "Your changes" list in the activity panel. */
   const inflight = useRef(0);
   const [changes, setChanges] = useState<ChangeItem[]>([]);
+  /* Operations pressed here (AI Tools, a cleanup run): each is listed under
+     Progress from the press to its end, so the customer sees the very thing
+     they asked for being worked on — not only the server's stages. */
+  const [ops, setOps] = useState<OpItem[]>([]);
+  const task = useCallback((label: string) => {
+    const it: OpItem = { id: Math.random().toString(36).slice(2), label, state: 'running', at: Date.now() };
+    setOps(os => [...os, it].slice(-8));
+    return (state: 'done' | 'failed', detail?: string) => setOps(os => os.map(o => (o.id === it.id ? { ...o, state, detail, ended: Date.now() } : o)));
+  }, []);
   const track1 = useCallback((note: string) => {
     const it: ChangeItem = { id: Math.random().toString(36).slice(2), note, state: 'queued', at: Date.now() };
     setChanges(cs => [...cs, it].slice(-8));
@@ -702,8 +758,8 @@ export default function VideoEditor({ id }: { id: string }) {
   const duration = view?.source.probe?.duration ?? transcript?.duration ?? 0;
   durationRef.current = duration;
   const ctx = useMemo<EditorCtx | null>(() => view && doc ? {
-    view, doc, version, transcript, duration, apply, seek, time, selection, setSelection, activeClip, setActiveClip, refresh, setTab, say, adopt, track, screen, caps,
-  } : null, [view, doc, version, transcript, duration, apply, seek, time, selection, activeClip, refresh, setTab, say, adopt, track, screen, caps]);
+    view, doc, version, transcript, duration, apply, seek, time, selection, setSelection, activeClip, setActiveClip, refresh, setTab, say, adopt, track, screen, caps, task,
+  } : null, [view, doc, version, transcript, duration, apply, seek, time, selection, activeClip, refresh, setTab, say, adopt, track, screen, caps, task]);
   const sentences = useMemo(() => transcript ? sentencesOf(transcript.words) : [], [transcript]);
 
   if (error) return <div className="vs-note bad" role="alert"><AlertCircle size={16} /> {error} <Link to="/video-studio">Back to Video Studio</Link></div>;
@@ -783,14 +839,14 @@ export default function VideoEditor({ id }: { id: string }) {
       </main>
 
       <aside className="vse-side">
-        {group && <SidePanel ctx={ctx} group={group} sub={SUBS[group].some(x => x.key === sub) ? sub : SUBS[group][0].key} setSub={s => setTab(s)} onClose={() => setGroup(null)} messages={messages} commandRef={commandRef}
-          activity={<ActivityPanel view={view} doc={doc} changes={changes} onRetry={() => void retryVideo(id).then(refresh)} onCancel={() => void cancelVideo(id).then(refresh)} />} />}
+        {group && <SidePanel ctx={ctx} group={group} sub={SUBS[group].some(x => x.key === sub) ? sub : SUBS[group][0].key} setSub={s => setTab(s)} onClose={() => setGroup(null)} messages={messages} commandRef={commandRef} ops={ops}
+          activity={<ActivityPanel view={view} doc={doc} changes={changes} ops={ops} onBack={() => openGroup('ai', 'tools')} onRetry={() => void retryVideo(id).then(refresh)} onCancel={() => void cancelVideo(id).then(refresh)} />} />}
         <nav className="vse-rail" aria-label="Panels">
           {RAIL.map(r => (
-            <button key={r.key} type="button" className="vse-rail-btn" aria-pressed={group === r.key} onClick={() => railClick(r.key)} data-rail={r.key} title={r.label}>
-              <r.icon size={18} /><span>{r.label}</span>
-              {r.key === 'ai' && proposed ? <i className="dot" /> : null}
-              {r.key === 'activity' && (working || busy) ? <i className="dot live" /> : null}
+            <button key={r.key} type="button" className={`vse-rail-btn ${r.split ? 'split' : ''}`} aria-pressed={group === r.key} onClick={() => railClick(r.key)} data-rail={r.key} title={`${r.label} — ${r.hint}`}>
+              <span className="ic"><r.icon size={18} /></span><span className="lb">{r.label}</span>
+              {r.key === 'ai' && proposed ? <i className="dot n" aria-label={`${proposed} suggestions`}>{proposed > 99 ? '99+' : proposed}</i> : null}
+              {r.key === 'activity' && (working || busy || ops.some(o => o.state === 'running')) ? <i className="dot live" /> : null}
             </button>
           ))}
         </nav>

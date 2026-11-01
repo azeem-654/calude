@@ -180,8 +180,12 @@ export interface PointerSettings {
   sensitivity?: Sensitivity;
 }
 export type Sensitivity = 'low' | 'normal' | 'high';
+/* No pointer is drawn unless the customer picks one (cursor 'none'): the owner
+   saw rings drawn in the wrong places (the pointer is found from a small
+   copy of the screen, so a drawn shape can sit off the real one) and wants
+   only the zoom that follows it. */
 export const POINTER_DEFAULT: PointerSettings = {
-  on: true, ran: false, zoom: 1.8, cursor: 'auto', size: 1, color: '#facc15', click: 'none', moments: false, volume: 0.6, long: true, shorts: true, focus: [], sensitivity: 'high',
+  on: true, ran: false, zoom: 1.8, cursor: 'none', size: 1, color: '#facc15', click: 'none', moments: false, volume: 0.6, long: true, shorts: true, focus: [], sensitivity: 'high',
 };
 export const pointerOf = (doc: { pointer?: Partial<PointerSettings> | null }): PointerSettings => ({ ...POINTER_DEFAULT, ...(doc.pointer ?? {}), focus: doc.pointer?.focus ?? [] });
 
@@ -364,16 +368,18 @@ export function autoFocus(m: Pick<ScreenMeta, 'path' | 'clicks' | 'dur'>, senten
     return {
       s, e, by: 'auto' as const,
       why: sentences.length ? `${said}${said ? ' with ' : ''}${clicked}` : `${clicked} (no transcript to read)`,
-      cursor: p.text ? cursorFor(p.text) : 'ring' as CursorStyle,
+      cursor: 'auto' as CursorStyle,
       moment: (p.text ? momentFor(p.text) : null) ?? 'none' as Moment,
     };
   }), dur);
 }
 
 /** A range's pointer, with 'auto' taken from the words said inside it. */
-export function resolveCursor(r: Pick<FocusRange, 's' | 'e' | 'cursor'>, global: CursorStyle, sentences: Pick<Sentence, 's' | 'e' | 'text'>[]): DrawnCursor {
+export function resolveCursor(r: Pick<FocusRange, 's' | 'e' | 'cursor'> & { by?: string }, global: CursorStyle, sentences: Pick<Sentence, 's' | 'e' | 'text'>[]): DrawnCursor {
   if (global !== 'auto') return global;
-  if (r.cursor !== 'auto') return r.cursor;
+  /* A moment picked automatically before 2026-11 carried a drawn shape of its own; only the customer's own choice draws one now. */
+  if (r.cursor !== 'auto' && r.by !== 'auto') return r.cursor;
+  if (r.cursor !== 'auto') return 'none';
   return cursorFor(sentences.filter(x => x.e > r.s && x.s < r.e).map(x => x.text).join(' '));
 }
 export function resolveMoment(r: Pick<FocusRange, 's' | 'e' | 'moment'>, sentences: Pick<Sentence, 's' | 'e' | 'text'>[]): 'celebrate' | 'error' | null {
@@ -508,11 +514,13 @@ export interface ScreenPlan {
   kind: 'screencam' | 'follow';
   /** Where the screen is in the recording (px): the crop never leaves it. */
   region: Box;
-  /** screencam: the camera's box (px), shown whole in the top third. */
+  /** screencam: the camera's box (px), shown whole in a third of the height (at the bottom, unless asked for on top). */
   cam: Box | null;
+  /** Where the camera's band sits: under the screen (the owner's choice, 2026-11) or over it. */
+  camAt: 'top' | 'bottom';
   /** The size of the window moved round the pointer (px). */
   crop: [number, number];
-  /** screencam: the camera's height on the output (px); follow: 0. */
+  /** screencam: the camera band's height on the output (px); follow: 0. (Named for where it first sat.) */
   top: number;
   src: [number, number];
   out: [number, number];
@@ -536,11 +544,13 @@ export function mainSeg(m: Pick<ScreenMeta, 'segs'>, s: number, e: number): Scre
 
 /**
  * The boxes a screen Short is cut from: "screencam" puts the camera, whole,
- * in the top third and the screen round the pointer below; "follow" fills
- * the whole height with the screen round the pointer. Null when this
- * recording cannot carry it (no screen, or no camera for "screencam").
+ * in a third of the height — at the bottom, the screen zoomed round the
+ * pointer above it (the owner's layout: what is being shown first, the
+ * person under it) — and "follow" fills the whole height with the screen
+ * round the pointer. Null when this recording cannot carry it (no screen,
+ * or no camera for "screencam").
  */
-export function screenPlan(kind: 'screencam' | 'follow', m: Pick<ScreenMeta, 'segs'>, s: number, e: number, srcW: number, srcH: number, outW: number, outH: number): ScreenPlan | null {
+export function screenPlan(kind: 'screencam' | 'follow', m: Pick<ScreenMeta, 'segs'>, s: number, e: number, srcW: number, srcH: number, outW: number, outH: number, camAt: 'top' | 'bottom' = 'bottom'): ScreenPlan | null {
   const g = mainSeg(m, s, e);
   if (!g?.screen) return null;
   if (kind === 'screencam' && !g.cam) return null;
@@ -549,7 +559,7 @@ export function screenPlan(kind: 'screencam' | 'follow', m: Pick<ScreenMeta, 'se
   const aspect = outW / (outH - top);
   let ch = region[3], cw = ch * aspect;
   if (cw > region[2]) { cw = region[2]; ch = cw / aspect; }
-  return { kind, region, cam: kind === 'screencam' && g.cam ? pxBox(g.cam, srcW, srcH) : null, crop: [ev(cw), ev(ch)], top, src: [srcW, srcH], out: [outW, outH] };
+  return { kind, region, cam: kind === 'screencam' && g.cam ? pxBox(g.cam, srcW, srcH) : null, camAt, crop: [ev(cw), ev(ch)], top, src: [srcW, srcH], out: [outW, outH] };
 }
 
 /**
@@ -602,15 +612,72 @@ export function followPath(m: Pick<ScreenMeta, 'path' | 'segs'>, keeps: [number,
     if (f) {
       const p = clampC(f[0] * W, f[1] * H);
       if (!c) { c = p; target = p; }
-      else if (Math.abs(p[0] - c[0]) > cw * 0.28 || Math.abs(p[1] - c[1]) > ch * 0.28) target = p;
+      /* Re-aimed once the pointer is a fifth of the window off centre (it was
+         over a quarter, so the pointer often sat at the window's edge — "not
+         precise"); the glide is quicker too. */
+      else if (Math.abs(p[0] - c[0]) > cw * 0.2 || Math.abs(p[1] - c[1]) > ch * 0.2) target = p;
     }
     if (!c) c = target = clampC(rx + rw / 2, ry + rh / 2);
-    const k = 1 - Math.exp(-0.1 / 0.3);
+    const k = 1 - Math.exp(-0.1 / 0.22);
     c = [c[0] + (target![0] - c[0]) * k, c[1] + (target![1] - c[1]) * k];
     out.push([r2(t), ev(c[0] - cw / 2), ev(c[1] - ch / 2)]);
   }
   return out;
 }
+
+/**
+ * Where a screen Short shows the whole screen instead of the zoomed window
+ * (output seconds, before speed) — the camera steps aside there and comes
+ * back after. Two signs that the zoomed window cannot carry the moment:
+ *   - the pointer ranges wider than the window within two seconds (a
+ *     gesture across the page, dragging, pointing at two far places);
+ *   - the pointer rests for five seconds or more while the talk goes on
+ *     (the screen as a whole is being explained), from a second and a half
+ *     into the rest until it moves again.
+ * Stretches under 1.5 s are dropped, near ones joined; the wide shots never
+ * take more than 45 % of the Short (the longest kept), and never its first
+ * second, which belongs to the zoomed hook.
+ */
+export function wideSpans(m: Pick<ScreenMeta, 'path' | 'segs'>, keeps: [number, number][], plan: Pick<ScreenPlan, 'crop' | 'src'>): [number, number][] {
+  const total = keeps.reduce((n, [a, b]) => n + (b - a), 0);
+  if (total < 4 || !m.path.length) return [];
+  const [cw, ch] = plan.crop, [W, H] = plan.src;
+  const step = 0.1, n = Math.min(40_000, Math.floor(total / step) + 1);
+  const pts: ([number, number] | null)[] = [];
+  for (let i = 0; i < n; i++) { const f = pointerInFrame(m, toSrc(i * step, keeps)); pts.push(f ? [f[0] * W, f[1] * H] : null); }
+  const wide = new Uint8Array(n);
+  /* Ranging wider than the window, over two seconds. */
+  const span = 20;
+  for (let i = 0; i + span < n; i += 2) {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (let j = i; j <= i + span; j++) { const p = pts[j]; if (!p) continue; x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+    if (x1 - x0 > cw * 0.95 || y1 - y0 > ch * 0.95) for (let j = i; j <= i + span; j++) wide[j] = 1;
+  }
+  /* Resting: the pointer's own samples (it is noted when it moves). */
+  const times = m.path.map(p => toOut(p[0], keeps)).filter((t): t is number => t !== null);
+  let last = 0;
+  for (const t of [...times, total]) {
+    if (t - last >= 5) for (let j = Math.ceil((last + 1.5) / step); j < Math.floor(t / step) && j < n; j++) wide[j] = 1;
+    last = t;
+  }
+  let runs: [number, number][] = [];
+  for (let i = 0; i < n;) {
+    if (!wide[i]) { i++; continue; }
+    let j = i; while (j < n && wide[j]) j++;
+    runs.push([Math.max(1, i * step), j * step]);
+    i = j;
+  }
+  const joined: [number, number][] = [];
+  for (const r of runs) { const l = joined[joined.length - 1]; if (l && r[0] - l[1] < 1) l[1] = r[1]; else joined.push([...r]); }
+  runs = joined.filter(([a, b]) => b - a >= 1.5).sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]));
+  const out: [number, number][] = [];
+  let used = 0;
+  for (const r of runs) { if (used + (r[1] - r[0]) > total * 0.45) continue; out.push([r2(r[0]), r2(Math.min(total, r[1]))]); used += r[1] - r[0]; }
+  return out.sort((a, b) => a[0] - b[0]).slice(0, 60);
+}
+
+/** Whether output second `t` is a whole-screen moment. */
+export const isWide = (wide: [number, number][] | null | undefined, t: number) => !!wide?.some(([a, b]) => t >= a && t < b);
 
 /** The window at `t` along a follow path (the step before it). */
 export function followAt(path: [number, number, number][], t: number): [number, number] | null {

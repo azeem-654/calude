@@ -20,11 +20,11 @@ import { checkPng } from '../worker/src/lib/video/png';
 import { cameraPath, cutTimes, punchSpans, overlayAss, overlaySpan, overlayPlace, logoBox, trackAt, cssLook, cssEffects, skinBox, type TrackRow } from '../worker/src/lib/video/motion';
 import { layoutOptions, layoutPlan } from '../worker/src/lib/video/layouts';
 import { toXmeml, editorialScore } from '../worker/src/lib/video/xml';
-import { pickHighlight, thumbWords, cleanThumbSpec, renderSpec } from '../worker/src/lib/video/pipeline';
+import { pickHighlight, thumbWords, cleanThumbSpec, renderSpec, withoutStrangeLinks } from '../worker/src/lib/video/pipeline';
 import { thumbPlan, normaliseSpec, lineRect, TREND_LAYOUTS, STICKERS } from '../media/engine/thumbLayout.mjs';
 import { parseYoutubeUrl, youtubeRefusal, cleanOembed, youtubeThumb, YOUTUBE_WAY_FORWARD } from '../worker/src/lib/video/youtube';
 import {
-  cleanScreenMeta, autoFocus, pointerAt, pointerInFrame, focusWindows, zoomPlan, zoomAt, zoomLevel, screenPlan, followPath, followAt, pointerMarks, pointerAss, sfxEvents,
+  cleanScreenMeta, autoFocus, pointerAt, pointerInFrame, focusWindows, zoomPlan, zoomAt, zoomLevel, screenPlan, followPath, followAt, wideSpans, isWide, pointerMarks, pointerAss, sfxEvents,
   cursorFor, momentFor, resolveCursor, pointerOf, sfxSample, SFX_LENGTH, type ScreenMeta,
 } from '../worker/src/lib/video/pointer';
 import { linksIn, checkReshape, reshapePrompt } from '../src/components/VideoStudio/reshape';
@@ -643,7 +643,8 @@ console.log('\nTrending thumbnails: one plan for the engine and the preview');
   ];
   const auto = autoFocus(meta, sentences, 60);
   ok('the moments picked are the ones where the words and the pointer act together — not talk alone', auto.length === 2 && auto[0].s < 9.5 && auto[0].e > 12 && auto[1].s < 29.5 && auto.every(r => r.by === 'auto' && r.why.length > 0), auto);
-  ok('…a hand for clicking, a ring for typing; "done" earns a celebration', auto[0].cursor === 'hand' && auto[1].cursor === 'ring' && auto[1].moment === 'celebrate', auto);
+  ok('…no pointer drawn on a picked moment (the zoom follows it); "done" earns a celebration', auto.every(r => r.cursor === 'auto') && auto[1].moment === 'celebrate' && resolveCursor(auto[0], pointerOf({}).cursor, sentences) === 'none', auto);
+  ok('…an older picked moment with a shape of its own draws nothing unless the customer chose a pointer', resolveCursor({ s: 9, e: 12, cursor: 'ring', by: 'auto' }, 'auto', sentences) === 'none' && resolveCursor({ s: 9, e: 12, cursor: 'ring', by: 'you' }, 'auto', sentences) === 'ring');
   ok('with no transcript the clicks alone mark the moments, and say so', autoFocus(meta, [], 60).every(r => /no transcript/.test(r.why)) && autoFocus(meta, [], 60).length === 2);
   ok('pointer words: hand, ring, spotlight, arrow', cursorFor('press save') === 'hand' && cursorFor('enter the email') === 'ring' && cursorFor('notice the total') === 'spotlight' && cursorFor('and so on') === 'arrow');
   ok('moments: an error buzz for errors, a celebration for success, nothing otherwise', momentFor('oops, an error') === 'error' && momentFor('and that\'s it, it works') === 'celebrate' && momentFor('next we go on') === null);
@@ -674,7 +675,7 @@ console.log('\nTrending thumbnails: one plan for the engine and the preview');
 
   /* A screen Short. */
   const sc = screenPlan('screencam', meta, 9, 32, 1920, 1080, 1080, 1920)!;
-  ok('camera on top: the camera\'s box whole, a third of the height; the window the shape of what is left, inside the screen', !!sc && sc.top === 640 && sc.cam![2] === 634 && Math.abs(sc.crop[0] / sc.crop[1] - 1080 / 1280) < 0.01 && sc.crop[1] <= sc.region[3], sc);
+  ok('camera below the screen: the camera\'s box whole, a third of the height; the window the shape of what is left, inside the screen', !!sc && sc.camAt === 'bottom' && sc.top === 640 && sc.cam![2] === 634 && Math.abs(sc.crop[0] / sc.crop[1] - 1080 / 1280) < 0.01 && sc.crop[1] <= sc.region[3], sc);
   const fo = screenPlan('follow', meta, 9, 32, 1920, 1080, 1080, 1920)!;
   ok('no camera wanted: the whole height is the screen round the pointer', fo.top === 0 && fo.cam === null && Math.abs(fo.crop[0] / fo.crop[1] - 9 / 16) < 0.01);
   const noCam = cleanScreenMeta({ ...meta, segs: [{ t: 0, layout: 'bubble', screen: [0, 0, 1, 1], cam: null, shape: 'circle' }] })!;
@@ -683,6 +684,15 @@ console.log('\nTrending thumbnails: one plan for the engine and the preview');
   const at = followAt(path, 2.2)!;
   ok('the window follows the pointer and never leaves the screen', path.length > 200 && path.every(([, x, y]) => x >= fo.region[0] && x + fo.crop[0] <= fo.region[0] + fo.region[2] && y >= 0) && Math.abs(at[0] + fo.crop[0] / 2 - pointerInFrame(meta, 11.2)![0] * 1920) < fo.crop[0] / 2, { at, region: fo.region });
 
+  const wideMeta = cleanScreenMeta({ ...meta, path: [[0, 0.1, 0.1], [0.5, 0.15, 0.1], [1, 0.9, 0.9], [1.5, 0.1, 0.1], [2, 0.92, 0.85], [12, 0.5, 0.5], [12.2, 0.52, 0.5]], clicks: [] })!;
+  const ws = wideSpans(wideMeta, [[0, 30]], sc);
+  ok('the whole screen is shown where the pointer ranges wider than the zoomed window or rests (from 1.5 s into a 5 s rest until it moves) — never the first second, never over 45 % of the Short', ws.length >= 1 && ws[0][0] >= 1 && ws[0][1] <= 12.1 && isWide(ws, 5) && !isWide(ws, 0.5) && !isWide(ws, 12.5) && ws.reduce((n, [a, b]) => n + b - a, 0) <= 30 * 0.45 + 0.01, ws);
+
+  {
+    const m = { titles: ['Checking Out www.fema.gov', 'A walk through the CRM'], description: 'We look at the CRM. For more information, you can visit www.fema.gov. Book at protectedcentral.com/book today.', keywords: [], tags: [], hashtags: [], chapters: [], pinnedComment: 'Questions? See fema.gov', cta: 'Visit fema.gov', by: 'ai' as const };
+    const w = withoutStrangeLinks(m, 'we look at the crm and how to find my solution', 'https://protectedcentral.com');
+    ok('a web address nobody said is taken out of the words written for a video; the business\'s own site stays', w.titles.length === 1 && w.titles[0] === 'A walk through the CRM' && !/fema/i.test(w.description + w.pinnedComment + w.cta) && /protectedcentral\.com\/book/.test(w.description) && /We look at the CRM\./.test(w.description), w);
+  }
   /* The drawn pointer and the sounds. */
   const place = (t: number, x: number, y: number): [number, number] => [x * 1920, y * 1080];
   const { marks, clicks } = pointerMarks(meta, keeps, wins, 1, place, sentences, { click: 'click', moments: true });

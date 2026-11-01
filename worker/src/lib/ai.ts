@@ -53,9 +53,13 @@ const modelCache = new Map<string, { at: number; models: string[] }>();
 export function pickModels(names: string[]): string[] {
   const parsed = names
     .map(n => n.replace(/^models\//, ''))
-    .map(n => ({ n, m: /^gemini-(\d+(?:\.\d+)?)-flash(-lite)?(-preview(?:-[\w-]+)?)?$/.exec(n) }))
+    /* A pinned build ("-001") is the same model as its plain name: taken too, so an
+       upgrade Google ships under a numbered id is still found (plain name first). */
+    .map(n => ({ n, m: /^gemini-(\d+(?:\.\d+)?)-flash(-lite)?(-\d{3})?(-preview(?:-[\w-]+)?)?$/.exec(n) }))
     .filter((x): x is { n: string; m: RegExpExecArray } => !!x.m)
-    .map(x => ({ name: x.n, version: parseFloat(x.m[1]), lite: !!x.m[2], preview: !!x.m[3] }));
+    .map(x => ({ name: x.n, version: parseFloat(x.m[1]), lite: !!x.m[2], pinned: !!x.m[3], preview: !!x.m[4] }))
+    .sort((a, b) => Number(a.pinned) - Number(b.pinned))
+    .filter((x, i, all) => !x.pinned || !all.some((y, j) => j < i && !y.pinned && y.version === x.version && y.lite === x.lite && y.preview === x.preview));
   const stable = parsed.filter(p => !p.preview);
   const pool = stable.length ? stable : parsed;
   pool.sort((a, b) => (b.version - a.version) || (Number(b.lite) - Number(a.lite)));

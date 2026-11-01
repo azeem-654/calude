@@ -44,7 +44,8 @@ The Worker serves the built assets and every `/api/*` route. **API paths end in
 `.php`** but are not PHP: add an endpoint as `worker/src/routes/<name>.ts` and
 register it in `ROUTES` in `worker/src/index.ts` as `/api/<name>.php`. A cron
 runs every 5 minutes in a deliberate order (finders → Autopilot → replies →
-campaign sends → digests). A scheduled run has no origin: absolute URLs read
+campaign sends → digests); a second, every minute, only advances Video
+Studio jobs (`VIDEO_CRON`). A scheduled run has no origin: absolute URLs read
 `env.APP_ORIGIN`. Details: `docs/claude/architecture.md`.
 
 ## Where the detail lives

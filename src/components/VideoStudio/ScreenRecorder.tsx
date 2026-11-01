@@ -39,7 +39,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   MonitorPlay, Camera, Mic, MicOff, Pause, Play, Square, Circle, Download, RotateCcw, Trash2, UploadCloud, X, AlertCircle, Check, Loader, Volume2, Info,
   ImagePlus, RefreshCw, VideoOff, PictureInPicture2, MousePointer2, Wand2, ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
@@ -115,7 +115,20 @@ const metadata = (v: HTMLVideoElement) => v.videoWidth ? Promise.resolve() : new
 });
 const defaultName = (mode: RecMode) => `${mode === 'cam' ? 'Camera recording' : 'Screen recording'} ${new Date().toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}`;
 
+/**
+ * A shared screen marked as text (W3C MediaStreamTrack Content Hints — what
+ * conferencing apps use for a shared screen; researched 2026-11): the browser
+ * favours each frame's detail over smooth motion, so under load it gives up
+ * frame rate rather than legibility. Meet's recording itself is made on its
+ * servers from streams already there — the reason Save here uploads and the
+ * processing then runs in the cloud, not in this tab.
+ */
+function hintText(s: MediaStream) {
+  for (const t of s.getVideoTracks()) try { t.contentHint = 'text'; } catch { /* not offered */ }
+}
+
 export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const navigate = useNavigate();
   const [sup] = useState(support);
   const [mode, setMode] = useState<RecMode>(() => support().display ? 'screen-cam' : 'cam');
   const [mic, setMic] = useState(true);
@@ -554,6 +567,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
       if (run.current !== me) { stopStreams(shared); return; }
       display.current = shared;
       shared.getVideoTracks()[0]?.addEventListener('ended', shareEnded);
+      hintText(shared);
       if (sysAudio && !shared.getAudioTracks().length) setNote('No computer sound was shared. Sound can be shared from a browser tab (tick “Share tab audio”), and on Windows or ChromeOS from the whole screen; windows and Mac screens share none.');
     }
     if (!await ensureDevices(mode !== 'screen', mic)) { if (run.current === me) { closePip(); back(''); } return; }
@@ -596,6 +610,8 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
       else { stopStreams(s); s = cv.captureStream(prefs.fps); canvasTrack.current = null; }
       canvasStream.current = s;
       video = s.getVideoTracks()[0];
+      /* What is recorded is mostly a screen: keep its text sharp and let the frame rate give way first under load. */
+      if (video && mode !== 'cam') try { video.contentHint = 'detail'; } catch { /* not offered */ }
     }
     if (!video || video.readyState !== 'live' || (mode === 'cam' && !live(cam.current))) { releaseCapture(); setPhase('setup'); setError('There was no picture to record — try again.'); return; }
     const micT = mic ? micS.current?.getAudioTracks()[0] : undefined;
@@ -678,6 +694,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
       const old = display.current;
       display.current = s;
       s.getVideoTracks()[0]?.addEventListener('ended', shareEnded);
+      hintText(s);
       attach(screenVid.current, s);
       setFeed('screen', s);
       connectScreenSound(s);
@@ -783,7 +800,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
            without taxing a small computer. A new project's edit is version 1; switched on there, every export
            from the editor has it. A refusal only loses the switch, and is said. */
         if (prefs.studio) {
-          const e = await editVideo(c.id, 1, [{ op: 'audio.set', patch: { studio: true, strength: 70 } }], 'Studio Sound, from the Screen Recorder');
+          const e = await editVideo(c.id, 1, [{ op: 'audio.set', patch: { studio: true, strength: 80, gate: true } }], 'Studio Sound, from the Screen Recorder');
           if (!e.success) setNote('Studio Sound could not be switched on for this recording — turn it on in the editor’s Audio tab.');
         }
       } else if (project.current.name !== nm) {
@@ -802,7 +819,14 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
           const r = await saveScreenMeta(id, meta.current);
           if (!r.success) setNote('The recording is saved, but where the pointer went could not be kept, so following the pointer will not be offered for it.');
         }
-        setSave({ state: 'saved', projectId: id }); onSaved(); return;
+        setSave({ state: 'saved', projectId: id }); onSaved();
+        /* Processing is not watched here: the owner wants the recording taken
+           straight into the editor, where the preview, the transcript and the
+           Progress panel show it being worked on (on the server — it carries
+           on with this tab closed). Nothing is left to lose on this screen. */
+        releaseCapture();
+        navigate(`/video-studio/${id}?tab=activity`);
+        return;
       }
       if (upload.current.signal.aborted) { setSave({ state: 'idle' }); setNote('Saving stopped. The recording is still here.'); return; }
       /* Refused before a byte was stored (no storage, allowance): the empty project goes too,

@@ -59,10 +59,21 @@ export interface Piece { words: Omit<Word, 'i'>[]; language: string; text: strin
  * One piece of audio. `offset` is where the piece starts in the recording;
  * the words come back on the recording's clock.
  */
-export async function transcribePiece(env: Env, audio: ArrayBuffer, offset: number, language = ''): Promise<Piece> {
+export async function transcribePiece(env: Env, audio: ArrayBuffer, offset: number, language = '', hint = ''): Promise<Piece> {
   const input: Record<string, unknown> = { audio: b64(audio), task: 'transcribe' };
   if (/^[a-z]{2}$/.test(language)) input.language = language;
-  const out = await runWhisper(env, input);
+  /*
+   * Noise and silence are where Whisper invents words (the owner's recording
+   * came back as "ConnectedCentral.com … www.fema.gov"). The voice-activity
+   * filter leaves out what is not speech, and the business's own name as
+   * the initial prompt spells it the way they do. Both are optional on the
+   * model; if it refuses them, the piece is asked again plainly.
+   */
+  const extra: Record<string, unknown> = { vad_filter: true };
+  const h = hint.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 200);
+  if (h) extra.initial_prompt = h;
+  let out: WhisperOut;
+  try { out = await runWhisper(env, { ...input, ...extra }); } catch { out = await runWhisper(env, input); }
   const words: Omit<Word, 'i'>[] = [];
   for (const seg of out.segments ?? []) {
     const c = typeof seg.avg_logprob === 'number' ? Math.round(Math.min(1, Math.max(0, Math.exp(seg.avg_logprob))) * 100) / 100 : undefined;

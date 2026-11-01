@@ -17,12 +17,14 @@
  * bar said "Ready 100%" while faces were still being found and the videos
  * rendered, and the screen looked stuck.
  */
-import { useMemo } from 'react';
-import { Check, X, Loader, RefreshCw, AlertCircle, Clock, CircleDashed, Undo2, Save } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Check, X, Loader, RefreshCw, AlertCircle, Clock, CircleDashed, Undo2, Save, Sparkles, ArrowLeft } from 'lucide-react';
 import type { ProjectView, VideoDoc, Stage } from '../../services/videoStudio';
 import { useCreep, useEta, etaWords } from './progress';
 
 export interface ChangeItem { id: string; note: string; state: 'queued' | 'saving' | 'done' | 'failed'; at: number; version?: number; why?: string }
+/** An operation the customer pressed (an AI tool, a cleanup run): running from the press until it answers. */
+export interface OpItem { id: string; label: string; state: 'running' | 'done' | 'failed'; at: number; ended?: number; detail?: string }
 
 type Job = ProjectView['jobs'][number];
 interface Micro { key: string; label: string; state: 'done' | 'active' | 'waiting'; pct: number | null; within?: string[] }
@@ -79,8 +81,8 @@ function StateIcon({ state }: { state: string }) {
   return <span className="vs-act-dot"><CircleDashed size={11} /></span>;
 }
 
-export default function ActivityPanel({ view, doc, changes, onRetry, onCancel }: {
-  view: ProjectView; doc: VideoDoc | null; changes: ChangeItem[]; onRetry: () => void; onCancel: () => void;
+export default function ActivityPanel({ view, doc, changes, ops = [], onBack, onRetry, onCancel }: {
+  view: ProjectView; doc: VideoDoc | null; changes: ChangeItem[]; ops?: OpItem[]; onBack?: () => void; onRetry: () => void; onCancel: () => void;
 }) {
   const st = view.project.status;
   const stages = view.stages.filter(s => s.key !== 'shorts' || s.state !== 'skipped');
@@ -105,11 +107,15 @@ export default function ActivityPanel({ view, doc, changes, onRetry, onCancel }:
     const value = sum ? (got / sum) * 100 : 0;
     return { value, open };
   }, [stages, view.jobs]); // eslint-disable-line react-hooks/exhaustive-deps
-  const busy = st === 'processing' || st === 'uploading' || view.jobs.some(j => j.state === 'queued' || j.state === 'running');
+  const opsRunning = ops.filter(o => o.state === 'running');
+  /* The seconds an operation has run, counted on screen while it runs. */
+  const [, tick] = useState(0);
+  useEffect(() => { if (!opsRunning.length) return; const t = setInterval(() => tick(n => n + 1), 1000); return () => clearInterval(t); }, [opsRunning.length]);
+  const busy = st === 'processing' || st === 'uploading' || view.jobs.some(j => j.state === 'queued' || j.state === 'running') || opsRunning.length > 0;
   /* A project with no video yet has nothing done — never "All done". */
   const empty = st === 'draft' && !view.source.probe;
   const done = !busy && st !== 'failed' && !empty;
-  const active = stages.find(s => s.state === 'active') ?? stages.find(s => s.state === 'waiting' && busy);
+  const active = opsRunning.length ? { label: opsRunning[opsRunning.length - 1].label } : stages.find(s => s.state === 'active') ?? stages.find(s => s.state === 'waiting' && busy);
   const shown = useCreep(done ? 100 : reading.value, done ? 100 : Math.min(99.6, reading.value + 8), done);
   const eta = useEta(busy ? reading.value : null, 100);
   const saving = changes.filter(c => c.state === 'queued' || c.state === 'saving');
@@ -149,6 +155,23 @@ export default function ActivityPanel({ view, doc, changes, onRetry, onCancel }:
           {st === 'processing' && <button type="button" className="vs-btn ghost sm" onClick={onCancel}>Cancel</button>}
         </div>
       </div>
+
+      {ops.length > 0 && (
+        <div className="vs-act-group vs-act-ops" data-testid="vs-ops">
+          <div className="vs-act-gh"><Sparkles size={13} /> {opsRunning.length ? 'Working on now' : 'What you asked for'}
+            {onBack && <><span className="vs-spacer" /><button type="button" className="vs-btn ghost sm" onClick={onBack} data-act="ops-back"><ArrowLeft size={12} /> AI Tools</button></>}
+          </div>
+          {ops.slice().reverse().slice(0, 5).map(o => (
+            <div key={o.id} className={`vs-act-row ${o.state === 'running' ? 'saving' : o.state}`} data-op={o.state}>
+              <StateIcon state={o.state === 'running' ? 'active' : o.state} />
+              <span className="vs-act-label">{o.label}</span>
+              <span className="vs-act-pct-sm">{o.state === 'running' ? `${Math.max(0, Math.round((Date.now() - o.at) / 1000))} s` : o.state === 'done' ? 'done' : 'not done'}</span>
+              {o.state === 'running' && <div className="vs-bar indet vs-act-bar"><i style={{ width: '35%' }} /></div>}
+              {o.detail && o.state !== 'running' && <small className="vs-act-why">{o.detail}</small>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {(saving.length > 0 || changes.length > 0) && (
         <div className="vs-act-group" data-testid="vs-changes">

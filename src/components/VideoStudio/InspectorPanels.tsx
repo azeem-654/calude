@@ -44,7 +44,7 @@ function LayoutIcon({ kind }: { kind: ShortLayout }) {
     : kind === 'screen' ? [box(2, 9, 14, 9, 'a')]
     : kind === 'split' ? [box(2, 2, 14, 12, 'a'), box(2, 16, 14, 12, 'b'), <circle key="f" cx={9} cy={21} r={2.6} className="f" />]
     : kind === 'two' ? [box(2, 2, 14, 12, 'a'), box(2, 16, 14, 12, 'b'), <circle key="f1" cx={9} cy={7.5} r={2.4} className="f" />, <circle key="f2" cx={9} cy={21.5} r={2.4} className="f" />]
-    : kind === 'screencam' ? [box(2, 2, 14, 8, 'a'), box(2, 11, 14, 17, 'b'), <circle key="f" cx={9} cy={6} r={2.4} className="f" />, <path key="p" d="M8 17 l0 6 l1.6-1.4 l1.2 2.4 l1-0.5 l-1.1-2.3 l2.2 0z" className="f" />]
+    : kind === 'screencam' ? [box(2, 2, 14, 17, 'b'), box(2, 20, 14, 8, 'a'), <circle key="f" cx={9} cy={24} r={2.4} className="f" />, <path key="p" d="M8 8 l0 6 l1.6-1.4 l1.2 2.4 l1-0.5 l-1.1-2.3 l2.2 0z" className="f" />]
     : kind === 'follow' ? [box(2, 2, 14, 26, 'a'), <path key="p" d="M8 12 l0 7 l1.8-1.6 l1.4 2.8 l1.1-0.6 l-1.3-2.7 l2.5 0z" className="f" />]
     : [box(2, 2, 14, 26, 'a'), <circle key="p" cx={12} cy={22} r={3.4} className="f" />];
   return <svg className="vs-layout-ic" viewBox="0 0 18 30" width={18} height={30} aria-hidden="true">{parts}</svg>;

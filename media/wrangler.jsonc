@@ -16,8 +16,10 @@
       "image": "./Dockerfile",
       // Each job is its own instance; this caps how many encode at once.
       "max_instances": 6,
-      // 4 GiB and half a vCPU: enough for a 1080p encode of a long recording.
-      "instance_type": "standard-1"
+      // Two vCPUs and 8 GiB (2026-11): half a vCPU made FFmpeg the slowest part
+      // of processing — the owner waited on it. CPU is billed as used, so the
+      // same encode costs about the same and finishes about four times sooner.
+      "instance_type": "standard-3"
     }
   ],
   "durable_objects": { "bindings": [{ "name": "ENGINE", "class_name": "MediaEngine" }] },
@@ -28,7 +30,7 @@
       "name": "crmpro-staging-media",
       "workers_dev": false,
       "preview_urls": false,
-      "containers": [{ "class_name": "MediaEngine", "image": "./Dockerfile", "max_instances": 3, "instance_type": "standard-1" }],
+      "containers": [{ "class_name": "MediaEngine", "image": "./Dockerfile", "max_instances": 3, "instance_type": "standard-3" }],
       "durable_objects": { "bindings": [{ "name": "ENGINE", "class_name": "MediaEngine" }] }
     }
   }

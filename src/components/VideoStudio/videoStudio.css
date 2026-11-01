@@ -1184,3 +1184,65 @@ html[data-theme="dark"] .vs canvas.vse-layout { filter: none; }
 .vs-item:hover { border-color: var(--line2); }
 .vs-btn.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
 .vs-btn.primary:hover:not(:disabled) { background: #2d2d3a; }
+
+/* ── The rail, redrawn (2026-11, the owner's "make it look better") ──
+   Each panel is an icon tile with its name under it; the open one is filled
+   in the accent with a bar on its outer edge; Progress sits apart at the
+   top, and AI Tools shows how many suggestions wait as a number. */
+.vse-side .vse-rail { width: 80px; padding: 8px 6px; gap: 4px; background: linear-gradient(180deg, var(--panel), var(--panel2)); }
+.vse-rail-btn { padding: 6px 2px 7px; gap: 4px; border-radius: 12px; color: var(--muted); transition: background .15s, color .15s; }
+.vse-rail-btn .ic { width: 38px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: var(--soft); transition: background .15s, box-shadow .15s, transform .15s; }
+.vse-rail-btn .lb { font-size: 10.5px; font-weight: 700; letter-spacing: .01em; white-space: nowrap; }
+.vse-rail-btn:hover { background: none; color: var(--ink); }
+.vse-rail-btn:hover .ic { background: var(--accent-soft); color: var(--accent); }
+.vse-rail-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.vse-rail-btn[aria-pressed="true"] { background: none; color: var(--accent); }
+.vse-rail-btn[aria-pressed="true"] .ic { background: var(--grad); color: #fff; box-shadow: 0 8px 18px -10px rgba(109, 74, 255, .9); }
+.vse-rail-btn[aria-pressed="true"]::before { content: ""; position: absolute; left: -6px; top: 10px; bottom: 22px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
+.vse-rail-btn.split { margin-bottom: 6px; }
+.vse-rail-btn.split::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: -5px; height: 1px; background: var(--line2); }
+.vse-rail-btn .dot { top: 2px; right: 8px; }
+.vse-rail-btn .dot.n { width: auto; height: 16px; min-width: 16px; padding: 0 4px; border-radius: 99px; font-size: 9.5px; font-style: normal; font-weight: 800; color: #fff; background: var(--warn); display: grid; place-items: center; line-height: 1; box-shadow: 0 0 0 2px var(--panel); }
+@media (max-width: 900px) {
+  .vse-side .vse-rail, .vse.with-panel .vse-side .vse-rail { width: 100%; padding: 4px 2px calc(4px + env(safe-area-inset-bottom)); }
+  .vse-rail-btn .ic { width: 34px; height: 28px; }
+  .vse-rail-btn[aria-pressed="true"]::before { left: 12px; right: 12px; top: -4px; bottom: auto; width: auto; height: 3px; border-radius: 0 0 3px 3px; }
+  .vse-rail-btn.split { margin-bottom: 0; }
+  .vse-rail-btn.split::after { display: none; }
+}
+
+/* ── The steps as a menu, fixed above the panel's settings ── */
+.vse-panel > .vs-guide { flex: none; margin-bottom: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel2); gap: 6px; }
+.vs-guide-bar { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+.vs-guide-bar b { color: var(--ink); }
+.vs-guide-pin { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--line2); background: var(--raise); color: var(--muted); border-radius: 8px; padding: 3px 5px; cursor: pointer; }
+.vs-guide-pin:hover { color: var(--accent); border-color: var(--accent); }
+.vs-guide-menu { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.vs-guide-menu button { position: relative; width: 100%; display: grid; justify-items: center; gap: 3px; padding: 7px 2px 6px; border: 1px solid var(--line); background: var(--raise); border-radius: 10px; cursor: pointer; color: var(--muted); font-size: 11px; font-weight: 700; }
+.vs-guide-menu button i { display: grid; place-items: center; color: inherit; }
+.vs-guide-menu button span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.vs-guide-menu button em { position: absolute; top: 3px; right: 4px; font-style: normal; font-size: 9px; font-weight: 800; color: var(--faint); display: grid; place-items: center; min-width: 13px; height: 13px; border-radius: 50%; }
+.vs-guide-menu button.set em { background: var(--ok); color: #fff; }
+.vs-guide-menu button:hover { color: var(--ink); border-color: var(--line2); background: var(--soft); }
+.vs-guide-menu button[aria-current="step"] { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.vse-panel > .vs-guide .vs-guide-here { padding: 6px 8px; background: var(--raise); font-size: 12px; }
+.vs-guide:not(.open) .vs-guide-here { display: none; }
+
+/* ── "Working on now", at the top of every panel ── */
+.vs-now { position: relative; flex: none; display: flex; align-items: center; gap: 7px; width: 100%; margin: 0 0 8px; padding: 8px 10px 10px; border: 1px solid rgba(109, 74, 255, .3); border-radius: 11px; background: var(--accent-soft); color: var(--ink); font-size: 12.5px; cursor: pointer; text-align: left; overflow: hidden; }
+.vs-now span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
+.vs-now b { color: var(--accent); font-size: 12px; }
+.vs-now svg { color: var(--accent); flex: none; }
+.vs-now-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: linear-gradient(90deg, transparent, var(--accent), transparent); background-size: 40% 100%; background-repeat: no-repeat; }
+@media (prefers-reduced-motion: no-preference) { .vs-now-bar { animation: vs-now-run 1.4s linear infinite; } }
+@keyframes vs-now-run { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+.vs-act-ops { border-color: rgba(109, 74, 255, .3); }
+
+/* ── Scenes and captions are blocks you can press ── */
+.vse-scene { pointer-events: auto; cursor: pointer; transition: border-color .12s, box-shadow .12s; }
+.vse-scene:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.vse-scene.on { border-color: var(--accent); border-width: 3px; box-shadow: 0 0 0 2px rgba(109, 74, 255, .35), inset 0 0 0 999px rgba(109, 74, 255, .14); z-index: 2; }
+.vse-scene.on .n { background: var(--accent); }
+.vse-block.cap { color: var(--ink); font-weight: 600; }
+.vse-block.cap:hover { border-color: var(--accent); }
+.vse-block.cap.on { background: var(--accent); border-color: var(--accent); color: #fff; z-index: 2; }
