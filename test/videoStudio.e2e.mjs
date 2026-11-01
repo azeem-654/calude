@@ -965,9 +965,9 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
 {
   await page.goto(`${B}/autopilot?project=${AP}&tab=assets`, { waitUntil: 'networkidle' });
   await page.getByTestId('project-videos').waitFor({ timeout: 15_000 }).catch(() => {});
-  /* The heading draws before the list: wait for the list itself. */
+  /* The heading draws before the list, and a render still going says "Processing…" until it is done (the list follows it): up to three minutes. */
   let assets = '';
-  for (let i = 0; i < 40 && !/Shorts created/.test(assets); i++) { assets = await page.getByTestId('project-videos').innerText().catch(() => ''); if (!/Shorts created/.test(assets)) await sleep(500); }
+  for (let i = 0; i < 360 && !/Shorts created/.test(assets); i++) { assets = await page.getByTestId('project-videos').innerText().catch(() => ''); if (!/Shorts created/.test(assets)) await sleep(500); }
   ok('16 · the Autopilot project\'s Assets tab shows the video and "✨ 4 Shorts created"', /Weekly growth show/.test(assets) && /4 Shorts created/.test(assets), assets.slice(0, 300));
   const runs = await api('autopilot.php', { token: T, accountId: A, action: 'agent_runs', projectId: AP });
   const lines = (runs.runs ?? []).map(r => `${r.detail} → ${r.link?.route ?? ''}`);
