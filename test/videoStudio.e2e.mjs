@@ -968,7 +968,10 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   /* The heading draws before the list, and a render still going says "Processing…" until it is done (the list follows it): up to three minutes. */
   let assets = '';
   for (let i = 0; i < 360 && !/Shorts created/.test(assets); i++) { assets = await page.getByTestId('project-videos').innerText().catch(() => ''); if (!/Shorts created/.test(assets)) await sleep(500); }
-  ok('16 · the Autopilot project\'s Assets tab shows the video and "✨ 4 Shorts created"', /Weekly growth show/.test(assets) && /4 Shorts created/.test(assets), assets.slice(0, 300));
+  /* Since the upload-first wizard the project is named from its file ("talk 20"), not typed. */
+  const pname = (await v('get', { projectId: PID })).project?.name ?? '';
+  if (!assets.includes(pname)) await page.screenshot({ path: path.join(state, 'assets-16.png'), fullPage: true }).catch(() => {});
+  ok('16 · the Autopilot project\'s Assets tab shows the video and "✨ 4 Shorts created"', !!pname && assets.includes(pname) && /4 Shorts created/.test(assets), assets.slice(0, 300));
   const runs = await api('autopilot.php', { token: T, accountId: A, action: 'agent_runs', projectId: AP });
   const lines = (runs.runs ?? []).map(r => `${r.detail} → ${r.link?.route ?? ''}`);
   ok('17 · Autopilot\'s activity says "✨ 4 Shorts created", linked to the real Shorts', lines.some(l => /4 Shorts created/.test(l) && l.includes(`/video-studio/${PID}?tab=shorts`)), lines);
@@ -1024,8 +1027,10 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
 /* ── The Audio and Music panels ── */
 {
   await openPanel(page, 'audio');
-  const audio = await page.getByTestId('vs-audio-panel').innerText();
-  ok('the Audio panel shows the noise level chosen, voice clarity and loudness — and says they are heard in the render', /Strong/.test(audio) && /Voice clarity/.test(audio) && /Even loudness/.test(audio) && /applied when the videos render/.test(audio));
+  /* The command's version reaches the page with the next poll. */
+  let audio = '';
+  for (let i = 0; i < 20 && !/Strong/.test(audio); i++) { audio = await page.getByTestId('vs-audio-panel').innerText().catch(() => ''); if (!/Strong/.test(audio)) await sleep(500); }
+  ok('the Audio panel shows the noise level chosen, voice clarity and loudness — and says they are heard in the render', /Strong/.test(audio) && /Voice clarity/.test(audio) && /Even loudness/.test(audio) && /applied when the videos render/.test(audio), audio.slice(0, 400));
   ok('…with Audio effects as rows: Studio Sound, and "Lower audio of other layers" (the music is ducked under speech)', /Studio Sound/.test(audio) && /Lower audio of other layers/.test(audio) && (await page.locator('[data-effect="duck"] [role="switch"]').getAttribute('aria-checked')) === 'true', audio.slice(0, 400));
   await page.locator('[data-denoise="light"]').click();
   await page.waitForTimeout(1200);
@@ -1073,7 +1078,7 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   await page.getByTestId('vs-repurposed').waitFor({ timeout: 20_000 });
   ok('…linked from the Reuse tab to where each draft lives', (await page.getByTestId('vs-repurposed').locator('a').count()) === 3);
   const runs = await api('autopilot.php', { token: T, accountId: A, action: 'agent_runs', projectId: AP });
-  ok('…and recorded on the Autopilot project\'s activity', (runs.runs ?? []).some(r => /From “Weekly growth show/.test(r.detail ?? '')), (runs.runs ?? []).map(r => r.detail).slice(0, 6));
+  ok('…and recorded on the Autopilot project\'s activity', (runs.runs ?? []).some(r => (r.detail ?? '').startsWith(`From “${(S.project?.name ?? '').slice(0, 20)}`)), (runs.runs ?? []).map(r => r.detail).slice(0, 6));
 }
 
 /* ── AI Shorts and Repurposing, inside the studio ── */
