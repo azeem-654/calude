@@ -818,8 +818,10 @@ ok('…and renders again', reOut.version > outBefore.version && !reOut.stale, re
 
 /* ── 10–11 · PNG thumbnails, really PNG ── */
 {
+  /* One engine paints them one video after another, after the renders: waited for (up to six minutes), and a stopped job named. */
+  for (let i = 0; i < 144 && !S.outputs.every(o => o.thumbs.length >= 3) && !S.jobs.some(j => j.kind === 'thumbnails' && j.state === 'failed'); i++) { await sleep(2500); S = await v('status', { projectId: PID, knownVersion: -1 }); }
   const all = S.outputs.flatMap(o => o.thumbs.map(t => ({ o, t })));
-  ok('10 · three thumbnails for every video', S.outputs.every(o => o.thumbs.length >= 3), S.outputs.map(o => o.thumbs.length));
+  ok('10 · three thumbnails for every video', S.outputs.every(o => o.thumbs.length >= 3), { counts: S.outputs.map(o => o.thumbs.length), jobs: S.jobs.filter(j => j.kind === 'thumbnails').map(j => `${j.state} ${j.stage} ${j.error ?? ''}`) });
   let pngs = 0, bad = '';
   for (const { o, t } of all.slice(0, 15)) {
     const r = await fetch(t.downloadUrl, { headers: { Connection: 'close' } });
