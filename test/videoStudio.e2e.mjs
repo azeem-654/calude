@@ -152,7 +152,8 @@ const v = async (action, extra = {}, who = { T, A }) => {
       if (r.success !== undefined || !READS.has(action) || i >= 30) return r;
       await sleep(2000);
     }
-    catch (e) { if (!READS.has(action) || i >= 30) throw e; await sleep(2000); } // a restart takes ~15 s
+    /* An edit made on a version is safe to send again: had the first landed, the second is only a conflict. */
+    catch (e) { if ((!READS.has(action) && !(action === 'edit' && extra.baseVersion !== undefined)) || i >= 30) throw e; await sleep(2000); } // a restart takes ~15 s
   }
 };
 
