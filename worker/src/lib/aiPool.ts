@@ -96,6 +96,8 @@ async function readInstallKeys(env: Env): Promise<PoolKey[]> {
   for (const r of backups ?? []) { n++; await add(await open(r.credentials), 'backup', r.label || `Backup key ${n}`, r.id); }
 
   await add(env.AI_API_KEY, 'env', 'AI_API_KEY (Cloudflare secret)');
+  /* An OpenRouter key (lib/openrouter.ts) as a secret: last, a backup behind Google's keys. */
+  await add(env.OPENROUTER_API_KEY, 'env', 'OPENROUTER_API_KEY (Cloudflare secret)');
   return out;
 }
 
@@ -146,9 +148,12 @@ export function remember(env: Env, keys: PoolKey[]): string | null {
 
 /** Whether a failure is the key's, and how long to rest it. */
 export function classify(status: number, raw: string): { keyFault: boolean; restMs: number } {
+  /* Not this key's kind of work (OpenRouter has no audio, no Google search): the next key, no rest. */
+  if (status === -2) return { keyFault: true, restMs: 0 };
+  if (status === 402) return { keyFault: true, restMs: 60 * 60_000 };   // OpenRouter: no credit left
   if (status === 0) return { keyFault: true, restMs: 20_000 };          // no answer at all
   if (status === -1) return { keyFault: true, restMs: 30 * 60_000 };    // none of its models exist
-  if (status === 429) return { keyFault: true, restMs: /per ?day|PerDay|daily/i.test(raw) ? 60 * 60_000 : 2 * 60_000 };
+  if (status === 429) return { keyFault: true, restMs: /per[ -]?day|PerDay|daily/i.test(raw) ? 60 * 60_000 : 2 * 60_000 };
   if (status === 401 || status === 403) return { keyFault: true, restMs: 30 * 60_000 };
   if (status >= 500) return { keyFault: true, restMs: 30_000 };
   if (status === 400 && /API[ _]KEY|SERVICE[ _]DISABLED|BILLING|billing|PERMISSION[ _]DENIED|expired|blocked|FAILED[ _]PRECONDITION|User location is not supported/i.test(raw)) {
@@ -179,7 +184,7 @@ export async function withFailover<T>(apiKey: string, run: (key: string) => Prom
     last = r;
     const c = classify(r.status, r.error);
     if (!c.keyFault) return r.value;
-    if (entry && meta) await markFailed(entry.env, meta, c.restMs, r.status, r.error);
+    if (entry && meta && c.restMs > 0) await markFailed(entry.env, meta, c.restMs, r.status, r.error);
   }
   return (last as Attempt<T>).value;
 }

@@ -32,6 +32,7 @@ import { canAccess, userFromToken, type Env } from '../lib/db';
 import { aiBase, loadAiKey, modelsFor, trialRefusal } from '../lib/ai';
 import { rateLimit } from '../lib/rateLimit';
 import { withFailover } from '../lib/aiPool';
+import { isOpenRouterKey, askOpenRouter, fromGeminiRequest, asGeminiResponse } from '../lib/openrouter';
 import { check as allowance, record, refusalBody } from '../lib/allowanceStore';
 
 interface AiReq {
@@ -105,6 +106,17 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
      a limit, a refusal, Google down for it (lib/aiPool.ts) — so a customer
      is answered by the next key rather than shown the first one's error. */
   return withFailover<Response>(key, async k => {
+    /* An OpenRouter key: the same request through its adapter, answered in Gemini's shape. */
+    if (isOpenRouterKey(k)) {
+      const q = fromGeminiRequest(JSON.parse(payload));
+      if (!q) return { ok: false, status: -2, error: 'nothing to send', value: fail('There was nothing to ask the AI.') };
+      const r = await askOpenRouter(k, { ...q, timeoutMs: 60_000 });
+      if (r.ok) {
+        await record(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`, 1, room.standing);
+        return { ok: true, value: json({ success: true, response: asGeminiResponse(r.value.text) }) };
+      }
+      return { ok: false, status: r.status, error: r.error, value: fail(r.value.error) };
+    }
     let lastStatus = -1; let lastError = '';
     for (const model of await modelsFor(k)) {
       let res: Response;

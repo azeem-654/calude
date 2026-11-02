@@ -42,6 +42,7 @@ if (!fs.existsSync('dist/index.html')) { console.log('Build first: VITE_BASE=/ n
 const K = tag => `AIza${tag}${'x'.repeat(35 - tag.length)}`;
 const QUOTA = K('QUOTA'), SPARE = K('SPARE'), DEAD = K('DEAD'), THIRD = K('THIRD'), WRONG = K('WRONG');
 const KNOWN = new Set([QUOTA, SPARE, DEAD, THIRD]);
+const ORK = `sk-or-v1-${'a'.repeat(48)}`, ORBAD = `sk-or-v1-${'b'.repeat(48)}`;
 const name = k => (k === QUOTA ? 'QUOTA' : k === SPARE ? 'SPARE' : k === DEAD ? 'DEAD' : k === THIRD ? 'THIRD' : 'other');
 let calls = [];
 const send = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -64,6 +65,25 @@ const mock = http.createServer((req, res) => {
       const text = raw.includes('Transcribe') ? JSON.stringify({ text: `hello from ${name(key)}`, language: 'en', clarity: 'clear' }) : `answer from ${name(key)}`;
       return send(res, 200, { candidates: [{ content: { parts: [{ text }] } }] });
     }
+    /* OpenRouter (lib/openrouter.ts) at /or: its key check, its model list, chat completions. */
+    if (u.pathname.startsWith('/or/')) {
+      const bearer = (req.headers.authorization ?? '').replace(/^Bearer /, '');
+      if (u.pathname === '/or/key') return bearer === ORK ? send(res, 200, { data: { is_free_tier: true, limit_remaining: 50 } }) : send(res, 401, { error: { code: 401, message: 'No auth credentials found' } });
+      if (u.pathname === '/or/models') return send(res, 200, { data: [
+        { id: 'google/gemma-4-26b-a4b-it:free', context_length: 300000, architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'] } },
+        { id: 'google/gemma-4-31b-it:free', context_length: 262144, architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'] } },
+        { id: 'nvidia/nemotron-3.5-content-safety:free', context_length: 128000, architecture: { input_modalities: ['text'], output_modalities: ['text'] } },
+        { id: 'paid/model', context_length: 999999, architecture: { input_modalities: ['text'], output_modalities: ['text'] } },
+      ] });
+      if (u.pathname === '/or/chat/completions') {
+        const q = JSON.parse(raw || '{}');
+        calls.push(`OR:${q.model}`);
+        if (bearer !== ORK) return send(res, 401, { error: { code: 401, message: 'User not found.' } });
+        if (/26b/.test(q.model)) return send(res, 403, { error: { code: 403, message: `${q.model} is only available on agentic harnesses.` } });
+        const pic = JSON.stringify(q.messages).includes('image_url');
+        return send(res, 200, { model: q.model, choices: [{ message: { role: 'assistant', content: `answer from OPENROUTER${pic ? ' with picture' : ''}` } }] });
+      }
+    }
     send(res, 404, { error: { code: 404, message: `mock has no ${req.method} ${u.pathname}` } });
   });
 });
@@ -72,7 +92,7 @@ await new Promise(r => mock.listen(MOCK, '127.0.0.1', r));
 /* ── A fresh database and the real Worker ── */
 const persist = fs.mkdtempSync(path.join(os.tmpdir(), 'aikeys-d1-'));
 execSync(`npx wrangler d1 migrations apply crmpro --local --persist-to ${persist}`, { stdio: 'ignore', env: { ...process.env, CI: '1' } });
-const vars = [`APP_ORIGIN:${B}`, `GEMINI_BASE:${G}`];
+const vars = [`APP_ORIGIN:${B}`, `GEMINI_BASE:${G}`, `OPENROUTER_BASE:${G}/or`];
 const wr = spawn('npx', ['wrangler', 'dev', '--local', '--port', String(PORT), '--inspector-port', String(INSPECT), '--persist-to', persist, ...vars.flatMap(v => ['--var', v])], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
 let wlog = '';
 wr.stdout.on('data', c => { wlog += c; }); wr.stderr.on('data', c => { wlog += c; });
@@ -161,6 +181,29 @@ r = await keys(T);
 ok('keys can be removed', r.d.keys?.length === 1, JSON.stringify(r.d.keys?.map(k => k.label)));
 ai = await apiS('ai.php', { token: C.token, accountId: C.acct, action: 'generate', request: { contents: [{ parts: [{ text: 'hi' }] }] } });
 ok('with every key refused, the customer gets one plain message', !ai.d.success && typeof ai.d.error === 'string' && ai.status < 500, JSON.stringify(ai.d));
+
+/* ── OpenRouter as a backup key (lib/openrouter.ts) ── */
+r = await keys(T, 'add', { apiKey: ORBAD, label: 'x' });
+ok('OpenRouter: a key OpenRouter refuses is not kept, said at its box', !r.d.success && /OpenRouter refused/.test(r.d.error) && r.d.field === 'aikeys.key', JSON.stringify(r.d));
+r = await keys(T, 'add', { apiKey: ORK, label: 'OpenRouter' });
+ok('OpenRouter: a working key is added beside the Google ones', r.d.success && r.d.keys?.some(k => k.label === 'OpenRouter'), JSON.stringify(r.d));
+calls = [];
+ai = await apiS('ai.php', { token: C.token, accountId: C.acct, action: 'generate', request: { contents: [{ parts: [{ text: 'Read this' }, { inlineData: { mimeType: 'image/png', data: 'iVBORw0KGgo=' } }] }] } });
+const orText = ai.d.response?.candidates?.[0]?.content?.parts?.[0]?.text;
+ok('OpenRouter: with the Google key refused, the customer is answered by OpenRouter, in Gemini\'s shape, the picture sent along', ai.d.success && orText === 'answer from OPENROUTER with picture', `${calls.join(' → ')} ${JSON.stringify(ai.d).slice(0, 300)}`);
+ok('…a free model that refuses this key is skipped for the next free one; classifiers and paid models are never asked', calls.indexOf('OR:google/gemma-4-26b-a4b-it:free') === 0 && calls.includes('OR:google/gemma-4-31b-it:free') && !calls.some(c => /safety|paid/.test(c)), calls.join(' → '));
+calls = [];
+ai = await apiS('ai.php', { token: C.token, accountId: C.acct, action: 'generate', request: { contents: [{ parts: [{ text: 'again' }] }] } });
+ok('…and the refusing model is remembered: the next call goes straight to the one that works', ai.d.success && !calls.includes('OR:google/gemma-4-26b-a4b-it:free') && calls.includes('OR:google/gemma-4-31b-it:free'), calls.join(' → '));
+calls = [];
+const tr2 = await api('intake.php', { token: C.token, accountId: C.acct, action: 'transcribe', mime: 'audio/wav', audio: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=' });
+r = await keys(T);
+const orRow = r.d.keys?.find(k => k.label === 'OpenRouter');
+ok('…a recording (which OpenRouter cannot hear) passes it by without resting it — nothing is sent to it', !calls.some(c => c.startsWith('OR:')) && orRow && !orRow.restingUntil, `${calls.join(' → ')} ${JSON.stringify(orRow)} ${JSON.stringify(tr2).slice(0, 200)}`);
+ok('…and no OpenRouter key on any answer', !r.text.includes(ORK) && !r.text.includes(ORK.slice(-8)));
+r = await keys(T, 'test', { index: r.d.keys.findIndex(k => k.label === 'OpenRouter') });
+ok('…"Test" on it asks OpenRouter and says it works', r.d.tested?.ok === true, JSON.stringify(r.d.tested));
+await keys(T, 'remove', { id: (await keys(T)).d.keys.find(k => k.label === 'OpenRouter').id });
 await keys(T, 'add', { apiKey: THIRD, label: 'Fresh project' });
 
 /* ── The card ── */

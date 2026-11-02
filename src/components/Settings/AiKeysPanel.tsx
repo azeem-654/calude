@@ -89,8 +89,14 @@ export default function AiKeysPanel() {
       <p style={{ fontSize: 12.5, color: MUTED, margin: '0 0 14px', lineHeight: 1.6 }}>
         Make each backup in a <strong>different Google Cloud project</strong> — keys in the same project share one quota, so
         they run out together. At <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style={{ color: INK, fontWeight: 600 }}>Google AI Studio <ExternalLink size={10} style={{ verticalAlign: 'middle' }} /></a>:
-        Create API key → Create API key in new project, then paste it below. A key is proved with Google before it is kept,
+        Create API key → Create API key in new project, then paste it below. A key is proved before it is kept,
         and never shown again.
+      </p>
+      <p style={{ fontSize: 12.5, color: MUTED, margin: '0 0 14px', lineHeight: 1.6 }}>
+        An <strong>OpenRouter</strong> key (<code>sk-or-…</code>, from <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" style={{ color: INK, fontWeight: 600 }}>openrouter.ai/keys <ExternalLink size={10} style={{ verticalAlign: 'middle' }} /></a>)
+        works here too: it is asked through OpenRouter's free models (Gemma, Nemotron and others — the list is read from OpenRouter, so it stays current),
+        including ones that read pictures. It cannot listen to recordings or search the web, so those go on to a Google key. On OpenRouter's free tier it
+        allows about 50 requests a day (1,000 after buying $10 of credit) — best kept as a backup below a Google key.
       </p>
 
       {keys.length === 0 && (
@@ -135,8 +141,8 @@ export default function AiKeysPanel() {
           <input style={inp} value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. Backup — project 2" maxLength={60} data-field="aikeys.label" />
         </label>
         <label style={{ fontSize: 12, fontWeight: 700, color: INK, display: 'grid', gap: 5 }}>
-          Google AI key
-          <input style={inp} type="password" autoComplete="off" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="AIza…" data-field="aikeys.key" />
+          Google AI key or OpenRouter key
+          <input style={inp} type="password" autoComplete="off" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="AIza… or sk-or-…" data-field="aikeys.key" />
         </label>
         <button style={{ ...b, justifyContent: 'center', padding: '10px 14px', background: INK, color: '#fff', borderColor: INK }} disabled={!!busy || !apiKey.trim()} onClick={add}>
           <Plus size={13} /> {busy === 'add' ? 'Checking with Google…' : 'Add backup key'}

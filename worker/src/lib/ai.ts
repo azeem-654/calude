@@ -17,6 +17,7 @@
 import { decryptSecret } from './crypto';
 import { installSecret, type Env } from './db';
 import { fingerprint, installPool, remember, withFailover, type Attempt } from './aiPool';
+import { isOpenRouterKey, askOpenRouter, verifyOpenRouterKey, adoptOpenRouterBase, CANNOT } from './openrouter';
 import { rateLimit } from './rateLimit';
 import { TRIAL_ENDED_MESSAGE, trialForWorkspace } from './trial';
 import { take as takeAllowance } from './allowanceStore';
@@ -26,7 +27,7 @@ const GOOGLE = 'https://generativelanguage.googleapis.com';
    the first `env` this isolate sees, since the callers below are handed a
    key and not an env (test/aikeys.e2e.mjs). */
 let BASE = GOOGLE;
-export function adoptAiBase(env: Env): void { BASE = (env.GEMINI_BASE ?? '').trim() || GOOGLE; }
+export function adoptAiBase(env: Env): void { BASE = (env.GEMINI_BASE ?? '').trim() || GOOGLE; adoptOpenRouterBase(env.OPENROUTER_BASE); }
 export const aiBase = () => BASE;
 
 /*
@@ -243,6 +244,8 @@ export async function askGeminiParts(
 async function askGeminiOnce(
   apiKey: string, parts: AiPart[], temperature: number, opts: { json?: boolean; fast?: boolean; timeoutMs?: number },
 ): Promise<Attempt<AiResult>> {
+  /* An OpenRouter key in the pool is asked through its own adapter (lib/openrouter.ts). */
+  if (isOpenRouterKey(apiKey)) return askOpenRouter(apiKey, { parts, temperature, json: opts.json !== false, timeoutMs: opts.timeoutMs });
   const failed = (status: number, raw: string): Attempt<AiResult> =>
     ({ ok: false, status, error: raw, value: { ok: false, text: '', error: friendly(status, raw) } });
   const asJson = opts.json !== false;
@@ -326,6 +329,7 @@ function friendly(status: number, raw: string): string {
 export async function verifyAiKey(apiKey: string): Promise<AiResult> {
   const k = (apiKey ?? '').trim();
   if (!k) return { ok: false, text: '', error: 'Enter an API key first.' };
+  if (isOpenRouterKey(k)) return verifyOpenRouterKey(k);
   try {
     const r = await fetch(`${BASE}/v1beta/models?key=${encodeURIComponent(k)}&pageSize=1`);
     if (r.ok) return { ok: true, text: '', error: '' };
@@ -394,6 +398,8 @@ export async function researchWeb(apiKey: string, question: string, max = 5): Pr
 async function researchOnce(apiKey: string, question: string, max: number): Promise<Attempt<WebResult>> {
   const failed = (status: number, raw: string): Attempt<WebResult> =>
     ({ ok: false, status, error: raw, value: { ok: false, findings: [], sources: [], error: friendly(status, raw) } });
+  /* Searching the web is Google's grounding; an OpenRouter key passes it on to the next key. */
+  if (isOpenRouterKey(apiKey)) return { ok: false, status: CANNOT, error: 'no web search', value: { ok: false, findings: [], sources: [], error: 'Searching the web needs a Google AI key.' } };
   const prompt = `Search the web for the most recent, genuinely new information on this, and report it.
 
 Question: ${question}

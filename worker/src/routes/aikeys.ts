@@ -33,8 +33,9 @@ export async function handleAiKeys(req: Request, env: Env): Promise<Response> {
   if (act === 'add') {
     const apiKey = String(d.apiKey ?? '').trim();
     if (!apiKey) return fail('Paste the API key first.', 200, { field: 'aikeys.key' });
-    if (!/^AIza[0-9A-Za-z_-]{30,}$/.test(apiKey)) {
-      return fail('That does not look like a Google AI key — they start "AIza". Make one at aistudio.google.com → Get API key.', 200, { field: 'aikeys.key' });
+    /* A Google AI key, or an OpenRouter key (lib/openrouter.ts — tried through its free models). */
+    if (!/^AIza[0-9A-Za-z_-]{30,}$/.test(apiKey) && !/^sk-or-[0-9A-Za-z_-]{20,}$/.test(apiKey)) {
+      return fail('That does not look like a Google AI key (they start "AIza", from aistudio.google.com) or an OpenRouter key (they start "sk-or-", from openrouter.ai/keys).', 200, { field: 'aikeys.key' });
     }
     const fp = await fingerprint(apiKey);
     const already = (await installPool(env)).some(k => k.fp === fp);
@@ -44,7 +45,7 @@ export async function handleAiKeys(req: Request, env: Env): Promise<Response> {
     /* Proved before it is kept: a mistyped key in the pool is a failure
        waiting for the moment the main key needs it. */
     const v = await verifyAiKey(apiKey);
-    if (!v.ok) return fail(`Google refused that key: ${v.error}`, 200, { field: 'aikeys.key' });
+    if (!v.ok) return fail(/^sk-or-/.test(apiKey) ? v.error : `Google refused that key: ${v.error}`, 200, { field: 'aikeys.key' });
     const label = String(d.label ?? '').trim().slice(0, 60);
     const { pos } = await env.DB.prepare('SELECT COALESCE(MAX(position), 0) AS pos FROM crm_ai_keys').first<{ pos: number }>() ?? { pos: 0 };
     await env.DB.prepare('INSERT INTO crm_ai_keys (id, position, label, credentials, fp, created_at) VALUES (?, ?, ?, ?, ?, ?)')

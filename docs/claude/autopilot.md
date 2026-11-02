@@ -222,7 +222,18 @@ the failure is the key's (429, 401/403, invalid/blocked/disabled key, 5xx, no
 answer) and not when it is the request's (a plain 400). A failed key rests
 (`crm_ai_key_health.cooldown_until`: 2 min rate limit, 1 h daily quota, 30 min
 refusal) and goes to the back. Any new direct Gemini call must go through
-`withFailover` too, or it skips the pool. `npm run test:aikeys` (self-contained:
+`withFailover` too, or it skips the pool. **OpenRouter keys** (`sk-or-…`, 2026-11,
+`lib/openrouter.ts`) sit in the same pool — a backup key on the AI keys card, or
+the `OPENROUTER_API_KEY` secret (after `AI_API_KEY`). A call that reaches one is
+turned into a chat completion on OpenRouter's **free** models (read from its
+`/models` list, ranked by family — Gemma, Nemotron Super/Ultra, DeepSeek … —
+never classifiers/code/music; a model that refuses the key is skipped for 6 h;
+`openrouter/free` last) and answered in Gemini's shape, so callers and the
+browser are unchanged. Images and PDFs go along; audio and web search answer
+status −2 (`CANNOT`: next key, no rest). Free tier ≈ 50 requests/day (1,000 with
+$10 credit): keep it below a Google key. Tested live 2026-11-02: JSON in ~2 s,
+a mail-settings screenshot read exactly; `test:aikeys` mocks it at
+`OPENROUTER_BASE`. `npm run test:aikeys` (self-contained:
 Gemini mock on :8833 via `GEMINI_BASE`, wrangler :8822, fresh D1). Customers are not asked for one, and the
 capability `needs` strings stopped mentioning it in the same commit that added
 the fallback — removing the ask before supplying the thing would have been a

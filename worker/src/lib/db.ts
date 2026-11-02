@@ -61,6 +61,10 @@ export interface Env {
    * looks; a workspace's own key always wins.
    */
   AI_API_KEY?: string;
+  /** An OpenRouter key, tried after the Google keys (lib/openrouter.ts). */
+  OPENROUTER_API_KEY?: string;
+  /** Tests only: an OpenRouter stand-in. */
+  OPENROUTER_BASE?: string;
   /**
    * Whether a stranger may make themselves an account on this deployment.
    *
