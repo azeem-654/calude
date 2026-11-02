@@ -1242,6 +1242,12 @@ function planAss(plan) {
     if (l.glow) ev.push(`Dialogue: 6,0:00:00.00,0:00:10.00,T,,0,0,0,,{${at}\\1a&HFF&\\3c&H000000&\\3a&H60&\\bord${l.glow}\\blur${Math.round(l.glow * 0.8)}\\shad0}${body}`);
     ev.push(`Dialogue: 7,0:00:00.00,0:00:10.00,T,,0,0,0,,{${at}\\3c&H000000&\\bord${l.stroke}\\shad${l.shadow}\\4c&H000000&\\4a&H30&}${body}`);
   }
+  if (plan.bubble) {
+    /* The face's frame: a blurred ring of the accent (the glow's bright edge), then a crisp one. */
+    const b = plan.bubble;
+    ev.push(shape(2, `\\1a&HFF&\\3c${assHex(b.ring)}\\bord${b.t * 2}\\blur${b.t * 2}\\shad0`, ellipse(b.cx, b.cy, b.r, b.r)));
+    ev.push(shape(3, `\\1a&HFF&\\3c${assHex(b.ring)}\\bord${b.t}\\shad0`, ellipse(b.cx, b.cy, b.r + b.t / 2, b.r + b.t / 2)));
+  }
   if (plan.ring) {
     const r = plan.ring;
     ev.push(shape(9, `\\1a&HFF&\\3c${assHex(r.color)}\\bord${r.t}\\shad0`, ellipse(r.cx, r.cy, r.rx, r.ry)));
@@ -1291,14 +1297,24 @@ function planGraph(plan, frameA, frameB) {
     parts.push(`[sa][sb]${plan.split.vertical ? 'vstack' : 'hstack'},${div}:color=${d.color.replace('#', '0x')}@1:t=fill[p0]`);
     cur = 'p0';
   } else {
-    if (plan.spot) parts.push(`[${frameA}]split=2[base][sharp]`);
-    parts.push(`[${plan.spot ? 'base' : frameA}]${crop(plan.crop)},${grade(g.blur)}[p0]`);
+    /* One read of the frame, split for each plane that shows it. */
+    const uses = ['base', ...(plan.spot ? ['sharp'] : []), ...(plan.card ? ['cardsrc'] : []), ...(plan.bubble ? ['bubsrc'] : [])];
+    if (uses.length > 1) parts.push(`[${frameA}]split=${uses.length}${uses.map(u => `[${u}]`).join('')}`);
+    parts.push(`[${uses.length > 1 ? 'base' : frameA}]${crop(plan.crop)},${grade(g.blur)}[p0]`);
     cur = 'p0';
   }
   plan.fills.forEach((f, i) => {
     parts.push(`${fillSource(f, W, H)}[f${i}]`, `[${cur}][f${i}]overlay=format=auto[q${i}]`);
     cur = `q${i}`;
   });
+  if (plan.card) {
+    /* "modern": the whole frame as a screenshot card — a soft shadow under it, a white border round it. */
+    const c = plan.card, sh = n0(c.shadow);
+    parts.push(`[${cur}]drawbox=x=${n0(c.x + sh * 0.6)}:y=${n0(c.y + sh)}:w=${n0(c.w)}:h=${n0(c.h)}:color=black@0.45:t=fill[cs]`);
+    parts.push(`[cardsrc]crop=${n0(c.crop.w)}:${n0(c.crop.h)}:${n0(c.crop.x)}:${n0(c.crop.y)},scale=${n0(c.w)}:${n0(c.h)},setsar=1,eq=contrast=1.08:saturation=1.2,unsharp=5:5:0.5,drawbox=x=0:y=0:w=iw:h=ih:color=${c.border.replace('#', '0x')}@1:t=${n0(c.t)}[card]`);
+    parts.push(`[cs][card]overlay=x=${n0(c.x)}:y=${n0(c.y)}:format=auto[cd]`);
+    cur = 'cd';
+  }
   if (plan.halo) {
     /* The accent glowing behind the subject: a soft ellipse a little wider than the spotlight, which then covers its middle. */
     const h = plan.halo;
@@ -1306,6 +1322,13 @@ function planGraph(plan, frameA, frameB) {
     const dist = `hypot((X-${h.cx.toFixed(1)})/${h.rx.toFixed(1)},(Y-${h.cy.toFixed(1)})/${h.ry.toFixed(1)})`;
     parts.push(`color=c=black:s=${W}x${H}:d=1,format=rgba,geq=r='${hr}':g='${hg}':b='${hb}':a='${HALO.max}*clip((${HALO.outer}-${dist})/${HALO.soft},0,1)*clip((${dist}-${HALO.inner})/${HALO.rise},0,1)'[halo]`, `[${cur}][halo]overlay=format=auto[h1]`);
     cur = 'h1';
+  }
+  if (plan.bubble) {
+    /* The found face, cropped square, shown round (its edge anti-aliased by a pixel and a half). */
+    const b = plan.bubble, d = Math.max(8, n0(b.r * 2)), r = d / 2;
+    parts.push(`[bubsrc]crop=${n0(b.crop.w)}:${n0(b.crop.h)}:${n0(b.crop.x)}:${n0(b.crop.y)},scale=${d}:${d},setsar=1,eq=contrast=1.12:saturation=1.3,unsharp=5:5:0.6,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='255*clip((${r.toFixed(1)}-hypot(X-${r.toFixed(1)},Y-${r.toFixed(1)}))/1.5,0,1)'[bub]`);
+    parts.push(`[${cur}][bub]overlay=x=${n0(b.cx - r)}:y=${n0(b.cy - r)}:format=auto[bb]`);
+    cur = 'bb';
   }
   if (plan.spot) {
     const s = plan.spot;

@@ -3,7 +3,7 @@
  * designer previews. The module itself is plain JavaScript so the engine
  * image runs it unbuilt; the app and the Worker import it through these.
  */
-export type TrendLayout = 'bold' | 'callout' | 'cinematic' | 'split' | 'number' | 'glow' | 'headline' | 'short';
+export type TrendLayout = 'bold' | 'callout' | 'cinematic' | 'split' | 'number' | 'glow' | 'headline' | 'short' | 'modern';
 export type StickerName = 'check' | 'cross' | 'up' | 'down' | 'money' | 'alert' | 'question' | 'star';
 export type Side = 'auto' | 'left' | 'right' | 'center';
 export type TextPos = 'auto' | 'top' | 'middle' | 'bottom';
@@ -48,6 +48,10 @@ export interface Plan {
   tile: (Rect & { color: string }) | null;
   split: { vertical: boolean; divider: { color: string; t: number }; vs: { cx: number; cy: number; r: number; color: string; ink: string; text: string } | null } | null;
   rule: (Rect & { color: string }) | null;
+  /** "modern": the whole frame as a bordered screenshot card (crop in source pixels). */
+  card: (Rect & { crop: Rect; border: string; t: number; shadow: number }) | null;
+  /** "modern": the found face, cropped square (source pixels), shown round at (cx, cy) with an outline. */
+  bubble: { cx: number; cy: number; r: number; crop: Rect; ring: string; t: number } | null;
   faceAt: Ellipse | null;
 }
 

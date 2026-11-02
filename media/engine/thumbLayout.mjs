@@ -32,6 +32,12 @@
  *              a spotlight, not a cut-out (background removal needs a provider)
  *   headline   words first: huge stacked lines over a darkened frame
  *   short      the 9:16 Shorts cover: face high, a strip on top, words low
+ *   modern     today's tutorial/review look (2026-11, the owner's examples
+ *              "CRM TUTORIAL", "OPEN SOURCE", "Best WhatsApp CRM …"): a
+ *              saturated gradient over the blurred frame, the whole frame
+ *              as a bordered screenshot card, the speaker's face large in
+ *              a round frame with a glowing outline, huge words beside —
+ *              the face is the found face, cropped, never a cut-out
  *
  * Layout names, sticker names and every choice are fixed lists here. A request
  * carries names, numbers and colours; anything else falls back to a default.
@@ -39,7 +45,7 @@
  * from this plan's numbers, and the words go only into ASS text (escaped).
  */
 
-export const TREND_LAYOUTS = ['bold', 'callout', 'cinematic', 'split', 'number', 'glow', 'headline', 'short'];
+export const TREND_LAYOUTS = ['bold', 'callout', 'cinematic', 'split', 'number', 'glow', 'headline', 'short', 'modern'];
 export const STICKERS = ['check', 'cross', 'up', 'down', 'money', 'alert', 'question', 'star'];
 export const SIDES = ['auto', 'left', 'right', 'center'];
 export const TEXT_POS = ['auto', 'top', 'middle', 'bottom'];
@@ -84,7 +90,7 @@ export function normaliseSpec(it) {
     textColor: hex(s.textColor, '#ffffff'),
     border: s.border !== false,
     zoom: clamp(s.zoom, 0, 1, 0.5),
-    hlStyle: pick(s.hlStyle, HL_STYLES, layout === 'glow' || layout === 'headline' || layout === 'short' ? 'box' : 'color'),
+    hlStyle: pick(s.hlStyle, HL_STYLES, layout === 'glow' || layout === 'headline' || layout === 'short' || layout === 'modern' ? 'box' : 'color'),
     side: pick(s.side, SIDES, 'auto'),
     textPos: pick(s.textPos, TEXT_POS, 'auto'),
     textSize: clamp(s.textSize, 0.6, 1.4, 1),
@@ -250,6 +256,7 @@ export function thumbPlan(it, W, H, src, face, face2 = null) {
     fills: [], spot: null, halo: null, vignette: false, bars: 0,
     edge: sp.border ? { color: sp.accent, t: Math.round(Math.min(W, H) * 0.018) } : null,
     lines: [], ring: null, arrow: null, sticker: null, badge: null, tile: null, split: null, rule: null,
+    card: null, bubble: null,
   };
   /** The words' side when the face is on the other: the face goes where `side` says, or where it is. */
   const faceLeft = sp.side === 'left' ? true : sp.side === 'right' ? false : fx <= 0.5;
@@ -258,7 +265,9 @@ export function thumbPlan(it, W, H, src, face, face2 = null) {
   const pointer = sp.pointer === 'auto' ? (layout === 'callout' ? 'both' : 'none') : sp.pointer;
   let faceAt = null;
 
-  if (layout === 'bold' || layout === 'number' || layout === 'glow' || layout === 'headline' || layout === 'short') {
+  if (layout === 'modern') {
+    faceAt = modernPlan(plan, sp, face, srcW, srcH, faceLeft, vAnchor);
+  } else if (layout === 'bold' || layout === 'number' || layout === 'glow' || layout === 'headline' || layout === 'short') {
     if (portrait) {
       const fh = layout === 'short' ? 0.26 + 0.14 * sp.zoom : layout === 'headline' ? 0.2 : 0.3 + 0.18 * sp.zoom;
       const a = aim(0.5, layout === 'short' ? 0.34 : 0.32, fh);
@@ -446,6 +455,80 @@ export function thumbPlan(it, W, H, src, face, face2 = null) {
     if (shape) plan.sticker = { name: sp.sticker, cx: Math.round(cx), cy: Math.round(cy), r, ...shape };
   }
   return plan;
+}
+
+/**
+ * "modern": three planes over a colour field.
+ *   1. The frame, cover-cropped, heavily blurred and drenched in the gradient
+ *      (high-contrast, saturated) — the background.
+ *   2. The frame again, whole, as a screenshot card with a white border and a
+ *      drop shadow — for a screen recording, that is the product on screen.
+ *      A talking head (the face is a big part of the frame) has no card: the
+ *      same face twice reads as a mistake.
+ *   3. The found face, cropped square round the head and shown round, large,
+ *      with a glow of the accent behind it and a crisp outline — the closest
+ *      honest thing to the cut-out creators use (that needs background
+ *      removal, which is not here). No face found: no bubble, a bigger card.
+ * The words take the other side, huge, two a line, one boxed.
+ * Returns where the face lands (the bubble), so the ring, arrow and sticker
+ * place themselves round it as in every other layout.
+ */
+function modernPlan(plan, sp, face, srcW, srcH, faceLeft, vAnchor) {
+  const { W, H, portrait } = plan;
+  const c0 = sp.color, c1 = sp.color2 || shade(sp.color, 0.55);
+  const head = face && face.h >= 0.3;
+  /* Cover crop of the whole frame for the background. */
+  const cover = (aw, ah) => {
+    const s = Math.max(aw / srcW, ah / srcH);
+    const cw = aw / s, ch = ah / s;
+    return { x: Math.round((srcW - cw) / 2), y: Math.round((srcH - ch) / 2), w: Math.round(cw), h: Math.round(ch) };
+  };
+  plan.crop = cover(W, H);
+  plan.grade = { contrast: 1.15, saturation: 1.4, brightness: -0.08, sharpen: false, cinematic: false, blur: Math.round(Math.min(W, H) * 0.025) };
+  plan.fills = [{ alpha: { axis: 'full', max: 0.84 }, c0solid: c0, c1solid: c1, angle: 135 }];
+  const right = !faceLeft || sp.side === 'center';
+  /* Where each plane goes, as fractions of the picture. */
+  let cardBox = null, bub = null, area;
+  if (portrait) {
+    area = { x: 0.06, y: 0.045, w: 0.88, h: 0.28 };
+    if (sp.textPos === 'bottom') area = { x: 0.06, y: 0.68, w: 0.88, h: 0.27 };
+    const top = sp.textPos === 'bottom' ? 0.06 : 0.35;
+    if (!face) cardBox = { x: 0.04, y: top + 0.02, w: 0.92 };
+    else if (head) bub = { cx: 0.5, cy: top + 0.27, r: 0.42 };
+    else { cardBox = { x: 0.05, y: top, w: 0.9 }; bub = { cx: 0.5, cy: top + 0.4, r: 0.3 }; }
+  } else {
+    const tx = right ? 0.035 : 0.505;
+    area = { x: tx, y: 0.08, w: 0.46, h: 0.84 };
+    if (!face) cardBox = { x: right ? 0.5 : 0.03, y: 0.24, w: 0.47 };
+    else if (head) bub = { cx: right ? 0.75 : 0.25, cy: 0.5, r: 0.42 * (H / W) * 1.0 };
+    else { cardBox = { x: right ? 0.5 : 0.03, y: 0.09, w: 0.47 }; bub = { cx: right ? 0.8 : 0.2, cy: 0.66, r: 0.29 * (H / W) }; }
+  }
+  if (cardBox) {
+    const w = cardBox.w * W, h = (w * 9) / 16;
+    const c = cover(w, h);
+    plan.card = { ...roundBox({ x: cardBox.x * W, y: cardBox.y * H, w, h }), crop: c, border: '#ffffff', t: Math.max(3, Math.round(Math.min(W, H) * 0.008)), shadow: Math.round(Math.min(W, H) * 0.02) };
+  }
+  let at = null;
+  if (bub && face) {
+    /* r is a fraction of the width: a circle is round in pixels. */
+    const r = Math.round(bub.r * W * (1 + 0.15 * (sp.zoom - 0.5)));
+    const cx = Math.round(bub.cx * W), cy = Math.round(bub.cy * H);
+    /* The square of the frame round the head: the face half its height, a little above the middle. */
+    const fpx = face.h * srcH;
+    const side = Math.min(srcW, srcH, Math.max(16, fpx / (0.46 + 0.16 * sp.zoom)));
+    const fcx = (face.x + face.w / 2) * srcW, fcy = (face.y + face.h / 2) * srcH;
+    const x = Math.min(srcW - side, Math.max(0, fcx - side / 2)), y = Math.min(srcH - side, Math.max(0, fcy - side * 0.44));
+    plan.bubble = { cx, cy, r, crop: { x: Math.round(x), y: Math.round(y), w: Math.round(side), h: Math.round(side) }, ring: sp.accent, t: Math.max(4, Math.round(r * 0.045)) };
+    plan.halo = { cx, cy, rx: r, ry: r, feather: 0.3, color: sp.accent };
+    const k = (2 * r) / side;
+    at = { cx: cx - r + (fcx - x) * k, cy: cy - r + (fcy - y) * k, rx: (face.w * srcW * k) / 2, ry: (fpx * k) / 2 };
+  }
+  const box = { x: area.x * W, y: area.y * H, w: area.w * W, h: area.h * H };
+  /* Two or three words stack one a line, as big as the column takes ("CRM / TUTORIAL"). */
+  const few = sp.text.split(' ').filter(Boolean).length <= 3;
+  plan.lines = setLines(sp, box, { size: H * (portrait ? 0.1 : 0.2), per: few && !portrait ? 1 : 2, maxLines: 4, align: portrait ? 'center' : 'left', anchor: vAnchor('middle'), color: sp.textColor, box: sp.accent, gap: 1.02 })
+    .map(l => ({ ...l, stroke: l.box ? 0 : Math.max(3, Math.round(l.fs * 0.09)), glow: l.box ? 0 : Math.round(l.fs * 0.22) }));
+  return at;
 }
 
 const roundBox = b => ({ x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h) });
