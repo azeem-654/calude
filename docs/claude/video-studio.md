@@ -90,7 +90,7 @@ export is a canvas recording; Video Studio is the real one.
   make a Short). It opens on a **welcome wizard** (`WelcomeWizard.tsx`: eight goals,
   each asking only its own choices, `want` sent to `create`).
 - **Sound and music.** `doc.audio.denoise` (off/light/medium/strong), `voice`,
-  `volume`, heard in the render only (and the Audio tab says so). `doc.music` is set
+  `volume` — heard live in the player since 2026-11 (see **Sound steps**). `doc.music` is set
   **only by the server** (`music.set` filtered from browser edits): an **Openverse**
   track (`lib/video/music.ts` — CC0, PDM and CC BY only, re-read by id, stored in
   R2 with its licence, previews proxied by the Worker) or the customer's upload with
@@ -355,9 +355,46 @@ export is a canvas recording; Video Studio is the real one.
   Export used to scroll to an empty board. Escape closes it; "Thumbnails,
   words and more" goes on to the board.
 - **The guided path** (`GuidePath` in `VideoEditor.tsx`): Clean up → Sound →
-  Look → Zoom (screen recordings) → Text → Logo → Captions → Export, above
-  every editing panel, one line on what each does, a tick where something is
-  set (read from the doc), "Next".
+  Look → Zoom (screen recordings) → Text → Logo → Captions → Export, a tick
+  where something is set (read from the doc). Since 2026-11 the menu is
+  **inside the panel's scroll** and the step's line + "Next" (`GuideNext`)
+  are at the **end** of the settings: fixed above them, on a laptop the
+  menu and the line left the Sound settings a sliver (the owner's screenshot).
+- **Sound steps** (2026-11, `media/engine/soundPlan.mjs`, plain JS + `.d.mts`,
+  re-exported by `services/videoStudio.ts`): the voice chain is a list of
+  named steps (rumble, hum, declick, noise, deess, tone, gate, even / voice),
+  read by three places — **change it there only**: the engine runs **one
+  FFmpeg pass per step** on the edited sound (`soundPasses`: the first cuts on
+  the 1/30 s grid, f32 WAV between passes so nothing clips) and reports
+  `sound:<key>`; Progress lists them by label ("Removing background noise on
+  a strong level", "Converting to Studio Sound … (strength 80%)") with each
+  pass's percentage (`renderSteps` in `ActivityPanel.tsx`); the player plays
+  them **live** (`liveSound.ts`: both deck elements through Web Audio —
+  biquads, `DynamicsCompressor`, RNNoise via `@sapphi-red/web-noise-suppressor`
+  (MIT, wasm + worklet as `?url` assets), the soft gate in
+  `public/worklets/soft-gate.js` (CSP: no blob: worklets)). Click repair and
+  the −16 LUFS loudness are render-only, said under `vs-live-sound`. A
+  cross-origin preview is never routed (Web Audio would get silence). With no
+  fixes the render keeps its single pass (`needsSoundPasses`). The joined
+  steps are pinned to the old one-pass chain in `test:video`. Engine measured
+  locally: eight passes, 26 s out, −16.0 LUFS.
+- **Studio Sound's strengths are choices** (Gentle 30 / Balanced 60 / Strong
+  80 / Maximum 100, `data-studio-level`) with a fine-tune slider — no longer
+  behind an `EffectRow` settings icon. **"Apply to the video now"** replaces
+  "Make the video with this sound": with no output it switches the long video
+  on and renders it in place; the made file replaces the last one.
+- **Player sizes**: normal, **big** (`.vse.big`, the script moves under the
+  video, remembered in `crm_vs_big`, `vs-big` event) and **full screen** with
+  the controls inside it (the HUD is portalled to the transport row, which
+  full screen left behind). When a render finishes, `vse-done` says the
+  changes are applied and offers **Play from the start**.
+- **Smoothness (2026-11)**: the editor's `time` state changes only while the
+  player is paused/seeked; while playing it lives in `timeRef` (`ctx.time` is
+  a getter on it, so presses read the live playhead) and the script follows
+  the `vs-frame` event, re-rendering only when the spoken word changes — four
+  editor-wide re-renders a second (script, timeline, panels, the board's
+  videos) were under the playing video. A poll identical to the last one is
+  dropped before it reaches React (`sigRef`).
 - **Text anywhere** (`Overlay.x/y/size/font/bold/italic/icon/speed`, clamped
   in `overlayExtras`; styles `subtitle` "Description", `ticker`, `camlabel`
   "Name under camera"): `overlayPlace` and `OVERLAY_SIZE` are shared by the

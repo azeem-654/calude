@@ -8,10 +8,12 @@
  * A job's own `stage` is the engine's word for where it is (download, probe,
  * sound, proxy… loudness, render, check, upload) and its percentage is
  * FFmpeg's clock or pieces transcribed. A small step is "done" only because a
- * later one has started; nothing ticks on a timer. The noise removal, Studio
- * Sound, captions, logo and words on screen are one FFmpeg pass, so they are
- * listed as "in this pass" under the render with the pass's own percentage —
- * never as separate steps finishing one by one, which they are not.
+ * later one has started; nothing ticks on a timer. The sound fixes are passes
+ * of their own (media/engine/soundPlan.mjs — one per step, `sound:<key>`), so
+ * each is a step here by its name ("Removing background noise on a strong
+ * level") with its own percentage. Captions, logo and words on screen are
+ * drawn in the render pass itself, so they are listed as "in this pass" with
+ * that pass's percentage — never as steps finishing one by one.
  *
  * The overall number covers every stage, not only the first four: the old
  * bar said "Ready 100%" while faces were still being found and the videos
@@ -19,7 +21,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Check, X, Loader, RefreshCw, AlertCircle, Clock, CircleDashed, Undo2, Save, Sparkles, ArrowLeft } from 'lucide-react';
-import type { ProjectView, VideoDoc, Stage } from '../../services/videoStudio';
+import { soundSteps, type ProjectView, type VideoDoc, type Stage } from '../../services/videoStudio';
 import { useCreep, useEta, etaWords } from './progress';
 
 export interface ChangeItem { id: string; note: string; state: 'queued' | 'saving' | 'done' | 'failed'; at: number; version?: number; why?: string }
@@ -34,9 +36,17 @@ const PREPARE: [string, string][] = [
   ['download', 'Fetching the recording'], ['probe', 'Reading its format'], ['sound', 'Measuring the sound and the pauses'],
   ['audio', 'Cutting the sound into pieces to transcribe'], ['proxy', 'Making the editing preview'], ['poster', 'Taking the cover picture'], ['filmstrip', 'Making the filmstrip'],
 ];
-const RENDER: [string, string][] = [
-  ['download', 'Fetching the recording'], ['loudness', 'Measuring loudness (pass 1 of 2)'], ['render', 'Rendering'], ['check', 'Checking the finished file'], ['upload', 'Saving the file'],
-];
+/** A render's steps: each sound fix by name (when there are any beyond the plain high-pass), then loudness, the render, the check. */
+function renderSteps(doc: VideoDoc | null): [string, string][] {
+  const sound = doc ? soundSteps(doc.audio) : [];
+  const levelled = !!doc && (doc.audio.loudnorm !== false || !!doc.audio.studio);
+  return [
+    ['download', 'Fetching the recording'],
+    ...(sound.length > 1 ? sound.map(st => [`sound:${st.key}`, st.label] as [string, string]) : []),
+    ...(levelled ? [['loudness', 'Measuring loudness over the whole video (pass 1 of 2)'] as [string, string]] : []),
+    ['render', 'Rendering the picture and mixing the sound'], ['check', 'Checking the finished file'], ['upload', 'Saving the file'],
+  ];
+}
 const THUMBS: [string, string][] = [['frame', 'Choosing frames'], ['thumbnail', 'Painting the thumbnails'], ['upload', 'Saving them']];
 
 /** Small steps from a job's stage: the ones before it done, it active (with its percentage), the rest waiting. */
@@ -55,13 +65,8 @@ function inThisPass(doc: VideoDoc | null, kind: 'long' | 'short'): string[] {
   const a = doc.audio, out: string[] = [];
   const cuts = doc.cuts.filter(c => c.state === 'approved').length;
   if (cuts) out.push(`${cuts} cut${cuts === 1 ? '' : 's'} taken out`);
-  if (a.hum && a.hum !== 'off') out.push(`${a.hum} Hz hum removed`);
-  if (a.declick) out.push('clicks and pops repaired');
-  if (a.studio) out.push(`Studio Sound (${a.strength ?? 60}%)`);
-  else if (a.denoise !== 'off') out.push(`${a.denoise} background-noise removal`);
-  if (a.gate) out.push('room noise between sentences lowered');
-  if (!a.studio && a.voice) out.push('voice clarity');
-  if (a.loudnorm || a.studio) out.push('even loudness, −16 LUFS (pass 2 of 2)');
+  if ((a.volume ?? 1) !== 1) out.push(`voice level ${Math.round((a.volume ?? 1) * 100)}%`);
+  if (a.loudnorm !== false || a.studio) out.push('loudness set to −16 LUFS (pass 2 of 2)');
   if (doc.music && (doc.music.applyTo === 'all' || (doc.music.applyTo === 'long') === (kind === 'long'))) out.push(`music “${doc.music.title.slice(0, 30)}”`);
   if (doc.captions.on && doc.captions.burn) out.push('captions');
   const ov = doc.overlays?.length ?? 0;
@@ -235,7 +240,7 @@ function RenderJobs({ view, doc }: { view: ProjectView; doc: VideoDoc | null }) 
         const o = view.outputs.find(x => x.id === j.target);
         const kind = o?.kind ?? 'long';
         const name = !o ? 'A video' : o.kind === 'long' ? 'Long video' : `Short ${shorts.findIndex(x => x.id === o.id) + 1}`;
-        const steps = walk(RENDER, j.state === 'running' ? j : undefined, false);
+        const steps = walk(renderSteps(doc), j.state === 'running' ? j : undefined, false);
         const within = inThisPass(doc, kind);
         return (
           <div key={j.id} className="vs-act-job" data-render={j.target} data-state={j.state}>
@@ -243,7 +248,7 @@ function RenderJobs({ view, doc }: { view: ProjectView; doc: VideoDoc | null }) 
             {j.state === 'running' && steps.map(m => (
               <div key={m.key} className={`vs-act-mrow ${m.state}`}>
                 <StateIcon state={m.state} /><span>{m.label}</span><span className="vs-act-pct-sm">{m.state === 'active' ? (m.pct !== null ? `${m.pct}%` : '…') : ''}</span>
-                {m.key === 'render' && m.state === 'active' && m.pct !== null && <div className="vs-bar vs-act-bar"><i style={{ width: `${m.pct}%` }} /></div>}
+                {(m.key === 'render' || m.key.startsWith('sound:')) && m.state === 'active' && m.pct !== null && <div className="vs-bar vs-act-bar"><i style={{ width: `${m.pct}%` }} /></div>}
               </div>
             ))}
             {j.state === 'running' && within.length > 0 && (

@@ -334,7 +334,7 @@ function CompositionMenu({ ctx }: { ctx: EditorCtx }) {
  */
 const GUIDE: { key: Sub | 'exports'; label: string; icon: typeof Film; what: string; set: (d: VideoDoc, v: ProjectView) => boolean; screenOnly?: boolean }[] = [
   { key: 'cleanup', label: 'Clean up', icon: Wand2, what: 'Remove filler words, long pauses and retakes — or strike words in the script on the left.', set: d => d.cuts.some(c => c.state === 'approved') },
-  { key: 'audio', label: 'Sound', icon: AudioLines, what: 'Studio Sound, background noise, hum, clicks and even loudness — applied when the video is made.', set: d => !!d.audio.studio || d.audio.denoise !== 'off' || (!!d.audio.hum && d.audio.hum !== 'off') || !!d.audio.declick || !!d.audio.gate },
+  { key: 'audio', label: 'Sound', icon: AudioLines, what: 'Studio Sound, background noise, hum, clicks and even loudness — heard in the player as you change them; Apply puts them into the video.', set: d => !!d.audio.studio || d.audio.denoise !== 'off' || (!!d.audio.hum && d.audio.hum !== 'off') || !!d.audio.declick || !!d.audio.gate },
   { key: 'adjust', label: 'Look', icon: Palette, what: 'Colour, brightness and a filter for the picture.', set: d => !!d.look && JSON.stringify(d.look.long) !== JSON.stringify(lookOf({}, 'long')) },
   { key: 'pointer', label: 'Zoom', icon: ZoomIn, what: 'Zoom in where you click and talk about the screen (Screen Recorder recordings).', set: d => !!d.pointer?.focus.length, screenOnly: true },
   { key: 'text', label: 'Text', icon: Type, what: 'A title and description, a lower third, a scrolling ticker or a name under your camera — placed and sized as you like.', set: d => !!d.overlays?.length },
@@ -353,7 +353,6 @@ function GuidePath({ ctx, sub, go }: { ctx: EditorCtx; sub: Sub; go: (t: PanelTa
   const steps = GUIDE.filter(g => !g.screenOnly || ctx.screen);
   const at = steps.findIndex(g => g.key === sub);
   const here = at >= 0 ? steps[at] : null;
-  const next = at >= 0 ? steps[at + 1] : null;
   const [open, setOpen] = useState(() => { try { return localStorage.getItem('crm_vs_guide') !== 'closed'; } catch { return true; } });
   const flip = () => setOpen(o => { try { localStorage.setItem('crm_vs_guide', o ? 'closed' : 'open'); } catch { /* private window */ } return !o; });
   const done = steps.filter(g => g.set(ctx.doc, ctx.view)).length;
@@ -382,12 +381,24 @@ function GuidePath({ ctx, sub, go }: { ctx: EditorCtx; sub: Sub; go: (t: PanelTa
           })}
         </ol>
       )}
-      {here && (
-        <div className="vs-guide-here">
-          <span>{here.what}</span>
-          {next && <button type="button" className="vs-btn ghost sm" onClick={() => go(next.key as PanelTab)} data-act="guide-next">Next: {next.label} <ArrowRight size={13} /></button>}
-        </div>
-      )}
+    </div>
+  );
+}
+
+/**
+ * What the step in hand does, and "Next", at the END of its settings. Above
+ * them (inside the menu) this box pushed the settings out of a laptop-height
+ * panel — the owner saw only "Next: Look" and a sliver of the Sound controls.
+ */
+function GuideNext({ ctx, sub, go }: { ctx: EditorCtx; sub: Sub; go: (t: PanelTab) => void }) {
+  const steps = GUIDE.filter(g => !g.screenOnly || ctx.screen);
+  const at = steps.findIndex(g => g.key === sub);
+  if (at < 0) return null;
+  const here = steps[at], next = steps[at + 1];
+  return (
+    <div className="vs-guide-here vs-guide-foot" data-testid="vs-guide-next">
+      <span><b>Step {at + 1} of {steps.length} · {here.label}.</b> {here.what}</span>
+      {next && <button type="button" className="vs-btn ghost sm" onClick={() => go(next.key as PanelTab)} data-act="guide-next">Next: {next.label} <ArrowRight size={13} /></button>}
     </div>
   );
 }
@@ -413,6 +424,7 @@ function SidePanel({ ctx, group, sub, setSub, onClose, messages, commandRef, act
   ctx: EditorCtx; group: Group; sub: Sub; setSub: (s: Sub) => void; onClose: () => void; messages: ChatMsg[]; commandRef: React.RefObject<HTMLInputElement | null>; activity: React.ReactNode; ops: OpItem[];
 }) {
   const subs = SUBS[group];
+  const guided = group !== 'activity' && group !== 'media' && group !== 'project';
   const sentences = useMemo(() => ctx.transcript ? sentencesOf(ctx.transcript.words) : [], [ctx.transcript]);
   return (
     <section className="vse-panel" aria-label={RAIL.find(r => r.key === group)?.label} data-group={group}>
@@ -427,8 +439,9 @@ function SidePanel({ ctx, group, sub, setSub, onClose, messages, commandRef, act
         </div>
       )}
       {group !== 'activity' && <NowStrip ops={ops} view={ctx.view} onOpen={() => setSub('activity')} />}
-      {group !== 'activity' && group !== 'media' && group !== 'project' && <GuidePath ctx={ctx} sub={sub} go={t => setSub(t as Sub)} />}
       <div className="vse-scroll">
+        {/* The steps menu scrolls with the settings (fixed above them, on a laptop it left the settings a sliver). */}
+        {guided && <GuidePath ctx={ctx} sub={sub} go={t => setSub(t as Sub)} />}
         {sub === 'activity' && activity}
         {sub === 'shorts' && <ShortsPanel ctx={ctx} sentences={sentences} />}
         {sub === 'reuse' && <ReusePanel ctx={ctx} />}
@@ -452,6 +465,7 @@ function SidePanel({ ctx, group, sub, setSub, onClose, messages, commandRef, act
         {sub === 'music' && <MusicPanel ctx={ctx} />}
         {sub === 'captions' && <CaptionsPanel ctx={ctx} />}
         {sub === 'media' && <MediaPanel ctx={ctx} />}
+        {guided && <GuideNext ctx={ctx} sub={sub} go={t => setSub(t as Sub)} />}
       </div>
     </section>
   );
@@ -477,6 +491,22 @@ export default function VideoEditor({ id }: { id: string }) {
   const [group, setGroup] = useState<Group | null>(() => groupOf(asked) ?? (narrow() ? null : 'ai'));
   const [sub, setSub] = useState<Sub>(() => (groupOf(asked) ? asked as Sub : 'tools'));
   const [time, setTime] = useState(0);
+  /* Where the player is, always current; `time` (state) changes only while it is paused or seeked.
+     Told four times a second while playing, the whole editor — script, timeline, panels, the board
+     and its videos — re-rendered under the playing video: a cause of the stutter the owner saw. The
+     word being said follows the player's own frame event (TranscriptEditor). */
+  const timeRef = useRef(0);
+  const playingRef = useRef(false);
+  const [big, setBig] = useState(false);
+  const [doneNote, setDoneNote] = useState('');
+  const sigRef = useRef('');
+  useEffect(() => {
+    const onPlay = (e: Event) => { playingRef.current = !!(e as CustomEvent<boolean>).detail; if (!playingRef.current) setTime(timeRef.current); };
+    const onBig = (e: Event) => setBig(!!(e as CustomEvent<boolean>).detail);
+    window.addEventListener('vs-play-state', onPlay);
+    window.addEventListener('vs-big', onBig);
+    return () => { window.removeEventListener('vs-play-state', onPlay); window.removeEventListener('vs-big', onBig); };
+  }, []);
   const [selection, setSelection] = useState<{ i0: number; i1: number } | null>(null);
   const [activeClip, setActiveClip] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -536,6 +566,10 @@ export default function VideoEditor({ id }: { id: string }) {
      here while it was on its way. */
   const epoch = useRef(0);
   const absorb = useCallback(async (v: ProjectView, asked = epoch.current) => {
+    /* A poll that brings back exactly what is on screen changes nothing — and re-renders nothing. */
+    const sig = JSON.stringify(v);
+    if (sig === sigRef.current) return;
+    sigRef.current = sig;
     let d = doc;
     if (v.doc && asked === epoch.current) { d = v.doc; setDoc(v.doc); setVersion(v.docVersion); }
     narrate(prev.current, v, d);
@@ -565,15 +599,26 @@ export default function VideoEditor({ id }: { id: string }) {
 
   /* Poll while anything is moving; slow down when nothing is. */
   const moving = !!view && (view.project.status === 'processing' || view.project.status === 'uploading' || view.jobs.some(j => j.state === 'queued' || j.state === 'running'));
+  /* A loop of its own: it used to be re-armed by `view` changing, and a poll that changes nothing
+     no longer sets `view` (absorb drops it), which would have ended the polling. */
+  const movingRef = useRef(false);
+  movingRef.current = moving;
+  const absorbRef = useRef(absorb);
+  absorbRef.current = absorb;
+  const opened = !!view;
   useEffect(() => {
-    if (!view) return;
-    const t = setTimeout(async () => {
+    if (!opened) return;
+    let stop = false, t = 0;
+    const loop = async () => {
       const asked = epoch.current;
-      const r = await videoStatus(id, versionRef.current);
-      if (r.success) await absorb(r, asked);
-    }, moving ? 2500 : 15_000);
-    return () => clearTimeout(t);
-  }, [view, moving, id, absorb]);
+      const r = await videoStatus(id, versionRef.current).catch(() => null);
+      if (r?.success && !stop) await absorbRef.current(r, asked);
+      if (!stop) t = window.setTimeout(() => void loop(), movingRef.current ? 2500 : 15_000);
+    };
+    t = window.setTimeout(() => void loop(), movingRef.current ? 2500 : 15_000);
+    return () => { stop = true; clearTimeout(t); };
+    /* Restarted when something starts or stops moving, so a render just pressed is asked about in 2.5 s, not 15. */
+  }, [opened, id, moving]);
 
   /* When something starts moving (a render pressed, the first processing), the progress opens on the
      right — wide screens only, where it does not cover the video. */
@@ -725,7 +770,8 @@ export default function VideoEditor({ id }: { id: string }) {
   const seek = useCallback((t: number) => {
     /* Negative numbers are the player telling us where it is (−1 − time);
        positive ones are a request to move it. */
-    if (t < 0) { setTime(-1 - t); return; }
+    if (t < 0) { timeRef.current = -1 - t; if (!playingRef.current) setTime(-1 - t); return; }
+    timeRef.current = t;
     setTime(t);
     window.dispatchEvent(new CustomEvent('vs-seek', { detail: t }));
   }, []);
@@ -763,9 +809,25 @@ export default function VideoEditor({ id }: { id: string }) {
 
   const duration = view?.source.probe?.duration ?? transcript?.duration ?? 0;
   durationRef.current = duration;
-  const ctx = useMemo<EditorCtx | null>(() => view && doc ? {
-    view, doc, version, transcript, duration, apply, seek, time, selection, setSelection, activeClip, setActiveClip, refresh, setTab, say, adopt, track, screen, caps, task,
-  } : null, [view, doc, version, transcript, duration, apply, seek, time, selection, activeClip, refresh, setTab, say, adopt, track, screen, caps, task]);
+  const ctx = useMemo<EditorCtx | null>(() => {
+    if (!view || !doc) return null;
+    const c = { view, doc, version, transcript, duration, apply, seek, time, selection, setSelection, activeClip, setActiveClip, refresh, setTab, say, adopt, track, screen, caps, task } as EditorCtx;
+    /* `time` read in a press (Split, "Start at playhead") is where the player is now, even mid-play. */
+    Object.defineProperty(c, 'time', { get: () => timeRef.current, enumerable: true });
+    return c;
+  }, [view, doc, version, transcript, duration, apply, seek, time, selection, activeClip, refresh, setTab, say, adopt, track, screen, caps, task]);
+
+  /* When a video finishes being made, the editor says so and offers to play it here. */
+  const runningRenders = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!view) return;
+    const now = new Set(view.jobs.filter(j => j.kind === 'render' && (j.state === 'running' || j.state === 'queued')).map(j => j.target ?? j.id));
+    const finished = [...runningRenders.current].filter(t => !now.has(t));
+    runningRenders.current = now;
+    if (!finished.length) return;
+    const made = view.outputs.filter(o => finished.includes(o.id) && o.rendered && o.status !== 'failed');
+    if (made.length) setDoneNote(made.length === 1 ? 'Your changes are applied to the video.' : `Your changes are applied to ${made.length} videos.`);
+  }, [view]);
   const sentences = useMemo(() => transcript ? sentencesOf(transcript.words) : [], [transcript]);
 
   if (error) return <div className="vs-note bad" role="alert"><AlertCircle size={16} /> {error} <Link to="/video-studio">Back to Video Studio</Link></div>;
@@ -784,7 +846,7 @@ export default function VideoEditor({ id }: { id: string }) {
 
   return (
     <>
-    <div className={`vse ${group ? 'with-panel' : ''}`} data-testid="vs-editor" data-status={st}>
+    <div className={`vse ${group ? 'with-panel' : ''} ${big ? 'big' : ''}`} data-testid="vs-editor" data-status={st}>
       <header className="vse-top">
         <Link to="/video-studio" className="vs-btn ghost sm" aria-label="Back to Video Studio" title="Video Studio"><Home size={16} /></Link>
         <button type="button" className="vs-btn ghost sm" disabled={version <= 1 && !busy} onClick={() => step(-1)} aria-label="Undo" title="Undo (Ctrl+Z)" data-act="undo"><Undo2 size={15} /></button>
@@ -825,6 +887,14 @@ export default function VideoEditor({ id }: { id: string }) {
       </section>
 
       <main className="vse-stage">
+        {doneNote && (
+          <div className="vse-done" role="status" data-testid="vs-done-note">
+            <Check size={16} />
+            <span><b>{doneNote}</b> Press play to check the edits and the processing in the player — the finished file is under “Your videos”.</span>
+            <button type="button" className="vs-btn primary sm" onClick={() => { setDoneNote(''); window.dispatchEvent(new CustomEvent('vs-seek', { detail: 0 })); window.dispatchEvent(new Event('vs-play')); }} data-act="play-done">Play from the start</button>
+            <button type="button" className="vs-btn ghost sm" onClick={() => setDoneNote('')} aria-label="Close"><X size={14} /></button>
+          </div>
+        )}
         {ytStopped ? <YoutubeStopped view={view} onRetry={() => void retryVideo(id).then(refresh)} onDone={() => void refresh()} />
           : !hasSource && (st === 'draft' || st === 'uploading') ? <ResumeUpload view={view} onDone={() => void refresh()} />
           : view.source.proxyUrl ? (

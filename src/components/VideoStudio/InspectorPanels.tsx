@@ -3,10 +3,12 @@
  * framing of whatever is selected), the sound (noise reduction, voice) and
  * the music.
  *
- * Sound settings are heard in the rendered file, not in the preview — the
- * browser plays the original sound, and the panel says so rather than
- * pretending a filter is running. Music is heard in the preview at its
- * volume (without the ducking, which only the render does).
+ * Sound settings are heard in the player as they change (liveSound.ts builds
+ * the same steps as the engine — soundPlan.mjs — out of Web Audio nodes, with
+ * RNNoise in WebAssembly); what the browser cannot do (click repair, the
+ * −16 LUFS loudness measured over the whole video) is said. "Apply to the
+ * video now" puts them into the made file, each step named under Progress.
+ * Music is heard in the preview at its volume (without the ducking).
  *
  * Music comes from two places, and both say where it came from: the open
  * library (Openverse — only CC0, public-domain and CC BY tracks, which allow
@@ -21,7 +23,8 @@ import {
   type FoundTrack, type Denoise, type Aspect, type Op, type ShortLayout,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
-import EffectRow, { FxSlider } from './EffectRow';
+import EffectRow, { FxSlider, Switch } from './EffectRow';
+import { useLiveSoundState } from './liveSound';
 
 export function RenderHint({ ctx }: { ctx: EditorCtx }) {
   const stale = ctx.view.outputs.filter(o => o.stale);
@@ -128,6 +131,14 @@ export function VideoPanel({ ctx }: { ctx: EditorCtx }) {
 
 /* ── Audio ────────────────────────────────────────────────────────────────── */
 
+/** Studio Sound's strengths as choices (the slider under them fine-tunes). */
+const STUDIO_LEVELS = [
+  { v: 30, label: 'Gentle', note: 'A light touch for a fairly quiet room' },
+  { v: 60, label: 'Balanced', note: 'Most rooms and laptop mics' },
+  { v: 80, label: 'Strong', note: 'Fans, air-con, traffic' },
+  { v: 100, label: 'Maximum', note: 'Very noisy — listen before you publish' },
+];
+
 const NOISE: { key: Denoise; label: string; note: string }[] = [
   { key: 'off', label: 'Off', note: 'The sound as recorded.' },
   { key: 'light', label: 'Light', note: 'A little hiss and hum taken out; the voice untouched.' },
@@ -144,12 +155,27 @@ export function AudioPanel({ ctx }: { ctx: EditorCtx }) {
   return (
     <div className="vs-col" data-testid="vs-audio-panel">
       <div className="vs-group"><b>Audio effects</b>
-        <EffectRow id="studio" icon={<Wand2 size={15} />} title="Studio Sound" on={studio} onToggle={on => set({ studio: on }, on ? 'Studio Sound on' : 'Studio Sound off')}
-          summary={studio ? `Strength ${a.strength ?? 60}% · noise out, voice lifted, −16 LUFS` : 'Makes a room recording sound close to a studio one'}
-          onRemove={() => set({ studio: false, strength: 60 }, 'Studio Sound removed')}>
-          <FxSlider label="Strength" value={a.strength ?? 60} min={0} max={100} unit="%" onSave={v => set({ strength: v, studio: true }, `Studio Sound strength ${v}%`)} />
-          <small className="vs-kbd">A high-pass for rumble, speech denoising (RNNoise), a de-esser, less boom and more presence, gentle compression, then loudness to −16 LUFS measured over the whole video. Higher strength takes out more noise and evens the voice more. It cannot rebuild a word that clipped or dropped out.</small>
-        </EffectRow>
+        {/* Studio Sound's level is chosen in the open, not behind a settings icon (the owner's ask). */}
+        <div className={`vs-fx vs-studio ${studio ? 'on' : ''}`} data-effect="studio">
+          <div className="vs-fx-row">
+            <span className="ic" aria-hidden="true"><Wand2 size={15} /></span>
+            <span className="t"><b>Studio Sound</b><small>{studio ? `Strength ${a.strength ?? 60}% · noise out, voice lifted, −16 LUFS` : 'Makes a room recording sound close to a studio one'}</small></span>
+            <Switch on={studio} onChange={on => set({ studio: on }, on ? 'Studio Sound on' : 'Studio Sound off')} label="Studio Sound" field="video.fx.studio" />
+          </div>
+          <div className="vs-studio-levels" role="radiogroup" aria-label="Studio Sound strength">
+            {STUDIO_LEVELS.map(l => {
+              const cur = studio && Math.abs((a.strength ?? 60) - l.v) < 1;
+              return (
+                <button key={l.v} type="button" role="radio" aria-checked={cur} className="vs-studio-level" data-studio-level={l.v}
+                  onClick={() => set({ studio: true, strength: l.v }, `Studio Sound: ${l.label.toLowerCase()} (${l.v}%)`)}>
+                  <b>{l.label}</b><small>{l.v}%</small><span>{l.note}</span>
+                </button>
+              );
+            })}
+          </div>
+          <FxSlider label="Fine-tune strength" value={a.strength ?? 60} min={0} max={100} unit="%" onSave={v => set({ strength: v, studio: true }, `Studio Sound strength ${v}%`)} />
+          <small className="vs-kbd">Rumble cut, background noise taken out (RNNoise), harsh “s” softened, less boom and more presence, quiet and loud words evened, then loudness to −16 LUFS over the whole video. It cannot rebuild a word that clipped or dropped out.</small>
+        </div>
         <EffectRow id="duck" icon={<Volume2 size={15} />} title="Lower audio of other layers" on={!!music && music.duck} disabled={!music}
           why="Add music first — this lowers it whenever someone speaks."
           summary={music ? (music.duck ? `“${music.title.slice(0, 28)}” dips under speech` : 'The music plays at its own level throughout') : undefined}
@@ -186,7 +212,7 @@ export function AudioPanel({ ctx }: { ctx: EditorCtx }) {
       </label>
       <label className="vs-opt"><input type="checkbox" checked={a.loudnorm || studio} disabled={studio} onChange={e => set({ loudnorm: e.target.checked }, e.target.checked ? 'Loudness evened out' : 'Loudness as recorded')} />
         <span><b>Even loudness</b><br /><small className="vs-kbd">Every video at −16 LUFS (true peak −1.5 dB), measured over the whole edit and then applied — the level podcasts and the platforms play at.{studio ? ' Always on with Studio Sound.' : ''}</small></span></label>
-      <div className="vs-note"><Sparkles size={15} /> <span>These are applied when the videos are made — the preview plays the recording's own sound. Or just ask the assistant: “remove the background noise in all the videos”.</span></div>
+      <LiveSoundNote />
       <ApplyNow ctx={ctx} />
       <RenderHint ctx={ctx} />
     </div>
@@ -205,9 +231,12 @@ function ApplyNow({ ctx }: { ctx: EditorCtx }) {
   const outs = ctx.view.outputs;
   const changed = outs.filter(o => o.stale || !o.rendered);
   const go = async () => {
-    if (!outs.length) { ctx.setTab('exports'); return; }
     setBusy(true); setErr('');
-    const r = await renderOutputs(ctx.view.project.id, changed.map(o => o.id));
+    /* No video yet (a Screen Recorder save): the long video is switched on and made here — the
+       button used to send the customer to Export with "Make the video with this sound", which
+       read as making another video. The made file replaces the last one; it is not a copy. */
+    if (!outs.length && !(await ctx.apply([{ op: 'long.set', patch: { on: true } }], 'Apply the sound to the video'))) { setBusy(false); setErr('Could not save the change.'); return; }
+    const r = await renderOutputs(ctx.view.project.id, outs.length ? changed.map(o => o.id) : undefined);
     setBusy(false);
     if (!r.success) { setErr(r.error ?? 'Could not start.'); return; }
     ctx.setTab('activity');
@@ -216,9 +245,23 @@ function ApplyNow({ ctx }: { ctx: EditorCtx }) {
   return (
     <div className="vs-col" style={{ gap: 6 }}>
       <button type="button" className="vs-btn ai" disabled={busy || (outs.length > 0 && !changed.length)} onClick={() => void go()} data-act="apply-now">
-        {busy ? <Loader size={14} className="spin" /> : <Wand2 size={14} />} {!outs.length ? 'Make the video with this sound' : changed.length ? `Apply to ${changed.length === 1 ? 'the video' : `${changed.length} videos`} now` : 'Every video already has this sound'}
+        {busy ? <Loader size={14} className="spin" /> : <Wand2 size={14} />} {outs.length > 0 && !changed.length ? 'The video already has this sound' : changed.length > 1 ? `Apply to the ${changed.length} videos now` : 'Apply to the video now'}
       </button>
+      <small className="vs-kbd">Updates the same video — each sound step is named under Progress while it runs.</small>
       {err && <div className="vs-note bad">{err}</div>}
+    </div>
+  );
+}
+
+/** Whether the player is playing these settings live, in plain words. */
+function LiveSoundNote() {
+  const st = useLiveSoundState();
+  return (
+    <div className={`vs-note ${st.state === 'off' ? 'warn' : ''}`} data-testid="vs-live-sound" data-state={st.state}>
+      <Sparkles size={15} />
+      <span>{st.state === 'live' ? 'You are hearing these in the player now — a live preview close to the made video. Click repair and the final −16 LUFS loudness are heard in the made video only.'
+        : st.state === 'starting' ? 'Press play to hear these settings in the player.'
+          : st.why || 'This browser cannot play the sound fixes live; they are heard in the made video.'}</span>
     </div>
   );
 }

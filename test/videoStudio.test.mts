@@ -22,6 +22,7 @@ import { layoutOptions, layoutPlan } from '../worker/src/lib/video/layouts';
 import { toXmeml, editorialScore } from '../worker/src/lib/video/xml';
 import { pickHighlight, thumbWords, cleanThumbSpec, renderSpec, withoutStrangeLinks, TRANSIENT } from '../worker/src/lib/video/pipeline';
 import { thumbPlan, normaliseSpec, lineRect, TREND_LAYOUTS, STICKERS } from '../media/engine/thumbLayout.mjs';
+import { soundSteps, voiceFilters, needsSoundPasses } from '../media/engine/soundPlan.mjs';
 import { parseYoutubeUrl, youtubeRefusal, cleanOembed, youtubeThumb, YOUTUBE_WAY_FORWARD } from '../worker/src/lib/video/youtube';
 import {
   cleanScreenMeta, autoFocus, pointerAt, pointerInFrame, focusWindows, zoomPlan, zoomAt, zoomLevel, screenPlan, followPath, followAt, wideSpans, isWide, pointerMarks, pointerAss, sfxEvents,
@@ -779,6 +780,22 @@ console.log('\nTrending thumbnails: one plan for the engine and the preview');
   const normal = autoFocus(meta, sentences, 60, 'normal'), high = autoFocus(meta, sentences, 60, 'high'), low = autoFocus(meta, sentences, 60, 'low');
   ok('sensitive picks more moments — a click said nothing about counts — balanced and low fewer', high.length === 2 && normal.length === 1 && low.length <= normal.length, { high, normal, low });
   ok('…and the sensitivity is a setting on the edit', pointerOf(applyOps(doc0, [{ op: 'pointer.set', patch: { sensitivity: 'low' } }], 60).doc).sensitivity === 'low' && pointerOf(doc0).sensitivity === 'high');
+}
+
+{
+  /* The sound fixes as named steps (soundPlan.mjs): the engine runs one pass per step, Progress names them,
+     the player builds them live. The joined chain must stay exactly the one-pass chain it replaced. */
+  const M = '/engine/rnnoise.rnnn';
+  const G = 'agate=threshold=0.012:ratio=2.5:range=0.25:attack=8:release=250:knee=3';
+  ok('Studio Sound 80 with hum, clicks and the gate is the old chain, in order', voiceFilters({ studio: true, strength: 80, hum: '50', declick: true, gate: true }, M).join(',') ===
+    ['highpass=f=80:poles=2', 'bandreject=f=50:width_type=q:w=6', 'bandreject=f=100:width_type=q:w=10', 'bandreject=f=150:width_type=q:w=10', 'bandreject=f=200:width_type=q:w=10', 'adeclick=w=55:o=75:t=2',
+      'aresample=48000', `arnndn=m=${M}:mix=1.00`, 'deesser=i=0.49', 'equalizer=f=250:t=q:w=1.1:g=-2.6', 'equalizer=f=3500:t=q:w=1.4:g=3.0', G,
+      'acompressor=threshold=0.092:ratio=3.6:attack=6:release=120:knee=3:makeup=1.68'].join(','));
+  ok('strong noise removal (no model) is the FFT fallback then the gate, named on a strong level', voiceFilters({ denoise: 'strong' }).join(',') === `highpass=f=70,afftdn=nr=26:nf=-34:tn=1,lowpass=f=11000,${G}`
+    && soundSteps({ denoise: 'strong' }).some(s => s.label === 'Removing background noise on a strong level') && soundSteps({ denoise: 'strong' }).some(s => s.key === 'gate'));
+  ok('Studio Sound is named as converting, with its strength', soundSteps({ studio: true, strength: 60 }).some(s => /^Converting to Studio Sound.*60%/.test(s.label)));
+  ok('no fixes → no passes of their own (the render keeps one pass)', !needsSoundPasses({ denoise: 'off' }) && needsSoundPasses({ denoise: 'light' }) && needsSoundPasses({ hum: '60' }));
+  ok('every step the browser can play has Web Audio nodes; click repair says it is render-only', soundSteps({ studio: true, hum: '60', declick: true, gate: true }).every(s => s.web.length > 0 || !!s.webNote));
 }
 
 console.log(`\n${pass} passed, ${failN} failed`);

@@ -31,6 +31,7 @@ RUN curl -fsSL -o rnnoise.rnnn https://raw.githubusercontent.com/richardpl/arnnd
 COPY engine/server.mjs ./server.mjs
 COPY engine/track.py ./track.py
 COPY engine/thumbLayout.mjs ./thumbLayout.mjs
+COPY engine/soundPlan.mjs ./soundPlan.mjs
 ENV PORT=8080 MEDIA_ENGINE_OPEN=1 RNNOISE_MODEL=/engine/rnnoise.rnnn FONTS_DIR=/usr/share/fonts/truetype/noto WORK_DIR=/tmp/pc-media MAX_RUNNING=1 PYTHON=/opt/cv/bin/python YTDLP=/opt/yt/bin/yt-dlp
 EXPOSE 8080
 USER node

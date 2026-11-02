@@ -68,6 +68,7 @@ export interface ThumbSpec {
 }
 /** The plan the engine paints, so the designer's preview is drawn from the same numbers. */
 export { thumbPlan, normaliseSpec, inkOn, lineRect, TREND_LAYOUTS, STICKERS, EM, CONDENSE, HALO, type Plan as ThumbPlan } from '../../media/engine/thumbLayout.mjs';
+export { soundSteps, type SoundStep, type WebStep } from '../../media/engine/soundPlan.mjs';
 export interface ThumbView { index: number; layout: string; width: number; height: number; bytes: number; verified: boolean; check: string; headline: string; set: number; url: string; downloadUrl: string; spec: ThumbSpec | null; face: boolean }
 export interface TrackStatus { ready: boolean; summary: { detector: string; seen: number; faces: number; tracks: number; switches: { speaker: number; face: number }; frames: number } | null; error: string; at: string }
 

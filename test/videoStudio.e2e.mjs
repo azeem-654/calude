@@ -465,6 +465,42 @@ ok('…the timeline shows the picture as a filmstrip, the words, the Shorts and 
   const label = await pv.getByTestId('vs-time').innerText();
   ok('…with the edited video\'s clock on the transport, to a tenth of a second (00:12.3 / 18:40.0)', /^\d\d:\d\d\.\d \/ \d\d:\d\d\.\d$/.test(label.trim()), label);
   await pv.getByTestId('vs-play').click();
+  /* 2026-11: the Sound step's settings are visible under the steps menu (it used to push them out of a
+     laptop-height panel), Studio Sound's strengths are choices, the sound is heard live in the player,
+     and the player has big and full-screen sizes. */
+  {
+    const errs = []; pv.on('pageerror', e => errs.push(String(e).slice(0, 160)));
+    await pv.setViewportSize({ width: 1280, height: 720 });
+    await openPanel(pv, 'audio');
+    const lv = pv.locator('[data-studio-level="60"]');
+    await lv.waitFor({ timeout: 10_000 });
+    await lv.scrollIntoViewIfNeeded();
+    const inView = await lv.evaluate(el => { const r = el.getBoundingClientRect(), sc = el.closest('.vse-scroll').getBoundingClientRect(); return r.top >= sc.top - 1 && r.bottom <= sc.bottom + 1 && r.height > 20; });
+    ok('Sound: Studio Sound strengths are choices that can be reached in a 720-px-high window, under the steps menu', inView && (await pv.locator('[data-studio-level]').count()) === 4);
+    await lv.click();
+    await pv.waitForFunction(() => document.querySelector('[data-studio-level="60"]')?.getAttribute('aria-checked') === 'true', null, { timeout: 15_000 }).catch(() => {});
+    ok('…choosing "Balanced" turns Studio Sound on at 60%', (await lv.getAttribute('aria-checked')) === 'true');
+    ok('…the step note and "Next" sit at the end of the settings, not over them', await pv.evaluate(() => { const n = document.querySelector('[data-testid="vs-guide-next"]'), g = document.querySelector('[data-testid="vs-guide"]'); return !!n && !!g && !!n.closest('.vse-scroll') && !!g.closest('.vse-scroll') && n.getBoundingClientRect().top > document.querySelector('[data-studio-level]').getBoundingClientRect().top; }));
+    ok('…and the button applies to the same video ("Apply to the video now", no "make a video with this sound")', /Apply to the|already has this sound/.test(await pv.locator('[data-act="apply-now"]').innerText()));
+    await pv.getByTestId('vs-play').click();
+    await pv.waitForFunction(() => document.querySelector('[data-testid="vs-live-sound"]')?.dataset.state !== 'starting', null, { timeout: 15_000 }).catch(() => {});
+    const live = await pv.locator('[data-testid="vs-live-sound"]').evaluate(el => ({ state: el.dataset.state, text: el.innerText }));
+    const t1 = await shownTime(); await sleep(3000); const t2 = await shownTime();
+    ok('…the sound fixes are heard live in the player (RNNoise in the browser) while it plays on', live.state === 'live' && t2.t - t1.t > 2, { live, t1: t1.t, t2: t2.t });
+    await pv.getByTestId('vs-play').click();
+    await pv.locator('[data-act="big-player"]').click();
+    ok('Player: the big size moves the script under the video', await pv.evaluate(() => document.querySelector('[data-testid="vs-editor"]').classList.contains('big') && document.querySelector('.vse-player').getBoundingClientRect().width > 700));
+    await pv.locator('[data-act="big-player"]').click();
+    ok('…and full screen is offered beside it', (await pv.locator('[data-act="full-screen"]').count()) === 1);
+    const over = await pv.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    await pv.setViewportSize({ width: 390, height: 844 });
+    await sleep(800);
+    const over390 = await pv.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    await openPanel(pv, 'audio');
+    const phoneLevels = await pv.locator('[data-studio-level]').count();
+    ok('…no sideways scroll at 1280 or 390 wide, the Sound panel works on a phone, and no page errors', over === 0 && over390 === 0 && phoneLevels === 4 && errs.length === 0, { over, over390, phoneLevels, errs });
+    await pv.setViewportSize({ width: 1280, height: 900 });
+  }
   await pctx.close();
   ok('(the proxy is put back as it was)', await putProxy(fs.readFileSync(proxyFile), 'video/mp4'));
   await v('goto_version', { projectId: PID, version: base0.docVersion });

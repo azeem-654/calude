@@ -28,7 +28,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, Music2, Gauge, Circle, Scissors, Minus, Plus, MousePointer2, Hand } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Maximize2, Minimize2, Columns2, RectangleHorizontal, Music2, Gauge, Circle, Scissors, Minus, Plus, MousePointer2, Hand } from 'lucide-react';
 import {
   keepRanges, clipKeeps, keptLength, retimeWords, cuesOf, toOutput, toSource, clock, isRtl, lookOf, motionOf, trackingOf, cssLook, punchSpans, cutTimes, trackAt, overlaySpan, overlayPlace, OVERLAY_SIZE, OVERLAY_FAMILY, logoBox, logoFor, sentencesOf,
   effectsOf, effectsOn, cssEffects, layoutPlan, dimsFor, LAYOUT_LABEL, type LayoutPlan,
@@ -36,6 +36,7 @@ import {
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
 import { Deck } from './deck';
+import { LiveSound } from './liveSound';
 
 /** Hold a signed address until it fails; then take the newest one. */
 function useHeldSrc(latest: string) {
@@ -170,6 +171,23 @@ export default function Player({ ctx, transport, below }: {
   const [frameH, setFrameH] = useState(360);
   /* The playhead as this player knows it — the editor's copy is told less often (see paint). */
   const [here, setHere] = useState(ctx.time);
+  /* Full screen (the controls come into the full-screen box with the picture — they live in the editor's
+     transport row otherwise, which full screen left behind) and the big player (the script moves under it). */
+  const [full, setFull] = useState(false);
+  const [big, setBig] = useState(() => { try { return localStorage.getItem('crm_vs_big') === '1'; } catch { return false; } });
+  useEffect(() => {
+    const on = () => setFull(document.fullscreenElement === shellRef.current && !!shellRef.current);
+    document.addEventListener('fullscreenchange', on);
+    return () => document.removeEventListener('fullscreenchange', on);
+  }, []);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('vs-big', { detail: big }));
+    try { localStorage.setItem('crm_vs_big', big ? '1' : '0'); } catch { /* private window */ }
+  }, [big]);
+  const flipFull = () => { const el = shellRef.current; if (!el) return; if (document.fullscreenElement) void document.exitFullscreen(); else void el.requestFullscreen?.().catch(() => {}); };
+  /* The sound fixes heard live (liveSound.ts), built from the same steps the engine runs. */
+  const liveSound = useRef<LiveSound | null>(null);
+  useEffect(() => { liveSound.current?.set(doc.audio); }, [doc.audio]);
   useEffect(() => { if (!deck.current?.playing) setHere(ctx.time); }, [ctx.time]);
   const video = useHeldSrc(view.source.proxyUrl);
   const music = useHeldSrc(view.musicUrl);
@@ -246,8 +264,8 @@ export default function Player({ ctx, transport, below }: {
   const pcursors = useMemo(() => pwins.map(w => resolveCursor(w.range, ptr.cursor, sentencesAll)), [pwins, ptr.cursor, sentencesAll]);
   const ptrRef = useRef<HTMLDivElement>(null);
   const pointerLive = scr && (zplan || splan) ? { scr, zplan, splan, spath, swide, pwins, pcursors, fmap, out: outDims!, size: ptr.size, color: ptr.color } : null;
-  const live = useRef({ keeps, total, speed, motion, spans, cuts, followRows, objPos, report, plan, shadow: fx.shadow ?? null, mutes, muted, pointerLive });
-  live.current = { keeps, total, speed, motion, spans, cuts, followRows, objPos, report, plan, shadow: fx.shadow ?? null, mutes, muted, pointerLive };
+  const live = useRef({ keeps, total, speed, motion, spans, cuts, followRows, objPos, report, plan, shadow: fx.shadow ?? null, mutes, muted, pointerLive, audio: doc.audio });
+  live.current = { keeps, total, speed, motion, spans, cuts, followRows, objPos, report, plan, shadow: fx.shadow ?? null, mutes, muted, pointerLive, audio: doc.audio };
 
   /* The deck: two elements swapped at each cut (deck.ts says why). It is made
      once; the edit, the speed and the sound reach it below. Everything that
@@ -332,7 +350,10 @@ export default function Player({ ctx, transport, below }: {
     d.setRate(live.current.speed);
     /* The transcript follows the playhead while the video plays, and its Space key plays and pauses. */
     const said = (on: boolean) => window.dispatchEvent(new CustomEvent('vs-play-state', { detail: on }));
-    const onPlay = () => { setPlaying(true); said(true); };
+    const ls = new LiveSound([a, b]);
+    ls.set(live.current.audio);
+    liveSound.current = ls;
+    const onPlay = () => { setPlaying(true); said(true); void ls.start(); };
     const onPause = () => { setPlaying(false); said(false); live.current.report(-1 - d.time); };
     const onToggle = () => d.toggle();
     const onPlayAsk = () => { if (!d.playing) d.play(); };
@@ -342,7 +363,7 @@ export default function Player({ ctx, transport, below }: {
     d.addEventListener('play', onPlay);
     d.addEventListener('pause', onPause);
     d.addEventListener('seeked', onSeeked);
-    return () => { window.removeEventListener('vs-toggle', onToggle); window.removeEventListener('vs-play', onPlayAsk); said(false); d.removeEventListener('play', onPlay); d.removeEventListener('pause', onPause); d.removeEventListener('seeked', onSeeked); d.destroy(); deck.current = null; };
+    return () => { window.removeEventListener('vs-toggle', onToggle); window.removeEventListener('vs-play', onPlayAsk); said(false); d.removeEventListener('play', onPlay); d.removeEventListener('pause', onPause); d.removeEventListener('seeked', onSeeked); d.destroy(); deck.current = null; ls.destroy(); liveSound.current = null; };
   }, []);
 
   useEffect(() => { deck.current?.setKeeps(keeps); }, [keeps]);
@@ -427,7 +448,7 @@ export default function Player({ ctx, transport, below }: {
   const sh = fx.shadow;
 
   return (
-    <div className="vse-player" ref={shellRef} data-testid="vs-preview">
+    <div className={`vse-player ${full ? 'is-full' : ''}`} ref={shellRef} data-testid="vs-preview">
       <div className="vse-screen" data-noinvert="">
         <div ref={frameRef} className={`vs-frame ${fit ? 'fit' : ''}`}
           style={{ aspectRatio: String(ratio), width: `min(100%, calc(var(--vse-screen-h, 56vh) * ${ratio.toFixed(4)}))`,
@@ -550,11 +571,12 @@ export default function Player({ ctx, transport, below }: {
                 {tool === 'select' ? <MousePointer2 size={14} /> : <Hand size={14} />}
               </button>
               <button type="button" className="vs-btn ghost sm" onClick={() => setMuted(m => !m)} aria-label={muted ? 'Sound on' : 'Mute'}>{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>
-              <button type="button" className="vs-btn ghost sm vse-hide-sm" onClick={() => { const el = shellRef.current; if (!el) return; if (document.fullscreenElement) void document.exitFullscreen(); else void el.requestFullscreen?.().catch(() => {}); }} aria-label="Full screen"><Maximize2 size={15} /></button>
+              {!full && <button type="button" className="vs-btn ghost sm vse-hide-sm" onClick={() => setBig(b => !b)} aria-pressed={big} aria-label={big ? 'Normal player size' : 'Big player'} title={big ? 'Normal size — the script beside the video' : 'Big player — the script moves under the video'} data-act="big-player">{big ? <Columns2 size={15} /> : <RectangleHorizontal size={15} />}</button>}
+              <button type="button" className="vs-btn ghost sm" onClick={flipFull} aria-label={full ? 'Leave full screen' : 'Full screen'} title={full ? 'Leave full screen (Esc)' : 'Full screen'} data-act="full-screen">{full ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</button>
             </div>
           </div>
         );
-        return transport ? createPortal(hud, transport) : hud;
+        return transport && !full ? createPortal(hud, transport) : hud;
       })()}
     </div>
   );

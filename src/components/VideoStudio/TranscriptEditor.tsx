@@ -173,7 +173,24 @@ export function TranscriptPanel({ ctx, sentences }: { ctx: EditorCtx; sentences:
   }, [query, words]);
   const hitSet = useMemo(() => { const s = new Set<number>(); const n = query.trim().split(/\s+/).length; for (const h of hits) for (let k = 0; k < n; k++) s.add(h + k); return s; }, [hits, query]);
 
-  const nowI = useMemo(() => { const w = words.find(x => ctx.time >= x.s && ctx.time < x.e + 0.1); return w ? w.i : -1; }, [words, ctx.time]);
+  const stillI = useMemo(() => { const w = words.find(x => ctx.time >= x.s && ctx.time < x.e + 0.1); return w ? w.i : -1; }, [words, ctx.time]);
+  /* While playing, the word being said comes from the player's frame event, and this re-renders only
+     when that word changes — the editor no longer re-renders everything four times a second for it. */
+  const [playI, setPlayI] = useState(-1);
+  useEffect(() => {
+    if (!playing) return;
+    let last = -2;
+    const on = (e: Event) => {
+      const t = (e as CustomEvent<number>).detail;
+      let lo = 0, hi = words.length - 1, at = -1;
+      while (lo <= hi) { const m = (lo + hi) >> 1; if (words[m].s <= t) { at = m; lo = m + 1; } else hi = m - 1; }
+      const i = at >= 0 && t < words[at].e + 0.1 ? words[at].i : -1;
+      if (i !== last) { last = i; setPlayI(i); }
+    };
+    window.addEventListener('vs-frame', on);
+    return () => window.removeEventListener('vs-frame', on);
+  }, [playing, words]);
+  const nowI = playing ? playI : stillI;
   const sel = ctx.selection ? [Math.min(ctx.selection.i0, ctx.selection.i1), Math.max(ctx.selection.i0, ctx.selection.i1)] as [number, number] : null;
 
   useEffect(() => { if (hits.length) box.current?.querySelector(`[data-i="${hits[hitAt % hits.length]}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, [hits, hitAt]);

@@ -42,6 +42,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { TREND_LAYOUTS, thumbPlan, rgbOf, CONDENSE, HALO } from './thumbLayout.mjs';
+import { soundSteps, voiceFilters, needsSoundPasses } from './soundPlan.mjs';
 
 const PORT = Number(process.env.PORT) || 8080;
 const SECRET = process.env.MEDIA_ENGINE_SECRET || '';
@@ -607,69 +608,53 @@ const RNN_MODEL = process.env.RNNOISE_MODEL || path.join(path.dirname(new URL(im
 const hasRnn = () => /^[\w./-]+$/.test(RNN_MODEL) && fs.existsSync(RNN_MODEL);
 
 /**
- * The speech chain. Studio Sound, when on, is a studio's order of work: a
- * high-pass for rumble and handling noise; the strongest denoiser there is;
- * a de-esser; a little less mud (250 Hz) and a little more presence
- * (3.5 kHz); a gentle compressor so quiet words come up — strength (0–100)
- * scales each. Loudness (−16 LUFS, two passes) is applied after the mix.
- * Without it, the older noise levels and "voice clarity" as before. Nothing
- * here can rebuild a voice that clipped or dropped out — the screen says so.
+ * The speech chain is a list of named steps (soundPlan.mjs, shared with
+ * Progress and the editor's live preview). Studio Sound, when on, is a
+ * studio's order of work: a high-pass for rumble; hum and clicks repaired;
+ * the strongest denoiser there is (RNNoise at mix 1 from strength 50 — the
+ * FFT denoiser at "medium" lifted speech-to-noise from 3 dB to 4 dB and
+ * smeared the voice, RNNoise reached 36 dB, measured 2026-11); a de-esser;
+ * less mud and more presence; a gentle compressor. Without it, the plain
+ * noise levels (RNNoise too; strong also lowers the room between sentences)
+ * and "voice clarity". Loudness (−16 LUFS, two passes) comes after the mix.
+ * Nothing here can rebuild a voice that clipped or dropped out.
  */
-/**
- * Repairs that come before any noise reduction, in either chain: mains hum
- * (the base and three harmonics notched narrowly, so a voice keeps its body)
- * and clicks and pops (adeclick). Numbers only, from a fixed list.
- */
-function repairChain(audio) {
-  const out = [];
-  const hz = audio.hum === '50' ? 50 : audio.hum === '60' ? 60 : 0;
-  if (hz) for (const k of [1, 2, 3, 4]) out.push(`bandreject=f=${hz * k}:width_type=q:w=${k === 1 ? 6 : 10}`);
-  if (audio.declick) out.push('adeclick=w=55:o=75:t=2');
-  return out;
-}
-/**
- * RNNoise at `mix` (1 = all of it), on 48 kHz sound — the rate its network
- * was trained at; a 44.1 kHz recording went in as it was. Without the model,
- * the FFT denoiser given.
- */
-const rnn = (mix, fallback) => hasRnn() ? ['aresample=48000', `arnndn=m=${RNN_MODEL}:mix=${mix.toFixed(2)}`] : [fallback];
-
-/** Room noise between sentences pulled down a little — a soft gate that never closes on a word. */
-const GATE = 'agate=threshold=0.012:ratio=2.5:range=0.25:attack=8:release=250:knee=3';
-
+const rnnModel = () => (hasRnn() ? RNN_MODEL : '');
 function voiceChain(audio) {
-  const repair = repairChain(audio);
-  if (audio.studio) {
-    const k = num(audio.strength, 60, 0, 100) / 100;
-    return [
-      'highpass=f=80:poles=2',
-      ...repair,
-      ...rnn(Math.min(1, 0.7 + 0.6 * k), `afftdn=nr=${(10 + 16 * k).toFixed(1)}:nf=-40:tn=1`),
-      `deesser=i=${(0.25 + 0.3 * k).toFixed(2)}`,
-      `equalizer=f=250:t=q:w=1.1:g=${(-1 - 2 * k).toFixed(1)}`,
-      `equalizer=f=3500:t=q:w=1.4:g=${(1 + 2.5 * k).toFixed(1)}`,
-      ...(audio.gate ? [GATE] : []),
-      `acompressor=threshold=${(0.14 - 0.06 * k).toFixed(3)}:ratio=${(2 + 2 * k).toFixed(1)}:attack=6:release=120:knee=3:makeup=${(1.2 + 0.6 * k).toFixed(2)}`,
-    ];
+  return voiceFilters(audio, rnnModel());
+}
+
+/**
+ * The sound fixes, one FFmpeg pass per step, on the edited sound — so
+ * Progress can say which one is running ("Removing background noise on a
+ * strong level") with that pass's own percentage. The first pass cuts the
+ * sound to the edit on the same 1/30 s grid the picture uses (so lips never
+ * drift); each later one reads the last one's file. 32-bit float WAV in
+ * between: lossless, and a peak above full scale (the compressor's makeup,
+ * before loudness brings it down) is kept, where an integer file would clip.
+ * Audio-only passes are quick; the denoiser is the slow one. Returns the
+ * file the render mixes, or null when there is nothing to do beyond the
+ * plain high-pass (then the render keeps its single pass, as before).
+ */
+async function soundPasses(job, dir, src, s0, end, sel, fps, total, audio) {
+  if (!needsSoundPasses(audio)) return null;
+  const steps = soundSteps(audio, rnnModel());
+  let prev = '';
+  for (let i = 0; i < steps.length; i++) {
+    const st = steps[i];
+    const out = path.join(dir, `sound-${i}.wav`);
+    const input = i === 0
+      ? ['-ss', String(s0), '-t', String(end - s0 + 0.05), ...inVideo(src)]
+      : ['-protocol_whitelist', 'file', '-format_whitelist', 'wav', '-i', prev];
+    const chain = i === 0
+      ? `[0:a]asetpts=PTS-STARTPTS,aresample=48000,asetnsamples=n=${48000 / fps}:p=0,aselect='${sel}',asetpts=N/SR/TB,${st.ff.join(',')}[a]`
+      : `[0:a]${st.ff.join(',')}[a]`;
+    await exec(FFMPEG, [...base, ...input, '-filter_complex', chain, '-map', '[a]', '-t', total.toFixed(3),
+      '-c:a', 'pcm_f32le', '-rf64', 'auto', '-progress', 'pipe:1', '-nostats', out], job, { onLine: progressTo(job, `sound:${st.key}`, total) });
+    if (prev) await fsp.rm(prev, { force: true });
+    prev = out;
   }
-  /* The levels are RNNoise too, wherever its model is in the image: measured
-     on speech under fan noise and hiss (2026-11), the FFT denoiser at
-     "medium" lifted speech-to-noise from 3 dB to 4 dB and smeared the voice,
-     where RNNoise at full strength reached 36 dB with the voice as close to
-     the clean one as a partial mix — a partial mix only lets the noise back
-     in (0.85 stopped at 18 dB). Running a spectral denoiser after RNNoise
-     added 1 dB and took the voice's edges, so nothing follows it. Strong
-     also pulls the room down between sentences (the soft gate). */
-  const DENOISE = {
-    light: rnn(0.75, 'afftdn=nr=10:nf=-42'),
-    medium: rnn(1, 'afftdn=nr=18:nf=-38:tn=1'),
-    strong: [...rnn(1, 'afftdn=nr=26:nf=-34:tn=1,lowpass=f=11000'), GATE],
-  };
-  const voice = ['highpass=f=70', ...repair];
-  if (DENOISE[audio.denoise]) voice.push(...DENOISE[audio.denoise]);
-  if (audio.gate && !(audio.denoise === 'strong')) voice.push(GATE);
-  if (audio.voice) voice.push('equalizer=f=3200:t=q:w=1.2:g=2.5', 'deesser=i=0.35', 'acompressor=threshold=0.08:ratio=3:attack=8:release=120:makeup=1.5');
-  return voice;
+  return prev;
 }
 
 /** Pass one of loudness normalisation: the edited sound, measured by loudnorm itself. Null when it cannot be read. */
@@ -1092,7 +1077,9 @@ async function render(job, dir) {
   const graph = [`[0:v]setpts=PTS-STARTPTS,fps=${fps},select='${sel}',setpts=N/${fps}/TB,${send}${skin}${frame}${greenFilter(fx.green, W, H, fps)}${zoom}${after.length ? `,${after.join(',')}` : ''}${trans}${pace}${subs}${fades}${bar},format=yuv420p[${logo && job.inputs.logo ? 'v0' : 'v'}]`];
   const hasAudio = p.hasAudio !== false;
   const audio = p.audio ?? {};
-  const voice = voiceChain(audio);
+  /* The sound fixes run first, each as its own pass (soundPasses); the render then mixes their file. */
+  const speechFile = hasAudio ? await soundPasses(job, dir, src, s0, end, sel, fps, total, audio) : null;
+  const voice = speechFile ? [] : voiceChain(audio);
   const gain = num(audio.volume, 1, 0.3, 2);
   if (gain !== 1) voice.push(`volume=${gain}`);
   if (speed !== 1) voice.push(`atempo=${speed}`);
@@ -1101,9 +1088,12 @@ async function render(job, dir) {
   /* Studio Sound always ends at −16 LUFS; otherwise it is the customer's "even loudness" box. */
   const levelled = audio.loudnorm !== false || !!audio.studio;
   const music = p.music && job.inputs.music ? p.music : null;
+  const speechIn = speechFile ? ['-protocol_whitelist', 'file', '-format_whitelist', 'wav', '-i', speechFile] : [];
   const sound = [];
   if (hasAudio) {
-    sound.push(`[0:a]asetpts=PTS-STARTPTS,aresample=48000,asetnsamples=n=${48000 / fps}:p=0,aselect='${sel}',asetpts=N/SR/TB,${voice.join(',')},${stereo}[sp]`);
+    sound.push(speechFile
+      ? `[${music ? 2 : 1}:a]${voice.length ? `${voice.join(',')},` : ''}${stereo}[sp]`
+      : `[0:a]asetpts=PTS-STARTPTS,aresample=48000,asetnsamples=n=${48000 / fps}:p=0,aselect='${sel}',asetpts=N/SR/TB,${voice.join(',')},${stereo}[sp]`);
     /* Click and moment sounds join the voice before the loudness is set, so the whole stays at −16 LUFS. */
     const fx = sfxGraph(p.sfx, outTotal, stereo);
     if (fx.length) { sound[0] = sound[0].replace(/\[sp\]$/, '[sp0]'); sound.push(...fx, '[sp0][fx]amix=inputs=2:duration=first:normalize=0[sp]'); }
@@ -1136,7 +1126,7 @@ async function render(job, dir) {
        sound is measured first, then corrected linearly by exactly that — one
        pass guesses as it goes and pumps on speech that starts quietly. If the
        measurement cannot be read, the one-pass filter is used instead. */
-    const measured = await measureLoudness(job, dir, src, s0, end, musicIn, sound.join(';').replace(/@LEVEL@/g, `,${LN}:print_format=json`), outTotal);
+    const measured = await measureLoudness(job, dir, src, s0, end, [...musicIn, ...speechIn], sound.join(';').replace(/@LEVEL@/g, `,${LN}:print_format=json`), outTotal);
     level = measured
       ? `,${LN}:measured_I=${measured.i}:measured_LRA=${measured.lra}:measured_TP=${measured.tp}:measured_thresh=${measured.thresh}:offset=${measured.offset}:linear=true,aresample=48000`
       : `,${LN},aresample=48000`;
@@ -1144,10 +1134,10 @@ async function render(job, dir) {
   graph.push(...sound.map(g => g.replace(/@LEVEL@/g, `${level}${afades}`)));
   /* The logo goes on last, over everything (captions included), as one still picture held for the whole video. */
   const logoIn = logo && job.inputs.logo ? inImage(job.inputs.logo) : [];
-  if (logoIn.length) graph.push(`[${musicIn.length ? 2 : 1}:v]${logoFilter(logo)}[lg]`, `[v0][lg]overlay=${logo.x}:${logo.y}:format=auto,format=yuv420p[v]`);
+  if (logoIn.length) graph.push(`[${1 + (musicIn.length ? 1 : 0) + (speechIn.length ? 1 : 0)}:v]${logoFilter(logo)}[lg]`, `[v0][lg]overlay=${logo.x}:${logo.y}:format=auto,format=yuv420p[v]`);
   await fsp.writeFile(path.join(dir, 'graph.txt'), graph.join(';'));
   const out = path.join(dir, 'out.mp4');
-  await exec(FFMPEG, [...base, '-ss', String(s0), '-t', String(end - s0 + 0.05), ...inVideo(src), ...musicIn, ...logoIn,
+  await exec(FFMPEG, [...base, '-ss', String(s0), '-t', String(end - s0 + 0.05), ...inVideo(src), ...musicIn, ...speechIn, ...logoIn,
     '-filter_complex_script', path.join(dir, 'graph.txt'), '-map', '[v]', ...(withAudio ? ['-map', '[a]'] : []),
     '-c:v', 'libx264', '-preset', String(p.preset ?? 'veryfast').replace(/[^a-z]/g, '') || 'veryfast', '-crf', String(num(p.crf, 21, 14, 32)),
     '-profile:v', 'high', '-r', String(fps), ...(withAudio ? ['-c:a', 'aac', '-b:a', '160k', '-ac', '2'] : []), '-t', outTotal.toFixed(3),
