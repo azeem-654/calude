@@ -1274,3 +1274,40 @@ html[data-theme="dark"] .vs canvas.vse-layout { filter: none; }
 .vse-done { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--ok) 45%, transparent); background: color-mix(in srgb, var(--ok) 12%, var(--panel)); font-size: 13px; color: var(--ink); flex-wrap: wrap; }
 .vse-done > svg { color: var(--ok); flex: none; }
 .vse-done > span { flex: 1 1 220px; min-width: 0; line-height: 1.4; }
+
+/* ── Thumbnails shown big (ThumbShowcase.tsx, 2026-11): the chosen one large beside its actions and the other picks; under each video on the board and in Publishing ── */
+.ob-thumbsec { grid-column: 1 / -1; min-width: 0; border-top: 1px solid var(--line); padding-top: 12px; }
+.ob-why { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+.ob-why > span { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.ts { display: grid; grid-template-columns: minmax(0, 560px) minmax(0, 1fr); gap: 16px; align-items: start; min-width: 0; }
+.ts.tall { grid-template-columns: minmax(0, 260px) minmax(0, 1fr); }
+.ts-big { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: #0a0b0e; box-shadow: 0 6px 22px rgba(0, 0, 0, .35); }
+.ts.tall .ts-big { aspect-ratio: 9 / 16; }
+.ts-big img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ts-empty { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 6px; padding: 16px; text-align: center; color: var(--muted); border: 2px dashed var(--line2); border-radius: 14px; }
+.ts-empty small { color: var(--faint); max-width: 300px; }
+.ts-size { position: absolute; left: 8px; bottom: 8px; font-size: 11px; font-weight: 700; color: #fff; background: rgba(0, 0, 0, .6); padding: 2px 7px; border-radius: 999px; }
+.ts-side { min-width: 0; display: grid; gap: 10px; align-content: start; }
+.ts-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.ts-acts { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+.ts-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; }
+.ts.tall .ts-strip { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); }
+.ts-pick { min-width: 0; display: grid; gap: 5px; }
+.ts-pick img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 9px; display: block; background: #0a0b0e; }
+.ts.tall .ts-pick img { aspect-ratio: 9 / 16; }
+.ts-pick-acts { display: flex; flex-wrap: wrap; gap: 4px; }
+.ts-pick-acts .vs-btn.sm { padding-left: 7px; padding-right: 7px; }
+.vs-pub-thumb { padding: 14px; }
+.ts-start { max-width: 560px; display: grid; gap: 10px; }
+.ts-drop { position: relative; display: grid; place-items: center; min-height: 170px; border: 2px dashed var(--line2); border-radius: 14px; cursor: pointer; overflow: hidden; text-align: center; padding: 12px; }
+.ts-drop span { display: grid; justify-items: center; gap: 4px; color: var(--muted); }
+.ts-drop small { color: var(--faint); }
+.ts-drop.has { padding: 0; border-style: solid; }
+.ts-drop img { width: 100%; max-height: 300px; object-fit: contain; display: block; }
+.ts-drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.ts-start-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.ts-start-acts .vs-btn { flex: 1 1 220px; justify-content: center; }
+/* The designer's preview of "modern": the screen card and the round face. */
+.td-card, .td-bubble { position: absolute; overflow: hidden; pointer-events: none; }
+.td-bubble { border-radius: 50%; }
+@media (max-width: 900px) { .ts, .ts.tall { grid-template-columns: minmax(0, 1fr); } .ts.tall .ts-big { max-width: 300px; margin: 0 auto; } }

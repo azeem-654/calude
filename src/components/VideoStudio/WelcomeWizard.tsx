@@ -29,7 +29,7 @@ interface Goal {
 }
 
 export const GOALS: Goal[] = [
-  { key: 'both', title: 'Clean a long video and make Shorts', blurb: 'Fillers and long pauses out, one polished video, distinct Shorts, captions and PNG thumbnails.', icon: Layers, tag: 'Most popular', shorts: true, long: true },
+  { key: 'both', title: 'Clean a long video and make Shorts', blurb: 'Fillers and long pauses out, one polished video, distinct Shorts and captions — a thumbnail whenever you ask.', icon: Layers, tag: 'Most popular', shorts: true, long: true },
   { key: 'clean', title: 'Edit and clean a long video', blurb: 'Fillers, false starts and long pauses taken out; background noise reduced. One finished video.', icon: Scissors, long: true },
   { key: 'shorts', title: 'Turn a long video into Shorts', blurb: 'The best self-contained moments, each on its own topic, framed vertical with captions.', icon: Film, shorts: true },
   { key: 'repurpose', title: 'Repurpose into posts, emails and a blog', blurb: 'Shorts, plus social posts, an article and a short email series written from what you said.', icon: Share2, shorts: true, long: true },
@@ -56,7 +56,7 @@ export interface Choices {
 
 /** Each goal's starting choices — what a press of its card means without any questions. */
 export function defaultChoices(k: GoalKey): Choices {
-  const c: Choices = { shorts: 4, len: '30-60', aspect: '9:16', layout: 'crop', cleanup: 'balanced', noise: 'medium', voice: true, music: '', captions: true, thumbs: true, posts: 3, blog: true, email: true, quiz: false, language: '' };
+  const c: Choices = { shorts: 4, len: '30-60', aspect: '9:16', layout: 'crop', cleanup: 'balanced', noise: 'medium', voice: true, music: '', captions: true, thumbs: false, posts: 3, blog: true, email: true, quiz: false, language: '' };
   if (k === 'quiz') { c.quiz = true; c.cleanup = 'conservative'; c.layout = 'fit'; }
   if (k === 'shorts') c.shorts = 5;
   if (k === 'repurpose') c.shorts = 3;
@@ -71,13 +71,12 @@ export function buildResult(k: GoalKey, c: Choices): WizardResult | null {
   const [min, max] = c.len.split('-').map(Number);
   const n = g.shorts ? c.shorts : 0;
   const settings: Partial<VideoRequest> & { language?: string } = {
-    long: !!g.long, shorts: n, min, max, aspect: c.aspect, layout: c.layout, cleanup: c.cleanup, captions: c.captions, thumbnails: c.thumbs, ...(c.language ? { language: c.language } : {}),
+    long: !!g.long, shorts: n, min, max, aspect: c.aspect, layout: c.layout, cleanup: c.cleanup, captions: c.captions, thumbnails: false, ...(c.language ? { language: c.language } : {}),
   };
   const parts = [
     g.long ? `Clean this recording (${c.cleanup} cleanup) and create one polished main video` : 'Find the best moments in this recording',
     n ? `${g.long ? 'and ' : ''}${n} Shorts of ${min}–${max} seconds` : '',
     c.captions ? 'with captions' : 'without captions',
-    c.thumbs ? 'and PNG thumbnails' : '',
   ].filter(Boolean).join(' ');
   const extra = [
     c.noise !== 'off' ? `Remove the background noise (${c.noise}).` : '',
@@ -146,7 +145,7 @@ export function GoalOptions({ goal, onChange }: { goal: GoalKey; onChange: (r: W
         </div>
         <span className="vs-kbd">Fillers and pauses are cut; repeats and false starts wait for you to approve. Numbers, prices and “not” are never cut.</span>
         <label className="vs-opt"><input type="checkbox" checked={c.captions} onChange={e => set('captions')(e.target.checked)} /> <span><b>Captions</b> burned in, plus SRT/VTT files</span></label>
-        {g.key !== 'captions' && <label className="vs-opt"><input type="checkbox" checked={c.thumbs} onChange={e => set('thumbs')(e.target.checked)} /> <span><b>PNG thumbnails</b> with an exact headline</span></label>}
+        {/* No thumbnails option: they are made only when asked, on the video (2026-11). */}
       </div>
       <div className="vs-card vs-col">
         <h3><AudioLines size={14} /> Sound</h3>

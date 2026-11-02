@@ -116,8 +116,8 @@ export is a canvas recording; Video Studio is the real one.
   object-position, overlays) and says it is close.
 - **Thumbnails** follow the trending advice (§13–14 of the doc): one plan,
   `media/engine/thumbLayout.mjs` (`thumbPlan`, plain JS, types in `.d.mts`),
-  eight layouts — bold, glow, headline, short (9:16 cover), callout, split
-  ("A vs B"), number, cinematic — painted by the engine (numbers-only FFmpeg
+  nine layouts — modern, bold, glow, headline, short (9:16 cover), callout,
+  split ("A vs B"), number, cinematic — painted by the engine (numbers-only FFmpeg
   graph + escaped ASS) and drawn by `ThumbnailDesigner.tsx` as its preview;
   options (picked word coloured or boxed, gradient, word place/size, face
   side, sticker, arrow/ring, strip) clamped by `normaliseSpec`. A ring or
@@ -127,6 +127,29 @@ export is a canvas recording; Video Studio is the real one.
   thumbnail as a design (`designerHandoff.ts`); **Use as this video's
   thumbnail** comes back through `thumb_upload_url` + `thumb_attach`
   (`checkPng` at the exact size before it is chosen).
+  **Since 2026-11 thumbnails are made only on the customer's press**
+  (never after a render; the wizard/Autopilot `thumbnails` option is gone
+  and `doc.thumbnails.on` is not read; `stagesOf` shows the stage
+  "skipped — made when you ask" so a project still becomes ready).
+  "Create a thumbnail" (`ThumbShowcase.tsx` → `ThumbStart`) asks first for
+  an EXAMPLE thumbnail: shrunk to a JPEG in the browser, PUT through
+  `thumb_example_url`, then `thumbnails` with `exampleKey` sniffs the bytes,
+  has the AI pool read it (`thumbStyle.ts` `readExample`: `aiBudget` →
+  `askGeminiParts`, so OpenRouter's free vision models count; metered
+  `ai-thumb-example` on the job) and **deletes it**. `styleFromReading`
+  keeps only names from the engine's lists and #rrggbb colours — never the
+  model's words — and the note to the customer is built from those names;
+  unreadable (no key, budget, no key that reads pictures) → the modern
+  look, said so. Without an example: `modernStyles` (layout **`modern`**:
+  the blurred frame under a saturated gradient, the frame as a bordered
+  screenshot card, the found face cropped round with an accent glow and
+  outline — no card for a talking head, no bubble without a face — huge
+  2–4 words, one boxed). Words: the title cut by `punchyWords` (its own
+  words only). The first new one is chosen. The board and Publishing show
+  the chosen thumbnail big (16:9, or 9:16 for a Short) with Download PNG /
+  Edit / Edit in Graphics Designer & Editor and the others as a strip with
+  "Use this one". A failed render on the board says why (`plainError`
+  strips `refused:`) with **Try again**.
 - **From a YouTube link** (`lib/video/youtube.ts`, shared): the wizard's
   "Your video" step takes the customer's own video's link plus a rights
   box; engine job `fetch_url` runs pinned yt-dlp on the id only, refuses

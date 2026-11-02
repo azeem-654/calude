@@ -248,7 +248,6 @@ function AdvancedSettings({ understood, settings, onSet }: { understood: VideoRe
       <div className="vs-row">
         <label className="vs-row" style={{ gap: 6, fontSize: 13 }}><input type="checkbox" checked={understood.long} onChange={e => onSet({ long: e.target.checked })} /> Long video</label>
         <label className="vs-row" style={{ gap: 6, fontSize: 13 }}><input type="checkbox" checked={understood.captions} onChange={e => onSet({ captions: e.target.checked })} /> Captions</label>
-        <label className="vs-row" style={{ gap: 6, fontSize: 13 }}><input type="checkbox" checked={understood.thumbnails} onChange={e => onSet({ thumbnails: e.target.checked })} /> Thumbnails</label>
       </div>
     </div>
   );

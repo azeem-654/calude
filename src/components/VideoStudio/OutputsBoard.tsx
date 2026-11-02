@@ -15,22 +15,23 @@
  *     "4K" button on a 1080p render;
  *   - Export XML is the cut list for Premiere Pro or DaVinci Resolve, which
  *     re-links to the customer's own copy of the recording;
- *   - every checked thumbnail opens in the Graphics Designer & Editor
- *     (designerHandoff.ts), and a design can come back as the thumbnail.
+ *   - the thumbnail is its own wide section under each video, the chosen one
+ *     big (ThumbShowcase.tsx) — made only when asked, from an example or in
+ *     the modern style; every checked one opens in the Graphics Designer &
+ *     Editor (designerHandoff.ts), and a design can come back as the thumbnail;
+ *   - a render that failed says why, in plain words, with "Try again" — a
+ *     red "Failed" badge alone left the owner nothing to do.
  */
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  Download, Image as ImageIcon, FileCode2, Copy as CopyIcon, Pencil, Wand2, CopyPlus, Clapperboard, Loader, Captions as CaptionsIcon, LayoutGrid, List, Check, ShieldCheck, Paintbrush,
+  Download, FileCode2, Copy as CopyIcon, Pencil, CopyPlus, Clapperboard, Captions as CaptionsIcon, LayoutGrid, List, Check, ShieldCheck, RefreshCw, AlertCircle,
 } from 'lucide-react';
-import { useApp } from '../../context/AppContext';
-import { thumbAsDesign } from './designerHandoff';
 import {
-  clock, keepRanges, clipKeeps, keptLength, toXmeml, editorialScore, renderOutputs, setOutputStatus, chooseThumb, moreThumbnails, STATUS_LABEL,
-  type OutputView, type VideoMeta, type ThumbView,
+  clock, clipKeeps, keptLength, toXmeml, editorialScore, renderOutputs, setOutputStatus, plainError, STATUS_LABEL,
+  type OutputView, type VideoMeta,
 } from '../../services/videoStudio';
 import { MetaEditor } from './OutputsPanel';
-import ThumbnailDesigner from './ThumbnailDesigner';
+import ThumbShowcase from './ThumbShowcase';
 import type { EditorCtx } from './VideoEditor';
 
 function save(name: string, body: string, type: string) {
@@ -45,32 +46,18 @@ function CopyBtn({ text, label }: { text: string; label: string }) {
   return <button type="button" className="ob-act" disabled={!text} onClick={() => { void navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1400); }); }}>{done ? <Check size={14} /> : <CopyIcon size={14} />} {done ? 'Copied' : label}</button>;
 }
 
-/** Opens a thumbnail as a new design in the Graphics Designer & Editor (see designerHandoff.ts). */
-function useEditInDesigner(ctx: EditorCtx) {
-  const { addSocialPost } = useApp() as unknown as { addSocialPost: (p: import('../SocialCreator/types').DesignPost) => void };
-  const navigate = useNavigate();
-  const [busy, setBusy] = useState(false);
-  const open = async (o: OutputView, t: ThumbView) => {
-    if (busy) return;
-    setBusy(true);
-    const r = await thumbAsDesign(o, t, ctx.view.project.id);
-    setBusy(false);
-    if (!r.ok) { ctx.say({ who: 'ai', text: r.error }); return; }
-    addSocialPost(r.post);
-    navigate(`/social-creator/editor/${r.post.id}`);
-  };
-  return { open, busy };
-}
-
-function Row({ ctx, o, n, onDesign, onWords }: { ctx: EditorCtx; o: OutputView; n: number; onDesign: () => void; onWords: () => void }) {
-  const designer = useEditInDesigner(ctx);
+function Row({ ctx, o, n, onWords }: { ctx: EditorCtx; o: OutputView; n: number; onWords: () => void }) {
   const { view, doc, duration, transcript } = ctx;
   const clip = o.kind === 'short' ? doc.clips.find(c => c.id === o.clipId) : undefined;
   const [mode, setMode] = useState<'description' | 'transcript'>('description');
   const meta = o.meta as Partial<VideoMeta>;
   const score = editorialScore(clip?.scores ?? null);
   const job = view.jobs.find(j => j.target === o.id && j.kind === 'render' && (j.state === 'queued' || j.state === 'running'));
-  const thumbJob = view.jobs.some(j => j.target === o.id && j.kind === 'thumbnails' && (j.state === 'queued' || j.state === 'running'));
+  const [retrying, setRetrying] = useState(false);
+  /* Why the render failed: the output's own error, else its failed job's — internal prefixes off. */
+  const failedJob = view.jobs.find(j => j.target === o.id && j.kind === 'render' && j.state === 'failed');
+  const why = o.status === 'failed' && !job ? plainError(o.error || failedJob?.error || '') : '';
+  const retry = () => { setRetrying(true); void renderOutputs(view.project.id, [o.id]).then(r => { setRetrying(false); if (!r.success) ctx.say({ who: 'ai', text: r.error ?? 'It could not be rendered again.' }); void ctx.refresh(); }); };
   const chosen = o.thumbs[o.chosenThumb] ?? o.thumbs[0];
   const [from, to] = clip ? [clip.s, clip.e] : [0, duration];
   const keeps = useMemo(() => clipKeeps(duration, doc, clip), [duration, doc, clip]);
@@ -109,6 +96,12 @@ function Row({ ctx, o, n, onDesign, onWords }: { ctx: EditorCtx; o: OutputView; 
           <b title={meta.titles?.[0] ?? o.title}>{meta.titles?.[0] ?? o.title}</b>
           <span className={`vs-badge ${o.status}`} data-testid="vs-board-status">{job ? (job.progress !== null ? `Rendering ${Math.round(job.progress)}%` : 'Rendering…') : o.stale ? 'Edited — render again' : STATUS_LABEL[o.status]}</span>
         </div>
+        {o.status === 'failed' && !job && (
+          <div className="vs-note bad ob-why" role="alert" data-testid="vs-board-error">
+            <AlertCircle size={15} /> <span>{why ? `The render failed: ${why}` : 'The render failed, and the engine gave no reason.'}</span>
+            <button type="button" className="vs-btn sm" disabled={retrying} onClick={retry} data-act="board-retry"><RefreshCw size={13} className={retrying ? 'spin' : ''} /> Try again</button>
+          </div>
+        )}
         <div className="ob-tabs">
           <button type="button" aria-pressed={mode === 'description'} onClick={() => setMode('description')}>Description</button>
           <button type="button" aria-pressed={mode === 'transcript'} onClick={() => setMode('transcript')}>Transcript only</button>
@@ -121,34 +114,11 @@ function Row({ ctx, o, n, onDesign, onWords }: { ctx: EditorCtx; o: OutputView; 
         {o.kind === 'long' && (meta.chapters?.length ?? 0) > 0 && (
           <div className="ob-chapters" data-testid="vs-board-chapters"><span>Timeline</span>{meta.chapters!.map(c => <button key={c.s} type="button" onClick={() => ctx.seek(c.s)}><b>{clock(c.s)}</b> {c.title}</button>)}</div>
         )}
-        <div className="ob-thumbs" data-testid="vs-board-thumbs">
-          <span>Thumbnails</span>
-          {o.thumbs.slice(-8).map(t => (
-            <span key={t.index} className="ob-thumb-wrap">
-              <button type="button" className={`ob-thumb ${tall ? 'tall' : ''}`} aria-pressed={o.chosenThumb === t.index} disabled={!t.verified} title={t.verified ? `${t.layout} · ${t.check}` : t.check}
-                onClick={() => void chooseThumb(view.project.id, o.id, t.index).then(() => ctx.refresh())}>
-                <img src={t.url} alt={`Thumbnail ${t.index + 1}: ${t.headline}`} loading="lazy" />
-              </button>
-              {t.verified && (
-                <button type="button" className="ob-thumb-edit" disabled={designer.busy} onClick={() => void designer.open(o, t)} data-act="edit-in-designer"
-                  title="Edit in Graphics Designer & Editor" aria-label={`Edit thumbnail ${t.index + 1} in Graphics Designer & Editor`}><Paintbrush size={12} /></button>
-              )}
-            </span>
-          ))}
-          {thumbJob && <span className="vs-kbd"><Loader size={12} className="spin" /> Making…</span>}
-          {o.rendered && <button type="button" className="ob-thumb add" onClick={onDesign} data-act="design-thumb"><Wand2 size={15} /><small>Design</small></button>}
-          {o.rendered && !thumbJob && <button type="button" className="ob-thumb add" onClick={() => void moreThumbnails(view.project.id, o.id).then(() => ctx.refresh())} data-act="board-more-thumbs"><ImageIcon size={15} /><small>3 more</small></button>}
-        </div>
       </div>
       <div className="ob-actions">
         {o.downloadUrl ? <a className="ob-act primary" href={o.downloadUrl} data-act="board-download"><Download size={14} /> Download MP4 <small>{o.width}×{o.height}</small></a>
-          : <span className="ob-act off"><Clapperboard size={14} /> Not rendered yet</span>}
-        {chosen?.verified && <a className="ob-act" href={chosen.downloadUrl} data-act="board-png"><ImageIcon size={14} /> Thumbnail PNG</a>}
-        {chosen?.verified && (
-          <button type="button" className="ob-act" disabled={designer.busy} onClick={() => void designer.open(o, chosen)} data-act="board-edit-in-designer">
-            {designer.busy ? <Loader size={14} className="spin" /> : <Paintbrush size={14} />} Edit in Graphics Designer & Editor
-          </button>
-        )}
+          : o.status === 'failed' && !job ? <button type="button" className="ob-act ai" disabled={retrying} onClick={retry}><RefreshCw size={14} /> Try the render again</button>
+            : <span className="ob-act off"><Clapperboard size={14} /> Not rendered yet</span>}
         {o.srtUrl && <a className="ob-act" href={o.srtUrl}><CaptionsIcon size={14} /> Captions SRT</a>}
         {o.vttUrl && <a className="ob-act" href={o.vttUrl}><CaptionsIcon size={14} /> Captions VTT</a>}
         <button type="button" className="ob-act" onClick={xml} data-act="export-xml"><FileCode2 size={14} /> Export XML</button>
@@ -165,6 +135,7 @@ function Row({ ctx, o, n, onDesign, onWords }: { ctx: EditorCtx; o: OutputView; 
           </div>
         )}
       </div>
+      <div className="ob-thumbsec"><ThumbShowcase ctx={ctx} o={o} /></div>
     </article>
   );
 }
@@ -174,13 +145,11 @@ export default function OutputsBoard({ ctx }: { ctx: EditorCtx }) {
   const [filter, setFilter] = useState<'all' | 'short' | 'long'>('all');
   const [sort, setSort] = useState<'score' | 'time'>('time');
   const [grid, setGrid] = useState(false);
-  const [design, setDesign] = useState<OutputView | null>(null);
   const [words, setWords] = useState<OutputView | null>(null);
   const scoreOf = (o: OutputView) => editorialScore(doc.clips.find(c => c.id === o.clipId)?.scores ?? null)?.total ?? (o.kind === 'long' ? 101 : -1);
   const startOf = (o: OutputView) => doc.clips.find(c => c.id === o.clipId)?.s ?? -1;
   const list = view.outputs.filter(o => filter === 'all' || o.kind === filter).sort((a, b) => sort === 'score' ? scoreOf(b) - scoreOf(a) : startOf(a) - startOf(b));
   const nOf = (o: OutputView) => (o.kind === 'long' ? 0 : view.outputs.filter(x => x.kind === 'short').findIndex(x => x.id === o.id) + 1);
-  const fresh = design ? view.outputs.find(o => o.id === design.id) ?? design : null;
   const wordsOf = words ? view.outputs.find(o => o.id === words.id) ?? words : null;
   return (
     <section className="ob" id="vs-outputs-board" data-testid="vs-outputs-board">
@@ -204,10 +173,9 @@ export default function OutputsBoard({ ctx }: { ctx: EditorCtx }) {
       </header>
       {!view.outputs.length && <p className="vs-sub">The long video and the Shorts appear here as they are chosen and made.</p>}
       <div className={`ob-list ${grid ? 'grid' : ''}`}>
-        {list.map(o => <Row key={o.id} ctx={ctx} o={o} n={nOf(o)} onDesign={() => setDesign(o)} onWords={() => setWords(o)} />)}
+        {list.map(o => <Row key={o.id} ctx={ctx} o={o} n={nOf(o)} onWords={() => setWords(o)} />)}
       </div>
       <p className="vs-kbd" style={{ marginTop: 10 }}><ShieldCheck size={12} /> Scores are the AI's editorial reading of each passage — how well it stands alone — not a prediction of views or reach.</p>
-      {fresh && <ThumbnailDesigner ctx={ctx} o={fresh} onClose={() => setDesign(null)} />}
       {wordsOf && (
         <div className="vs-modal-back" role="dialog" aria-modal="true" aria-label="Edit the words" onClick={() => setWords(null)}>
           <div className="vs-modal" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>

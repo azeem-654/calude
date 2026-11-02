@@ -22,6 +22,9 @@
  * customer did not give. The board's words (title, description, hashtags,
  * pinned comment, call to action, tags) are saved too, and one press puts
  * everything back.
+ *
+ * The thumbnail goes out with the video, so it is here too, big
+ * (ThumbShowcase.tsx — the same section as the board's).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Check, RefreshCw, Wand2, Loader, Megaphone, PenLine, Send, AlertCircle, Sparkles, Undo2 } from 'lucide-react';
@@ -29,6 +32,7 @@ import { savePublish, updateMeta, clock, type PublishTexts, type OutputView, typ
 import { reshapePrompt, checkReshape, type Texts } from './reshape';
 import { aiJson, fencedTranscript } from '../../services/videoAi';
 import type { EditorCtx } from './VideoEditor';
+import ThumbShowcase from './ThumbShowcase';
 
 type FieldKey = 'title' | 'description' | 'marketing' | 'hashtags' | 'shownotes' | 'summary' | 'chapters' | 'blog';
 const FIELDS: { key: FieldKey; label: string; rows: number; ask: string; limit?: number }[] = [
@@ -307,6 +311,7 @@ Answer only JSON: {"text":"…"}`, 0.7);
         {reshaped && <div className={`vs-note ${reshaped.bad ? 'warn' : 'ok'}`} role="status" data-testid="vs-reshape-result"><Check size={15} /> <span>{reshaped.text}</span></div>}
         <small className="vs-kbd" style={{ fontWeight: 500 }}>Only what you ask for is changed; a link is used exactly as you typed it, and the AI may not add one you did not give.</small>
       </div>
+      {out && <div className="vs-card vs-pub-thumb" data-testid="vs-publish-thumb" style={{ marginBottom: 12 }}><ThumbShowcase ctx={ctx} o={out} testId="vs-publish-thumbs" /></div>}
       {off && <div className="vs-note warn" style={{ marginBottom: 10 }}><AlertCircle size={15} /> {off}</div>}
       {err && <div className="vs-note bad" role="alert" style={{ marginBottom: 10 }} data-testid="vs-publish-error"><AlertCircle size={15} /> {err}</div>}
       <div className="vs-pub-grid">

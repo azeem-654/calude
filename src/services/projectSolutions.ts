@@ -1657,18 +1657,18 @@ export const SOLUTIONS: Solution[] = [
         const long = one(a.videoLong, 'yes') !== 'no';
         const nodes: WorkflowNode[] = [
           { id: 'n0', type: 'trigger', label: 'A recording is uploaded', config: { event: 'video_uploaded' }, nextId: 'n1' },
-          { id: 'n1', type: 'ai', label: 'Clean it and make the Shorts', config: { source: 'video', produces: 'video_package', shorts: String(shorts), long: String(long), captions: 'true', thumbnails: 'true', cleanup: 'balanced' }, nextId: null },
+          { id: 'n1', type: 'ai', label: 'Clean it and make the Shorts', config: { source: 'video', produces: 'video_package', shorts: String(shorts), long: String(long), captions: 'true', cleanup: 'balanced' }, nextId: null },
         ];
         return merge(empty(), {
           workflows: [{
             key: 'video-upload', name: 'Recording to Shorts',
-            purpose: `Each recording becomes ${long ? 'one cleaned long video and ' : ''}${shorts} distinct Short${shorts === 1 ? '' : 's'}, with captions, PNG thumbnails and its own titles.`,
+            purpose: `Each recording becomes ${long ? 'one cleaned long video and ' : ''}${shorts} distinct Short${shorts === 1 ? '' : 's'}, with captions and its own titles (a thumbnail whenever you ask for one).`,
             origin: 'generated', nodes, schedule: 'Runs when you upload a recording',
-            agents: [{ name: 'Video Editor Agent', role: 'Transcribes each recording, removes fillers and long pauses, picks distinct Shorts, captions them, makes PNG thumbnails and writes titles and descriptions.' }],
+            agents: [{ name: 'Video Editor Agent', role: 'Transcribes each recording, removes fillers and long pauses, picks distinct Shorts, captions them and writes titles and descriptions.' }],
             output: { label: 'Videos and Shorts', route: '/video-studio' },
             sends: false, channel: 'video',
           }],
-          outputs: [...(long ? ['A cleaned long video per recording'] : []), `${shorts} Short${shorts === 1 ? '' : 's'} per recording`, 'Captions (burned in, SRT and VTT)', 'PNG thumbnails', 'Titles, descriptions and hashtags'],
+          outputs: [...(long ? ['A cleaned long video per recording'] : []), `${shorts} Short${shorts === 1 ? '' : 's'} per recording`, 'Captions (burned in, SRT and VTT)', 'Titles, descriptions and hashtags'],
           destinations: [{ label: 'AI Video Studio', route: '/video-studio' }],
           approvals: ['Nothing is published — each video waits for you as Needs review'],
           manual: ['Upload each recording (AI Video Studio, or the business workspace’s Assets tab)', 'Post the finished videos — direct posting is not connected'],

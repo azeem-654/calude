@@ -380,3 +380,43 @@ export const TEMPLATES: Template[] = [
 
 export type { Clip, Transcript, VideoDoc, VideoRequest, Op, CleanupPreset };
 export type { MusicTrack, AudioSettings, Denoise } from '../../worker/src/lib/video/edit';
+
+/* ── Thumbnails on the customer's press (2026-11) ─────────────────────────── */
+
+/**
+ * "Create a thumbnail": with an example the customer likes (`exampleKey`, an
+ * upload from `uploadThumbExample`) it is read by AI into a style and two
+ * PNGs are drawn in it; without one, three in the modern look. `note` says
+ * what was read, or why the example could not be and the modern look was used.
+ */
+export const createThumbnails = (projectId: string, outputId: string, exampleKey?: string) =>
+  call<{ set: number; read: boolean; note: string }>('thumbnails', { projectId, outputId, ...(exampleKey ? { exampleKey } : {}) });
+
+/**
+ * An example thumbnail, drawn here into a JPEG no larger than 1280 px (any
+ * picture the browser can open; anything else is refused here by name), then
+ * sent straight to storage through a signed link. The server checks the bytes
+ * again before the AI reads it, and deletes it after.
+ */
+export async function uploadThumbExample(projectId: string, outputId: string, file: File): Promise<{ ok: true; key: string } | { ok: false; error: string }> {
+  if (!/^image\//.test(file.type) || /svg/.test(file.type)) return { ok: false, error: 'Choose a picture — a JPEG, PNG or WebP thumbnail.' };
+  if (file.size > 25 * 1024 * 1024) return { ok: false, error: 'That picture is over 25 MB — choose a smaller one.' };
+  let jpeg: Blob | null = null;
+  try {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(bmp.width * k)); c.height = Math.max(1, Math.round(bmp.height * k));
+    c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
+    jpeg = await new Promise<Blob | null>(res => c.toBlob(res, 'image/jpeg', 0.88));
+  } catch { jpeg = null; }
+  if (!jpeg) return { ok: false, error: 'That picture could not be opened — try a JPEG or PNG.' };
+  const u = await call<{ url: string; key: string }>('thumb_example_url', { projectId, outputId });
+  if (!u.success) return { ok: false, error: u.error ?? 'The upload could not start.' };
+  const put = await fetch(`${u.url}&name=example.jpg&type=image/jpeg`, { method: 'PUT', body: jpeg }).then(r => r.json()).catch(() => ({ success: false })) as { success?: boolean };
+  if (!put.success) return { ok: false, error: 'The example did not upload — try again.' };
+  return { ok: true, key: u.key };
+}
+
+/** A render's failure in the customer's words: the job's internal prefixes off. */
+export const plainError = (e: string) => String(e ?? '').replace(/^(?:\s*(?:refused|error|failed|engine)\s*:\s*)+/i, '').trim();

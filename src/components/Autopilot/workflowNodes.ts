@@ -142,7 +142,7 @@ export const AGENT_OUTPUTS: Record<string, AgentOutput> = {
   /* Made by the project's daily prospect finder (worker/src/prospectFinderTick.ts), never chosen in the editor. */
   prospects: { label: 'New prospects', where: "this business workspace's audience", route: '/autopilot', finderOnly: true },
   /* Made by AI Video Studio (worker/src/lib/video/pipeline.ts) when a recording is uploaded into the project. */
-  video_package: { label: 'A cleaned video, Shorts, captions and PNG thumbnails', where: 'AI Video Studio', route: '/video-studio', finderOnly: true },
+  video_package: { label: 'A cleaned video, Shorts and captions', where: 'AI Video Studio', route: '/video-studio', finderOnly: true },
 };
 
 /** The sources and outputs somebody may pick in the step editor — not the finder's own. */
@@ -204,7 +204,7 @@ export function nodeDetail(type: string, config: Record<string, string> = {}): s
     }
     if (c('produces') === 'video_package') {
       const n = Number(c('shorts')) || 0;
-      return `Transcribes and cleans each recording → ${c('long') === 'false' ? '' : 'a cleaned long video, '}${n} Short${n === 1 ? '' : 's'}, captions, PNG thumbnails and titles → AI Video Studio`;
+      return `Transcribes and cleans each recording → ${c('long') === 'false' ? '' : 'a cleaned long video, '}${n} Short${n === 1 ? '' : 's'}, captions and titles → AI Video Studio`;
     }
     const src = AGENT_SOURCES[c('source') || 'portfolio'];
     const out = AGENT_OUTPUTS[c('produces') || 'social'];

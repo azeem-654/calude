@@ -19,11 +19,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Wand2, Loader, Check, Crosshair } from 'lucide-react';
 import {
   designThumb, videoStatus, clock, keepRanges, clipKeeps, thumbPlan, normaliseSpec, EM, CONDENSE, HALO, STICKERS,
-  type OutputView, type ThumbSpec, type ThumbPlan, type TrackRow,
+  type OutputView, type ThumbSpec, type ThumbPlan, type TrackRow, type ThumbView,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
 
 const LAYOUTS: { key: string; name: string; hint: string; tall?: boolean; wide?: boolean }[] = [
+  { key: 'modern', name: 'Face + screen', hint: 'Today\'s look: the face round and glowing, the screen as a card, huge words' },
   { key: 'bold', name: 'Face + big words', hint: 'The face close, huge words on a gradient panel' },
   { key: 'glow', name: 'Glow', hint: 'Sharp face in a glow on a blurred gradient' },
   { key: 'headline', name: 'Big headline', hint: 'Words first — screens and tutorials' },
@@ -110,8 +111,18 @@ export function PlanPreview({ plan, frame, frame2 }: { plan: ThumbPlan; frame: {
           : `linear-gradient(${a.axis === 'x' ? ((a.to ?? 1) > (a.from ?? 0) ? 'to right' : 'to left') : ((a.to ?? 1) > (a.from ?? 0) ? 'to bottom' : 'to top')}, transparent ${((a.to ?? 1) > (a.from ?? 0) ? (a.from ?? 0) : 1 - (a.from ?? 0)) * 100}%, #000 ${((a.to ?? 1) > (a.from ?? 0) ? (a.to ?? 1) : 1 - (a.to ?? 1)) * 100}%)`;
         return <div key={i} className="td-fill" style={{ background: `linear-gradient(${f.angle ?? 180}deg, ${f.c0solid}, ${f.c1solid})`, opacity: a.max, ...(mask ? { maskImage: mask, WebkitMaskImage: mask } : {}) }} />;
       })}
+      {plan.card && (
+        <div className="td-card" style={{ left: pct(plan.card.x, W), top: pct(plan.card.y, H), width: pct(plan.card.w, W), height: pct(plan.card.h, H), outline: `${cq(plan.card.t)} solid ${plan.card.border}`, outlineOffset: `-${cq(plan.card.t)}`, boxShadow: `${cq(plan.card.shadow * 0.6)} ${cq(plan.card.shadow)} 0 rgba(0,0,0,.45)` }}>
+          <Pic src={frame.url} crop={plan.card.crop} sw={sw} sh={sh} filter="contrast(1.08) saturate(1.2)" />
+        </div>
+      )}
       {plan.halo && (
         <div className="td-fill" style={{ opacity: HALO.max / 255, background: `radial-gradient(${ell(plan.halo)}, transparent ${HALO.inner * 100}%, ${plan.halo.color} ${(HALO.inner + HALO.rise) * 100}%, ${plan.halo.color} ${(HALO.outer - HALO.soft) * 100}%, transparent ${HALO.outer * 100}%)` }} />
+      )}
+      {plan.bubble && (
+        <div className="td-bubble" style={{ left: pct(plan.bubble.cx - plan.bubble.r, W), top: pct(plan.bubble.cy - plan.bubble.r, H), width: pct(plan.bubble.r * 2, W), height: pct(plan.bubble.r * 2, H), boxShadow: `0 0 0 ${cq(plan.bubble.t)} ${plan.bubble.ring}, 0 0 ${cq(plan.bubble.t * 5)} ${cq(plan.bubble.t * 2)} ${plan.bubble.ring}` }}>
+          <Pic src={frame.url} crop={plan.bubble.crop} sw={sw} sh={sh} filter="contrast(1.12) saturate(1.3)" />
+        </div>
       )}
       {plan.spot && plan.crop && (
         <Pic src={frame.url} crop={plan.crop} sw={sw} sh={sh} filter="contrast(1.12) saturate(1.3)"
@@ -186,17 +197,18 @@ function Seg<T extends string>({ value, options, onChange, label, disabled }: { 
   );
 }
 
-export default function ThumbnailDesigner({ ctx, o, onClose }: { ctx: EditorCtx; o: OutputView; onClose: () => void }) {
+/** `startFrom`: the thumbnail to start from (its own spec); null starts fresh; left out, the chosen one. */
+export default function ThumbnailDesigner({ ctx, o, onClose, startFrom }: { ctx: EditorCtx; o: OutputView; onClose: () => void; startFrom?: ThumbView | null }) {
   const { view, doc, duration } = ctx;
   const clip = o.kind === 'short' ? doc.clips.find(c => c.id === o.clipId) : undefined;
   const keeps = useMemo(() => clipKeeps(duration, doc, clip), [duration, doc, clip]);
   const from = keeps[0]?.[0] ?? 0, to = keeps[keeps.length - 1]?.[1] ?? duration;
-  const start = (o.thumbs[o.chosenThumb] ?? o.thumbs[0])?.spec;
+  const start = startFrom === null ? undefined : (startFrom ?? o.thumbs[o.chosenThumb] ?? o.thumbs[0])?.spec;
   const words0 = (o.meta as { titles?: string[] }).titles?.[0] ?? o.title;
   const tall = o.kind === 'short';
   const W = tall ? 1080 : 1280, H = tall ? 1920 : 720;
   const [sp, setSp] = useState<ThumbSpec>(() => start ?? {
-    layout: tall ? 'short' : 'bold', text: words0.split(/\s+/).slice(0, 5).join(' '), highlight: '', at: Math.min(to, from + (to - from) * 0.2),
+    layout: 'modern', text: words0.split(/\s+/).slice(0, 4).join(' '), highlight: '', at: Math.min(to, from + (to - from) * 0.2),
     accent: '#facc15', color: '#0b0b12', textColor: '#ffffff', border: true, zoom: 0.5,
   });
   const [busy, setBusy] = useState(false);
@@ -248,7 +260,7 @@ export default function ThumbnailDesigner({ ctx, o, onClose }: { ctx: EditorCtx;
       {sp.layout === 'frame' && <div className="td-edge" style={{ boxShadow: `inset 0 0 0 3cqw ${sp.color}` }} />}
     </>
   );
-  const facesLayout = ['bold', 'glow', 'short', 'callout', 'number'].includes(shown);
+  const facesLayout = ['modern', 'bold', 'glow', 'short', 'callout', 'number'].includes(shown);
   const layouts = LAYOUTS.filter(l => !(l.tall && !tall));
 
   return (
