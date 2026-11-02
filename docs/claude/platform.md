@@ -24,6 +24,37 @@ otherwise their first validated one — a chosen mailbox that stops working
 falls back rather than silencing every code. Only mailboxes in workspaces the
 install owner owns are candidates. `npm run test:systemmail` (fresh D1).
 
+## Connecting mailboxes in bulk — paste, screenshot, connect and test all
+
+Settings → Email, under the mailbox list: **Paste your mail settings**
+(`Settings/MailboxImport.tsx`). The paste is read in the browser by
+`worker/src/lib/mailParse.ts` (pure, shared with the Worker): welcome emails,
+help pages, CSV/TSV with a header, `email:password` and `email password host
+port` lines, several "Label: value" pairs on one line. It groups by address;
+labelled settings apply to the addresses in their block, and a block naming no
+address applies to the addresses on its host's domain (else to all missing
+it). `From:`/`To:` headers and support@/no-reply@ in prose are never mailboxes;
+"Password: your email password" is a placeholder, not a password; POP3 is
+never taken as IMAP. Gaps are filled in order — `KNOWN_PROVIDERS` (each a
+provider's published setting, with its app-password rule in plain words), then
+the Worker's `lookup` (`lib/mailLookup.ts`: Mozilla ISPDB, `autoconfig.<domain>`,
+MX over DoH → provider, ISPDB for the MX's domain). Every setting carries its
+source; a lookup that could not run says so, never "none found". Only
+`finalise()` adds the usual 587/993 pairing, and says it did.
+A **screenshot** goes to `read_picture`: `loadAiKey` → `aiBudget` →
+`askGeminiParts` (JSON, through the pool, OpenRouter vision models included) →
+`recordsFromAi`, shown for checking, never saved directly; no key → `no_ai`,
+said at the attach button. **Connect and test all** sends rows in batches of 3
+(`bulk_connect`): each goes through `saveOne` (the form's own save — encrypted,
+workspace-scoped, an existing address updated not duplicated), then
+`proveOutgoing` then `proveIncoming` (the form's own Validate), and answers per
+row and per side (`connected`, `wrong_password`, `needs_app_password`,
+`host_unreachable`…); one side working is `partial`. Rate-limited per workspace
+(lookups 300/h, mailbox tests 150/h) so it cannot be used to spray passwords.
+There is no plan allowance on mailbox count. `npm run test:mailparse` (pure),
+`npm run test:mailimport` (built bundle; SMTP + IMAP stand-in on plain sockets,
+mocked ISPDB/DoH/Gemini, both screen widths).
+
 ## Platform services — the owner's keys for everybody, in one place
 
 Settings → **Platform services** (`components/Settings/PlatformServices.tsx`,

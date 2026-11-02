@@ -22,6 +22,7 @@
  * wrong.
  */
 import { askConfirm } from '../shared/ConfirmDialog';
+import MailboxImport from './MailboxImport';
 import { useEffect, useState } from 'react';
 import {
   Mail, Inbox, Plus, Trash2, Star, CheckCircle2, XCircle, Loader,
@@ -571,6 +572,10 @@ export default function MailboxesPanel() {
           </div>
         </div>
       )}
+
+      {/* Many at once, from a paste or a screenshot. Saved through the same
+          save-and-validate path as the form above (routes/mailbox.ts saveOne). */}
+      {!loading && <MailboxImport onConnected={l => afterSave(l)} />}
 
       {!adding && (
         <div>

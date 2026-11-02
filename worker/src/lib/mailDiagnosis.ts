@@ -155,7 +155,9 @@ const RULES: Rule[] = [
   },
   {
     id: 'r8',
-    match: /ETIMEDOUT|timed? out|timeout|cannot reach/i,
+    /* "Could not reach" is lib/imap.ts's wording for what lib/smtp.ts calls
+       "Cannot reach"; without it an unreachable inbox got the generic advice. */
+    match: /ETIMEDOUT|timed? out|timeout|cannot reach|could not reach/i,
     summary: 'The connection was opened and never answered, which usually means a firewall between us and the server.',
     steps: [
       'Confirm the host and port against your provider’s documentation.',

@@ -15,6 +15,7 @@
  */
 import { sessionToken } from './auth';
 import { getActiveAccountId } from './tenancy';
+import type { FoundSettings, MailRecord } from '../../worker/src/lib/mailParse';
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:8787' : '';
 
@@ -290,4 +291,53 @@ export async function refreshMailboxCache(): Promise<MailboxRecord[]> {
   const list = await listMailboxes();
   cacheMailboxes(list);
   return list;
+}
+
+/* ── Paste-and-connect (worker/src/routes/mailbox.ts `lookup`, `read_picture`, `bulk_connect`) ── */
+
+type Answer<T> = T & { success: boolean; error?: string; code?: string; field?: string };
+
+async function callRaw<T>(action: string, extra: Record<string, unknown>): Promise<Answer<T>> {
+  const accountId = getActiveAccountId();
+  if (!accountId) return { success: false, error: 'No workspace is active yet.' } as Answer<T>;
+  try {
+    const r = await fetch(`${API_BASE}/api/mailbox.php`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: sessionToken(), accountId, action, ...extra }),
+    });
+    return await r.json() as Answer<T>;
+  } catch (e) {
+    return { success: false, error: `Could not reach the server: ${e instanceof Error ? e.message : String(e)}` } as Answer<T>;
+  }
+}
+
+export interface LookupStep { source: string; outcome: 'found' | 'none' | 'failed'; detail: string }
+export interface DomainLookup { domain: string; found: FoundSettings | null; steps: LookupStep[]; summary: string }
+
+/** Ask the Worker for custom domains' settings (ISPDB, the domain's autoconfig, its MX). At most 8 per call. */
+export function lookupMailDomains(domains: { domain: string; email: string }[]) {
+  return callRaw<{ lookups?: DomainLookup[] }>('lookup', { domains });
+}
+
+/** Have the AI read a screenshot of mail settings. The records come back for the customer to check. */
+export function readMailPicture(mime: string, data: string) {
+  return callRaw<{ records?: MailRecord[]; message?: string }>('read_picture', { mime, data });
+}
+
+export interface BulkSideResult { ok: boolean; kind: string; message: string; steps?: string[] }
+export interface BulkResult {
+  email: string; id?: string; updated?: boolean; ok: boolean;
+  status: 'connected' | 'partial' | 'failed'; field?: string; message?: string;
+  outgoing?: BulkSideResult; incoming?: BulkSideResult;
+}
+export interface BulkRow {
+  email: string; name: string; password: string;
+  smtp: { host: string; port: number; security: string; username: string; password: string };
+  imap: { host: string; port: number; security: string; username: string; password: string };
+}
+
+/** Save and test up to three mailboxes; each row answers for itself. */
+export function bulkConnectMailboxes(rows: BulkRow[]) {
+  return callRaw<{ results?: BulkResult[]; mailboxes?: MailboxRecord[] }>('bulk_connect', { rows });
 }
