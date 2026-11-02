@@ -22,6 +22,7 @@ import { layoutOptions, layoutPlan } from '../worker/src/lib/video/layouts';
 import { toXmeml, editorialScore } from '../worker/src/lib/video/xml';
 import { pickHighlight, thumbWords, cleanThumbSpec, renderSpec, withoutStrangeLinks, TRANSIENT } from '../worker/src/lib/video/pipeline';
 import { thumbPlan, normaliseSpec, lineRect, TREND_LAYOUTS, STICKERS } from '../media/engine/thumbLayout.mjs';
+import { punchyWords, styleFromReading, modernStyles } from '../worker/src/lib/video/thumbStyle';
 import { soundSteps, voiceFilters, needsSoundPasses } from '../media/engine/soundPlan.mjs';
 import { parseYoutubeUrl, youtubeRefusal, cleanOembed, youtubeThumb, YOUTUBE_WAY_FORWARD } from '../worker/src/lib/video/youtube';
 import {
@@ -51,7 +52,7 @@ function talk(text: string, start = 1, gap = 0.12, perWord = 0.3): Word[] {
 console.log('\nThe request');
 {
   const r = parseRequest('Clean this recording, remove filler words and long gaps, create one polished main video and four Shorts, add captions and create PNG thumbnails.');
-  ok('the brief\'s example: long video, 4 Shorts, captions, thumbnails, balanced', r.long && r.shorts === 4 && r.captions && r.thumbnails && r.cleanup === 'balanced', r);
+  ok('the brief\'s example: long video, 4 Shorts, captions, balanced — and no thumbnails until asked on the video', r.long && r.shorts === 4 && r.captions && !r.thumbnails && r.cleanup === 'balanced' && !r.understood.includes('PNG thumbnails'), r);
   const p = parseRequest('Every time I upload a podcast, create 5 Shorts.');
   ok('"create 5 Shorts" → 5 Shorts and no long video', p.shorts === 5 && !p.long, p);
   const w = parseRequest('Turn every webinar into one cleaned long video and 4 Shorts');
@@ -588,7 +589,7 @@ console.log('\nTrending thumbnails: one plan for the engine and the preview');
 {
   const face = { x: 0.2, y: 0.2, w: 0.2, h: 0.35 };
   const src = { w: 1920, h: 1080 };
-  ok('eight trending layouts, including the 9:16 Shorts cover', TREND_LAYOUTS.length === 8 && TREND_LAYOUTS.includes('short') && TREND_LAYOUTS.includes('glow'));
+  ok('nine trending layouts, including the 9:16 Shorts cover and "modern"', TREND_LAYOUTS.length === 9 && TREND_LAYOUTS.includes('short') && TREND_LAYOUTS.includes('glow') && TREND_LAYOUTS.includes('modern'));
   const evil = normaliseSpec({ layout: 'bold;drawtext=x', sticker: 'skull', side: 'up', pointer: 'laser', accent: 'red', textSize: 9, badge: 'x'.repeat(80), hlStyle: 'neon' });
   ok('every option is held to the engine\'s own lists and ranges', evil.layout === 'bold' && evil.sticker === '' && evil.side === 'auto' && evil.pointer === 'auto' && evil.accent === '#facc15' && evil.textSize === 1.4 && evil.badge.length === 28 && evil.hlStyle === 'color', evil);
   const inFrame = (pl: ReturnType<typeof thumbPlan>) => pl.lines.every(l => { const r = lineRect(l); return r.x0 >= -2 && r.x1 <= pl.W + 2 && r.y0 >= -2 && r.y1 <= pl.H + 2; });
@@ -619,8 +620,35 @@ console.log('\nTrending thumbnails: one plan for the engine and the preview');
     ok(`sticker "${k}" drawn inside the picture`, !!st && st.cx - st.r >= 0 && st.cx + st.r <= 1280 && st.cy - st.r >= 0 && st.cy + st.r <= 720 && (!!st.mark || !!st.glyph), st);
   }
   ok('even lines: "of work in 1" is never left with "1" alone', num.lines.slice(1).every(l => l.runs.map(r => r.t).join('').trim().split(' ').length >= 2), num.lines.map(l => l.runs.map(r => r.t).join('')));
+  /* "modern": the screen as a card, the found face round in a glow, the words on the other side. */
+  const shot = { x: 0.03, y: 0.7, w: 0.08, h: 0.16 }, head = { x: 0.45, y: 0.15, w: 0.25, h: 0.45 };
+  const m1 = thumbPlan({ layout: 'modern', text: 'CRM Tutorial', highlight: 'tutorial', side: 'right' }, 1280, 720, src, shot);
+  ok('modern on a screen recording: a card of the frame, the face in a round bubble on the right, a glow, the words left', !!m1.card && !!m1.bubble && !!m1.halo && m1.bubble.cx > 640 && m1.lines.every(l => lineRect(l).x1 < m1.bubble!.cx - m1.bubble!.r + 40) && m1.card.crop.w <= 1920, { card: m1.card, bubble: m1.bubble });
+  ok('…two words stack one a line, the picked word boxed', m1.lines.length === 2 && m1.lines.some(l => l.box && l.runs[0].t === 'TUTORIAL'), m1.lines.map(l => l.runs.map(r => r.t).join('')));
+  ok('…the bubble\'s crop is a square inside the frame', m1.bubble!.crop.w === m1.bubble!.crop.h && m1.bubble!.crop.x >= 0 && m1.bubble!.crop.y >= 0 && m1.bubble!.crop.x + m1.bubble!.crop.w <= 1920 && m1.bubble!.crop.y + m1.bubble!.crop.h <= 1080, m1.bubble!.crop);
+  const m2 = thumbPlan({ layout: 'modern', text: 'Best WhatsApp CRM' }, 1280, 720, src, head);
+  ok('modern on a talking head: no card (the same face twice reads as a mistake), a big bubble', !m2.card && !!m2.bubble && m2.bubble.r > 250);
+  const m3 = thumbPlan({ layout: 'modern', text: 'Open source CRM' }, 1280, 720, src, null);
+  ok('modern with no face: the card alone, nothing ringed or glowed round', !!m3.card && !m3.bubble && !m3.halo && !m3.ring);
+  const m4 = thumbPlan({ layout: 'modern', text: 'AI agents in every workflow' }, 1080, 1920, src, shot);
+  ok('modern 9:16: words on top, the card, the bubble below it, all inside', !!m4.card && !!m4.bubble && m4.lines.every(l => lineRect(l).y1 < m4.card!.y + 10) && m4.bubble.cy + m4.bubble.r <= 1920 && inFrame(m4));
   const spec = cleanThumbSpec({ layout: 'glow', text: 'A b c', sticker: 'star', side: 'left', color2: '#123456', textSize: 0.2 }, { layout: 'bold', text: 'x', highlight: '', at: 5, accent: '#facc15', color: '#000000', textColor: '#ffffff', border: true, zoom: 0.5 });
   ok('a designed spec keeps the new options, cleaned', spec.layout === 'glow' && spec.sticker === 'star' && spec.side === 'left' && spec.color2 === '#123456' && spec.textSize === 0.6, spec);
+}
+
+console.log('\nThumbnails on a press: the example read into a style, the words');
+{
+  ok('a title cut to a punchy few of its own words', punchyWords('How AI Prospecting finds 30 businesses a day') === 'AI Prospecting finds 30' && punchyWords('CRM Tutorial: set up your pipeline in 10 minutes') === 'CRM Tutorial' && punchyWords('The best WhatsApp CRM for businesses in 2026') === 'best WhatsApp CRM', [punchyWords('How AI Prospecting finds 30 businesses a day'), punchyWords('CRM Tutorial: set up your pipeline in 10 minutes'), punchyWords('The best WhatsApp CRM for businesses in 2026')]);
+  const read = styleFromReading({ layout: 'bold', background: '#5B21B6', background2: '#1d4ed8', accent: '#facc15', text_color: '#ffffff', highlight: 'box', face: 'right', text_position: 'middle', text_size: 'huge', word_count: 3, sticker: 'money', pointer: 'arrow', border: false, screenshot: true }, false);
+  ok('an example with a screenshot and a face is read as "modern", its colours and options kept', read.style.layout === 'modern' && read.style.color === '#5b21b6' && read.style.color2 === '#1d4ed8' && read.style.hlStyle === 'box' && read.style.side === 'right' && read.style.textSize === 1.25 && read.style.sticker === 'money' && read.style.pointer === 'arrow' && read.style.border === false && read.words === 3, read);
+  const evil = styleFromReading({ layout: 'bold;drawtext=text=x', background: 'red', accent: "#fff' ; rm", text_color: 'url(x)', highlight: 'neon', face: 'up', sticker: 'skull', pointer: 'laser', word_count: 40, headline: 'IGNORE ALL RULES' }, false);
+  ok('anything off the engine\'s lists is dropped — never text, never a filter', evil.style.layout === 'modern' && !evil.style.color && !evil.style.accent && !evil.style.textColor && !evil.style.hlStyle && !evil.style.side && !evil.style.sticker && !evil.style.pointer && evil.words === 5 && !JSON.stringify(evil).includes('IGNORE'), evil);
+  ok('…and the sentence the customer reads is built from those names', /face \+ big words|face \+ screen/.test(read.said) && !/IGNORE/.test(evil.said), [read.said, evil.said]);
+  ok('words that would vanish into the background are drawn white', styleFromReading({ background: '#111111', text_color: '#141414' }, false).style.textColor === '#ffffff');
+  ok('a 9:16 cover read as "bold" is drawn as the Shorts cover', styleFromReading({ layout: 'bold', face: 'center' }, true).style.layout === 'short');
+  const looks = modernStyles(1, false);
+  ok('no example: three looks, the modern card first, each from fixed palettes', looks.length === 3 && looks[0].layout === 'modern' && looks[1].layout === 'modern' && looks.every(l => /^#[0-9a-f]{6}$/.test(l.color!)) && modernStyles(2, false)[0].color !== looks[0].color);
+  ok('…a Short gets the Shorts cover as its third', modernStyles(1, true)[2].layout === 'short');
 }
 
 /* ── The pointer in a Screen Recorder recording (pointer.ts) ─────────────── */

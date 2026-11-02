@@ -390,7 +390,8 @@ export function describeRequest(r: Omit<VideoRequest, 'understood'>): string[] {
     r.long ? 'one cleaned long video' : 'no long video',
     r.shorts ? `${r.shorts} Short${r.shorts === 1 ? '' : 's'} of ${r.min}–${r.max} s (${r.aspect})` : 'no Shorts',
     r.captions ? 'captions' : 'no captions',
-    r.thumbnails ? 'PNG thumbnails' : 'no thumbnails',
+    /* Thumbnails are never made by a request (2026-11): only by "Create a thumbnail". */
+    'thumbnails when you ask for one',
     `${r.cleanup} cleanup`,
     ...(r.layout === 'fit' && r.shorts ? ['screens kept whole (no crop)'] : []),
   ];
@@ -399,7 +400,7 @@ export function describeRequest(r: Omit<VideoRequest, 'understood'>): string[] {
 /**
  * "Clean this recording, remove filler words and long gaps, create one
  * polished main video and four Shorts, add captions and create PNG
- * thumbnails." → long, 4 Shorts, captions, thumbnails, balanced cleanup.
+ * thumbnails." → long, 4 Shorts, captions, balanced cleanup (thumbnails only on a press).
  *
  * Read by pattern, never by an AI call: what a project will make is shown
  * back before anything runs, and the customer can change every part of it.
@@ -407,7 +408,7 @@ export function describeRequest(r: Omit<VideoRequest, 'understood'>): string[] {
 export function parseRequest(prompt: string, defaults: Partial<VideoRequest> = {}): VideoRequest {
   const t = ` ${prompt.toLowerCase().replace(/[–—]/g, '-')} `;
   const r: VideoRequest = {
-    long: true, shorts: 0, min: 30, max: 60, captions: true, thumbnails: true, cleanup: 'balanced', aspect: '9:16', layout: 'crop', understood: [],
+    long: true, shorts: 0, min: 30, max: 60, captions: true, thumbnails: false, cleanup: 'balanced', aspect: '9:16', layout: 'crop', understood: [],
     ...defaults,
   };
   const shortWord = '(?:shorts?|reels?|clips?|tiktoks?|vertical videos?)';
@@ -428,8 +429,9 @@ export function parseRequest(prompt: string, defaults: Partial<VideoRequest> = {
   r.long = !onlyShorts && (mentionsLong || /\bclean/.test(t) || r.shorts === 0);
   if (/\bno captions?\b|\bwithout captions?\b|\bno subtitles?\b/.test(t)) r.captions = false;
   else if (/\bcaptions?\b|\bsubtitles?\b/.test(t)) r.captions = true;
-  if (/\bno thumbnails?\b|\bwithout thumbnails?\b/.test(t)) r.thumbnails = false;
-  else if (/\bthumbnails?\b|\bcovers?\b/.test(t)) r.thumbnails = true;
+  /* "…and PNG thumbnails" in a request is not acted on: a thumbnail is made on
+     the customer's press, from an example they like or the modern look. */
+  r.thumbnails = false;
   if (/\b(aggressive|tight(ly)?|fast[- ]paced|every pause|all (the )?pauses)\b/.test(t)) r.cleanup = 'aggressive';
   else if (/\b(light(ly)?|gentle|conservative|minimal|natural)\b/.test(t)) r.cleanup = 'conservative';
   if (/\b(square|1:1)\b/.test(t)) r.aspect = '1:1';

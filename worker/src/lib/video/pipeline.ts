@@ -6,7 +6,7 @@
  *          → prepare (engine) → transcribe (Workers AI, piece by piece)
  *          → analyze (cleanup rules + the AI's choice of Shorts and chapters)
  *          → metadata (AI, per video) → render (engine, per video)
- *          → thumbnails (engine, per video; PNGs checked here)
+ *          (thumbnails: engine, per video, only on the customer's press; PNGs checked here)
  *
  * ── Who advances a job ──
  *
@@ -53,6 +53,7 @@ import { youtubeRefusal } from './youtube';
 import { allowance, meter, PRICE, refusal } from './usage';
 import { counted as countedAllowance, record as recordAllowance, roomFor } from '../allowanceStore';
 import { brandOf, type VideoBrand } from './brand';
+import { modernStyles, punchyWords, type ThumbStyle } from './thumbStyle';
 import { TREND_LAYOUTS as ENGINE_LAYOUTS, normaliseSpec } from '../../../../media/engine/thumbLayout.mjs';
 
 /* ── Rows ─────────────────────────────────────────────────────────────────── */
@@ -964,10 +965,10 @@ async function metadataStep(env: Env, job: JobRow, p: ProjectRow): Promise<void>
   }
   if (stmts.length) await env.DB.batch(stmts);
   await save(env, job, { state: 'done', progress: 100, stage: 'done', finished_at: nowIso(), result: JSON.stringify({ written: all.length, byAi: metas.size }) });
-  /* Thumbnails carry the title, so they follow the words. */
-  if (doc.thumbnails.on) for (const o of outs) {
-    await enqueue(env, { accountId: p.account_id, projectId: p.id, kind: 'thumbnails', target: o.id, idem: `thumbs:${o.id}:1`, input: { set: 1 } });
-  }
+  /* No thumbnails here: since 2026-11 they are made only when the customer
+     presses "Create a thumbnail" (with an example to follow, or the modern
+     look) — see thumbStyle.ts. `doc.thumbnails.on` from older projects and
+     from Autopilot workflows is no longer read. */
   await refreshProject(env, p.id);
 }
 
@@ -1115,17 +1116,6 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
 export const THUMB_LAYOUTS = ['left', 'band', 'frame'] as const;
 export const TREND_LAYOUTS: readonly string[] = ENGINE_LAYOUTS;
 export const ALL_LAYOUTS: readonly string[] = [...TREND_LAYOUTS, ...THUMB_LAYOUTS];
-/**
- * Which three layouts each set offers — a different look each time "another
- * set" is asked for. A Short's cover (1080×1920) leads with the Shorts cover.
- * "number" with no figure in the words is drawn as "bold" by the engine.
- */
-const THUMB_SETS = [['bold', 'glow', 'callout'], ['headline', 'number', 'split'], ['cinematic', 'bold', 'glow'], ['callout', 'band', 'frame']];
-const SHORT_SETS = [['short', 'glow', 'bold'], ['headline', 'callout', 'number'], ['cinematic', 'short', 'split']];
-/** The colours each trending layout starts from when nobody has chosen any: the gradients of the examples. */
-const LOOKS: Record<string, { color: string; color2: string }> = {
-  glow: { color: '#6d28d9', color2: '#1d4ed8' }, headline: { color: '#0f172a', color2: '#7f1d1d' }, short: { color: '#0b0b12', color2: '#3b0764' },
-};
 
 /** The word worth the accent colour: a figure if there is one, else the longest of the last three words. */
 export function pickHighlight(headline: string): string {
@@ -1166,7 +1156,9 @@ export function cleanThumbSpec(raw: unknown, fallback: ThumbSpec): ThumbSpec {
 async function thumbnailJob(env: Env, origin: string, job: JobRow, p: ProjectRow): Promise<void> {
   const out = await env.DB.prepare('SELECT * FROM crm_video_outputs WHERE id = ? AND project_id = ?').bind(job.target, p.id).first<OutputRow>();
   if (!out) { await save(env, job, { state: 'cancelled', error: 'output removed' }); return; }
-  const input = parse<{ set?: number; custom?: ThumbSpec }>(job.input, {});
+  /* `style`: read from the customer's example (thumbStyle.ts) — two PNGs in
+     that style at two moments. Neither `style` nor `custom`: the modern looks. */
+  const input = parse<{ set?: number; custom?: ThumbSpec; style?: ThumbStyle; words?: number }>(job.input, {});
   const set = input.set ?? 1;
   const doc = parse<VideoDoc>(p.doc, null as unknown as VideoDoc);
   const src = parse<Source>(p.source, {});
@@ -1189,12 +1181,15 @@ async function thumbnailJob(env: Env, origin: string, job: JobRow, p: ProjectRow
   };
   const at = momentAt((clip ? 0.2 : 0.18) + ((set - 1) % 4) * 0.17);
   const accent = /^#[0-9a-f]{6}$/i.test(brand.accent) && brand.accent.toLowerCase() !== '#ffffff' ? brand.accent : '#facc15';
-  const words = thumbWords(headline);
-  const base: ThumbSpec = { layout: 'bold', text: words, highlight: pickHighlight(words), at, accent, color: '#0b0b12', textColor: '#ffffff', border: true, zoom: 0.5 };
-  const sets = W < H ? SHORT_SETS : THUMB_SETS;
+  /* Words the customer typed are theirs as typed; otherwise the title, cut to a punchy few. */
+  const words = doc.thumbnails.headline[out.id] ? thumbWords(headline, 8) : punchyWords(headline, input.words ?? 4);
+  const base: ThumbSpec = { layout: 'modern', text: words, highlight: pickHighlight(words), at, accent, color: '#0b0b12', textColor: '#ffffff', border: true, zoom: 0.5 };
+  const shares = [0.2, 0.45, 0.7];
   const specs: ThumbSpec[] = input.custom
     ? [cleanThumbSpec(input.custom, base)]
-    : sets[(set - 1) % sets.length].map(layout => ({ ...base, layout, ...(LOOKS[layout] ?? {}), ...(layout === 'split' ? { at2: momentAt(0.75) } : {}) }));
+    : input.style
+      ? [0, 1].map(k => cleanThumbSpec({ ...base, ...input.style, at: momentAt(shares[k] + ((set - 1) % 3) * 0.05) }, base))
+      : modernStyles(set, W < H, brand.accent).map((st, k) => cleanThumbSpec({ ...base, ...st, at: momentAt(shares[k] + ((set - 1) % 3) * 0.05) }, base));
   return engineStep(env, origin, job, p, async () => ({
     op: 'thumbnail' as const,
     params: {
@@ -1220,8 +1215,10 @@ async function thumbnailJob(env: Env, origin: string, job: JobRow, p: ProjectRow
     }
     const cur = await env.DB.prepare('SELECT thumbs FROM crm_video_outputs WHERE id = ?').bind(out.id).first<{ thumbs: string }>();
     const all = [...parse<Thumb[]>(cur?.thumbs, []).filter(x => x.set !== set), ...thumbs];
-    /* A thumbnail somebody designed is the one they want: it becomes the chosen one. */
-    const chosen = input.custom && thumbs[0]?.verified ? all.length - 1 : null;
+    /* Asked for by a press, so the first of what was made becomes the chosen one
+       (a designed one is the one they want). */
+    const firstNew = all.length - thumbs.length;
+    const chosen = input.custom ? (thumbs[0]?.verified ? all.length - 1 : null) : thumbs.findIndex(t => t.verified) >= 0 ? firstNew + thumbs.findIndex(t => t.verified) : null;
     await env.DB.prepare(`UPDATE crm_video_outputs SET thumbs = ?, ${chosen !== null ? 'chosen_thumb = ?, ' : ''}updated_at = ? WHERE id = ?`)
       .bind(...[JSON.stringify(all), ...(chosen !== null ? [chosen] : []), nowIso(), out.id]).run();
     await meter(env, { jobId: job.id, kind: 'thumbs', accountId: p.account_id, units: 0.2, unit: 'engine_min', costMicros: 0.2 * PRICE.renderMin });
@@ -1345,7 +1342,9 @@ export function stagesOf(p: ProjectRow, jobs: JobRow[], outs: OutputRow[], uploa
     { key: 'shorts', label: doc?.shorts.count ? `Finding ${doc.shorts.count} Shorts` : 'Finding Shorts', state: doc?.shorts.count ? st(of('analyze')) : 'skipped', pct: null, note: '' },
     { key: 'metadata', label: 'Writing titles and descriptions', state: st(of('metadata')), pct: null, note: noteOf(of('metadata')) },
     { key: 'render', label: outs.length ? `Rendering ${renderedN} of ${outs.length}` : 'Rendering', state: st(renders), pct: pctOf(renders), note: noteOf(renders) },
-    { key: 'thumbnails', label: 'Creating PNG thumbnails', state: doc && !doc.thumbnails.on ? 'skipped' : st(thumbs), pct: pctOf(thumbs), note: noteOf(thumbs) },
+    /* Made only when the customer asks (since 2026-11): none asked is "skipped",
+       never "waiting" — waiting kept the project from reading ready. */
+    { key: 'thumbnails', label: thumbs.length ? 'Creating PNG thumbnails' : 'PNG thumbnails — made when you ask', state: thumbs.length ? st(thumbs) : 'skipped', pct: pctOf(thumbs), note: thumbs.length ? noteOf(thumbs) : 'Press “Create a thumbnail” on a video' },
     ...(of('repurpose').length ? [{ key: 'repurpose', label: 'Writing posts, an article and emails', state: st(of('repurpose')), pct: null, note: noteOf(of('repurpose')) }] : []),
     ...(of('quiz').length ? [{ key: 'quiz', label: 'Making the quiz', state: st(of('quiz')), pct: null, note: noteOf(of('quiz')) }] : []),
   ];

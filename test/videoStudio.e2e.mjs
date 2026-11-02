@@ -296,7 +296,7 @@ await page.getByTestId('vs-wiz-music').selectOption('calm');
 await page.getByTestId('vs-wiz-quiz').check();
 await page.waitForTimeout(300);
 const understood = await page.getByTestId('vs-understood').innerText();
-ok('3 · what will be made is read back: long video, 4 Shorts, captions, PNG thumbnails, balanced', /one cleaned long video/.test(understood) && /4 Shorts/.test(understood) && /PNG thumbnails/.test(understood) && /balanced cleanup/.test(understood), understood);
+ok('3 · what will be made is read back: long video, 4 Shorts, captions, balanced — thumbnails when asked', /one cleaned long video/.test(understood) && /4 Shorts/.test(understood) && /thumbnails when you ask/.test(understood) && !/PNG thumbnails/.test(understood) && /balanced cleanup/.test(understood), understood);
 ok('…with the choices beside it: noise reduction, a clearer voice, calm music, a quiz', /medium noise reduction/.test(understood) && /clearer voice/.test(understood) && /calm royalty-free music/.test(understood) && /a quiz/.test(understood), understood);
 await page.locator('[data-field="video.autopilot"]').selectOption(AP);
 /* Choosing the file starts it — no second button. Then one screen follows it
@@ -855,7 +855,10 @@ ok('…and renders again', reOut.version > outBefore.version && !reOut.stale, re
 
 /* ── 10–11 · PNG thumbnails, really PNG ── */
 {
-  /* One engine paints them one video after another, after the renders: waited for (up to six minutes), and a stopped job named. */
+  /* None are made by themselves since 2026-11: the project is ready without them. */
+  ok('10 · no thumbnails until asked, and the Progress list says so rather than waiting', S.outputs.every(o => o.thumbs.length === 0) && S.stages.find(x => x.key === 'thumbnails')?.state === 'skipped', S.stages.find(x => x.key === 'thumbnails'));
+  /* Asked for each video ("I don't have one — design a modern one"); one engine paints them one after another: waited for (up to six minutes), and a stopped job named. */
+  for (const o of S.outputs) await v('thumbnails', { projectId: PID, outputId: o.id });
   for (let i = 0; i < 144 && !S.outputs.every(o => o.thumbs.length >= 3) && !S.jobs.some(j => j.kind === 'thumbnails' && j.state === 'failed'); i++) { await sleep(2500); S = await v('status', { projectId: PID, knownVersion: -1 }); }
   const all = S.outputs.flatMap(o => o.thumbs.map(t => ({ o, t })));
   ok('10 · three thumbnails for every video', S.outputs.every(o => o.thumbs.length >= 3), { counts: S.outputs.map(o => o.thumbs.length), jobs: S.jobs.filter(j => j.kind === 'thumbnails').map(j => `${j.state} ${j.stage} ${j.error ?? ''}`) });
@@ -879,12 +882,16 @@ ok('…and renders again', reOut.version > outBefore.version && !reOut.stale, re
   await openPanel(page, 'exports');
   const long = page.locator('[data-kind="long"][data-testid="vs-board-row"]');
   await long.locator('[data-act="board-more-thumbs"]').click();
+  await page.getByTestId('vs-thumb-start').waitFor({ timeout: 10_000 });
+  ok('…"New thumbnail" first asks for an example, with a way to go without one', await page.getByTestId('vs-thumb-start').getByText('Attach an example thumbnail you like').isVisible() && await page.locator('[data-act="thumb-modern"]').isVisible());
+  await page.locator('[data-act="thumb-modern"]').click();
   for (let i = 0; i < 60; i++) { S = await v('status', { projectId: PID, knownVersion: -1 }); if (S.outputs.find(o => o.kind === 'long').thumbs.some(t => t.set === 2)) break; await sleep(2000); }
   const set2 = S.outputs.find(o => o.kind === 'long').thumbs.filter(t => t.set === 2);
   ok('…"Create another set" makes three more, also checked PNGs', set2.length === 3 && set2.every(t => t.verified), set2.length);
   const first = S.outputs.find(o => o.kind === 'long').thumbs;
-  ok('…genuinely different layouts — the trending ones: face + big words, callout, cinematic', new Set(first.filter(t => t.set === 1).map(t => t.layout)).size === 3 && first.some(t => t.layout === 'bold') && first.some(t => t.layout === 'callout'), first.map(t => t.layout));
-  ok('…each made from three to five words, kept with the PNG so it can be edited', first.every(t => t.spec && t.spec.text.split(/\s+/).length <= 5 && t.spec.text.length > 0), first.map(t => t.spec?.text));
+  ok('…the modern look first (face + screen), then a trending face layout', first.filter(t => t.set === 1)[0]?.layout === 'modern' && new Set(first.filter(t => t.set === 1).map(t => t.layout)).size >= 2, first.map(t => t.layout));
+  ok('…the chosen one shown big under the video', await long.getByTestId('vs-thumb-chosen').isVisible());
+  ok('…each made from two to five words, kept with the PNG so it can be edited', first.every(t => t.spec && t.spec.text.split(/\s+/).length <= 5 && t.spec.text.length > 0), first.map(t => t.spec?.text));
 }
 
 /* ── 12 · Metadata for each video, from its own words ── */
@@ -1286,7 +1293,7 @@ let TWO_PID = '';
   ok('faces are found in the recording: two people, the speaker changing twice', sum?.faces === 2 && sum?.switches?.speaker === 2, T2.source.track);
   T2 = await waitReady(c.id, { T, A }, 'two', 600);
   const thumbs = T2.outputs.flatMap(o => o.thumbs);
-  ok('…and the thumbnails close in on a face (found in the frame)', thumbs.some(t => t.layout === 'bold' && t.face), thumbs.map(t => [t.layout, t.face]));
+  ok('…and no thumbnails are made by themselves', thumbs.length === 0, thumbs.length);
   const e1 = await v('edit', { projectId: c.id, baseVersion: T2.docVersion, ops: [{ op: 'clip.add', s: 0.5, e: 39.5, title: 'Who is talking' }, { op: 'tracking.set', target: 'short', mode: 'speaker' }] });
   const clipId = e1.doc.clips[e1.doc.clips.length - 1].id;
   let T3, out3;

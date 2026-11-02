@@ -29,7 +29,9 @@ import { engineHealth, engineMode } from '../lib/video/engine';
 import { transcriberMode } from '../lib/video/transcribe';
 import { fileUrl, projectPrefix, workspacePrefix, sign, deletePrefix, looksLikeVideo } from '../lib/video/store';
 import { adoptSiteTestOrigin, urlProblem, wireUrl } from '../lib/readSite';
-import { allowance, refusal } from '../lib/video/usage';
+import { allowance, meter, PRICE, refusal } from '../lib/video/usage';
+import { readExample, styleFromReading } from '../lib/video/thumbStyle';
+import { sniffImage } from '../lib/chatFiles';
 import { check as allowanceCheck, counted as countedAllowance, record as recordAllowance, refusalBody } from '../lib/allowanceStore';
 import { searchMusic, trackById, storeTrack, musicQuery, looksLikeAudio } from '../lib/video/music';
 import { checkPng } from '../lib/video/png';
@@ -45,7 +47,7 @@ import {
 interface Req {
   token?: string; accountId?: string; action?: string;
   projectId?: string; outputId?: string; name?: string; prompt?: string; settings?: Partial<VideoRequest> & { language?: string };
-  autopilotProjectId?: string; workflowId?: string; spec?: unknown; playhead?: number;
+  autopilotProjectId?: string; workflowId?: string; spec?: unknown; playhead?: number; exampleKey?: string;
   size?: number; type?: string; bgRemoved?: boolean; fileKey?: string; uploadId?: string;
   baseVersion?: number; ops?: Op[]; note?: string; version?: number; preset?: string;
   text?: string; selection?: { s: number; e: number } | null; clipId?: string | null;
@@ -867,9 +869,49 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       const sets = (await setsOf(env, o)).filter(n => n < 100);
       const set = Math.min(6, (sets.length ? Math.max(...sets) : 0) + 1);
       if (sets.includes(6)) return fail('Six sets is the most a video keeps — choose one of those.');
-      await enqueue(env, { accountId, projectId: p.id, kind: 'thumbnails', target: o.id, idem: `thumbs:${o.id}:${set}:${Date.now()}`, input: { set } });
+      /* With an example the customer likes: its bytes are checked here (a
+         picture by its first bytes, not by what the browser said), read by
+         the AI pool into a style, and deleted — it is somebody else's
+         picture, kept no longer than the reading. Not readable (no key, no
+         budget, no key that reads pictures): the modern look, said so. */
+      const exampleKey = s(d.exampleKey, 300);
+      let style: Record<string, unknown> | undefined, words: number | undefined, note = '', read = false, ai = false;
+      if (exampleKey) {
+        if (!env.VIDEO) return fail('Video storage is not set up yet.', 503, { code: 'no_storage' });
+        if (!exampleKey.startsWith(`${projectPrefix(accountId, p.id)}out/${o.id}/thumbs/ex-`) || !exampleKey.endsWith('/example.jpg') || exampleKey.includes('..')) return fail('That upload is not part of this video.', 403);
+        const obj = await env.VIDEO.get(exampleKey);
+        const bytes = obj ? new Uint8Array(await obj.arrayBuffer()) : new Uint8Array();
+        await env.VIDEO.delete(exampleKey).catch(() => null);
+        if (!bytes.length) return fail('The example did not arrive — try again.', 200, { code: 'not_uploaded', field: 'video.thumbExample' });
+        if (bytes.length > 3 * 1024 * 1024) return fail('That example is over 3 MB — choose a smaller picture.', 200, { code: 'too_big', field: 'video.thumbExample' });
+        const mime = sniffImage(bytes);
+        if (mime !== 'image/jpeg' && mime !== 'image/png' && mime !== 'image/webp') return fail('That is not a picture we can read — choose a JPEG, PNG or WebP thumbnail.', 200, { code: 'not_image', field: 'video.thumbExample' });
+        const r = await readExample(env, accountId, bytes, mime);
+        ai = r.called;
+        if (r.ok) {
+          const st = styleFromReading(r.raw, o.kind === 'short');
+          style = st.style as Record<string, unknown>; words = st.words; read = true;
+          note = `Read from your example: ${st.said}. Change the words or anything else with Edit.`;
+        } else note = `Your example could not be read (${r.why.replace(/\.$/, '')}), so yours is designed in the modern style instead.`;
+      }
+      const q = await enqueue(env, { accountId, projectId: p.id, kind: 'thumbnails', target: o.id, idem: `thumbs:${o.id}:${set}:${Date.now()}`, input: { set, ...(style ? { style, words } : {}) } });
+      /* The reading is an AI call whether or not it was understood: metered once, on the job it made. */
+      if (ai) await meter(env, { jobId: q.id, kind: 'ai-thumb-example', accountId, units: 1, unit: 'ai_call', costMicros: PRICE.aiCall });
       kick(p.id);
-      return json({ success: true, set });
+      return json({ success: true, set, read, note });
+    }
+
+    /* An example thumbnail the customer likes, through a signed link under this
+       output's folder — never through this route; checked and read by
+       'thumbnails' (exampleKey), then deleted. */
+    case 'thumb_example_url': {
+      if (!env.VIDEO) return fail('Video storage is not set up yet.', 503, { code: 'no_storage' });
+      const o = await outputRow();
+      if (!o) return fail('That video is not in this project any more.', 200, { code: 'no_output' });
+      const room = await refusal(env, accountId, { bytes: 3e6 });
+      if (room) return fail(room, 402, { code: 'allowance' });
+      const prefix = `${projectPrefix(accountId, p.id)}out/${o.id}/thumbs/ex-${crypto.randomUUID().slice(0, 8)}/`;
+      return json({ success: true, url: `${origin}/api/video-file.php?t=${await sign(env, { a: accountId, k: prefix, m: 'put' }, 900)}`, key: `${prefix}example.jpg` });
     }
 
     case 'thumb_custom': {
