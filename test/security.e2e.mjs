@@ -129,6 +129,21 @@ const imap = await api('imap-fetch.php', { token: B.token, accountId: A.acct });
 check("B cannot read A's inbox", !imap.ok && imap.status === 403, JSON.stringify(imap.data));
 const smtp = await api('smtp-send.php', { token: B.token, accountId: A.acct, to: 'x@example.test', subject: 'hi', html: 'hi' });
 check("B cannot send through A's mailbox", !smtp.ok && smtp.status === 403, JSON.stringify(smtp.data));
+/* Paste-and-connect (routes/mailbox.ts): every action names a workspace and is checked. */
+for (const action of ['lookup', 'read_picture', 'bulk_connect']) {
+  const r = await api('mailbox.php', { token: B.token, accountId: A.acct, action, domains: [{ domain: 'example.com', email: 'a@example.com' }], mime: 'image/png', data: 'iVBORw0KGgo=', rows: [{ email: `a-${run}@example.test`, password: 'x', smtp: { host: '127.0.0.1', port: 9 } }] });
+  check(`B cannot ${action} in A's workspace`, !r.ok && r.status === 403, JSON.stringify(r.data).slice(0, 160));
+}
+const aBox = await api('mailbox.php', { token: A.token, accountId: A.acct, action: 'save', label: 'A sales', from: { email: A.email }, smtp: { host: '127.0.0.1', port: 9, encryption: 'none', username: A.email, password: 'A-secret-pw' } });
+const bBulk = await api('mailbox.php', { token: B.token, accountId: B.acct, action: 'bulk_connect', rows: [{ email: A.email, password: 'B-guess', smtp: { host: '127.0.0.1', port: 9, security: 'none' }, imap: { host: '127.0.0.1', port: 9, security: 'none' } }] });
+const aAfter = await api('mailbox.php', { token: A.token, accountId: A.acct, action: 'list' });
+check("B's bulk import of A's address makes B's own mailbox and leaves A's untouched",
+  aBox.ok && bBulk.ok && bBulk.data.results?.[0]?.updated === false && bBulk.data.results?.[0]?.id !== aBox.data.id
+    && aAfter.data.mailboxes?.find(m => m.id === aBox.data.id)?.smtp.host === '127.0.0.1' && aAfter.data.mailboxes?.length === 1,
+  JSON.stringify([bBulk.data.results?.[0], aAfter.data.mailboxes?.length]).slice(0, 300));
+const bTest = await api('mailbox.php', { token: B.token, accountId: B.acct, action: 'test_outgoing', id: aBox.data.id });
+check("B cannot test A's mailbox by id from its own workspace", !bTest.ok && /not in this workspace|Save your mail server/.test(bTest.data.error ?? ''), JSON.stringify(bTest.data).slice(0, 160));
+check('no mailbox answer carries a password', !JSON.stringify([aBox.data, bBulk.data, aAfter.data]).includes('A-secret-pw') && !JSON.stringify(bBulk.data).includes('B-guess'));
 const prov = await api('provider-send.php', { token: B.token, accountId: A.acct, to: 'x@example.test', subject: 'hi', html: 'hi' });
 check("B cannot send through A's provider key", !prov.ok && prov.status === 403, JSON.stringify(prov.data));
 const blog = await api('blog-publish.php', { token: B.token, accountId: A.acct, title: 't', content: 'c' });

@@ -112,6 +112,34 @@ for (const m of methods) {
   }
 }
 
+/* ── 1b · "Paste your mail settings": read, connect, and its refusals ──
+   No lookups (every row names its server), so nothing here leaves the machine
+   but the SMTP/IMAP attempts at a .test host, which fail at once. */
+{
+  const l = await mailboxApi({ action: 'list' });
+  for (const m of l.mailboxes ?? []) await mailboxApi({ action: 'delete', id: m.id });
+  await p.goto(`${B}/settings`, { waitUntil: 'networkidle' });
+  await resetDeadEnds();
+  const pasteBox = p.locator('[data-field="mailimport.text"]');
+  ok('paste form: the box is on the mailbox screen', await pasteBox.isVisible().catch(() => false));
+  await pasteBox.fill('row@forms.test Pw-1 mail.forms.test 465\nnopass@forms.test mail.forms.test');
+  await p.getByRole('button', { name: 'Read settings' }).click();
+  await p.locator('[data-field="bulk.email"]').nth(1).waitFor({ timeout: 10000 }).catch(() => {});
+  ok('paste form: one row per address', (await p.locator('[data-field="bulk.email"]').count()) === 2);
+  const answer = p.waitForResponse(r => r.url().includes('/api/mailbox.php') && /bulk_connect/.test(r.request().postData() ?? ''), { timeout: 90000 }).catch(() => null);
+  await p.getByRole('button', { name: /Connect and test all/ }).click();
+  await answer;
+  await p.getByRole('button', { name: /Connect and test all/ }).waitFor({ timeout: 90000 }).catch(() => {});
+  await settle();
+  const table = await p.locator('#mailbox-import').innerText();
+  ok('paste form: the row without a password says so in its own row', /No password for this address/.test(table), table.slice(-600));
+  ok('paste form: the other row reports its own test result', /Not connected|Partly connected/.test(table) && /Send:/.test(table), table.slice(-600));
+  /* The screenshot reader's refusal names the attach button. */
+  await p.evaluate(async acct => fetch('/api/mailbox.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: 'cookie', accountId: acct, action: 'read_picture', mime: 'text/plain', data: 'aGVsbG8=' }) }).then(r => r.json()), account);
+  await settle();
+  ok('paste form: every refusal names a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
+}
+
 /* ── 2 · Every validate / test-connection button on every Settings tab ── */
 const settingsTabs = ['Email & SMS', 'API Validation', 'Integrations', 'Email Deliverability', 'Infrastructure', 'Domains & Email', 'Security & Privacy', 'Platform services'];
 for (const t of settingsTabs) {
