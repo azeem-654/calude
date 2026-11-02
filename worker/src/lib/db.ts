@@ -118,6 +118,8 @@ export interface Env {
   COMPANIES_HOUSE_BASE?: string;
   /** Where the email verifier (Hunter, ZeroBounce, MillionVerifier) is asked instead, in tests only (lib/emailVerify.ts). */
   EMAIL_VERIFIER_BASE?: string;
+  /** Where Mozilla's ISPDB is asked for mail settings instead, in tests only (lib/mailLookup.ts). */
+  AUTOCONFIG_BASE?: string;
   /** Where DNS-over-HTTPS is asked for MX records instead, in tests only (lib/emailVerify.ts). */
   DOH_BASE?: string;
   /** Where Gemini is asked instead, in tests only (lib/ai.ts). */
