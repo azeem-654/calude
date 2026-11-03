@@ -56,7 +56,7 @@ const NO_INVENTING =
 export interface Written<T> { ok: boolean; value?: T; error: string }
 
 async function ask<T>(apiKey: string, prompt: string, temperature: number): Promise<Written<T>> {
-  const r = await askGemini(apiKey, prompt, temperature);
+  const r = await askGemini(apiKey, prompt, temperature, { module: 'autopilot' });
   if (!r.ok) return { ok: false, error: r.error };
   try {
     return { ok: true, value: JSON.parse(r.text) as T, error: '' };

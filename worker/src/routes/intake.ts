@@ -217,7 +217,7 @@ async function writeEmails(env: Env, key: string, accountId: string, d: IntakeRe
     'Return JSON only: {"emails":[{"id":"…","subject":"…","body":"…"}]} with the same ids in the same order.',
   ].filter(Boolean).join('\n');
 
-  const ai = await askGeminiParts(key, [{ text: prompt }], 0.6, { fast: true, timeoutMs: 45_000 });
+  const ai = await askGeminiParts(key, [{ text: prompt }], 0.6, { module: 'email-marketing', accountId, fast: true, timeoutMs: 45_000 });
   if (!ai.ok) return fail(ai.error);
   const r = parseJson<{ emails?: { id?: string; subject?: string; body?: string }[] }>(ai.text);
   const ids = new Set(emails.map(e => e.id));
@@ -281,7 +281,7 @@ export async function transcribe(key: string, d: IntakeReq): Promise<Response> {
   /* No thinking, and a limit per model — see askGeminiParts. A voice note
      is transcribed, not reasoned about, and somebody is waiting on it. */
   const started = Date.now();
-  const ai = await askGeminiParts(key, parts, 0, { fast: true, timeoutMs: 25_000 });
+  const ai = await askGeminiParts(key, parts, 0, { module: 'business-wizard', task: 'extract', fast: true, timeoutMs: 25_000 });
   if (!ai.ok) return fail(ai.error);
   const r = parseJson<{ text?: string; language?: string; clarity?: string }>(ai.text);
   const ms = Date.now() - started;
@@ -395,7 +395,7 @@ export async function understand(env: Env, key: string, accountId: string, d: In
     if (p.ok) parts.push({ text: `Web page ${urls[i]}${p.title ? ` — ${p.title}` : ''}:\n${p.text}` });
   });
 
-  const ai = await askGeminiParts(key, parts, 0.2);
+  const ai = await askGeminiParts(key, parts, 0.2, { module: 'business-wizard', accountId });
   if (!ai.ok) return fail(ai.error, 200, { code: 'ai_failed', sources });
 
   const raw = parseJson<Record<string, unknown>>(ai.text);
@@ -507,7 +507,7 @@ async function suggest(key: string, d: IntakeReq): Promise<Response> {
     'Return JSON only: {"<id>":{"options":[],"pick":[],"why":"","placeholder":""}, …}',
   ].filter(Boolean).join('\n');
 
-  const ai = await askGeminiParts(key, [{ text: prompt }], 0.4, { fast: true, timeoutMs: 25_000 });
+  const ai = await askGeminiParts(key, [{ text: prompt }], 0.4, { module: 'business-wizard', task: 'chat', fast: true, timeoutMs: 25_000 });
   if (!ai.ok) return fail(ai.error, 200, { code: 'ai_failed' });
   const raw = parseJson<Record<string, unknown>>(ai.text);
   if (!raw) return fail('The AI answered with something that could not be read.', 200, { code: 'ai_failed' });
@@ -554,7 +554,7 @@ async function refine(key: string, d: IntakeReq): Promise<Response> {
     'Only include what the customer asked to change. If the request is impossible with these options, change nothing and say so in reply.',
   ].join('\n');
 
-  const ai = await askGeminiParts(key, [{ text: prompt }], 0.1);
+  const ai = await askGeminiParts(key, [{ text: prompt }], 0.1, { module: 'business-wizard' });
   if (!ai.ok) return fail(ai.error, 200, { code: 'ai_failed' });
   const raw = parseJson<Record<string, unknown>>(ai.text);
   if (!raw) return fail('The AI answered with something that could not be read.', 200, { code: 'ai_failed' });

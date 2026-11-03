@@ -28,6 +28,18 @@ RUN curl -fsSL -o face_detection_yunet.onnx https://huggingface.co/opencv/face_d
 # refused, and without it the engine uses its FFT denoiser and /health says so.
 RUN curl -fsSL -o rnnoise.rnnn https://raw.githubusercontent.com/richardpl/arnndn-models/0fda24c46d78f0207d820bb970fbe85c1971b39c/std.rnnn \
  && echo "6b8943dc4a9b6b24425873992a44f29c0577503276456af46a8854774faeb294  rnnoise.rnnn" | sha256sum -c -
+# RNNoise's general-noise model (conjoined-burgers), same repository and pin:
+# the first of two RNNoise passes when AI voice isolation has to fall back.
+RUN curl -fsSL -o rnnoise-general.rnnn https://raw.githubusercontent.com/richardpl/arnndn-models/0fda24c46d78f0207d820bb970fbe85c1971b39c/cb.rnnn \
+ && echo "f1357c4e5be9dee8467bead486dfced2d75b640c26ad0b594fa7f102322371d9  rnnoise-general.rnnn" | sha256sum -c -
+# DeepFilterNet 3 (Rikorose/DeepFilterNet, MIT/Apache-2.0) — AI voice
+# isolation for the "Maximum" noise level and Studio Sound at 90 %+. The
+# static musl build of the release, model built in, pinned by its hash.
+# Without it the engine runs the two-model RNNoise fallback and /health says
+# `isolation: false`.
+RUN curl -fsSL -o deep-filter https://github.com/Rikorose/DeepFilterNet/releases/download/v0.5.6/deep-filter-0.5.6-x86_64-unknown-linux-musl \
+ && echo "70775e251eee44c0f2451a1e833326cf8bcbbe304d3e7cd12851e6fce72ef7da  deep-filter" | sha256sum -c - \
+ && chmod 755 deep-filter
 COPY engine/server.mjs ./server.mjs
 COPY engine/track.py ./track.py
 COPY engine/thumbLayout.mjs ./thumbLayout.mjs

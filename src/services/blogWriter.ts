@@ -707,7 +707,7 @@ ${page?.url ? `- Include exactly one link to ${page.url}, with anchor text descr
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { temperature: 0.7 },
         }),
-      },
+      }, 'blog',
     );
     if (!res.ok) throw new Error(`Gemini returned ${res.status}`);
     const data = await res.json();

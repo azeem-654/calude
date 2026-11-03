@@ -169,7 +169,7 @@ characters, phrased as an instruction.
 Reply with only JSON, in this exact shape:
 {"stages":[{"name":"<stage name>","tasks":["...","..."]}]}`;
 
-  const r = await askGemini(key, prompt, 0.4);
+  const r = await askGemini(key, prompt, 0.4, { module: 'autopilot-plan', accountId });
   if (!r.ok) return { tasks: fallbackTasks(stages), generated: false };
 
   const out = parse<{ stages?: Array<{ name?: string; tasks?: unknown }> }>(r.text, {});

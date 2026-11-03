@@ -78,7 +78,7 @@ infer a budget, a timescale or an intention they did not state.
   "summary": "one sentence a busy person can act on",
   "intent": "sales | support | billing | complaint | spam | unclear",
   "quality": "hot | warm | cold | junk"
-}`, 0.2);
+}`, 0.2, { module: 'forms', accountId: sub.accountId });
 
     if (!res.ok || !res.text) { report.notes.push(`triage failed: ${res.error}`); continue; }
     try {

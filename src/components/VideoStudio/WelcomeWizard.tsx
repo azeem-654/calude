@@ -45,7 +45,7 @@ function Chip<T extends string | number>({ v, cur, set, children }: { v: T; cur:
 
 export interface WizardResult { template: Template; want: Want }
 
-type Noise = 'off' | 'light' | 'medium' | 'strong';
+type Noise = 'off' | 'light' | 'medium' | 'strong' | 'max';
 const MUSIC = ['', 'calm', 'upbeat', 'corporate', 'inspiring', 'lofi', 'cinematic', 'acoustic', 'piano'];
 
 export interface Choices {
@@ -149,7 +149,7 @@ export function GoalOptions({ goal, onChange }: { goal: GoalKey; onChange: (r: W
       </div>
       <div className="vs-card vs-col">
         <h3><AudioLines size={14} /> Sound</h3>
-        <div className="vs-label">Background noise<div className="vs-chips" data-testid="vs-wiz-noise">{(['off', 'light', 'medium', 'strong'] as Noise[]).map(v => <Chip key={v} v={v} cur={c.noise} set={set('noise')}>{v[0].toUpperCase() + v.slice(1)}</Chip>)}</div></div>
+        <div className="vs-label">Background noise<div className="vs-chips" data-testid="vs-wiz-noise">{(['off', 'light', 'medium', 'strong', 'max'] as Noise[]).map(v => <Chip key={v} v={v} cur={c.noise} set={set('noise')}>{v === 'max' ? 'Maximum (AI)' : v[0].toUpperCase() + v.slice(1)}</Chip>)}</div></div>
         <label className="vs-opt"><input type="checkbox" checked={c.voice} onChange={e => set('voice')(e.target.checked)} /> <span><b>Clearer voice</b> — presence, softer “s”, even level</span></label>
         <div className="vs-label"><span><Music2 size={13} /> Background music (royalty-free)</span>
           <select className="vs-select" value={c.music} onChange={e => set('music')(e.target.value)} data-testid="vs-wiz-music">

@@ -18,6 +18,8 @@ export const POINTERS: Pointer[];
 export const HL_STYLES: HlStyle[];
 export const CONDENSE: number;
 export const EM: number;
+export type FaceFrame = 'none' | 'round';
+export const FACE_FRAMES: readonly FaceFrame[];
 export const HALO: { max: number; inner: number; rise: number; outer: number; soft: number };
 export const NUMBER: RegExp;
 
@@ -26,6 +28,7 @@ export interface ThumbOptions {
   layout: TrendLayout; text: string; highlight: string;
   accent: string; color: string; color2: string; textColor: string; border: boolean; zoom: number;
   hlStyle: HlStyle; side: Side; textPos: TextPos; textSize: number; sticker: StickerName | ''; pointer: Pointer; badge: string;
+  faceFrame: FaceFrame;
 }
 
 export interface Rect { x: number; y: number; w: number; h: number }

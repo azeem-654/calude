@@ -50,7 +50,11 @@ export function hasGeminiKey() {
  * `json()`, `text()` — with Gemini's own response inside, so moving the call
  * off the page did not mean rewriting every parser.
  */
-export async function aiFetch(init: RequestInit | string): Promise<Response> {
+/**
+ * `module` names the product module (worker/src/lib/aiTasks.ts MODULES): the
+ * server picks the best models for its task and counts the call under it.
+ */
+export async function aiFetch(init: RequestInit | string, module = 'general'): Promise<Response> {
   const bodyText = typeof init === 'string' ? init : String(init.body ?? '{}');
   let request: unknown = {};
   try { request = JSON.parse(bodyText); } catch { request = {}; }
@@ -61,7 +65,7 @@ export async function aiFetch(init: RequestInit | string): Promise<Response> {
   try {
     const r = await fetch(`${base}/api/ai.php`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'generate', token: session?.token, accountId, request }),
+      body: JSON.stringify({ action: 'generate', token: session?.token, accountId, module, request }),
     });
     const data = await r.json() as { success?: boolean; response?: unknown; error?: string };
     if (data.success) return new Response(JSON.stringify(data.response ?? {}), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -165,6 +169,7 @@ async function postGeminiWithFallback(
   models: string[],
   body: unknown,
   fallThroughOnBadRequest = false,
+  module = 'general',
 ): Promise<GeminiResponse> {
   let lastError = '';
   let lastStatus = 0;
@@ -174,7 +179,7 @@ async function postGeminiWithFallback(
       /* Through the server, which chooses the model itself (lib/ai.ts
          modelsFor); `model` here only paces the retries. */
       void model;
-      const res = await aiFetch({ body: JSON.stringify(body) });
+      const res = await aiFetch({ body: JSON.stringify(body) }, module);
       if (res.ok) return await res.json();
 
       lastError = await res.text().catch(() => `HTTP ${res.status}`);
@@ -377,7 +382,7 @@ Return ONLY valid JSON with NO markdown fences:
   const isYouTube = mimeType === null;
   const MODELS = isYouTube ? YOUTUBE_MODELS : VIDEO_MODELS;
 
-  const data = await postGeminiWithFallback(MODELS, body, isYouTube);
+  const data = await postGeminiWithFallback(MODELS, body, isYouTube, 'video-analysis');
   if (data.error) throw new Error(data.error.message ?? 'Gemini error');
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
   const json = text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
@@ -468,20 +473,20 @@ export function sanitizeAnalysis(analysis: GeminiAnalysis, maxClipDuration: numb
 }
 
 /** Shared helper: call Gemini text models with fallback chain. */
-async function callGemini(prompt: string, temperature = 0.7): Promise<string> {
+async function callGemini(prompt: string, temperature = 0.7, module = 'general'): Promise<string> {
   const MODELS = TEXT_MODELS;
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { responseMimeType: 'application/json', temperature },
   };
-  const data = await postGeminiWithFallback(MODELS, body);
+  const data = await postGeminiWithFallback(MODELS, body, false, module);
   if (data.error) throw new Error(data.error.message ?? 'Gemini error');
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
   return text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
 }
 
 /** A JSON-answering text call, for callers that build and check their own prompt (the template copywriter). */
-export const askGeminiJson = (prompt: string, temperature = 0.7) => callGemini(prompt, temperature);
+export const askGeminiJson = (prompt: string, temperature = 0.7, module = 'graphics') => callGemini(prompt, temperature, module);
 
 /**
  * AI Hook: generate scroll-stopping opening lines for a short clip.
@@ -495,7 +500,7 @@ Clip title: "${clip.title}"
 Clip transcript/description: "${clip.transcript.slice(0, 500)}"
 
 Return ONLY JSON: {"hooks": ["hook 1", "hook 2", "hook 3", "hook 4", "hook 5"]}`;
-  const json = await callGemini(prompt, 0.9);
+  const json = await callGemini(prompt, 0.9, 'video');
   const r = JSON.parse(json) as { hooks?: string[] };
   return (r.hooks ?? []).filter(h => typeof h === 'string' && h.trim()).slice(0, 5);
 }
@@ -515,7 +520,7 @@ Description: ${clip.description.slice(0, 400)}
 Captions (JSON array): ${JSON.stringify(clip.captions.slice(0, 40))}
 
 Return ONLY JSON: {"title": "...", "description": "...", "captions": ["...", ...]}`;
-  const json = await callGemini(prompt, 0.3);
+  const json = await callGemini(prompt, 0.3, 'video');
   const r = JSON.parse(json) as { title?: string; description?: string; captions?: string[] };
   if (!Array.isArray(r.captions) || r.captions.length === 0) throw new Error('Translation returned no captions.');
   return { title: r.title || clip.title, description: r.description || clip.description, captions: r.captions };
@@ -528,7 +533,7 @@ export async function suggestBroll(transcript: string): Promise<{ keyword: strin
 Clip content: "${transcript.slice(0, 500)}"
 
 Return ONLY JSON: {"broll": [{"keyword": "city", "title": "City skyline"}, ...]}`;
-  const json = await callGemini(prompt, 0.6);
+  const json = await callGemini(prompt, 0.6, 'video');
   const r = JSON.parse(json) as { broll?: { keyword?: string; title?: string }[] };
   return (r.broll ?? [])
     .filter(b => b.keyword && /^[a-zA-Z0-9 ,-]{2,40}$/.test(b.keyword))
@@ -547,7 +552,7 @@ Rules:
 - Each scene gets a simple 1-2 word stock-image keyword describing its visual.
 
 Return ONLY JSON: {"title": "video title under 60 chars", "scenes": [{"caption": "...", "keyword": "..."}, ...]}`;
-  const json = await callGemini(prompt, 0.8);
+  const json = await callGemini(prompt, 0.8, 'video');
   const r = JSON.parse(json) as { title?: string; scenes?: { caption?: string; keyword?: string }[] };
   const scenes = (r.scenes ?? [])
     .filter(s => s.caption)
@@ -581,7 +586,7 @@ For EACH of the 12 months provide:
 - "ideas": 4 specific content/campaign ideas for that month (each max 12 words)
 
 Return ONLY JSON: {"months": [{"theme": "...", "focus": "...", "holidays": ["..."], "ideas": ["...", "...", "...", "..."]}, ... 12 items]}`;
-  const json = await callGemini(prompt, 0.7);
+  const json = await callGemini(prompt, 0.7, 'strategy');
   const r = JSON.parse(json) as { months?: { theme?: string; focus?: string; holidays?: string[]; ideas?: string[] }[] };
   const months = (r.months ?? []).slice(0, 12).map(m => ({
     theme: m.theme || 'Brand Momentum',
@@ -617,7 +622,7 @@ Write:
 ${input.wantSms ? '- 4 SMS messages (days 3, 10, 17, 24). Each under 160 characters, starts with the business name, includes {{firstName}} where natural, one clear CTA. No links other than "reply YES".' : ''}
 
 Return ONLY JSON: {"emails": [{"day": 1, "subject": "...", "body": "..."}, ...5 items], "sms": [${input.wantSms ? '{"day": 3, "message": "..."}, ...4 items' : ''}]}`;
-  const json = await callGemini(prompt, 0.75);
+  const json = await callGemini(prompt, 0.75, 'email-marketing');
   const r = JSON.parse(json) as { emails?: { day?: number; subject?: string; body?: string }[]; sms?: { day?: number; message?: string }[] };
   const emails = (r.emails ?? [])
     .filter(e => e.subject && e.body)
@@ -680,7 +685,7 @@ Write like a person who knows this industry. No filler, no "in today's fast-pace
 
 Return ONLY JSON: {"name":"...","promise":"...","emails":[{"day":0,"subject":"...","body":"..."}],"sms":[{"day":1,"body":"..."}],"social":[{"day":0,"platform":"instagram","headline":"...","caption":"...","hashtags":["#..."]}],"blog":{"title":"...","angle":"...","outline":["..."],"keywords":["..."]},"short":{"title":"...","hook":"...","script":["..."]},"landing":{"title":"...","subhead":"...","bullets":["..."],"cta":"..."}}`;
 
-  const json = await callGemini(prompt, 0.75);
+  const json = await callGemini(prompt, 0.75, 'workflows');
   const r = JSON.parse(json) as Record<string, unknown>;
 
   /* Trusted for shape, not for content: a model that returns an email with no
@@ -772,7 +777,7 @@ Create:
 ${input.wantVideos ? '- 4 short-form VIDEOS (days 4, 11, 18, 25). Each: "title" (under 55 chars), "hook" (scroll-stopping opening line under 12 words), "script" (6 on-screen caption lines, max 10 words each, last one a call to action).' : ''}
 
 Return ONLY JSON: {"posts": [{"day": 2, "platform": "instagram", "headline": "...", "caption": "...", "hashtags": ["..."]}, ...12], "videos": [${input.wantVideos ? '{"day": 4, "title": "...", "hook": "...", "script": ["..."]}, ...4' : ''}]}`;
-  const json = await callGemini(prompt, 0.8);
+  const json = await callGemini(prompt, 0.8, 'social');
   const r = JSON.parse(json) as {
     posts?: { day?: number; platform?: string; headline?: string; caption?: string; hashtags?: string[] }[];
     videos?: { day?: number; title?: string; hook?: string; script?: string[] }[];
@@ -816,7 +821,7 @@ Write 5 subject lines. Rules:
 - Vary the angle: direct, curiosity, benefit, question, brief
 
 Return ONLY JSON: {"subjects": ["...", "...", "...", "...", "..."]}`;
-  const json = await callGemini(prompt, 0.85);
+  const json = await callGemini(prompt, 0.85, 'email-marketing');
   const r = JSON.parse(json) as { subjects?: string[] };
   return (r.subjects ?? []).filter(x => typeof x === 'string' && x.trim()).map(x => x.trim().slice(0, 80)).slice(0, 5);
 }
@@ -931,7 +936,7 @@ Return ONLY valid JSON, no markdown fences:
   ]
 }`;
 
-  const json = await callGemini(prompt, 0.8);
+  const json = await callGemini(prompt, 0.8, 'graphics');
   const result = JSON.parse(json) as AIDesignResult;
 
   // Ensure background has required fields with sensible defaults
@@ -964,7 +969,7 @@ Rules:
 - Make it punchy, engaging, and platform-appropriate
 - Return ONLY a JSON object: {"text": "the rewritten text"}`;
 
-  const json = await callGemini(prompt, 0.9);
+  const json = await callGemini(prompt, 0.9, 'writing');
   const result = JSON.parse(json) as { text: string };
   return result.text ?? currentText;
 }
@@ -1031,7 +1036,7 @@ Return ONLY valid JSON, no markdown fences:
   "needsHuman": <true if you had to defer specifics to a human, else false>
 }`;
 
-  const json = await callGemini(prompt, 0.5);
+  const json = await callGemini(prompt, 0.5, 'inbox-replies');
   const r = JSON.parse(json) as Partial<DraftedReply>;
   return {
     subject: r.subject || `Re: ${email.subject}`,
@@ -1069,7 +1074,7 @@ ${review.author} · ${review.rating}★
 "${review.content}"
 
 Return ONLY JSON: {"reply": "the public reply text"}`;
-  const json = await callGemini(prompt, 0.6);
+  const json = await callGemini(prompt, 0.6, 'reputation');
   const r = JSON.parse(json) as { reply?: string };
   return r.reply || '';
 }

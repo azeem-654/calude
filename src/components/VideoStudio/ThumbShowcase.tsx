@@ -62,15 +62,16 @@ function ThumbStart({ ctx, o, onClose, onDone }: { ctx: EditorCtx; o: OutputView
   const go = async (withExample: boolean) => {
     setErr('');
     let key: string | undefined;
+    let palette: string[] = [];
     if (withExample) {
       if (!file) { setErr('Attach an example first — or design a modern one.'); return; }
       setBusy('Uploading your example…');
       const up = await uploadThumbExample(pid, o.id, file);
       if (!up.ok) { setBusy(''); setErr(up.error); return; }
-      key = up.key;
-      setBusy('Reading your example…');
+      key = up.key; palette = up.palette;
+      setBusy('Reading your example’s design…');
     } else setBusy('Starting…');
-    const r = await createThumbnails(pid, o.id, key);
+    const r = await createThumbnails(pid, o.id, key, palette);
     if (!r.success) { setBusy(''); setErr(r.error ?? 'The thumbnail could not be started.'); return; }
     const note = r.note ?? '';
     setBusy(note ? `${note} Drawing it now…` : 'Drawing your thumbnails…');

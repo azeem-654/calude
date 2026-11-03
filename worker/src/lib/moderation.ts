@@ -367,7 +367,7 @@ export async function aiReview(apiKey: string, text: string): Promise<AiRuling> 
     const { askGemini } = await import('./ai');
     /* Temperature 0: this is a ruling, not a piece of writing, and the same
        text must not be cleared on Monday and held on Tuesday. */
-    const r = await askGemini(apiKey, `${AI_PROMPT}\n\n---\n${text.slice(0, 6000)}`, 0);
+    const r = await askGemini(apiKey, `${AI_PROMPT}\n\n---\n${text.slice(0, 6000)}`, 0, { module: 'moderation' });
     if (!r.ok || !r.text) return fail;
 
     const m = r.text.match(/\{[\s\S]*\}/);

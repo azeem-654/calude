@@ -38,7 +38,8 @@ const PREPARE: [string, string][] = [
 ];
 /** A render's steps: each sound fix by name (when there are any beyond the plain high-pass), then loudness, the render, the check. */
 function renderSteps(doc: VideoDoc | null): [string, string][] {
-  const sound = doc ? soundSteps(doc.audio) : [];
+  /* A stand-in span so "keep only the talking" is listed by its own name; the render sends the real ones. */
+  const sound = doc ? soundSteps(doc.audio, '', { speech: [[0, 1]] }) : [];
   const levelled = !!doc && (doc.audio.loudnorm !== false || !!doc.audio.studio);
   return [
     ['download', 'Fetching the recording'],

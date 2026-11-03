@@ -102,7 +102,7 @@ const server = http.createServer(async (req, res) => {
   for await (const c of req) { chunks.push(c); if (chunks.reduce((n, x) => n + x.length, 0) > 4 * 1024 * 1024) return send(res, 413, { error: 'too large' }); }
   const body = Buffer.concat(chunks);
   const url = new URL(req.url, 'http://engine');
-  if (url.pathname === '/health') return send(res, 200, { ok: true, ffmpeg: await ffmpegVersion(), busy: running + queue.length, features: { track: await canTrack(), youtube: !!(await canFetch()), rnnoise: hasRnn() } });
+  if (url.pathname === '/health') return send(res, 200, { ok: true, ffmpeg: await ffmpegVersion(), busy: running + queue.length, features: { track: await canTrack(), youtube: !!(await canFetch()), rnnoise: hasRnn(), isolation: hasDfn(), rnnoiseGeneral: !!cbModel() } });
   if (url.pathname === '/busy') return send(res, 200, { busy: running + queue.length });
   if (!signedOk(req, body)) return send(res, 401, { error: 'unsigned' });
 
@@ -620,8 +620,48 @@ const hasRnn = () => /^[\w./-]+$/.test(RNN_MODEL) && fs.existsSync(RNN_MODEL);
  * Nothing here can rebuild a voice that clipped or dropped out.
  */
 const rnnModel = () => (hasRnn() ? RNN_MODEL : '');
+/* RNNoise's general-noise model ("conjoined-burgers", same repository and
+   pin): the first of the two passes the isolation step falls back to. */
+const CB_MODEL = process.env.RNNOISE_GENERAL || path.join(path.dirname(RNN_MODEL), 'rnnoise-general.rnnn');
+const cbModel = () => (/^[\w./-]+$/.test(CB_MODEL) && fs.existsSync(CB_MODEL) ? CB_MODEL : '');
+/* DeepFilterNet 3 (MIT/Apache-2.0, pinned static binary with its model built
+   in): a full-band speech enhancer that takes out non-stationary noise —
+   music, traffic, keyboards, voices in the next room — which RNNoise leaves. */
+const DFN = process.env.DEEPFILTER || path.join(path.dirname(RNN_MODEL), 'deep-filter');
+const hasDfn = () => /^[\w./-]+$/.test(DFN) && fs.existsSync(DFN);
 function voiceChain(audio) {
-  return voiceFilters(audio, rnnModel());
+  return voiceFilters(audio, rnnModel(), { cbModel: cbModel() });
+}
+
+/**
+ * The isolation step through DeepFilterNet: the last pass's sound as 48 kHz
+ * mono 16-bit (what the network was trained on), enhanced with no
+ * attenuation limit and its post-filter, then back to the float stereo file
+ * the next pass reads. The full flags first; if this build refuses one, the
+ * bare call. Returns false on any failure, and the step's FFmpeg fallback runs.
+ */
+async function isolateVoice(job, dir, prev, out, total, key) {
+  if (!hasDfn() || !prev) return false;
+  const inWav = path.join(dir, 'isolate-in.wav'), outDir = path.join(dir, 'isolate-out');
+  try {
+    await fsp.mkdir(outDir, { recursive: true });
+    await exec(FFMPEG, [...base, '-protocol_whitelist', 'file', '-format_whitelist', 'wav', '-i', prev, '-ac', '1', '-ar', '48000', '-c:a', 'pcm_s16le', inWav], job);
+    job.stage = `sound:${key}`; job.pct = 0;
+    try { await exec(DFN, ['-D', '--pf', '-a', '100', '-o', outDir, inWav], job); }
+    catch (e) { if (String(e.message) === 'cancelled') throw e; await exec(DFN, ['-a', '100', '-o', outDir, inWav], job); }
+    const made = path.join(outDir, 'isolate-in.wav');
+    if (!fs.existsSync(made)) return false;
+    await exec(FFMPEG, [...base, '-protocol_whitelist', 'file', '-format_whitelist', 'wav', '-i', made, '-ac', '2', '-t', total.toFixed(3), '-c:a', 'pcm_f32le', '-rf64', 'auto', out], job);
+    job.pct = 100;
+    return true;
+  } catch (e) {
+    if (String(e.message) === 'cancelled') throw e;
+    console.error('isolation fell back to RNNoise:', e.message);
+    return false;
+  } finally {
+    await fsp.rm(inWav, { force: true }).catch(() => {});
+    await fsp.rm(outDir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 /**
@@ -636,13 +676,18 @@ function voiceChain(audio) {
  * file the render mixes, or null when there is nothing to do beyond the
  * plain high-pass (then the render keeps its single pass, as before).
  */
-async function soundPasses(job, dir, src, s0, end, sel, fps, total, audio) {
+async function soundPasses(job, dir, src, s0, end, sel, fps, total, audio, speech) {
   if (!needsSoundPasses(audio)) return null;
-  const steps = soundSteps(audio, rnnModel());
+  const steps = soundSteps(audio, rnnModel(), { cbModel: cbModel(), speech });
   let prev = '';
   for (let i = 0; i < steps.length; i++) {
     const st = steps[i];
     const out = path.join(dir, `sound-${i}.wav`);
+    if (st.tool === 'dfn' && i > 0 && await isolateVoice(job, dir, prev, out, total, st.key)) {
+      await fsp.rm(prev, { force: true });
+      prev = out;
+      continue;
+    }
     const input = i === 0
       ? ['-ss', String(s0), '-t', String(end - s0 + 0.05), ...inVideo(src)]
       : ['-protocol_whitelist', 'file', '-format_whitelist', 'wav', '-i', prev];
@@ -1078,7 +1123,7 @@ async function render(job, dir) {
   const hasAudio = p.hasAudio !== false;
   const audio = p.audio ?? {};
   /* The sound fixes run first, each as its own pass (soundPasses); the render then mixes their file. */
-  const speechFile = hasAudio ? await soundPasses(job, dir, src, s0, end, sel, fps, total, audio) : null;
+  const speechFile = hasAudio ? await soundPasses(job, dir, src, s0, end, sel, fps, total, audio, Array.isArray(p.speech) ? p.speech.slice(0, 20000) : []) : null;
   const voice = speechFile ? [] : voiceChain(audio);
   const gain = num(audio.volume, 1, 0.3, 2);
   if (gain !== 1) voice.push(`volume=${gain}`);

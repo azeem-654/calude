@@ -1047,6 +1047,26 @@ phones.
 `npm run test:livehelp` drives two real browsers through a whole session
 (needs `wrangler dev`).
 
+### 30. See Cloudflare usage on the dashboard — added 2026-11-03
+
+Settings → Platform services now opens with **AI & cloud usage**: every AI
+request counted against Gemini's and OpenRouter's free daily allowances,
+which model each module uses, the busiest customer workspaces with caps you
+can set, and your Openprovider balance. The Cloudflare lines need two secrets
+(until then the dashboard says so instead of showing numbers):
+
+1. Cloudflare → My Profile → API Tokens → Create token → Custom: permission
+   **Account → Account Analytics → Read**, for your account only.
+2. Cloudflare → Workers & Pages → `crmpro` (and `crmpro-staging`) → Settings →
+   Variables and Secrets: add `CF_ANALYTICS_TOKEN` (the token) and
+   `CF_ACCOUNT_ID` (the account ID from the Workers overview page).
+3. For the Openprovider balance, make sure your **reseller ID** is filled in
+   under Settings → Domains.
+
+The free-tier figures shown are Google's and OpenRouter's published ones; if
+AI Studio shows different limits for your project, correct them under
+"Free-tier figures used above".
+
 ## Done
 
 - **Master password restored** (2026-09-09) — still needs changing, see 1.

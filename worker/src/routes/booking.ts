@@ -374,7 +374,7 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
         const inline = photo ? GEMINI_IMAGE.exec(photo.dataUrl) : null;
         const parts: AiPart[] = [{ text: autofillPrompt({ url: page.url, title: facts.title, siteName: facts.siteName, text: text.slice(0, 10_000), business, withPhoto: !!inline }) }];
         if (inline) parts.push({ inlineData: { mimeType: inline[1], data: inline[2] } });
-        const r = await askGeminiParts(key, parts, 0.3, { timeoutMs: 30_000 });
+        const r = await askGeminiParts(key, parts, 0.3, { module: 'booking', accountId, timeoutMs: 30_000 });
         let parsed: Record<string, unknown> | null = null;
         if (r.ok) { try { parsed = JSON.parse(r.text) as Record<string, unknown>; } catch { parsed = null; } }
         if (!parsed) ai.why = r.ok ? 'The AI answered with something that could not be used, so only what the site states directly was filled in.' : `The AI could not be reached (${clipText(r.error, 140)}), so only what the site states directly was filled in.`;

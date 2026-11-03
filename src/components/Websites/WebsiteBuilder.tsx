@@ -352,7 +352,7 @@ function PropertiesPanel({ block, onChange }: { block: FunnelBlock; onChange: (b
     setAiLoading(true);
     try {
       const prompt = `You are a professional copywriter. Write compelling website copy for a ${block.type} section. Be concise, benefit-focused and conversion-oriented. Return only the text, no quotes or explanations.\n\n${aiPrompt || `Write a strong ${block.type} headline or text for a professional website.`}`;
-      const res = await aiFetch({ body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 300 } }) });
+      const res = await aiFetch({ body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 300 } }) }, 'website-builder');
       const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[]; error?: { message?: string } };
       if (!res.ok) { alert(data.error?.message ?? 'The AI could not write that just now.'); return; }
       const text = (data.candidates?.[0]?.content?.parts ?? []).map(x => x.text ?? '').join('').trim();

@@ -60,7 +60,7 @@ export async function fingerprint(key: string): Promise<string> {
  * backups by position, and the AI_API_KEY secret last. A key stored twice is
  * tried once.
  */
-async function readInstallKeys(env: Env): Promise<PoolKey[]> {
+export async function readInstallKeys(env: Env): Promise<PoolKey[]> {
   const secret = await installSecret(env.DB, 'mailbox_key');
   const out: PoolKey[] = [];
   const seen = new Set<string>();
@@ -144,6 +144,12 @@ export function remember(env: Env, keys: PoolKey[]): string | null {
   pools.set(keys[0].key, { env, keys });
   if (pools.size > 400) pools.delete(pools.keys().next().value as string);
   return keys[0].key;
+}
+
+/** A key's pool record (its fingerprint and where it came from), if any pool this isolate has seen holds it. */
+export function poolKeyOf(key: string): PoolKey | undefined {
+  for (const { keys } of pools.values()) { const k = keys.find(p => p.key === key); if (k) return k; }
+  return undefined;
 }
 
 /** Whether a failure is the key's, and how long to rest it. */

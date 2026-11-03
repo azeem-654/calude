@@ -47,7 +47,7 @@ import {
 interface Req {
   token?: string; accountId?: string; action?: string;
   projectId?: string; outputId?: string; name?: string; prompt?: string; settings?: Partial<VideoRequest> & { language?: string };
-  autopilotProjectId?: string; workflowId?: string; spec?: unknown; playhead?: number; exampleKey?: string;
+  autopilotProjectId?: string; workflowId?: string; spec?: unknown; playhead?: number; exampleKey?: string; examplePalette?: unknown;
   size?: number; type?: string; bgRemoved?: boolean; fileKey?: string; uploadId?: string;
   baseVersion?: number; ops?: Op[]; note?: string; version?: number; preset?: string;
   text?: string; selection?: { s: number; e: number } | null; clipId?: string | null;
@@ -414,7 +414,7 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
     const doc = newDoc(request, brand?.color ?? '');
     /* The welcome wizard's choices beyond the video itself. */
     const w = d.want ?? {};
-    if (w.denoise && ['light', 'medium', 'strong'].includes(w.denoise)) doc.audio.denoise = w.denoise as 'medium';
+    if (w.denoise && ['light', 'medium', 'strong', 'max'].includes(w.denoise)) doc.audio.denoise = w.denoise as 'medium';
     if (w.voice) doc.audio.voice = true;
     const extras: Extras = { want: {
       ...(w.repurpose ? { repurpose: { posts: Math.max(0, Math.min(6, Math.round(Number(w.repurpose.posts ?? 3)))), blog: w.repurpose.blog !== false, email: w.repurpose.email !== false } } : {}),
@@ -889,7 +889,9 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
         const r = await readExample(env, accountId, bytes, mime);
         ai = r.called;
         if (r.ok) {
-          const st = styleFromReading(r.raw, o.kind === 'short');
+          /* The example's own colours, measured in the browser from its pixels; hex only. */
+          const palette = (Array.isArray(d.examplePalette) ? d.examplePalette : []).slice(0, 8).map(String).filter(x => /^#[0-9a-f]{6}$/i.test(x));
+          const st = styleFromReading(r.raw, o.kind === 'short', palette);
           style = st.style as Record<string, unknown>; words = st.words; read = true;
           note = `Read from your example: ${st.said}. Change the words or anything else with Edit.`;
         } else note = `Your example could not be read (${r.why.replace(/\.$/, '')}), so yours is designed in the modern style instead.`;

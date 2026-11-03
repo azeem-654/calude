@@ -369,7 +369,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     ].filter(Boolean).join('\n');
 
     /* Low temperature: this is extraction, not writing. */
-    const ai = await askGemini(key, prompt, 0.15);
+    const ai = await askGemini(key, prompt, 0.15, { module: 'projects', accountId });
     if (!ai.ok) return fail(ai.error);
 
     let parsed: Record<string, unknown> = {};

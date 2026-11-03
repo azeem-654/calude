@@ -105,7 +105,7 @@ export interface Clip {
 
 export type CleanupPreset = 'conservative' | 'balanced' | 'aggressive';
 
-export type Denoise = 'off' | 'light' | 'medium' | 'strong';
+export type Denoise = 'off' | 'light' | 'medium' | 'strong' | 'max';
 export interface AudioSettings {
   loudnorm: boolean;
   /** Steady background noise (fans, hum, hiss) taken out — the engine's levels. */
@@ -127,6 +127,12 @@ export interface AudioSettings {
   declick?: boolean;
   /** Room noise between sentences pulled down (a gentle gate — words untouched). */
   gate?: boolean;
+  /**
+   * Keep only the talking: the room turned right down (−26 dB) wherever the
+   * transcript has no words, padded so breaths and word tails stay. Always on
+   * with AI voice isolation (`denoise: 'max'`, Studio Sound ≥ 90).
+   */
+  speechOnly?: boolean;
 }
 
 /**
@@ -836,7 +842,8 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
       case 'audio.set': {
         const p = o.patch ?? {};
         if (typeof p.loudnorm === 'boolean') d.audio.loudnorm = p.loudnorm;
-        if (p.denoise && ['off', 'light', 'medium', 'strong'].includes(p.denoise)) d.audio.denoise = p.denoise;
+        if (p.denoise && ['off', 'light', 'medium', 'strong', 'max'].includes(p.denoise)) d.audio.denoise = p.denoise;
+        if (typeof p.speechOnly === 'boolean') d.audio.speechOnly = p.speechOnly;
         if (typeof p.voice === 'boolean') d.audio.voice = p.voice;
         if (p.volume !== undefined) d.audio.volume = Math.round(clamp(p.volume, 0.5, 1.5, 1) * 100) / 100;
         if (typeof p.studio === 'boolean') d.audio.studio = p.studio;

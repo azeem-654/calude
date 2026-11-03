@@ -117,7 +117,10 @@ function parseOne(input: string, ctx: CommandCtx): CommandResult {
       return { ops: [{ op: 'audio.set', patch: { denoise: 'off' } }], reply: 'Noise reduction is off. Every video will render again.', rerender: all, understood: true };
     }
     if (/\b(remove|reduce|clean|cut|get rid|lower|less|eliminate|fix|take out|kill)\b/.test(t)) {
-      const level = /\b(completely|all of the noise|strong|heavy|more|aggressive|a lot|lots)\b/.test(t) || ctx.doc.audio.denoise === 'medium' ? 'strong' : /\b(bit|little|slight|light|gentle)\b/.test(t) ? 'light' : 'medium';
+      /* "completely", "maximum", "isolate", or asking again after strong → AI voice isolation. */
+      const level = /\b(completely|all of the noise|all noise|maximum|max|isolat\w*|only (?:my )?voice|extreme|totally)\b/.test(t) || ctx.doc.audio.denoise === 'strong' ? 'max'
+        : /\b(strong|heavy|more|aggressive|a lot|lots)\b/.test(t) || ctx.doc.audio.denoise === 'medium' ? 'strong' : /\b(bit|little|slight|light|gentle)\b/.test(t) ? 'light' : 'medium';
+      if (level === 'max') return { ops: [{ op: 'audio.set', patch: { denoise: 'max' } }], reply: 'AI voice isolation is on for every video: your voice is kept and everything that is not a voice — fans, music, traffic, keyboards — is taken out, and the room is turned right down wherever nobody is talking. Every video will render again; listen before you publish, as a very noisy recording can sound a little processed.', rerender: all, understood: true };
       return { ops: [{ op: 'audio.set', patch: { denoise: level } }], reply: `Background noise reduction is on (${level}) for every video — steady noise like fans, hum and hiss is taken out, and every video will render again. Noise reduction cannot rebuild a voice that was distorted or cut out when it was recorded.`, rerender: all, understood: true };
     }
   }

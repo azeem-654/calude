@@ -35,6 +35,7 @@ import GoogleSignInPanel from './GoogleSignInPanel';
 import LeadDirectoryAdmin from './LeadDirectoryAdmin';
 import SourcePolicyPanel from './SourcePolicyPanel';
 import StrategyCallSettings from './StrategyCallSettings';
+import UsageDashboard from './UsageDashboard';
 
 const INK = '#0f172a';
 const MUTED = '#64748b';
@@ -91,6 +92,8 @@ export default function PlatformServices({ openTab }: { openTab: (id: string) =>
 
   return (
     <div style={{ display: 'grid', gap: 20, minWidth: 0 }}>
+      {/* On top, as the owner asked: what is used and what is left, before the list of services. */}
+      <UsageDashboard />
       <div style={{ background: '#fff', borderRadius: 18, border: `1px solid ${LINE}`, padding: 'clamp(16px, 3vw, 24px)', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: INK, margin: 0, flex: 1, minWidth: 180 }}>Platform services</h3>

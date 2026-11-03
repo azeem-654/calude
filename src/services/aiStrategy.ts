@@ -346,7 +346,7 @@ restatement of the plan. Mention the trade-off in any channel you chose.`;
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { temperature: 0.4, responseMimeType: 'application/json' },
         }),
-      },
+      }, 'strategy',
     );
     if (!res.ok) throw new Error(`Gemini returned ${res.status}`);
     const data = await res.json();

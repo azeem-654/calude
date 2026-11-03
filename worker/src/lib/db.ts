@@ -66,6 +66,13 @@ export interface Env {
   /** Tests only: an OpenRouter stand-in. */
   OPENROUTER_BASE?: string;
   /**
+   * Read-only Cloudflare API token (Account Analytics: Read) and the account id,
+   * for the owner's usage dashboard (lib/cloudUsage.ts). Optional: without them
+   * the dashboard says how to add them rather than showing numbers.
+   */
+  CF_ANALYTICS_TOKEN?: string;
+  CF_ACCOUNT_ID?: string;
+  /**
    * Whether a stranger may make themselves an account on this deployment.
    *
    * `'off'` closes every self-serve route — the public form, Google, the

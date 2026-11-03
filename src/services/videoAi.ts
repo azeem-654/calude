@@ -16,7 +16,7 @@ export type AiResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 export async function aiJson<T>(prompt: string, temperature = 0.4): Promise<AiResult<T>> {
   const body = { contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseMimeType: 'application/json', temperature } };
-  const res = await aiFetch({ body: JSON.stringify(body) });
+  const res = await aiFetch({ body: JSON.stringify(body) }, 'video');
   const d = await res.json().catch(() => ({})) as { error?: { message?: string }; candidates?: { content?: { parts?: { text?: string }[] } }[] };
   if (!res.ok || d.error) return { ok: false, error: d.error?.message || `The AI answered ${res.status}.` };
   const text = (d.candidates?.[0]?.content?.parts?.[0]?.text ?? '').replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();

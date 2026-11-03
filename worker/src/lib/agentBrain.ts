@@ -183,7 +183,7 @@ export async function think(
     };
   }
 
-  const res = await askGemini(key, buildPrompt(cfg, turns, hits, open), 0.35);
+  const res = await askGemini(key, buildPrompt(cfg, turns, hits, open), 0.35, { module: 'support-chat', accountId });
   if (!res.ok || !res.text) {
     return {
       reply: cfg.fallback || DEFAULT_FALLBACK,

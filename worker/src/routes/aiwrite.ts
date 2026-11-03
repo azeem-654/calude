@@ -247,7 +247,7 @@ Rules:
 - {{firstName}} is the only merge tag.
 
 Return ONLY valid JSON, no fences:
-{"subject":"","body":""}`, 0.6);
+{"subject":"","body":""}`, 0.6, { module: 'email-marketing', accountId });
 
     if (!r.ok) return fail(r.error);
     const out = parse<{ subject?: string; body?: string }>(r.text, {});

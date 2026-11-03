@@ -136,7 +136,7 @@ const STUDIO_LEVELS = [
   { v: 30, label: 'Gentle', note: 'A light touch for a fairly quiet room' },
   { v: 60, label: 'Balanced', note: 'Most rooms and laptop mics' },
   { v: 80, label: 'Strong', note: 'Fans, air-con, traffic' },
-  { v: 100, label: 'Maximum', note: 'Very noisy — listen before you publish' },
+  { v: 100, label: 'Maximum', note: 'AI voice isolation — very noisy rooms; listen before you publish' },
 ];
 
 const NOISE: { key: Denoise; label: string; note: string }[] = [
@@ -144,6 +144,7 @@ const NOISE: { key: Denoise; label: string; note: string }[] = [
   { key: 'light', label: 'Light', note: 'A little hiss and hum taken out; the voice untouched.' },
   { key: 'medium', label: 'Medium', note: 'Fans, air-conditioning and room noise reduced. Right for most recordings.' },
   { key: 'strong', label: 'Strong', note: 'Heavy, steady noise. Can make a voice sound thinner — listen before you publish.' },
+  { key: 'max', label: 'Maximum (AI)', note: 'AI voice isolation: your voice is kept and everything that is not a voice — fans, music, traffic, keyboards, a TV — is taken out, and the room is turned right down wherever the transcript has nobody talking. The strongest there is; a very noisy recording can sound a little processed.' },
 ];
 
 export function AudioPanel({ ctx }: { ctx: EditorCtx }) {
@@ -202,8 +203,10 @@ export function AudioPanel({ ctx }: { ctx: EditorCtx }) {
         <div className="vs-chips" role="radiogroup" aria-label="Noise reduction">
           {NOISE.map(n => <button key={n.key} type="button" role="radio" aria-checked={a.denoise === n.key} className="vs-chip" aria-pressed={a.denoise === n.key} data-denoise={n.key} onClick={() => set({ denoise: n.key }, `Noise reduction: ${n.label.toLowerCase()}`)}>{n.label}</button>)}
         </div>
-        <span className="vs-kbd" style={{ fontWeight: 500 }}>{studio ? 'Studio Sound is on and does this itself — these levels are used when it is off. ' : ''}{NOISE.find(n => n.key === a.denoise)?.note} Steady noise is what it removes; a dog barking or a door is not.</span>
+        <span className="vs-kbd" style={{ fontWeight: 500 }}>{studio ? 'Studio Sound is on and does this itself (Maximum strength uses AI voice isolation) — these levels are used when it is off. ' : ''}{NOISE.find(n => n.key === a.denoise)?.note}{a.denoise === 'max' ? '' : ' Steady noise is what these levels remove; for a dog, music or traffic choose Maximum (AI).'}</span>
       </div>
+      <label className="vs-opt"><input type="checkbox" checked={!!a.speechOnly || a.denoise === 'max' || (studio && (a.strength ?? 60) >= 90)} disabled={a.denoise === 'max' || (studio && (a.strength ?? 60) >= 90)} onChange={e => set({ speechOnly: e.target.checked }, e.target.checked ? 'Only the talking kept' : 'Room kept between words')} data-testid="vs-speech-only" />
+        <span><b>Keep only the talking</b><br /><small className="vs-kbd">Uses the transcript: wherever nobody is speaking the room is turned right down (−26 dB), with a breath kept before each phrase. Needs the video transcribed; always on with AI voice isolation.</small></span></label>
       <label className={`vs-opt ${studio ? 'vs-dim' : ''}`}><input type="checkbox" checked={!!a.voice} onChange={e => set({ voice: e.target.checked }, e.target.checked ? 'Voice clarity on' : 'Voice clarity off')} />
         <span><Mic size={13} /> <b>Voice clarity</b><br /><small className="vs-kbd">Presence lifted, harsh “s” sounds softened, levels evened out.{studio ? ' Part of Studio Sound while it is on.' : ''}</small></span></label>
       <label className="vs-label"><span><Volume2 size={13} /> Voice level · {vol}%</span>

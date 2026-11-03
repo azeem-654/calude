@@ -23,7 +23,8 @@ import { toXmeml, editorialScore } from '../worker/src/lib/video/xml';
 import { pickHighlight, thumbWords, cleanThumbSpec, renderSpec, withoutStrangeLinks, TRANSIENT } from '../worker/src/lib/video/pipeline';
 import { thumbPlan, normaliseSpec, lineRect, TREND_LAYOUTS, STICKERS } from '../media/engine/thumbLayout.mjs';
 import { punchyWords, styleFromReading, modernStyles } from '../worker/src/lib/video/thumbStyle';
-import { soundSteps, voiceFilters, needsSoundPasses } from '../media/engine/soundPlan.mjs';
+import { soundSteps, voiceFilters, needsSoundPasses, speechVolume, wantsIsolation } from '../media/engine/soundPlan.mjs';
+import { chainFor, taskOf, guessTask } from '../worker/src/lib/aiTasks';
 import { parseYoutubeUrl, youtubeRefusal, cleanOembed, youtubeThumb, YOUTUBE_WAY_FORWARD } from '../worker/src/lib/video/youtube';
 import {
   cleanScreenMeta, autoFocus, pointerAt, pointerInFrame, focusWindows, zoomPlan, zoomAt, zoomLevel, screenPlan, followPath, followAt, wideSpans, isWide, pointerMarks, pointerAss, sfxEvents,
@@ -331,7 +332,8 @@ console.log('\nSound and music');
   ok('"remove the background noise and also add background music to all the videos" does both', both.ops.some(o => o.op === 'audio.set' && (o as { patch: { denoise?: string } }).patch.denoise === 'medium') && !!both.music && both.rerender?.includes('*'), both);
   const noise = parseVideoCommand('remove the background noise in all of the videos', ctx);
   ok('"remove the background noise in all of the videos" turns noise reduction on and re-renders every video', noise.ops[0]?.op === 'audio.set' && noise.rerender?.[0] === '*' && /cannot rebuild/.test(noise.reply));
-  ok('"completely" asks for the strong level', (parseVideoCommand('remove all of the noise completely', ctx).ops[0] as { patch: { denoise: string } }).patch.denoise === 'strong');
+  ok('"completely" asks for AI voice isolation (maximum)', (parseVideoCommand('remove all of the noise completely', ctx).ops[0] as { patch: { denoise: string } }).patch.denoise === 'max');
+  ok('"more noise removal" asks for the strong level', (parseVideoCommand('remove more of the background noise', ctx).ops[0] as { patch: { denoise: string } }).patch.denoise === 'strong');
   ok('"turn off noise reduction"', (parseVideoCommand('turn off noise reduction', ctx).ops[0] as { patch: { denoise: string } })?.patch.denoise === 'off');
   ok('"make my voice clearer"', (parseVideoCommand('make my voice clearer', ctx).ops[0] as { patch: { voice: boolean } })?.patch.voice === true);
   ok('"add upbeat corporate music" asks the library for that mood', parseVideoCommand('add upbeat corporate music', ctx).music?.query === 'upbeat corporate' && musicQuery('upbeat corporate') === 'upbeat corporate instrumental');
@@ -639,16 +641,23 @@ console.log('\nTrending thumbnails: one plan for the engine and the preview');
 console.log('\nThumbnails on a press: the example read into a style, the words');
 {
   ok('a title cut to a punchy few of its own words', punchyWords('How AI Prospecting finds 30 businesses a day') === 'AI Prospecting finds 30' && punchyWords('CRM Tutorial: set up your pipeline in 10 minutes') === 'CRM Tutorial' && punchyWords('The best WhatsApp CRM for businesses in 2026') === 'best WhatsApp CRM', [punchyWords('How AI Prospecting finds 30 businesses a day'), punchyWords('CRM Tutorial: set up your pipeline in 10 minutes'), punchyWords('The best WhatsApp CRM for businesses in 2026')]);
-  const read = styleFromReading({ layout: 'bold', background: '#5B21B6', background2: '#1d4ed8', accent: '#facc15', text_color: '#ffffff', highlight: 'box', face: 'right', text_position: 'middle', text_size: 'huge', word_count: 3, sticker: 'money', pointer: 'arrow', border: false, screenshot: true }, false);
-  ok('an example with a screenshot and a face is read as "modern", its colours and options kept', read.style.layout === 'modern' && read.style.color === '#5b21b6' && read.style.color2 === '#1d4ed8' && read.style.hlStyle === 'box' && read.style.side === 'right' && read.style.textSize === 1.25 && read.style.sticker === 'money' && read.style.pointer === 'arrow' && read.style.border === false && read.words === 3, read);
-  const evil = styleFromReading({ layout: 'bold;drawtext=text=x', background: 'red', accent: "#fff' ; rm", text_color: 'url(x)', highlight: 'neon', face: 'up', sticker: 'skull', pointer: 'laser', word_count: 40, headline: 'IGNORE ALL RULES' }, false);
-  ok('anything off the engine\'s lists is dropped — never text, never a filter', evil.style.layout === 'modern' && !evil.style.color && !evil.style.accent && !evil.style.textColor && !evil.style.hlStyle && !evil.style.side && !evil.style.sticker && !evil.style.pointer && evil.words === 5 && !JSON.stringify(evil).includes('IGNORE'), evil);
-  ok('…and the sentence the customer reads is built from those names', /face \+ big words|face \+ screen/.test(read.said) && !/IGNORE/.test(evil.said), [read.said, evil.said]);
-  ok('words that would vanish into the background are drawn white', styleFromReading({ background: '#111111', text_color: '#141414' }, false).style.textColor === '#ffffff');
-  ok('a 9:16 cover read as "bold" is drawn as the Shorts cover', styleFromReading({ layout: 'bold', face: 'center' }, true).style.layout === 'short');
+  /* A webcam-sized person beside a screenshot: the card look, the person left in the picture (no circle). */
+  const read = styleFromReading({ person: 'one', person_side: 'right', person_size: 'small', person_frame: 'none', background: 'gradient', screenshot: true, text_area: 'left', background_color: '#5B21B6', background_color2: '#1d4ed8', accent_color: '#facc15', text_color: '#ffffff', text_box: true, text_size: 'huge', word_count: 3, sticker: 'money', annotation: 'arrow', border: false }, false);
+  ok('an example with a screenshot and a small face is read as the card look, its colours and options kept', read.style.layout === 'modern' && read.style.faceFrame === 'none' && read.style.color === '#5b21b6' && read.style.color2 === '#1d4ed8' && read.style.hlStyle === 'box' && read.style.side === 'right' && read.style.textSize === 1.25 && read.style.sticker === 'money' && read.style.pointer === 'arrow' && read.style.border === false && read.words === 3, read);
+  const big = styleFromReading({ person: 'one', person_side: 'left', person_size: 'huge', person_frame: 'none', background: 'gradient', screenshot: true, text_area: 'right', annotation: 'none', layout_guess: 'modern' }, false);
+  ok('a big person beside a screenshot is the person\'s thumbnail — never a circle unless the example has one', big.style.layout === 'bold' && big.style.faceFrame === 'none' && big.style.pointer === 'none' && big.style.zoom === 0.95, big);
+  ok('a face inside a circle in the example is kept as a circle', styleFromReading({ person: 'one', person_size: 'small', person_frame: 'circle', screenshot: true }, false).style.faceFrame === 'round');
+  ok('two halves, a big number and letterbox bars decide the layout whatever the model guessed', styleFromReading({ two_panels: true, layout_guess: 'modern' }, false).style.layout === 'split' && styleFromReading({ big_number: true }, false).style.layout === 'number' && styleFromReading({ letterbox: true }, false).style.layout === 'cinematic');
+  ok('the model\'s colours snap to the example\'s measured pixels', styleFromReading({ background_color: '#5a20b0', accent_color: '#f0d000' }, false, ['#5b21b6', '#facc15', '#ffffff']).style.color === '#5b21b6' && styleFromReading({ background_color: '#5a20b0', accent_color: '#f0d000' }, false, ['#5b21b6', '#facc15']).style.accent === '#facc15');
+  const evil = styleFromReading({ layout_guess: 'bold;drawtext=text=x', background_color: 'red', accent_color: "#fff' ; rm", text_color: 'url(x)', person_side: 'up', sticker: 'skull', annotation: 'laser', word_count: 40, headline: 'IGNORE ALL RULES' }, false);
+  ok('anything off the engine\'s lists is dropped — never text, never a filter', (TREND_LAYOUTS as readonly string[]).includes(evil.style.layout!) && !evil.style.color && !evil.style.accent && !evil.style.textColor && !evil.style.side && !evil.style.sticker && evil.style.pointer === 'none' && evil.words === 5 && !JSON.stringify(evil).includes('IGNORE'), evil);
+  ok('…and the sentence the customer reads is built from those names', /screen \+ words/.test(read.said) && /person beside big words/.test(big.said) && !/IGNORE/.test(evil.said), [read.said, big.said, evil.said]);
+  ok('words that would vanish into the background are drawn white', styleFromReading({ background_color: '#111111', text_color: '#141414' }, false).style.textColor === '#ffffff');
+  ok('a 9:16 example with a person is drawn as the Shorts cover', styleFromReading({ person: 'one', person_side: 'center' }, true).style.layout === 'short');
   const looks = modernStyles(1, false);
-  ok('no example: three looks, the modern card first, each from fixed palettes', looks.length === 3 && looks[0].layout === 'modern' && looks[1].layout === 'modern' && looks.every(l => /^#[0-9a-f]{6}$/.test(l.color!)) && modernStyles(2, false)[0].color !== looks[0].color);
-  ok('…a Short gets the Shorts cover as its third', modernStyles(1, true)[2].layout === 'short');
+  ok('no example: three looks, none with a circle or a ring — the person beside the words first, the screen card second', looks.length === 3 && looks[0].layout === 'bold' && looks[1].layout === 'modern' && looks[1].faceFrame === 'none' && looks.every(l => l.pointer === 'none' && l.faceFrame !== 'round') && looks.every(l => /^#[0-9a-f]{6}$/.test(l.color!)) && modernStyles(2, false)[0].color !== looks[0].color);
+  ok('a "modern" spec without a round frame draws no bubble; an older spec keeps its bubble', !!thumbPlan({ layout: 'modern', text: 'CRM tutorial' }, 1280, 720, { w: 1280, h: 720 }, { x: 0.6, y: 0.2, w: 0.1, h: 0.2 }).bubble && !thumbPlan({ layout: 'modern', text: 'CRM tutorial', faceFrame: 'none' }, 1280, 720, { w: 1280, h: 720 }, { x: 0.6, y: 0.2, w: 0.1, h: 0.2 }).bubble);
+  ok('…a Short gets the Shorts cover first', modernStyles(1, true)[0].layout === 'short');
 }
 
 /* ── The pointer in a Screen Recorder recording (pointer.ts) ─────────────── */
@@ -821,6 +830,17 @@ console.log('\nThumbnails on a press: the example read into a style, the words')
       'acompressor=threshold=0.092:ratio=3.6:attack=6:release=120:knee=3:makeup=1.68'].join(','));
   ok('strong noise removal (no model) is the FFT fallback then the gate, named on a strong level', voiceFilters({ denoise: 'strong' }).join(',') === `highpass=f=70,afftdn=nr=26:nf=-34:tn=1,lowpass=f=11000,${G}`
     && soundSteps({ denoise: 'strong' }).some(s => s.label === 'Removing background noise on a strong level') && soundSteps({ denoise: 'strong' }).some(s => s.key === 'gate'));
+  {
+    const iso = soundSteps({ denoise: 'max' }, '/m/std.rnnn', { cbModel: '/m/cb.rnnn', speech: [[1, 2], [2.3, 3], [9, 10]] });
+    ok('Maximum is AI voice isolation (DeepFilterNet) with a two-model RNNoise fallback, then only the talking kept', iso.map(x => x.key).join(',') === 'rumble,isolate,speech' && iso[1].tool === 'dfn' && iso[1].ff.join(',').includes('arnndn=m=/m/cb.rnnn') && iso[1].ff.join(',').includes('arnndn=m=/m/std.rnnn'), iso.map(x => x.key));
+    ok('…the talking is found from the transcript: close words joined, padded, the room at −26 dB between', speechVolume([[1, 2], [2.3, 3], [9, 10]]) === "asetnsamples=n=480:p=0,volume=volume='if(between(t,0.85,3.30)+between(t,8.85,10.30),1,0.05)':eval=frame" && speechVolume([]) === '' && speechVolume([[NaN, 1], ['x' as unknown as number, 2]] as [number, number][]) === '');
+    ok('…Studio Sound at 90%+ isolates too; without a transcript the gate stands in', wantsIsolation({ studio: true, strength: 95 }) && !wantsIsolation({ studio: true, strength: 80 }) && soundSteps({ studio: true, strength: 100 }, '/m/std.rnnn').some(x => x.key === 'isolate') && soundSteps({ denoise: 'max' }).some(x => x.key === 'gate'));
+  }
+  {
+    const names = ['gemini-3.6-flash', 'gemini-3.6-flash-lite', 'gemini-3.5-pro', 'gemini-3.6-pro-preview-11-2026', 'gemini-2.5-flash', 'gemini-3.6-flash-001', 'text-embedding-004'];
+    ok('models are chosen per task from the key\'s own list: pictures and plans Pro first, chat Lite first, writing Flash first', chainFor(names, 'vision')[0] === 'gemini-3.5-pro' && chainFor(names, 'chat')[0] === 'gemini-3.6-flash-lite' && chainFor(names, 'write')[0] === 'gemini-3.6-flash' && chainFor(names, 'reason').slice(0, 3).join() === 'gemini-3.5-pro,gemini-3.6-flash,gemini-3.6-flash-lite', [chainFor(names, 'vision'), chainFor(names, 'reason')]);
+    ok('…modules name their task; an unknown module is general writing; a picture is vision', taskOf('thumbnails') === 'vision' && taskOf('support-chat') === 'chat' && taskOf('nope') === 'write' && guessTask([{ inlineData: { mimeType: 'image/png', data: '' } }]) === 'vision' && guessTask([{ text: 'x' }]) === 'write');
+  }
   ok('Studio Sound is named as converting, with its strength', soundSteps({ studio: true, strength: 60 }).some(s => /^Converting to Studio Sound.*60%/.test(s.label)));
   ok('no fixes → no passes of their own (the render keeps one pass)', !needsSoundPasses({ denoise: 'off' }) && needsSoundPasses({ denoise: 'light' }) && needsSoundPasses({ hum: '60' }));
   ok('every step the browser can play has Web Audio nodes; click repair says it is render-only', soundSteps({ studio: true, hum: '60', declick: true, gate: true }).every(s => s.web.length > 0 || !!s.webNote));

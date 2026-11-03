@@ -55,6 +55,7 @@ import { counted as countedAllowance, record as recordAllowance, roomFor } from 
 import { brandOf, type VideoBrand } from './brand';
 import { modernStyles, punchyWords, type ThumbStyle } from './thumbStyle';
 import { TREND_LAYOUTS as ENGINE_LAYOUTS, normaliseSpec } from '../../../../media/engine/thumbLayout.mjs';
+import { wantsSpeechOnly } from '../../../../media/engine/soundPlan.mjs';
 
 /* ── Rows ─────────────────────────────────────────────────────────────────── */
 
@@ -135,6 +136,8 @@ export interface ThumbSpec {
   pointer?: 'auto' | 'none' | 'arrow' | 'circle' | 'both';
   /** A channel strip, ≤ 28 characters. */
   badge?: string;
+  /** "modern" only: the speaker also cropped into a round frame ('round'), or left in the card ('none'). Absent = round, as older specs were drawn. */
+  faceFrame?: 'none' | 'round';
 }
 export interface Thumb { key: string; width: number; height: number; layout: string; bytes: number; verified: boolean; check: string; headline: string; set: number; spec?: ThumbSpec; face?: boolean }
 
@@ -664,7 +667,7 @@ async function analyzeStep(env: Env, origin: string, job: JobRow, p: ProjectRow)
     const ai = await aiKeyFor(env, p.account_id);
     if (ai.key) {
       await save(env, job, { state: 'running', stage: 'Finding topics and Shorts' }, true);
-      const res = await askGeminiParts(ai.key, [{ text: analysisPrompt(transcriptForAi(sentences), opts.count, opts.min, opts.max, doc.long.on) }], 0.4, { json: true, timeoutMs: 28_000 });
+      const res = await askGeminiParts(ai.key, [{ text: analysisPrompt(transcriptForAi(sentences), opts.count, opts.min, opts.max, doc.long.on) }], 0.4, { module: 'video-analysis', accountId: p.account_id, json: true, timeoutMs: 28_000 });
       await meter(env, { jobId: job.id, kind: 'ai-analyze', accountId: p.account_id, units: 1, unit: 'ai_call', costMicros: PRICE.aiCall });
       const out = res.ok ? extractJson<{ shorts?: RawPick[]; chapters?: { start_sentence?: unknown; title?: unknown }[] }>(res.text) : null;
       if (out) {
@@ -940,7 +943,7 @@ async function metadataStep(env: Env, job: JobRow, p: ProjectRow): Promise<void>
       'Answer JSON only: {"videos": [{"id": "...", "titles": [...], "description": "...", "keywords": [...], "tags": [...], "hashtags": [...], "pinned_comment": "...", "cta": "..."}]}',
       ...items.map(x => `<video id="${x.o.id}" kind="${x.kind}">\n${x.text.slice(0, x.kind === 'long' ? 24_000 : 4_000)}\n</video>`),
     ].join('\n');
-    const res = await askGeminiParts(ai.key, [{ text: prompt }], 0.6, { json: true, timeoutMs: 28_000 });
+    const res = await askGeminiParts(ai.key, [{ text: prompt }], 0.6, { module: 'video', accountId: p.account_id, json: true, timeoutMs: 28_000 });
     await meter(env, { jobId: job.id, kind: 'ai-meta', accountId: p.account_id, units: 1, unit: 'ai_call', costMicros: PRICE.aiCall });
     const out = res.ok ? extractJson<{ videos?: (Record<string, unknown> & { id?: string })[] }>(res.text) : null;
     for (const v of out?.videos ?? []) {
@@ -1043,9 +1046,13 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
   const dir = `${projectPrefix(p.account_id, p.id)}out/${out.id}/${want ?? spec.hash}/`;
   return engineStep(env, origin, job, p, async () => {
     let ass: string | null = null;
+    /* Where somebody is talking, in the edit's own seconds (before speed — the
+       engine's sound passes run before atempo), for "keep only the talking". */
+    let speech: [number, number][] = [];
     const speed = spec.motion.speed;
     if (tr && tr.words.length) {
       const words = retimeWords(tr.words, spec.keeps, doc.captionEdits);
+      if (wantsSpeechOnly(doc.audio)) speech = words.map(w => [w.s, w.e] as [number, number]);
       /* At another speed every caption moves with the picture. */
       const cues = cuesOf(words, spec.kind).map(c => speed === 1 ? c : { ...c, s: c.s / speed, e: c.e / speed, words: c.words.map(w => ({ ...w, s: w.s / speed, e: w.e / speed })) });
       /* The caption files exist whether or not they are burned in. */
@@ -1076,7 +1083,7 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
       op: 'render' as const,
       params: {
         keeps: spec.keeps, mutes: spec.mutes, width: spec.width, height: spec.height, srcWidth: src.probe!.width, srcHeight: src.probe!.height,
-        mode: layout ? 'fit' : spec.layout ? 'fit' : spec.mode, cropX: spec.x, cropY: spec.y, ass, audio: doc.audio, hasAudio: src.probe!.hasAudio, fps: 30, name: 'video.mp4',
+        mode: layout ? 'fit' : spec.layout ? 'fit' : spec.mode, cropX: spec.x, cropY: spec.y, ass, audio: doc.audio, speech, hasAudio: src.probe!.hasAudio, fps: 30, name: 'video.mp4',
         effects: spec.effects, layout: ptr.screenLayout ?? layout, skin,
         pointerZoom: ptr.pointerZoom, pointerAss: ptr.ass, sfx: src.probe!.hasAudio && ptr.sfx.length ? { volume: spec.pointer?.volume ?? 0.6, events: ptr.sfx } : null,
         music: spec.music ? { volume: spec.music.volume, fadeIn: spec.music.fadeIn, fadeOut: spec.music.fadeOut, loop: spec.music.loop, duck: spec.music.duck } : null,
@@ -1149,15 +1156,15 @@ export function cleanThumbSpec(raw: unknown, fallback: ThumbSpec): ThumbSpec {
   const o = normaliseSpec({ ...r, layout });
   return {
     ...base, color2: o.color2, hlStyle: o.hlStyle, side: o.side, textPos: o.textPos, textSize: o.textSize,
-    sticker: o.sticker, pointer: o.pointer, badge: o.badge,
+    sticker: o.sticker, pointer: o.pointer, badge: o.badge, faceFrame: o.faceFrame,
   };
 }
 
 async function thumbnailJob(env: Env, origin: string, job: JobRow, p: ProjectRow): Promise<void> {
   const out = await env.DB.prepare('SELECT * FROM crm_video_outputs WHERE id = ? AND project_id = ?').bind(job.target, p.id).first<OutputRow>();
   if (!out) { await save(env, job, { state: 'cancelled', error: 'output removed' }); return; }
-  /* `style`: read from the customer's example (thumbStyle.ts) — two PNGs in
-     that style at two moments. Neither `style` nor `custom`: the modern looks. */
+  /* `style`: read from the customer's example (thumbStyle.ts) — three PNGs in
+     that style at three moments. Neither `style` nor `custom`: the modern looks. */
   const input = parse<{ set?: number; custom?: ThumbSpec; style?: ThumbStyle; words?: number }>(job.input, {});
   const set = input.set ?? 1;
   const doc = parse<VideoDoc>(p.doc, null as unknown as VideoDoc);
@@ -1188,7 +1195,9 @@ async function thumbnailJob(env: Env, origin: string, job: JobRow, p: ProjectRow
   const specs: ThumbSpec[] = input.custom
     ? [cleanThumbSpec(input.custom, base)]
     : input.style
-      ? [0, 1].map(k => cleanThumbSpec({ ...base, ...input.style, at: momentAt(shares[k] + ((set - 1) % 3) * 0.05) }, base))
+      /* Three in the example's design, at three moments — the design is the
+         customer's choice, so the variety is in the picture, not the look. */
+      ? [0, 1, 2].map(k => cleanThumbSpec({ ...base, ...input.style, at: momentAt(shares[k] + ((set - 1) % 3) * 0.05) }, base))
       : modernStyles(set, W < H, brand.accent).map((st, k) => cleanThumbSpec({ ...base, ...st, at: momentAt(shares[k] + ((set - 1) % 3) * 0.05) }, base));
   return engineStep(env, origin, job, p, async () => ({
     op: 'thumbnail' as const,
@@ -1397,7 +1406,7 @@ async function quizStep(env: Env, job: JobRow, p: ProjectRow): Promise<void> {
     'Answer JSON only: {"questions": [{"question": "", "options": ["", "", "", ""], "answer": 0, "explanation": "", "sentence": 0}]}',
     '<transcript>', transcriptForAi(sentences, 60_000), '</transcript>',
   ].join('\n');
-  const res = await askGeminiParts(ai.key, [{ text: prompt }], 0.5, { json: true, timeoutMs: 28_000 });
+  const res = await askGeminiParts(ai.key, [{ text: prompt }], 0.5, { module: 'video', accountId: p.account_id, json: true, timeoutMs: 28_000 });
   await meter(env, { jobId: job.id, kind: 'ai-quiz', accountId: p.account_id, units: 1, unit: 'ai_call', costMicros: PRICE.aiCall });
   const questions = res.ok ? cleanQuiz(extractJson(res.text), sentences) : [];
   if (!questions.length) throw new Error(res.ok ? 'the AI wrote no usable questions' : (res.error || 'the AI did not answer'));

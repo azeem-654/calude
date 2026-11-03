@@ -311,7 +311,7 @@ export async function handleCommerce(req: Request, env: Env): Promise<Response> 
     const about = String(d.about ?? '').trim().slice(0, 4000);
     const budget = clampInt(d.budget, 0, 10_000_000);
 
-    const ai = await askGemini(apiKey, ideaPrompt(about, budget), 0.9);
+    const ai = await askGemini(apiKey, ideaPrompt(about, budget), 0.9, { module: 'commerce', accountId });
     if (!ai.ok) return fail(ai.error);
 
     let ideas: Record<string, unknown>[] = [];

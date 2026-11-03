@@ -71,6 +71,38 @@ Google panels are embedded (`PlacesKeyPanel`, `GoogleSignInPanel` — the same
 components, one implementation each); the rest open the tab that owns them.
 Add a new install-wide key there when you add one.
 
+**AI & cloud usage** (2026-11, `UsageDashboard.tsx`, `usage` / `save_caps` /
+`save_limits` on the same owner-only route, `lib/usageReport.ts`) sits on top
+of the tab. Every AI call the Worker makes — server routes and the browser's
+through `/api/ai.php` — is counted by `lib/aiUsage.ts` `recordAiUse` into
+`crm_ai_usage` (migration 0082: day × provider × key fingerprint × model ×
+module × workspace, Google's/OpenRouter's own token counts, 429s as
+`limited`; a workspace's own key is `key_fp = 'own'`, kept out of the
+install's free-tier totals). Google offers a key no usage API, so this count
+is the only one; the free limits beside it are the published figures
+(`FREE_DEFAULTS`), owner-editable (`crm_meta.ai_free_limits`). `freeFirst`
+moves a model at today's free requests to the back of its chain. OpenRouter
+keys show OpenRouter's own `/key` figures. Cloudflare lines (Workers requests
+and CPU, D1 rows and size, R2 classes and size, Workers AI neurons) come from
+the GraphQL Analytics API with the optional secrets `CF_ANALYTICS_TOKEN`
+(Account Analytics: Read) and `CF_ACCOUNT_ID` (`lib/cloudUsage.ts`, each
+product its own query so one failure is reported alone), against Workers
+Paid's included amounts. The Openprovider balance is read with the reseller
+id (`accountBalance`). **Caps**: `capRefusal` (used by `aiBudget` and
+`/api/ai.php`) applies the owner's per-workspace hour/day/token caps and
+overrides (`crm_meta.ai_caps`, defaults 120/h, 800/day, no token cap).
+
+**Which model does which job** — `lib/aiTasks.ts` is the one table. Every
+call names a `module` (`MODULES`: support chat, email marketing, thumbnails,
+Autopilot planning…; the browser sends it on `/api/ai.php` through
+`aiFetch(init, module)`), each module a task (chat, write, reason, vision,
+extract, code, research), each task Gemini tiers in order (`chainFor`: the
+newest stable lite/flash/pro on the key's own ListModels — Pro first only for
+vision and reasoning, whose free allowance is small) and OpenRouter families
+(`orRank`). Never an id in code. A call naming no module is "general"
+writing, or vision if it carries a picture. A new AI caller names its module;
+a new module goes in `MODULES`.
+
 ## Support — the help button, tickets and live help
 
 Protected Central answers its own customers with its own Customer Engagement

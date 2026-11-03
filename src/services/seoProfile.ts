@@ -395,7 +395,7 @@ not slogans. Prefer specific long-tail phrases over one-word terms.`;
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { temperature: 0.4, responseMimeType: 'application/json' },
         }),
-      },
+      }, 'seo',
     );
     if (!res.ok) throw new Error(`Gemini returned ${res.status}`);
     const data = await res.json();

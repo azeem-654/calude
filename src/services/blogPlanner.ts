@@ -428,7 +428,7 @@ given you.`;
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { temperature: 0.6, responseMimeType: 'application/json' },
         }),
-      },
+      }, 'blog',
     );
     if (!res.ok) throw new Error(`Gemini returned ${res.status}`);
     const data = await res.json();

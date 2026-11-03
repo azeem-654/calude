@@ -464,6 +464,31 @@ export is a canvas recording; Video Studio is the real one.
     the voice for 1 dB), `aresample=48000` before it, and the transcription
     pieces are denoised too. Whisper gets `vad_filter` and the business name
     as `initial_prompt`, asked again plainly if refused.
+  - **AI voice isolation** (2026-11, the owner measured RNNoise leaving
+    35–40 % of a loud room): `denoise: 'max'` ("Maximum (AI)") and Studio
+    Sound at ≥ 90 % run step `isolate` (`soundPlan.mjs` `tool: 'dfn'`):
+    DeepFilterNet 3 (pinned static binary in the image, `isolateVoice` in
+    server.mjs — 48 kHz mono s16 in, `-D --pf -a 100`, bare flags on a
+    refusal) and, when it is missing or fails, RNNoise twice (the general
+    `cb` model, then `std`) plus a light `afftdn`. `/health` says
+    `isolation` / `rnnoiseGeneral`. Then **keep only the talking**
+    (`speechOnly`, always on with isolation): the render sends `speech`, the
+    transcript's words on the edit's clock (pre-speed), and step `speech`
+    turns the room to −26 dB outside them (`speechVolume`: padded 0.15 s
+    before, 0.3 s after, gaps < 0.6 s joined, ≤ 1,500 stretches); no
+    transcript → the gate. The player plays RNNoise twice and says isolation
+    is heard in the render. "Remove the noise completely" asks for max.
+  - **Thumbnails without a circle** (2026-11): the owner found a ring drawn
+    round every speaker. `faceFrame` (`'none' | 'round'`, absent = round so
+    older specs draw as before) — "modern" crops the face into a round
+    bubble only when asked; `modernStyles` is now bold (person in the
+    picture) / modern without the bubble / headline, all `pointer: 'none'`.
+    The example reader **describes** (person size/side/frame, background,
+    text area/box, annotation, panels, number, letterbox) and `layoutFor`
+    decides by rule; colours snap to the example's own pixels
+    (`paletteOf` in the browser → `examplePalette`, `snapColour`); a ring,
+    arrow or round frame only when the example has one; three PNGs in the
+    example's design. Read by the `thumbnails` module (vision: Pro first).
   - **Words for a video**: the prompt says the transcript can mishear and
     forbids links not said; `withoutStrangeLinks` drops any domain that is
     neither the business's site nor in the transcript ("www.fema.gov").

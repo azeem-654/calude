@@ -76,7 +76,7 @@ export async function researchFor(
     'No links, no merge fields, no greeting, no sign-off, no claim of having met or spoken.',
     'Return JSON only: {"opener":"","challenge":""}',
   ].filter(Boolean).join('\n');
-  const ai = await askGemini(key, prompt, 0.4);
+  const ai = await askGemini(key, prompt, 0.4, { module: 'prospecting', accountId });
   if (!ai.ok) return NONE;
   const raw = parseJson(ai.text);
   if (!raw) return NONE;

@@ -539,7 +539,7 @@ async function runAgentNode(
      */
     const question = c('sourcePrompt');
     if (question.length < 6) return { outcome: 'failed', detail: 'No question is set for the search.' };
-    const found = await researchWeb(apiKey, question);
+    const found = await researchWeb(apiKey, question, 5, { module: 'autopilot-research', accountId });
     if (!found.ok) return { outcome: 'failed', detail: found.error };
     if (!found.findings.length) {
       return { outcome: 'skipped', detail: 'The search found nothing new worth writing about.' };

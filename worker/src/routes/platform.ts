@@ -32,8 +32,10 @@ import { installPlacesKey, placesUsage } from '../lib/googlePlaces';
 import { PROVIDERS as VOICE_PROVIDERS } from '../lib/voice';
 import { systemMailStatus } from './systemMail';
 import { loadSettings as loadStrategySettings } from './strategyCall';
+import { usageReport } from '../lib/usageReport';
+import { saveCaps, saveFreeLimits } from '../lib/aiUsage';
 
-interface Req { token?: string; action?: string }
+interface Req { token?: string; action?: string; caps?: unknown; limits?: unknown }
 
 const isOwner = (u: SessionUser) => u.role === 'agency' && !u.accountId;
 
@@ -381,5 +383,9 @@ export async function handlePlatform(req: Request, env: Env): Promise<Response> 
   if (!isOwner(user)) return fail('Only the owner of this installation can see the services it provides.', 403, { code: 'not_owner' });
   const act = String(d.action ?? 'status');
   if (act === 'status') return json({ success: true, ...(await platformStatus(env)) });
+  /* The usage dashboard and its two settings (lib/usageReport.ts, lib/aiUsage.ts). */
+  if (act === 'usage') return json({ success: true, ...(await usageReport(env)) });
+  if (act === 'save_caps') return json({ success: true, caps: await saveCaps(env, d.caps) });
+  if (act === 'save_limits') return json({ success: true, limits: await saveFreeLimits(env, d.limits) });
   return fail(`"${act}" is not something this endpoint does.`);
 }

@@ -51,6 +51,8 @@ export const SIDES = ['auto', 'left', 'right', 'center'];
 export const TEXT_POS = ['auto', 'top', 'middle', 'bottom'];
 export const POINTERS = ['auto', 'none', 'arrow', 'circle', 'both'];
 export const HL_STYLES = ['color', 'box'];
+/** How "modern" shows the speaker: inside the screenshot card only ('none'), or also cropped into a round frame ('round'). */
+export const FACE_FRAMES = ['none', 'round'];
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const clamp = (v, lo, hi, d) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
@@ -97,6 +99,10 @@ export function normaliseSpec(it) {
     sticker: pick(s.sticker, STICKERS, ''),
     pointer: pick(s.pointer, POINTERS, 'auto'),
     badge: cleanText(s.badge).slice(0, 28),
+    /* Older specs (before this option) had the round frame, so they keep it;
+       new thumbnails ask for 'none' unless the customer's example has one —
+       the owner found a circle drawn round every speaker (2026-11). */
+    faceFrame: pick(s.faceFrame, FACE_FRAMES, 'round'),
   };
 }
 
@@ -476,7 +482,7 @@ export function thumbPlan(it, W, H, src, face, face2 = null) {
 function modernPlan(plan, sp, face, srcW, srcH, faceLeft, vAnchor) {
   const { W, H, portrait } = plan;
   const c0 = sp.color, c1 = sp.color2 || shade(sp.color, 0.55);
-  const head = face && face.h >= 0.3;
+  const head = face && face.h >= 0.3 && sp.faceFrame !== 'none';
   /* Cover crop of the whole frame for the background. */
   const cover = (aw, ah) => {
     const s = Math.max(aw / srcW, ah / srcH);
@@ -487,6 +493,8 @@ function modernPlan(plan, sp, face, srcW, srcH, faceLeft, vAnchor) {
   plan.grade = { contrast: 1.15, saturation: 1.4, brightness: -0.08, sharpen: false, cinematic: false, blur: Math.round(Math.min(W, H) * 0.025) };
   plan.fills = [{ alpha: { axis: 'full', max: 0.84 }, c0solid: c0, c1solid: c1, angle: 135 }];
   const right = !faceLeft || sp.side === 'center';
+  /* No round frame asked for: the face stays where it is in the frame, in the card. */
+  if (sp.faceFrame === 'none') face = null;
   /* Where each plane goes, as fractions of the picture. */
   let cardBox = null, bub = null, area;
   if (portrait) {

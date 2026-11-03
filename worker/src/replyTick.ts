@@ -181,7 +181,7 @@ async function doMailbox(
       signature: p.signature ?? '',
     }, msg, rule.instruction);
 
-    const ai = await askGemini(apiKey, prompt, 0.5);
+    const ai = await askGemini(apiKey, prompt, 0.5, { module: 'inbox-replies', accountId });
     if (!ai.ok) {
       /* Not marked seen: a key that ran out of quota should answer this message
          on the next tick, not skip it for ever. */

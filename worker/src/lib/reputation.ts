@@ -527,7 +527,7 @@ ${review.author} · ${review.rating}★
 "${review.content.slice(0, 3000) || '(a star rating with no words)'}"
 
 Return ONLY JSON: {"reply": "the public reply text"}`;
-  const r = await askGemini(key, prompt, 0.6);
+  const r = await askGemini(key, prompt, 0.6, { module: 'reputation', accountId });
   if (!r.ok) return { ok: false, code: 'ai', error: r.error || 'The AI could not draft a reply.' };
   const reply = extractJson<{ reply?: string }>(r.text)?.reply?.trim() ?? '';
   return reply ? { ok: true, data: reply.slice(0, 4000) } : { ok: false, code: 'ai', error: 'The AI answered without a reply in it. Try again.' };

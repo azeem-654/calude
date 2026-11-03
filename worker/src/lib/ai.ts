@@ -18,16 +18,17 @@ import { decryptSecret } from './crypto';
 import { installSecret, type Env } from './db';
 import { fingerprint, installPool, remember, withFailover, type Attempt } from './aiPool';
 import { isOpenRouterKey, askOpenRouter, verifyOpenRouterKey, adoptOpenRouterBase, CANNOT } from './openrouter';
-import { rateLimit } from './rateLimit';
 import { TRIAL_ENDED_MESSAGE, trialForWorkspace } from './trial';
 import { take as takeAllowance } from './allowanceStore';
+import { chainFor, guessTask, taskOf, type AiTask } from './aiTasks';
+import { adoptUsageEnv, capRefusal, freeFirst, recordAiUse } from './aiUsage';
 
 const GOOGLE = 'https://generativelanguage.googleapis.com';
 /* `GEMINI_BASE` points every call at a stand-in, for tests only — set from
    the first `env` this isolate sees, since the callers below are handed a
    key and not an env (test/aikeys.e2e.mjs). */
 let BASE = GOOGLE;
-export function adoptAiBase(env: Env): void { BASE = (env.GEMINI_BASE ?? '').trim() || GOOGLE; adoptOpenRouterBase(env.OPENROUTER_BASE); }
+export function adoptAiBase(env: Env): void { BASE = (env.GEMINI_BASE ?? '').trim() || GOOGLE; adoptOpenRouterBase(env.OPENROUTER_BASE); adoptUsageEnv(env); }
 export const aiBase = () => BASE;
 
 /*
@@ -48,7 +49,6 @@ export const aiBase = () => BASE;
  * ends in Google's own `-latest` aliases, which follow their releases.
  */
 const FALLBACK_MODELS = ['gemini-flash-lite-latest', 'gemini-flash-latest', 'gemini-3.6-flash', 'gemini-2.5-flash'];
-const modelCache = new Map<string, { at: number; models: string[] }>();
 
 /** Newest first: "3.6" before "3.5" before "2.5"; lite before full within a version. */
 export function pickModels(names: string[]): string[] {
@@ -72,25 +72,40 @@ export function pickModels(names: string[]): string[] {
   return out.slice(0, 3);
 }
 
-export async function modelsFor(apiKey: string): Promise<string[]> {
-  const hit = modelCache.get(apiKey);
-  if (hit && Date.now() - hit.at < 6 * 3_600_000) return hit.models;
+/** The key's own model list (ListModels), once per isolate per key for six hours; null when it cannot be read. */
+const namesCache = new Map<string, { at: number; names: string[] }>();
+export async function geminiNames(apiKey: string): Promise<string[] | null> {
+  const hit = namesCache.get(apiKey);
+  if (hit && Date.now() - hit.at < 6 * 3_600_000) return hit.names;
   try {
     const res = await fetch(`${BASE}/v1beta/models?pageSize=1000&key=${encodeURIComponent(apiKey)}`, { signal: AbortSignal.timeout(8000) });
-    if (res.ok) {
-      const data = await res.json<{ models?: { name?: string; supportedGenerationMethods?: string[] }[] }>();
-      const names = (data.models ?? [])
-        .filter(m => (m.supportedGenerationMethods ?? []).includes('generateContent'))
-        .map(m => String(m.name ?? ''));
-      const picked = pickModels(names);
-      if (picked.length) {
-        const models = [...picked, ...FALLBACK_MODELS.filter(f => f.endsWith('-latest'))];
-        modelCache.set(apiKey, { at: Date.now(), models });
-        return models;
-      }
-    }
-  } catch { /* the fallback below */ }
-  return FALLBACK_MODELS;
+    if (!res.ok) return null;
+    const data = await res.json<{ models?: { name?: string; supportedGenerationMethods?: string[] }[] }>();
+    const names = (data.models ?? [])
+      .filter(m => (m.supportedGenerationMethods ?? []).includes('generateContent'))
+      .map(m => String(m.name ?? '').replace(/^models\//, ''));
+    namesCache.set(apiKey, { at: Date.now(), names });
+    return names;
+  } catch { return null; }
+}
+
+/**
+ * The models to ask, in order, for a task (lib/aiTasks.ts): the newest of
+ * each tier the task wants, from the key's own list; a model already at
+ * today's free limit on this key goes last (lib/aiUsage.ts). Without a task,
+ * the old order — newest Flash Lite first — which is the "chat" task.
+ */
+export async function modelsFor(apiKey: string, task: AiTask = 'chat'): Promise<string[]> {
+  const names = await geminiNames(apiKey);
+  let models: string[] = FALLBACK_MODELS;
+  if (names) {
+    const chain = chainFor(names, task);
+    const picked = pickModels(names);
+    /* The task's chain first, then the general newest-Flash list, then Google's -latest aliases. */
+    const all = [...chain, ...picked, ...FALLBACK_MODELS.filter(f => f.endsWith('-latest'))].filter((m, i, a) => a.indexOf(m) === i);
+    if (chain.length || picked.length) models = all;
+  }
+  return freeFirst(apiKey, models);
 }
 
 /** Google's wording when an id has been retired, in case the status is not 404. */
@@ -191,9 +206,17 @@ export async function installAiKey(env: Env): Promise<string | null> {
  * again — and an exception thrown from inside a loop over every workspace would
  * take the rest of them down with it.
  */
-export async function askGemini(apiKey: string, prompt: string, temperature = 0.5): Promise<AiResult> {
-  return askGeminiParts(apiKey, [{ text: prompt }], temperature);
+export async function askGemini(apiKey: string, prompt: string, temperature = 0.5, opts: AskOpts = {}): Promise<AiResult> {
+  return askGeminiParts(apiKey, [{ text: prompt }], temperature, opts);
 }
+
+/**
+ * `module` names the product module (lib/aiTasks.ts MODULES) — it picks the
+ * models and is what the usage dashboard counts under; `task` overrides the
+ * module's task; `accountId` is the workspace, for its caps and its line on
+ * the dashboard. A call naming neither is "general" (a picture: vision).
+ */
+export interface AskOpts { json?: boolean; fast?: boolean; timeoutMs?: number; task?: AiTask; module?: string; accountId?: string }
 
 /**
  * One piece of what the model is shown: words, or a file carried inline.
@@ -234,18 +257,21 @@ function thinkingFor(model: string): Record<string, unknown> {
 }
 
 export async function askGeminiParts(
-  apiKey: string, parts: AiPart[], temperature = 0.5, opts: { json?: boolean; fast?: boolean; timeoutMs?: number } = {},
+  apiKey: string, parts: AiPart[], temperature = 0.5, opts: AskOpts = {},
 ): Promise<AiResult> {
+  const o = { ...opts, task: opts.task ?? (opts.module ? taskOf(opts.module) : guessTask(parts)) };
   /* On each of the install's keys in turn, while the failure is the key's
      (lib/aiPool.ts). */
-  return withFailover(apiKey, k => askGeminiOnce(k, parts, temperature, opts));
+  return withFailover(apiKey, k => askGeminiOnce(k, parts, temperature, o));
 }
 
 async function askGeminiOnce(
-  apiKey: string, parts: AiPart[], temperature: number, opts: { json?: boolean; fast?: boolean; timeoutMs?: number },
+  apiKey: string, parts: AiPart[], temperature: number, opts: AskOpts,
 ): Promise<Attempt<AiResult>> {
   /* An OpenRouter key in the pool is asked through its own adapter (lib/openrouter.ts). */
-  if (isOpenRouterKey(apiKey)) return askOpenRouter(apiKey, { parts, temperature, json: opts.json !== false, timeoutMs: opts.timeoutMs });
+  if (isOpenRouterKey(apiKey)) return askOpenRouter(apiKey, { parts, temperature, json: opts.json !== false, timeoutMs: opts.timeoutMs, task: opts.task, module: opts.module, accountId: opts.accountId });
+  const use = (model: string, ok: boolean, status: number, meta?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number }) =>
+    recordAiUse({ provider: 'gemini', key: apiKey, model, module: opts.module, accountId: opts.accountId, ok, status, tokensIn: meta?.promptTokenCount, tokensOut: (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0) });
   const failed = (status: number, raw: string): Attempt<AiResult> =>
     ({ ok: false, status, error: raw, value: { ok: false, text: '', error: friendly(status, raw) } });
   const asJson = opts.json !== false;
@@ -253,7 +279,7 @@ async function askGeminiOnce(
 
   let lastError = '';
   let lastStatus = -1;   // -1: no model answered at all — none of this key's ids exist
-  for (const model of await modelsFor(apiKey)) {
+  for (const model of await modelsFor(apiKey, opts.task)) {
     let thinking = !!opts.fast;
     for (let attempt = 1; attempt <= 2; attempt++) {
       const body = {
@@ -276,8 +302,9 @@ async function askGeminiOnce(
       }
 
       if (res.ok) {
-        const data = await res.json<{ candidates?: { content?: { parts?: { text?: string }[] } }[] }>()
+        const data = await res.json<{ candidates?: { content?: { parts?: { text?: string }[] } }[]; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number } }>()
           .catch(() => ({}) as Record<string, never>);
+        await use(model, true, 200, data.usageMetadata);
         const text = (data.candidates?.[0]?.content?.parts ?? []).map(p => p.text ?? '').join('');
         /* Models sometimes wrap JSON in a fence despite being asked not to. */
         return {
@@ -293,6 +320,8 @@ async function askGeminiOnce(
       lastError = await res.text().catch(() => `HTTP ${res.status}`);
       if (res.status === 404 || MODEL_GONE.test(lastError)) break;   // this id is gone; next
       lastStatus = res.status;
+      /* A refusal is counted too: the 429s are how the dashboard shows a free limit being hit. */
+      if (res.status === 429) await use(model, false, 429);
       /* The thinking setting refused: the same model, without it. */
       if (thinking && res.status === 400 && /thinking/i.test(lastError)) { thinking = false; attempt--; continue; }
       if (!RETRYABLE.has(res.status)) return failed(res.status, lastError);
@@ -391,11 +420,11 @@ export function extractJson<T>(text: string): T | null {
  * That the model summarised the pages faithfully. The sources are returned so
  * a person reading the draft can check, and every draft stays a draft.
  */
-export async function researchWeb(apiKey: string, question: string, max = 5): Promise<WebResult> {
-  return withFailover(apiKey, k => researchOnce(k, question, max));
+export async function researchWeb(apiKey: string, question: string, max = 5, who: { module?: string; accountId?: string } = {}): Promise<WebResult> {
+  return withFailover(apiKey, k => researchOnce(k, question, max, who));
 }
 
-async function researchOnce(apiKey: string, question: string, max: number): Promise<Attempt<WebResult>> {
+async function researchOnce(apiKey: string, question: string, max: number, who: { module?: string; accountId?: string }): Promise<Attempt<WebResult>> {
   const failed = (status: number, raw: string): Attempt<WebResult> =>
     ({ ok: false, status, error: raw, value: { ok: false, findings: [], sources: [], error: friendly(status, raw) } });
   /* Searching the web is Google's grounding; an OpenRouter key passes it on to the next key. */
@@ -420,7 +449,7 @@ Reply with JSON only, in exactly this shape:
   };
 
   let lastError = '';
-  for (const model of await modelsFor(apiKey)) {
+  for (const model of await modelsFor(apiKey, 'research')) {
     let res: Response;
     try {
       res = await fetch(`${BASE}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
@@ -436,7 +465,9 @@ Reply with JSON only, in exactly this shape:
           content?: { parts?: { text?: string }[] };
           groundingMetadata?: { groundingChunks?: { web?: { uri?: string; title?: string } }[] };
         }[];
+        usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
       }>().catch(() => ({}) as Record<string, never>);
+      await recordAiUse({ provider: 'gemini', key: apiKey, model, module: who.module ?? 'autopilot-research', accountId: who.accountId, ok: true, status: 200, tokensIn: data.usageMetadata?.promptTokenCount, tokensOut: data.usageMetadata?.candidatesTokenCount });
       const cand = data.candidates?.[0];
       const text = (cand?.content?.parts ?? []).map(p => p.text ?? '').join('');
       const parsed = extractJson<{ findings?: Partial<WebFinding>[] }>(text);
@@ -493,10 +524,9 @@ export async function trialRefusal(env: Env, accountId: string): Promise<string 
 export async function aiBudget(env: Env, accountId: string): Promise<string | null> {
   const ended = await trialRefusal(env, accountId);
   if (ended) return ended;
-  for (const [what, max, windowSeconds] of [['ai-hour', 120, 3600], ['ai-day', 800, 86_400]] as const) {
-    const v = await rateLimit(env, { what, who: accountId, max, windowSeconds });
-    if (!v.allowed) return `That is a lot of AI requests for one workspace — try again in ${Math.max(1, Math.ceil(v.retryAfter / 60))} minutes.`;
-  }
+  /* The owner's caps for this workspace (Platform services → AI & cloud usage; lib/aiUsage.ts). */
+  const capped = await capRefusal(env, accountId);
+  if (capped) return capped.message;
   /* The plan's monthly AI requests (lib/allowances.ts). Every server route
      that spends the AI key asks here first, so this is where one is counted:
      when it is asked for, because the caller makes the call straight after. */

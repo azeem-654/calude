@@ -143,6 +143,21 @@ async function call<T>(
   return { ok: true, data: env.data ?? null, error: '' };
 }
 
+/**
+ * The reseller account's balance, for the owner's usage dashboard — read, never
+ * changed. Needs the reseller id (Openprovider → Account); without it, said so.
+ */
+export async function accountBalance(creds: ProviderCreds): Promise<{ ok: boolean; balance: number | null; reserved: number | null; currency: string; error: string }> {
+  const id = String(creds.resellerId ?? '').trim();
+  if (!/^\d+$/.test(id)) return { ok: false, balance: null, reserved: null, currency: '', error: 'Add your Openprovider reseller ID (Settings → Domains) to read the balance.' };
+  const r = await call<Record<string, unknown>>(creds, 'GET', `/v1beta/resellers/${id}`);
+  if (!r.ok || !r.data) return { ok: false, balance: null, reserved: null, currency: '', error: r.error || 'Openprovider did not return the account.' };
+  const num = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x : null; };
+  const balance = num(r.data.balance);
+  if (balance === null) return { ok: false, balance: null, reserved: null, currency: '', error: 'Openprovider answered without a balance for this reseller.' };
+  return { ok: true, balance, reserved: num(r.data.reserved_balance ?? r.data.reservedBalance), currency: String(r.data.currency ?? '').toUpperCase(), error: '' };
+}
+
 /** Their prices are decimal numbers in a named currency. Ours are integers. */
 function money(raw: { price?: unknown; currency?: unknown } | undefined): { cents: number; currency: string } | null {
   const n = Number(raw?.price);

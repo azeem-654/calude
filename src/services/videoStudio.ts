@@ -65,6 +65,7 @@ export interface ThumbSpec {
   /* The trending layouts' options (media/engine/thumbLayout.mjs) — absent on older thumbnails, which draw as before. */
   color2?: string; hlStyle?: 'color' | 'box'; side?: 'auto' | 'left' | 'right' | 'center'; textPos?: 'auto' | 'top' | 'middle' | 'bottom';
   textSize?: number; sticker?: string; pointer?: 'auto' | 'none' | 'arrow' | 'circle' | 'both'; badge?: string;
+  faceFrame?: 'none' | 'round';
 }
 /** The plan the engine paints, so the designer's preview is drawn from the same numbers. */
 export { thumbPlan, normaliseSpec, inkOn, lineRect, TREND_LAYOUTS, STICKERS, EM, CONDENSE, HALO, type Plan as ThumbPlan } from '../../media/engine/thumbLayout.mjs';
@@ -140,7 +141,7 @@ export interface VideoKit { color?: string; accent?: string; cta?: string; handl
 
 export const videoCapabilities = (probe = false) => call<{ capabilities: Capability[]; usage: Usage }>('capabilities', { probe });
 export const listVideoProjects = () => call<{ projects: ProjectSummary[] }>('list');
-export interface Want { repurpose?: { posts: number; blog: boolean; email: boolean }; quiz?: boolean; denoise?: 'light' | 'medium' | 'strong'; voice?: boolean; music?: string }
+export interface Want { repurpose?: { posts: number; blog: boolean; email: boolean }; quiz?: boolean; denoise?: 'light' | 'medium' | 'strong' | 'max'; voice?: boolean; music?: string }
 export interface QuizQuestion { q: string; options: string[]; answer: number; explain: string; t: number }
 export interface Extras {
   want?: { repurpose?: { posts: number; blog: boolean; email: boolean }; quiz?: boolean };
@@ -389,8 +390,43 @@ export type { MusicTrack, AudioSettings, Denoise } from '../../worker/src/lib/vi
  * PNGs are drawn in it; without one, three in the modern look. `note` says
  * what was read, or why the example could not be and the modern look was used.
  */
-export const createThumbnails = (projectId: string, outputId: string, exampleKey?: string) =>
-  call<{ set: number; read: boolean; note: string }>('thumbnails', { projectId, outputId, ...(exampleKey ? { exampleKey } : {}) });
+export const createThumbnails = (projectId: string, outputId: string, exampleKey?: string, examplePalette?: string[]) =>
+  call<{ set: number; read: boolean; note: string }>('thumbnails', { projectId, outputId, ...(exampleKey ? { exampleKey, examplePalette: examplePalette ?? [] } : {}) });
+
+/**
+ * The example's real colours, measured from its pixels here (a 96-wide copy,
+ * colours bucketed and counted, near-greys kept apart from colours): the
+ * AI reads the design, but a model's guess at "#7c3aed" is a guess, and the
+ * owner saw thumbnails in colours their example never had. The server snaps
+ * the model's colours to these. Largest share first, at most six.
+ */
+export function paletteOf(c: HTMLCanvasElement): string[] {
+  const w = 96, h = Math.max(1, Math.round((c.height / c.width) * 96));
+  const small = document.createElement('canvas');
+  small.width = w; small.height = h;
+  const g = small.getContext('2d', { willReadFrequently: true });
+  if (!g) return [];
+  g.drawImage(c, 0, 0, w, h);
+  const px = g.getImageData(0, 0, w, h).data;
+  const buckets = new Map<number, { n: number; r: number; g: number; b: number }>();
+  for (let i = 0; i < px.length; i += 4) {
+    const r = px[i], gg = px[i + 1], b = px[i + 2];
+    const k = ((r >> 5) << 6) | ((gg >> 5) << 3) | (b >> 5);
+    const e = buckets.get(k) ?? { n: 0, r: 0, g: 0, b: 0 };
+    e.n++; e.r += r; e.g += gg; e.b += b;
+    buckets.set(k, e);
+  }
+  const hex = (v: number) => Math.round(v).toString(16).padStart(2, '0');
+  const out: { c: string; n: number; rgb: [number, number, number] }[] = [];
+  for (const e of [...buckets.values()].sort((a, b) => b.n - a.n)) {
+    const rgb: [number, number, number] = [e.r / e.n, e.g / e.n, e.b / e.n];
+    /* Skip a colour too close to one already taken. */
+    if (out.some(o => Math.hypot(o.rgb[0] - rgb[0], o.rgb[1] - rgb[1], o.rgb[2] - rgb[2]) < 60)) continue;
+    out.push({ c: `#${hex(rgb[0])}${hex(rgb[1])}${hex(rgb[2])}`, n: e.n, rgb });
+    if (out.length >= 6) break;
+  }
+  return out.map(o => o.c);
+}
 
 /**
  * An example thumbnail, drawn here into a JPEG no larger than 1280 px (any
@@ -398,16 +434,18 @@ export const createThumbnails = (projectId: string, outputId: string, exampleKey
  * sent straight to storage through a signed link. The server checks the bytes
  * again before the AI reads it, and deletes it after.
  */
-export async function uploadThumbExample(projectId: string, outputId: string, file: File): Promise<{ ok: true; key: string } | { ok: false; error: string }> {
+export async function uploadThumbExample(projectId: string, outputId: string, file: File): Promise<{ ok: true; key: string; palette: string[] } | { ok: false; error: string }> {
   if (!/^image\//.test(file.type) || /svg/.test(file.type)) return { ok: false, error: 'Choose a picture — a JPEG, PNG or WebP thumbnail.' };
   if (file.size > 25 * 1024 * 1024) return { ok: false, error: 'That picture is over 25 MB — choose a smaller one.' };
   let jpeg: Blob | null = null;
+  let palette: string[] = [];
   try {
     const bmp = await createImageBitmap(file);
     const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
     const c = document.createElement('canvas');
     c.width = Math.max(1, Math.round(bmp.width * k)); c.height = Math.max(1, Math.round(bmp.height * k));
     c.getContext('2d')!.drawImage(bmp, 0, 0, c.width, c.height);
+    try { palette = paletteOf(c); } catch { palette = []; }
     jpeg = await new Promise<Blob | null>(res => c.toBlob(res, 'image/jpeg', 0.88));
   } catch { jpeg = null; }
   if (!jpeg) return { ok: false, error: 'That picture could not be opened — try a JPEG or PNG.' };
@@ -415,7 +453,7 @@ export async function uploadThumbExample(projectId: string, outputId: string, fi
   if (!u.success) return { ok: false, error: u.error ?? 'The upload could not start.' };
   const put = await fetch(`${u.url}&name=example.jpg&type=image/jpeg`, { method: 'PUT', body: jpeg }).then(r => r.json()).catch(() => ({ success: false })) as { success?: boolean };
   if (!put.success) return { ok: false, error: 'The example did not upload — try again.' };
-  return { ok: true, key: u.key };
+  return { ok: true, key: u.key, palette };
 }
 
 /** A render's failure in the customer's words: the job's internal prefixes off. */

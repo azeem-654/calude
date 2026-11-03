@@ -30,7 +30,8 @@ import { findPhi, phiRefusal } from '../lib/phiGuard';
 import { fail, json } from '../lib/http';
 import { canAccess, userFromToken, type Env } from '../lib/db';
 import { aiBase, loadAiKey, modelsFor, trialRefusal } from '../lib/ai';
-import { rateLimit } from '../lib/rateLimit';
+import { capRefusal, recordAiUse } from '../lib/aiUsage';
+import { moduleOf, taskOf } from '../lib/aiTasks';
 import { withFailover } from '../lib/aiPool';
 import { isOpenRouterKey, askOpenRouter, fromGeminiRequest, asGeminiResponse } from '../lib/openrouter';
 import { check as allowance, record, refusalBody } from '../lib/allowanceStore';
@@ -39,6 +40,8 @@ interface AiReq {
   token?: string;
   accountId?: string;
   action?: string;
+  /** The product module asking (lib/aiTasks.ts MODULES): picks the models, and is counted under. */
+  module?: string;
   request?: {
     contents?: unknown;
     generationConfig?: Record<string, unknown>;
@@ -75,12 +78,11 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
   const phi = phiRefusal(findPhi(said), 'the AI');
   if (phi) return fail(phi, 200, { code: 'phi' });
 
-  for (const [what, max, windowSeconds] of [['ai-hour', 120, 3600], ['ai-day', 800, 86_400]] as const) {
-    const v = await rateLimit(env, { what, who: accountId, max, windowSeconds });
-    if (!v.allowed) {
-      return fail(`That is a lot of AI requests — try again in ${Math.max(1, Math.ceil(v.retryAfter / 60))} minutes.`, 429, { code: 'rate_limited' });
-    }
-  }
+  /* The owner's caps for this workspace (lib/aiUsage.ts) — the same ones the server routes use. */
+  const capped = await capRefusal(env, accountId);
+  if (capped) return fail(capped.message, 429, { code: capped.code });
+  const module = moduleOf(d.module);
+  const task = taskOf(module);
 
   const ended = await trialRefusal(env, accountId);
   if (ended) return fail(ended, 402, { code: 'trial_ended' });
@@ -110,7 +112,7 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
     if (isOpenRouterKey(k)) {
       const q = fromGeminiRequest(JSON.parse(payload));
       if (!q) return { ok: false, status: -2, error: 'nothing to send', value: fail('There was nothing to ask the AI.') };
-      const r = await askOpenRouter(k, { ...q, timeoutMs: 60_000 });
+      const r = await askOpenRouter(k, { ...q, timeoutMs: 60_000, task, module, accountId });
       if (r.ok) {
         await record(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`, 1, room.standing);
         return { ok: true, value: json({ success: true, response: asGeminiResponse(r.value.text) }) };
@@ -118,7 +120,7 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
       return { ok: false, status: r.status, error: r.error, value: fail(r.value.error) };
     }
     let lastStatus = -1; let lastError = '';
-    for (const model of await modelsFor(k)) {
+    for (const model of await modelsFor(k, task)) {
       let res: Response;
       try {
         res = await fetch(`${aiBase()}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(k)}`, {
@@ -130,12 +132,14 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
         continue;
       }
       if (res.ok) {
-        const answer = await res.json();
+        const answer = await res.json() as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number } };
+        await recordAiUse({ provider: 'gemini', key: k, model, module, accountId, ok: true, status: 200, tokensIn: answer?.usageMetadata?.promptTokenCount, tokensOut: (answer?.usageMetadata?.candidatesTokenCount ?? 0) + (answer?.usageMetadata?.thoughtsTokenCount ?? 0) });
         await record(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`, 1, room.standing);
         return { ok: true, value: json({ success: true, response: answer }) };
       }
       lastStatus = res.status;
       lastError = await res.text().catch(() => '');
+      if (res.status === 429) await recordAiUse({ provider: 'gemini', key: k, model, module, accountId, ok: false, status: 429 });
       /* The next model on a retired id or a busy one; anything else is the
          request's own fault and another model will say the same. */
       if (![404, 429, 500, 502, 503, 504].includes(res.status) && !/no longer available|not found|not supported/i.test(lastError)) break;

@@ -36,6 +36,8 @@
  */
 import type { Attempt } from './aiPool';
 import type { AiPart, AiResult } from './ai';
+import { orRank, taskOf, TASKS, type AiTask } from './aiTasks';
+import { recordAiUse } from './aiUsage';
 
 const DEFAULT_BASE = 'https://openrouter.ai/api/v1';
 let BASE = DEFAULT_BASE;
@@ -59,8 +61,12 @@ const refused = new Map<string, number>();
 const GOOD = [/gemma-4-31b|gemma-4/i, /nemotron-3(\.\d)?-(ultra|super)/i, /deepseek/i, /llama-[34](\.\d)?-(70|90|405)b|llama-4/i, /qwen3|qwen-3/i, /mistral-(medium|large|small)/i, /gemma/i];
 const rank = (id: string) => { const i = GOOD.findIndex(r => r.test(id)); return i < 0 ? GOOD.length : i; };
 
-/** The free models that write text, best first; `vision` keeps the ones that read pictures. */
-export async function freeModels(vision: boolean): Promise<string[]> {
+/**
+ * The free models that write text, best first for the task (lib/aiTasks.ts:
+ * its families first, then the general ranking); `vision` keeps the ones that
+ * read pictures. Code-specialised models are kept out unless the task is code.
+ */
+export async function freeModels(vision: boolean, task: AiTask = 'write'): Promise<string[]> {
   if (!modelCache || Date.now() - modelCache.at > 6 * 3_600_000) {
     try {
       const r = await fetch(`${BASE}/models`, { signal: AbortSignal.timeout(8000) });
@@ -68,11 +74,11 @@ export async function freeModels(vision: boolean): Promise<string[]> {
     } catch { /* the list below, if any */ }
   }
   const list = (modelCache?.list ?? []).filter(m => m.id.endsWith(':free')
-    && !NOT_FOR_WRITING.test(m.id)
+    && !(TASKS[task].code ? /safety|guard|moderat|lyria|embed|rerank|tts|whisper|audio-only/i : NOT_FOR_WRITING).test(m.id)
     && (m.architecture?.output_modalities ?? ['text']).includes('text')
     && (!vision || (m.architecture?.input_modalities ?? []).includes('image'))
     && !((refused.get(m.id) ?? 0) > Date.now()));
-  list.sort((a, b) => rank(a.id) - rank(b.id) || (b.context_length ?? 0) - (a.context_length ?? 0));
+  list.sort((a, b) => orRank(task, a.id) - orRank(task, b.id) || rank(a.id) - rank(b.id) || (b.context_length ?? 0) - (a.context_length ?? 0));
   return [...list.slice(0, 3).map(m => m.id), 'openrouter/free'];
 }
 
@@ -100,6 +106,10 @@ export interface OrRequest {
   json?: boolean;
   maxTokens?: number;
   timeoutMs?: number;
+  /** Which models to prefer (lib/aiTasks.ts), and who to count the call against (lib/aiUsage.ts). */
+  task?: AiTask;
+  module?: string;
+  accountId?: string;
 }
 
 /** One call on an OpenRouter key: the free models in turn while one is busy or gone. */
@@ -109,7 +119,7 @@ export async function askOpenRouter(apiKey: string, q: OrRequest): Promise<Attem
   const chat = toChat(q.parts);
   if (!chat) return failed(CANNOT, 'audio or video in the request', 'The backup AI (OpenRouter) cannot listen to recordings.');
   let lastStatus = -1, lastError = '';
-  for (const model of await freeModels(chat.vision)) {
+  for (const model of await freeModels(chat.vision, q.task ?? (q.module ? taskOf(q.module) : chat.vision ? 'vision' : 'write'))) {
     let res: Response;
     try {
       res = await fetch(`${BASE}/chat/completions`, {
@@ -129,10 +139,13 @@ export async function askOpenRouter(apiKey: string, q: OrRequest): Promise<Attem
       continue;
     }
     const raw = await res.text();
-    let data: { choices?: { message?: { content?: string | null } }[]; error?: { code?: number; message?: string } } = {};
+    let data: { choices?: { message?: { content?: string | null } }[]; error?: { code?: number; message?: string }; usage?: { prompt_tokens?: number; completion_tokens?: number } } = {};
     try { data = JSON.parse(raw) as typeof data; } catch { /* not JSON */ }
     /* OpenRouter can answer 200 with an error inside (an upstream refused). */
     const text = data.choices?.[0]?.message?.content ?? '';
+    const okAnswer = res.ok && !data.error && !!text;
+    /* Every request counts against OpenRouter's free daily allowance, answered or not. */
+    await recordAiUse({ provider: 'openrouter', key: apiKey, model, module: q.module, accountId: q.accountId, ok: okAnswer, status: okAnswer ? 200 : (res.ok ? (data.error?.code ?? 502) : res.status), tokensIn: data.usage?.prompt_tokens, tokensOut: data.usage?.completion_tokens });
     if (res.ok && !data.error && text) {
       const clean = q.json ? text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim() : text.trim();
       return { ok: true, value: { ok: true, text: clean, error: '' } };
@@ -183,5 +196,18 @@ export async function verifyOpenRouterKey(apiKey: string): Promise<AiResult> {
     return { ok: false, text: '', error: r.status === 401 || r.status === 403 ? 'OpenRouter refused this key.' : `OpenRouter answered ${r.status}.` };
   } catch (e) {
     return { ok: false, text: '', error: `Could not reach OpenRouter: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/** OpenRouter's own account of a key — what it has spent, its limit, whether it is on the free tier — for the usage dashboard. */
+export async function openRouterKeyInfo(apiKey: string): Promise<{ ok: boolean; freeTier: boolean | null; usage: number | null; limit: number | null; remaining: number | null; error: string }> {
+  try {
+    const r = await fetch(`${BASE}/key`, { headers: { Authorization: `Bearer ${apiKey.trim()}` }, signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return { ok: false, freeTier: null, usage: null, limit: null, remaining: null, error: `OpenRouter answered ${r.status}.` };
+    const d = (await r.json<{ data?: { is_free_tier?: boolean; usage?: number; limit?: number | null; limit_remaining?: number | null } }>()).data ?? {};
+    const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    return { ok: true, freeTier: typeof d.is_free_tier === 'boolean' ? d.is_free_tier : null, usage: num(d.usage), limit: num(d.limit), remaining: num(d.limit_remaining), error: '' };
+  } catch (e) {
+    return { ok: false, freeTier: null, usage: null, limit: null, remaining: null, error: `Could not reach OpenRouter: ${e instanceof Error ? e.message : String(e)}` };
   }
 }

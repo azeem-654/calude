@@ -312,6 +312,7 @@ export default function ThumbnailDesigner({ ctx, o, onClose, startFrom }: { ctx:
                     {STICKERS.map(k => <button key={k} type="button" className="vs-chip td-sticker" aria-pressed={opts.sticker === k} onClick={() => set({ sticker: k })} title={STICKER_NAMES[k]} aria-label={STICKER_NAMES[k]} data-sticker={k}><StickerIcon name={k} /></button>)}
                   </div>
                 </div>
+                {shown === 'modern' && <Seg label="Speaker" value={opts.faceFrame} options={[['none', 'In the picture'], ['round', 'In a circle']]} onChange={v => set({ faceFrame: v })} />}
                 {shown !== 'split' && <Seg label="Point at the face" value={opts.pointer} options={[['auto', 'Auto'], ['none', 'None'], ['arrow', 'Arrow'], ['circle', 'Circle'], ['both', 'Both']]} onChange={v => set({ pointer: v })} />}
                 <label className="vs-label">Channel strip <span className="vs-kbd" style={{ fontWeight: 500 }}>optional — your channel or handle</span>
                   <input className="vs-input" value={sp.badge ?? ''} maxLength={28} onChange={e => set({ badge: e.target.value })} placeholder="@yourchannel" data-field="video.thumbBadge" />
