@@ -13,6 +13,7 @@
  */
 import { fixWebmDuration } from '../../lib/webmDuration';
 import ClockWorker from './recorderClock.worker.ts?worker';
+import { keepTick } from './frameClock';
 import { CameraFx, NO_FX, sceneOr, type CamFx, type CamBg } from './cameraFx';
 import { sceneLayer, isScene, type SceneId } from './scenes';
 import { pic, type Feed } from './trackFeed';
@@ -95,6 +96,26 @@ export const CAM_RES = {
 } as const;
 export type CamRes = keyof typeof CAM_RES;
 export type CursorMode = 'always' | 'motion' | 'never';
+
+/**
+ * Three ready-made settings — what most people should pick instead of the
+ * four rows of numbers. Each is a set of those numbers (so choosing one is
+ * the same as choosing them by hand, and the rows still show what it did);
+ * the camera background's own trade (cameraFx.ts `FX_TUNING`) follows the
+ * one in use, Balanced when the numbers match none. 30 fps throughout: the
+ * smoothness everyone notices, and what a webcam delivers anyway.
+ */
+export const PROFILES = {
+  performance: { fps: 30, res: '720', quality: 'light', camRes: '480' },
+  balanced: { fps: 30, res: '1080', quality: 'standard', camRes: '720' },
+  quality: { fps: 30, res: '1440', quality: 'high', camRes: '1080' },
+} as const satisfies Record<string, { fps: Fps; res: Res; quality: Quality; camRes: CamRes }>;
+export type Profile = keyof typeof PROFILES;
+export const PROFILE_NAMES: readonly Profile[] = ['performance', 'balanced', 'quality'];
+/** The profile these settings are, or null when they were set by hand to something else. */
+export function profileOf(p: { fps: number; res: string; quality: string; camRes: string }): Profile | null {
+  return PROFILE_NAMES.find(k => { const v = PROFILES[k]; return v.fps === p.fps && v.res === p.res && v.quality === p.quality && v.camRes === p.camRes; }) ?? null;
+}
 
 /**
  * A computer that will struggle: four cores or fewer, or four GB or less
@@ -966,6 +987,8 @@ export class PointerLog {
   private col = new Uint8Array(0); private row = new Uint8Array(0);
   /** Looks since a reset (0: nothing to compare with; 1: no look two back yet). */
   private looks = 0;
+  /** Looks taken in all (the diagnostics time only the calls that looked). */
+  looked = 0;
   private cellN = new Uint32Array(GW * GH); private cellX = new Float64Array(GW * GH); private cellY = new Float64Array(GW * GH);
   private seen = new Uint8Array(GW * GH); private stack = new Int16Array(GW * GH);
   private last = -1e9;
@@ -997,6 +1020,7 @@ export class PointerLog {
     const vw = v.videoWidth, vh = v.videoHeight;
     if (!vw || !vh) return;
     this.last = now;
+    this.looked++;
     const SW = 320, SH = Math.max(60, Math.min(320, Math.round(SW * vh / vw)));
     if (SW !== this.SW || SH !== this.SH || !this.c) {
       this.c = layerCanvas(SW, SH).getContext('2d', { willReadFrequently: true }) as Ctx2D | null;
@@ -1256,15 +1280,39 @@ export async function finishFile(chunks: Blob[], mime: Mime, durationMs: number)
  * dedicated worker's timer is not slowed, so the picture keeps moving. The
  * worker is a file of its own (the site's script policy allows only 'self',
  * not blob: workers); if it cannot start, a page timer is the fallback.
+ *
+ * ── Stale ticks are dropped (the "stacked scenes", 2026-11) ──
+ *
+ * The worker posts a tick every frame whether or not the page has handled
+ * the last one. When the page was busy for 100 ms (a background-finder look
+ * on this thread, a large re-render), three ticks waited in its queue and
+ * then ran back to back: three frames drawn and recorded within a
+ * millisecond, all the same picture, after 100 ms of none. On screen and in
+ * the file that is a freeze followed by a jump — scenes that "stack up and
+ * wait". A tick now carries when it was sent; one that waited longer than a
+ * frame has a newer tick behind it and is skipped (`onDrop`), so after a
+ * stall the next frame drawn is the current one, once; so is one coming
+ * right on the heels of the last draw (frameClock.ts says why). Never more
+ * than three in a row are skipped, so a clock that disagrees with the
+ * worker's cannot stop the drawing.
  */
-export function startClock(fps: number, tick: () => void): () => void {
+export function startClock(fps: number, tick: () => void, onDrop?: () => void): () => void {
   const ms = 1000 / fps;
+  let run = 0, drawn = -Infinity;
   try {
     const w = new ClockWorker();
-    w.onmessage = () => tick();
+    w.onmessage = (e: MessageEvent) => {
+      const sent = Number(e.data), now = performance.now();
+      const waited = sent > 0 ? performance.timeOrigin + now - sent : 0;
+      if (!keepTick(waited, ms, run, now - drawn)) { run++; onDrop?.(); return; }
+      run = 0;
+      tick();
+      drawn = performance.now();
+    };
     w.postMessage(ms);
     return () => { w.postMessage(0); w.terminate(); };
   } catch {
+    /* Page timers do not queue up behind a busy page — they are simply late — so nothing to drop here. */
     const t = setInterval(tick, ms);
     return () => clearInterval(t);
   }

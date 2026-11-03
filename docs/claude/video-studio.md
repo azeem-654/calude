@@ -308,6 +308,59 @@ export is a canvas recording; Video Studio is the real one.
   decimals, the upload screen's creep), as does the editor's "Working on it".
   Not built: zoom/speed pills on the editor's timeline, re-styling a
   recording after it is made (the pointer is the exception — see below).
+- **Recording engine, 2026-11 (the owner compared it with Zoom: a delayed,
+  glitchy camera, "scenes stacking up", blur eating the face).** Root causes
+  found and fixed: (1) the worker clock posts a tick every frame whether or
+  not the page handled the last one, so any stall queued ticks that then ran
+  back to back — several identical frames drawn and *recorded* within a
+  millisecond after a freeze; a tick that waited longer than a frame is now
+  skipped (`frameClock.ts keepTick`, never more than three in a row). (2) The
+  person-finder ran on the page's thread (model + a blocking read-back from the
+  graphics chip, 15–30 ms a look) — the stall that fed (1); it now runs in a
+  **classic worker** (`segmenter.worker.ts`, MediaPipe's loader needs
+  `importScripts`; a page fallback when the worker cannot start, e.g. `vite
+  dev`), one look in flight, sent the moment a camera frame arrives
+  (`TrackFeed.onFrame`), ImageBitmaps transferred both ways. (3) The outline
+  was drawn over a newer frame than it was found on, so a moving head stuck
+  out of it and that strip was blurred: the frame sent is copied and drawn
+  *with* its outline (`pending`/`pair` in `cameraFx.ts`) while answers come
+  back within ~1.25 frames (else the newest frame and last outline, so the
+  camera never waits; Performance profile never pairs). (4) The blur was the
+  whole picture blurred, the person too — a halo: `bgBlur` takes the person
+  out, fills the hole from the room round it, then blurs. (5) The square
+  model was fed a squashed 16:9 frame: `selfie_segmenter_landscape.tflite`
+  (Apache-2.0, 144×256) for wide cameras (`maskOutline.ts modelFor`). (6) The
+  recording timer was the recorder's state — the whole settings column
+  re-rendered twice a second; it is its own `Elapsed`. (7) Lip sync: the
+  canvas stamps a frame when it is drawn, after the camera's own delay and the
+  wait for the clock, while the microphone is stamped as it hears — the voice
+  led the lips; sound now always goes through the mix (camera-only too) and the
+  voice is delayed by the measured camera latency (rVFC `captureTime`, where
+  reported) plus picture age, less the mix's latency, ≤ 200 ms, set at Start.
+  Also: **profiles** Performance / Balanced / Quality (`PROFILES`, plain sets
+  of fps/res/quality/camRes, `FX_TUNING` follows); a preview that cannot keep
+  up is told so once, from measurements; a camera or microphone lost
+  mid-recording gets one try to come back before the old behaviour. **The
+  diagnostics panel** (`recDiag.ts`, `RecDiagPanel.tsx`; Ctrl+Shift+D or
+  `?recdiag=1`, never shown to customers otherwise, no device names): frames
+  drawn, draw cost, skipped ticks, long tasks, camera/screen fps and picture
+  age, finder (worker/page, GPU/CPU, model, look and answer ms, paired),
+  recorder chunks, sound latencies and the applied delay, heap, and a verdict
+  (`judge`: capture / main-thread / rendering / segmentation / encoding).
+  `npm run test:recorder` holds the pure parts. **Benchmark**
+  (`test/recorderBench.e2e.mjs`, see its header): MediaPipe's own portrait and
+  ground-truth mask, panned as a moving head, scored for "person treated as
+  background" (the blurred face) and bleed; and the real app recording with a
+  fake camera + a shared tab, its WebM's frame intervals read by ffprobe. This
+  container has no GPU, so its absolute times are software-rendering numbers;
+  compare before/after on the same machine, never against Zoom from here.
+  Measured there (2026-11, before → after): a moving person drawn as
+  background 12 % → 0.04 % (p95 46 % → 0.3 %; Performance, unpaired, 0.2 %),
+  bleed 7.6 % → 1.3 %; app, camera + screen + blur: longest page freeze
+  654 → 75 ms, camera picture age p95 3.1 s → 115 ms, back-to-back
+  duplicate frames 7 → 0 (0 in every scenario), script heap flat over 120 s.
+  Recorded frame rate unchanged (~11–18 fps there — software VP8 and a
+  software canvas are the limit in that container, not the pipeline).
 - **Following the pointer** (`lib/video/pointer.ts`, pure, shared; Properties →
   **Pointer** tab `PointerPanel.tsx`; a **Pointer** lane on the timeline, F or
   "Follow the pointer" on a marked stretch). Nothing zooms while recording:

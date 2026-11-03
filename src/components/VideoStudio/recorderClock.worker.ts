@@ -6,12 +6,14 @@
  * than "ms after the last one": setInterval rounds 16.67 ms to 16 or 17 and
  * drifts, which shows as an uneven, juddering pan at 50 or 60 fps. A tick
  * that falls more than a frame behind (a busy computer) skips ahead instead of
- * bursting to catch up.
+ * bursting to catch up — and the page drops a tick that sat in its queue
+ * longer than a frame (recorder.ts `startClock`).
  */
 let timer: ReturnType<typeof setTimeout> | null = null;
 let next = 0, ms = 0;
 const tick = () => {
-  self.postMessage(0);
+  /* When it was sent, on the clock the page shares (time origin + now): the page drops a tick that waited behind a newer one. */
+  self.postMessage(performance.timeOrigin + performance.now());
   const now = performance.now();
   next += ms;
   if (next < now - ms) next = now + ms;

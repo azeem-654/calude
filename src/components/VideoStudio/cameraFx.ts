@@ -5,14 +5,20 @@
  * picture. All of it is live, before and during a recording.
  *
  * Kept light: the grade is the canvas's own `filter` (one pass, on the
- * graphics chip); soft focus and blur are a shrunken copy stretched back up —
- * the cheapest blur there is — never a filter blur; the person-finder looks
- * at a 256-pixel copy at most 15 times a second, and less often on a slow
- * computer (never more than a quarter of the time: four times what a look
- * costs between looks), its outline reused in between. It starts on the
- * graphics chip and moves to the processor when looks there prove slow — on
- * a computer whose graphics are emulated a look took 267 ms against 17 ms.
- * Only the camera's own box is ever worked on.
+ * graphics chip); soft focus is a shrunken copy stretched back up — never a
+ * filter blur at full size. The person-finder runs in a worker
+ * (segmenter.ts says why it left this thread), one look at a time, once per
+ * new camera frame (Performance: at most 15 a second), on a 256×144 copy
+ * with the landscape model for a wide camera. Where no worker can start it
+ * runs here, never more than a quarter of the time. Only the camera's own
+ * box is ever worked on.
+ *
+ * ── Since 2026-11 (the face still blurred when moving; a halo round the hair) ──
+ *
+ * The outline is drawn on the frame it was found on (`pending` / `pair`),
+ * not on a newer one the head had moved in; and the blur behind the person
+ * is made from the room alone (`bgBlur`), so the person's colours are no
+ * longer smeared round them.
  *
  * ── The outline (blur that kept blurring part of the face) ──
  *
@@ -26,8 +32,8 @@
  * 0.25 — a little background kept sharp at the edge reads far better than a
  * blurred eye), (3) holes inside the person filled (background not reachable
  * from the picture's edge, smaller than a fortieth of it), (4) grown by a
- * pixel of the finder's 256, and the looks run up to 30 a second where they
- * are cheap.
+ * pixel of the finder's 256 (maskOutline.ts, shared with the worker), and
+ * the looks run up to 30 a second.
  *
  * ── Auto look ──
  *
@@ -39,9 +45,10 @@
  * where the picture is flat. Eased, so a hand passing does not pump it.
  * The person's own sliders apply on top.
  */
-import type { ImageSegmenter, Delegate } from './segmenter';
+import type { ImageSegmenter, Delegate, SegWorkerClient } from './segmenter';
 import { sceneLayer, isScene, type SceneId } from './scenes';
-import { pic, type Feed } from './trackFeed';
+import { pic, TrackFeed, type Feed } from './trackFeed';
+import { outline, outlineState, alphaInto, lookSize, modelFor, type OutlineState, type SegModel } from './maskOutline';
 
 export type CamBg = 'none' | 'blur' | 'remove' | 'image' | 'scene';
 export interface CamFx {
@@ -128,29 +135,83 @@ export function coverSrc(vw: number, vh: number, r: Box): Box {
 
 type SegState = 'off' | 'loading' | 'ready' | 'failed';
 
+/**
+ * How the background effect trades smoothness against exactness (the
+ * recorder's Performance / Balanced / Quality). `pair` draws the camera frame
+ * the outline was found on, not a newer one (below); `maxRate` caps looks a
+ * second.
+ */
+export interface FxTuning { pair: boolean; maxRate: number }
+export const FX_TUNING = {
+  performance: { pair: false, maxRate: 15 },
+  balanced: { pair: true, maxRate: 30 },
+  quality: { pair: true, maxRate: 30 },
+} as const satisfies Record<string, FxTuning>;
+
+/** What the diagnostics panel shows of the person-finder. */
+export interface FxStats { runs: 'off' | 'worker' | 'page'; delegate: Delegate; model: SegModel | ''; cost: number; roundTrip: number; looksPerSec: number; paired: boolean; maskAge: number }
+
+/* An outline older than this is not paired with its frame any more: the camera must never freeze behind a stalled finder. */
+const PAIR_STALE_MS = 150;
+
 export class CameraFx {
+  /** The finder on this page (only where its worker could not start). */
   private seg: ImageSegmenter | null = null;
+  private segModel: SegModel = 'square';
+  /** The finder in its worker (segmenter.ts says why). */
+  private wseg: SegWorkerClient | null = null;
   private loading: Promise<void> | null = null;
   state: SegState = 'off';
   error = '';
+  tuning: FxTuning = FX_TUNING.balanced;
   private small: Cv | null = null;
+  private small2: Cv | null = null;
+  private tiny: Cv | null = null;
   private feed: Cv | null = null;
-  private mask: Cv | null = null;
+  /** The outline, its alpha the person: a bitmap from the worker, or a canvas when the finder runs here. */
+  private mask: CanvasImageSource & { width: number; height: number } | null = null;
+  private maskCanvas: Cv | null = null;
   private work: Cv | null = null;
   private person: Cv | null = null;
   private lastSeg = 0;
   private hasMask = false;
   private delegate: Delegate = 'GPU';
-  /** What a look costs, smoothed; and how many have been timed on this delegate. */
+  /** What a look costs (the finder's own time), smoothed; and how many have been timed on this delegate. */
   private cost = 0;
   private looks = 0;
   private triedCpu = false;
-  /** The last look's confidence, blended into the next (no flicker), and the work arrays for the outline. */
-  private conf: Float32Array | null = null;
-  private alpha: Float32Array | null = null;
-  private grow: Float32Array | null = null;
-  private reach: Uint8Array | null = null;
-  private queue: Int32Array | null = null;
+  private outlineSt: OutlineState | null = null;
+  /*
+   * Pairing. The outline comes back a few milliseconds after the frame it was
+   * found on; drawn over the newest frame, a head that moved in between
+   * sticks out of it and that strip is blurred — the face "sometimes
+   * blurred". So the frame sent is also copied here (`pending`), and when its
+   * outline arrives the two are drawn together (`pair`): the person always
+   * matches their outline, at the cost of the look's few milliseconds of
+   * delay. Only while looks come back within about a frame and a quarter —
+   * slower than that, the newest frame and the last outline are drawn, so the
+   * camera stays live (and the outline is grown a little more).
+   */
+  private pending: Cv | null = null;
+  private pair: Cv | null = null;
+  private pairOk = false;
+  private pairAt = 0;
+  private inflight = false;
+  private sentAt = 0;
+  private sentFrame: number = -1;
+  private roundTrip = 0;
+  private maskAt = 0;
+  private paired = false;
+  private lookTimes: number[] = [];
+  private camGap = 1000 / 30;
+  private lastFrameId = -1;
+  /** How old the camera picture last drawn was (ms since it arrived from the camera; NaN where that is not known) — the diagnostics and the sound's delay read it. */
+  shownAge = NaN;
+  private sentAge = 0;
+  private pairAge = 0;
+  /** How much of the camera's own size its box needs (cover-scaled, at most 1) — the paired copy is made at that size. */
+  private boxScale = 1;
+  private lastFrameAt = 0;
   /** The auto look, eased toward what the camera needs; and the small copy it is measured on. */
   auto: AutoLook = { ...NO_AUTO, gain: [1, 1, 1] };
   private probe: Cv | null = null;
@@ -159,24 +220,152 @@ export class CameraFx {
   /** Told when the person-finder is ready or failed, so the page can say so. */
   onState: (() => void) | null = null;
 
-  /** Starts loading the person-finder (once); drawing goes on without it meanwhile. */
-  want() {
+  /** Starts the person-finder (once): in its worker, else on this page; drawing goes on without it meanwhile. */
+  want(model: SegModel = 'landscape') {
     if (this.loading) return;
     this.state = 'loading'; this.onState?.();
-    this.loading = import('./segmenter').then(m => m.createSegmenter()).then(r => { this.seg = r.seg; this.delegate = r.delegate; this.state = 'ready'; this.onState?.(); }, e => {
+    this.loading = import('./segmenter').then(async m => {
+      try {
+        this.useWorker(await m.startSegWorker(model));
+      } catch {
+        const r = await m.createSegmenter('GPU', model);
+        this.seg = r.seg; this.delegate = r.delegate; this.segModel = model;
+      }
+      this.state = 'ready'; this.onState?.();
+    }).catch(e => {
       this.state = 'failed';
       this.error = (e as Error)?.message || 'it could not start';
       this.onState?.();
     });
   }
 
-  /** Looks for the person, up to 30 times a second where a look is cheap (never more than a quarter of the time), on a copy at most 256 wide. */
+  private useWorker(c: SegWorkerClient) {
+    this.wseg = c; this.delegate = c.delegate;
+    c.onMask = (mask, took, delegate) => {
+      const now = performance.now();
+      this.inflight = false;
+      /* Moved to the other chip: what looks cost there starts afresh (an emulated graphics chip's second-long looks must not hold the new rate down). */
+      if (delegate !== this.delegate) { this.looks = 0; this.cost = 0; this.roundTrip = 0; this.lookTimes = []; }
+      this.delegate = delegate;
+      if (!mask) return;
+      const rt = now - this.sentAt;
+      this.roundTrip = this.looks ? this.roundTrip * 0.7 + rt * 0.3 : rt;
+      this.cost = this.looks ? this.cost * 0.7 + took * 0.3 : took;
+      this.looks++;
+      this.lookTimes.push(now); if (this.lookTimes.length > 40) this.lookTimes.shift();
+      (this.mask as ImageBitmap | null)?.close?.();
+      this.mask = mask; this.hasMask = true; this.maskAt = this.sentAt;
+      if (this.pending) { const p = this.pair; this.pair = this.pending; this.pending = p; this.pairOk = true; this.pairAt = this.sentAt; this.pairAge = this.sentAge; }
+      else this.pairOk = false;
+      /*
+       * Paired only while a look comes back within about a frame and a
+       * quarter and the finder looks at least every other camera frame (the
+       * header of `pending` says why) — otherwise the camera would move only
+       * as often as the finder answers; then the newest frame is drawn with a
+       * wider outline. Measured: pairing keeps 99.9 % of a moving person
+       * sharp; the wider outline alone 98 %; the old way 88 %.
+       */
+      const lt = this.lookTimes, every = lt.length > 4 ? (lt[lt.length - 1] - lt[0]) / (lt.length - 1) : 0;
+      this.paired = this.tuning.pair && this.roundTrip <= Math.max(40, this.camGap * 1.25) && every <= this.camGap * 2.2;
+    };
+    /* A look failed after the start: the camera goes on as it is (said), the recording is never stopped by it. */
+    c.onFail = err => {
+      this.inflight = false;
+      this.state = 'failed'; this.error = err; this.hasMask = false;
+      try { c.close(); } catch { /* gone */ }
+      this.wseg = null;
+      this.onState?.();
+    };
+  }
+
+  /** The worker let go (the recorder closed). */
+  dispose() {
+    try { this.wseg?.close(); } catch { /* gone */ }
+    try { this.seg?.close(); } catch { /* gone */ }
+    this.wseg = null; this.seg = null; this.loading = null; this.state = 'off'; this.hasMask = false;
+    (this.mask as ImageBitmap | null)?.close?.(); this.mask = null;
+  }
+
+  stats(): FxStats {
+    const now = performance.now(), recent = this.lookTimes.filter(t => now - t < 2000);
+    return {
+      runs: this.wseg ? 'worker' : this.seg ? 'page' : 'off', delegate: this.delegate,
+      model: this.wseg ? this.lastModel : this.seg ? this.segModel : '',
+      cost: this.cost, roundTrip: this.wseg ? this.roundTrip : this.cost, looksPerSec: recent.length / 2,
+      paired: !!this.wseg && this.paired && this.pairOk, maskAge: this.hasMask ? now - this.maskAt : 0,
+    };
+  }
+  /** The model of the last look (for the stats). */
+  lastModel: SegModel = 'landscape';
+
+  /** A number that changes with each new camera frame, and the gap between frames (what "about a frame" means above). */
+  private frameId(cam: Feed, now: number): number {
+    const id = cam instanceof TrackFeed ? cam.count : Math.round(cam.currentTime * 1000);
+    if (id !== this.lastFrameId) {
+      if (this.lastFrameAt) this.camGap = this.camGap * 0.9 + Math.min(200, now - this.lastFrameAt) * 0.1;
+      this.lastFrameId = id; this.lastFrameAt = now;
+    }
+    return id;
+  }
+
+  /** Whether the last frame drawn wanted the person found (a background effect on). */
+  private active = false;
+  /**
+   * A camera frame just arrived (TrackFeed.onFrame): sent to the finder at
+   * once rather than at the next draw, so its outline is usually back before
+   * that draw and the paired frame shown is the newest one.
+   */
+  frameArrived(cam: Feed) {
+    if (this.active && this.wseg && this.state === 'ready') this.lookInWorker(this.wseg, cam, performance.now());
+  }
+
+  /** Looks for the person: in the worker, once per new camera frame, one look at a time (so a slow look lowers the rate instead of queueing). */
   private segment(cam: Feed, now: number) {
-    if (!this.seg || now - this.lastSeg < Math.max(33, this.cost * 4)) return;
+    if (this.wseg) { this.lookInWorker(this.wseg, cam, now); return; }
+    this.lookHere(cam, now);
+  }
+
+  private lookInWorker(c: SegWorkerClient, cam: Feed, now: number) {
+    const id = this.frameId(cam, now);
+    if (this.inflight) {
+      /* A look lost in the worker (never answered): asked again rather than waiting for ever. */
+      if (now - this.sentAt < 1000) return;
+      this.inflight = false;
+    }
+    /* At most half the finder's thread: on a computer with no graphics chip to spare, the encoder and the drawing need the rest. */
+    if (id === this.sentFrame || now - this.sentAt < Math.max(1000 / this.tuning.maxRate, Math.min(250, this.cost * 2)) - 2) return;
+    const vw = cam.videoWidth, vh = cam.videoHeight;
+    const { w, h, model } = lookSize(vw, vh);
+    this.lastModel = model;
+    this.feed = sized(this.feed, w, h);
+    const fc = ctxOf(this.feed);
+    fc.drawImage(pic(cam), 0, 0, w, h);
+    /*
+     * The frame as it was sent, kept to be drawn with its outline — at the
+     * size the camera's box needs (a 200-pixel bubble does not need a 1080p
+     * copy every frame; a software-drawn canvas paid for every pixel), at most
+     * 1280 across.
+     */
+    if (this.tuning.pair) {
+      const s = Math.min(1, 1280 / Math.max(vw, vh), this.boxScale), pw = Math.max(2, Math.round(vw * s)), ph = Math.max(2, Math.round(vh * s));
+      this.pending = sized(this.pending, pw, ph);
+      ctxOf(this.pending).drawImage(pic(cam), 0, 0, pw, ph);
+    } else this.pending = null;
+    this.inflight = true; this.sentAt = now; this.sentFrame = id;
+    this.sentAge = cam instanceof TrackFeed ? Math.max(0, now - cam.at) : 0;
+    const f = this.feed;
+    const grow = this.paired ? 1 : 3;
+    if (typeof OffscreenCanvas !== 'undefined' && f instanceof OffscreenCanvas) c.look(f.transferToImageBitmap(), model, now, grow);
+    else void createImageBitmap(f).then(b => c.look(b, model, now, grow), () => { this.inflight = false; });
+  }
+
+  /** The finder on this page (no worker): never more than a quarter of the time — four times what a look costs between looks. */
+  private lookHere(cam: Feed, now: number) {
+    if (!this.seg || now - this.lastSeg < Math.max(1000 / this.tuning.maxRate, this.cost * 4)) return;
     this.lastSeg = now;
     const t0 = performance.now();
     const vw = cam.videoWidth, vh = cam.videoHeight;
-    const w = Math.min(256, vw), h = Math.max(2, Math.round(w * vh / vw));
+    const { w, h } = lookSize(vw, vh);
     this.feed = sized(this.feed, w, h);
     ctxOf(this.feed).drawImage(pic(cam), 0, 0, w, h);
     let res;
@@ -185,68 +374,35 @@ export class CameraFx {
       const m = res.confidenceMasks?.[0];
       if (!m) return;
       const f = m.getAsFloat32Array(), mw = m.width, mh = m.height;
-      const a = this.outline(f, mw, mh);
-      this.mask = sized(this.mask, mw, mh);
-      const mc = ctxOf(this.mask);
+      this.outlineSt = outlineState(this.outlineSt, mw * mh, f);
+      const a = outline(this.outlineSt, f, mw, mh);
+      this.maskCanvas = sized(this.maskCanvas, mw, mh);
+      const mc = ctxOf(this.maskCanvas);
       const img = mc.createImageData(mw, mh);
-      for (let i = 0; i < a.length; i++) img.data[i * 4 + 3] = a[i] * 255;
+      alphaInto(a, img.data);
       mc.putImageData(img, 0, 0);
-      this.hasMask = true;
+      this.mask = this.maskCanvas; this.hasMask = true; this.maskAt = now;
     } finally { res.close(); }
     const took = performance.now() - t0;
     this.cost = this.looks ? this.cost * 0.7 + took * 0.3 : took;
+    this.lookTimes.push(now); if (this.lookTimes.length > 40) this.lookTimes.shift();
     if (++this.looks >= 3 && this.delegate === 'GPU' && this.cost > 30 && !this.triedCpu) this.tryCpu();
   }
 
-  /** The finder's confidence → the person's outline (the header says why each step). About a millisecond at 256². */
-  private outline(f: Float32Array, w: number, h: number): Float32Array {
-    const n = w * h;
-    if (!this.conf || this.conf.length !== n) {
-      this.conf = new Float32Array(f); this.alpha = new Float32Array(n); this.grow = new Float32Array(n); this.reach = new Uint8Array(n); this.queue = new Int32Array(n);
-    }
-    const c = this.conf, a = this.alpha!, seen = this.reach!, q = this.queue!;
-    /* Up at once, down over two looks: a moving head is never behind its outline for long, and an edge does not flicker. */
-    for (let i = 0; i < n; i++) c[i] = f[i] >= c[i] ? f[i] : c[i] * 0.45 + f[i] * 0.55;
-    /* Background reachable from the picture's edge; whatever low part is not reached is a hole inside the person. */
-    seen.fill(0);
-    let head = 0, tail = 0;
-    const low = (i: number) => c[i] < 0.5;
-    const push = (i: number) => { if (!seen[i] && low(i)) { seen[i] = 1; q[tail++] = i; } };
-    for (let x = 0; x < w; x++) { push(x); push((h - 1) * w + x); }
-    for (let y = 0; y < h; y++) { push(y * w); push(y * w + w - 1); }
-    while (head < tail) {
-      const i = q[head++], x = i % w;
-      if (x > 0) push(i - 1);
-      if (x < w - 1) push(i + 1);
-      if (i >= w) push(i - w);
-      if (i < n - w) push(i + w);
-    }
-    for (let i = 0; i < n; i++) a[i] = Math.min(1, Math.max(0, (c[i] - 0.25) / 0.35));
-    /* Holes: each unreached low patch, filled if it is small (a gap between an arm and the body is left alone). */
-    const maxHole = n / 40;
-    for (let s0 = 0; s0 < n; s0++) {
-      if (seen[s0] || !low(s0)) continue;
-      head = tail = 0; seen[s0] = 2; q[tail++] = s0;
-      while (head < tail) {
-        const i = q[head++], x = i % w;
-        const nb = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i >= w ? i - w : -1, i < n - w ? i + w : -1];
-        for (const j of nb) if (j >= 0 && !seen[j] && low(j)) { seen[j] = 2; q[tail++] = j; }
-      }
-      if (tail <= maxHole) for (let k = 0; k < tail; k++) a[q[k]] = 1;
-    }
-    /* Grown by one pixel: the most of each pixel and its four neighbours, read from a copy. The blend above keeps the finder's own answer, never the grown one (or it would grow every look). */
-    const t = this.grow!;
-    t.set(a);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const i = y * w + x;
-      let v = t[i];
-      if (x > 0 && t[i - 1] > v) v = t[i - 1];
-      if (x < w - 1 && t[i + 1] > v) v = t[i + 1];
-      if (y > 0 && t[i - w] > v) v = t[i - w];
-      if (y < h - 1 && t[i + w] > v) v = t[i + w];
-      a[i] = v;
-    }
-    return a;
+  /** Slow on the graphics chip: the processor instead, kept only if it is faster. */
+  private tryCpu() {
+    this.triedCpu = true;
+    const gpuCost = this.cost;
+    void import('./segmenter').then(m => m.createSegmenter('CPU', this.segModel)).then(({ seg }) => {
+      const probe = this.feed;
+      if (!probe) { seg.close(); return; }
+      const t0 = performance.now();
+      try { seg.segmentForVideo(probe as HTMLCanvasElement, performance.now()).close(); } catch { seg.close(); return; }
+      if (performance.now() - t0 >= gpuCost) { seg.close(); return; }
+      const old = this.seg;
+      this.seg = seg; this.delegate = 'CPU'; this.cost = 0; this.looks = 0;
+      try { old?.close(); } catch { /* gone */ }
+    }, () => { /* stays on the graphics chip */ });
   }
 
   /**
@@ -308,22 +464,6 @@ export class CameraFx {
     return out.length ? out.join(' · ') : 'the camera already looks right — nothing to change';
   }
 
-  /** Slow on the graphics chip: the processor instead, kept only if it is faster. */
-  private tryCpu() {
-    this.triedCpu = true;
-    const gpuCost = this.cost;
-    void import('./segmenter').then(m => m.createSegmenter('CPU')).then(({ seg }) => {
-      const probe = this.feed;
-      if (!probe) { seg.close(); return; }
-      const t0 = performance.now();
-      try { seg.segmentForVideo(probe as HTMLCanvasElement, performance.now()).close(); } catch { seg.close(); return; }
-      if (performance.now() - t0 >= gpuCost) { seg.close(); return; }
-      const old = this.seg;
-      this.seg = seg; this.delegate = 'CPU'; this.cost = 0; this.looks = 0;
-      try { old?.close(); } catch { /* gone */ }
-    }, () => { /* stays on the graphics chip */ });
-  }
-
   /**
    * The camera drawn into box `r` of `ctx` with its look. `clip` is already
    * set by the caller (a bubble's circle). `seeThrough` leaves a removed
@@ -332,25 +472,33 @@ export class CameraFx {
   draw(ctx: CanvasRenderingContext2D, cam: Feed, r: Box, mirror: boolean, fx: CamFx, bgImage: ImageBitmap | null, seeThrough: boolean, now: number) {
     const vw = cam.videoWidth, vh = cam.videoHeight;
     if (!vw || !vh) return;
-    const src = coverSrc(vw, vh, r);
+    this.boxScale = Math.min(1, Math.max(r.w / vw, r.h / vh) * 1.1);
     if (fx.auto) this.measure(cam, now);
     const auto = fx.auto ? this.auto : null;
     const grade = canGrade() ? gradeOf(fx, auto) : 'none';
     const tint = canGrade() ? tintOf(fx, auto) : null;
     const w = Math.max(2, Math.round(r.w)), h = Math.max(2, Math.round(r.h));
-    if (fx.bg !== 'none') { if (this.state === 'off') this.want(); this.segment(cam, now); }
-    const cut = fx.bg !== 'none' && this.hasMask && this.state === 'ready';
+    this.active = fx.bg !== 'none';
+    if (this.active) { if (this.state === 'off') this.want(modelFor(vw, vh)); this.segment(cam, now); }
+    const cut = fx.bg !== 'none' && this.hasMask && this.state === 'ready' && !!this.mask;
     const look = { grade, tint: tint ? tintCss(tint) : '' };
+    /* With the background effect on, the frame drawn is the one its outline was found on, while that is fresh (`pending` says why). */
+    const usePair = cut && this.paired && this.pairOk && !!this.pair && now - this.pairAt < PAIR_STALE_MS;
+    const img: CanvasImageSource = usePair ? this.pair! : pic(cam);
+    const iw = usePair ? this.pair!.width : vw, ih = usePair ? this.pair!.height : vh;
+    const src = coverSrc(iw, ih, r);
+    this.shownAge = usePair ? now - this.pairAt + this.pairAge : cam instanceof TrackFeed ? now - cam.at : NaN;
 
     /* Plain camera: one copy, as fast as before effects existed. */
-    if (grade === 'none' && !tint && fx.soften <= 0 && !cut) { this.blit(ctx, pic(cam), src, r, mirror); return; }
+    if (grade === 'none' && !tint && fx.soften <= 0 && !cut) { this.blit(ctx, img, src, r, mirror); return; }
 
     this.work = sized(this.work, w, h);
     const wc = ctxOf(this.work);
     wc.clearRect(0, 0, w, h);
     if (cut) {
+      const m = this.mask!, ms = { x: src.x * m.width / iw, y: src.y * m.height / ih, w: src.w * m.width / iw, h: src.h * m.height / ih };
       /* Behind the person. */
-      if (fx.bg === 'blur') this.softCopy(wc, cam, src, w, h, 2 + fx.blur / 6, 1, look);
+      if (fx.bg === 'blur') this.bgBlur(wc, img, src, w, h, fx.blur, look, m, ms);
       else if (fx.bg === 'image' && bgImage) { const s = coverSrc(bgImage.width, bgImage.height, { x: 0, y: 0, w, h }); wc.drawImage(bgImage, s.x, s.y, s.w, s.h, 0, 0, w, h); }
       else if (fx.bg === 'scene') wc.drawImage(sceneLayer(fx.scene, w, h), 0, 0);
       else if (fx.bg === 'remove' && !seeThrough) { wc.fillStyle = fx.bgColor; wc.fillRect(0, 0, w, h); }
@@ -360,24 +508,23 @@ export class CameraFx {
       const pc = ctxOf(this.person);
       pc.globalCompositeOperation = 'source-over';
       pc.clearRect(0, 0, w, h);
-      this.graded(pc, cam, src, w, h, look, fx.soften);
-      const m = this.mask!, ms = { x: src.x * m.width / vw, y: src.y * m.height / vh, w: src.w * m.width / vw, h: src.h * m.height / vh };
+      this.graded(pc, img, src, w, h, look, fx.soften);
       pc.globalCompositeOperation = 'destination-in';
       /* The outline is 256 across, stretched to the box: smoothed, so its edge is a soft few pixels, not steps. */
       pc.imageSmoothingEnabled = true; pc.imageSmoothingQuality = 'medium';
       pc.drawImage(m, ms.x, ms.y, ms.w, ms.h, 0, 0, w, h);
       pc.globalCompositeOperation = 'source-over';
       wc.drawImage(this.person, 0, 0);
-    } else this.graded(wc, cam, src, w, h, look, fx.soften);
+    } else this.graded(wc, img, src, w, h, look, fx.soften);
     this.blit(ctx, this.work, { x: 0, y: 0, w, h }, r, mirror);
   }
 
-  private graded(c: C2, cam: Feed, src: Box, w: number, h: number, look: { grade: string; tint: string }, soften: number) {
+  private graded(c: C2, img: CanvasImageSource, src: Box, w: number, h: number, look: { grade: string; tint: string }, soften: number) {
     c.filter = look.grade;
-    c.drawImage(pic(cam), src.x, src.y, src.w, src.h, 0, 0, w, h);
+    c.drawImage(img, src.x, src.y, src.w, src.h, 0, 0, w, h);
     c.filter = 'none';
     this.tinted(c, w, h, look.tint);
-    if (soften > 0) this.softCopy(c, cam, src, w, h, 3, Math.min(0.75, soften / 100 * 0.75), look);
+    if (soften > 0) this.softCopy(c, img, src, w, h, 3, Math.min(0.75, soften / 100 * 0.75), look);
   }
 
   /** The colour balance: one multiply over what was just drawn (the box is opaque there, so nothing outside it is coloured). */
@@ -389,12 +536,13 @@ export class CameraFx {
   }
 
   /** A blur that costs almost nothing: the picture shrunk by `factor` and stretched back, drawn at `alpha`. */
-  private softCopy(c: C2, cam: Feed, src: Box, w: number, h: number, factor: number, alpha: number, look: { grade: string; tint: string }) {
+  private softCopy(c: C2, img: CanvasImageSource, src: Box, w: number, h: number, factor: number, alpha: number, look: { grade: string; tint: string }) {
     const sw = Math.max(2, Math.round(w / factor)), sh = Math.max(2, Math.round(h / factor));
     this.small = sized(this.small, sw, sh);
     const sc = ctxOf(this.small);
+    sc.globalCompositeOperation = 'source-over';
     sc.filter = look.grade;
-    sc.drawImage(pic(cam), src.x, src.y, src.w, src.h, 0, 0, sw, sh);
+    sc.drawImage(img, src.x, src.y, src.w, src.h, 0, 0, sw, sh);
     sc.filter = 'none';
     this.tinted(sc, sw, sh, look.tint);
     c.save();
@@ -402,6 +550,64 @@ export class CameraFx {
     /* Plain bilinear: the stretch is the blur, and a 'high' resample cost a software canvas double. */
     c.imageSmoothingQuality = 'low';
     c.drawImage(this.small, 0, 0, sw, sh, 0, 0, w, h);
+    c.restore();
+  }
+
+  /**
+   * The blurred room behind the person, made from the room only. It used to
+   * be the whole picture blurred — the person too — so their colours were
+   * smeared round them (a halo round the hair and shoulders) and showed
+   * through wherever the outline was soft. Now, on a small copy: the person
+   * is taken out by the outline; the hole is filled from round it (a quarter
+   * copy made opaque wherever any room reached it, laid underneath — the
+   * room's own colours carried in); a light blur at that size where the
+   * browser has canvas filters (smoother than the stretch alone); then
+   * stretched to the box. All of it at a sixth of the box's size or less.
+   */
+  private bgBlur(c: C2, img: CanvasImageSource, src: Box, w: number, h: number, amount: number, look: { grade: string; tint: string }, mask: CanvasImageSource, ms: Box) {
+    const factor = 2 + amount / 6;
+    const sw = Math.max(4, Math.round(w / factor)), sh = Math.max(4, Math.round(h / factor));
+    this.small = sized(this.small, sw, sh);
+    const sc = ctxOf(this.small);
+    sc.globalCompositeOperation = 'source-over';
+    sc.clearRect(0, 0, sw, sh);
+    sc.filter = look.grade;
+    sc.drawImage(img, src.x, src.y, src.w, src.h, 0, 0, sw, sh);
+    sc.filter = 'none';
+    this.tinted(sc, sw, sh, look.tint);
+    sc.globalCompositeOperation = 'destination-out';
+    sc.imageSmoothingEnabled = true;
+    sc.drawImage(mask, ms.x, ms.y, ms.w, ms.h, 0, 0, sw, sh);
+    /* The hole filled from round it: averaging a see-through copy keeps the room's colour (weighted by how much room there was); drawing it over itself three times makes it opaque without changing that colour. */
+    const tw = Math.max(2, Math.round(sw / 4)), th = Math.max(2, Math.round(sh / 4));
+    this.tiny = sized(this.tiny, tw, th);
+    const tc = ctxOf(this.tiny);
+    tc.globalCompositeOperation = 'source-over';
+    tc.clearRect(0, 0, tw, th);
+    tc.drawImage(this.small, 0, 0, tw, th);
+    for (let k = 0; k < 3; k++) tc.drawImage(this.tiny, 0, 0);
+    sc.globalCompositeOperation = 'destination-over';
+    sc.drawImage(this.tiny, 0, 0, sw, sh);
+    /* Where no room reached at all (the person fills the picture): the plain copy, so nothing is ever see-through. */
+    sc.filter = look.grade;
+    sc.drawImage(img, src.x, src.y, src.w, src.h, 0, 0, sw, sh);
+    sc.filter = 'none';
+    sc.globalCompositeOperation = 'source-over';
+    let out: Cv = this.small;
+    if (canGrade()) {
+      const px = Math.max(1, Math.round(Math.min(sw, sh) / 60)), pad = px * 2;
+      this.small2 = sized(this.small2, sw, sh);
+      const bc = ctxOf(this.small2);
+      bc.filter = `blur(${px}px)`;
+      /* Drawn a little larger than the box so the blur reads room, not the empty border, at the edges. */
+      bc.drawImage(this.small, -pad, -pad, sw + 2 * pad, sh + 2 * pad);
+      bc.filter = 'none';
+      out = this.small2;
+    }
+    c.save();
+    c.imageSmoothingEnabled = true;
+    c.imageSmoothingQuality = 'low';
+    c.drawImage(out, 0, 0, sw, sh, 0, 0, w, h);
     c.restore();
   }
 

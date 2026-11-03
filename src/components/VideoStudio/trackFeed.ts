@@ -30,6 +30,10 @@ export class TrackFeed {
   videoHeight = 0;
   /** Frames received — a feed whose count stops moving has stopped. */
   count = 0;
+  /** When the newest frame arrived (performance.now()) — how old the picture drawn is (the diagnostics' "frame age"). */
+  at = 0;
+  /** Told the moment a frame arrives (the camera background sends it to its finder then, not at the next draw — a frame's worth sooner). */
+  onFrame: (() => void) | null = null;
   readonly track: MediaStreamTrack;
   private reader: ReadableStreamDefaultReader<VideoFrame>;
   private dead = false;
@@ -52,7 +56,9 @@ export class TrackFeed {
       this.frame = f;
       this.videoWidth = f.displayWidth; this.videoHeight = f.displayHeight;
       this.count++;
+      this.at = performance.now();
       old?.close();
+      try { this.onFrame?.(); } catch { /* the listener's own trouble never stops the feed */ }
     }
   }
 

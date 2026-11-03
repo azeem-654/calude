@@ -50,12 +50,15 @@ import {
   support, mediaError, fileSlug, bubbleAt, frameSize, bitrateFor, finishFile, startClock, stopStreams, msClock, CORNERS,
   Compositor, PointerLog, LayoutLog, screenMeta, layoutRects, loadBackdrop, readPrefs, defaultPrefs, slowComputer, gradientCss,
   FPS, RES, RES_LABEL, CAM_RES, COLORS, GRADIENTS, LAYOUTS, SHAPES, RINGS_STILL, RINGS_MOVING, RING_COLORS, RING_GRADIENTS, ringCss, placeAt,
+  PROFILES, PROFILE_NAMES, profileOf, type Profile,
   type RecMode, type Bubble, type Corner, type BubbleSize, type Prefs, type Look, type Res, type Quality, type CamRes, type CursorMode, type GradientId, type Brand,
   type Layout, type CamShape, type Ring, type CamFrame, type RingGradient,
 } from './recorder';
-import { canGrade, NO_FX, type CamFx, type CamBg } from './cameraFx';
+import { canGrade, NO_FX, FX_TUNING, type CamFx, type CamBg } from './cameraFx';
+import { RecDiag, type DiagContext, type DiagSnapshot } from './recDiag';
+import { RecDiagPanel } from './RecDiagPanel';
 import { SCENES, SCENE_LABEL, sceneThumb } from './scenes';
-import { feedOf, type TrackFeed } from './trackFeed';
+import { feedOf, TrackFeed } from './trackFeed';
 import { readPicture, cutOutBackground } from './pictureCut';
 
 type Phase = 'setup' | 'starting' | 'countdown' | 'recording' | 'paused' | 'finishing' | 'review';
@@ -96,6 +99,17 @@ const RING_LABEL: Record<Ring, string> = {
   gradient: 'Turning gradient', pulse: 'Pulsing neon', rainbow: 'Rainbow', comet: 'Comet', dots: 'Orbiting dots', march: 'Marching dashes', voice: 'Moves with your voice',
 };
 const ringGradLabel = (id: RingGradient) => id[0].toUpperCase() + id.slice(1);
+const PROFILE_LABEL: Record<Profile, string> = { performance: 'Performance', balanced: 'Balanced', quality: 'Quality' };
+const PROFILE_HELP: Record<Profile, string> = {
+  performance: 'Smoothest on any computer: 720p, a lighter file, the camera at 480p and the camera background at up to 15 looks a second.',
+  balanced: 'Right for most computers: 1080p, the camera at 720p, the camera background matched to every frame.',
+  quality: 'Sharpest: 1440p, a larger file and the camera at 1080p — for a fast computer.',
+};
+/* The diagnostics panel: off unless asked for (a support person, a developer) — `?recdiag=1` or Ctrl+Shift+D, remembered in this browser. */
+const DIAG_KEY = 'crm_rec_diag';
+const diagWanted = () => {
+  try { if (new URLSearchParams(location.search).get('recdiag') === '1') return true; return localStorage.getItem(DIAG_KEY) === '1'; } catch { return false; }
+};
 
 /* A per-browser convenience: the frame rate, quality and look somebody chose last time. Never the picture. */
 const PREFS_KEY = 'crm_rec_prefs';
@@ -142,7 +156,6 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   const [micOn, setMicOn] = useState(false);
   const [phase, setPhase] = useState<Phase>('setup');
   const [count, setCount] = useState(3);
-  const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [result, setResult] = useState<{ url: string; blob: Blob; ms: number } | null>(null);
@@ -158,6 +171,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   const [camBg, setCamBg] = useState<{ url: string; name: string } | null>(null);
   const [logo, setLogo] = useState<{ url: string; name: string } | null>(null);
   const [fxState, setFxState] = useState<{ state: string; error: string }>({ state: 'off', error: '' });
+  const [diagOn, setDiagOn] = useState(diagWanted);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const screenVid = useRef<HTMLVideoElement>(null);
@@ -205,6 +219,18 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   const camBgFile = useRef<HTMLInputElement>(null);
   const logoFile = useRef<HTMLInputElement>(null);
   const stats = useRef({ last: 0, late: 0, ticks: 0, warned: false, n: 0 });
+  /** What the diagnostics measure (recDiag.ts), always collected — the sound's delay and the "this computer is struggling" advice read it too. */
+  const diag = useRef<RecDiag | null>(null);
+  if (!diag.current) diag.current = new RecDiag();
+  /** The recorder's chunks as they come (the diagnostics' "encoder behind"). */
+  const chunkStats = useRef({ n: 0, bytes: 0, last: 0, gapMax: 0, bitrate: 0 });
+  /** How long the camera takes to deliver a frame (its capture time to this page), where the browser says — rVFC `captureTime`. */
+  const camLatency = useRef<number | null>(null);
+  /** The voice's delay that meets the picture (begin() says why), and the nodes it runs through. */
+  const micDelayMs = useRef(0);
+  const micDelay = useRef<DelayNode | null>(null);
+  const scrDelay = useRef<DelayNode | null>(null);
+  const micSrc = useRef<MediaStreamAudioSourceNode | null>(null);
   /* The screen and the camera read frame by frame from their tracks (trackFeed.ts says why); null where a browser cannot, and the element is drawn. */
   const screenFeed = useRef<TrackFeed | null>(null);
   const camFeed = useRef<TrackFeed | null>(null);
@@ -222,6 +248,10 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   modeRef.current = mode;
   prefsRef.current = prefs;
   camHiddenRef.current = camHidden;
+  const micMutedRef = useRef(false);
+  micMutedRef.current = micMuted;
+  /* The camera background's trade follows the profile in use (cameraFx.ts FX_TUNING). */
+  comp.current.fx.tuning = FX_TUNING[profileOf(prefs) ?? 'balanced'];
 
   const setPref = <K extends keyof Prefs>(k: K, v: Prefs[K]) => setPrefs(p => ({ ...p, [k]: v }));
   const setLook = (l: Partial<Look>) => {
@@ -282,10 +312,70 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   const setFeed = (which: 'screen' | 'cam', s: MediaStream | null) => {
     const ref = which === 'screen' ? screenFeed : camFeed;
     ref.current?.close();
-    ref.current = feedOf(s);
+    const f = feedOf(s);
+    ref.current = f;
+    if (f && which === 'cam') f.onFrame = () => comp.current.fx.frameArrived(f);
   };
   const stopCam = () => { stopStreams(cam.current); cam.current = null; setFeed('cam', null); attach(camVid.current, null); setCamOn(false); };
   const stopMic = () => { stopStreams(micS.current); micS.current = null; meter.current = null; setMicOn(false); };
+
+  const recordingNow_ = () => phaseRef.current === 'recording' || phaseRef.current === 'paused';
+  const adoptCam = (s: MediaStream) => {
+    cam.current = new MediaStream(s.getVideoTracks());
+    attach(camVid.current, cam.current);
+    setFeed('cam', cam.current);
+    cam.current.getVideoTracks()[0]?.addEventListener('ended', () => void camLost());
+    setCamOn(true);
+  };
+  const adoptMic = (s: MediaStream) => {
+    micS.current = new MediaStream(s.getAudioTracks());
+    micS.current.getAudioTracks().forEach(t => { t.enabled = !micMutedRef.current; });
+    const ctx = audioCtx();
+    const an = ctx.createAnalyser();
+    an.fftSize = 512;
+    ctx.createMediaStreamSource(micS.current).connect(an);
+    meter.current = { an, buf: new Uint8Array(new ArrayBuffer(an.fftSize)) };
+    /* While recording, a microphone that came back joins the mix where the old one was — possible because the sound always goes through the mix now. */
+    if (micDelay.current) {
+      try { micSrc.current?.disconnect(); } catch { /* gone */ }
+      micSrc.current = ctx.createMediaStreamSource(micS.current);
+      micSrc.current.connect(micDelay.current);
+    }
+    micS.current.getAudioTracks()[0]?.addEventListener('ended', () => void micLost());
+    setMicOn(true);
+  };
+  /*
+   * A camera or microphone unplugged, or taken by another app, mid-recording:
+   * one try to get one back (the same, or the computer's default if that one
+   * is gone) before saying so. Only when that fails does a camera-only
+   * recording stop, as it always did; a screen recording carries on without
+   * the camera.
+   */
+  const regain = async (kind: 'cam' | 'mic'): Promise<boolean> => {
+    await new Promise(r => setTimeout(r, 400));
+    if (!recordingNow_()) return false;
+    const p = prefsRef.current;
+    try {
+      const s = await navigator.mediaDevices.getUserMedia(kind === 'cam'
+        ? { video: { width: { ideal: CAM_RES[p.camRes].width }, height: { ideal: CAM_RES[p.camRes].height }, frameRate: { ideal: modeRef.current === 'cam' ? p.fps : Math.min(30, p.fps) } } }
+        : { audio: { echoCancellation: true, noiseSuppression: true } });
+      if (!recordingNow_()) { stopStreams(s); return false; }
+      if (kind === 'cam') { stopStreams(cam.current); adoptCam(s); } else { stopStreams(micS.current); adoptMic(s); }
+      return true;
+    } catch { return false; }
+  };
+  const camLost = async () => {
+    setCamOn(false);
+    if (!recordingNow_()) { setNote('The camera stopped (unplugged or taken by another app).'); return; }
+    if (await regain('cam')) { setNote('The camera dropped out for a moment and came back; the recording carried on.'); return; }
+    if (modeRef.current === 'cam' && recordingNow_()) stop('The camera stopped (unplugged or taken by another app), so the recording stopped.');
+    else setNote('The camera stopped (unplugged or taken by another app). The recording carries on without it.');
+  };
+  const micLost = async () => {
+    setMicOn(false);
+    if (recordingNow_() && await regain('mic')) { setNote('The microphone dropped out for a moment and came back; the recording carried on.'); return; }
+    setNote('The microphone stopped (unplugged or taken by another app).');
+  };
 
   /** The camera and/or microphone, asked for together (one browser prompt) when both are needed. */
   const ensureDevices = async (wantCam: boolean, wantMic: boolean): Promise<boolean> => {
@@ -303,28 +393,8 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
         /* voiceIsolation is Chrome's stronger cleaner where the computer offers it (ignored elsewhere). */
         audio: m ? { ...(micId ? { deviceId: { exact: micId } } : {}), echoCancellation: true, noiseSuppression: true, ...(sup.isolate && prefs.isolate ? { voiceIsolation: true } : {}) } as MediaTrackConstraints : false,
       });
-      if (c) {
-        cam.current = new MediaStream(s.getVideoTracks());
-        attach(camVid.current, cam.current);
-        setFeed('cam', cam.current);
-        cam.current.getVideoTracks()[0]?.addEventListener('ended', () => {
-          setCamOn(false);
-          if (modeRef.current === 'cam' && (phaseRef.current === 'recording' || phaseRef.current === 'paused')) stop('The camera stopped (unplugged or taken by another app), so the recording stopped.');
-          else setNote('The camera stopped (unplugged or taken by another app).');
-        });
-        setCamOn(true);
-      }
-      if (m) {
-        micS.current = new MediaStream(s.getAudioTracks());
-        micS.current.getAudioTracks().forEach(t => { t.enabled = !micMuted; });
-        const ctx = audioCtx();
-        const an = ctx.createAnalyser();
-        an.fftSize = 512;
-        ctx.createMediaStreamSource(micS.current).connect(an);
-        meter.current = { an, buf: new Uint8Array(new ArrayBuffer(an.fftSize)) };
-        micS.current.getAudioTracks()[0]?.addEventListener('ended', () => { setMicOn(false); setNote('The microphone stopped (unplugged or taken by another app).'); });
-        setMicOn(true);
-      }
+      if (c) adoptCam(s);
+      if (m) adoptMic(s);
       refreshDevices();
       return true;
     } catch (e) {
@@ -403,11 +473,17 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
             brand: p.brand, logo: logoRef.current, level: level.current, now,
           });
           canvasTrack.current?.requestFrame();
+          const done = performance.now();
+          diag.current!.frame(done, done - now, face ? c.fx.shownAge : NaN, scr instanceof TrackFeed ? done - scr.at : NaN);
         }
         /* Noted after the frame is out, so the looks never delay it; only while recording, never paused. */
         if (!camOnly && (ph === 'recording' || ph === 'paused')) {
           const t = msNow() / 1000;
-          if (scr && ph === 'recording') plog.current.look(scr, now, t);
+          if (scr && ph === 'recording') {
+            const k = plog.current.looked, p0 = performance.now();
+            plog.current.look(scr, now, t);
+            if (plog.current.looked !== k) diag.current!.pointer.push(performance.now() - p0);
+          }
           layLog.current.note(t, modeRef.current === 'screen' ? 'screen' : p.layout, c.box, c.camBox, p.frame.shape, cv.width, cv.height);
         }
         /*
@@ -429,6 +505,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
         }
       }
     }
+    if (st.n % 15 === 0) diag.current!.feedCounts(now, camFeed.current?.count ?? null, screenFeed.current?.count ?? null);
     const mt = meter.current, el = meterEl.current;
     if (mt && el && st.n % 3 === 0) {
       mt.an.getByteTimeDomainData(mt.buf);
@@ -440,7 +517,85 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
       level.current = lv > level.current ? lv : level.current * 0.85 + lv * 0.15;
     }
   };
-  useEffect(() => startClock(prefs.fps, () => tick.current()), [prefs.fps]);
+  useEffect(() => {
+    diag.current!.target = prefs.fps;
+    return startClock(prefs.fps, () => tick.current(), () => diag.current!.dropped(performance.now()));
+  }, [prefs.fps]);
+
+  /*
+   * How long the camera takes to hand a frame to this page (its capture time
+   * to its arrival — requestVideoFrameCallback's `captureTime`, where the
+   * browser reports it). The sound's delay (begin) is built from it.
+   */
+  useEffect(() => {
+    const v = camVid.current;
+    if (!camOn || !v || typeof v.requestVideoFrameCallback !== 'function') return;
+    let id = 0, stopped = false;
+    const cb = (_now: number, md: VideoFrameCallbackMetadata) => {
+      if (stopped) return;
+      const ct = md.captureTime;
+      if (typeof ct === 'number' && ct > 0) {
+        const lat = md.presentationTime - ct;
+        if (lat >= 0 && lat < 1000) camLatency.current = camLatency.current === null ? lat : camLatency.current * 0.9 + lat * 0.1;
+      }
+      id = v.requestVideoFrameCallback(cb);
+    };
+    id = v.requestVideoFrameCallback(cb);
+    return () => { stopped = true; v.cancelVideoFrameCallback?.(id); };
+  }, [camOn]);
+
+  /* The diagnostics panel, on and off (Ctrl+Shift+D), remembered in this browser. */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd')) return;
+      e.preventDefault();
+      setDiagOn(v => { try { localStorage.setItem(DIAG_KEY, v ? '0' : '1'); } catch { /* private window */ } return !v; });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  const readDiag = useCallback((): { s: DiagSnapshot; c: DiagContext } => {
+    const now = performance.now(), p = prefsRef.current;
+    const set = (st: MediaStream | null) => {
+      const t = st?.getVideoTracks()[0];
+      if (!t || t.readyState !== 'live') return null;
+      const g = t.getSettings();
+      return { w: g.width ?? 0, h: g.height ?? 0, fps: g.frameRate ?? 0 };
+    };
+    /* Only while a background effect is in use: the finder stays loaded after one is switched off, and an idle finder is no bottleneck. */
+    const fxOn = p.fx.bg !== 'none' && comp.current.fx.state !== 'off';
+    const r = rec.current, cs = chunkStats.current, a = audio.current;
+    const c: DiagContext = {
+      fx: fxOn ? comp.current.fx.stats() : null,
+      rec: r ? { state: r.state, mime: r.mimeType || sup.mime?.mime || '', bitrate: cs.bitrate, chunks: cs.n, bytes: cs.bytes, chunkGapMax: cs.gapMax } : null,
+      audio: a && a.state !== 'closed' ? { sampleRate: a.sampleRate, baseLatency: a.baseLatency ?? 0, outputLatency: a.outputLatency ?? 0, delayMs: micDelayMs.current, camLatency: camLatency.current } : null,
+      cam: set(cam.current), scr: set(display.current),
+      out: { w: canvasRef.current?.width ?? 0, h: canvasRef.current?.height ?? 0 },
+      profile: profileOf(p) ?? 'custom',
+      cores: navigator.hardwareConcurrency || null, memory: (navigator as { deviceMemory?: number }).deviceMemory ?? null,
+    };
+    return { s: diag.current!.snapshot(now, c.fx, c.rec, c.cam?.fps ?? 0, c.scr ? p.fps : 0), c };
+  }, [sup.mime]);
+
+  /*
+   * Measured, not guessed from the number of cores: while the preview runs
+   * before a recording, a computer that cannot keep it smooth at these
+   * settings is told so (once), with the cure.
+   */
+  const advised = useRef(false);
+  useEffect(() => {
+    if (phase !== 'setup' || !camOn || advised.current) return;
+    let bad = 0;
+    const t = setInterval(() => {
+      const { s } = readDiag();
+      bad = s.bottleneck !== 'none' && s.bottleneck !== 'capture' ? bad + 1 : 0;
+      if (bad >= 3 && !advised.current) {
+        advised.current = true;
+        if (profileOf(prefsRef.current) !== 'performance') setNote(`This computer is struggling to keep the preview smooth at these settings — ${s.why} Choose Performance under “Smoothness and quality” for a smoother recording.`);
+      }
+    }, 2000);
+    return () => clearInterval(t);
+  }, [phase, camOn, readDiag]);
 
   /* ── Releasing everything ── */
   const closePip = () => {
@@ -453,6 +608,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     display.current = cam.current = micS.current = canvasStream.current = null;
     setFeed('screen', null); setFeed('cam', null);
     mixOut.current = null; meter.current = null; canvasTrack.current = null; dispSrc.current = null;
+    micDelay.current = scrDelay.current = micSrc.current = null;
     attach(screenVid.current, null); attach(camVid.current, null);
     setCamOn(false); setMicOn(false); setMicMuted(false); setCamHidden(false);
     closePip();
@@ -466,6 +622,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     upload.current?.abort();
     stopStreams(display.current, cam.current, micS.current, canvasStream.current, mixOut.current?.stream);
     screenFeed.current?.close(); camFeed.current?.close();
+    comp.current.fx.dispose(); diag.current?.dispose();
     if (audio.current && audio.current.state !== 'closed') void audio.current.close().catch(() => {});
     if (urlRef.current) URL.revokeObjectURL(urlRef.current);
     try { pipRef.current?.close(); } catch { /* gone */ }
@@ -491,7 +648,6 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     if (phase !== 'recording' && phase !== 'paused') return;
     const t = setInterval(() => {
       const ms = msNow();
-      setElapsed(ms);
       if (ms >= MAX_MS && phaseRef.current === 'recording') stop('Recordings stop at two hours. This one is kept below.');
       const st = stats.current, p = prefsRef.current;
       if (!st.warned && st.ticks > p.fps * 5 && st.late / st.ticks > 0.15) {
@@ -500,7 +656,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
       }
     }, 500);
     return () => clearInterval(t);
-  }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   /* ── Recording ── */
   const displayOptions = (): DisplayMediaStreamOptions => {
@@ -537,7 +693,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     const t = s?.getAudioTracks()[0];
     if (t && t.readyState === 'live' && mixOut.current && audio.current) {
       dispSrc.current = audio.current.createMediaStreamSource(new MediaStream([t]));
-      dispSrc.current.connect(mixOut.current);
+      dispSrc.current.connect(scrDelay.current ?? mixOut.current);
     }
   };
 
@@ -616,23 +772,53 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     if (!video || video.readyState !== 'live' || (mode === 'cam' && !live(cam.current))) { releaseCapture(); setPhase('setup'); setError('There was no picture to record — try again.'); return; }
     const micT = mic ? micS.current?.getAudioTracks()[0] : undefined;
     let sound: MediaStreamTrack | undefined;
-    if (mode !== 'cam' && (micT || sysAudio)) {
+    if (micT || (mode !== 'cam' && sysAudio)) {
+      /*
+       * The sound always goes through the mix now, camera-only too, for two
+       * reasons. A microphone unplugged mid-recording can be replaced (the
+       * recorder's own tracks are fixed once it starts). And the voice can
+       * wait for the picture: the recorded picture is the canvas, stamped
+       * when it is drawn — after the camera took the frame (its own delay,
+       * `camLatency`) and after it waited for the frame clock (`camAge`) —
+       * while the microphone is stamped almost as it hears. Recorded as it
+       * was, the voice led the lips by that sum, typically 40–120 ms. So the
+       * voice is delayed by what was measured during the preview and the
+       * countdown, less the mix's own delay, at most 200 ms; the screen's
+       * sound by the screen picture's age.
+       */
       const ctx = audioCtx();
+      const d = diag.current!;
       mixOut.current = ctx.createMediaStreamDestination();
-      if (micT?.readyState === 'live') ctx.createMediaStreamSource(new MediaStream([micT])).connect(mixOut.current);
+      const camIn = mode !== 'screen' && live(cam.current) && !camHiddenRef.current;
+      const lag = camIn ? (camLatency.current ?? 0) + d.camAge.avg() : d.scrAge.avg();
+      micDelayMs.current = Math.round(Math.min(200, Math.max(0, lag - (ctx.baseLatency || 0) * 1000)));
+      micDelay.current = ctx.createDelay(1);
+      micDelay.current.delayTime.value = micDelayMs.current / 1000;
+      micDelay.current.connect(mixOut.current);
+      scrDelay.current = ctx.createDelay(1);
+      scrDelay.current.delayTime.value = Math.min(200, d.scrAge.avg()) / 1000;
+      scrDelay.current.connect(mixOut.current);
+      if (micT?.readyState === 'live') { micSrc.current = ctx.createMediaStreamSource(new MediaStream([micT])); micSrc.current.connect(micDelay.current); }
       connectScreenSound(display.current);
       sound = mixOut.current.stream.getAudioTracks()[0];
-    } else sound = [micT, display.current?.getAudioTracks()[0]].find(t => t?.readyState === 'live');
+    } else sound = display.current?.getAudioTracks().find(t => t.readyState === 'live');
     const out = new MediaStream([video, ...(sound ? [sound] : [])]);
     const st = video.getSettings();
     const w = canvasRef.current?.width ?? st.width ?? 1280;
     const h = canvasRef.current?.height ?? st.height ?? 720;
     recSize.current = { w, h };
     let r: MediaRecorder;
-    try { r = new MediaRecorder(out, { mimeType: m.mime, videoBitsPerSecond: bitrateFor(w, h, prefs.fps, prefs.quality), audioBitsPerSecond: 128_000 }); }
+    const bitrate = bitrateFor(w, h, prefs.fps, prefs.quality);
+    try { r = new MediaRecorder(out, { mimeType: m.mime, videoBitsPerSecond: bitrate, audioBitsPerSecond: 128_000 }); }
     catch (e) { releaseCapture(); setPhase('setup'); setError(`This browser could not start recording (${(e as Error).message || 'MediaRecorder refused'}).`); return; }
     chunks.current = [];
-    r.ondataavailable = e => { if (e.data.size) chunks.current.push(e.data); };
+    chunkStats.current = { n: 0, bytes: 0, last: performance.now(), gapMax: 0, bitrate };
+    r.ondataavailable = e => {
+      const cs = chunkStats.current, at = performance.now();
+      if (phaseRef.current === 'recording') cs.gapMax = Math.max(cs.gapMax, at - cs.last);
+      cs.last = at;
+      if (e.data.size) { chunks.current.push(e.data); cs.n++; cs.bytes += e.data.size; }
+    };
     r.onerror = () => { setNote('The browser reported a recording error; what was recorded so far is kept.'); if (r.state !== 'inactive') r.stop(); };
     r.onstop = () => void finish();
     rec.current = r;
@@ -640,7 +826,6 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     stats.current = { last: 0, late: 0, ticks: 0, warned: false, n: 0 };
     plog.current.clear(); layLog.current.clear();
     meta.current = null; metaSent.current = '';
-    setElapsed(0);
     r.start(1000);
     setPhase('recording');
   };
@@ -649,7 +834,6 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     const r = rec.current;
     if (!r || r.state === 'inactive') return;
     if (pausedAt.current !== null) { pausedFor.current += performance.now() - pausedAt.current; pausedAt.current = null; }
-    setElapsed(msNow());
     if (why) setNote(why);
     setPhase('finishing');
     r.stop();
@@ -679,7 +863,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   const resume = () => {
     const r = rec.current;
     /* The screen may have changed while paused: the pointer log starts afresh rather than reading the difference as a click. */
-    if (r?.state === 'paused') { r.resume(); if (pausedAt.current !== null) pausedFor.current += performance.now() - pausedAt.current; pausedAt.current = null; plog.current.reset(); setPhase('recording'); }
+    if (r?.state === 'paused') { r.resume(); chunkStats.current.last = performance.now(); if (pausedAt.current !== null) pausedFor.current += performance.now() - pausedAt.current; pausedAt.current = null; plog.current.reset(); setPhase('recording'); }
   };
   const cancelStart = () => { run.current++; releaseCapture(); setPhase('setup'); };
 
@@ -920,7 +1104,8 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     const d = mode === 'cam' ? CAM_RES[prefs.camRes] : { width: RES[prefs.res], height: Math.round(RES[prefs.res] * 9 / 16) };
     return (bitrateFor(d.width, d.height, prefs.fps, prefs.quality) + 128_000) * 60 / 8;
   })();
-  const live2 = { phase, elapsed, count, micOn: mic && micOn, micMuted, camShown: mode === 'screen-cam' && camOn, camHidden, screen: mode !== 'cam', switching };
+  const activeProfile = profileOf(prefs);
+  const live2 = { phase, getMs: msNow, count, micOn: mic && micOn, micMuted, camShown: mode === 'screen-cam' && camOn, camHidden, screen: mode !== 'cam', switching };
   const actions = { pause, resume, stop: () => stop(), cancel: cancelStart, toggleMic, toggleCam, switchScreen: () => void switchScreen() };
 
   return (
@@ -930,7 +1115,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
           <h2 style={{ margin: 0, fontSize: 18, display: 'flex', alignItems: 'center', gap: 8 }}><MonitorPlay size={18} /> Screen Recorder</h2>
           {recordingNow && (
             <span className={`vs-rec-pill ${phase}`} data-testid="rec-state" data-state={phase} role="status">
-              <i /> {phase === 'paused' ? 'Paused' : 'Recording'} <b data-testid="rec-time">{msClock(elapsed)}</b>
+              <i /> {phase === 'paused' ? 'Paused' : 'Recording'} <b data-testid="rec-time"><Elapsed get={msNow} /></b>
             </span>
           )}
           <span className="vs-spacer" />
@@ -941,6 +1126,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
         {!blocked && !sup.display && <div className="vs-note warn" style={{ marginBottom: 10 }} data-testid="rec-no-screen"><Info size={16} /> <span>This browser cannot share its screen (most phones and tablets cannot). {sup.devices ? 'You can still record yourself with the camera.' : ''}</span></div>}
         {error && <div className="vs-note bad" role="alert" style={{ marginBottom: 10 }} data-testid="rec-error"><AlertCircle size={16} /> <span>{error}</span></div>}
         {note && <div className="vs-note warn" style={{ marginBottom: 10 }} data-testid="rec-note"><Info size={16} /> <span>{note}</span></div>}
+        {diagOn && <RecDiagPanel read={readDiag} />}
 
         <div className="vs-rec-grid">
           <div className="vs-rec-stage" data-noinvert="">
@@ -1308,6 +1494,11 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
 
                 {!capturing && (
                   <div className="vs-col" style={{ gap: 6 }} data-testid="rec-quality">
+                    <b className="vs-rec-h">Smoothness and quality</b>
+                    <div className="vs-chips" role="group" aria-label="Recording profile">
+                      {PROFILE_NAMES.map(k => <button key={k} type="button" className="vs-chip" aria-pressed={activeProfile === k} onClick={() => setPrefs(p => ({ ...p, ...PROFILES[k] }))} data-testid={`rec-profile-${k}`}>{PROFILE_LABEL[k]}</button>)}
+                    </div>
+                    <small className="vs-sub" style={{ margin: 0 }} data-testid="rec-profile-help">{activeProfile ? PROFILE_HELP[activeProfile] : 'Your own settings, below.'}</small>
                     <b className="vs-rec-h">Frame rate and quality</b>
                     <div className="vs-chips" role="group" aria-label="Frame rate">
                       {FPS.map(f => <button key={f} type="button" className="vs-chip" aria-pressed={prefs.fps === f} onClick={() => setPref('fps', f)} data-testid={`rec-fps-${f}`}>{f} fps</button>)}
@@ -1378,10 +1569,24 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
 const bar: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', height: '100vh', boxSizing: 'border-box', whiteSpace: 'nowrap' };
 const fbtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, height: 40, minWidth: 40, padding: '0 10px', border: 0, borderRadius: 10, background: '#2a2c38', color: '#fff', cursor: 'pointer', font: 'inherit' };
 
-interface LiveState { phase: Phase; elapsed: number; count: number; micOn: boolean; micMuted: boolean; camShown: boolean; camHidden: boolean; screen: boolean; switching: boolean }
+interface LiveState { phase: Phase; getMs: () => number; count: number; micOn: boolean; micMuted: boolean; camShown: boolean; camHidden: boolean; screen: boolean; switching: boolean }
 interface LiveActions { pause(): void; resume(): void; stop(): void; cancel(): void; toggleMic(): void; toggleCam(): void; switchScreen(): void }
 
-/* A component of its own, not one made inside the bar: the bar re-renders twice a second and a remade button loses a click pressed across it. */
+/**
+ * The recording's clock, on its own: it re-renders itself twice a second and
+ * nothing else. It used to be the recorder's state, so the whole recorder —
+ * every settings panel — re-rendered twice a second on the thread that draws
+ * every frame, a regular beat of work the frame clock queued behind.
+ */
+function Elapsed({ get }: { get: () => number }) {
+  const ref = useRef(get);
+  useEffect(() => { ref.current = get; });
+  const [v, setV] = useState(() => get());
+  useEffect(() => { const t = setInterval(() => setV(ref.current()), 500); return () => clearInterval(t); }, []);
+  return <>{msClock(v)}</>;
+}
+
+/* A component of its own, not one made inside the bar: a remade button loses a click pressed across it. */
 function B({ on, label, onClick, children, style }: { on?: boolean; label: string; onClick: () => void; children: ReactNode; style?: CSSProperties }) {
   return <button type="button" title={label} aria-label={label} aria-pressed={on} onClick={onClick} style={{ ...fbtn, ...(on ? { background: '#f59e0b', color: '#111' } : null), ...style }}>{children}</button>;
 }
@@ -1392,7 +1597,7 @@ function FloatingControls({ s, a }: { s: LiveState; a: LiveActions }) {
     <div style={bar}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, minWidth: 74, fontVariantNumeric: 'tabular-nums' }} role="status">
         <i style={{ width: 10, height: 10, borderRadius: '50%', background: s.phase === 'recording' ? '#ef4444' : '#f59e0b' }} />
-        {s.phase === 'countdown' ? `In ${s.count}…` : going ? msClock(s.elapsed) : s.phase === 'finishing' ? 'Saving…' : 'Ready'}
+        {s.phase === 'countdown' ? `In ${s.count}…` : going ? <Elapsed get={s.getMs} /> : s.phase === 'finishing' ? 'Saving…' : 'Ready'}
       </span>
       {s.phase === 'countdown' && <B label="Cancel" onClick={a.cancel}><X size={16} /> Cancel</B>}
       {going && (

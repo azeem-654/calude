@@ -1311,3 +1311,13 @@ html[data-theme="dark"] .vs canvas.vse-layout { filter: none; }
 .td-card, .td-bubble { position: absolute; overflow: hidden; pointer-events: none; }
 .td-bubble { border-radius: 50%; }
 @media (max-width: 900px) { .ts, .ts.tall { grid-template-columns: minmax(0, 1fr); } .ts.tall .ts-big { max-width: 300px; margin: 0 auto; } }
+
+/* The recorder's diagnostics panel (RecDiagPanel.tsx) — support and development only, off unless asked for. */
+.vs-rec-diag { margin: 0 0 10px; padding: 8px 10px; border-radius: 8px; background: #0b0c10; color: #c9ccd6; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+.vs-rec-diag b { color: #fff; }
+.vs-rec-diag small { color: #8b8fa3; }
+.vs-rec-diag dl { margin: 6px 0 0; display: grid; gap: 2px; }
+.vs-rec-diag dl > div { display: grid; grid-template-columns: minmax(110px, 190px) 1fr; gap: 8px; }
+.vs-rec-diag dt { color: #8b8fa3; }
+.vs-rec-diag dd { margin: 0; min-width: 0; }
+@media (max-width: 520px) { .vs-rec-diag dl > div { grid-template-columns: 1fr; gap: 0; } }
