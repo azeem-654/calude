@@ -161,6 +161,15 @@ for (const t of settingsTabs) {
   ok(`Settings → ${t}: ${n} validate button(s) pressed, no dead ends`, de.length === 0, JSON.stringify(de));
 }
 
+/* ── 2a · Email on customers' domains (owner): a bad account id and a missing token name their boxes ── */
+await resetDeadEnds();
+await p.goto(`${B}/settings?tab=platform`, { waitUntil: 'networkidle' });
+await settle();
+await p.locator('[data-testid="hosted-mail-settings"] [data-field="hosted.cfAccountId"]').fill('not-an-id');
+await p.locator('[data-testid="hosted-mail-settings"]').getByRole('button', { name: /Save and check/ }).click();
+await settle();
+ok('Platform services: email on customers\' domains refuses at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
+
 /* ── 2b · Sign-ups & trials: the booking link and a message's button ──
    Both refuse anything that is not https by naming their box; both boxes must
    be on screen when they do. */

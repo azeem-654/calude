@@ -141,6 +141,17 @@ check("B's bulk import of A's address makes B's own mailbox and leaves A's untou
   aBox.ok && bBulk.ok && bBulk.data.results?.[0]?.updated === false && bBulk.data.results?.[0]?.id !== aBox.data.id
     && aAfter.data.mailboxes?.find(m => m.id === aBox.data.id)?.smtp.host === '127.0.0.1' && aAfter.data.mailboxes?.length === 1,
   JSON.stringify([bBulk.data.results?.[0], aAfter.data.mailboxes?.length]).slice(0, 300));
+/* Email on the customer's own domain: A's workspace by name, and A's ids from B's own workspace. */
+for (const action of ['status', 'add_domain', 'add_address', 'refresh', 'remove_domain', 'remove_address']) {
+  const r = await api('hosted-mail.php', { token: B.token, accountId: A.acct, action, domain: `a-${run}.example`, domainId: 'hd-x', addressId: 'ha-x', local: 'x' });
+  check(`B cannot use hosted-mail ${action} in A's workspace`, !r.ok || r.data.success === false, JSON.stringify(r.data).slice(0, 120));
+}
+for (const action of ['refresh', 'remove_domain', 'add_address', 'remove_address']) {
+  const r = await api('hosted-mail.php', { token: B.token, accountId: B.acct, action, domainId: 'hd-of-a', addressId: 'ha-of-a', local: 'x' });
+  check(`B's hosted-mail ${action} with an id not in its workspace finds nothing`, r.data.success === false && /not in this workspace|not switched on/.test(r.data.error ?? ''), JSON.stringify(r.data).slice(0, 120));
+}
+const hmCfg = await api('hosted-mail.php', { token: B.token, action: 'save_config', cfToken: 'x', cfAccountId: 'a'.repeat(32) });
+check('a customer cannot set the platform\'s hosted-mail keys', hmCfg.data.code === 'not_owner', JSON.stringify(hmCfg.data).slice(0, 120));
 const bTest = await api('mailbox.php', { token: B.token, accountId: B.acct, action: 'test_outgoing', id: aBox.data.id });
 check("B cannot test A's mailbox by id from its own workspace", !bTest.ok && /not in this workspace|Save your mail server/.test(bTest.data.error ?? ''), JSON.stringify(bTest.data).slice(0, 160));
 const bAct = await api('mailbox.php', { token: B.token, accountId: B.acct, action: 'activate_all', ids: [aBox.data.id] });

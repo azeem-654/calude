@@ -71,6 +71,10 @@ export interface Env {
    * the dashboard says how to add them rather than showing numbers.
    */
   CF_ANALYTICS_TOKEN?: string;
+  /** Tests only: stand-ins for Cloudflare, Resend and Brevo in lib/hostedMail.ts. */
+  HOSTED_CF_BASE?: string;
+  HOSTED_RESEND_BASE?: string;
+  HOSTED_BREVO_BASE?: string;
   CF_ACCOUNT_ID?: string;
   /**
    * Whether a stranger may make themselves an account on this deployment.

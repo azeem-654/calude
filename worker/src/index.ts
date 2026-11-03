@@ -16,6 +16,8 @@
 import { withCookieToken, withSessionCookie } from './lib/session';
 import { useWrapKey } from './lib/db';
 import { handleAi } from './routes/ai';
+import { handleHostedMail } from './routes/hostedMail';
+import { receive as receiveHostedMail } from './lib/hostedMail';
 import { handleSecurity } from './routes/security';
 import { corsHeaders, json, preflight } from './lib/http';
 import type { Env } from './lib/db';
@@ -114,6 +116,7 @@ const ROUTES: Record<string, Handler> = {
   '/api/system-mail.php': handleSystemMail,
   /* The owner's keys for everybody, in one read. Owner only. */
   '/api/platform.php': handlePlatform,
+  '/api/hosted-mail.php': handleHostedMail,
   '/api/allowances.php': handleAllowances,
   '/api/cloud.php': handleCloud,
   '/api/aikeys.php': handleAiKeys,
@@ -383,6 +386,19 @@ export default {
     if (gate && 'stop' in gate) return gate.stop;
     const res = await serve(req, env, ctx, url);
     return gate ? markGated(res, gate.setCookie) : res;
+  },
+  /**
+   * Mail for a customer's own domain, from Cloudflare Email Routing's
+   * catch-all rule (lib/hostedMail.ts). An address that does not exist is
+   * refused, so the sender gets a bounce; a failure here is refused too
+   * rather than silently dropped.
+   */
+  async email(message: ForwardableEmailMessage, env: Env): Promise<void> {
+    await useWrapKey(env);
+    try { await receiveHostedMail(message, env); } catch (e) {
+      console.log(`[email] ${String(e)}`);
+      message.setReject('This mailbox could not take the message just now — please try again later.');
+    }
   },
   /**
    * The cron tick.

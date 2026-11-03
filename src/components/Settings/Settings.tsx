@@ -21,6 +21,7 @@ import ProfilePhoto from './ProfilePhoto';
 import { validate } from '../../services/validationService';
 import type { ValidationResult } from '../../services/validationService';
 import ValidationPopup, { ValidationStatusIndicator } from '../UI/ValidationPopup';
+import HostedMailPanel from './HostedMailPanel';
 import MailboxesPanel from './MailboxesPanel';
 import OperatorPayments from './OperatorPayments';
 import { cachedPrimary } from '../../services/mailboxStore';
@@ -408,6 +409,9 @@ function EmailSMSTab() {
       )}
 
       {card(<MailboxesPanel />)}
+
+      {/* Addresses on the customer's own domain, hosted here (worker/src/lib/hostedMail.ts). */}
+      {card(<HostedMailPanel />)}
 
       {/* Mailbox Warmup */}
       <MailboxWarmupCard />

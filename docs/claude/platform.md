@@ -80,6 +80,32 @@ than retry a wrong password into a lockout; an unreachable server keeps its
 stamp and records the error; a success clears it. Validate or Check and turn
 on brings a skipped mailbox back.
 
+## Email on the customer's own domain — hosted here
+
+`lib/hostedMail.ts`, `/api/hosted-mail.php` (`routes/hostedMail.ts`),
+migration 0083, Settings → Email & SMS → **Your own domain**
+(`HostedMailPanel.tsx`); the owner's switch is **Email on customers'
+domains** in Platform services (`HostedMailSettings.tsx`: a Cloudflare token —
+Zone Edit, DNS Edit, Email Routing Rules Edit, Zone Settings Edit — the
+account id, the Worker name, and a Resend or Brevo key; stored encrypted in
+`crm_install_providers` kind `hosted_mail`, never returned). A domain becomes
+a zone on the operator's account (`jump_start`, so existing records come
+across); the customer changes the nameservers — the only route, and the proof
+it is theirs. "Check again" (`refreshDomain`) then turns on Email Routing with
+one catch-all to the Worker (`email()` in index.ts → `receive`: unknown
+address refused, 600/h per address, 25 MB, text in `crm_hosted_messages`,
+raw `.eml` in R2 under `mail/`) and adds the domain at the sending provider,
+writing its records into the zone and asking it to verify. Each address is
+also a `crm_mailbox_accounts` row with `provider = 'hosted'`, no key, and
+`imap_host = HOSTED_HOST`: `hydrate` hands it the platform key only for a
+From address on a verified domain of the same workspace (`sendCredsFor`), so
+one customer can never send as another's domain; `imap-fetch.php` and the
+reply cron read it from D1 (`fetchHosted`); the mailbox form, delete, Validate
+and "Check and turn on all" leave it to its domain (`HOSTED_EDIT`);
+`stampMailboxes` puts the domain's state on its rows. No IMAP — mail lives in
+the app. `npm run test:hostedmail` (Cloudflare and Resend stand-ins, a real
+message through wrangler's local email handler, other-workspace refusals).
+
 ## Platform services — the owner's keys for everybody, in one place
 
 Settings → **Platform services** (`components/Settings/PlatformServices.tsx`,

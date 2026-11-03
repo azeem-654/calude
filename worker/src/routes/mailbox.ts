@@ -30,6 +30,7 @@ import { sendsViaApi } from '../lib/deliver';
 import { aiBudget, askGeminiParts, extractJson, loadAiKey } from '../lib/ai';
 import { rateLimit } from '../lib/rateLimit';
 import { lookupDomain, lookupDomainOk, lookupSummary } from '../lib/mailLookup';
+import { sendCredsFor } from '../lib/hostedMail';
 import {
   KNOWN_PROVIDERS, SCREENSHOT_PROMPT, domainOf, knownAsFound, providerForDomain, providerForMx, recordsFromAi,
   type AiMailboxes, type FoundSettings,
@@ -52,6 +53,13 @@ export interface Mailbox {
    * `updatedAt` guards that write against an edit made while it ran.
    */
   incomingCheck?: { verifiedAt: string | null; lastError: string; updatedAt: string };
+  /**
+   * An address on the workspace's own domain, hosted here (lib/hostedMail.ts):
+   * it receives into crm_hosted_messages, and sends with the platform's key
+   * only once its domain is verified — `hostedWhy` says why not, otherwise.
+   */
+  hosted?: boolean;
+  hostedWhy?: string;
 }
 
 interface Row {
@@ -73,12 +81,17 @@ const encOf = (v: unknown, fallback: Encryption = 'tls'): Encryption =>
 
 const HOST_OK = /^[a-z0-9.\-]+$/i;
 
+/** Hosted addresses are managed with their domain, not on the mailbox form. */
+const HOSTED_EDIT = 'This address is hosted on your own domain — change or remove it under Email & SMS → Your own domain.';
 const TABLE = 'crm_mailbox_accounts';
 
 /** Turn a row into the decrypted, ready-to-use shape. */
 async function hydrate(env: Env, row: Row): Promise<Mailbox> {
   const key = await installSecret(env.DB, SECRET_KEY);
+  /* A hosted address never stores a key: the platform's is handed over here, only for its own verified domain. */
+  const hosted = row.provider === 'hosted' ? await sendCredsFor(env, row.account_id, row.from_email) : null;
   return {
+    ...(hosted ? { hosted: true, hostedWhy: 'why' in hosted ? hosted.why : '' } : {}),
     id: row.id,
     accountId: row.account_id,
     label: row.label,
@@ -93,7 +106,7 @@ async function hydrate(env: Env, row: Row): Promise<Mailbox> {
       username: row.imap_username, password: await decryptSecret(key, row.imap_password),
       folder: row.imap_folder || 'INBOX',
     },
-    provider: {
+    provider: hosted ? { name: 'key' in hosted ? hosted.name : 'hosted', key: 'key' in hosted ? hosted.key : '', secret: '', domain: '', url: '' } : {
       name: row.provider || 'smtp',
       key: await decryptSecret(key, row.provider_key),
       secret: await decryptSecret(key, row.provider_secret),
@@ -193,6 +206,12 @@ type SideState = 'connected' | 'warning' | 'failed' | 'untested' | 'not_set_up' 
  */
 function sideStatus(direction: 'outgoing' | 'incoming', row: Row): { state: SideState; problem?: { summary: string; fix: string } } {
   const out = direction === 'outgoing';
+  /* Hosted on the workspace's own domain: the stamps and words are its domain's (lib/hostedMail.ts stampMailboxes) — waiting, not broken. */
+  if (row.provider === 'hosted') {
+    const verified = out ? row.out_verified_at : row.in_verified_at;
+    const err = String((out ? row.out_last_error : row.in_last_error) ?? '');
+    return verified ? { state: 'connected' } : { state: 'not_set_up', ...(err ? { problem: { summary: err, fix: 'Email & SMS → Your own domain → Check again.' } } : {}) };
+  }
   const viaApi = !!row.provider && row.provider !== 'smtp';
   const verified = out ? row.out_verified_at : row.in_verified_at;
   const err = String((out ? row.out_last_error : row.in_last_error) ?? '');
@@ -303,6 +322,7 @@ async function saveOne(env: Env, accountId: string, key: string, d: SaveBody): P
         .bind(accountId, wantedId).first<Row>()
     : null;
   if (wantedId && !existing) return { ok: false, error: 'That mailbox is not in this workspace.' };
+  if (existing?.provider === 'hosted') return { ok: false, error: HOSTED_EDIT };
 
   /**
    * An omitted password means "leave the one you have", not "clear it".
@@ -456,6 +476,8 @@ export async function handleMailbox(req: Request, env: Env): Promise<Response> {
   if (d.action === 'delete') {
     const id = String(d.id ?? '').trim();
     if (!id) return fail('Which mailbox?');
+    const isHosted = await env.DB.prepare(`SELECT 1 AS n FROM ${TABLE} WHERE account_id = ? AND id = ? AND provider = 'hosted'`).bind(accountId, id).first();
+    if (isHosted) return fail(HOSTED_EDIT);
     await env.DB.prepare(`DELETE FROM ${TABLE} WHERE account_id = ? AND id = ?`).bind(accountId, id).run();
     /* Deleting the primary must not leave a workspace unable to send. The
        oldest survivor takes over rather than nothing doing so. */
@@ -506,6 +528,12 @@ export async function handleMailbox(req: Request, env: Env): Promise<Response> {
     if (!mb) return fail('Save your mail server details first, then validate them.');
 
     const incoming = INCOMING.has(d.action ?? '');
+    /* A hosted address has no server to log in to: its state is its domain's (refreshed by "Check again" there). */
+    if (mb.hosted) {
+      const row = await env.DB.prepare(`SELECT in_last_error, out_last_error FROM ${TABLE} WHERE id = ?`).bind(mb.id).first<{ in_last_error: string; out_last_error: string }>();
+      const why = (incoming ? row?.in_last_error : row?.out_last_error) || (incoming ? '' : mb.hostedWhy) || '';
+      return json({ success: !why, direction: incoming ? 'incoming' : 'outgoing', message: why || (incoming ? 'Receiving on your own domain is on.' : 'Sending from your own domain is verified.'), error: why || undefined, mailboxes: await listAll() });
+    }
     const p = incoming ? await proveIncoming(env, mb) : await proveOutgoing(env, mb);
     /* A precondition (no host yet) is a refusal about a box, not a test result. */
     if (p.refused) return fail(p.message, 200, { field: p.field });
@@ -934,6 +962,12 @@ async function activateOne(env: Env, accountId: string, key: string, id: string)
   const read = () => env.DB.prepare(`SELECT * FROM ${TABLE} WHERE account_id = ? AND id = ?`).bind(accountId, id).first<Row>();
   let row = await read();
   if (!row) return { id, ok: false, status: 'failed', message: 'That mailbox is not in this workspace.' };
+  /* Hosted on the workspace's own domain: nothing to fill in or log in to; its domain's state is the answer. */
+  if (row.provider === 'hosted') {
+    const inOk = !!row.in_verified_at, outOk = !!row.out_verified_at;
+    return { id, email: row.from_email, label: row.label, ok: inOk && outOk, status: inOk && outOk ? 'connected' : inOk || outOk ? 'partial' : 'failed',
+      message: [row.in_last_error, row.out_last_error].filter(Boolean).join(' ') || 'Hosted on your own domain.', filled: [] };
+  }
   let mb = await hydrate(env, row);
   const email = addressOf(mb);
   const base = { id, email, label: row.label };

@@ -33,6 +33,7 @@ import { PROVIDERS as VOICE_PROVIDERS } from '../lib/voice';
 import { systemMailStatus } from './systemMail';
 import { loadSettings as loadStrategySettings } from './strategyCall';
 import { usageReport } from '../lib/usageReport';
+import { hostedConfigView } from '../lib/hostedMail';
 import { saveCaps, saveFreeLimits } from '../lib/aiUsage';
 
 interface Req { token?: string; action?: string; caps?: unknown; limits?: unknown }
@@ -359,6 +360,17 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
       detail: strategy?.enabled
         ? `Taking bookings at /book/strategy-call, ${strategy.durations.join(' or ')} minutes, in ${strategy.timezone}.`
         : 'Switched off: visitors who press a booking button are told bookings are not open and offered the written enquiry form.',
+      checkedAt: null, lastError: '',
+      where: { label: 'below' },
+    });
+    const hosted = await hostedConfigView(env).catch(() => null);
+    services.push({
+      id: 'hosted_mail', name: 'Email on customers\' domains', optional: true,
+      powers: 'Customers receiving and sending as you@theirdomain inside the app (Email & SMS → Your own domain)',
+      state: hosted?.configured ? 'unchecked' : 'off',
+      detail: hosted?.configured
+        ? `Cloudflare account set; receiving into the Worker "${hosted.workerName}". ${hosted.hasSendKey ? `Sending through ${hosted.sendProvider === 'brevo' ? 'Brevo' : 'Resend'}.` : 'No sending key yet — customers can receive but not send.'}`
+        : 'Not set: customers are told it is not switched on yet.',
       checkedAt: null, lastError: '',
       where: { label: 'below' },
     });

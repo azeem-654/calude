@@ -1067,6 +1067,27 @@ The free-tier figures shown are Google's and OpenRouter's published ones; if
 AI Studio shows different limits for your project, correct them under
 "Free-tier figures used above".
 
+### 31. Email on customers' own domains — added 2026-11-03
+
+Customers can now get you@theirbusiness.com that receives into the app's
+inbox and sends from it (Settings → Email & SMS → Your own domain). It is off
+until you switch it on in **Settings → Platform services → Email on
+customers' domains**:
+
+1. Cloudflare → My Profile → API Tokens → Create Token → Custom token with
+   **Account Settings: Read**, **Zone: Edit**, **DNS: Edit**, **Email Routing
+   Rules: Edit** and **Zone Settings: Edit**, for all zones in your account.
+2. Paste it with your Cloudflare account ID; the Worker name is `crmpro` for
+   the live site (`crmpro-staging` on the testing site — set it there too if
+   you want to test it there, with a separate domain).
+3. For sending, paste a **Resend** API key (free plan: 1 domain, 100 emails a
+   day — Pro allows more domains) or a **Brevo** API key (300 a day free).
+   Without it, customers can receive but not send.
+
+Each customer domain becomes a free zone on your Cloudflare account, and the
+customer must change their domain's nameservers to the two shown. Mail lives
+in the app only (no IMAP for phone mail apps).
+
 ## Done
 
 - **Master password restored** (2026-09-09) — still needs changing, see 1.

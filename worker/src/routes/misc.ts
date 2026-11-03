@@ -13,6 +13,7 @@
 import { body, fail, headerSafe, json, ok } from '../lib/http';
 import { canAccess, dataGet, dataPut, hasAnyUser, requireSessionForSocket, denyForeignWorkspace, storageWorkspace, RESERVED_AGENCY, userFromToken, type Env } from '../lib/db';
 import { imapFetch } from '../lib/imap';
+import { fetchHosted } from '../lib/hostedMail';
 import { loadMailbox, loadMailboxById, noteIncomingSync, type Mailbox } from './mailbox';
 import { smtpVerify } from '../lib/smtp';
 import { encryptSecret } from '../lib/crypto';
@@ -71,6 +72,8 @@ export async function handleImapFetch(req: Request, env: Env): Promise<Response>
   if (!creds.host || !creds.username) return fail('Mailbox host and username are required.');
   if (!/^[a-z0-9.\-]+$/i.test(creds.host)) return fail(`"${creds.host}" is not a valid mailbox host.`);
 
+  /* An address on the workspace's own domain, hosted here: its mail is in D1, not behind IMAP. */
+  if (saved?.hosted) return json({ success: true, ...(await fetchHosted(env, saved.accountId, saved.id, Number(d.limit) || 20)) });
   const r = await imapFetch(creds, Number(d.limit) || 20);
   /* The inbox page polls every mailbox; a failure here is the first sign one has
      stopped working, so the mailbox list should say so too. */

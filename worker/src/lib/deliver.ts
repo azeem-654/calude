@@ -35,6 +35,7 @@ export function canSend(mb: Mailbox | null | undefined): mb is Mailbox {
 /** Why not, in the words of the settings screen that fixes it. */
 export function cannotSendReason(mb: Mailbox | null | undefined): string {
   if (!mb) return 'No mailbox is connected, so nothing could be sent.';
+  if (mb.hosted) return mb.hostedWhy || 'Sending from your own domain is not ready yet.';
   if (sendsViaApi(mb)) return `The ${providerLabel(mb.provider.name)} API key for this mailbox is missing or could not be read. Enter it again in Settings → Email & SMS.`;
   if (!mb.smtp.host) return 'This mailbox has no outgoing mail server set. Add one in Settings → Email & SMS.';
   return 'The saved mailbox password could not be read back. Enter it again in Settings → Email & SMS.';
@@ -61,4 +62,5 @@ export async function deliver(mb: Mailbox, msg: MessageInput): Promise<Delivered
  * pick which workspaces a tick visits. It was `smtp_host != ''` in each of
  * them, which left every provider mailbox out of every run.
  */
-export const CAN_SEND_SQL = "(smtp_host != '' OR (COALESCE(provider, '') NOT IN ('', 'smtp') AND COALESCE(provider_key, '') != ''))";
+/* A hosted address (provider 'hosted') stores no key — the platform's is handed over at send time — so it counts once its domain's sending is verified. */
+export const CAN_SEND_SQL = "(smtp_host != '' OR (COALESCE(provider, '') NOT IN ('', 'smtp', 'hosted') AND COALESCE(provider_key, '') != '') OR (provider = 'hosted' AND out_verified_at IS NOT NULL))";
