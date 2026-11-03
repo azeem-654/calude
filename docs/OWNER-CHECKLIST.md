@@ -1047,46 +1047,30 @@ phones.
 `npm run test:livehelp` drives two real browsers through a whole session
 (needs `wrangler dev`).
 
-### 30. See Cloudflare usage on the dashboard — added 2026-11-03
+### 30. Cloudflare usage on the dashboard — DONE 2026-11-03
 
-Settings → Platform services now opens with **AI & cloud usage**: every AI
-request counted against Gemini's and OpenRouter's free daily allowances,
-which model each module uses, the busiest customer workspaces with caps you
-can set, and your Openprovider balance. The Cloudflare lines need two secrets
-(until then the dashboard says so instead of showing numbers):
-
-1. Cloudflare → My Profile → API Tokens → Create token → Custom: permission
-   **Account → Account Analytics → Read**, for your account only.
-2. Cloudflare → Workers & Pages → `crmpro` (and `crmpro-staging`) → Settings →
-   Variables and Secrets: add `CF_ANALYTICS_TOKEN` (the token) and
-   `CF_ACCOUNT_ID` (the account ID from the Workers overview page).
-3. For the Openprovider balance, make sure your **reseller ID** is filled in
-   under Settings → Domains.
-
-The free-tier figures shown are Google's and OpenRouter's published ones; if
-AI Studio shows different limits for your project, correct them under
-"Free-tier figures used above".
+Settings → Platform services opens with **AI & cloud usage**. The Cloudflare
+lines read a read-only token ("Protected Central — usage dashboard", Account
+Analytics: Read) set as the Worker secrets `CF_ANALYTICS_TOKEN` and
+`CF_ACCOUNT_ID` on `crmpro` and `crmpro-staging`. Still yours: for the
+Openprovider balance, fill in your **reseller ID** under Settings → Domains.
 
 ### 31. Email on customers' own domains — added 2026-11-03
 
-Customers can now get you@theirbusiness.com that receives into the app's
-inbox and sends from it (Settings → Email & SMS → Your own domain). It is off
-until you switch it on in **Settings → Platform services → Email on
-customers' domains**:
+Cloudflare side **done**: a limited token ("Protected Central — email on
+customers' domains": Zone Edit/Read, DNS Edit, Email Routing Rules Edit,
+Zone Settings Edit on all zones) is the Worker secret `HOSTED_MAIL_CF_TOKEN`
+on both Workers, with `HOSTED_MAIL_WORKER` naming each. Customers can already
+add a domain and receive mail.
 
-1. Cloudflare → My Profile → API Tokens → Create Token → Custom token with
-   **Account Settings: Read**, **Zone: Edit**, **DNS: Edit**, **Email Routing
-   Rules: Edit** and **Zone Settings: Edit**, for all zones in your account.
-2. Paste it with your Cloudflare account ID; the Worker name is `crmpro` for
-   the live site (`crmpro-staging` on the testing site — set it there too if
-   you want to test it there, with a separate domain).
-3. For sending, paste a **Resend** API key (free plan: 1 domain, 100 emails a
-   day — Pro allows more domains) or a **Brevo** API key (300 a day free).
-   Without it, customers can receive but not send.
+**Yours — sending:** paste a **Resend** API key (free: 1 domain, 100 emails a
+day; Pro allows more domains) or a **Brevo** API key (300 a day free) in
+Settings → Platform services → Email on customers' domains → Save and check.
+Until then customers receive but cannot send from their domain.
 
-Each customer domain becomes a free zone on your Cloudflare account, and the
-customer must change their domain's nameservers to the two shown. Mail lives
-in the app only (no IMAP for phone mail apps).
+Each customer domain becomes a free zone on your Cloudflare account; the
+customer changes their nameservers to the two shown. Mail lives in the app
+only (no IMAP for phone mail apps).
 
 ## Done
 
