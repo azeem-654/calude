@@ -361,6 +361,69 @@ export is a canvas recording; Video Studio is the real one.
   duplicate frames 7 → 0 (0 in every scenario), script heap flat over 120 s.
   Recorded frame rate unchanged (~11–18 fps there — software VP8 and a
   software canvas are the limit in that container, not the pipeline).
+- **Recording engine, second pass (2026-11, "my hand moves before the
+  picture does").** The first pass's fixes stay. What was left, measured: the
+  preview *is* the composite canvas, and it was drawn only on the frame
+  clock, so (1) every camera frame waited for the next tick — 13 ms on
+  average for the camera alone, 20 ms with a screen — and the camera's 30 a
+  second beating against the clock's 30 showed as a frame shown twice and
+  the next never, every few seconds (8–30 % of camera frames with a screen
+  shared); (2) with a background effect, Balanced paired each frame with its
+  outline whenever the finder answered within ~41 ms, so on a computer
+  without a fast graphics chip the camera ran 40–55 ms behind on that alone
+  (picture 63–90 ms old when drawn); (3) a computer that needed more than a
+  frame to draw (layout changes, a big camera box with blur) drew back to
+  back and starved the page, so the camera's own frames sat unread — up to
+  1.6 s old. Now: **frames are drawn as they arrive** (`frameClock.ts`
+  `leadOf`/`drawNow`): the camera (or, while paired, the outline's answer,
+  `CameraFx.onPair`; or the screen when there is no camera) draws the
+  moment its frame is in; the worker clock is the heartbeat (draws only after
+  1.25 frames without one) and still leads where the camera cannot pace the
+  rate (a 30 fps camera in a 50/60 fps recording) and where frames come
+  from an element (Firefox, Safari — unchanged there); never more than four
+  fifths of the page on drawing (`COST_SHARE`, from the measured cost).
+  **Balanced pairs only while the answer is quick** (`FX_TUNING.pairWithin`
+  0.6 of a frame / `pairFloor` 18 ms, 15 % hysteresis; Quality keeps 1.25 /
+  40 ms; Performance never). Unpaired, the camera frame is **copied once**
+  at its box's size and every pass of the look/background reads the copy
+  (each pass read the frame itself — a colour conversion of the whole
+  picture three or four times a frame). **Easing** (`EASE_RATE`): six
+  seconds of the diagnostics finding the page/drawing/finder behind → the
+  finder looks ≤ 15 (then ≤ 8) a second and stops pairing; thirty seconds
+  of keeping up → back a step; said in a note each time; nothing the
+  person chose changes. The screen's hidden `<video>` is let go once its
+  frames are read from the track (it was a second consumer of every screen
+  frame). Diagnostics add what paced the drawing, camera frames shown /
+  shown twice / never shown, drawn→painted (rAF, only while the panel is
+  open), a camera→preview estimate from those parts (labelled: the camera's
+  exposure and the display are not reported by any browser), the finder's
+  easing, and whether the browser calls the encoder power-efficient
+  (`mediaCapabilities.encodingInfo`, `type: 'record'`). **Not adopted, on
+  purpose:** WebCodecs (the preview never waits for the encoder —
+  MediaRecorder encodes off the page and already picks hardware H.264 first;
+  WebCodecs would add a muxer dependency and its own queue for no preview
+  gain; the measured stalls were drawing, not encoding); compositing in a
+  worker / OffscreenCanvas (long tasks while recording fell to ~0–1 once
+  drawing stopped saturating the page, and the compositor's sprites,
+  pointer log and drag boxes all live here — a large move for what is now
+  left); WebGL/WebGPU (the 2D canvas is already on the graphics chip where
+  there is one; the cost that mattered was repeat conversions, removed);
+  `desynchronized` canvases (can tear; not testable without real displays).
+  Measured in this container (4 cores, no GPU; `node
+  test/recorderBench.e2e.mjs app`, same script, old and new builds back to
+  back), camera picture age when drawn, average (p95): camera only 13 → 0.1
+  ms; + blur 46 (77) → 2 (5); + screen 20 (51) → 1.6 (3), camera frames
+  repeated/skipped 8/17 % → 3.5/6 %; + screen + blur 63 (108) → 11 (57); +
+  screen + own picture 60 (125) → 7 (49); 60 s long 70 (136) → 11 (57);
+  layout every 2 s 82 (147) → 21 (86), long tasks 76 → 28. At 2× CPU
+  throttle: camera only 19–22 → 0.6–2 ms; screen + blur 88–90 → 43 ms, long
+  tasks 61–75 → 40–42. Recorded frame rate unchanged (software VP8 is the
+  ceiling here); outline accuracy unchanged (`fx` mode: moving person drawn
+  as background 0.04 % both; Performance 0.32 → 0.21 %). Lip sync follows by
+  itself: the voice's delay is built from the measured picture age, now
+  near zero. The benchmark takes `BENCH_EMAIL` (sign-up is rate-limited),
+  sets the layout explicitly, adds a layout-transition scenario (8), and
+  `DI=1` times every drawImage by source and destination.
 - **Following the pointer** (`lib/video/pointer.ts`, pure, shared; Properties →
   **Pointer** tab `PointerPanel.tsx`; a **Pointer** lane on the timeline, F or
   "Follow the pointer" on a marked stretch). Nothing zooms while recording:

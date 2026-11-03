@@ -9,7 +9,8 @@
  * (`pairedShare`); plus the page-thread cost of a draw and stalls over 50 ms.
  * `tune=perf` runs the Performance trade (no pairing, the wider outline).
  */
-import { CameraFx, NO_FX } from 'SRC/components/VideoStudio/cameraFx';
+import * as CF from 'SRC/components/VideoStudio/cameraFx';
+const { CameraFx, NO_FX } = CF;
 const W = 960, H = 540, SW = 1100;
 const q = new URLSearchParams(location.search);
 const MOVE = q.get('move') !== '0', SECS = Number(q.get('secs') || 15), BG = q.get('bg') || 'remove', TUNE = q.get('tune') || '';
@@ -32,7 +33,9 @@ const x0 = (k: number) => MOVE ? 70 + 70 * Math.sin(2 * Math.PI * (k / 30) / 1.5
   const out = document.createElement('canvas'); out.width = W; out.height = H; document.body.appendChild(out);
   const octx = out.getContext('2d', { alpha: false, willReadFrequently: false })!;
   const fx = new CameraFx();
-  if (TUNE && (fx as any).tuning) (fx as any).tuning = TUNE === 'perf' ? { pair: false, maxRate: 15 } : { pair: true, maxRate: 30 };
+  /* A profile's own trade where the tree has it (perf, balanced, quality), else the older two-field shape. */
+  const named = (CF as any).FX_TUNING?.[TUNE === 'perf' ? 'performance' : TUNE];
+  if (TUNE && (fx as any).tuning) (fx as any).tuning = named ?? (TUNE === 'perf' ? { pair: false, maxRate: 15 } : { pair: true, maxRate: 30 });
   const cfg = { ...NO_FX, bg: BG as any, bgColor: '#00ff00', blur: 60 };
   const gt = new OffscreenCanvas(W, H), gctx = gt.getContext('2d', { willReadFrequently: true })!;
   const rd = document.createElement('canvas'); rd.width = W; rd.height = H; const rctx = rd.getContext('2d', { willReadFrequently: true })!;

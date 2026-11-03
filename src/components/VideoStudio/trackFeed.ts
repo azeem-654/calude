@@ -32,6 +32,8 @@ export class TrackFeed {
   count = 0;
   /** When the newest frame arrived (performance.now()) — how old the picture drawn is (the diagnostics' "frame age"). */
   at = 0;
+  /** The gap between frames, smoothed (ms; 0 until two have come) — whether this feed can pace the drawing (frameClock.ts leadOf). */
+  gap = 0;
   /** Told the moment a frame arrives (the camera background sends it to its finder then, not at the next draw — a frame's worth sooner). */
   onFrame: (() => void) | null = null;
   readonly track: MediaStreamTrack;
@@ -56,7 +58,9 @@ export class TrackFeed {
       this.frame = f;
       this.videoWidth = f.displayWidth; this.videoHeight = f.displayHeight;
       this.count++;
-      this.at = performance.now();
+      const now = performance.now();
+      if (this.at) { const g = Math.min(500, now - this.at); this.gap = this.gap ? this.gap * 0.9 + g * 0.1 : g; }
+      this.at = now;
       old?.close();
       try { this.onFrame?.(); } catch { /* the listener's own trouble never stops the feed */ }
     }

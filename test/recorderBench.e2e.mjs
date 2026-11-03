@@ -60,7 +60,7 @@ if (MODE === 'fx') {
   const b = await pw.chromium.launch({ args: ['--enable-unsafe-swiftshader'] });
   const res = {};
   try {
-    for (const k of Object.keys(trees)) for (const c of ['move=0&bg=remove', 'move=1&bg=remove', 'move=1&bg=remove&tune=perf', 'move=1&bg=blur']) {
+    for (const k of Object.keys(trees)) for (const c of ['move=0&bg=remove', 'move=1&bg=remove', 'move=1&bg=remove&tune=perf', 'move=1&bg=remove&tune=quality', 'move=1&bg=blur']) {
       const p = await b.newPage({ viewport: { width: 1000, height: 600 } });
       const cdp = await p.context().newCDPSession(p);
       if (THROTTLE > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: THROTTLE });
@@ -81,8 +81,9 @@ if (MODE === 'fx') {
 const S = DIR, B = process.env.BASE_URL || 'http://localhost:8787';
 if (!existsSync(`${DIR}/cam.mjpeg`)) ff('-loop', '1', '-i', `${DIR}/portrait.jpg`, '-vf', "scale=1100:-1,crop=960:540:'70+70*sin(2*PI*t/1.5)':0,format=yuvj420p", '-r', '30', '-t', '12', '-q:v', '3', `${DIR}/cam.mjpeg`);
 if (!existsSync(`${DIR}/office.jpg`)) ff('-f', 'lavfi', '-i', 'gradients=s=1280x720:c0=0x2a6f97:c1=0xf2c14e:x0=0:y0=0:x1=1280:y1=720', '-frames:v', '1', `${DIR}/office.jpg`);
-const ACCOUNT = { email: `recbench+${Date.now()}@test.dev`, pw: 'Sup3rSecret!23' };
-const reg = await fetch(`${B}/api/auth.php`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'register', email: ACCOUNT.email, password: ACCOUNT.pw, name: 'Rec Bench', businessName: 'Rec Bench' }) }).then(r => r.json()).catch(e => ({ error: String(e) }));
+/* BENCH_EMAIL reuses an account an earlier run made (sign-up is rate-limited per connection). */
+const ACCOUNT = { email: process.env.BENCH_EMAIL || `recbench+${Date.now()}@test.dev`, pw: 'Sup3rSecret!23' };
+const reg = process.env.BENCH_EMAIL ? { success: true } : await fetch(`${B}/api/auth.php`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'register', email: ACCOUNT.email, password: ACCOUNT.pw, name: 'Rec Bench', businessName: 'Rec Bench' }) }).then(r => r.json()).catch(e => ({ error: String(e) }));
 if (!reg.success) { console.error('Could not register a test account — is wrangler dev running on', B, reg); process.exit(1); }
 const only = (process.env.ONLY || '').split(',').filter(Boolean);
 const SCEN = [
@@ -93,20 +94,33 @@ const SCEN = [
   { id: 5, name: 'cam + screen + own picture', mode: 'screen-cam', bg: 'image', secs: 15 },
   { id: 6, name: 'cam + screen + own picture + tab sound', mode: 'screen-cam', bg: 'image', sys: true, secs: 15 },
   { id: 7, name: 'long: cam + screen + blur', mode: 'screen-cam', bg: 'blur', secs: Number(process.env.LONG || 120) },
+  { id: 8, name: 'scene transitions: cam + screen + blur, layout every 2 s', mode: 'screen-cam', bg: 'blur', secs: 20, switch: true },
 ].filter(s => !only.length || only.includes(String(s.id)));
 const INIT = () => {
   const W = window;
   W.__rf = []; W.__lt = []; W.__age = []; W.__chunks = [];
+  /* Camera frames: numbered as they are read; per recorded frame, the newest camera frame drawn into it — repeats (the same camera frame in two recorded frames) and skips (a camera frame never drawn) are the judder. */
+  W.__seq = 0; W.__drawnSeq = 0; W.__comp = [];
+  W.__di = {}; W.__DI = false;
   try { new PerformanceObserver(l => { for (const e of l.getEntries()) W.__lt.push(e.duration); }).observe({ type: 'longtask' }); } catch {}
   const rf = CanvasCaptureMediaStreamTrack.prototype.requestFrame;
-  CanvasCaptureMediaStreamTrack.prototype.requestFrame = function () { W.__rf.push(performance.now()); return rf.call(this); };
-  const recv = new WeakMap();
+  CanvasCaptureMediaStreamTrack.prototype.requestFrame = function () { W.__rf.push(performance.now()); W.__comp.push(W.__drawnSeq); return rf.call(this); };
+  const recv = new WeakMap(), seq = new WeakMap();
   const rd = ReadableStreamDefaultReader.prototype.read;
-  ReadableStreamDefaultReader.prototype.read = function () { return rd.call(this).then(r => { if (r && r.value && typeof VideoFrame !== 'undefined' && r.value instanceof VideoFrame) recv.set(r.value, performance.now()); return r; }); };
+  ReadableStreamDefaultReader.prototype.read = function () { return rd.call(this).then(r => { if (r && r.value && typeof VideoFrame !== 'undefined' && r.value instanceof VideoFrame) { recv.set(r.value, performance.now()); if (r.value.displayWidth === 960) seq.set(r.value, ++W.__seq); } return r; }); };
   for (const C of [CanvasRenderingContext2D, typeof OffscreenCanvasRenderingContext2D !== 'undefined' ? OffscreenCanvasRenderingContext2D : null]) {
     if (!C) continue;
     const di = C.prototype.drawImage;
-    C.prototype.drawImage = function (img, ...a) { if (typeof VideoFrame !== 'undefined' && img instanceof VideoFrame && img.displayWidth === 960 && recv.has(img)) W.__age.push(performance.now() - recv.get(img)); return di.call(this, img, ...a); };
+    /* DI=1: every drawImage timed by what it copies and where to (finding a slow pass). */
+    const dIm = di;
+    const dIm2 = function (img, ...a) {
+      if (!W.__DI) return dIm.call(this, img, ...a);
+      const t = performance.now(); const r = dIm.call(this, img, ...a); const d = performance.now() - t;
+      const sw = img.displayWidth ?? img.width, sh = img.displayHeight ?? img.height;
+      const k = `${img.constructor.name} ${sw}x${sh} -> ${this.canvas.constructor.name} ${this.canvas.width}x${this.canvas.height} ${this.filter && this.filter !== 'none' ? 'filter' : ''}${this.globalCompositeOperation !== 'source-over' ? ' ' + this.globalCompositeOperation : ''}`;
+      const e = W.__di[k] || (W.__di[k] = [0, 0]); e[0]++; e[1] += d; return r;
+    };
+    C.prototype.drawImage = function (img, ...a) { if (typeof VideoFrame !== 'undefined' && img instanceof VideoFrame && img.displayWidth === 960 && recv.has(img)) { W.__age.push(performance.now() - recv.get(img)); const cw = this.canvas.width, ch = this.canvas.height; /* not the finder's copy (256×144, 144×256, 256×256) or the auto look's 48-px probe */ if (!((cw === 256 && (ch === 144 || ch === 256)) || (cw === 144 && ch === 256) || cw === 48)) W.__drawnSeq = Math.max(W.__drawnSeq, seq.get(img) || 0); } return dIm2.call(this, img, ...a); };
   }
   const st = MediaRecorder.prototype.start;
   MediaRecorder.prototype.start = function (...a) { W.__chunks = []; this.addEventListener('dataavailable', e => { if (e.data.size) W.__chunks.push(e.data); }); return st.apply(this, a); };
@@ -144,7 +158,8 @@ for (const sc of SCEN) {
   await p.click(`[data-testid="rec-mode-${sc.mode}"]`);
   await p.waitForTimeout(1500);
   /* Set through the page, not storage: the app restores an account's settings from the server on load, over anything seeded. */
-  for (const id of ['rec-fps-30', 'rec-res-720', 'rec-q-standard', 'rec-camres-720']) { const el = p.locator(`[data-testid="${id}"]`); if (await el.count()) await el.click(); }
+  /* The layout too: an account reused (BENCH_EMAIL) comes back with the last scenario's (the transitions end on another). */
+  for (const id of ['rec-fps-30', 'rec-res-720', 'rec-q-standard', 'rec-camres-720', 'rec-layout-bubble']) { const el = p.locator(`[data-testid="${id}"]`); if (await el.count()) await el.click(); }
   const fl = p.locator('[data-testid="rec-float-pref"]'); if (await fl.count() && await fl.isChecked()) await fl.uncheck();
   await p.click(`[data-testid="rec-fx-bg-${sc.bg === 'blur' ? 'blur' : 'none'}"]`);
   if (sc.bg === 'image') await p.setInputFiles('[data-testid="rec-fx-bg-file"]', `${DIR}/office.jpg`);
@@ -157,15 +172,19 @@ for (const sc of SCEN) {
   await p.evaluate(() => { window.__lt = []; window.__age = []; });
   await p.click('[data-testid="rec-start"]');
   await p.waitForSelector('[data-testid="rec-stop"]', { timeout: 30000 });
-  await p.evaluate(() => { window.__rf = []; window.__lt = []; window.__age = []; });
+  await p.evaluate(di => { window.__rf = []; window.__lt = []; window.__age = []; window.__comp = []; window.__di = {}; window.__DI = di; }, !!process.env.DI);
   const heaps = [];
   let diag = null;
+  const LAYS = ['speaker-left', 'split', 'presenter', 'speaker-right', 'bubble'];
+  let sw = 0;
   for (let t = 0; t < sc.secs; t += 5) {
-    await p.waitForTimeout(5000);
+    if (sc.switch) for (let k = 0; k < 2; k++) { await p.waitForTimeout(2500); await p.click(`[data-testid="rec-layout-${LAYS[sw++ % LAYS.length]}"]`).catch(() => {}); }
+    else await p.waitForTimeout(5000);
     heaps.push((await cdp.send('Performance.getMetrics')).metrics.find(m => m.name === 'JSHeapUsedSize').value / 1048576);
     diag = await p.evaluate(() => document.querySelector('[data-testid="rec-diag"]')?.getAttribute('data-json') ?? null);
   }
-  const live = await p.evaluate(() => ({ rf: window.__rf, lt: window.__lt, age: window.__age }));
+  if (process.env.DI) { const di = await p.evaluate(() => window.__di); console.log(Object.entries(di).sort((x, y) => y[1][1] - x[1][1]).slice(0, 14).map(([k, [n, t]]) => `${t.toFixed(0).padStart(6)} ms ${String(n).padStart(5)}× ${(t / n).toFixed(2).padStart(6)}  ${k}`).join('\n')); }
+  const live = await p.evaluate(() => ({ rf: window.__rf, lt: window.__lt, age: window.__age, comp: window.__comp, seq: window.__seq }));
   await p.click('[data-testid="rec-stop"]', { timeout: 60000 });
   await p.waitForSelector('[data-testid="rec-review"]', { timeout: 60000 });
   if (THROTTLE > 1) await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
@@ -185,7 +204,8 @@ for (const sc of SCEN) {
     ivP95: q(iv, 0.95), ivMax: Math.max(...iv), ivSd: Math.sqrt(avg(iv.map(x => (x - avg(iv)) ** 2))),
     rfBurst: rfi.filter(x => x < 10).length, longTasks: live.lt.length, longMax: Math.max(0, ...live.lt),
     camAgeAvg: avg(live.age), camAgeP95: q(live.age, 0.95),
-    diag: ds ? { camAge: ds.s.camAge, camAgeP95: ds.s.camAgeP95, drawAvg: ds.s.drawAvg, drawP95: ds.s.drawP95, dropped: ds.s.dropped, camFps: ds.s.camFps, scrFps: ds.s.scrFps, bottleneck: ds.s.bottleneck, fx: ds.c.fx, audio: ds.c.audio, rec: ds.c.rec && { mime: ds.c.rec.mime, gap: ds.c.rec.chunkGapMax } } : null,
+    ...(() => { const c = live.comp.filter(x => x > 0); let rep = 0, skip = 0; for (let k = 1; k < c.length; k++) { const d = c[k] - c[k - 1]; if (d === 0) rep++; else if (d > 1) skip += d - 1; } const got = c.length ? c[c.length - 1] - c[0] + 1 : 0; return { camRecv: got, camRepeatPct: c.length > 1 ? rep / (c.length - 1) * 100 : 0, camSkipPct: got ? skip / got * 100 : 0 }; })(),
+    diag: ds ? { drive: ds.s.drive, toPaint: ds.s.toPaint, camShown: ds.s.camShown, camRepeats: ds.s.camRepeats, camSkips: ds.s.camSkips, camAge: ds.s.camAge, camAgeP95: ds.s.camAgeP95, drawAvg: ds.s.drawAvg, drawP95: ds.s.drawP95, dropped: ds.s.dropped, camFps: ds.s.camFps, scrFps: ds.s.scrFps, bottleneck: ds.s.bottleneck, fx: ds.c.fx, audio: ds.c.audio, rec: ds.c.rec && { mime: ds.c.rec.mime, gap: ds.c.rec.chunkGapMax } } : null,
     heap0: heap0 / 1048576, heaps, audio: aud, errs,
   };
   results[sc.id] = r;

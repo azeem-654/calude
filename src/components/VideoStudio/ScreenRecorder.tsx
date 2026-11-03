@@ -54,11 +54,12 @@ import {
   type RecMode, type Bubble, type Corner, type BubbleSize, type Prefs, type Look, type Res, type Quality, type CamRes, type CursorMode, type GradientId, type Brand,
   type Layout, type CamShape, type Ring, type CamFrame, type RingGradient,
 } from './recorder';
-import { canGrade, NO_FX, FX_TUNING, type CamFx, type CamBg } from './cameraFx';
+import { canGrade, NO_FX, FX_TUNING, EASE_RATE, type CamFx, type CamBg } from './cameraFx';
 import { RecDiag, type DiagContext, type DiagSnapshot } from './recDiag';
 import { RecDiagPanel } from './RecDiagPanel';
 import { SCENES, SCENE_LABEL, sceneThumb } from './scenes';
 import { feedOf, TrackFeed } from './trackFeed';
+import { drawNow, leadOf, type DrawWhy } from './frameClock';
 import { readPicture, cutOutBackground } from './pictureCut';
 
 type Phase = 'setup' | 'starting' | 'countdown' | 'recording' | 'paused' | 'finishing' | 'review';
@@ -224,6 +225,8 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   if (!diag.current) diag.current = new RecDiag();
   /** The recorder's chunks as they come (the diagnostics' "encoder behind"). */
   const chunkStats = useRef({ n: 0, bytes: 0, last: 0, gapMax: 0, bitrate: 0 });
+  /** Whether the browser says the recording's encoder is power-efficient (in practice: the graphics chip's) — null where it does not say. */
+  const encHw = useRef<boolean | null>(null);
   /** How long the camera takes to deliver a frame (its capture time to this page), where the browser says — rVFC `captureTime`. */
   const camLatency = useRef<number | null>(null);
   /** The voice's delay that meets the picture (begin() says why), and the nodes it runs through. */
@@ -234,6 +237,12 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   /* The screen and the camera read frame by frame from their tracks (trackFeed.ts says why); null where a browser cannot, and the element is drawn. */
   const screenFeed = useRef<TrackFeed | null>(null);
   const camFeed = useRef<TrackFeed | null>(null);
+  /** Draw a frame now if `why` is what paces the picture (frameClock.ts drawNow says why frames are drawn as they arrive); set below. */
+  const drawFrame = useRef<(why: DrawWhy) => void>(() => {});
+  /** When the last frame was drawn (performance.now()). */
+  const lastDraw = useRef(-Infinity);
+  /** What a frame's work costs on this page (ms, smoothed) — drawing never takes more than four fifths of the page (frameClock.ts COST_SHARE). */
+  const drawCost = useRef(0);
   /** The microphone's level, smoothed (the voice ring). */
   const level = useRef(0);
   /** The logo as read (before any background is taken out), so the cut can be switched off again. */
@@ -271,7 +280,8 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
   useEffect(() => {
     const fx = comp.current.fx;
     fx.onState = () => setFxState({ state: fx.state, error: fx.error });
-    return () => { fx.onState = null; };
+    fx.onPair = () => drawFrame.current('pair');
+    return () => { fx.onState = null; fx.onPair = null; };
   }, []);
   useEffect(() => {
     try { localStorage.setItem(PREFS_KEY, JSON.stringify({ ...prefs, look: prefs.look.bg.kind === 'image' ? { ...prefs.look, bg: { kind: 'none' } } : prefs.look })); } catch { /* private window */ }
@@ -314,7 +324,8 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     ref.current?.close();
     const f = feedOf(s);
     ref.current = f;
-    if (f && which === 'cam') f.onFrame = () => comp.current.fx.frameArrived(f);
+    if (f && which === 'cam') f.onFrame = () => { comp.current.fx.frameArrived(f); drawFrame.current('cam'); };
+    if (f && which === 'screen') f.onFrame = () => drawFrame.current('screen');
   };
   const stopCam = () => { stopStreams(cam.current); cam.current = null; setFeed('cam', null); attach(camVid.current, null); setCamOn(false); };
   const stopMic = () => { stopStreams(micS.current); micS.current = null; meter.current = null; setMicOn(false); };
@@ -440,19 +451,25 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     if (ctx2d.current?.canvas !== cv) ctx2d.current = cv.getContext('2d', { alpha: false });
     return ctx2d.current;
   };
-  const tick = useRef(() => {});
-  tick.current = () => {
+  /*
+   * One frame of the composite. Called by the source that paces the picture
+   * the moment its frame is in — the camera, the outline paired with it, or
+   * the shared screen — and by the frame clock as the heartbeat (frameClock.ts
+   * `drawNow` says why: on the clock alone each camera frame waited up to a
+   * frame, and the two rates beating showed as a repeat-and-skip stutter).
+   */
+  drawFrame.current = (why: DrawWhy) => {
     const now = performance.now();
     const ph = phaseRef.current, p = prefsRef.current, st = stats.current;
-    if (ph === 'recording') { if (st.last && now - st.last > 2.5 * 1000 / p.fps) st.late++; st.ticks++; }
-    st.last = now;
-    st.n++;
     const cv = canvasRef.current;
     const capturingNow = ph === 'countdown' || ph === 'recording' || ph === 'paused';
     if (cv && ph !== 'review' && ph !== 'finishing') {
       const camOnly = modeRef.current === 'cam';
       const scr = !camOnly && display.current ? screenFeed.current ?? screenVid.current : null;
       const face = modeRef.current !== 'screen' && live(cam.current) && !camHiddenRef.current ? camFeed.current ?? camVid.current : null;
+      const lead = leadOf({ cam: !!face, camFeed: face instanceof TrackFeed, camMs: face instanceof TrackFeed ? face.gap : 0, pairing: comp.current.fx.pairing, screenFeed: scr instanceof TrackFeed, fps: p.fps });
+      diag.current!.lead = lead;
+      if (!drawNow(why, lead, now - lastDraw.current, 1000 / p.fps, drawCost.current)) return;
       /* Camera only: the frame takes the camera's own shape while choosing, so what is seen is what is recorded. */
       if (camOnly && face?.videoWidth && !capturingNow) {
         const fs = frameSize(face.videoWidth, face.videoHeight);
@@ -466,6 +483,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
         const ctx = getCtx();
         const c = comp.current;
         if (ctx) {
+          lastDraw.current = now;
           c.draw(ctx, {
             screen: scr, cam: face, camOnly, look: p.look, image: p.look.bg.kind === 'image' ? imageRef.current : null,
             layout: modeRef.current === 'screen-cam' ? p.layout : 'bubble',
@@ -474,7 +492,10 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
           });
           canvasTrack.current?.requestFrame();
           const done = performance.now();
-          diag.current!.frame(done, done - now, face ? c.fx.shownAge : NaN, scr instanceof TrackFeed ? done - scr.at : NaN);
+          const dg = diag.current!;
+          dg.frame(done, done - now, face ? c.fx.shownAge : NaN, scr instanceof TrackFeed ? done - scr.at : NaN);
+          dg.drew(now, why);
+          dg.camFrame(done, face ? c.fx.shownId : -1);
         }
         /* Noted after the frame is out, so the looks never delay it; only while recording, never paused. */
         if (!camOnly && (ph === 'recording' || ph === 'paused')) {
@@ -503,8 +524,18 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
             } as MediaTrackConstraints).catch(() => { /* kept as it was: drawing still scales it */ });
           }
         }
+        if (lastDraw.current === now) { const d = Math.min(500, performance.now() - now); drawCost.current = drawCost.current ? drawCost.current * 0.8 + d * 0.2 : d; }
       }
     }
+  };
+  const tick = useRef(() => {});
+  tick.current = () => {
+    const now = performance.now();
+    const ph = phaseRef.current, p = prefsRef.current, st = stats.current;
+    if (ph === 'recording') { if (st.last && now - st.last > 2.5 * 1000 / p.fps) st.late++; st.ticks++; }
+    st.last = now;
+    st.n++;
+    drawFrame.current('tick');
     if (st.n % 15 === 0) diag.current!.feedCounts(now, camFeed.current?.count ?? null, screenFeed.current?.count ?? null);
     const mt = meter.current, el = meterEl.current;
     if (mt && el && st.n % 3 === 0) {
@@ -554,6 +585,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  const painted = useCallback((now: number) => diag.current!.painted(now), []);
   const readDiag = useCallback((): { s: DiagSnapshot; c: DiagContext } => {
     const now = performance.now(), p = prefsRef.current;
     const set = (st: MediaStream | null) => {
@@ -567,7 +599,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     const r = rec.current, cs = chunkStats.current, a = audio.current;
     const c: DiagContext = {
       fx: fxOn ? comp.current.fx.stats() : null,
-      rec: r ? { state: r.state, mime: r.mimeType || sup.mime?.mime || '', bitrate: cs.bitrate, chunks: cs.n, bytes: cs.bytes, chunkGapMax: cs.gapMax } : null,
+      rec: r ? { state: r.state, mime: r.mimeType || sup.mime?.mime || '', bitrate: cs.bitrate, chunks: cs.n, bytes: cs.bytes, chunkGapMax: cs.gapMax, powerEfficient: encHw.current } : null,
       audio: a && a.state !== 'closed' ? { sampleRate: a.sampleRate, baseLatency: a.baseLatency ?? 0, outputLatency: a.outputLatency ?? 0, delayMs: micDelayMs.current, camLatency: camLatency.current } : null,
       cam: set(cam.current), scr: set(display.current),
       out: { w: canvasRef.current?.width ?? 0, h: canvasRef.current?.height ?? 0 },
@@ -596,6 +628,36 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     }, 2000);
     return () => clearInterval(t);
   }, [phase, camOn, readDiag]);
+
+  /*
+   * A background effect this computer cannot keep up with is eased, not
+   * left to drag the camera (cameraFx.ts EASE_RATE): after six seconds of the
+   * diagnostics finding the page, the drawing or the finder behind, the
+   * outline is looked for less often (and frames no longer wait for it);
+   * after thirty seconds of keeping up it steps back. Slow to ease back, so
+   * it never flickers between the two. Said in words each time — never a
+   * silent drop — and nothing the person chose (blur, picture, look,
+   * resolution, frame rate) is changed.
+   */
+  const fxLive = camOn && prefs.fx.bg !== 'none';
+  useEffect(() => {
+    const fx = comp.current.fx;
+    if (!fxLive) { fx.ease = 0; return; }
+    let bad = 0, good = 0;
+    const t = setInterval(() => {
+      if (fx.state !== 'ready' || document.hidden) return;
+      const { s } = readDiag();
+      if (s.bottleneck === 'rendering' || s.bottleneck === 'segmentation' || s.bottleneck === 'main-thread') { bad++; good = 0; } else { good++; bad = 0; }
+      if (bad >= 3 && fx.ease < EASE_RATE.length - 1) {
+        fx.ease++; bad = 0;
+        setNote(`This computer is busy, so the background effect now looks for your outline at most ${EASE_RATE[fx.ease]} times a second — your camera stays live. Your background choice is unchanged; the edge may trail a fast movement slightly.`);
+      } else if (good >= 15 && fx.ease > 0) {
+        fx.ease--; good = 0;
+        setNote(fx.ease ? `This computer has caught up a little: the background effect looks for your outline up to ${EASE_RATE[fx.ease]} times a second again.` : 'This computer has caught up: the background effect is back to full speed.');
+      }
+    }, 2000);
+    return () => clearInterval(t);
+  }, [fxLive, readDiag]);
 
   /* ── Releasing everything ── */
   const closePip = () => {
@@ -737,6 +799,8 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
         canvasRef.current.width = s.w; canvasRef.current.height = s.h;
         comp.current.invalidate();
       }
+      /* Read frame by frame, the element was only needed for the size: playing it too made the browser handle every screen frame twice. */
+      if (screenFeed.current) attach(screenVid.current, null);
     }
     if (mode === 'cam' && camVid.current) {
       await metadata(camVid.current);
@@ -809,6 +873,13 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
     recSize.current = { w, h };
     let r: MediaRecorder;
     const bitrate = bitrateFor(w, h, prefs.fps, prefs.quality);
+    /* For the diagnostics only: whether the browser calls this encoder power-efficient (the graphics chip's). The video codec alone — an audio codec in the type is refused. */
+    encHw.current = null;
+    try {
+      const vt = m.mime.replace(/codecs=([^,;]+)[^;]*/, 'codecs=$1');
+      void navigator.mediaCapabilities?.encodingInfo?.({ type: 'record', video: { contentType: vt, width: w, height: h, bitrate, framerate: prefs.fps } })
+        .then(i => { encHw.current = i.supported ? i.powerEfficient : null; }, () => { /* not reported */ });
+    } catch { /* not reported */ }
     try { r = new MediaRecorder(out, { mimeType: m.mime, videoBitsPerSecond: bitrate, audioBitsPerSecond: 128_000 }); }
     catch (e) { releaseCapture(); setPhase('setup'); setError(`This browser could not start recording (${(e as Error).message || 'MediaRecorder refused'}).`); return; }
     chunks.current = [];
@@ -879,8 +950,8 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
       display.current = s;
       s.getVideoTracks()[0]?.addEventListener('ended', shareEnded);
       hintText(s);
-      attach(screenVid.current, s);
       setFeed('screen', s);
+      attach(screenVid.current, screenFeed.current ? null : s);
       connectScreenSound(s);
       /* A different picture: no comparing across the switch. */
       plog.current.reset();
@@ -1126,7 +1197,7 @@ export default function ScreenRecorder({ onClose, onSaved }: { onClose: () => vo
         {!blocked && !sup.display && <div className="vs-note warn" style={{ marginBottom: 10 }} data-testid="rec-no-screen"><Info size={16} /> <span>This browser cannot share its screen (most phones and tablets cannot). {sup.devices ? 'You can still record yourself with the camera.' : ''}</span></div>}
         {error && <div className="vs-note bad" role="alert" style={{ marginBottom: 10 }} data-testid="rec-error"><AlertCircle size={16} /> <span>{error}</span></div>}
         {note && <div className="vs-note warn" style={{ marginBottom: 10 }} data-testid="rec-note"><Info size={16} /> <span>{note}</span></div>}
-        {diagOn && <RecDiagPanel read={readDiag} />}
+        {diagOn && <RecDiagPanel read={readDiag} painted={painted} />}
 
         <div className="vs-rec-grid">
           <div className="vs-rec-stage" data-noinvert="">

@@ -139,17 +139,34 @@ type SegState = 'off' | 'loading' | 'ready' | 'failed';
  * How the background effect trades smoothness against exactness (the
  * recorder's Performance / Balanced / Quality). `pair` draws the camera frame
  * the outline was found on, not a newer one (below); `maxRate` caps looks a
- * second.
+ * second. Pairing makes the camera wait for the finder's answer, so it is
+ * allowed only while that answer is quick: within `pairWithin` of a camera
+ * frame (or `pairFloor` ms, whichever is more). Balanced keeps that wait
+ * under ~two thirds of a frame — on a graphics chip a look comes back in
+ * 10–17 ms, so it still pairs; a computer that answers slower gets the
+ * newest frame and a wider outline instead of a camera that lags
+ * (2026-11: the owner's "my hand moves before the picture does"). Quality
+ * waits up to a frame and a quarter for the sharpest edge.
  */
-export interface FxTuning { pair: boolean; maxRate: number }
+export interface FxTuning { pair: boolean; maxRate: number; pairWithin: number; pairFloor: number }
 export const FX_TUNING = {
-  performance: { pair: false, maxRate: 15 },
-  balanced: { pair: true, maxRate: 30 },
-  quality: { pair: true, maxRate: 30 },
+  performance: { pair: false, maxRate: 15, pairWithin: 0, pairFloor: 0 },
+  balanced: { pair: true, maxRate: 30, pairWithin: 0.6, pairFloor: 18 },
+  quality: { pair: true, maxRate: 30, pairWithin: 1.25, pairFloor: 40 },
 } as const satisfies Record<string, FxTuning>;
 
+/**
+ * Easing the finder when this computer cannot keep up (set by the recorder
+ * from the diagnostics' verdict, with a long hold before easing back so it
+ * never flickers between the two): 1 stops pairing and looks at most 15
+ * times a second, 2 at most 8. The person's own choices — blur amount, the
+ * picture, the look — are never changed; only how often the outline is
+ * looked for, and the recorder says so when it eases.
+ */
+export const EASE_RATE = [Infinity, 15, 8] as const;
+
 /** What the diagnostics panel shows of the person-finder. */
-export interface FxStats { runs: 'off' | 'worker' | 'page'; delegate: Delegate; model: SegModel | ''; cost: number; roundTrip: number; looksPerSec: number; paired: boolean; maskAge: number }
+export interface FxStats { runs: 'off' | 'worker' | 'page'; delegate: Delegate; model: SegModel | ''; cost: number; roundTrip: number; looksPerSec: number; paired: boolean; maskAge: number; ease: number }
 
 /* An outline older than this is not paired with its frame any more: the camera must never freeze behind a stalled finder. */
 const PAIR_STALE_MS = 150;
@@ -164,6 +181,12 @@ export class CameraFx {
   state: SegState = 'off';
   error = '';
   tuning: FxTuning = FX_TUNING.balanced;
+  /** 0–2, see EASE_RATE. */
+  ease = 0;
+  /** Told when a camera frame and its outline are ready to be drawn together — the recorder draws then (frameClock.ts drawNow). */
+  onPair: (() => void) | null = null;
+  private rate() { return Math.min(this.tuning.maxRate, EASE_RATE[this.ease] ?? Infinity); }
+  private pairs() { return this.tuning.pair && this.ease === 0; }
   private small: Cv | null = null;
   private small2: Cv | null = null;
   private tiny: Cv | null = null;
@@ -172,6 +195,8 @@ export class CameraFx {
   private mask: CanvasImageSource & { width: number; height: number } | null = null;
   private maskCanvas: Cv | null = null;
   private work: Cv | null = null;
+  /** The camera frame copied once at its box's size for the passes of a look or background (draw says why). */
+  private base: Cv | null = null;
   private person: Cv | null = null;
   private lastSeg = 0;
   private hasMask = false;
@@ -196,6 +221,9 @@ export class CameraFx {
   private pair: Cv | null = null;
   private pairOk = false;
   private pairAt = 0;
+  private pairId = -1;
+  /** The camera frame (its feed's count) last drawn — the diagnostics count frames shown twice or never. -1 where not known. */
+  shownId = -1;
   private inflight = false;
   private sentAt = 0;
   private sentFrame: number = -1;
@@ -255,7 +283,7 @@ export class CameraFx {
       this.lookTimes.push(now); if (this.lookTimes.length > 40) this.lookTimes.shift();
       (this.mask as ImageBitmap | null)?.close?.();
       this.mask = mask; this.hasMask = true; this.maskAt = this.sentAt;
-      if (this.pending) { const p = this.pair; this.pair = this.pending; this.pending = p; this.pairOk = true; this.pairAt = this.sentAt; this.pairAge = this.sentAge; }
+      if (this.pending) { const p = this.pair; this.pair = this.pending; this.pending = p; this.pairOk = true; this.pairAt = this.sentAt; this.pairAge = this.sentAge; this.pairId = this.sentFrame; }
       else this.pairOk = false;
       /*
        * Paired only while a look comes back within about a frame and a
@@ -266,7 +294,10 @@ export class CameraFx {
        * sharp; the wider outline alone 98 %; the old way 88 %.
        */
       const lt = this.lookTimes, every = lt.length > 4 ? (lt[lt.length - 1] - lt[0]) / (lt.length - 1) : 0;
-      this.paired = this.tuning.pair && this.roundTrip <= Math.max(40, this.camGap * 1.25) && every <= this.camGap * 2.2;
+      /* Either side of the limit by 15 % before changing, so an answer time hovering at it does not switch the outline's width (and the camera's delay) back and forth. */
+      const limit = Math.max(this.tuning.pairFloor, this.camGap * this.tuning.pairWithin) * (this.paired ? 1.15 : 0.85);
+      this.paired = this.pairs() && this.roundTrip <= limit && every <= this.camGap * 2.2;
+      if (this.paired && this.pairOk) try { this.onPair?.(); } catch { /* the recorder's own trouble never stops the finder */ }
     };
     /* A look failed after the start: the camera goes on as it is (said), the recording is never stopped by it. */
     c.onFail = err => {
@@ -292,7 +323,7 @@ export class CameraFx {
       runs: this.wseg ? 'worker' : this.seg ? 'page' : 'off', delegate: this.delegate,
       model: this.wseg ? this.lastModel : this.seg ? this.segModel : '',
       cost: this.cost, roundTrip: this.wseg ? this.roundTrip : this.cost, looksPerSec: recent.length / 2,
-      paired: !!this.wseg && this.paired && this.pairOk, maskAge: this.hasMask ? now - this.maskAt : 0,
+      paired: !!this.wseg && this.paired && this.pairOk, maskAge: this.hasMask ? now - this.maskAt : 0, ease: this.ease,
     };
   }
   /** The model of the last look (for the stats). */
@@ -310,6 +341,8 @@ export class CameraFx {
 
   /** Whether the last frame drawn wanted the person found (a background effect on). */
   private active = false;
+  /** Whether the frame shown waits for its outline (the recorder draws on the answer, not on the camera's frame). */
+  get pairing(): boolean { return this.active && !!this.wseg && this.state === 'ready' && this.paired && this.pairs() && performance.now() - this.maskAt < PAIR_STALE_MS; }
   /**
    * A camera frame just arrived (TrackFeed.onFrame): sent to the finder at
    * once rather than at the next draw, so its outline is usually back before
@@ -333,7 +366,8 @@ export class CameraFx {
       this.inflight = false;
     }
     /* At most half the finder's thread: on a computer with no graphics chip to spare, the encoder and the drawing need the rest. */
-    if (id === this.sentFrame || now - this.sentAt < Math.max(1000 / this.tuning.maxRate, Math.min(250, this.cost * 2)) - 2) return;
+    /* 15 % slack: a camera's frames come a few ms early or late, and one skipped here is, when paired, a frame shown late. */
+    if (id === this.sentFrame || now - this.sentAt < Math.max(1000 / this.rate(), Math.min(250, this.cost * 2)) * 0.85) return;
     const vw = cam.videoWidth, vh = cam.videoHeight;
     const { w, h, model } = lookSize(vw, vh);
     this.lastModel = model;
@@ -346,7 +380,7 @@ export class CameraFx {
      * copy every frame; a software-drawn canvas paid for every pixel), at most
      * 1280 across.
      */
-    if (this.tuning.pair) {
+    if (this.pairs()) {
       const s = Math.min(1, 1280 / Math.max(vw, vh), this.boxScale), pw = Math.max(2, Math.round(vw * s)), ph = Math.max(2, Math.round(vh * s));
       this.pending = sized(this.pending, pw, ph);
       ctxOf(this.pending).drawImage(pic(cam), 0, 0, pw, ph);
@@ -361,7 +395,7 @@ export class CameraFx {
 
   /** The finder on this page (no worker): never more than a quarter of the time — four times what a look costs between looks. */
   private lookHere(cam: Feed, now: number) {
-    if (!this.seg || now - this.lastSeg < Math.max(1000 / this.tuning.maxRate, this.cost * 4)) return;
+    if (!this.seg || now - this.lastSeg < Math.max(1000 / this.rate(), this.cost * 4)) return;
     this.lastSeg = now;
     const t0 = performance.now();
     const vw = cam.videoWidth, vh = cam.videoHeight;
@@ -484,19 +518,35 @@ export class CameraFx {
     const look = { grade, tint: tint ? tintCss(tint) : '' };
     /* With the background effect on, the frame drawn is the one its outline was found on, while that is fresh (`pending` says why). */
     const usePair = cut && this.paired && this.pairOk && !!this.pair && now - this.pairAt < PAIR_STALE_MS;
-    const img: CanvasImageSource = usePair ? this.pair! : pic(cam);
+    let img: CanvasImageSource = usePair ? this.pair! : pic(cam);
     const iw = usePair ? this.pair!.width : vw, ih = usePair ? this.pair!.height : vh;
-    const src = coverSrc(iw, ih, r);
+    let src = coverSrc(iw, ih, r);
     this.shownAge = usePair ? now - this.pairAt + this.pairAge : cam instanceof TrackFeed ? now - cam.at : NaN;
+    this.shownId = usePair ? this.pairId : cam instanceof TrackFeed ? cam.count : -1;
 
     /* Plain camera: one copy, as fast as before effects existed. */
     if (grade === 'none' && !tint && fx.soften <= 0 && !cut) { this.blit(ctx, img, src, r, mirror); return; }
 
+    /* Where the outline's crop is, in the camera's own picture — worked out before the copy below replaces the source. */
+    const m = cut ? this.mask! : null;
+    const ms = m ? { x: src.x * m.width / iw, y: src.y * m.height / ih, w: src.w * m.width / iw, h: src.h * m.height / ih } : null;
+    /*
+     * The camera frame copied once, cropped and at the box's size, and every
+     * pass below reads that copy. Each pass used to read the frame itself — a
+     * conversion of the whole camera picture from its own colour format each
+     * time, three or four a frame with a background effect on; a paired frame
+     * was already such a copy, which is why switching pairing off
+     * (Balanced, 2026-11) had made the blur cost half as much again.
+     */
+    if (!(img instanceof HTMLCanvasElement) && !(typeof OffscreenCanvas !== 'undefined' && img instanceof OffscreenCanvas)) {
+      this.base = sized(this.base, w, h);
+      ctxOf(this.base).drawImage(img, src.x, src.y, src.w, src.h, 0, 0, w, h);
+      img = this.base; src = { x: 0, y: 0, w, h };
+    }
     this.work = sized(this.work, w, h);
     const wc = ctxOf(this.work);
     wc.clearRect(0, 0, w, h);
-    if (cut) {
-      const m = this.mask!, ms = { x: src.x * m.width / iw, y: src.y * m.height / ih, w: src.w * m.width / iw, h: src.h * m.height / ih };
+    if (m && ms) {
       /* Behind the person. */
       if (fx.bg === 'blur') this.bgBlur(wc, img, src, w, h, fx.blur, look, m, ms);
       else if (fx.bg === 'image' && bgImage) { const s = coverSrc(bgImage.width, bgImage.height, { x: 0, y: 0, w, h }); wc.drawImage(bgImage, s.x, s.y, s.w, s.h, 0, 0, w, h); }

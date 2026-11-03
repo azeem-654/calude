@@ -50,13 +50,19 @@ export interface DiagSnapshot {
   longTasks: number; longTaskMax: number;
   pointerMs: number;
   heapMB: number | null;
+  /** What paced the drawing (frameClock.ts leadOf) and how the frames drawn were started, in the last window. */
+  drive: string;
+  /** Camera frames in the last window: shown, shown again in the next frame drawn (a repeat), and never shown (skipped). */
+  camShown: number; camRepeats: number; camSkips: number;
+  /** From a frame drawn to the next paint of the page (requestAnimationFrame), only while the panel is open and the page is seen; NaN otherwise. */
+  toPaint: number; toPaintP95: number;
   bottleneck: Bottleneck; why: string;
 }
 
 /** Everything the panel shows beyond the frame numbers, gathered by the recorder when the panel asks. */
 export interface DiagContext {
-  fx: { runs: string; delegate: string; model: string; cost: number; roundTrip: number; looksPerSec: number; paired: boolean; maskAge: number } | null;
-  rec: { state: string; mime: string; bitrate: number; chunks: number; bytes: number; chunkGapMax: number } | null;
+  fx: { runs: string; delegate: string; model: string; cost: number; roundTrip: number; looksPerSec: number; paired: boolean; maskAge: number; ease?: number } | null;
+  rec: { state: string; mime: string; bitrate: number; chunks: number; bytes: number; chunkGapMax: number; powerEfficient: boolean | null } | null;
   audio: { sampleRate: number; baseLatency: number; outputLatency: number; delayMs: number; camLatency: number | null } | null;
   cam: { w: number; h: number; fps: number } | null;
   scr: { w: number; h: number; fps: number } | null;
@@ -70,6 +76,11 @@ export class RecDiag {
   readonly camAge = new Ring(180);
   readonly scrAge = new Ring(180);
   readonly pointer = new Ring(60);
+  readonly toPaint = new Ring(120);
+  private why: { at: number; k: string }[] = [];
+  private shown: { at: number; rep: boolean; skip: number }[] = [];
+  private lastShown = -1;
+  lead = 'clock';
   private drawn: number[] = [];
   private droppedAt: number[] = [];
   private long: { at: number; d: number }[] = [];
@@ -95,10 +106,29 @@ export class RecDiag {
   /** A frame drawn: when, what it cost, and how old the camera's and screen's pictures in it were (NaN when not known). */
   frame(now: number, ms: number, camAge: number, scrAge: number) {
     this.drawn.push(now);
+    this.endAt = now;
     if (this.drawn.length > 600) this.drawn.splice(0, this.drawn.length - 600);
     this.draw.push(ms);
     if (Number.isFinite(camAge)) this.camAge.push(camAge);
     if (Number.isFinite(scrAge)) this.scrAge.push(scrAge);
+  }
+  private endAt = 0;
+  private paintAt = 0;
+  /** The page painted (requestAnimationFrame, while the panel is open): how long the newest drawn frame waited to be on screen. */
+  painted(now: number) {
+    if (this.endAt > this.paintAt && now - this.endAt < 250) this.toPaint.push(now - this.endAt);
+    this.paintAt = now;
+  }
+  /** Why a frame was drawn (tick / cam / pair / screen). */
+  drew(now: number, k: string) { this.why.push({ at: now, k }); if (this.why.length > 400) this.why.splice(0, this.why.length - 400); }
+  /** The camera frame a drawn frame showed (its feed's count; -1 when not known). */
+  camFrame(now: number, id: number) {
+    if (id < 0) { this.lastShown = -1; return; }
+    const last = this.lastShown;
+    this.lastShown = id;
+    if (last < 0 || id < last) return;
+    this.shown.push({ at: now, rep: id === last, skip: Math.max(0, id - last - 1) });
+    if (this.shown.length > 400) this.shown.splice(0, this.shown.length - 400);
   }
   dropped(now: number) { this.droppedAt.push(now); if (this.droppedAt.length > 300) this.droppedAt.shift(); }
   /** The camera's and screen's own frame counters, read once a second or so. */
@@ -110,7 +140,7 @@ export class RecDiag {
       else if (!f.at || n < f.n) { f.n = n; f.at = now; }
     }
   }
-  reset() { this.draw.clear(); this.camAge.clear(); this.scrAge.clear(); this.pointer.clear(); this.drawn = []; this.droppedAt = []; this.long = []; }
+  reset() { this.toPaint.clear(); this.why = []; this.shown = []; this.lastShown = -1; this.draw.clear(); this.camAge.clear(); this.scrAge.clear(); this.pointer.clear(); this.drawn = []; this.droppedAt = []; this.long = []; }
 
   snapshot(now: number, fx: DiagContext['fx'], rec: DiagContext['rec'], camAsked: number, scrAsked: number): DiagSnapshot {
     const win = 3000, since = now - win;
@@ -128,6 +158,16 @@ export class RecDiag {
       camAge: this.camAge.avg(), camAgeP95: this.camAge.p95(), scrAge: this.scrAge.avg(),
       longTasks: long.length, longTaskMax: long.reduce((m, l) => Math.max(m, l.d), 0),
       pointerMs: this.pointer.avg(), heapMB: heap ? heap / 1048576 : null,
+      drive: (() => {
+        const w = this.why.filter(x => x.at >= since), n: Record<string, number> = {};
+        for (const x of w) n[x.k] = (n[x.k] ?? 0) + 1;
+        return `${this.lead} leads · ${Object.entries(n).map(([k, v]) => `${k} ${v}`).join(', ') || 'nothing drawn'}`;
+      })(),
+      ...(() => {
+        const w = this.shown.filter(x => x.at >= since);
+        return { camShown: w.filter(x => !x.rep).length, camRepeats: w.filter(x => x.rep).length, camSkips: w.reduce((a, x) => a + x.skip, 0) };
+      })(),
+      toPaint: this.toPaint.count ? this.toPaint.avg() : NaN, toPaintP95: this.toPaint.count ? this.toPaint.p95() : NaN,
       bottleneck: 'none', why: 'Keeping up.',
     };
     [s.bottleneck, s.why] = judge(s, fx, rec, camAsked, scrAsked);

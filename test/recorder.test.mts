@@ -8,7 +8,7 @@
  * docs/claude/video-studio.md, not here.
  */
 import { outline, outlineState, alphaInto, lookSize, modelFor } from '../src/components/VideoStudio/maskOutline';
-import { keepTick, MAX_SKIPS } from '../src/components/VideoStudio/frameClock';
+import { keepTick, MAX_SKIPS, drawNow, leadOf } from '../src/components/VideoStudio/frameClock';
 import { Ring, judge } from '../src/components/VideoStudio/recDiag';
 
 let failed = 0, passed = 0;
@@ -64,6 +64,47 @@ ok(`never more than ${MAX_SKIPS} skipped in a row`, keepTick(500, 33.3, MAX_SKIP
 ok('a tick a few milliseconds after the last drawn is skipped (no frame recorded twice back to back)', !keepTick(2, 33.3, 0, 3));
 ok('a tick a whole frame after the last drawn is drawn', keepTick(2, 33.3, 0, 33));
 ok('a tick a little after a slow draw finished is still drawn (a slow draw costs one frame, not two)', keepTick(2, 33.3, 0, 9));
+
+/* ── Frames drawn as they arrive (frameClock.ts drawNow / leadOf) ── */
+{
+  const F = 1000 / 30;
+  ok('a camera frame is drawn the moment it arrives when the camera leads', drawNow('cam', 'cam', F, F));
+  ok('…but not a few milliseconds after the last draw (left for the next)', !drawNow('cam', 'cam', 4, F));
+  ok('a tick does not draw while the camera leads and drew a frame ago', !drawNow('tick', 'cam', F, F));
+  ok('a tick draws once the lead has been quiet over a frame and a quarter (a camera hiccup, a still screen)', drawNow('tick', 'cam', F * 1.3, F));
+  ok('the screen does not draw while the camera leads (the camera\'s next draw takes it)', !drawNow('screen', 'cam', F, F));
+  ok('a camera frame waits for its outline while frames are paired', !drawNow('cam', 'pair', F, F) && drawNow('pair', 'pair', F, F));
+  ok('with the clock leading, every tick draws and arrivals wait', drawNow('tick', 'clock', 1, F) && !drawNow('cam', 'clock', F, F));
+  ok('a frame that costs 60 ms is not drawn again 40 ms later (the page keeps a fifth of its time)', !drawNow('cam', 'cam', 40, F, 60) && !drawNow('tick', 'clock', 40, F, 60) && drawNow('cam', 'cam', 76, F, 60));
+  ok('a frame that costs 10 ms changes nothing at 30 fps', drawNow('cam', 'cam', F, F, 10) && drawNow('tick', 'clock', F, F, 10));
+  ok('a shown camera read frame by frame leads at 30 fps', leadOf({ cam: true, camFeed: true, camMs: 33, pairing: false, screenFeed: true, fps: 30 }) === 'cam');
+  ok('…its outline leads when paired', leadOf({ cam: true, camFeed: true, camMs: 33, pairing: true, screenFeed: true, fps: 30 }) === 'pair');
+  ok('…a slow camera still leads at 30 fps (the heartbeat fills the gaps)', leadOf({ cam: true, camFeed: true, camMs: 66, pairing: false, screenFeed: true, fps: 30 }) === 'cam');
+  ok('a 30 fps camera cannot pace a 60 fps recording: the clock leads', leadOf({ cam: true, camFeed: true, camMs: 33, pairing: false, screenFeed: true, fps: 60 }) === 'clock');
+  ok('a 60 fps camera paces a 60 fps recording', leadOf({ cam: true, camFeed: true, camMs: 16.7, pairing: false, screenFeed: false, fps: 60 }) === 'cam');
+  ok('a camera drawn from an element (Firefox, Safari) cannot lead', leadOf({ cam: true, camFeed: false, camMs: 33, pairing: false, screenFeed: false, fps: 30 }) === 'clock');
+  ok('no camera: the shared screen leads', leadOf({ cam: false, camFeed: false, camMs: 0, pairing: false, screenFeed: true, fps: 30 }) === 'screen');
+  /* The beat, simulated: a 30.3 fps camera against a 30 fps clock for 20 s. Drawn on the clock, frames are shown twice or never and wait up to a frame; drawn as they arrive, neither. */
+  const sim = (lead: 'cam' | 'clock') => {
+    const camMs = 1000 / 30.3, events: [number, 'cam' | 'tick'][] = [];
+    for (let t = 5; t < 20000; t += camMs) events.push([t, 'cam']);
+    for (let t = 0; t < 20000; t += F) events.push([t, 'tick']);
+    events.sort((a, b) => a[0] - b[0]);
+    let last = -Infinity, newest = -1, arrivedAt = 0, shown = -1, waits: number[] = [], rep = 0, skip = 0, n = -1;
+    for (const [t, k] of events) {
+      if (k === 'cam') { n++; newest = n; arrivedAt = t; }
+      if (newest < 0 || !drawNow(k, lead, t - last, F)) continue;
+      last = t;
+      if (newest === shown) rep++; else { if (shown >= 0) skip += newest - shown - 1; waits.push(t - arrivedAt); }
+      shown = newest;
+    }
+    return { rep, skip, wait: waits.reduce((a, b) => a + b, 0) / waits.length };
+  };
+  const a = sim('clock'), b = sim('cam');
+  console.log('    beat simulation, clock-led:', JSON.stringify(a), ' arrival-led:', JSON.stringify(b));
+  ok('drawn on the clock, a camera beating against it repeats and skips frames and waits ~half a frame', a.rep + a.skip > 0 && a.wait > 8, a);
+  ok('drawn as it arrives: no camera frame repeated or skipped, and no wait', b.rep === 0 && b.skip === 0 && b.wait < 1, b);
+}
 
 /* ── Diagnostics ── */
 {
