@@ -44,10 +44,20 @@ export interface MailboxRecord {
   from: { name: string; email: string; replyTo: string };
   imap: { host: string; port: number; encryption: string; username: string; folder: string; hasPassword: boolean };
   provider: { name: string; domain: string; url: string; hasKey: boolean; hasSecret: boolean };
-  outgoing: { verifiedAt: string | null; verifiedPort: number | null; lastError: string };
-  incoming: { verifiedAt: string | null; lastError: string };
+  outgoing: { verifiedAt: string | null; verifiedPort: number | null; lastError: string } & SideStatus;
+  incoming: { verifiedAt: string | null; lastError: string } & SideStatus;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * One direction in a word, from the Worker's recorded stamps and last error
+ * (routes/mailbox.ts sideStatus). Optional only for a Worker older than the
+ * page, mid-deploy.
+ */
+export interface SideStatus {
+  state?: 'connected' | 'warning' | 'failed' | 'untested' | 'not_set_up' | 'send_only';
+  problem?: { summary: string; fix: string };
 }
 
 /** What broke, and what to do about it. Built on the Worker, where the real
@@ -340,4 +350,17 @@ export interface BulkRow {
 /** Save and test up to three mailboxes; each row answers for itself. */
 export function bulkConnectMailboxes(rows: BulkRow[]) {
   return callRaw<{ results?: BulkResult[]; mailboxes?: MailboxRecord[] }>('bulk_connect', { rows });
+}
+
+export interface ActivateResult {
+  id: string; email?: string; label?: string; ok: boolean;
+  status: 'connected' | 'send_only' | 'partial' | 'failed'; message?: string;
+  /** What was filled in, and where it came from. */
+  filled?: string[];
+  outgoing?: BulkSideResult; incoming?: BulkSideResult;
+}
+
+/** Fill what is missing on up to three saved mailboxes, then validate both sides of each. */
+export function activateMailboxes(ids: string[]) {
+  return callRaw<{ results?: ActivateResult[]; mailboxes?: MailboxRecord[] }>('activate_all', { ids });
 }

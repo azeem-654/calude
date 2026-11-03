@@ -30,6 +30,8 @@ export interface DomainLookup {
   domain: string;
   found: FoundSettings | null;
   steps: LookupStep[];
+  /** DNS answered: the domain has no MX (or does not exist), so nothing receives mail for it. */
+  noMx?: boolean;
 }
 
 const DOMAIN_OK = /^(?=.{3,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
@@ -111,7 +113,7 @@ export async function lookupDomain(env: Env, domain: string, email: string): Pro
 
   const mx = await mxHosts(env, d);
   if ('error' in mx) { steps.push({ source: 'MX records', outcome: 'failed', detail: mx.error }); return { domain: d, found: null, steps }; }
-  if ('none' in mx) { steps.push({ source: 'MX records', outcome: 'none', detail: mx.none }); return { domain: d, found: null, steps }; }
+  if ('none' in mx) { steps.push({ source: 'MX records', outcome: 'none', detail: mx.none }); return { domain: d, found: null, steps, noMx: true }; }
   const byMx = providerForMx(mx.hosts);
   if (byMx) {
     steps.push({ source: 'MX records', outcome: 'found', detail: `${mx.hosts[0]} → ${byMx.name}` });

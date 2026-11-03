@@ -22,8 +22,14 @@
  *  - a batch is saved through the normal save path (encrypted, scoped) and
  *    each row answers for itself: connected / wrong password / partial /
  *    unreachable; the same address again updates rather than duplicates;
+ *  - "Check and turn on all mailboxes": a missing side is filled from the
+ *    ISPDB with the other side's login and said so, a side with no server
+ *    anywhere says why, a provider sender at a domain with no MX is "sends
+ *    only"; each side is proved and the list shows it in words;
+ *  - a sync whose login is refused records it on the row and clears the tick
+ *    (the cron then leaves it alone), and the check brings it back;
  *  - the screen at 1280 and 390: paste, review table, connect, results,
- *    no sideways scroll, no page errors.
+ *    check all, no sideways scroll, no page errors.
  */
 import http from 'node:http';
 import net from 'node:net';
@@ -44,8 +50,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 if (!fs.existsSync('dist/index.html')) { console.log('Build first: VITE_BASE=/ npm run build'); process.exit(2); }
 
 /* ── The mail stand-in ── */
-const SMTP_OK = new Map([['ok@stand.test', 'Right-pass-1'], ['half@stand.test', 'Half-pass-1'], ['ui1@stand.test', 'Right-pass-1'], ['pic@stand.test', 'Pic-pass-1']]);
-const IMAP_OK = new Map([['ok@stand.test', 'Right-pass-1'], ['ui1@stand.test', 'Right-pass-1'], ['pic@stand.test', 'Pic-pass-1']]);
+const SMTP_OK = new Map([['ok@stand.test', 'Right-pass-1'], ['half@stand.test', 'Half-pass-1'], ['ui1@stand.test', 'Right-pass-1'], ['pic@stand.test', 'Pic-pass-1'], ['fill@ispdb-hit.test', 'Fill-pass-1']]);
+const IMAP_OK = new Map([['ok@stand.test', 'Right-pass-1'], ['ui1@stand.test', 'Right-pass-1'], ['pic@stand.test', 'Pic-pass-1'], ['in@stand.test', 'In-pass-1']]);
 const seen = { smtpAuth: [], imapLogin: [] };
 const b64d = s => Buffer.from(s, 'base64').toString('utf8');
 
@@ -224,6 +230,44 @@ const stored = sql("SELECT smtp_password, imap_password FROM crm_mailbox_account
 ok('passwords are stored encrypted', stored && !JSON.stringify(stored).includes('Right-pass-1') && stored.smtp_password.length > 20, JSON.stringify(stored));
 ok('no answer carried a password back', !JSON.stringify([list, r]).match(/Right-pass-1|Half-pass-1|Bad-guess-1/));
 
+/* ── Check and turn on all mailboxes ── */
+console.log('\nCheck and turn on all mailboxes');
+const outOnly = (await mb('save', { label: 'Out only', from: { email: 'fill@ispdb-hit.test' }, smtp: { host: '127.0.0.1', port: SMTP, encryption: 'none', username: 'fill@ispdb-hit.test', password: 'Fill-pass-1' } })).id;
+const inOnly = (await mb('save', { label: 'In only', from: { email: 'in@stand.test' }, imap: { host: '127.0.0.1', port: IMAP, encryption: 'none', username: 'in@stand.test', password: 'In-pass-1' } })).id;
+const brevo = (await mb('save', { label: 'Brevo', from: { email: 'news@nothing.test' }, provider: { name: 'brevo' } })).id;
+r = await mb('activate_all', { ids: [okBox.id, outOnly, inOnly, brevo] });
+ok('more than a batch in one request is refused (the page sends batches)', !r.success && /At most 3/.test(r.error), JSON.stringify(r));
+r = await mb('activate_all', { ids: [outOnly, inOnly, brevo] });
+const A = id => r.results?.find(x => x.id === id);
+ok('outgoing only, at a domain the ISPDB knows: incoming filled from it with the same login, said so, and tried',
+  A(outOnly)?.filled?.some(f => /^Incoming: imap\.ispdb-hit\.test:993 filled in from Mozilla ISPDB/.test(f)) && A(outOnly)?.filled?.some(f => /outgoing password/.test(f))
+    && A(outOnly)?.outgoing?.kind === 'connected' && A(outOnly)?.incoming && !A(outOnly).incoming.ok && A(outOnly).incoming.kind !== 'not_set_up' && A(outOnly).status === 'partial',
+  JSON.stringify(A(outOnly)));
+const filledRow = sql(`SELECT imap_host, imap_username, imap_password FROM crm_mailbox_accounts WHERE id = '${outOnly}'`)[0];
+ok('…the filled side is saved, its password encrypted', filledRow?.imap_host === 'imap.ispdb-hit.test' && filledRow.imap_username === 'fill@ispdb-hit.test' && filledRow.imap_password.length > 20 && !filledRow.imap_password.includes('Fill-pass-1'), JSON.stringify(filledRow));
+ok('incoming only, no outgoing server anywhere: receiving connected, sending "not set up" with the lookup\'s reason',
+  A(inOnly)?.incoming?.kind === 'connected' && A(inOnly)?.outgoing?.kind === 'not_set_up' && /does not exist/.test(A(inOnly).outgoing.message) && A(inOnly).status === 'partial',
+  JSON.stringify(A(inOnly)));
+ok('a provider sender at a domain with no MX: "sends only", in plain words; no key is "not set up", not tried',
+  A(brevo)?.incoming?.kind === 'send_only' && /sends only/.test(A(brevo).incoming.message) && A(brevo)?.outgoing?.kind === 'not_set_up' && /API key/.test(A(brevo).outgoing.message),
+  JSON.stringify(A(brevo)));
+const S = id => r.mailboxes?.find(m => m.id === id);
+ok('the list says each side in a word, with what is wrong',
+  S(outOnly)?.outgoing.state === 'connected' && S(outOnly)?.incoming.state === 'failed' && !!S(outOnly)?.incoming.problem?.summary
+    && S(inOnly)?.incoming.state === 'connected' && S(inOnly)?.outgoing.state === 'not_set_up' && S(brevo)?.incoming.state === 'send_only',
+  JSON.stringify([S(outOnly)?.incoming, S(inOnly)?.outgoing, S(brevo)?.incoming]));
+
+/* The engine: a sync whose login is refused says so on the row, and stops being trusted. */
+IMAP_OK.delete('in@stand.test');
+const synced = await api('imap-fetch.php', { token: C.token, accountId: C.acct, mailboxId: inOnly });
+let okNow = (await mb('list')).mailboxes?.find(m => m.id === inOnly);
+ok('a sync refused at login records it on the row and clears the tick', !synced.success && !okNow?.incoming.verifiedAt && okNow?.incoming.state === 'failed' && /rejected the username or password/.test(okNow?.incoming.problem?.summary ?? ''), JSON.stringify([synced.error, okNow?.incoming]));
+IMAP_OK.set('in@stand.test', 'In-pass-1');
+r = await mb('activate_all', { ids: [inOnly] });
+okNow = r.mailboxes?.find(m => m.id === inOnly);
+ok('…and "check and turn on" brings it back', r.results?.[0]?.incoming?.kind === 'connected' && okNow?.incoming.state === 'connected' && !okNow?.incoming.lastError, JSON.stringify(r.results?.[0]));
+ok('no check answer carried a password back', !JSON.stringify(r).match(/Right-pass-1|Fill-pass-1|In-pass-1/));
+
 /* ── The screen ── */
 console.log('\nThe screen');
 const br = await pw.chromium.launch();
@@ -263,6 +307,15 @@ for (const width of [1280, 390]) {
   ok(`@${width}: the connected mailbox appears in the list above`, (await page.locator('body').innerText()).includes('ui1@stand.test'));
   ok(`@${width}: no sideways scroll after the results`, (await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 0);
   await box.screenshot({ path: `test-results/mailimport-${width}.png` });
+  const rows = await page.locator('[data-side]').evaluateAll(els => els.map(e => e.textContent ?? ''));
+  ok(`@${width}: each mailbox row says sending and receiving in words`, rows.some(t => /Sending ✓/.test(t)) && rows.some(t => /Receiving ✓/.test(t)) && rows.some(t => /Sends only/.test(t)), rows.join(' | ').slice(0, 400));
+  const checkAll = page.locator('#mailbox-check-all');
+  await checkAll.getByRole('button', { name: /Check and turn on all mailboxes/ }).click();
+  await checkAll.getByText(/of \d+ sending and receiving/).waitFor({ timeout: 90000 }).catch(() => {});
+  const checkedText = await checkAll.innerText();
+  ok(`@${width}: check all answers per mailbox and per side, partial said as partial`, /of \d+ sending and receiving/.test(checkedText) && /working one way only/.test(checkedText) && /Sends only/.test(checkedText) && /Wrong password/.test(checkedText), checkedText.slice(0, 900));
+  ok(`@${width}: no sideways scroll after checking all`, (await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 0);
+  await checkAll.screenshot({ path: `test-results/mailbox-checkall-${width}.png` });
   await ctx.close();
 }
 ok('no page errors', !errs.length, errs.join(' | '));

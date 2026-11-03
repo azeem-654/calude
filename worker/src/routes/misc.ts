@@ -13,7 +13,7 @@
 import { body, fail, headerSafe, json, ok } from '../lib/http';
 import { canAccess, dataGet, dataPut, hasAnyUser, requireSessionForSocket, denyForeignWorkspace, storageWorkspace, RESERVED_AGENCY, userFromToken, type Env } from '../lib/db';
 import { imapFetch } from '../lib/imap';
-import { loadMailbox, loadMailboxById } from './mailbox';
+import { loadMailbox, loadMailboxById, noteIncomingSync, type Mailbox } from './mailbox';
 import { smtpVerify } from '../lib/smtp';
 import { encryptSecret } from '../lib/crypto';
 import { installSecret, nowIso } from '../lib/db';
@@ -45,6 +45,8 @@ export async function handleImapFetch(req: Request, env: Env): Promise<Response>
     folder: String(d.folder ?? 'INBOX'),
   };
 
+  /* The saved mailbox, when one is named — its result is recorded on its row. */
+  let saved: Mailbox | null = null;
   if (!creds.host && d.accountId) {
     const accountId = String(d.accountId);
     /*
@@ -63,12 +65,16 @@ export async function handleImapFetch(req: Request, env: Env): Promise<Response>
       return fail('That mailbox has no incoming server set up yet. Add one in Settings → Email & SMS → Mailboxes.');
     }
     creds = { ...mb.imap, folder: mb.imap.folder };
+    saved = mb;
   }
 
   if (!creds.host || !creds.username) return fail('Mailbox host and username are required.');
   if (!/^[a-z0-9.\-]+$/i.test(creds.host)) return fail(`"${creds.host}" is not a valid mailbox host.`);
 
   const r = await imapFetch(creds, Number(d.limit) || 20);
+  /* The inbox page polls every mailbox; a failure here is the first sign one has
+     stopped working, so the mailbox list should say so too. */
+  if (saved) await noteIncomingSync(env, saved, r);
 
   return json({ success: r.ok, messages: r.messages, error: r.ok ? undefined : r.error, message: r.ok ? undefined : r.error });
 }
