@@ -25,12 +25,15 @@ import { decryptSecret, encryptSecret } from '../lib/crypto';
 import { smtpVerify, type Encryption } from '../lib/smtp';
 import { imapFetch } from '../lib/imap';
 import { diagnose } from '../lib/mailDiagnosis';
-import { verifyProvider } from '../lib/providerApi';
+import { providerLabel, verifyProvider } from '../lib/providerApi';
 import { sendsViaApi } from '../lib/deliver';
 import { aiBudget, askGeminiParts, extractJson, loadAiKey } from '../lib/ai';
 import { rateLimit } from '../lib/rateLimit';
 import { lookupDomain, lookupDomainOk, lookupSummary } from '../lib/mailLookup';
-import { SCREENSHOT_PROMPT, providerForDomain, providerForMx, recordsFromAi, type AiMailboxes } from '../lib/mailParse';
+import {
+  KNOWN_PROVIDERS, SCREENSHOT_PROMPT, domainOf, knownAsFound, providerForDomain, providerForMx, recordsFromAi,
+  type AiMailboxes, type FoundSettings,
+} from '../lib/mailParse';
 
 const SECRET_KEY = 'mailbox_key';
 
@@ -43,6 +46,12 @@ export interface Mailbox {
   from: { name: string; email: string; replyTo: string };
   imap: { host: string; port: number; encryption: Encryption; username: string; password: string; folder: string };
   provider: { name: string; key: string; secret: string; domain: string; url: string };
+  /**
+   * The incoming side's last answer, as loaded — so a sync can skip a mailbox
+   * whose login was refused and record what it finds (`noteIncomingSync`).
+   * `updatedAt` guards that write against an edit made while it ran.
+   */
+  incomingCheck?: { verifiedAt: string | null; lastError: string; updatedAt: string };
 }
 
 interface Row {
@@ -91,6 +100,7 @@ async function hydrate(env: Env, row: Row): Promise<Mailbox> {
       domain: row.provider_domain,
       url: row.provider_url,
     },
+    incomingCheck: { verifiedAt: row.in_verified_at, lastError: row.in_last_error ?? '', updatedAt: row.updated_at },
   };
 }
 
@@ -157,15 +167,100 @@ function redact(row: Row): Record<string, unknown> {
       verifiedAt: row.out_verified_at,
       verifiedPort: row.out_verified_port,
       lastError: row.out_last_error,
+      ...sideStatus('outgoing', row),
     },
     incoming: {
       verifiedAt: row.in_verified_at,
       lastError: row.in_last_error,
+      ...sideStatus('incoming', row),
     },
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
+
+type SideState = 'connected' | 'warning' | 'failed' | 'untested' | 'not_set_up' | 'send_only';
+
+/**
+ * One direction's state in a word, and what is wrong in plain words — so the
+ * mailbox list can say "Receiving: the password was refused" on the row
+ * instead of a red chip somebody has to open the mailbox to explain.
+ *
+ * Read only from what was recorded (the stamps and the last error), never from
+ * whether fields are filled in: a host typed in is not a connection.
+ * `warning` is a side that passed and has since said something: a provider's
+ * caveat on the From address, or a sync that failed after validation.
+ */
+function sideStatus(direction: 'outgoing' | 'incoming', row: Row): { state: SideState; problem?: { summary: string; fix: string } } {
+  const out = direction === 'outgoing';
+  const viaApi = !!row.provider && row.provider !== 'smtp';
+  const verified = out ? row.out_verified_at : row.in_verified_at;
+  const err = String((out ? row.out_last_error : row.in_last_error) ?? '');
+  const configured = out ? (viaApi ? !!row.provider_key : !!row.smtp_host) : !!row.imap_host && !!row.imap_username;
+  const state: SideState = verified ? (err ? 'warning' : 'connected')
+    : err ? 'failed'
+    : configured ? 'untested'
+    /* A provider API (Brevo, Resend…) only sends; with no IMAP of its own this is a sending-only mailbox, not a broken one. */
+    : !out && viaApi ? 'send_only' : 'not_set_up';
+  if (!err) return { state };
+  /* A provider's caveat is stored as it was said, and is not a fault to diagnose. */
+  if (out && verified && viaApi) return { state, problem: { summary: err, fix: '' } };
+  const d = diagnose(direction, err);
+  return { state, problem: { summary: d.summary, fix: d.steps[0] ?? '' } };
+}
+
+/** Every mailbox in a workspace as the settings screen may see it. */
+async function listRedacted(env: Env, accountId: string): Promise<Record<string, unknown>[]> {
+  const rows = await env.DB.prepare(
+    `SELECT * FROM ${TABLE} WHERE account_id = ? ORDER BY is_primary DESC, created_at ASC`,
+  ).bind(accountId).all<Row>();
+  return (rows.results ?? []).map(redact);
+}
+
+/** Diagnoses that mean the login itself was refused, not that the server was away. */
+const LOGIN_REFUSED = new Set(['r3', 'r4', 'r5']);
+
+/**
+ * What a sync (the reply cron, the inbox page) found, recorded on the row so
+ * the mailbox list shows it. A mailbox whose IMAP kept failing used to fail
+ * only into a cron note nobody reads, while Settings went on showing the green
+ * tick from the day it was validated.
+ *
+ * A refused login also clears the stamp, which stops the cron: trying a wrong
+ * password every five minutes is how a provider locks the account. A server
+ * that did not answer keeps its stamp — it is tried again next tick, and the
+ * row says the last attempt failed. A success clears the error and stamps a
+ * mailbox that was never validated, because it has just been proved.
+ *
+ * Guarded by `updated_at`: a customer who saved new settings while this ran
+ * must not have them stamped with the old settings' result.
+ */
+export async function noteIncomingSync(env: Env, mb: Mailbox, r: { ok: boolean; error: string }): Promise<void> {
+  const c = mb.incomingCheck;
+  if (!c) return;
+  if (r.ok) {
+    if (c.verifiedAt && !c.lastError) return; /* nothing new — no write every tick */
+    await env.DB.prepare(
+      `UPDATE ${TABLE} SET in_verified_at = COALESCE(in_verified_at, ?), in_last_error = '' WHERE id = ? AND updated_at = ?`,
+    ).bind(nowIso(), mb.id, c.updatedAt).run();
+    return;
+  }
+  const refused = LOGIN_REFUSED.has(diagnose('incoming', r.error).id);
+  if (c.lastError === r.error && (!refused || !c.verifiedAt)) return;
+  await env.DB.prepare(
+    `UPDATE ${TABLE} SET in_last_error = ?, in_verified_at = ${refused ? 'NULL' : 'in_verified_at'} WHERE id = ? AND updated_at = ?`,
+  ).bind(r.error.slice(0, 500), mb.id, c.updatedAt).run();
+}
+
+/**
+ * Should a sync read this mailbox? Every mailbox with IMAP settings — not just
+ * the primary — except one whose last check failed and has not been proved
+ * since: that is a wrong password or a dead host waiting for the customer, and
+ * retrying it unattended only risks a lockout. "Check and turn on all
+ * mailboxes" (or Validate) brings it back.
+ */
+export const incomingReady = (mb: Mailbox): boolean =>
+  !!mb.imap.host && !!mb.imap.username && !(mb.incomingCheck && !mb.incomingCheck.verifiedAt && mb.incomingCheck.lastError);
 
 interface SaveBody {
   token?: string;
@@ -432,6 +527,8 @@ export async function handleMailbox(req: Request, env: Env): Promise<Response> {
   if (d.action === 'lookup') return lookupAction(env, accountId, d as LookupBody);
   if (d.action === 'read_picture') return readPicture(env, accountId, d as PictureBody);
   if (d.action === 'bulk_connect') return bulkConnect(env, accountId, key, d as BulkBody);
+  /* ── Every saved mailbox: fill what is missing, then prove both sides ── */
+  if (d.action === 'activate_all') return activateAll(env, accountId, key, d as ActivateBody);
 
   return fail(`"${d.action ?? ''}" is not something this endpoint does.`);
 }
@@ -596,7 +693,9 @@ interface BulkBody { rows?: BulkRow[] }
 interface SideResult {
   ok: boolean;
   kind: 'connected' | 'wrong_password' | 'needs_app_password' | 'host_not_found' | 'host_unreachable'
-    | 'encryption_mismatch' | 'account_locked' | 'folder_missing' | 'not_set' | 'failed';
+    | 'encryption_mismatch' | 'account_locked' | 'folder_missing' | 'not_set' | 'failed'
+    /* activate_all only: nothing to test yet / a provider API that only sends. */
+    | 'not_set_up' | 'send_only';
   message: string;
   steps?: string[];
 }
@@ -654,10 +753,7 @@ async function bulkConnect(env: Env, accountId: string, key: string, d: BulkBody
     return { ...base, id: p.id, updated: p.updated, ok: both, status, outgoing, incoming };
   }));
 
-  const now = await env.DB.prepare(
-    `SELECT * FROM ${TABLE} WHERE account_id = ? ORDER BY is_primary DESC, created_at ASC`,
-  ).bind(accountId).all<Row>();
-  return json({ success: true, results, mailboxes: (now.results ?? []).map(redact) });
+  return json({ success: true, results, mailboxes: await listRedacted(env, accountId) });
 
   async function saveRow(row: BulkRow): Promise<Out | { email: string; id: string; updated: boolean }> {
     const email = String(row.email ?? '').trim().toLowerCase();
@@ -696,4 +792,204 @@ async function bulkConnect(env: Env, accountId: string, key: string, d: BulkBody
     }
     return { email, id: saved.id, updated: !!existing };
   }
+}
+
+/* ── "Check and turn on all mailboxes" (MailboxesPanel.tsx) ─────────────────
+ *
+ * For every saved mailbox: work out which side is missing, fill it where it
+ * can be derived honestly, then prove both sides with the form's own
+ * Validate. The page sends the workspace's ids in batches of BULK_BATCH, for
+ * the same reason bulk_connect does.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+interface ActivateBody { ids?: unknown }
+
+interface Gaps {
+  /** The full save body when something was filled; null when nothing was. */
+  body: SaveBody | null;
+  /** What was filled and where it came from, in words the results can show. */
+  notes: string[];
+  /** Why a missing side could not be filled — the lookup's own answer. */
+  outWhy: string;
+  inWhy: string;
+  /**
+   * The lookup reached DNS and found nothing to receive on: 'no_mx' when the
+   * domain lists no mail server, 'unknown' when its mail server publishes no
+   * settings we can read. Empty when the lookup could not run, or found some.
+   */
+  noMailHost: '' | 'no_mx' | 'unknown';
+  /** For the app-password rule when a login is refused. */
+  appPassword: boolean;
+}
+
+/** The address a mailbox is for: its From, else whichever login is an address. */
+function addressOf(mb: Mailbox): string {
+  const cands = [mb.from.email, mb.smtp.username, mb.imap.username].map(x => String(x ?? '').trim().toLowerCase());
+  return cands.find(x => !!addr(x)) ?? '';
+}
+
+/**
+ * Fill what is missing, and only that. Never overwrites a host, port or login
+ * somebody typed — a filled field the customer did not want is a wrong answer
+ * that looks like theirs.
+ *
+ *   - A side with no server: the provider the other side's host names, else
+ *     the address's domain through `lookupDomain` (known providers, ISPDB,
+ *     autoconfig, MX) — the same steps the paste import uses.
+ *   - A side with a server but no username: the address.
+ *   - A side with no password, when both logins are this address (or its
+ *     local part): the other side's password. A mail host uses one login for
+ *     both; a relay login ("apikey", "resend") is never copied anywhere.
+ *   - A provider API sender has no IMAP: the address's own mail host is
+ *     looked up for receiving. Its API key is not a mailbox password and is
+ *     never copied, so that side still needs the customer's password.
+ */
+async function fillGaps(env: Env, accountId: string, row: Row, mb: Mailbox, email: string): Promise<Gaps> {
+  const notes: string[] = [];
+  const viaApi = sendsViaApi(mb);
+  const needOut = !viaApi && !row.smtp_host;
+  const needIn = !row.imap_host;
+  const local = email.split('@')[0] ?? '';
+  const own = (u: string) => !!email && (u.toLowerCase() === email || (!!local && u.toLowerCase() === local.toLowerCase()));
+
+  let found: FoundSettings | null = null;
+  let why = '';
+  let noMailHost: Gaps['noMailHost'] = '';
+  if ((needOut || needIn) && !email) why = 'this mailbox has no address, so its servers cannot be looked up';
+  else if (needOut || needIn) {
+    /* The other side's server names the provider more surely than a custom domain does. */
+    const host = (needOut ? row.imap_host : viaApi ? '' : row.smtp_host).toLowerCase();
+    const byHost = host
+      ? providerForMx([host]) ?? Object.values(KNOWN_PROVIDERS).find(k => k.smtp.host === host || k.imap.host === host) ?? null
+      : null;
+    if (byHost && !byHost.unsupported) found = knownAsFound(byHost, `known settings for ${host}`);
+    else {
+      const v = await rateLimit(env, { what: 'mailbox-lookup', who: accountId, max: 300, windowSeconds: 3600 });
+      if (!v.allowed) why = `the lookup limit for this hour was reached — try again in ${Math.ceil(v.retryAfter / 60)} minutes`;
+      else {
+        const l = await lookupDomain(env, domainOf(email), email);
+        found = l.found;
+        if (!found) {
+          /* DNS's own answer when it gave one ("this domain has no MX records") — the clearest reason there is. */
+          why = l.noMx ? l.steps.find(s => s.source === 'MX records')?.detail ?? lookupSummary(l) : lookupSummary(l);
+          /* A lookup that could not reach DNS proves nothing, so says nothing here. */
+          noMailHost = l.noMx ? 'no_mx' : l.steps.some(s => s.source === 'MX records' && s.outcome !== 'failed') ? 'unknown' : '';
+        }
+      }
+    }
+    if (found?.unsupported) {
+      why = found.note ?? `${found.provider} cannot be connected from a cloud service`;
+      found = null;
+    }
+  }
+
+  const smtp = { host: row.smtp_host, port: row.smtp_port, encryption: row.smtp_encryption, username: row.smtp_username, password: '' };
+  const imap = { host: row.imap_host, port: row.imap_port, encryption: row.imap_encryption, username: row.imap_username, password: '', folder: row.imap_folder };
+  let changed = false;
+  const login = (u?: 'email' | 'local') => (u === 'local' ? local : email);
+
+  if (needOut && found?.smtp) {
+    Object.assign(smtp, { host: found.smtp.host, port: found.smtp.port, encryption: found.smtp.security });
+    if (!smtp.username) smtp.username = login(found.smtp.username);
+    notes.push(`Outgoing: ${smtp.host}:${smtp.port} filled in from ${found.source}.`);
+    changed = true;
+  }
+  if (needIn && found?.imap) {
+    Object.assign(imap, { host: found.imap.host, port: found.imap.port, encryption: found.imap.security });
+    if (!imap.username) imap.username = login(found.imap.username);
+    notes.push(viaApi
+      ? `Incoming: ${imap.host}:${imap.port} filled in from ${found.source} — ${providerLabel(mb.provider.name)} only sends, so replies are collected from this address's own mail host.`
+      : `Incoming: ${imap.host}:${imap.port} filled in from ${found.source}.`);
+    changed = true;
+  }
+  if (imap.host && !imap.username && email) { imap.username = email; changed = true; notes.push('Incoming: no login was saved, so the address is used.'); }
+
+  /* One login for both directions — copied only between this address's own logins. */
+  if (!viaApi && smtp.host && !row.smtp_password && mb.imap.password && own(smtp.username) && own(imap.username)) {
+    smtp.password = mb.imap.password; changed = true;
+    notes.push('Outgoing: signs in with the incoming password — a mail host uses one login for both.');
+  }
+  if (!viaApi && imap.host && !row.imap_password && mb.smtp.password && own(smtp.username) && own(imap.username)) {
+    imap.password = mb.smtp.password; changed = true;
+    notes.push('Incoming: signs in with the outgoing password — a mail host uses one login for both.');
+  }
+
+  const known = providerForDomain(domainOf(email)) ?? providerForMx([smtp.host, imap.host].filter(Boolean));
+  return {
+    body: changed ? {
+      id: row.id, label: row.label, smtp, imap,
+      from: { name: row.from_name, email: row.from_email, replyTo: row.reply_to },
+      /* No key or secret: blank keeps the stored ones (saveOne's keepOrSet). */
+      provider: { name: row.provider, domain: row.provider_domain, url: row.provider_url },
+    } : null,
+    notes,
+    outWhy: needOut && !found?.smtp ? why : '',
+    inWhy: needIn && !found?.imap ? why : '',
+    noMailHost,
+    appPassword: !!(known?.appPassword || found?.appPassword),
+  };
+}
+
+async function activateOne(env: Env, accountId: string, key: string, id: string): Promise<Record<string, unknown>> {
+  const read = () => env.DB.prepare(`SELECT * FROM ${TABLE} WHERE account_id = ? AND id = ?`).bind(accountId, id).first<Row>();
+  let row = await read();
+  if (!row) return { id, ok: false, status: 'failed', message: 'That mailbox is not in this workspace.' };
+  let mb = await hydrate(env, row);
+  const email = addressOf(mb);
+  const base = { id, email, label: row.label };
+
+  /* The same hourly budget as "Connect and test all": both log in to somebody else's server. */
+  const v = await rateLimit(env, { what: 'mailbox-bulk', who: accountId, max: 150, windowSeconds: 3600 });
+  if (!v.allowed) return { ...base, ok: false, status: 'failed', message: `Too many mailbox tests this hour — try again in ${Math.ceil(v.retryAfter / 60)} minutes.` };
+
+  const gaps = await fillGaps(env, accountId, row, mb, email);
+  const filled = [...gaps.notes];
+  if (gaps.body) {
+    const saved = await saveOne(env, accountId, key, gaps.body);
+    if (!saved.ok) filled.push(`What was found could not be saved: ${saved.error}`);
+    else {
+      row = (await read()) ?? row;
+      mb = await hydrate(env, row);
+    }
+  }
+  const viaApi = sendsViaApi(mb);
+  const label = providerLabel(mb.provider.name);
+
+  /* Each side is either not ready (said why, nothing tried) or proved — one after the other, as in bulk_connect. */
+  let outgoing: SideResult;
+  if (viaApi && !row.provider_key) {
+    outgoing = { ok: false, kind: 'not_set_up', message: `Add the ${label} API key under Outgoing mail.` };
+  } else if (!viaApi && !row.smtp_host) {
+    outgoing = { ok: false, kind: 'not_set_up', message: `No outgoing server is set${gaps.outWhy ? `, and none could be found: ${gaps.outWhy}` : ''}. Add one under Outgoing mail.` };
+  } else if (!viaApi && row.smtp_username && !row.smtp_password) {
+    outgoing = { ok: false, kind: 'not_set_up', message: `Outgoing server ${row.smtp_host} is set — add this mailbox's password under Outgoing mail to send.` };
+  } else {
+    outgoing = sideResult(await proveOutgoing(env, mb), gaps.appPassword);
+  }
+
+  let incoming: SideResult;
+  if (!row.imap_host) {
+    const where = domainOf(email) || 'this address';
+    incoming = viaApi && gaps.noMailHost
+      ? { ok: false, kind: 'send_only', message: `${label} only sends mail, and ${gaps.noMailHost === 'no_mx' ? `${where} lists no mail server in DNS, so nothing receives mail for it` : `no incoming settings could be found for ${where} (${gaps.inWhy})`}. This mailbox sends only — add an incoming server under Incoming mail if replies should be collected here.` }
+      : { ok: false, kind: 'not_set_up', message: `No incoming server is set${gaps.inWhy ? `, and none could be found: ${gaps.inWhy}` : ''}. Add one under Incoming mail.` };
+  } else if (!row.imap_password) {
+    incoming = { ok: false, kind: 'not_set_up', message: `Incoming server ${row.imap_host} is set — add this mailbox's password under Incoming mail to collect replies.` };
+  } else {
+    incoming = sideResult(await proveIncoming(env, mb), gaps.appPassword);
+  }
+  for (const s of [outgoing, incoming]) if (s.kind === 'not_set') s.kind = 'not_set_up';
+
+  const status = outgoing.ok && incoming.ok ? 'connected'
+    : outgoing.ok && incoming.kind === 'send_only' ? 'send_only'
+    : outgoing.ok || incoming.ok ? 'partial' : 'failed';
+  return { ...base, ok: status === 'connected' || status === 'send_only', status, filled, outgoing, incoming };
+}
+
+async function activateAll(env: Env, accountId: string, key: string, d: ActivateBody): Promise<Response> {
+  const ids = (Array.isArray(d.ids) ? d.ids : []).map(x => String(x ?? '').trim()).filter((x, i, a) => x && a.indexOf(x) === i);
+  if (!ids.length) return fail('Which mailboxes? The page sends their ids in batches.');
+  if (ids.length > BULK_BATCH) return fail(`At most ${BULK_BATCH} mailboxes per request; the page sends them in batches.`);
+  const results = await Promise.all(ids.map(id => activateOne(env, accountId, key, id)));
+  return json({ success: true, results, mailboxes: await listRedacted(env, accountId) });
 }

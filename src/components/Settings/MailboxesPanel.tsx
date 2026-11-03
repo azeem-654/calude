@@ -26,12 +26,12 @@ import MailboxImport from './MailboxImport';
 import { useEffect, useState } from 'react';
 import {
   Mail, Inbox, Plus, Trash2, Star, CheckCircle2, XCircle, Loader,
-  ChevronDown, ChevronRight, ShieldCheck, AlertTriangle, Eye, EyeOff,
+  ChevronDown, ChevronRight, ShieldCheck, AlertTriangle, Eye, EyeOff, Power,
 } from 'lucide-react';
 import {
   listMailboxes, saveMailboxRecord, deleteMailboxById, setPrimaryMailbox,
-  validateOutgoing, validateIncoming, cacheMailboxes,
-  type MailboxRecord, type MailboxDraft, type Diagnosis,
+  validateOutgoing, validateIncoming, cacheMailboxes, activateMailboxes,
+  type MailboxRecord, type MailboxDraft, type Diagnosis, type SideStatus, type ActivateResult, type BulkSideResult,
 } from '../../services/mailboxStore';
 
 const INK = '#17191c';
@@ -113,6 +113,91 @@ function StatusChip({ verifiedAt, lastError }: { verifiedAt: string | null; last
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, background: cfg.bg, color: cfg.fg, fontSize: 11, fontWeight: 700 }}>
       {cfg.icon} {cfg.text}
     </span>
+  );
+}
+
+type SideState = NonNullable<SideStatus['state']>;
+
+/** A Worker older than this page sends no `state`; the old chip's reading of the stamps stands in. */
+const stateOf = (s: { verifiedAt: string | null; lastError: string } & SideStatus): SideState =>
+  s.state ?? (s.verifiedAt ? 'connected' : s.lastError ? 'failed' : 'untested');
+
+/**
+ * One direction on a mailbox's row, in words: "Sending ✓", "Receiving: failed".
+ * The row says this without being opened, because two chips reading
+ * "Validated" / "Failed" made somebody open every mailbox to learn which half
+ * worked and why the other did not.
+ */
+function SideBadge({ direction, s }: { direction: Direction; s: { verifiedAt: string | null; lastError: string } & SideStatus }) {
+  const word = direction === 'outgoing' ? 'Sending' : 'Receiving';
+  const state = stateOf(s);
+  const cfg: Record<SideState, { bg: string; fg: string; text: string; icon: React.ReactNode }> = {
+    connected: { bg: '#e8f5e9', fg: '#1e6b32', text: `${word} ✓`, icon: <CheckCircle2 size={12} /> },
+    warning: { bg: '#fff7e6', fg: '#8a5a00', text: `${word} ✓ — see note`, icon: <AlertTriangle size={12} /> },
+    failed: { bg: '#fdecea', fg: '#a02216', text: `${word}: failed`, icon: <XCircle size={12} /> },
+    untested: { bg: '#f1f5f9', fg: MUTED, text: `${word}: not checked yet`, icon: <AlertTriangle size={12} /> },
+    not_set_up: { bg: '#f1f5f9', fg: MUTED, text: `${word}: not set up`, icon: <AlertTriangle size={12} /> },
+    send_only: { bg: '#f1f5f9', fg: MUTED, text: 'Sends only', icon: <Mail size={12} /> },
+  };
+  const c = cfg[state];
+  return (
+    <span data-side={direction} data-state={state} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999, background: c.bg, color: c.fg, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap' }}>
+      {c.icon} {c.text}
+    </span>
+  );
+}
+
+/** What is wrong with each side that is not working, and the first thing to try — under the row. */
+function RowProblems({ m }: { m: MailboxRecord }) {
+  const lines: { key: string; text: string; bad: boolean }[] = [];
+  for (const [direction, s] of [['outgoing', m.outgoing], ['incoming', m.incoming]] as const) {
+    const word = direction === 'outgoing' ? 'Sending' : 'Receiving';
+    const state = stateOf(s);
+    if ((state === 'failed' || state === 'warning') && (s.problem || s.lastError)) {
+      const p = s.problem;
+      lines.push({ key: direction, bad: state === 'failed', text: `${word}: ${p ? `${p.summary}${p.fix ? ` ${p.fix}` : ''}` : s.lastError}` });
+    } else if (state === 'not_set_up') {
+      lines.push({ key: direction, bad: false, text: `${word} is not set up — "Check and turn on all mailboxes" looks its settings up, or open the mailbox and add them.` });
+    } else if (state === 'untested') {
+      lines.push({ key: direction, bad: false, text: `${word} is saved but has not been checked — "Check and turn on all mailboxes" or Save & validate proves it.` });
+    } else if (state === 'send_only') {
+      const via = m.provider.name ? m.provider.name[0].toUpperCase() + m.provider.name.slice(1) : 'a provider';
+      lines.push({ key: direction, bad: false, text: `Sends through ${via}, which does not receive mail. Add an incoming server if replies should be collected here.` });
+    }
+  }
+  if (!lines.length) return null;
+  return (
+    <div style={{ padding: '0 15px 11px 39px', background: '#fafbfc', display: 'grid', gap: 3 }}>
+      {lines.map(l => (
+        <p key={l.key} style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: l.bad ? '#a02216' : MUTED, overflowWrap: 'anywhere' }}>{l.text}</p>
+      ))}
+    </div>
+  );
+}
+
+/** A side's answer from "Check and turn on all mailboxes", in plain words. */
+const KIND_WORDS: Record<string, string> = {
+  connected: 'Connected', wrong_password: 'Wrong password', needs_app_password: 'Needs an app password',
+  host_not_found: 'Server not found', host_unreachable: 'Server unreachable', encryption_mismatch: 'Port and encryption do not match',
+  account_locked: 'Account locked', folder_missing: 'Folder missing', not_set_up: 'Not set up', send_only: 'Sends only', failed: 'Failed',
+};
+
+function CheckSide({ label, r }: { label: string; r?: BulkSideResult }) {
+  if (!r) return null;
+  const quiet = r.kind === 'not_set_up' || r.kind === 'send_only';
+  return (
+    <div style={{ fontSize: 12, lineHeight: 1.5, color: r.ok ? '#1e6b32' : quiet ? MUTED : '#a02216', overflowWrap: 'anywhere' }}>
+      <strong>{label}:</strong> {KIND_WORDS[r.kind] ?? r.kind}{!r.ok && r.message ? ` — ${r.message}` : ''}
+      {/* Folded: across a dozen mailboxes the steps for each failure buried which ones had failed. */}
+      {!r.ok && r.steps?.length ? (
+        <details style={{ marginTop: 2 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 11.5, fontWeight: 600 }}>What to try</summary>
+          <ol style={{ margin: '3px 0 0', paddingLeft: 18, color: '#5c2019' }}>
+            {r.steps.map((s, i) => <li key={i}>{s}</li>)}
+          </ol>
+        </details>
+      ) : null}
+    </div>
   );
 }
 
@@ -407,6 +492,9 @@ export default function MailboxesPanel() {
   const [drafts, setDrafts] = useState<Record<string, MailboxDraft>>({});
   /* A mailbox being added has no id yet, so it needs a key of its own. */
   const [adding, setAdding] = useState<MailboxDraft | null>(null);
+  /* "Check and turn on all mailboxes": progress, then one answer per mailbox. */
+  const [checking, setChecking] = useState<{ done: number; total: number } | null>(null);
+  const [checked, setChecked] = useState<ActivateResult[] | null>(null);
 
   /* A guarded async IIFE rather than an effect that calls setState as it runs.
      The same shape AutomationPanel and InfrastructurePanel settled on: `live`
@@ -468,6 +556,57 @@ export default function MailboxesPanel() {
 
   const title = (m: MailboxRecord) => m.label || m.from.email || m.smtp.host || m.imap.host || 'Untitled mailbox';
 
+  /*
+   * Every mailbox, both sides: the Worker fills what it can find (and says
+   * where from), then validates each side the way the form's button does.
+   * Batches of three — the Worker's own limit (routes/mailbox.ts BULK_BATCH),
+   * since each mailbox is two logins and possibly a lookup.
+   */
+  const checkAll = async () => {
+    const ids = list.map(m => m.id);
+    if (!ids.length) return;
+    const all: ActivateResult[] = [];
+    setChecked([]);
+    setChecking({ done: 0, total: ids.length });
+    for (let i = 0; i < ids.length; i += 3) {
+      const batch = ids.slice(i, i + 3);
+      const ans = await activateMailboxes(batch);
+      if (!ans.success) {
+        /* A refused batch is said on each of its mailboxes, not swallowed into a total. */
+        all.push(...batch.map(id => ({ id, ok: false, status: 'failed' as const, message: ans.error ?? 'The server did not answer.' })));
+      } else {
+        const results = ans.results ?? [];
+        all.push(...results);
+        if (ans.mailboxes) {
+          const fresh = ans.mailboxes;
+          afterSave(fresh);
+          /* Settings the Worker filled in should show in the form — those drafts only, so other edits survive. */
+          const touched = new Set(results.filter(r => r.filled?.length).map(r => r.id));
+          setDrafts(p => {
+            const next = { ...p };
+            for (const m of fresh) if (touched.has(m.id)) next[m.id] = toDraft(m);
+            return next;
+          });
+        }
+      }
+      setChecked([...all]);
+      setChecking({ done: Math.min(i + 3, ids.length), total: ids.length });
+    }
+    setChecking(null);
+  };
+
+  /* Partial is said as partial: a mailbox that only sends is not counted as fully on. */
+  const checkSummary = (rs: ActivateResult[]): string => {
+    const n = (s: ActivateResult['status']) => rs.filter(r => r.status === s).length;
+    const parts = [
+      `${n('connected')} of ${rs.length} sending and receiving`,
+      n('send_only') ? `${n('send_only')} sending only` : '',
+      n('partial') ? `${n('partial')} working one way only` : '',
+      n('failed') ? `${n('failed')} not working yet` : '',
+    ].filter(Boolean);
+    return `${parts.join(', ')}.`;
+  };
+
   return (
     <section style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <header>
@@ -480,6 +619,40 @@ export default function MailboxesPanel() {
       </header>
 
       {loading && <p style={{ fontSize: 13, color: MUTED }}>Loading…</p>}
+
+      {!loading && list.length > 0 && (
+        <div id="mailbox-check-all" style={{ display: 'grid', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <button onClick={() => void checkAll()} disabled={checking !== null}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 15px', borderRadius: 10, border: 'none', background: checking ? '#c3c7cd' : INK, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: checking ? 'default' : 'pointer' }}>
+              {checking ? <Loader size={14} className="spin" /> : <Power size={14} />}
+              {checking ? `Checking ${checking.done} of ${checking.total}…` : 'Check and turn on all mailboxes'}
+            </button>
+            <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.5, flex: '1 1 240px' }}>
+              Fills in a missing incoming or outgoing server where it can be found, then signs in to both sides of every mailbox.
+            </span>
+          </div>
+          {checked && checked.length > 0 && (
+            <div style={{ padding: 12, border: `1px solid ${LINE}`, borderRadius: 12, background: '#fff', display: 'grid', gap: 10 }}>
+              {!checking && <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: INK }}>{checkSummary(checked)}</p>}
+              {checked.map(r => {
+                const m = list.find(x => x.id === r.id);
+                return (
+                  <div key={r.id} data-mailbox-check={r.status} style={{ display: 'grid', gap: 3, paddingTop: 8, borderTop: `1px solid ${LINE}` }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: INK, overflowWrap: 'anywhere' }}>
+                      {m ? title(m) : r.label || r.email || 'Mailbox'}
+                    </span>
+                    {r.message && !r.outgoing && <span style={{ fontSize: 12, color: '#a02216' }}>{r.message}</span>}
+                    {r.filled?.map((f, i) => <span key={i} style={{ fontSize: 12, color: '#2b5fd9', overflowWrap: 'anywhere' }}>{f}</span>)}
+                    <CheckSide label="Sending" r={r.outgoing} />
+                    <CheckSide label="Receiving" r={r.incoming} />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {!loading && list.length === 0 && !adding && (
         <div style={{ padding: 22, border: `1px dashed ${LINE}`, borderRadius: 12, textAlign: 'center', background: '#fafbfc' }}>
@@ -510,10 +683,8 @@ export default function MailboxesPanel() {
               </button>
 
               <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>Send</span>
-                <StatusChip verifiedAt={m.outgoing.verifiedAt} lastError={m.outgoing.lastError} />
-                <span style={{ fontSize: 11, color: MUTED, fontWeight: 600, marginLeft: 4 }}>Receive</span>
-                <StatusChip verifiedAt={m.incoming.verifiedAt} lastError={m.incoming.lastError} />
+                <SideBadge direction="outgoing" s={m.outgoing} />
+                <SideBadge direction="incoming" s={m.incoming} />
               </span>
 
               {!m.isPrimary && (
@@ -527,6 +698,7 @@ export default function MailboxesPanel() {
                 <Trash2 size={15} />
               </button>
             </div>
+            <RowProblems m={m} />
 
             {open && (
               <div style={{ padding: 15, display: 'grid', gap: 14, background: '#f7f8fa' }}>

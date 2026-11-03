@@ -55,6 +55,31 @@ There is no plan allowance on mailbox count. `npm run test:mailparse` (pure),
 `npm run test:mailimport` (built bundle; SMTP + IMAP stand-in on plain sockets,
 mocked ISPDB/DoH/Gemini, both screen widths).
 
+**Check and turn on all mailboxes** (top of the mailbox list, `activate_all`,
+ids in batches of 3, same 150/h test budget): for each saved mailbox
+`fillGaps` fills only what is missing — a side with no server from the
+provider the other side's host names, else `lookupDomain` on the address; a
+blank login with the address; a blank password from the other side **only
+when both logins are this address** (a relay login like `apikey` is never
+copied; a provider API key is never a mailbox password). Each fill is saved
+through `saveOne` (so the changed side's stamp clears) and named in `filled`.
+Then `proveOutgoing`/`proveIncoming`, answered per side (`connected`,
+`wrong_password`, … `not_set_up`, `send_only`). A provider sender (Brevo,
+Resend…) is offered IMAP on the address's own mail host; `send_only` only when
+DNS answered (no MX, or a mail host publishing no settings) — a lookup that
+could not run is `not_set_up` with its reason. Every row's `outgoing` /
+`incoming` carries `state` (`connected`/`warning`/`failed`/`untested`/
+`not_set_up`/`send_only`) and `problem` (diagnosis summary + first fix), shown
+on the row as "Sending ✓ / Receiving: failed" with the fix underneath.
+
+**Incoming sync** (`replyTick.ts`, every mailbox, not only the primary; and the
+inbox page's `imap-fetch.php`) records each result on the row
+(`noteIncomingSync`, guarded by `updated_at`): a refused login clears
+`in_verified_at` and the cron then skips the mailbox (`incomingReady`) rather
+than retry a wrong password into a lockout; an unreachable server keeps its
+stamp and records the error; a success clears it. Validate or Check and turn
+on brings a skipped mailbox back.
+
 ## Platform services — the owner's keys for everybody, in one place
 
 Settings → **Platform services** (`components/Settings/PlatformServices.tsx`,

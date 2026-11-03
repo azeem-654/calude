@@ -17,7 +17,7 @@
  * voice is wrong is before it has gone to fifty people.
  */
 import { dataGet, nowIso, type Env } from './lib/db';
-import { loadMailboxes, type Mailbox } from './routes/mailbox';
+import { incomingReady, loadMailboxes, noteIncomingSync, type Mailbox } from './routes/mailbox';
 import { imapFetch } from './lib/imap';
 import { deliver, fromAddressOf } from './lib/deliver';
 import { askGemini, loadAiKey } from './lib/ai';
@@ -125,8 +125,16 @@ async function doMailbox(
      answered. Fetching it anyway would be reading their mail for no reason. */
   if (!rules.some(r => r.enabled)) return;
   if (!mb.imap.host || !mb.imap.username) return;
+  /* A login that was refused waits for the customer (incomingReady): retrying
+     it every five minutes is how a provider locks the account. */
+  if (!incomingReady(mb)) {
+    report.notes.push(`${mb.label || mb.imap.host}: not read — its last check failed; validate it again in Settings → Mailboxes.`);
+    return;
+  }
 
   const fetched = await imapFetch({ ...mb.imap, folder: mb.imap.folder }, FETCH_LIMIT);
+  /* On the row as well as in the report, so the mailbox list shows it. */
+  await noteIncomingSync(env, mb, fetched);
   if (!fetched.ok) {
     report.failed++;
     report.notes.push(`${mb.label || mb.imap.host}: could not read the mailbox — ${fetched.error.slice(0, 120)}`);
