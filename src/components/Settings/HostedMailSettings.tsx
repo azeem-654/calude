@@ -13,7 +13,7 @@ const INK = '#0f172a';
 const MUTED = '#64748b';
 const LINE = '#e6e9f0';
 
-interface View { configured: boolean; cfAccountId: string; workerName: string; sendProvider: 'resend' | 'brevo'; hasToken: boolean; hasSendKey: boolean }
+interface View { configured: boolean; cfAccountId: string; workerName: string; sendProvider: 'resend' | 'brevo'; hasToken: boolean; tokenFrom: '' | 'saved' | 'secret'; hasSendKey: boolean }
 
 async function call(action: string, extra: Record<string, unknown> = {}) {
   const r = await fetch(`${API_BASE}/api/hosted-mail.php`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: sessionToken(), action, ...extra }) });
@@ -61,7 +61,7 @@ export default function HostedMailSettings() {
         <b> Zone → DNS: Edit</b>, <b>Zone → Email Routing Rules: Edit</b>, <b>Zone → Zone Settings: Edit</b>, for all zones of your account.
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
-        <label style={label}>Cloudflare API token {v?.hasToken && <small>(set — leave blank to keep)</small>}
+        <label style={label}>Cloudflare API token {v?.tokenFrom === 'secret' ? <small>(set as a Worker secret — leave blank)</small> : v?.hasToken && <small>(set — leave blank to keep)</small>}
           <input style={input} type="password" autoComplete="off" value={f.cfToken} onChange={e => setF({ ...f, cfToken: e.target.value })} data-field="hosted.cfToken" /></label>
         <label style={label}>Cloudflare account ID
           <input style={input} value={f.cfAccountId} onChange={e => setF({ ...f, cfAccountId: e.target.value })} data-field="hosted.cfAccountId" /></label>

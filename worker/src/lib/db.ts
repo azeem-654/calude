@@ -71,6 +71,9 @@ export interface Env {
    * the dashboard says how to add them rather than showing numbers.
    */
   CF_ANALYTICS_TOKEN?: string;
+  /** Email on customers' domains (lib/hostedMail.ts): a Cloudflare token kept only as a Worker secret, and the Worker that receives. */
+  HOSTED_MAIL_CF_TOKEN?: string;
+  HOSTED_MAIL_WORKER?: string;
   /** Tests only: stand-ins for Cloudflare, Resend and Brevo in lib/hostedMail.ts. */
   HOSTED_CF_BASE?: string;
   HOSTED_RESEND_BASE?: string;

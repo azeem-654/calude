@@ -60,24 +60,44 @@ export interface HostedConfig {
 
 /* ── The operator's configuration ────────────────────────────────────────── */
 
-export async function hostedConfig(env: Env): Promise<HostedConfig | null> {
-  adopt(env);
+/**
+ * What the owner saved on Platform services, with the Worker's own secrets
+ * filling what was not: `HOSTED_MAIL_CF_TOKEN`, `CF_ACCOUNT_ID` and
+ * `HOSTED_MAIL_WORKER` (set with `wrangler secret put`), so the Cloudflare
+ * token can live only in Cloudflare's secret store. Saved values win.
+ */
+async function savedConfig(env: Env): Promise<Partial<HostedConfig>> {
   const row = await env.DB.prepare('SELECT credentials FROM crm_install_providers WHERE kind = ?').bind(KIND).first<{ credentials: string }>().catch(() => null);
-  if (!row?.credentials) return null;
-  try {
-    const c = JSON.parse(await decryptSecret(await installSecret(env.DB, SECRET_KEY), row.credentials)) as HostedConfig;
-    return c.cfToken && c.cfAccountId ? c : null;
-  } catch { return null; }
+  if (!row?.credentials) return {};
+  try { return JSON.parse(await decryptSecret(await installSecret(env.DB, SECRET_KEY), row.credentials)) as Partial<HostedConfig>; } catch { return {}; }
 }
 
-/** What the owner's screen may see: which fields are set, never their values. */
+export async function hostedConfig(env: Env): Promise<HostedConfig | null> {
+  adopt(env);
+  const s = await savedConfig(env);
+  const c: HostedConfig = {
+    cfToken: s.cfToken || (env.HOSTED_MAIL_CF_TOKEN ?? '').trim(),
+    cfAccountId: s.cfAccountId || (env.CF_ACCOUNT_ID ?? '').trim(),
+    workerName: s.workerName || (env.HOSTED_MAIL_WORKER ?? '').trim() || 'crmpro',
+    sendProvider: s.sendProvider === 'brevo' ? 'brevo' : 'resend',
+    sendKey: s.sendKey || '',
+  };
+  return c.cfToken && c.cfAccountId ? c : null;
+}
+
+/** What the owner's screen may see: which fields are set and where from, never their values. */
 export async function hostedConfigView(env: Env) {
   const c = await hostedConfig(env);
-  return { configured: !!c, cfAccountId: c?.cfAccountId ?? '', workerName: c?.workerName ?? '', sendProvider: c?.sendProvider ?? 'resend', hasToken: !!c?.cfToken, hasSendKey: !!c?.sendKey };
+  const s = await savedConfig(env);
+  return {
+    configured: !!c, cfAccountId: c?.cfAccountId ?? '', workerName: c?.workerName ?? '', sendProvider: c?.sendProvider ?? 'resend',
+    hasToken: !!c?.cfToken, tokenFrom: s.cfToken ? 'saved' : c?.cfToken ? 'secret' : '', hasSendKey: !!c?.sendKey,
+  };
 }
 
 export async function saveHostedConfig(env: Env, patch: Partial<HostedConfig>): Promise<{ ok: boolean; error: string; field?: string }> {
   const old = await hostedConfig(env);
+  const saved = await savedConfig(env);
   const c: HostedConfig = {
     cfToken: (patch.cfToken ?? '').trim() || old?.cfToken || '',
     cfAccountId: (patch.cfAccountId ?? '').trim() || old?.cfAccountId || '',
@@ -88,9 +108,16 @@ export async function saveHostedConfig(env: Env, patch: Partial<HostedConfig>): 
   if (!c.cfToken) return { ok: false, error: 'Paste a Cloudflare API token.', field: 'hosted.cfToken' };
   if (!/^[0-9a-f]{32}$/i.test(c.cfAccountId)) return { ok: false, error: 'The Cloudflare account ID is 32 letters and numbers (Workers & Pages → Overview, right-hand side).', field: 'hosted.cfAccountId' };
   if (!/^[a-z0-9-]{1,63}$/.test(c.workerName)) return { ok: false, error: 'The Worker name is the one in wrangler.jsonc — "crmpro" for the live site.', field: 'hosted.workerName' };
-  const t = await cf<{ status?: string }>(c.cfToken, '/user/tokens/verify');
+  /* A user token verifies at /user, an account-owned token only at its account — the owner's own was the second kind. */
+  let t = await cf<{ status?: string }>(c.cfToken, `/accounts/${c.cfAccountId}/tokens/verify`);
+  if (!t.ok) t = await cf<{ status?: string }>(c.cfToken, '/user/tokens/verify');
   if (!t.ok) return { ok: false, error: `Cloudflare refused that token: ${t.error}`, field: 'hosted.cfToken' };
-  const enc = await encryptSecret(await installSecret(env.DB, SECRET_KEY), JSON.stringify(c));
+  /* It must reach every zone of the account, not one: new customer domains are new zones. */
+  const zones = await cf<unknown[]>(c.cfToken, `/zones?account.id=${c.cfAccountId}&per_page=5`);
+  if (!zones.ok) return { ok: false, error: `That token cannot list the account's domains: ${zones.error}`, field: 'hosted.cfToken' };
+  /* A token held as a Worker secret is used from there, not copied into the database. */
+  const keep = { ...c, cfToken: (patch.cfToken ?? '').trim() || saved.cfToken || '' };
+  const enc = await encryptSecret(await installSecret(env.DB, SECRET_KEY), JSON.stringify(keep));
   await env.DB.prepare(
     `INSERT INTO crm_install_providers (kind, provider, credentials, updated_at) VALUES (?, 'cloudflare', ?, ?)
      ON CONFLICT(kind) DO UPDATE SET provider = excluded.provider, credentials = excluded.credentials, updated_at = excluded.updated_at`,

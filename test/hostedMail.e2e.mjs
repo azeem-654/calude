@@ -34,6 +34,7 @@ const mock = http.createServer((req, res) => {
     const send = (s, j) => { res.writeHead(s, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(j)); };
     const okc = result => send(200, { success: true, result, errors: [] });
     const p = u.pathname, body = b ? JSON.parse(b) : {};
+    if (/^\/cf\/accounts\/\w+\/tokens\/verify$/.test(p)) return send(401, { success: false, errors: [{ message: 'Invalid API Token' }] });
     if (p === '/cf/user/tokens/verify') return req.headers.authorization === 'Bearer cf-good' ? okc({ status: 'active' }) : send(401, { success: false, errors: [{ message: 'Invalid API Token' }] });
     if (p === '/cf/zones' && req.method === 'GET') return okc(Object.values(st.zones).filter(z => z.name === u.searchParams.get('name')));
     if (p === '/cf/zones' && req.method === 'POST') { const z = { id: `z${Object.keys(st.zones).length + 1}`, name: body.name, jump: body.jump_start }; st.zones[z.id] = z; return okc({ ...z, status: 'pending', name_servers: ['ada.ns.cloudflare.com', 'bob.ns.cloudflare.com'] }); }
