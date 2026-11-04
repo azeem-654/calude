@@ -25,6 +25,7 @@ import { getSession } from '../../services/auth';
 import { activeAccount } from '../../services/tenancy';
 import { DEFAULT_TABLE, SOLD_PLANS, annualSaving, dollars, featureLines, fetchPlans, type PlanTable } from '../../services/allowances';
 import { appHref, siteOrigin } from '../../services/hosts';
+import { appsumoStanding, type AppsumoStanding } from '../../services/appsumo';
 import UsageCard from './UsageCard';
 import { billingFor, openBillingPortal, createClientCheckout } from '../../services/billing';
 import { fetchOperatorBilling } from '../../services/operatorBilling';
@@ -54,8 +55,12 @@ export default function ClientBilling() {
   const offersYearly = SOLD_PLANS(table.plans).some(p => p.annualCents > 0);
   const yearly = yearlyAsked && offersYearly;
 
+  /* "Paid" covers a processor subscription, an AppSumo deal and a plan given by
+     hand; only the first has a payment provider's portal to send anyone to. */
+  const [deal, setDeal] = useState<AppsumoStanding | null>(null);
   useEffect(() => {
     let alive = true;
+    void appsumoStanding().then(s => { if (alive) setDeal(s); });
     void myAccount(true).then(a => { if (alive) setAcct(a); });
     const off = onMyAccount(a => { if (alive) setAcct(a); });
     void fetchOperatorBilling().then(r => { if (alive) setPayments(r.success ? !!r.billing?.connected : null); });
@@ -65,6 +70,10 @@ export default function ClientBilling() {
   const trial = acct?.trial;
   const paid = trial?.kind === 'paid';
   const owner = trial?.kind === 'owner';
+  const source = deal?.activePlan?.source ?? '';
+  const onDeal = paid && source === 'appsumo';
+  const given = paid && source === 'manual';
+  const portal = paid && !onDeal && !given;
   /* Only meaningful for accounts older than trials, which the server cannot
      yet answer for: a checkout started from this browser and not finished. */
   const awaiting = !trial || trial.kind === 'legacy' ? billingFor(accountId).status === 'checkout_sent' : false;
@@ -106,6 +115,10 @@ export default function ClientBilling() {
     ? { Icon: Loader, label: 'Checking…', color: MUTED, bg: '#f1f2f4', line: '' }
     : owner
       ? { Icon: ShieldCheck, label: 'Install owner', color: '#047857', bg: '#d1fae5', line: 'You run this installation, so this account is never billed. How your customers pay you is set in Settings → Billing.' }
+      : onDeal
+        ? { Icon: CheckCircle2, label: 'AppSumo lifetime deal', color: '#047857', bg: '#d1fae5', line: `${deal?.tier?.name ?? 'Your AppSumo tier'} — ${deal?.codes ?? 0} of ${deal?.max ?? 3} codes redeemed. Paid once on AppSumo: nothing to pay here, and it does not renew or expire.` }
+      : given
+        ? { Icon: CheckCircle2, label: 'Plan active', color: '#047857', bg: '#d1fae5', line: 'Your plan was arranged with Protected Central directly, so there is no card or subscription to manage here.' }
       : paid
         ? { Icon: CheckCircle2, label: 'Subscribed', color: '#047857', bg: '#d1fae5', line: 'Your subscription is active. Thank you.' }
         : trial?.kind === 'trial'
@@ -132,7 +145,12 @@ export default function ClientBilling() {
         </div>
         {status.line && <p style={{ color: '#3f4247', fontSize: 14, lineHeight: 1.55, margin: '12px 0 0' }}>{status.line}</p>}
 
-        {paid && canBuyPlans() && (
+        {onDeal && deal && deal.codes < deal.max && (
+          <a href={appHref('/appsumo')} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 16, background: INK, color: '#fff', borderRadius: 12, padding: '12px 20px', fontSize: 14, fontWeight: 700, textDecoration: 'none' }}>
+            Redeem another AppSumo code
+          </a>
+        )}
+        {portal && canBuyPlans() && (
           <div style={{ marginTop: 18 }}>
             <p style={{ color: MUTED, fontSize: 13.5, margin: '0 0 14px', lineHeight: 1.5 }}>
               Update your card, download invoices or cancel in the payment provider's secure portal.

@@ -15,8 +15,8 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { ArrowRight, Check, Download, Loader2, Ticket } from 'lucide-react';
 import { LogoMark } from '../shared/Logo';
-import { API_BASE } from '../../services/apiBase';
-import { getSession, sessionToken } from '../../services/auth';
+import { getSession } from '../../services/auth';
+import { appsumoCall as call, type AppsumoStanding as Standing } from '../../services/appsumo';
 import { APP_ORIGIN, appHref, isMarketingHost } from '../../services/hosts';
 import { usePageTitle } from '../../services/pageTitle';
 import { featureLines } from '../../services/allowances';
@@ -30,22 +30,6 @@ export function pendingAppsumoCode(): string {
 function keepCode(code: string) {
   try { if (code.trim()) localStorage.setItem(PENDING_CODE_KEY, code.trim()); else localStorage.removeItem(PENDING_CODE_KEY); } catch { /* storage off */ }
 }
-
-type Answer = Record<string, unknown> & { success?: boolean; error?: string; field?: string };
-async function call(action: string, extra: Record<string, unknown> = {}): Promise<Answer> {
-  try {
-    const r = await fetch(`${API_BASE}/api/appsumo.php`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, token: sessionToken(), ...extra }),
-    });
-    return await r.json() as Answer;
-  } catch {
-    return { success: false, error: 'Could not reach the server.' };
-  }
-}
-
-interface Tier { id: string; name: string; lines: string[]; support: string }
-interface Standing { codes: number; max: number; tier: Tier | null; activePlan: { id: string; source: string } | null }
 
 const INK = '#17191c', MUTED = '#5b6157', LINE = '#e4e7e2', ACCENT = '#c8f24d';
 const card: CSSProperties = { background: '#fff', border: `1px solid ${LINE}`, borderRadius: 14, padding: 20, minWidth: 0 };

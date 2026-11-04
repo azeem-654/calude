@@ -141,6 +141,15 @@ for (const width of [1280, 390]) {
   const over2 = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   const expect = width === 1280 ? /AppSumo Tier 1/ : /monthly plan is active/;
   ok(`${width}: redeemed from the page`, /Code redeemed/.test(t2) && expect.test(t2) && over2 === 0 && !errs.length, { over2, errs, t: t2.slice(0, 300) });
+  if (width === 1280) {
+    /* Plan & billing names the deal and offers no payment portal: there is no subscription behind it. */
+    await p.goto(`${B}/billing`, { waitUntil: 'domcontentloaded' });
+    await p.waitForSelector('text=AppSumo lifetime deal', { timeout: 15000 }).catch(() => {});
+    await p.waitForTimeout(1500);
+    const bt = await p.evaluate(() => document.body.innerText);
+    ok('1280: Plan & billing says AppSumo lifetime deal, with no billing portal', /AppSumo lifetime deal/.test(bt) && /AppSumo Tier 1 — 1 of 3 codes/.test(bt) && /Redeem another AppSumo code/.test(bt) && !/Manage billing/.test(bt) && !/Your subscription is active/.test(bt), bt.slice(0, 600));
+    ok('1280: the trial’s welcome card gave way to the deal’s', /your AppSumo deal is active/.test(bt) && !/trial has started/.test(bt), bt.slice(-600));
+  }
   await ctx.close();
 }
 /* The owner's tools render too. */

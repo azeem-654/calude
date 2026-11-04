@@ -93,6 +93,32 @@ export async function applyAppsumoTier(env: Env, email: string): Promise<string 
   return planId;
 }
 
+/**
+ * A buyer signs up a minute before redeeming, so the sign-up's "your 7-day
+ * trial has started" card is waiting for them — and is no longer true. On the
+ * first code it is marked read and a welcome that says what they have takes
+ * its place.
+ */
+async function swapWelcome(env: Env, email: string): Promise<void> {
+  /* Loaded here, as allowances.ts does: customers.ts brings the mail sender,
+     which exists only on Workers. */
+  const { loadSettings, safeLink } = await import('./customers');
+  const s = await loadSettings(env);
+  if (s.welcomeTitle.trim()) {
+    await env.DB.prepare('UPDATE crm_notices SET read_at = ? WHERE to_email = ? AND title = ? AND read_at IS NULL')
+      .bind(nowIso(), email, s.welcomeTitle.slice(0, 200)).run();
+  }
+  await env.DB.prepare(
+    'INSERT INTO crm_notices (id, to_email, title, body, link, link_label, emailed, created_at) VALUES (?,?,?,?,?,?,?,?)',
+  ).bind(
+    crypto.randomUUID(), email, 'Welcome — your AppSumo deal is active',
+    'Your lifetime plan is on, with nothing to pay here. Start with one business workspace on AI Autopilot: say what you want to happen and it shows you the plan before anything runs. Press the help button in the corner any time — chat, a call, or share your screen.',
+    /* The card's button opens its link in a new tab: the owner's kickoff call,
+       as on the trial's welcome, when one is set. */
+    safeLink(s.kickoffUrl), s.kickoffUrl ? 'Book my kickoff call' : '', 'skipped', nowIso(),
+  ).run();
+}
+
 async function standing(env: Env, email: string) {
   const codes = await held(env, email);
   const planId = appsumoPlanFor(codes);
@@ -214,6 +240,7 @@ export async function handleAppsumo(req: Request, env: Env): Promise<Response> {
       return fail(why, 200, { field: 'appsumo.code', code: 'not_redeemable' });
     }
     await applyAppsumoTier(env, user.email);
+    if (have === 0) await swapWelcome(env, user.email).catch(() => null);
     return json({ success: true, ...(await standing(env, user.email)) });
   }
 
