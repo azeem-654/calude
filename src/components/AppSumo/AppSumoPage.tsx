@@ -19,7 +19,7 @@
  * on this page can promise a number the server does not enforce.
  */
 import { useEffect, useState, type CSSProperties } from 'react';
-import { ArrowRight, Check, Download, Loader2, Ticket } from 'lucide-react';
+import { ArrowRight, Check, Copy, Download, KeyRound, Loader2, Ticket } from 'lucide-react';
 import { LogoMark } from '../shared/Logo';
 import { getSession } from '../../services/auth';
 import { appsumoCall as call, type AppsumoStanding as Standing } from '../../services/appsumo';
@@ -28,6 +28,7 @@ import { usePageTitle } from '../../services/pageTitle';
 import { featureLines } from '../../services/allowances';
 import { usePlanTable } from '../Site/PricingParts';
 import { FOUNDER, SUPPORT_EMAIL } from '../Site/company';
+import { APPSUMO_PARTNERS, reviewerEmail } from './reviewerEmail';
 
 /** The code typed before signing in, carried across sign-up in this browser. */
 export const PENDING_CODE_KEY = 'pc_appsumo_code';
@@ -292,7 +293,70 @@ interface Licensing {
   lastWebhook: { event: string; at: string } | null;
   lastRejected: { at: string; signed: boolean } | null;
 }
-interface Summary { counts: { unused: number; redeemed: number; revoked: number }; redeemers: { email: string; codes: number; planId: string | null; lastAt: string }[]; licensing?: Licensing }
+interface ReviewerRow { email: string; createdAt: string; resetAt?: string }
+interface Summary { counts: { unused: number; redeemed: number; revoked: number }; redeemers: { email: string; codes: number; planId: string | null; lastAt: string }[]; licensing?: Licensing; reviewers?: ReviewerRow[] }
+
+/**
+ * Logins for AppSumo's reviewers, and the email that hands them over. The
+ * passwords exist only in this answer and in the owner's browser while the
+ * card is open; the server keeps their hashes. Making more, or a new
+ * password, is the way back from a lost one.
+ */
+function ReviewersCard({ rows, onChange }: { rows: ReviewerRow[]; onChange: (r: ReviewerRow[]) => void }) {
+  const [logins, setLogins] = useState<{ email: string; password: string }[]>([]);
+  const [busy, setBusy] = useState('');
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const mail = reviewerEmail(logins);
+  const act = async (action: string, extra: Record<string, unknown>) => {
+    setBusy(action + String(extra.email ?? '')); setMsg(null);
+    const r = await call(action, extra);
+    setBusy('');
+    if (!r.success) { setMsg({ ok: false, text: String(r.error ?? 'That did not work.') }); return; }
+    const got = (r.logins as { email: string; password: string }[]) ?? [];
+    /* A new password replaces that login's old one in the email; new logins are added. */
+    setLogins(prev => [...prev.filter(p => !got.some(g => g.email === p.email)), ...got]);
+    onChange((r.reviewers as ReviewerRow[]) ?? rows);
+    setMsg({ ok: true, text: action === 'reviewers' ? `${got.length} reviewer login${got.length === 1 ? '' : 's'} made. The passwords are shown here once — copy the email now.` : `New password for ${got[0]?.email}; any session it had is signed out.` });
+  };
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(`To: ${APPSUMO_PARTNERS}\nSubject: ${mail.subject}\n\n${mail.body}`); setMsg({ ok: true, text: 'Email copied.' }); }
+    catch { setMsg({ ok: false, text: 'This browser would not copy — select the text below and copy it.' }); }
+  };
+  return (
+    <div style={card}>
+      <h2 style={{ fontSize: 17, margin: '0 0 6px' }}>Logins for AppSumo's reviewers</h2>
+      <p style={{ color: MUTED, fontSize: 14, margin: '0 0 12px' }}>
+        Each is its own workspace on the top AppSumo tier, given by hand so it never runs out mid-review. The addresses are on your own domain and need no mailbox. Passwords are shown once; the email below carries them.
+      </p>
+      {rows.length > 0 && (
+        <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px', display: 'grid', gap: 8 }}>
+          {rows.map(r => (
+            <li key={r.email} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 14 }}>
+              <b style={{ overflowWrap: 'anywhere', minWidth: 0 }}>{r.email}</b>
+              <span style={{ color: MUTED }}>made {r.createdAt.slice(0, 10)}</span>
+              <button type="button" style={{ ...ghost, padding: '6px 10px', fontSize: 13 }} disabled={!!busy} onClick={() => void act('reviewer_reset', { email: r.email })}>
+                {busy === `reviewer_reset${r.email}` ? <Loader2 size={14} className="spin" /> : <KeyRound size={14} />} New password
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <button type="button" data-field="appsumo.reviewers" style={primary} disabled={!!busy} onClick={() => void act('reviewers', { count: rows.length ? 1 : 2 })}>
+        {busy === 'reviewers' ? <Loader2 size={16} className="spin" /> : <KeyRound size={16} />} {rows.length ? 'Make one more login' : 'Make two reviewer logins'}
+      </button>
+      {msg && <div role={msg.ok ? 'status' : 'alert'} style={msg.ok ? { marginTop: 8, fontSize: 14, color: '#3f6b00' } : errStyle}>{msg.text}</div>}
+      {logins.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 700 }}>The email to AppSumo — to {APPSUMO_PARTNERS}</span>
+            <button type="button" style={{ ...ghost, padding: '6px 10px', fontSize: 13 }} onClick={() => void copy()}><Copy size={14} /> Copy email</button>
+          </div>
+          <textarea readOnly aria-label="The email to AppSumo" value={`Subject: ${mail.subject}\n\n${mail.body}`} style={{ ...input, fontFamily: 'inherit', fontSize: 13, letterSpacing: 0, height: 320 }} />
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * AppSumo's Activate button (Licensing v2), set up in its Partner Portal. The
@@ -439,6 +503,8 @@ function OwnerTools() {
           {note('appsumo.revoke')}
         </div>
       </div>
+
+      {sum && <ReviewersCard rows={sum.reviewers ?? []} onChange={r => setSum(x => (x ? { ...x, reviewers: r } : x))} />}
 
       {sum?.licensing && <LicensingCard l={sum.licensing} />}
 

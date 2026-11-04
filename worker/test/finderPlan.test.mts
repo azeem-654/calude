@@ -93,8 +93,8 @@ const base = (o: Partial<FinderState> = {}): FinderState => ({
 
 /* ── The owner's licensed data, as a finder's share ── */
 {
-  ok('a few a step, never more', libraryRoom({ perDay: 100, dayAdded: 0 }, 0, 0) === LIBRARY.perStep);
-  ok('at most half of the day', libraryRoom({ perDay: 10, dayAdded: 0 }, 0, 5) === 0 && libraryRoom({ perDay: 10, dayAdded: 0 }, 0, 3) === 2);
+  ok('a bounded number a step', libraryRoom({ perDay: 100, dayAdded: 0 }, 0, 0) === LIBRARY.perStep);
+  ok('the library may fill the whole day — it comes first', libraryRoom({ perDay: 10, dayAdded: 0 }, 0, 0) === 10 && libraryRoom({ perDay: 10, dayAdded: 3 }, 0, 3) === 7);
   ok('an odd day rounds the share up, so one a day still gets one', libraryRoom({ perDay: 1, dayAdded: 0 }, 0, 0) === 1);
   ok('ready leads waiting count against today', libraryRoom({ perDay: 20, dayAdded: 12 }, 6, 0) === 2 && libraryRoom({ perDay: 20, dayAdded: 12 }, 8, 0) === 0);
   ok('a full day takes none', libraryRoom({ perDay: 20, dayAdded: 20 }, 0, 0) === 0);

@@ -22,6 +22,13 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    date: '2026-11-04', area: 'AI Prospecting', title: 'Our business contacts database comes first',
+    points: [
+      'When our business contacts database is available, every AI Prospecting search asks it first and goes to live business directories only when it has nobody who matches.',
+      'Daily prospecting works the same way: it takes matching people from the database before searching the web, each address checked and never anybody already in your Contacts.',
+    ],
+  },
+  {
     date: '2026-11-04', area: 'Plans', title: 'AppSumo lifetime deal',
     points: [
       'A redemption page at /appsumo: create an account or sign in, and the code is added — up to three codes stack to a higher tier.',

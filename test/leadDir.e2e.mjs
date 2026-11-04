@@ -20,8 +20,9 @@
  *  - opening it needs the owner's statement that they may share it;
  *  - the owner searches it, in full, on the Lead library screen and adds
  *    people to their own Contacts as "Business contacts database";
- *  - opened, it feeds a project's daily finder: a few a step, half the day at
- *    most, each address checked, never somebody suppressed or already in
+ *  - opened, it feeds a project's daily finder FIRST: the whole day may come
+ *    from it, and the web is searched only once it has nobody who matches;
+ *    each address checked, never somebody suppressed or already in
  *    Contacts, never the same person twice, labelled "Business contacts database"
  *    with the date on every contact — and the owner's removal says which
  *    workspaces were given that person;
@@ -253,7 +254,9 @@ const step = () => api('finders.php', { token: CT, accountId: ACCT, action: 'run
 const s1 = await step();
 const pp = () => sql(`SELECT ref, status, source, reject_reason, email FROM crm_project_prospects WHERE project_id = '${PID}' ORDER BY ref`);
 const rows1 = pp();
-ok('a step takes five from the library — half of the day of ten, at most five a step', s1.success && s1.added === 5 && rows1.filter(r => r.status === 'added' && r.source === 'library').length === 5, JSON.stringify({ s1, rows1 }).slice(0, 600));
+ok('a step fills the day of ten from the library first', s1.success && s1.added === 10 && rows1.filter(r => r.status === 'added' && r.source === 'library').length === 10, JSON.stringify({ s1, rows1 }).slice(0, 600));
+const webRuns = () => sql(`SELECT COUNT(*) AS n FROM crm_finder_runs WHERE finder_id = '${FID}' AND kind = 'search'`)[0].n;
+ok('…and the web was not searched while the library had people who match', webRuns() === 0);
 ok('…turning away the suppressed address, and the person already in Contacts', rows1.some(r => r.email === 'pat2@realty2.example' && r.status === 'rejected' && r.reject_reason === 'suppressed')
   && rows1.some(r => r.email === 'pat5@realty5.example' && r.status === 'known'), JSON.stringify(rows1));
 ok('…each recorded as ld:<id> for this project', rows1.every(r => /^ld:\d+$/.test(r.ref)));
@@ -261,32 +264,41 @@ const contactsOf = async () => JSON.parse((await api('data.php', { action: 'get'
 let dana = await contactsOf();
 const given = dana.filter(c => String(c.id).startsWith('pf-'));
 const today = new Date().toISOString().slice(0, 10);
-ok('they join Contacts named "Business contacts database", with the date — never "found on the web"', given.length === 5 && given.every(c =>
+ok('they join Contacts named "Business contacts database", with the date — never "found on the web"', given.length === 10 && given.every(c =>
   c.source === 'AI Autopilot · business contacts database' && c.customFields?.dataSource === 'Business contacts database'
   && c.customFields?.provenance?.startsWith('Business contacts database') && c.customFields.provenance.includes(today)
   && c.tags.includes('business contacts database') && !c.tags.includes('prospect search') && !/web|website|directory/i.test(c.customFields.provenance)), JSON.stringify(given[0]).slice(0, 600));
 ok('…each address checked first, with who and where they are', given.every(c => c.customFields?.emailStatus === 'domain_ok' && c.firstName === 'Pat' && c.jobTitle && /Tampa, Florida/.test(c.customFields?.foundBy ?? '')), JSON.stringify(given[0]?.customFields));
-ok('…nobody suppressed, nobody twice', !given.some(c => c.email === 'pat2@realty2.example' || c.email === 'pat5@realty5.example') && new Set(given.map(c => c.email)).size === 5);
+ok('…nobody suppressed, nobody twice', !given.some(c => c.email === 'pat2@realty2.example' || c.email === 'pat5@realty5.example') && new Set(given.map(c => c.email)).size === 10);
 const lists1 = JSON.parse((await api('data.php', { action: 'get', token: CT, accountId: ACCT, key: 'crm_contact_lists' })).value || '[]');
-ok('…and onto the project\'s list', lists1.find(l => l.id === LIST)?.memberIds?.length === 5);
-ok('the finder\'s log says where they came from', sql(`SELECT detail FROM crm_finder_runs WHERE finder_id = '${FID}' AND kind = 'library'`).some(r => /^Business contacts database: 5 matched and checked/.test(r.detail)));
+ok('…and onto the project\'s list', lists1.find(l => l.id === LIST)?.memberIds?.length === 10);
+ok('the finder\'s log says where they came from', sql(`SELECT detail FROM crm_finder_runs WHERE finder_id = '${FID}' AND kind = 'library'`).some(r => /^Business contacts database: 10 matched and checked/.test(r.detail)));
 const s2 = await step();
-ok('half of today is the library\'s limit: the next step takes nobody from it', s2.success && pp().filter(r => r.source === 'library').length === rows1.length, JSON.stringify(s2));
+ok('a full day takes nobody more, and still searches nothing on the web', s2.success && pp().filter(r => r.source === 'library').length === rows1.length && webRuns() === 0, JSON.stringify(s2));
 /* The next day. */
 sql(`UPDATE crm_project_prospects SET found_at = '2020-01-01T00:00:00Z' WHERE project_id = '${PID}'`);
 sql(`UPDATE crm_prospect_finders SET day = '2020-01-01', status = 'active' WHERE id = '${FID}'`);
 const s3 = await step();
 const rows3 = pp();
-ok('the next day, five more — none of them anybody it was given before', s3.added === 5 && rows3.filter(r => r.status === 'added').length === 10 && new Set(rows3.map(r => r.ref)).size === rows3.length, JSON.stringify(s3));
+ok('the next day, ten more — none of them anybody it was given before', s3.added === 10 && rows3.filter(r => r.status === 'added').length === 20 && new Set(rows3.map(r => r.ref)).size === rows3.length, JSON.stringify(s3));
 dana = await contactsOf();
-ok('…ten different people in Contacts', new Set(dana.filter(c => String(c.id).startsWith('pf-')).map(c => c.email)).size === 10);
+ok('…twenty different people in Contacts', new Set(dana.filter(c => String(c.id).startsWith('pf-')).map(c => c.email)).size === 20);
 /* Closed: nothing more. */
 await dir(T, 'settings', { shared: false });
 sql(`UPDATE crm_project_prospects SET found_at = '2020-01-01T00:00:00Z' WHERE project_id = '${PID}'`);
 sql(`UPDATE crm_prospect_finders SET day = '2020-01-02', status = 'active' WHERE id = '${FID}'`);
 const s4 = await step();
-ok('closed again, the finder takes nobody from it', s4.success && pp().length === rows3.length, JSON.stringify(s4));
+ok('closed again, the finder takes nobody from it, and goes to the web instead', s4.success && pp().length === rows3.length && webRuns() > 0, JSON.stringify(s4));
 await dir(T, 'settings', { shared: true });
+/* Open, but a kind of business the library does not hold: the web is searched at once. */
+{
+  const pj2 = await api('projects.php', { token: CT, accountId: ACCT, action: 'save_project', name: 'Tampa roofers', objective: 'Sell office supplies to roofers in Tampa', portfolioId: pf.id, kind: 'leadgen' });
+  const f2 = await api('finders.php', { token: CT, accountId: ACCT, action: 'save', projectId: pj2.id, trades: ['roofers'], places: ['Tampa, Florida'], perDay: 10, listId: 'list-leaddir-roofers', listName: 'Tampa roofers — prospects' });
+  const s5 = await api('finders.php', { token: CT, accountId: ACCT, action: 'run_step', projectId: pj2.id, finderId: f2.finderId });
+  const web5 = sql(`SELECT COUNT(*) AS n FROM crm_finder_runs WHERE finder_id = '${f2.finderId}' AND kind = 'search'`)[0].n;
+  const lib5 = sql(`SELECT COUNT(*) AS n FROM crm_project_prospects WHERE finder_id = '${f2.finderId}' AND source = 'library'`)[0].n;
+  ok('with nobody in the library who matches, the first step searches the web', !!f2.finderId && s5.success && web5 > 0 && lib5 === 0, JSON.stringify({ f2, s5 }).slice(0, 400));
+}
 ok('the other customer\'s projects were given nobody', sql(`SELECT COUNT(*) AS n FROM crm_project_prospects WHERE account_id = '${XACCT}'`)[0].n === 0);
 
 /* ── Removed on request, and kept out ── */
@@ -423,19 +435,19 @@ for (const width of [1280, 390]) {
   if (width < 1000) await side.getByRole('button', { name: /^Lists ·/ }).click();
   const ws = side.getByTestId('cl-workspaces');
   await ws.getByText('Tampa realtors', { exact: false }).first().waitFor({ timeout: 15_000 });
-  ok(`@${width}: a folder for the business workspace, counting its leads`, /Tampa realtors[\s\S]*\b10\b/.test(await ws.innerText()), await ws.innerText());
+  ok(`@${width}: a folder for the business workspace, counting its leads`, /Tampa realtors[\s\S]*\b20\b/.test(await ws.innerText()), await ws.innerText());
   ok(`@${width}: no "directory" anywhere in the lists`, !/directory/i.test(await side.innerText()), (await side.innerText()).slice(0, 300));
   ok(`@${width}: nothing scrolls sideways (lists)`, (await overflow(page)) <= 1, await overflow(page));
   await page.screenshot({ path: `test-results/contactlists-${width}.png`, fullPage: true });
   const listBtn = side.getByTestId('cl-list').filter({ hasText: 'Tampa realtors — prospects' });
-  ok(`@${width}: the folder holds the workspace's list`, (await listBtn.count()) === 1 && /\b10\b/.test(await listBtn.innerText()), await ws.innerText());
+  ok(`@${width}: the folder holds the workspace's list`, (await listBtn.count()) === 1 && /\b20\b/.test(await listBtn.innerText()), await ws.innerText());
   await listBtn.click();
   const head = page.getByTestId('cl-head');
   await head.waitFor({ timeout: 5000 });
-  ok(`@${width}: the list's header counts its ten`, /10 contacts/.test(await head.innerText()), await head.innerText());
-  ok(`@${width}: the table shows its ten leads`, (await page.getByTestId('contact-row').count()) === 10, await page.getByTestId('contact-row').count());
+  ok(`@${width}: the list's header counts its twenty`, /20 contacts/.test(await head.innerText()), await head.innerText());
+  ok(`@${width}: the table shows its twenty leads`, (await page.getByTestId('contact-row').count()) === 20, await page.getByTestId('contact-row').count());
   const sources = await page.getByTestId('contact-source').allInnerTexts();
-  ok(`@${width}: each one says it is licensed business data`, sources.length === 10 && sources.every(t => t.trim() === 'Business contacts database'), sources.join(' | '));
+  ok(`@${width}: each one says it is licensed business data`, sources.length === 20 && sources.every(t => t.trim() === 'Business contacts database'), sources.join(' | '));
   ok(`@${width}: with its email checks`, /domain takes mail/i.test(await head.innerText()), await head.innerText());
   ok(`@${width}: the list can be emailed and sent to AI Autopilot`, (await head.getByRole('button', { name: /Email this list/ }).count()) === 1 && (await page.getByTestId('cl-send').count()) === 1);
   ok(`@${width}: nothing scrolls sideways (a list)`, (await overflow(page)) <= 1, await overflow(page));
@@ -445,7 +457,7 @@ for (const width of [1280, 390]) {
   await page.getByPlaceholder('Search name, email, company...').fill('');
   const [dl] = await Promise.all([page.waitForEvent('download'), page.getByTestId('cl-export').click()]);
   const csvText = fs.readFileSync(await dl.path(), 'utf8');
-  ok(`@${width}: the export says where every lead came from`, /Where it came from/.test(csvText.split('\r\n')[0]) && csvText.split('\r\n').filter(l => /Business contacts database/.test(l)).length === 10, csvText.slice(0, 300));
+  ok(`@${width}: the export says where every lead came from`, /Where it came from/.test(csvText.split('\r\n')[0]) && csvText.split('\r\n').filter(l => /Business contacts database/.test(l)).length === 20, csvText.slice(0, 300));
   /* Send to AI Autopilot names the workspace it would go to before anything moves. */
   await page.getByTestId('cl-send').click();
   const dlg = page.getByTestId('cl-send-dialog');

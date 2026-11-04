@@ -19,6 +19,13 @@
  *            subscriber's tier is worked out again (down to none).
  *   summary  install owner. Counts, and who redeemed how many — codes and
  *            licenses — and whether AppSumo Licensing is connected.
+ *   reviewers       install owner. Makes 1–5 logins for AppSumo's reviewers
+ *                   (`appsumo-review-N@<owner's domain>`), each its own
+ *                   workspace on the top AppSumo tier given by hand, so a
+ *                   review that outlasts a 7-day trial never meets a plan
+ *                   screen. Passwords are answered once, stored only hashed.
+ *   reviewer_reset  install owner. A new password for one of them, and its
+ *                   sessions signed out.
  *   claim    session, as redeem. Ties an AppSumo license (Licensing v2,
  *            routes/appsumoLicense.ts) to this account, from the one-use link
  *            the OAuth return handed the buyer.
@@ -31,7 +38,8 @@
  * the logs and the limiter costs nothing.
  */
 import { body, fail, json } from '../lib/http';
-import { metaGet, nowIso, userFromToken, type Env, type SessionUser } from '../lib/db';
+import { metaGet, metaPut, nowIso, userFromToken, type Env, type SessionUser } from '../lib/db';
+import { hashPassword } from '../lib/crypto';
 import { APPSUMO_MAX_CODES, appsumoPlanFor, effectivePlans, featureLines, limitsFor } from '../lib/allowances';
 import { loadOverrides } from '../lib/allowanceStore';
 import { rateLimit } from '../lib/rateLimit';
@@ -46,6 +54,7 @@ interface Req {
   batch?: string;
   note?: string;
   license?: string;
+  email?: string;
 }
 
 const isOwner = (u: SessionUser) => u.accountId === null && u.role === 'agency';
@@ -69,6 +78,58 @@ export async function sha256Hex(s: string): Promise<string> {
   return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 const hashOf = (code: string) => sha256Hex(`appsumo:${normalise(code)}`);
+
+/* ── Logins for AppSumo's reviewers ── */
+const REVIEWERS_KEY = 'appsumo_reviewers';
+const MAX_REVIEWERS = 5;
+interface Reviewer { email: string; createdAt: string; resetAt?: string }
+
+async function reviewersOf(env: Env): Promise<Reviewer[]> {
+  try { return JSON.parse((await metaGet(env.DB, REVIEWERS_KEY)) ?? '[]') as Reviewer[]; } catch { return []; }
+}
+
+/** 16 characters from the code alphabet, in groups, with a digit guaranteed — readable aloud, typed once. */
+function reviewerPassword(): string {
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  const s = [...b].map(x => ALPHABET[x % ALPHABET.length]).join('');
+  const lower = s.slice(0, 8).toLowerCase() + s.slice(8);
+  return `${lower.slice(0, 4)}-${lower.slice(4, 8)}-${lower.slice(8, 12)}-${lower.slice(12, 15)}${(b[15] % 8) + 2}`;
+}
+
+/**
+ * Made by the owner rather than signed up: sign-up proves the address with a
+ * code sent to it, and nobody reads these mailboxes — the owner vouches for
+ * them instead. The plan is the deal's top tier, written as given by hand
+ * ('manual'), which is what it is: Plan & billing says so, and a code the
+ * reviewer redeems to test redemption still counts without replacing it.
+ */
+async function makeReviewers(env: Env, owner: SessionUser, n: number) {
+  const domain = owner.email.split('@')[1] ?? 'example.com';
+  const existing = await reviewersOf(env);
+  const planId = appsumoPlanFor(APPSUMO_MAX_CODES)!;
+  const sub = limitsFor('plan', planId, await loadOverrides(env)).sub_accounts;
+  const made: { email: string; password: string }[] = [];
+  for (let i = 1; made.length < n && i < 100; i++) {
+    const email = `appsumo-review-${i}@${domain}`.toLowerCase();
+    if (await env.DB.prepare('SELECT 1 AS x FROM crm_users WHERE email = ?').bind(email).first()) continue;
+    const password = reviewerPassword();
+    const accountId = crypto.randomUUID();
+    const at = nowIso();
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO crm_users (email, name, role, account_id, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(email, `AppSumo Reviewer ${i}`, 'agency', accountId, await hashPassword(password), at),
+      env.DB.prepare('INSERT OR IGNORE INTO crm_workspaces (account_id, owner_email, created_at) VALUES (?, ?, ?)').bind(accountId, email, at),
+      env.DB.prepare(
+        `INSERT INTO crm_plans (owner_email, plan_id, resell_limit, source, updated_at) VALUES (?, ?, ?, 'manual', ?)
+         ON CONFLICT(owner_email) DO UPDATE SET plan_id = excluded.plan_id, resell_limit = excluded.resell_limit, source = 'manual', updated_at = excluded.updated_at`,
+      ).bind(email, planId, sub, at),
+    ]);
+    made.push({ email, password });
+    existing.push({ email, createdAt: at });
+  }
+  await metaPut(env.DB, REVIEWERS_KEY, JSON.stringify(existing));
+  return made;
+}
 
 async function held(env: Env, email: string): Promise<number> {
   const r = await env.DB.prepare("SELECT COUNT(*) AS n FROM crm_appsumo_codes WHERE owner_email = ? AND status = 'redeemed'")
@@ -169,8 +230,33 @@ export async function handleAppsumo(req: Request, env: Env): Promise<Response> {
   if (!user) return fail('Sign in first — a code is added to your own account.', 401, { code: 'unauthorised' });
 
   /* ── The install owner's ── */
-  if (['generate', 'import', 'revoke', 'summary'].includes(act)) {
+  if (['generate', 'import', 'revoke', 'summary', 'reviewers', 'reviewer_reset'].includes(act)) {
     if (!isOwner(user)) return fail('Only the owner of this installation can do that.', 403, { code: 'not_owner' });
+
+    if (act === 'reviewers') {
+      const have = (await reviewersOf(env)).length;
+      const n = Math.floor(Number(d.count ?? 2));
+      if (!Number.isFinite(n) || n < 1 || have + n > MAX_REVIEWERS) {
+        return fail(`At most ${MAX_REVIEWERS} reviewer logins in all${have ? ` — ${have} exist already` : ''}. Give one a new password instead.`, 200, { field: 'appsumo.reviewers' });
+      }
+      return json({ success: true, logins: await makeReviewers(env, user, n), reviewers: await reviewersOf(env) });
+    }
+
+    if (act === 'reviewer_reset') {
+      const email = String(d.email ?? '').trim().toLowerCase();
+      const list = await reviewersOf(env);
+      const r = list.find(x => x.email === email);
+      /* Only a login this tool made: never a way to reset a customer's password. */
+      if (!r) return fail('That is not one of the reviewer logins made here.', 200, { field: 'appsumo.reviewers' });
+      const password = reviewerPassword();
+      await env.DB.batch([
+        env.DB.prepare('UPDATE crm_users SET hash = ? WHERE email = ? AND account_id IS NOT NULL').bind(await hashPassword(password), email),
+        env.DB.prepare('DELETE FROM crm_sessions WHERE email = ?').bind(email),
+      ]);
+      r.resetAt = nowIso();
+      await metaPut(env.DB, REVIEWERS_KEY, JSON.stringify(list));
+      return json({ success: true, logins: [{ email, password }], reviewers: list });
+    }
 
     if (act === 'generate' || act === 'import') {
       const batch = String(d.batch ?? '').trim().slice(0, 60) || `batch-${nowIso().slice(0, 10)}`;
@@ -236,6 +322,7 @@ export async function handleAppsumo(req: Request, env: Env): Promise<Response> {
         lastWebhook: last ? JSON.parse(last) as { event: string; at: string } : null,
         lastRejected: rejected ? JSON.parse(rejected) as { at: string; signed: boolean } : null,
       },
+      reviewers: await reviewersOf(env),
     });
   }
 

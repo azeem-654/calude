@@ -422,7 +422,8 @@ async function qualifyStep(env: Env, f: FinderRow, s: FinderState, conn: Connect
  * Customers never search the library and never see it named; the contact
  * says "Business contacts database" and the date.
  */
-interface LibraryOutcome { detail: string; ready: number; quiet?: boolean }
+/** `matched`: the library still had people for this finder, so the web waits (library first). */
+interface LibraryOutcome { detail: string; ready: number; quiet?: boolean; matched?: boolean }
 
 async function libraryStep(env: Env, f: FinderRow, s: FinderState, runDate: string): Promise<LibraryOutcome | null> {
   if (isConnection(f)) return null;
@@ -496,7 +497,7 @@ async function libraryStep(env: Env, f: FinderRow, s: FinderState, runDate: stri
   }
   if (given.length) await db.batch(given);
   if (!ready && !away) return null;
-  return { detail: `${LICENSED_SOURCE.label}: ${ready} matched and checked${away ? `, ${away} turned away (already in Contacts, unsubscribed, or an address that would bounce)` : ''}`, ready };
+  return { detail: `${LICENSED_SOURCE.label}: ${ready} matched and checked${away ? `, ${away} turned away (already in Contacts, unsubscribed, or an address that would bounce)` : ''}`, ready, matched: true };
 }
 
 /* ── One step ── */
@@ -598,7 +599,7 @@ async function readStep(env: Env, f: FinderRow, s: FinderState): Promise<{ state
   return { state: { ...s, dayReads: s.dayReads + reads }, detail: `Read ${reads} website${reads === 1 ? '' : 's'}: ${ready} with an address that takes mail, ${none} with nothing to write to` };
 }
 
-export interface StepOutcome { ran: boolean; job: Job['kind'] | 'paused' | 'waiting'; detail: string; added: number; found: number }
+export interface StepOutcome { ran: boolean; job: Job['kind'] | 'library' | 'paused' | 'waiting'; detail: string; added: number; found: number }
 
 /** One step for one finder. `force` (Run now) ignores the schedule but not the allowances. */
 export async function stepFinder(env: Env, f: FinderRow, now = new Date()): Promise<StepOutcome> {
@@ -662,8 +663,8 @@ export async function stepFinder(env: Env, f: FinderRow, now = new Date()): Prom
   s = { ...s, dayAdded: s.dayAdded + added };
   if (added) await log(env, f, 'add', `Added ${added} to the business workspace's audience`, 0, added);
 
-  /* Then a few from the owner's licensed data, when they have opened it — a
-     failure there is the library's, never the reason today's search stops. */
+  /* Then the owner's licensed data, when they have opened it — a failure
+     there is the library's, never the reason today's search stops. */
   const lib = await libraryStep(env, f, s, runDate).catch((e: unknown): LibraryOutcome => ({
     detail: `${LICENSED_SOURCE.label} was not used this time: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300), ready: 0, quiet: true,
   }));
@@ -673,6 +674,16 @@ export async function stepFinder(env: Env, f: FinderRow, now = new Date()): Prom
     s = { ...s, dayAdded: s.dayAdded + more };
     added += more;
     if (more) await log(env, f, 'add', `Added ${more} to the business workspace's audience`, 0, more);
+  }
+
+  /* Library first: while it still has people who match, nothing is searched
+     on the web this step. The next step asks it again; once it has nobody
+     left, the step falls through to the live search below. */
+  if (lib?.matched) {
+    const left = s.dayAdded < s.perDay;
+    const detail = left ? `${lib.detail}. The web is searched only once the business contacts database has nobody left who matches.` : `Today's ${s.perDay} are in.`;
+    await saveState(env, f, s, { next: nextRunAt(now, left ? { kind: 'read' } : { kind: 'rest', why: 'quota' }), tally: conn ? tally : undefined });
+    return { ran: true, job: 'library', detail, added, found: 0 };
   }
 
   const counts = await env.DB.prepare(

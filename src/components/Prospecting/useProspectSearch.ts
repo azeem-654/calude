@@ -305,11 +305,13 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
        when it has nobody to offer (or cannot be asked). Customers' searches
        too, by the owner's decision, once the owner has opened the library;
        closed, the server answers nobody and the directories are searched as
-       before, with nothing said. */
+       before, with nothing said. Every search — a re-run from the history and
+       a sentence naming another source too — asks it first: the owner's
+       decision of 2026-11-04, so the library is never skipped. */
     let list: Prospect[] | null = null;
     let fromLibrary = false;
     let libMore = false;
-    if (src === 'free' && !from) {
+    {
       const owner = isInstallOwner();
       const libName = owner ? 'your lead library' : 'our business contacts database';
       setBusy(true); clear();
@@ -343,7 +345,7 @@ export function useProspectSearch(opts: { live?: boolean } = {}) {
       state: 'done', badge: where, count: list.length,
     });
     if (!list.length) return { error: '', want: a.want };
-    if (src === 'register') {
+    if (src === 'register' && !fromLibrary) {
       /* The register holds no websites, so there is nothing to read — said, not skipped silently. */
       step('read', { label: 'Registered companies come with no websites or email addresses', detail: 'Directors are named instead. Search the web for named people, or search all businesses for websites.', state: 'skipped', badge: 'Websites' });
       return { error: '', want: a.want };

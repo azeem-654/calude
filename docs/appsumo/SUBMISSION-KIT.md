@@ -28,7 +28,7 @@ testers ("Beta-lings") check that again before launch.
 | AppSumo standard (their words) | Where we stand | What to do |
 |---|---|---|
 | **"Does the tool actually do what it says?"** Reviewers test with **working test accounts** you supply, plus a **demo or output URL** showing the core output | The listing leads with AI Autopilot and AI Prospecting. Prospecting needs the Google Maps key and the free directory on **app.protectedcentral.com** (OWNER-CHECKLIST 23, 27, 30). Without them, a reviewer's first search finds nothing | **Blocker.** Do 23, 27 and 30 on live, then run one prospect search yourself as a customer would. See *Reviewer test script* below |
-| **Support**: "Can this company actually support the customers it acquires?" and lifetime support for lifetime buyers | **Done:** `support@protectedcentral.com` exists (2026-11-04) and is in the site footer, /changelog and /appsumo. The in-app help button is still off (OWNER-CHECKLIST 16) | Switch on the help button (item 16) |
+| **Support**: "Can this company actually support the customers it acquires?" and lifetime support for lifetime buyers | **Done:** `support@protectedcentral.com` exists and is in the site footer, /changelog and /appsumo; the in-app help button is on (2026-11-04) | Connect support@ to your Unified Inbox so you see buyers' mail |
 | **Active development**: "active roadmaps, changelogs, and responsive teams"; a tool with no recent updates is "not making the cut" | **Done:** a public changelog at **protectedcentral.com/changelog** ("What's new", linked in the site footer), with only dated, shipped releases | Add the newest release at the top whenever one goes live (`src/components/Site/changelog.ts`) |
 | **Real founders**: "Founders must publicly put their name on the product"; refusing is a red flag | **Done:** "Founded by Azeem Sattar" in the site footer, and on /changelog and /appsumo (2026-11-04) | Optional: a photo or LinkedIn link makes it stronger |
 | **Own product**: "PLR, white-label, and resale products are not accepted" | We are our own code, built in-house. But the first draft of this listing said "white-label for agencies" next to "alternative to GoHighLevel". Many GoHighLevel "SaaS-mode" rebrands apply to AppSumo, and reviewers know the pattern | Say plainly in the application: *"Protected Central is our own software, written and run by us — not a rebranded platform. Agency mode lets an agency put its own brand on client workspaces."* The copy below now says it that way |
@@ -45,9 +45,10 @@ testers ("Beta-lings") check that again before launch.
 
 Testers score what they can reach in a few minutes. Give them a path:
 
-1. **Sign up** at https://app.protectedcentral.com/appsumo with one of the codes
-   you give them. Tier 1 applies at once; Plan & billing shows "AppSumo
-   lifetime deal".
+1. **Sign in** with a reviewer login. Make them on /appsumo → *Logins for
+   AppSumo's reviewers*: each is its own workspace on the top tier, and the
+   card writes the email with the logins in it (`EMAIL-TO-APPSUMO.md`). To
+   test redemption, they redeem a code from your file on /appsumo.
 2. **AI Autopilot → New business workspace**: type one sentence, e.g. "Get
    more booked appointments for a dental clinic in Austin". It asks only what
    it could not work out, then shows the blueprint. Approve it.
@@ -55,8 +56,9 @@ Testers score what they can reach in a few minutes. Give them a path:
    the email each one publishes on its own site, each with its source.
 4. **Connect a mailbox** (their own Gmail or Microsoft 365) → a sequence
    step starts as a draft. Nothing sends until they approve it.
-5. **Booking page**: open its public link. This is the **demo/output URL**
-   AppSumo asks for, so publish one from your own account and paste its link.
+5. **Booking page**: https://protectedcentral.com/book/strategy-call, your own
+   booking page made with the product. This is the **demo/output URL**
+   AppSumo asks for.
 6. **Redeem a second code** on /appsumo → the tier moves up to Tier 2.
 
 Before you send it, walk the script yourself on live as a fresh customer

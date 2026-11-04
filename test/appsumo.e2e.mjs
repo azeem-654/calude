@@ -147,6 +147,30 @@ ok('a hand-given plan is not touched by a revoke', (await sumo(M.token, 'status'
 const s1 = await sumo(OT, 'summary');
 ok('the summary counts what happened', s1.counts.revoked === 4 && s1.counts.redeemed === 0 && s1.counts.unused === 4, s1.counts);
 
+/* ── Logins for AppSumo's reviewers ── */
+console.log('\nReviewer logins');
+ok('only the owner makes reviewer logins', (await sumo(C.token, 'reviewers', { count: 2 })).code === 'not_owner');
+const rvw = await sumo(OT, 'reviewers', { count: 2 });
+const [R1, R2] = rvw.logins ?? [];
+ok('the owner makes two, on their own domain, with strong passwords answered once', rvw.success && R1?.email === 'appsumo-review-1@sumo.test' && R2?.email === 'appsumo-review-2@sumo.test'
+  && [R1, R2].every(l => l.password.length >= 16 && /[a-z]/.test(l.password) && /[A-Z]/.test(l.password) && /\d/.test(l.password)), rvw);
+const rdump = execSync(`npx wrangler d1 execute crmpro --local --persist-to ${persist} --json --command "SELECT v FROM crm_meta WHERE k = 'appsumo_reviewers'"`, { encoding: 'utf8', env: { ...process.env, CI: '1' } });
+ok('…and no password is kept anywhere readable', !rdump.includes(R1.password) && rdump.includes(R1.email));
+const RL = await api('auth.php', { action: 'login', email: R1.email, password: R1.password });
+const RT = RL.token;
+ok('a reviewer signs in with it', !!RT);
+const rst = await sumo(RT, 'status');
+ok('…onto the top AppSumo tier, given by hand', rst.activePlan?.id === 'appsumo_3' && rst.activePlan?.source === 'manual', rst);
+const ral = await api('allowances.php', { token: RT, accountId: RL.user?.accountId, action: 'status' });
+ok('…which is a plan, not a trial that runs out', ral.allowances?.kind === 'plan' && ral.allowances?.planId === 'appsumo_3', ral.allowances ? { kind: ral.allowances.kind, planId: ral.allowances.planId } : ral);
+const reset = await sumo(OT, 'reviewer_reset', { email: R1.email });
+ok('a new password works and the old one no longer does', reset.success && !!(await api('auth.php', { action: 'login', email: R1.email, password: reset.logins[0].password })).token
+  && !(await api('auth.php', { action: 'login', email: R1.email, password: R1.password })).token, reset);
+ok('…and it signed the old session out', (await sumo(RT, 'status')).status === 401);
+ok('the reset never reaches a customer\'s password', (await sumo(OT, 'reviewer_reset', { email: 'buyer@sumo.test' })).field === 'appsumo.reviewers');
+ok('at most five in all', (await sumo(OT, 'reviewers', { count: 4 })).field === 'appsumo.reviewers');
+ok('the summary lists them', (await sumo(OT, 'summary')).reviewers?.length === 2);
+
 /* ── Licensing v2: AppSumo's Activate button ── */
 console.log('\nAppSumo Licensing (webhooks + OAuth)');
 const sign = (ts, raw) => crypto.createHmac('sha256', API_KEY).update(`${ts}${raw}`).digest('hex');
@@ -303,6 +327,12 @@ for (const width of [1280, 390]) {
   const t = await p.evaluate(() => document.body.innerText);
   const over = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   ok('390: the owner sees their code tools and who redeemed', /AppSumo codes/.test(t) && /Who redeemed/.test(t) && /buyer@sumo\.test/.test(t) && over === 0 && !errs.length, { over, errs });
+  await p.getByRole('button', { name: 'Make one more login' }).click();
+  await p.waitForSelector('textarea[aria-label="The email to AppSumo"]', { timeout: 15000 });
+  const mailText = await p.inputValue('textarea[aria-label="The email to AppSumo"]');
+  const over3 = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  ok('390: one press makes a reviewer login and the email to AppSumo carries it', /appsumo-review-3@sumo\.test {2}\/ {2}password: \S{16,}/.test(mailText) && /Azeem Sattar/.test(mailText) && /support@protectedcentral\.com/.test(mailText) && over3 === 0 && !errs.length, { over3, errs, mail: mailText.slice(0, 900) });
+  ok('390: …with no bracketed blanks left to fill', !/\[[A-Z ]{4,}\]/.test(mailText));
   ok('390: …and the Activate button’s set-up, connected, with both addresses', /Activate button/.test(t) && /appsumo-webhook\.php/.test(t) && /appsumo-oauth\.php/.test(t) && /APPSUMO_API_KEY — set/.test(t) && /Activated, Tier 3/.test(t), t.slice(-900));
   await ctx.close();
 }

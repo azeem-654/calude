@@ -200,6 +200,15 @@ touched; a redemption only writes `crm_plans` with **source `appsumo`**.
   `crm_meta.appsumo_last_rejected` and shown on the owner's /appsumo.
   AppSumo's printed example digest does not reproduce from its own inputs;
   the code follows its four code samples, which agree.
+- **Logins for AppSumo's reviewers** (`reviewers`, `reviewer_reset`, owner
+  only; the card on /appsumo): 1–5 accounts `appsumo-review-N@<owner's
+  domain>`, made by the owner rather than signed up (sign-up proves an address
+  by a code nobody would read), each its own workspace with a `crm_plans` row
+  of the top deal tier and **source `manual`** — never on trial, and honest on
+  Plan & billing. Passwords are answered once and stored only hashed; the list
+  (emails, dates) is `crm_meta.appsumo_reviewers`. A reset works only on a
+  login this tool made and signs its sessions out. The card builds the cover
+  email (`AppSumo/reviewerEmail.ts`) with the logins in it, in the browser.
 - `npm run test:appsumo` (wrangler :8995 plus a mock of AppSumo's OAuth and
   Licensing API on :8996, fresh D1 in `.wrangler-appsumo`, needs a
   `VITE_BASE=/` build).

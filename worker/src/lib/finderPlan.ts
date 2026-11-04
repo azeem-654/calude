@@ -152,16 +152,18 @@ export function isKnown(k: Known, b: { name: string; email?: string; phone?: str
   const h = host(b.website); return !!h && k.nameHost.has(`${n}|${h}`);
 }
 
-/* ── The owner's licensed data, as a share of the day ──
+/* ── The owner's licensed data comes first ──
  *
- * When the install owner has opened their lead library, a finder may take a
- * few people from it each step (prospectFinderTick.ts `libraryStep`). Never
- * more than half of a day's allowance: the rest is still searched for and
- * read live, so a project is not quietly turned into a list it was sold. And
- * never past what today still has room for, counting what is already ready
- * to join — a pile of ready leads waiting is the day's quota spoken for.
+ * When the install owner has opened their lead library, a finder takes its
+ * people from it before searching anywhere else (prospectFinderTick.ts
+ * `libraryStep`), and the web is searched only once the library has nobody
+ * left who matches. The owner's decision of 2026-11-04, replacing "never more
+ * than half of a day" — they built the library to be the first source.
+ * Still never past what today has room for, counting what is already ready
+ * to join: a pile of ready leads waiting is the day's quota spoken for.
+ * `perStep` bounds one tick's address checks, not the day.
  */
-export const LIBRARY = { perStep: 5, share: 0.5 } as const;
+export const LIBRARY = { perStep: 20, share: 1 } as const;
 
 export function libraryRoom(s: Pick<FinderState, 'perDay' | 'dayAdded'>, readyWaiting: number, libraryToday: number): number {
   const open = s.perDay - s.dayAdded - readyWaiting;

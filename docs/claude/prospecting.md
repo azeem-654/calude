@@ -167,7 +167,10 @@ the Lead library first — customers' too, by the owner's decision of
 first calls `searchLibraryProspects` (services/leadDirectory.ts — `leaddir.php
 search` with the sentence's trade as the industry, its place, `hasEmail`), and
 only when the library has nobody (or cannot be asked, said in the source note)
-runs the directory search. A customer's search is answered only while the
+runs the directory search. **Every** search asks it first (owner's decision of
+2026-11-04): a re-run from the history and a sentence that names another
+source ("…with reviews", "…from the company register") too; a register-source
+search answered from the library skips the register's "no websites" step. A customer's search is answered only while the
 owner has opened the library (`shared`); closed, the server answers
 `closed: true` and nobody, and the directories are searched with nothing said.
 Customers get people with an email address only, the columns a prospect row
@@ -242,7 +245,12 @@ whether sharing licensed personal data is selling it).
   (`tradeIndustries`: the whole phrase, then dropping words from the end —
   never down to filler, never read as a job title) and its places through
   `placeWhere`, email required; `libraryRoom` (finderPlan.ts, pure) allows
-  ≤ 5 a step and ≤ half of `per_day`, less what is already ready. People
+  ≤ 20 a step and **the whole of `per_day`**, less what is already ready.
+  **Library first** (owner's decision of 2026-11-04, replacing "at most half
+  the day"): a step in which the library still had people who match
+  (`matched` — ready or turned away) ends there and the web is not searched;
+  the next step asks it again, and only once it has nobody left who matches
+  does the step fall through to the live search. Closed → the web as before. People
   already given to the project (`ld_given` in the LEADS db, and `ld:<id>`
   refs in `crm_project_prospects`), removed (`ld_removed`), on the
   workspace's suppression list or unsubscribes, or already in its Contacts
@@ -349,8 +357,8 @@ whether sharing licensed personal data is selling it).
 A project can run a **finder**: kinds of business × places, searched live on a
 rotation, websites read, addresses checked, and up to `per_day` new prospects
 added to the project's audience list every day (up to half of them, when the
-owner has opened their Lead library, given from it as "Licensed business
-data" — see above). Pure plan in
+owner has opened their Lead library, taken from it **first**, as "Licensed
+business data" — see above). Pure plan in
 `worker/src/lib/finderPlan.ts` (`nextJob`: search → read → rest/exhausted;
 12 searches and 150 website reads a day, 6 reads a tick, `PER_DAY_MAX` 100),
 the driver in `worker/src/prospectFinderTick.ts` (2 finders a tick, on the cron

@@ -5,10 +5,17 @@ application questions). Send it **after** you have submitted the listing in
 the Partner Portal (partners.appsumo.com), so they can match it to your
 application.
 
-**Before sending, fill in the two bracketed lines** (the reviewer codes and
-the booking-page link). Everything else is true as written on 2026-11-04. Do
-not add customer numbers, revenue or reviews unless they are real: AppSumo
-checks, and an invented figure is the quickest way to a rejection.
+**The quickest way:** signed in as azeem@protectedcentral.com, open
+**app.protectedcentral.com/appsumo** → *Logins for AppSumo's reviewers* →
+**Make two reviewer logins**. The card makes the logins and shows this email
+with their usernames and passwords already in it. Press **Copy email** and
+send it. The passwords are shown that once, so copy before you leave the page;
+*New password* makes a fresh one if needed.
+
+The text below is the same email, for reading. Everything in it is true as of
+2026-11-04. Do not add customer numbers, revenue or reviews unless they are
+real: AppSumo checks, and an invented figure is the quickest way to a
+rejection.
 
 ---
 
@@ -30,8 +37,9 @@ here is what the product itself does:
 - CRM, pipeline and contacts, with email and SMS sequences sent from the
   customer's own mailbox and domain. Nothing sends until they approve it.
 - AI Prospecting: "dentists in Austin with a website" becomes a list of
-  businesses. Each lead carries the email it publishes on its own site,
-  checked before sending, and a record of where it was found.
+  businesses. It searches our business contacts database first, then live
+  business directories, and each lead carries the email it publishes,
+  checked before sending, with where it was found.
 - Booking pages, websites and funnels, Google reviews, a support widget with
   chat, tickets and screen sharing, and an AI Video Studio.
 - Agency mode: a workspace per client under the agency's own brand.
@@ -40,18 +48,23 @@ here is what the product itself does:
 
 **Ready for your review:**
 
-- **Test access:** create an account at https://app.protectedcentral.com/appsumo
-  with any of these codes. The tier applies instantly, and a second code
-  stacks to the next tier: [PASTE 3 CODES FROM YOUR FILE]
-- **Demo / output URL:** [PASTE YOUR PUBLIC BOOKING PAGE LINK]
+- **Test access:** sign in at https://app.protectedcentral.com/login. Each
+  login is its own workspace on our top AppSumo tier, for the whole of your
+  review:
+  - Login 1: *(filled in by the /appsumo card)*
+  - Login 2: *(filled in by the /appsumo card)*
+- **Demo / output URL:** https://protectedcentral.com/book/strategy-call. It's
+  our own booking page, built and run with Protected Central's booking pages.
 - **A 5-minute path:**
   1. AI Autopilot → New business workspace → type one sentence → approve the
      blueprint.
   2. AI Prospecting → "dentists in Austin, Texas with a website".
   3. Connect a Gmail or Microsoft 365 mailbox and see a sequence step wait as
      a draft.
+  4. Press the help button in the corner: chat, tickets and screen sharing.
 - **Redemption:** both models are built and tested. Codes are at
-  https://app.protectedcentral.com/appsumo, with up to 3 stacking. AppSumo
+  https://app.protectedcentral.com/appsumo, with up to 3 stacking; we'll
+  upload our code file at your Redemption step. AppSumo
   Licensing v2 (webhooks plus the OAuth Activate button) is also built:
   purchase, activate, upgrade, downgrade and deactivate are all handled. We'll
   use whichever you prefer.
