@@ -46,7 +46,8 @@ const isOwner = (u: SessionUser) => u.accountId === null && u.role === 'agency';
 
 /* Crockford-style: no 0/O, 1/I/L, so a code read aloud or copied by hand survives. */
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-const MAX_BATCH = 5_000;
+/* AppSumo's Redemption step takes a file of 1,000 to 10,000 codes. */
+const MAX_BATCH = 10_000;
 
 /** What a person typed, as the code it means: upper case, no spaces or dashes. */
 export const normalise = (raw: unknown) => String(raw ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');

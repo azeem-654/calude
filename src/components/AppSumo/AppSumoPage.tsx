@@ -223,7 +223,8 @@ interface Summary { counts: { unused: number; redeemed: number; revoked: number 
 
 function OwnerTools() {
   const [sum, setSum] = useState<Summary | null>(null);
-  const [count, setCount] = useState('100');
+  /* AppSumo's Redemption step takes between 1,000 and 10,000 codes. */
+  const [count, setCount] = useState('1000');
   const [batch, setBatch] = useState('');
   const [paste, setPaste] = useState('');
   const [revoke, setRevoke] = useState('');
@@ -235,7 +236,8 @@ function OwnerTools() {
   useEffect(load, []);
 
   const download = (codes: string[], name: string) => {
-    const url = URL.createObjectURL(new Blob([`code\n${codes.join('\n')}\n`], { type: 'text/csv' }));
+    /* AppSumo's upload wants one column, plain text and no header row. */
+    const url = URL.createObjectURL(new Blob([`${codes.join('\n')}\n`], { type: 'text/csv' }));
     const a = document.createElement('a');
     a.href = url; a.download = `${name}.csv`; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
@@ -286,6 +288,7 @@ function OwnerTools() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
         <div style={card}>
           <h2 style={{ fontSize: 17, margin: '0 0 10px' }}>Make codes</h2>
+          <p style={{ color: MUTED, fontSize: 14, margin: '0 0 8px' }}>AppSumo takes 1,000 to 10,000. The file is one column with no header, as its upload asks.</p>
           <label style={{ fontSize: 13, fontWeight: 700 }}>How many
             <input data-field="appsumo.count" style={{ ...input, fontFamily: 'inherit', marginTop: 4 }} inputMode="numeric" value={count} onChange={e => setCount(e.target.value)} />
           </label>
