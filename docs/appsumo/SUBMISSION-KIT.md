@@ -13,18 +13,54 @@ not copy.
 
 ## Before you submit: what reviewers will check
 
-AppSumo says it vets products on functionality, stability, market fit and value,
-and requires a working product with a support plan. On our side:
+Researched 2026-11-04 from AppSumo's own pages: *Quality standards*
+(sell.appsumo.com/p/quality-standards), *Our application vetting process*
+(help.appsumo.com article 701), the *Partner Listing & Updates Policy*
+(appsumo.com/partner-terms/listing-policy) and the *Licensing API v2* docs
+(docs.licensing.appsumo.com). AppSumo says roughly 1 in 10 products pass its
+testing. It runs every tool through a 25-point checklist and scores it on
+UI/UX, features, integrations and pricing. The deciding question is **"Does
+the tool actually do what it says it does?"** After the contract, unaffiliated
+testers ("Beta-lings") check that again before launch.
 
-| Gap | Why it matters to AppSumo | Fix |
+### Their standards, and where we stand
+
+| AppSumo standard (their words) | Where we stand | What to do |
 |---|---|---|
-| **No support address** on the site (only privacy@ and security@ are named, and neither mailbox exists yet: OWNER-CHECKLIST 9, 12) | The listing needs a support email, and buyers write to it on day one | Create `support@protectedcentral.com`, then switch on the in-app help button (OWNER-CHECKLIST 16) |
-| **No way to redeem an AppSumo code** | Buyers pay AppSumo, not us. Without redemption they cannot get their plan | Being built: see "Redemption" below |
-| Privacy Policy and Terms have not had a lawyer's review (OWNER-CHECKLIST 12) | AppSumo links to both from the listing | A lawyer's read |
-| The launch video has a placeholder AI voiceover (OWNER-CHECKLIST 18) | It becomes the listing video | A human read, or a shorter screen-only cut |
-| Master password and 2-step sign-in (OWNER-CHECKLIST 3, 8) | A deal launch brings traffic to the owner account's door | Settings → Security |
+| **"Does the tool actually do what it says?"** Reviewers test with **working test accounts** you supply, plus a **demo or output URL** showing the core output | The listing leads with AI Autopilot and AI Prospecting. Prospecting needs the Google Maps key and the free directory on **app.protectedcentral.com** (OWNER-CHECKLIST 23, 27, 30). Without them, a reviewer's first search finds nothing | **Blocker.** Do 23, 27 and 30 on live, then run one prospect search yourself as a customer would. See *Reviewer test script* below |
+| **Support**: "Can this company actually support the customers it acquires?" and lifetime support for lifetime buyers | No support mailbox, and the help button is off (OWNER-CHECKLIST 9, 16) | **Blocker.** Create `support@protectedcentral.com` and switch on the help button (item 16) |
+| **Active development**: "active roadmaps, changelogs, and responsive teams"; a tool with no recent updates is "not making the cut" | **Done:** a public changelog at **protectedcentral.com/changelog** ("What's new", linked in the site footer), with only dated, shipped releases | Add the newest release at the top whenever one goes live (`src/components/Site/changelog.ts`) |
+| **Real founders**: "Founders must publicly put their name on the product"; refusing is a red flag | The site names no person | **You decide:** add your name (and ideally a photo or LinkedIn) to the site. Tell Claude what to show and it will add it. Nothing is written there until you supply it |
+| **Own product**: "PLR, white-label, and resale products are not accepted" | We are our own code, built in-house. But the first draft of this listing said "white-label for agencies" next to "alternative to GoHighLevel". Many GoHighLevel "SaaS-mode" rebrands apply to AppSumo, and reviewers know the pattern | Say plainly in the application: *"Protected Central is our own software, written and run by us — not a rebranded platform. Agency mode lets an agency put its own brand on client workspaces."* The copy below now says it that way |
+| **"No AI wrappers or early-stage tools"**; "vibe-coded MVPs pretending to be finished products" are rejected | The product does a lot of real work beyond the AI: CRM, sending from your own mailbox, booking pages, a video engine and a server cron | Lead the demo with what *runs*: the Autopilot board after a day, a booking page, a sent sequence. Not only the AI chat |
+| **No "coming soon"** features in the listing | The app shows "not connected" honestly and never says "coming soon" (checked 2026-11-04) | Keep the listing to what works on live today |
+| **Viability**: runway, revenue model, paying customers, real reviews | Only you can answer | Answer truthfully. AppSumo checks for fake testimonials, and so does our own rule |
+| **Pricing**: "lower than anywhere"; no hidden fees or unclear caveats | The deal tiers must sit below the $97/$297 monthly plans for the same allowances | Check that each tier's yearly value beats the monthly plan |
+| **120 days live**; lifetime updates for lifetime buyers; previous buyers get new features at no cost | The deal tiers are plans of kind `deal`, so every new feature reaches them automatically | Nothing to do |
+| Privacy Policy and Terms (linked from the listing) | Published, not yet reviewed by a lawyer (OWNER-CHECKLIST 12) | A lawyer's read |
+| The listing video | Has a placeholder AI voiceover (OWNER-CHECKLIST 18) | A human read, or a shorter screen-only cut |
+| A deal launch brings traffic to the owner account's door | Master password and 2-step sign-in still open (OWNER-CHECKLIST 3, 8) | Settings → Security |
 
----
+### Reviewer test script (put in the application's notes)
+
+Testers score what they can reach in a few minutes. Give them a path:
+
+1. **Sign up** at https://app.protectedcentral.com/appsumo with one of the codes
+   you give them. Tier 1 applies at once; Plan & billing shows "AppSumo
+   lifetime deal".
+2. **AI Autopilot → New business workspace**: type one sentence, e.g. "Get
+   more booked appointments for a dental clinic in Austin". It asks only what
+   it could not work out, then shows the blueprint. Approve it.
+3. **AI Prospecting**: "dentists in Austin, Texas with a website" → leads with
+   the email each one publishes on its own site, each with its source.
+4. **Connect a mailbox** (their own Gmail or Microsoft 365) → a sequence
+   step starts as a draft. Nothing sends until they approve it.
+5. **Booking page**: open its public link. This is the **demo/output URL**
+   AppSumo asks for, so publish one from your own account and paste its link.
+6. **Redeem a second code** on /appsumo → the tier moves up to Tier 2.
+
+Before you send it, walk the script yourself on live as a fresh customer
+account. Any step that fails is the one their tester will report.
 
 ## Application form (self-submission)
 
@@ -52,9 +88,14 @@ the marketing agencies that serve them.
 **Alternative to:** GoHighLevel, HubSpot Starter, ActiveCampaign, Zapier/Make
 (for marketing workflows).
 
+**Built by:** our own team, on our own code. Not a rebranded or white-labelled
+platform (AppSumo does not accept those, so say it up front).
+
 **Support plan:** in-app help widget (chat, tickets, screen sharing) plus a
 support email (create it first, see above). Owner-run strategy calls on
 weekdays, 09:00–17:00 New York time.
+
+**Changelog:** https://protectedcentral.com/changelog
 
 ---
 
@@ -73,8 +114,7 @@ weekdays, 09:00–17:00 New York time.
   posts and blog articles, all in one login
 - Nothing sends unasked: every email or text starts as a draft until you
   approve it
-- White-label for agencies: a workspace per client, under your own name and
-  domain
+- Agency mode: a workspace per client, under your own brand and domain
 
 ### Overview (paste as the product description)
 
@@ -110,8 +150,8 @@ Everything else a small business or agency runs on is in the same login:
 - **Websites & funnels:** pages whose forms drop leads straight into the CRM
 - **Reviews:** Google reviews, with replies posted back
 - **Support:** a help widget with chat, tickets and screen sharing
-- **Agencies:** a white-label workspace per client, onboarding that runs
-  itself, and reports clients can open without a login
+- **Agencies:** a workspace per client under your own brand, onboarding
+  that runs itself, and reports clients can open without a login
 
 ### Key features (one line each, for the features block)
 
@@ -127,7 +167,7 @@ Everything else a small business or agency runs on is in the same login:
    your approval
 7. **Booking pages** with reminders and rebooking
 8. **Websites and funnels** connected to the CRM
-9. **White-label agency mode** with client sub-accounts and branded logins
+9. **Agency mode** with client sub-accounts and logins under your brand
 10. **Guardrails:** you choose what each business workspace may do on its own
 
 ### Integrations (only ones the code actually calls)
@@ -219,9 +259,40 @@ AppSumo's standard terms to agree to: lifetime access to the plan bought, codes
 redeemed within 60 days, AppSumo's 60-day refund window, and future updates for
 that plan.
 
-## Redemption (built 2026-11-04, on staging)
+## Redemption: codes or AppSumo's Activate button
 
-The listing uses the **Codes** model with stacking up to 3.
+Both are built. Use whichever AppSumo's **Redemption** step asks for. AppSumo's
+current partner docs present **Licensing** (webhooks + OAuth) as the way
+buyers activate. Codes still work wherever AppSumo accepts a code file.
+
+### Licensing: AppSumo's Activate button (built 2026-11-04)
+
+The buyer presses **Activate** on AppSumo and lands on our page with their
+tier. There is no code to copy. Refunds, upgrades and downgrades arrive by
+themselves; AppSumo forbids changing a license by hand.
+
+1. In the Partner Portal → your product → Licensing, enter:
+   - **Webhook URL:** `https://app.protectedcentral.com/api/appsumo-webhook.php`
+   - **OAuth Redirect URL:** `https://app.protectedcentral.com/api/appsumo-oauth.php`
+
+   Both validate at once: the webhook answers AppSumo's test POST and the
+   redirect answers its bare GET.
+2. Copy the **API key** shown there. In Cloudflare → Workers & Pages →
+   `crmpro` → Settings → Variables and Secrets → Add → type *Secret*, name
+   `APPSUMO_API_KEY`. Do the same for `APPSUMO_CLIENT_ID` and
+   `APPSUMO_CLIENT_SECRET`, which AppSumo shows once both URLs validate.
+   They never go in the database and are never shown in the app.
+3. Signed in as the owner, open **app.protectedcentral.com/appsumo**. The
+   *Activate button* card ticks each secret, shows the last signed webhook,
+   and says so in red if one was ever refused for its signature.
+4. Make a test purchase from the Partner Portal and press Activate. You should
+   arrive at `/appsumo` signed up with the tier you bought.
+
+The tier comes from AppSumo's `tier` (1–3), mapped to AppSumo Tier 1/2/3 in
+`allowances.ts`. Add-ons (`parent_license_key`) are recorded and never counted.
+No add-on is sold.
+
+### Codes
 
 - **Redemption URL:** `https://app.protectedcentral.com/appsumo`. It shows
   what each tier includes, takes the code, and walks a new buyer through
@@ -235,7 +306,8 @@ The listing uses the **Codes** model with stacking up to 3.
 - **Refunds:** paste the refunded code under *A refunded code*. The buyer's
   tier drops by one, and with no codes left their AppSumo plan ends.
 - **For AppSumo's reviewers:** give them two or three codes from your file.
-  They can sign up, redeem one, and see the tier applied at once.
+  They can sign up, redeem one, and see the tier applied at once. This works
+  whichever model the listing uses.
 - **Stacking instructions** for the Pricing tab: "After your first code is
   redeemed, open app.protectedcentral.com/appsumo (or Plan & billing →
   Redeem an AppSumo code) and enter each extra code — your allowances go up at

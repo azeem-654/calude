@@ -98,6 +98,18 @@ export interface Env {
    * without it screen sharing connects directly, which most networks allow
    * and a strict corporate firewall does not. Both are Cloudflare secrets.
    */
+  /**
+   * AppSumo Licensing v2 (routes/appsumoLicense.ts), Cloudflare secrets from
+   * the Partner Portal: the API key signs the webhooks and reads the Licensing
+   * API; the OAuth pair exists once both URLs validate. Unset, AppSumo's
+   * Activate button is not connected and the owner's /appsumo says so. The two
+   * bases point a test at a mock.
+   */
+  APPSUMO_API_KEY?: string;
+  APPSUMO_CLIENT_ID?: string;
+  APPSUMO_CLIENT_SECRET?: string;
+  APPSUMO_OAUTH_BASE?: string;
+  APPSUMO_API_BASE?: string;
   TURN_KEY_ID?: string;
   TURN_KEY_API_TOKEN?: string;
   /**

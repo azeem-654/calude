@@ -191,7 +191,7 @@ export function industryJsonLd(m: IndustryMeta): string {
 }
 
 /** Every public page worth indexing. Signed-in screens are not pages anybody searches for. */
-export const SITEMAP_PATHS = ['/', '/pricing', '/ecommerce-management-services', '/hvac', '/roofing', '/medical-billing', '/book/strategy-call', '/security', '/privacy', '/terms-of-service', '/terms', '/affiliate-terms', '/growth-service-terms'];
+export const SITEMAP_PATHS = ['/', '/pricing', '/ecommerce-management-services', '/hvac', '/roofing', '/medical-billing', '/book/strategy-call', '/security', '/changelog', '/privacy', '/terms-of-service', '/terms', '/affiliate-terms', '/growth-service-terms'];
 
 export function sitemapXml(): string {
   const urls = SITEMAP_PATHS.map(p => `  <url><loc>${SITE_ORIGIN}${p}</loc></url>`).join('\n');

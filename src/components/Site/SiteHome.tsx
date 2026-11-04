@@ -815,6 +815,7 @@ export default function SiteHome() {
             <a href={appHref('/signup')} {...cross(appHref('/signup'))}>Start free</a>
             <a href="#find" onClick={e => { e.preventDefault(); openWizard(); }}>Find my solution</a>
             <a href="/security">Security &amp; privacy</a>
+            <a href="/changelog">What’s new</a>
             <a href="/privacy">Privacy policy</a>
             <a href="/terms-of-service">Terms of service</a>
             <a href="/terms">Acceptable use</a>

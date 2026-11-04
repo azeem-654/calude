@@ -57,8 +57,9 @@ import GoogleCallback from './components/Auth/GoogleCallback';
 import ReviewQueue from './components/Moderation/ReviewQueue';
 import PolicyPage from './components/Site/PolicyPage';
 import TrustCenter from './components/Site/TrustCenter';
+import Changelog from './components/Site/Changelog';
 import PricingPage from './components/Site/PricingPage';
-import AppSumoPage, { pendingAppsumoCode } from './components/AppSumo/AppSumoPage';
+import AppSumoPage, { pendingAppsumo } from './components/AppSumo/AppSumoPage';
 import IndustryPage from './components/Site/IndustryPage';
 import MedicalBillingPage from './components/Site/MedicalBillingPage';
 import EcommercePage from './components/Site/EcommercePage';
@@ -128,14 +129,15 @@ function SitePlanHandoff({ isClient }: { isClient: boolean }) {
 }
 
 /**
- * A buyer who typed their AppSumo code before creating an account comes back
- * to /appsumo once signed in, with the code filled in (AppSumoPage keeps it in
+ * A buyer who typed their AppSumo code — or arrived from AppSumo's Activate
+ * button — before creating an account comes back to /appsumo once signed in,
+ * with the code filled in or the purchase claimed (AppSumoPage keeps it in
  * this browser). Once per tab, so leaving the page is not undone on every load.
  */
 function AppSumoHandoff({ isClient }: { isClient: boolean }) {
   const navigate = useNavigate();
   useEffect(() => {
-    if (isClient || !pendingAppsumoCode() || window.location.pathname.endsWith('/appsumo')) return;
+    if (isClient || !pendingAppsumo() || window.location.pathname.endsWith('/appsumo')) return;
     try {
       if (sessionStorage.getItem('pc_appsumo_opened')) return;
       sessionStorage.setItem('pc_appsumo_opened', '1');
@@ -161,7 +163,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
   const isEditor = location.pathname.startsWith('/social-creator/editor');
 
   /* The Trust Center is public on every host, signed in or not. */
-  if (['/security', '/privacy', '/terms-of-service', '/affiliate-terms', '/growth-service-terms', '/pricing', '/appsumo'].includes(location.pathname)) {
+  if (['/security', '/changelog', '/privacy', '/terms-of-service', '/affiliate-terms', '/growth-service-terms', '/pricing', '/appsumo'].includes(location.pathname)) {
     return (
       <Routes>
         <Route path="/pricing" element={<PricingPage />} />
@@ -169,6 +171,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
             must still reach it, and the trial's plan screen sits in the chrome. */}
         <Route path="/appsumo" element={<AppSumoPage />} />
         <Route path="/security" element={<TrustCenter />} />
+        <Route path="/changelog" element={<Changelog />} />
         <Route path="/privacy" element={<LegalPage doc="privacy" />} />
         <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
         <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
@@ -311,6 +314,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/affiliate" element={<Affiliate />} />
           <Route path="/terms" element={<PolicyPage />} />
           <Route path="/security" element={<TrustCenter />} />
+          <Route path="/changelog" element={<Changelog />} />
           <Route path="/privacy" element={<LegalPage doc="privacy" />} />
           <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
           <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
@@ -599,6 +603,7 @@ export default function App() {
               screen is a policy nobody has read. */}
           <Route path="/terms" element={<PolicyPage />} />
           <Route path="/security" element={<TrustCenter />} />
+          <Route path="/changelog" element={<Changelog />} />
           <Route path="/privacy" element={<LegalPage doc="privacy" />} />
           <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
           <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
@@ -631,6 +636,7 @@ export default function App() {
               one can actually do is still the server's call. */}
           <Route path="/terms" element={<PolicyPage />} />
           <Route path="/security" element={<TrustCenter />} />
+          <Route path="/changelog" element={<Changelog />} />
           <Route path="/privacy" element={<LegalPage doc="privacy" />} />
           <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
           <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />

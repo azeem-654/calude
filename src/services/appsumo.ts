@@ -1,6 +1,7 @@
 /**
  * The browser's side of /api/appsumo.php (worker/src/routes/appsumo.ts):
- * redeeming AppSumo codes, and the owner's tools for making them.
+ * redeeming AppSumo codes, claiming a license activated on AppSumo, and the
+ * owner's tools for making codes.
  */
 import { API_BASE } from './apiBase';
 import { sessionToken } from './auth';
@@ -24,6 +25,8 @@ export interface AppsumoStanding {
   codes: number;
   max: number;
   tier: AppsumoTier | null;
+  /** Activated through AppSumo's own button (Licensing v2): the tier follows the AppSumo purchase, so codes do not stack on it. */
+  license: { tier: number } | null;
   /** The subscriber's plan row as it stands: `source` is 'appsumo', a processor, 'manual' or 'default'. */
   activePlan: { id: string; source: string } | null;
 }

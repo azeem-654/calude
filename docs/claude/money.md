@@ -181,8 +181,28 @@ touched; a redemption only writes `crm_plans` with **source `appsumo`**.
   only an `appsumo` row.
 - A typed code survives sign-up in `localStorage` (`pc_appsumo_code`);
   `AppSumoHandoff` (App.tsx) brings the buyer back to `/appsumo`.
-- `npm run test:appsumo` (wrangler :8995, fresh D1 in `.wrangler-appsumo`,
-  needs a `VITE_BASE=/` build).
+- **Licensing v2 — AppSumo's Activate button** (`routes/appsumoLicense.ts`,
+  migration 0085, `crm_appsumo_licenses`), beside the codes: the listing uses
+  one. `/api/appsumo-webhook.php` takes AppSumo's signed POSTs (HMAC-SHA256
+  of `timestamp + raw body` with `APPSUMO_API_KEY`, headers
+  `X-Appsumo-Timestamp`/`-Signature`) and answers `{success, event}`; its
+  `test: true` POST passes unsigned and does nothing. `/api/appsumo-oauth.php`
+  (GET) trades the OAuth `code` for the license key and sends the buyer to
+  `/appsumo#license=<claim>` — a one-use claim, its hash on the row, 14 days.
+  The `claim` action on appsumo.php spends it on the signed-in agency
+  account. Every upgrade/downgrade is a **new key** naming `prev_license_key`;
+  the old row becomes `replaced`. `replaced` and `deactivated` are terminal,
+  so a replayed signed event cannot revive a refunded license (there is no
+  timestamp window: AppSumo does not say how late a retry comes). The tier is
+  **max(codes held, active license tier)**, never the sum; a licensed account
+  is refused codes (`licensed`). Secrets are Worker secrets only; unset, the
+  webhook answers 503 so AppSumo retries. A refused signature is stamped in
+  `crm_meta.appsumo_last_rejected` and shown on the owner's /appsumo.
+  AppSumo's printed example digest does not reproduce from its own inputs;
+  the code follows its four code samples, which agree.
+- `npm run test:appsumo` (wrangler :8995 plus a mock of AppSumo's OAuth and
+  Licensing API on :8996, fresh D1 in `.wrangler-appsumo`, needs a
+  `VITE_BASE=/` build).
 
 ## Trials, sign-ups and keeping trial customers
 

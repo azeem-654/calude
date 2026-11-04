@@ -17,7 +17,11 @@
  *   import   install owner. Codes AppSumo generated, pasted one per line.
  *   revoke   install owner. A code AppSumo refunded: it stops counting and the
  *            subscriber's tier is worked out again (down to none).
- *   summary  install owner. Counts, and who redeemed how many.
+ *   summary  install owner. Counts, and who redeemed how many — codes and
+ *            licenses — and whether AppSumo Licensing is connected.
+ *   claim    session, as redeem. Ties an AppSumo license (Licensing v2,
+ *            routes/appsumoLicense.ts) to this account, from the one-use link
+ *            the OAuth return handed the buyer.
  *
  * Why hashes: an unused code is a bearer secret worth a lifetime plan. Kept in
  * plain text, anyone with a database export could redeem the lot.
@@ -27,10 +31,11 @@
  * the logs and the limiter costs nothing.
  */
 import { body, fail, json } from '../lib/http';
-import { nowIso, userFromToken, type Env, type SessionUser } from '../lib/db';
+import { metaGet, nowIso, userFromToken, type Env, type SessionUser } from '../lib/db';
 import { APPSUMO_MAX_CODES, appsumoPlanFor, effectivePlans, featureLines, limitsFor } from '../lib/allowances';
 import { loadOverrides } from '../lib/allowanceStore';
 import { rateLimit } from '../lib/rateLimit';
+import { licensingReady } from './appsumoLicense';
 
 interface Req {
   token?: string;
@@ -40,6 +45,7 @@ interface Req {
   count?: number;
   batch?: string;
   note?: string;
+  license?: string;
 }
 
 const isOwner = (u: SessionUser) => u.accountId === null && u.role === 'agency';
@@ -58,16 +64,33 @@ function newCode(): string {
   return `PC-${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8, 12)}`;
 }
 
-async function hashOf(code: string): Promise<string> {
-  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`appsumo:${normalise(code)}`));
+export async function sha256Hex(s: string): Promise<string> {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
   return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
+const hashOf = (code: string) => sha256Hex(`appsumo:${normalise(code)}`);
 
 async function held(env: Env, email: string): Promise<number> {
   const r = await env.DB.prepare("SELECT COUNT(*) AS n FROM crm_appsumo_codes WHERE owner_email = ? AND status = 'redeemed'")
     .bind(email).first<{ n: number }>();
   return Number(r?.n ?? 0);
 }
+
+/** The tier of the AppSumo license this subscriber holds through Licensing v2, 0 for none. Add-ons never count. */
+async function licenseTier(env: Env, email: string): Promise<number> {
+  const r = await env.DB.prepare(
+    "SELECT MAX(tier) AS t FROM crm_appsumo_licenses WHERE owner_email = ? AND status = 'active' AND parent_key IS NULL",
+  ).bind(email).first<{ t: number | null }>();
+  return Number(r?.t ?? 0);
+}
+
+/**
+ * What the tier is worked out from: the codes held, or the license's tier,
+ * whichever is higher. Not their sum — a listing sells one or the other, and a
+ * buyer who somehow has both paid for the larger, not for both stacked.
+ */
+const appsumoUnits = async (env: Env, email: string) =>
+  Math.max(await held(env, email).catch(() => 0), await licenseTier(env, email).catch(() => 0));
 
 /**
  * Set the subscriber's plan from the codes they hold.
@@ -78,7 +101,7 @@ async function held(env: Env, email: string): Promise<number> {
  * it. With no codes left, only an AppSumo row is taken away.
  */
 export async function applyAppsumoTier(env: Env, email: string): Promise<string | null> {
-  const planId = appsumoPlanFor(await held(env, email).catch(() => 0));
+  const planId = appsumoPlanFor(await appsumoUnits(env, email));
   if (!planId) {
     await env.DB.prepare("DELETE FROM crm_plans WHERE owner_email = ? AND source = 'appsumo'").bind(email).run();
     return null;
@@ -121,7 +144,8 @@ async function swapWelcome(env: Env, email: string): Promise<void> {
 
 async function standing(env: Env, email: string) {
   const codes = await held(env, email);
-  const planId = appsumoPlanFor(codes);
+  const lic = await licenseTier(env, email).catch(() => 0);
+  const planId = appsumoPlanFor(Math.max(codes, lic));
   const row = await env.DB.prepare('SELECT plan_id AS planId, source FROM crm_plans WHERE owner_email = ?')
     .bind(email).first<{ planId: string; source: string }>();
   const plans = effectivePlans(await loadOverrides(env));
@@ -129,6 +153,8 @@ async function standing(env: Env, email: string) {
   return {
     codes,
     max: APPSUMO_MAX_CODES,
+    /* Activated through AppSumo's own button: the tier is AppSumo's, so codes do not stack on it. */
+    license: lic ? { tier: lic } : null,
     tier: tier ? { id: tier.id, name: tier.name, lines: featureLines(tier), support: tier.support } : null,
     /* A paid or hand-given plan sits above the deal while it lasts. */
     activePlan: row ? { id: row.planId, source: row.source } : null,
@@ -192,10 +218,24 @@ export async function handleAppsumo(req: Request, env: Env): Promise<Response> {
         WHERE status = 'redeemed' GROUP BY owner_email ORDER BY lastAt DESC LIMIT 500`,
     ).all<{ email: string; codes: number; lastAt: string }>();
     const by = Object.fromEntries((counts.results ?? []).map(r => [r.status, Number(r.n)]));
+    const lc = await env.DB.prepare('SELECT status, COUNT(*) AS n FROM crm_appsumo_licenses WHERE parent_key IS NULL GROUP BY status').all<{ status: string; n: number }>();
+    const holders = await env.DB.prepare(
+      `SELECT owner_email AS email, tier, updated_at AS lastAt FROM crm_appsumo_licenses
+        WHERE status = 'active' AND parent_key IS NULL AND owner_email IS NOT NULL ORDER BY updated_at DESC LIMIT 500`,
+    ).all<{ email: string; tier: number; lastAt: string }>();
+    const last = await metaGet(env.DB, 'appsumo_last_webhook').catch(() => null);
+    const rejected = await metaGet(env.DB, 'appsumo_last_rejected').catch(() => null);
     return json({
       success: true,
       counts: { unused: by.unused ?? 0, redeemed: by.redeemed ?? 0, revoked: by.revoked ?? 0 },
       redeemers: (who.results ?? []).map(r => ({ ...r, codes: Number(r.codes), planId: appsumoPlanFor(Number(r.codes)) })),
+      licensing: {
+        ...licensingReady(env),
+        counts: Object.fromEntries((lc.results ?? []).map(r => [r.status, Number(r.n)])),
+        holders: (holders.results ?? []).map(r => ({ ...r, tier: Number(r.tier) })),
+        lastWebhook: last ? JSON.parse(last) as { event: string; at: string } : null,
+        lastRejected: rejected ? JSON.parse(rejected) as { at: string; signed: boolean } : null,
+      },
     });
   }
 
@@ -204,6 +244,30 @@ export async function handleAppsumo(req: Request, env: Env): Promise<Response> {
     if (isOwner(user)) return json({ success: true, owner: true });
     if (user.role !== 'agency') return json({ success: true, client: true });
     return json({ success: true, ...(await standing(env, user.email)) });
+  }
+
+  if (act === 'claim') {
+    if (isOwner(user)) return fail('The install owner already has everything. Sign in as a customer account to activate an AppSumo purchase.', 200, { code: 'owner' });
+    if (user.role !== 'agency' || !user.accountId) return fail('An AppSumo purchase is activated on the account that owns the workspace, not a client login.', 200, { code: 'client' });
+    const v = await rateLimit(env, { what: 'appsumo-claim', who: user.email, max: 20, windowSeconds: 3600 });
+    if (!v.allowed) return fail('Too many tries in an hour — wait a little, then try again.', 429, { code: 'rate_limited' });
+    const claim = String(d.license ?? '');
+    const row = /^[0-9a-f]{48}$/.test(claim) ? await env.DB.prepare(
+      'SELECT license_key AS k, status, owner_email AS email, claim_expires AS until FROM crm_appsumo_licenses WHERE claim_hash = ?',
+    ).bind(await sha256Hex(`claim:${claim}`)).first<{ k: string; status: string; email: string | null; until: string | null }>() : null;
+    const again = 'Activate it again from your AppSumo account (Products → Protected Central → Activate) and you will be brought straight back.';
+    if (!row || !row.until || row.until < nowIso()) return fail(`That activation link has expired or was already used. ${again}`, 200, { code: 'claim_expired' });
+    if (row.status !== 'active') return fail('That AppSumo purchase is no longer active — it was refunded or replaced on AppSumo.', 200, { code: 'claim_inactive' });
+    if (row.email && row.email !== user.email) return fail('That AppSumo purchase is already active on another account. Sign in to that account instead.', 200, { code: 'claim_taken' });
+    const first = (await appsumoUnits(env, user.email)) === 0;
+    /* The owner check is in the UPDATE: two accounts claiming in two tabs cannot both win. */
+    const took = await env.DB.prepare(
+      "UPDATE crm_appsumo_licenses SET owner_email = ?, claim_hash = NULL, updated_at = ? WHERE license_key = ? AND (owner_email IS NULL OR owner_email = ?) AND status = 'active'",
+    ).bind(user.email, nowIso(), row.k, user.email).run();
+    if (!took.meta.changes) return fail('That AppSumo purchase is already active on another account.', 200, { code: 'claim_taken' });
+    await applyAppsumoTier(env, user.email);
+    if (first) await swapWelcome(env, user.email).catch(() => null);
+    return json({ success: true, claimed: true, ...(await standing(env, user.email)) });
   }
 
   if (act === 'redeem') {
@@ -220,6 +284,9 @@ export async function handleAppsumo(req: Request, env: Env): Promise<Response> {
     const code = String(d.code ?? '');
     if (normalise(code).length < 8) return fail('Enter the code from your AppSumo purchase.', 200, { field: 'appsumo.code' });
     const have = await held(env, user.email);
+    if (await licenseTier(env, user.email).catch(() => 0)) {
+      return fail('This account was activated from AppSumo directly, so its tier follows your AppSumo purchase — upgrade it on AppSumo rather than with a code.', 200, { field: 'appsumo.code', code: 'licensed' });
+    }
     if (have >= APPSUMO_MAX_CODES) {
       return fail(`You already hold ${APPSUMO_MAX_CODES} codes — the most that stack. Your account is on the top tier.`, 200, { field: 'appsumo.code', code: 'max_codes' });
     }

@@ -116,7 +116,7 @@ export default function ClientBilling() {
     : owner
       ? { Icon: ShieldCheck, label: 'Install owner', color: '#047857', bg: '#d1fae5', line: 'You run this installation, so this account is never billed. How your customers pay you is set in Settings → Billing.' }
       : onDeal
-        ? { Icon: CheckCircle2, label: 'AppSumo lifetime deal', color: '#047857', bg: '#d1fae5', line: `${deal?.tier?.name ?? 'Your AppSumo tier'} — ${deal?.codes ?? 0} of ${deal?.max ?? 3} codes redeemed. Paid once on AppSumo: nothing to pay here, and it does not renew or expire.` }
+        ? { Icon: CheckCircle2, label: 'AppSumo lifetime deal', color: '#047857', bg: '#d1fae5', line: `${deal?.tier?.name ?? 'Your AppSumo tier'} — ${deal?.license ? 'activated from your AppSumo account' : `${deal?.codes ?? 0} of ${deal?.max ?? 3} codes redeemed`}. Paid once on AppSumo: nothing to pay here, and it does not renew or expire.` }
       : given
         ? { Icon: CheckCircle2, label: 'Plan active', color: '#047857', bg: '#d1fae5', line: 'Your plan was arranged with Protected Central directly, so there is no card or subscription to manage here.' }
       : paid
@@ -145,7 +145,7 @@ export default function ClientBilling() {
         </div>
         {status.line && <p style={{ color: '#3f4247', fontSize: 14, lineHeight: 1.55, margin: '12px 0 0' }}>{status.line}</p>}
 
-        {onDeal && deal && deal.codes < deal.max && (
+        {onDeal && deal && !deal.license && deal.codes < deal.max && (
           <a href={appHref('/appsumo')} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 16, background: INK, color: '#fff', borderRadius: 12, padding: '12px 20px', fontSize: 14, fontWeight: 700, textDecoration: 'none' }}>
             Redeem another AppSumo code
           </a>

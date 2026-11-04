@@ -69,6 +69,7 @@ import { handleSmsOptin } from './routes/smsOptin';
 import { handlePlatform } from './routes/platform';
 import { handleAllowances } from './routes/allowances';
 import { handleAppsumo } from './routes/appsumo';
+import { handleAppsumoOauth, handleAppsumoWebhook } from './routes/appsumoLicense';
 import { handleCloud } from './routes/cloud';
 import { handleAffiliate } from './routes/affiliate';
 import { handleResell, handleResellWebhook } from './routes/resell';
@@ -121,6 +122,9 @@ const ROUTES: Record<string, Handler> = {
   '/api/allowances.php': handleAllowances,
   /* AppSumo lifetime-deal codes: redeem (customer), make and revoke (owner). */
   '/api/appsumo.php': handleAppsumo,
+  /* AppSumo Licensing v2: its signed webhook, and its OAuth return (a GET). */
+  '/api/appsumo-webhook.php': handleAppsumoWebhook,
+  '/api/appsumo-oauth.php': handleAppsumoOauth,
   '/api/cloud.php': handleCloud,
   '/api/aikeys.php': handleAiKeys,
   '/api/geoapify.php': handleGeoapify,

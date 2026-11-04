@@ -13,10 +13,18 @@
  *    AppSumo plan away and leaves a hand-given plan alone.
  *  - /appsumo renders signed out and signed in at 1280 and 390 with no
  *    horizontal overflow and no page errors, and redeems from the page.
+ *  - Licensing v2 (AppSumo's Activate button), against a mock of AppSumo's
+ *    OAuth and Licensing API: a webhook signed as AppSumo's code samples sign
+ *    one is accepted, unsigned and tampered webhooks are not, purchase → activate →
+ *    OAuth → claim sets the tier, upgrade/downgrade follow the new key, a
+ *    replayed activate cannot revive a replaced or refunded license, a claim
+ *    is one-use and one-account, and the page carries a claim through sign-in.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync, spawn } from 'node:child_process';
+import crypto from 'node:crypto';
+import http from 'node:http';
 import pw from '/opt/node22/lib/node_modules/playwright/index.js';
 
 const PORT = Number(process.env.PORT ?? 8995), INSPECT = Number(process.env.INSPECT_PORT ?? 9395);
@@ -26,15 +34,47 @@ const ok = (n, c, d = '') => { if (c) pass++; else fail++; console.log(`${c ? ' 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 if (!fs.existsSync('dist/index.html')) { console.log('Build first: VITE_BASE=/ npm run build'); process.exit(2); }
 
+/* AppSumo, mocked: its OAuth token and license-key endpoints and the Licensing API. */
+const MOCK = Number(process.env.MOCK_PORT ?? 8996);
+const API_KEY = 'c73455d8-0f64-4354-bd64-1f454a227104';   /* the key in AppSumo's own docs, so its test vector applies */
+const OAUTH_CODES = {};      /* code → license key */
+const API_TIERS = {};        /* license key → tier the Licensing API answers */
+const seen = { token: [], api: [] };
+const mock = http.createServer((q, s) => {
+  let raw = '';
+  q.on('data', c => { raw += c; });
+  q.on('end', () => {
+    const u = new URL(q.url, `http://localhost:${MOCK}`);
+    const send = (code, o) => { s.writeHead(code, { 'Content-Type': 'application/json' }); s.end(JSON.stringify(o)); };
+    if (u.pathname === '/openid/token/') {
+      const b = JSON.parse(raw || '{}');
+      seen.token.push(b);
+      if (b.client_id !== 'cid' || b.client_secret !== 'csecret' || b.grant_type !== 'authorization_code' || !OAUTH_CODES[b.code]) return send(400, { error: 'invalid_grant' });
+      return send(200, { access_token: `tok-${b.code}`, token_type: 'bearer', expires_in: 3600, refresh_token: 'r', id_token: 'i' });
+    }
+    if (u.pathname === '/openid/license_key/') {
+      const code = String(u.searchParams.get('access_token') ?? '').replace(/^tok-/, '');
+      return OAUTH_CODES[code] ? send(200, { license_key: OAUTH_CODES[code], status: 'active', scopes: ['read_license'] }) : send(401, {});
+    }
+    const m = /^\/v2\/licenses\/([\w-]+)$/.exec(u.pathname);
+    if (m) {
+      seen.api.push(q.headers['x-appsumo-licensing-key']);
+      return API_TIERS[m[1]] ? send(200, { license_key: m[1], status: 'active', tier: API_TIERS[m[1]] }) : send(404, {});
+    }
+    send(404, {});
+  });
+}).listen(MOCK);
+
 const persist = path.resolve('.wrangler-appsumo');
 fs.rmSync(persist, { recursive: true, force: true });
 execSync(`npx wrangler d1 migrations apply crmpro --local --persist-to ${persist}`, { stdio: 'ignore', env: { ...process.env, CI: '1' } });
 const wr = spawn('npx', ['wrangler', 'dev', '--local', '--port', String(PORT), '--inspector-port', String(INSPECT), '--persist-to', persist,
-  '--var', `APP_ORIGIN:${B}`], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  '--var', `APP_ORIGIN:${B}`, '--var', `APPSUMO_API_KEY:${API_KEY}`, '--var', 'APPSUMO_CLIENT_ID:cid', '--var', 'APPSUMO_CLIENT_SECRET:csecret',
+  '--var', `APPSUMO_OAUTH_BASE:http://localhost:${MOCK}`, '--var', `APPSUMO_API_BASE:http://localhost:${MOCK}`], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
 let wlog = '';
 wr.stdout.on('data', c => { wlog += c; }); wr.stderr.on('data', c => { wlog += c; });
 let br = null;
-const stop = () => { try { process.kill(-wr.pid, 'SIGTERM'); } catch { /* gone */ } };
+const stop = () => { try { process.kill(-wr.pid, 'SIGTERM'); } catch { /* gone */ } try { mock.close(); } catch { /* */ } };
 process.on('exit', stop);
 process.on('uncaughtException', async e => { console.log(e); console.log(wlog.replace(/.*workerd@.*\n/g, '').slice(-2500)); try { await br?.close(); } catch { /* */ } stop(); process.exit(1); });
 for (let i = 0; i < 90; i++) { try { const r = await fetch(`${B}/api/data.php`, { method: 'POST', headers: { Connection: 'close' }, body: '{"action":"ping"}' }); if (r.ok) break; } catch { /* starting */ } await sleep(1000); }
@@ -107,6 +147,73 @@ ok('a hand-given plan is not touched by a revoke', (await sumo(M.token, 'status'
 const s1 = await sumo(OT, 'summary');
 ok('the summary counts what happened', s1.counts.revoked === 4 && s1.counts.redeemed === 0 && s1.counts.unused === 4, s1.counts);
 
+/* ── Licensing v2: AppSumo's Activate button ── */
+console.log('\nAppSumo Licensing (webhooks + OAuth)');
+const sign = (ts, raw) => crypto.createHmac('sha256', API_KEY).update(`${ts}${raw}`).digest('hex');
+/* The body and key are those of AppSumo's "Webhook Security" samples. Its printed digest does
+   not come out of its own inputs (checked 2026-11-04 against every ordering), so this follows
+   the samples' code — HMAC-SHA256, key = API key, message = timestamp + raw body, hex — in all
+   four of its languages. The owner's /appsumo names any refused signature, so a real one that
+   disagrees is seen at once. */
+const DOC_BODY = '{"license_key":"3794577c-3dbc-11ec-9bbc-0242ac130002","event":"purchase","status":"active","event_timestamp":1318781876406,"test":false}';
+const post = (raw, headers = {}) => fetch(`${B}/api/appsumo-webhook.php`, { method: 'POST', headers: { 'Content-Type': 'application/json', Connection: 'close', ...headers }, body: raw })
+  .then(async r => ({ status: r.status, ...(await r.json().catch(() => ({}))) }));
+let clock = Date.now();
+const hook = o => { const raw = JSON.stringify({ test: false, event_timestamp: ++clock, created_at: clock, ...o }); const ts = String(Date.now()); return post(raw, { 'X-Appsumo-Timestamp': ts, 'X-Appsumo-Signature': sign(ts, raw) }); };
+const oauth = code => fetch(`${B}/api/appsumo-oauth.php${code ? `?code=${code}` : ''}`, { redirect: 'manual', headers: { Connection: 'close' } });
+const claimOf = r => (/#license=([0-9a-f]{48})$/.exec(r.headers.get('location') ?? '') ?? [])[1];
+
+const t0 = await post(JSON.stringify({ license_key: '00000000-aaaa-1111-bbbb-abcdef012345', event: 'purchase', test: true }));
+ok('AppSumo’s URL test passes unsigned, answering success and the event', t0.status === 200 && t0.success === true && t0.event === 'purchase', t0);
+const dv = await post(DOC_BODY, { 'X-Appsumo-Timestamp': '1625165884119', 'X-Appsumo-Signature': sign('1625165884119', DOC_BODY) });
+ok('AppSumo’s sample webhook, signed as its samples sign, is accepted', dv.status === 200 && dv.success && dv.event === 'purchase', dv);
+const K1 = crypto.randomUUID(), K2 = crypto.randomUUID(), K3 = crypto.randomUUID(), K4 = crypto.randomUUID(), K5 = crypto.randomUUID();
+ok('an unsigned webhook is refused', (await post(JSON.stringify({ license_key: K1, event: 'activate', tier: 3 }))).status === 401);
+ok('…and the owner is told a signature was refused', !!(await sumo(OT, 'summary')).licensing?.lastRejected);
+{
+  const raw = JSON.stringify({ license_key: K1, event: 'activate', tier: 1, event_timestamp: ++clock }); const ts = String(Date.now());
+  ok('…and a tampered one', (await post(raw.replace('"tier":1', '"tier":3'), { 'X-Appsumo-Timestamp': ts, 'X-Appsumo-Signature': sign(ts, raw) })).status === 401);
+}
+ok('purchase is acknowledged', (await hook({ license_key: K1, event: 'purchase', license_status: 'inactive', tier: 2 })).event === 'purchase');
+ok('activate is acknowledged', (await hook({ license_key: K1, event: 'activate', license_status: 'inactive', tier: 2, extra: { reason: 'Purchased by the customer' } })).event === 'activate');
+const v0 = await oauth('');
+ok('the OAuth address answers AppSumo’s bare validation GET with 200', v0.status === 200);
+ok('a code AppSumo did not issue goes back with a reason', /#license-error=expired$/.test((await oauth('nope')).headers.get('location') ?? ''));
+OAUTH_CODES.c1 = K1;
+const o1 = await oauth('c1');
+const claim1 = claimOf(o1);
+ok('OAuth trades the code and hands back a one-use claim in the fragment', o1.status === 302 && !!claim1 && seen.token.at(-1)?.redirect_uri === `${B}/api/appsumo-oauth.php`, { loc: o1.headers.get('location'), tok: seen.token.at(-1) });
+const L1 = await mkUser('lic@sumo.test', 'Harbor-willow-5-qz', 'Lia Licensed');
+const L2 = await mkUser('lic2@sumo.test', 'Cedar-lantern-6-qz', 'Leo Later');
+const c1 = await sumo(L1.token, 'claim', { license: claim1 });
+ok('claiming it puts the account on the tier AppSumo sold', c1.success && c1.tier?.id === 'appsumo_2' && c1.license?.tier === 2 && c1.codes === 0, c1);
+ok('…once only', (await sumo(L1.token, 'claim', { license: claim1 })).code === 'claim_expired');
+ok('…and a fresh claim cannot move it to another account', (await sumo(L2.token, 'claim', { license: claimOf(await oauth('c1')) })).code === 'claim_taken');
+ok('a licensed account is not offered code stacking', (await sumo(L1.token, 'redeem', { code: codes[3] })).code === 'licensed');
+await hook({ license_key: K2, prev_license_key: K1, event: 'upgrade', license_status: 'inactive', tier: 3 });
+ok('an upgrade arrives as a new key and the account follows it', (await sumo(L1.token, 'status')).tier?.id === 'appsumo_3');
+await hook({ license_key: K1, event: 'activate', license_status: 'inactive', tier: 2 });
+ok('a replayed activate for the replaced key changes nothing', (await sumo(L1.token, 'status')).tier?.id === 'appsumo_3');
+await hook({ license_key: K3, prev_license_key: K2, event: 'downgrade', license_status: 'inactive', tier: 1 });
+ok('a downgrade follows the same way', (await sumo(L1.token, 'status')).tier?.id === 'appsumo_1');
+await hook({ license_key: K3, event: 'deactivate', license_status: 'active', extra: { reason: 'Refunded by the user' } });
+const dz = await sumo(L1.token, 'status');
+ok('a refund (deactivate) takes the AppSumo plan away', dz.tier === null && dz.activePlan === null && dz.license === null, dz);
+await hook({ license_key: K3, event: 'activate', license_status: 'inactive', tier: 3 });
+ok('…and a replayed activate cannot bring it back', (await sumo(L1.token, 'status')).tier === null);
+OAUTH_CODES.c4 = K4; API_TIERS[K4] = 3;
+const c4 = await sumo(L2.token, 'claim', { license: claimOf(await oauth('c4')) });
+ok('OAuth before its webhook asks the Licensing API for the tier', c4.success && c4.tier?.id === 'appsumo_3' && seen.api.at(-1) === API_KEY, { c4, api: seen.api });
+const sl = await sumo(OT, 'summary');
+ok('the owner sees licensing connected, and who holds what', sl.licensing?.webhook === true && sl.licensing?.oauth === true && sl.licensing?.holders?.some(h => h.email === 'lic2@sumo.test' && h.tier === 3) && sl.licensing?.counts?.deactivated === 1 && !!sl.licensing?.lastWebhook, sl.licensing);
+ok('…and no secret is in the answer', !JSON.stringify(sl).includes(API_KEY) && !JSON.stringify(sl).includes('csecret'));
+await hook({ license_key: K5, event: 'purchase', license_status: 'inactive', tier: 1 });
+await hook({ license_key: K5, event: 'activate', license_status: 'inactive', tier: 1 });
+OAUTH_CODES.c5 = K5;
+const pageClaim = claimOf(await oauth('c5'));
+const L3 = { email: 'lic3@sumo.test', pw: 'Maple-harbor-9-qz' };
+await api('auth.php', { action: 'register', email: L3.email, password: L3.pw, name: 'Lou Page', businessName: 'Lou Co' });
+
 /* ── The page ── */
 br = await pw.chromium.launch();
 for (const width of [1280, 390]) {
@@ -152,6 +259,32 @@ for (const width of [1280, 390]) {
   }
   await ctx.close();
 }
+/* Back from AppSumo's Activate button, signed out: the claim leaves the address bar, survives sign-in, and is spent. */
+{
+  const ctx = await br.newContext({ viewport: { width: 390, height: 900 } });
+  const p = await ctx.newPage();
+  const errs = [];
+  p.on('pageerror', e => errs.push(String(e).slice(0, 180)));
+  await p.goto(`${B}/appsumo#license=${pageClaim}`, { waitUntil: 'domcontentloaded' });
+  await p.waitForSelector('text=Thanks for your AppSumo purchase', { timeout: 15000 });
+  ok('390: signed out from Activate, it says one step is left, and the claim is off the address bar', !p.url().includes('license=') && !errs.length, { url: p.url(), errs });
+  await p.goto(`${B}/login`, { waitUntil: 'domcontentloaded' });
+  await p.waitForTimeout(1000);
+  await p.getByLabel('Email or username').fill(L3.email);
+  await p.fill('input[type="password"]', L3.pw);
+  await p.getByRole('button', { name: 'Sign in' }).click();
+  await p.waitForTimeout(3000);
+  if (!p.url().endsWith('/appsumo')) await p.goto(`${B}/appsumo`, { waitUntil: 'domcontentloaded' });
+  await p.waitForSelector('[role="status"]', { timeout: 15000 });
+  const t = await p.evaluate(() => document.body.innerText);
+  const over = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  ok('390: after sign-in the purchase is activated on the account, nothing typed', /AppSumo purchase activated/.test(t) && /Activated from your AppSumo account/.test(t) && over === 0 && !errs.length, { over, errs, t: t.slice(0, 400) });
+  await p.goto('about:blank');
+  await p.goto(`${B}/appsumo#license-error=deactivated`, { waitUntil: 'domcontentloaded' });
+  await p.waitForSelector('text=was refunded', { timeout: 15000 }).catch(() => {});
+  ok('390: an AppSumo error comes back in words', /was refunded/.test(await p.evaluate(() => document.body.innerText)));
+  await ctx.close();
+}
 /* The owner's tools render too. */
 {
   const ctx = await br.newContext({ viewport: { width: 390, height: 900 } });
@@ -170,6 +303,7 @@ for (const width of [1280, 390]) {
   const t = await p.evaluate(() => document.body.innerText);
   const over = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   ok('390: the owner sees their code tools and who redeemed', /AppSumo codes/.test(t) && /Who redeemed/.test(t) && /buyer@sumo\.test/.test(t) && over === 0 && !errs.length, { over, errs });
+  ok('390: …and the Activate button’s set-up, connected, with both addresses', /Activate button/.test(t) && /appsumo-webhook\.php/.test(t) && /appsumo-oauth\.php/.test(t) && /APPSUMO_API_KEY — set/.test(t) && /Activated, Tier 3/.test(t), t.slice(-900));
   await ctx.close();
 }
 await br.close();
