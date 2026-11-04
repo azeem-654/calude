@@ -27,6 +27,7 @@ import { APP_ORIGIN, appHref, isMarketingHost } from '../../services/hosts';
 import { usePageTitle } from '../../services/pageTitle';
 import { featureLines } from '../../services/allowances';
 import { usePlanTable } from '../Site/PricingParts';
+import { FOUNDER, SUPPORT_EMAIL } from '../Site/company';
 
 /** The code typed before signing in, carried across sign-up in this browser. */
 export const PENDING_CODE_KEY = 'pc_appsumo_code';
@@ -127,6 +128,7 @@ export default function AppSumoPage() {
             <li>Nothing sends until you approve it: emails and texts start as drafts, from your own mailbox and domain.</li>
             <li>Refunds are handled by AppSumo under its own policy. A refunded code stops counting toward your tier.</li>
             <li>Need more than Tier 3? Plan &amp; billing offers the monthly plans on top, and you keep your codes.</li>
+            <li>Help: the help button inside the app, or <a href={`mailto:${SUPPORT_EMAIL}`} style={{ color: INK, fontWeight: 700, overflowWrap: 'anywhere' }}>{SUPPORT_EMAIL}</a>. Protected Central is built and run by its founder, {FOUNDER}.</li>
           </ul>
         </section>
       </main>

@@ -28,17 +28,17 @@ testers ("Beta-lings") check that again before launch.
 | AppSumo standard (their words) | Where we stand | What to do |
 |---|---|---|
 | **"Does the tool actually do what it says?"** Reviewers test with **working test accounts** you supply, plus a **demo or output URL** showing the core output | The listing leads with AI Autopilot and AI Prospecting. Prospecting needs the Google Maps key and the free directory on **app.protectedcentral.com** (OWNER-CHECKLIST 23, 27, 30). Without them, a reviewer's first search finds nothing | **Blocker.** Do 23, 27 and 30 on live, then run one prospect search yourself as a customer would. See *Reviewer test script* below |
-| **Support**: "Can this company actually support the customers it acquires?" and lifetime support for lifetime buyers | No support mailbox, and the help button is off (OWNER-CHECKLIST 9, 16) | **Blocker.** Create `support@protectedcentral.com` and switch on the help button (item 16) |
+| **Support**: "Can this company actually support the customers it acquires?" and lifetime support for lifetime buyers | **Done:** `support@protectedcentral.com` exists (2026-11-04) and is in the site footer, /changelog and /appsumo. The in-app help button is still off (OWNER-CHECKLIST 16) | Switch on the help button (item 16) |
 | **Active development**: "active roadmaps, changelogs, and responsive teams"; a tool with no recent updates is "not making the cut" | **Done:** a public changelog at **protectedcentral.com/changelog** ("What's new", linked in the site footer), with only dated, shipped releases | Add the newest release at the top whenever one goes live (`src/components/Site/changelog.ts`) |
-| **Real founders**: "Founders must publicly put their name on the product"; refusing is a red flag | The site names no person | **You decide:** add your name (and ideally a photo or LinkedIn) to the site. Tell Claude what to show and it will add it. Nothing is written there until you supply it |
+| **Real founders**: "Founders must publicly put their name on the product"; refusing is a red flag | **Done:** "Founded by Azeem Sattar" in the site footer, and on /changelog and /appsumo (2026-11-04) | Optional: a photo or LinkedIn link makes it stronger |
 | **Own product**: "PLR, white-label, and resale products are not accepted" | We are our own code, built in-house. But the first draft of this listing said "white-label for agencies" next to "alternative to GoHighLevel". Many GoHighLevel "SaaS-mode" rebrands apply to AppSumo, and reviewers know the pattern | Say plainly in the application: *"Protected Central is our own software, written and run by us — not a rebranded platform. Agency mode lets an agency put its own brand on client workspaces."* The copy below now says it that way |
 | **"No AI wrappers or early-stage tools"**; "vibe-coded MVPs pretending to be finished products" are rejected | The product does a lot of real work beyond the AI: CRM, sending from your own mailbox, booking pages, a video engine and a server cron | Lead the demo with what *runs*: the Autopilot board after a day, a booking page, a sent sequence. Not only the AI chat |
 | **No "coming soon"** features in the listing | The app shows "not connected" honestly and never says "coming soon" (checked 2026-11-04) | Keep the listing to what works on live today |
 | **Viability**: runway, revenue model, paying customers, real reviews | Only you can answer | Answer truthfully. AppSumo checks for fake testimonials, and so does our own rule |
 | **Pricing**: "lower than anywhere"; no hidden fees or unclear caveats | The deal tiers must sit below the $97/$297 monthly plans for the same allowances | Check that each tier's yearly value beats the monthly plan |
 | **120 days live**; lifetime updates for lifetime buyers; previous buyers get new features at no cost | The deal tiers are plans of kind `deal`, so every new feature reaches them automatically | Nothing to do |
-| Privacy Policy and Terms (linked from the listing) | Published, not yet reviewed by a lawyer (OWNER-CHECKLIST 12) | A lawyer's read |
-| The listing video | Has a placeholder AI voiceover (OWNER-CHECKLIST 18) | A human read, or a shorter screen-only cut |
+| Privacy Policy and Terms (linked from the listing) | **Done:** published, and the owner confirmed the lawyer's review (2026-11-04) | Nothing |
+| The listing video | **Done:** the owner approved the voiceover as it is (2026-11-04) | Optional: a 2–3 minute cut, which AppSumo buyers tend to prefer |
 | A deal launch brings traffic to the owner account's door | Master password and 2-step sign-in still open (OWNER-CHECKLIST 3, 8) | Settings → Security |
 
 ### Reviewer test script (put in the application's notes)
@@ -88,11 +88,13 @@ the marketing agencies that serve them.
 **Alternative to:** GoHighLevel, HubSpot Starter, ActiveCampaign, Zapier/Make
 (for marketing workflows).
 
-**Built by:** our own team, on our own code. Not a rebranded or white-labelled
+**Founder:** Azeem Sattar.
+
+**Built by:** in-house, on our own code. Not a rebranded or white-labelled
 platform (AppSumo does not accept those, so say it up front).
 
 **Support plan:** in-app help widget (chat, tickets, screen sharing) plus a
-support email (create it first, see above). Owner-run strategy calls on
+support email: support@protectedcentral.com. Founder-run strategy calls on
 weekdays, 09:00–17:00 New York time.
 
 **Changelog:** https://protectedcentral.com/changelog
@@ -218,9 +220,8 @@ To rebuild them after the site's screenshots change, run
 - **Poster frame:** `poster-16x9.jpg`
 - AppSumo usually takes a YouTube or Vimeo link, so upload the video there
   unlisted and paste the link.
-- **Before you use it:** replace the placeholder AI voiceover (OWNER-CHECKLIST
-  18). AppSumo buyers also tend to prefer 2–3 minutes; a shorter cut can be
-  made from the same footage.
+- The voiceover is approved as it is (2026-11-04). AppSumo buyers tend to
+  prefer 2–3 minutes; a shorter cut can be made from the same footage.
 
 ---
 

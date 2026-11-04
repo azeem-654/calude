@@ -8,6 +8,7 @@ import { LogoMark } from '../shared/Logo';
 import { appHref, isCrossOrigin } from '../../services/hosts';
 import { usePageTitle } from '../../services/pageTitle';
 import { RELEASES } from './changelog';
+import { FOUNDER, SUPPORT_EMAIL } from './company';
 import './site.css';
 
 const cross = (href: string) => (isCrossOrigin(href) ? { rel: 'noopener' as const } : {});
@@ -33,6 +34,9 @@ export default function Changelog() {
         <p className="tc-lead">
           What we have shipped, newest first. Every customer gets each release on their plan, at no extra cost — including lifetime-deal buyers.
           Only finished work is listed here; nothing on this page is a promise of something to come.
+        </p>
+        <p className="tc-lead">
+          Protected Central is built and run by its founder, {FOUNDER}. Questions or a feature you need: <a className="chg-mail" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.
         </p>
         <p className="tc-updated">Last release {when(RELEASES[0].date)}</p>
 

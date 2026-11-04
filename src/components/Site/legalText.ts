@@ -19,7 +19,9 @@
  * in the same commit.
  *
  * This is the operator's plain-language policy, written from the code. It is
- * not legal advice; docs/OWNER-CHECKLIST.md asks for a lawyer's review.
+ * not legal advice. The owner confirmed on 2026-11-04 that a lawyer's review
+ * of the Privacy Policy and Terms is done (OWNER-CHECKLIST 12); a change to
+ * their substance should go back to the lawyer.
  */
 
 export const LEGAL_UPDATED = '26 September 2026';
@@ -194,7 +196,8 @@ export const TERMS: LegalSection[] = [
  * The affiliate program's terms. Written from what the software does
  * (worker/src/lib/affiliate.ts): 40% of each subscription payment from a
  * referred account, for as long as it pays; held 30 days; paid by the owner
- * by hand. Like the other pages, not yet reviewed by a lawyer — see
+ * by hand. Unlike the Privacy Policy and Terms, not yet confirmed as
+ * reviewed by a lawyer — see
  * docs/OWNER-CHECKLIST.md.
  */
 export const AFFILIATE_TERMS: LegalSection[] = [

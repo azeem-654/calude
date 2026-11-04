@@ -25,6 +25,7 @@
  * actually does, which is checkable.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { FOUNDER, SUPPORT_EMAIL } from './company';
 import {
   ArrowRight, ArrowUpRight, Check, Sparkles, Send, MousePointerClick, Users,
   BarChart3, Building2, Lock, Palette, ShieldCheck, Mail, MessageSquare,
@@ -816,13 +817,14 @@ export default function SiteHome() {
             <a href="#find" onClick={e => { e.preventDefault(); openWizard(); }}>Find my solution</a>
             <a href="/security">Security &amp; privacy</a>
             <a href="/changelog">What’s new</a>
+            <a href={`mailto:${SUPPORT_EMAIL}`}>Support: {SUPPORT_EMAIL}</a>
             <a href="/privacy">Privacy policy</a>
             <a href="/terms-of-service">Terms of service</a>
             <a href="/terms">Acceptable use</a>
           </div>
         </div>
         <div className="dc-foot-base">
-          <span>© {new Date().getFullYear()} Protected Central</span>
+          <span>© {new Date().getFullYear()} Protected Central · Founded by {FOUNDER}</span>
           <span>Sends on your own mailbox. Your data stays in your workspace.</span>
         </div>
       </footer>
