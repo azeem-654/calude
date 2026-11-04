@@ -23,6 +23,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execSync, spawn } from 'node:child_process';
 import pw from '/opt/node22/lib/node_modules/playwright/index.js';
+/* The plan table itself (Node 22.18+ strips the types), so an allowance change
+   moves the expectations with it instead of failing on a hard-coded number. */
+import { planDef, formatLimit } from '../worker/src/lib/allowances.ts';
+const SCALE = planDef('scale');
+const scaleLogins = formatLimit(SCALE.limits.login_addresses);
 
 const PORT = Number(process.env.PORT ?? 8991), INSPECT = Number(process.env.INSPECT_PORT ?? 9391);
 const B = `http://localhost:${PORT}`;
@@ -180,8 +185,12 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
   ok(`site ${w}: a yearly switch, since the plans on sale have a yearly price`, (await sec.getByRole('radio', { name: /Yearly/ }).count()) === 1);
   const pro = sec.locator('[data-plan="scale"]');
   await pro.getByRole('button', { name: 'Show full details' }).click();
-  const details = await pro.locator('.dc-plan-details').innerText().catch(() => '');
-  ok(`site ${w}: "Show full details" opens the plan's whole list`, /Branded login addresses/.test(details) && /25/.test(details) && /Charge clients on your own Stripe or Creem/.test(details), details.slice(0, 300));
+  const panel = pro.locator('.dc-plan-details');
+  const details = await panel.innerText().catch(() => '');
+  /* Read the row's own value: a bare number anywhere in the whole list (which opens
+     on the AI Autopilot group) matched other meters' figures, not this one. */
+  const loginsCell = (await panel.locator('dl > div', { has: page.locator('dt', { hasText: /^Branded login addresses$/ }) }).locator('dd').innerText().catch(() => '')).trim();
+  ok(`site ${w}: "Show full details" opens the plan's whole list`, loginsCell === scaleLogins && /Charge clients on your own Stripe or Creem/.test(details), { loginsCell, want: scaleLogins, details: details.slice(0, 200) });
   ok(`site ${w}: Custom's button goes to the form`, /#custom$/.test(await sec.locator('[data-plan="custom"] a').getAttribute('href')));
   ok(`site ${w}: nothing is wider than the window`, (await overflow(page)) <= 0, await overflow(page));
   const outside = await cards.evaluateAll(els => els.filter(e => { const r = e.getBoundingClientRect(); return r.left < -1 || r.right > window.innerWidth + 1; }).length);
@@ -203,9 +212,9 @@ for (const [w, h] of [[1440, 900], [390, 844]]) {
     ok(`/pricing ${w}: one plan at a time on a phone`, visibleCols === rows, [visibleCols, rows]);
     await cmp.getByRole('tab', { name: 'Scale' }).click();
     const proCell = await cmp.locator('tbody tr', { hasText: 'Branded login addresses' }).locator('td[data-col="scale"]').innerText();
-    ok(`/pricing ${w}: …switched with the tabs`, /25/.test(proCell), proCell);
+    ok(`/pricing ${w}: …switched with the tabs`, proCell.trim() === scaleLogins, { proCell, want: scaleLogins });
   }
-  ok(`/pricing ${w}: white-label explained with each plan's numbers`, /yourname\.protectedcentral\.com/.test(await page.locator('#white-label').innerText()) && /Scale: 25 addresses/.test(await page.locator('#white-label').innerText()));
+  ok(`/pricing ${w}: white-label explained with each plan's numbers`, /yourname\.protectedcentral\.com/.test(await page.locator('#white-label').innerText()) && (await page.locator('#white-label').innerText()).includes(`Scale: ${SCALE.limits.login_addresses.toLocaleString('en-US')} addresses`));
   ok(`/pricing ${w}: billing answers`, (await page.locator('#billing details').count()) >= 6);
   ok(`/pricing ${w}: nothing is wider than the window`, (await overflow(page)) <= 0, await overflow(page));
   await page.screenshot({ path: `.wrangler-allowances/pricing-page-${w}.png`, fullPage: true });
