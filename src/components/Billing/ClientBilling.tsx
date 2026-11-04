@@ -24,7 +24,7 @@ import { CreditCard, CheckCircle2, AlertTriangle, Loader, ExternalLink, ShieldCh
 import { getSession } from '../../services/auth';
 import { activeAccount } from '../../services/tenancy';
 import { DEFAULT_TABLE, SOLD_PLANS, annualSaving, dollars, featureLines, fetchPlans, type PlanTable } from '../../services/allowances';
-import { siteOrigin } from '../../services/hosts';
+import { appHref, siteOrigin } from '../../services/hosts';
 import UsageCard from './UsageCard';
 import { billingFor, openBillingPortal, createClientCheckout } from '../../services/billing';
 import { fetchOperatorBilling } from '../../services/operatorBilling';
@@ -207,6 +207,7 @@ export default function ClientBilling() {
             Need more than Scale, done-for-you setup or invoiced billing?{' '}
             <a href={`${siteOrigin()}/pricing#custom`} target="_blank" rel="noopener noreferrer" style={{ color: INK, fontWeight: 700 }}>Ask about a Custom plan</a>
             {' '}· <a href={`${siteOrigin()}/pricing#compare`} target="_blank" rel="noopener noreferrer" style={{ color: INK, fontWeight: 700 }}>Compare every feature</a>
+            {' '}· <a href={appHref('/appsumo')} style={{ color: INK, fontWeight: 700 }}>Redeem an AppSumo code</a>
           </p>
         </>
       )}

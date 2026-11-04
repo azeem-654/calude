@@ -49,6 +49,7 @@ public/api/data/*
 test-results/
 # The fresh D1 that test:prospecting makes and wipes on every run.
 .wrangler-allowances/
+.wrangler-appsumo/
 .wrangler-audit/
 .wrangler-autoprospects/
 .wrangler-leaddir/

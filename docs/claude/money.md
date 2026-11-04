@@ -162,6 +162,28 @@ Reports → **Revenue by project** (`components/Analytics/RevenueByProject.tsx`,
   after it. **Won deals** come from the project's own pipeline (`projectId`),
   shown at the typed value — a deal has no currency, so it never joins revenue.
 
+## AppSumo lifetime codes — a plan, not a payment
+
+`routes/appsumo.ts` (`/api/appsumo.php`), the page `/appsumo`
+(`components/AppSumo/AppSumoPage.tsx`, public on every host, outside the app
+chrome so an ended trial still reaches it), migration 0084. No money moves
+through the app — the buyer pays AppSumo — so none of the three pots is
+touched; a redemption only writes `crm_plans` with **source `appsumo`**.
+
+- Tiers are plans of **kind `deal`** in `allowances.ts` (`appsumo_1..3`,
+  `appsumoPlanFor`): never on a card or at checkout, editable on Plans &
+  allowances. 1–3 codes stack per subscriber (`APPSUMO_MAX_CODES`).
+- Codes are kept **only as SHA-256 hashes** — an unused one is a bearer
+  secret. `generate` answers the plain codes once; `import` takes AppSumo's.
+- `applyAppsumoTier` never writes over a processor-paid or `manual` row; a
+  cancelled subscription (billing.ts `applyPlan`) keeps the `appsumo` row and
+  re-applies the tier. `revoke` (a refund) recomputes it, down to removing
+  only an `appsumo` row.
+- A typed code survives sign-up in `localStorage` (`pc_appsumo_code`);
+  `AppSumoHandoff` (App.tsx) brings the buyer back to `/appsumo`.
+- `npm run test:appsumo` (wrangler :8995, fresh D1 in `.wrangler-appsumo`,
+  needs a `VITE_BASE=/` build).
+
 ## Trials, sign-ups and keeping trial customers
 
 **Every sign-up is on a 7-day trial, no card** (`worker/src/lib/trial.ts`).

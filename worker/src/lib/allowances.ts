@@ -133,11 +133,15 @@ export type Limits = Record<MeterId, number>;
  * except that yearly is no longer offered to new buyers; a yearly Growth
  * subscription still renews (LEGACY_CENTS).
  */
-export type PlanKey = 'starter' | 'growth' | 'scale' | 'pro' | 'custom' | 'agency';
-export const PLAN_KEYS: PlanKey[] = ['starter', 'growth', 'scale', 'pro', 'custom', 'agency'];
+export type PlanKey = 'starter' | 'growth' | 'scale' | 'pro' | 'custom' | 'agency' | 'appsumo_1' | 'appsumo_2' | 'appsumo_3';
+export const PLAN_KEYS: PlanKey[] = ['starter', 'growth', 'scale', 'pro', 'custom', 'agency', 'appsumo_1', 'appsumo_2', 'appsumo_3'];
 
-/** `self` is bought at checkout; `custom` is agreed and given by hand; `legacy` is kept for who has it. */
-export type PlanKind = 'self' | 'custom' | 'legacy';
+/**
+ * `self` is bought at checkout; `custom` is agreed and given by hand; `legacy`
+ * is kept for who has it; `deal` is reached only by redeeming codes bought on
+ * a marketplace (AppSumo, routes/appsumo.ts) — never on a card or at checkout.
+ */
+export type PlanKind = 'self' | 'custom' | 'legacy' | 'deal';
 
 export interface PlanDef {
   id: PlanKey;
@@ -250,10 +254,67 @@ export const PLAN_DEFS: PlanDef[] = [
       login_addresses: UNLIMITED,
     },
   },
+  /*
+   * ── AppSumo lifetime deal (from 2026-11-04) ──
+   *
+   * One code is tier 1; stacking a second or third code moves the subscriber
+   * up (routes/appsumo.ts). The buyer pays AppSumo once and the operator keeps
+   * a share of that once, while every metered unit below is paid by the
+   * operator every month for good (docs/PRICING.md, "What a unit costs") — so
+   * the AI, prospect and video meters sit well under the monthly plans'.
+   * These are the numbers proposed to the owner on 2026-11-04; they must match
+   * the AppSumo listing's Pricing tab, and the owner can change any of them on
+   * Plans & allowances without a release. `monthlyCents: 0`: nothing here is
+   * ever charged by this app.
+   */
+  {
+    id: 'appsumo_1', name: 'AppSumo Tier 1', kind: 'deal', color: '#f59e0b',
+    tagline: 'Lifetime deal from AppSumo — one code.',
+    monthlyCents: 0, annualCents: 0,
+    support: 'In-app help: chat and tickets',
+    limits: {
+      autopilot_projects: 3, workflows_per_project: 12, sub_accounts: 1,
+      ai_requests: 1_000, social_posts: 100, blog_articles: 10, ai_emails: 300,
+      prospects_found: 300,
+      long_videos: 3, ai_shorts: 20, video_minutes: 120, render_minutes: 150, video_storage_gb: 10,
+      login_addresses: 1,
+    },
+  },
+  {
+    id: 'appsumo_2', name: 'AppSumo Tier 2', kind: 'deal', color: '#f59e0b',
+    tagline: 'Lifetime deal from AppSumo — two codes stacked.',
+    monthlyCents: 0, annualCents: 0,
+    support: 'In-app help: chat and tickets',
+    limits: {
+      autopilot_projects: 10, workflows_per_project: 20, sub_accounts: 5,
+      ai_requests: 2_500, social_posts: 250, blog_articles: 25, ai_emails: 750,
+      prospects_found: 750,
+      long_videos: 6, ai_shorts: 50, video_minutes: 300, render_minutes: 400, video_storage_gb: 25,
+      login_addresses: 5,
+    },
+  },
+  {
+    id: 'appsumo_3', name: 'AppSumo Tier 3', kind: 'deal', color: '#f59e0b',
+    tagline: 'Lifetime deal from AppSumo — three codes stacked.',
+    monthlyCents: 0, annualCents: 0,
+    support: 'In-app help: chat and tickets, and an onboarding call',
+    limits: {
+      autopilot_projects: 25, workflows_per_project: 35, sub_accounts: 15,
+      ai_requests: 5_000, social_posts: 500, blog_articles: 50, ai_emails: 1_500,
+      prospects_found: 1_500,
+      long_videos: 12, ai_shorts: 100, video_minutes: 600, render_minutes: 800, video_storage_gb: 50,
+      login_addresses: 15,
+    },
+  },
 ];
 
-/** The plans a card shows: the priced ones, then Custom. */
-export const CARD_PLANS = (plans: PlanDef[] = PLAN_DEFS) => plans.filter(p => p.kind !== 'legacy');
+/** The deal plan a number of stacked AppSumo codes reaches: 1 → tier 1 … 3 or more → tier 3. */
+export const APPSUMO_MAX_CODES = 3;
+export const appsumoPlanFor = (codes: number): PlanKey | null =>
+  codes <= 0 ? null : (`appsumo_${Math.min(codes, APPSUMO_MAX_CODES)}` as PlanKey);
+
+/** The plans a card shows: the priced ones, then Custom. Never a legacy or deal plan. */
+export const CARD_PLANS = (plans: PlanDef[] = PLAN_DEFS) => plans.filter(p => p.kind === 'self' || p.kind === 'custom');
 /** The plans checkout sells. */
 export const SOLD_PLANS = (plans: PlanDef[] = PLAN_DEFS) => plans.filter(p => p.kind === 'self');
 

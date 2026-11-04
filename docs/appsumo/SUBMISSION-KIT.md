@@ -219,10 +219,24 @@ AppSumo's standard terms to agree to: lifetime access to the plan bought, codes
 redeemed within 60 days, AppSumo's 60-day refund window, and future updates for
 that plan.
 
-## Redemption
+## Redemption (built 2026-11-04, on staging)
 
-How a buyer turns an AppSumo purchase into a Protected Central plan. Not built
-yet: it is the next piece of work. AppSumo hands out either codes or a licensing
-integration (OAuth plus webhooks for purchase, upgrade, downgrade and refund).
-The Partner Portal will say which one this deal uses. Both need the tiers
-above, because each code or license has to map to a plan.
+The listing uses the **Codes** model with stacking up to 3.
+
+- **Redemption URL:** `https://app.protectedcentral.com/appsumo`. It shows
+  what each tier includes, takes the code, and walks a new buyer through
+  creating an account. The code is kept in their browser while they sign up,
+  then the page reopens with it filled in.
+- **Codes for AppSumo:** signed in as the owner, open `/appsumo` and use
+  *Make codes*. The CSV downloads once; upload it at AppSumo's Redemption step.
+  If AppSumo gives you its own codes instead, use *Import AppSumo's codes*.
+- **Stacking:** each extra code is redeemed on the same page, or from Plan &
+  billing → *Redeem an AppSumo code*.
+- **Refunds:** paste the refunded code under *A refunded code*. The buyer's
+  tier drops by one, and with no codes left their AppSumo plan ends.
+- **For AppSumo's reviewers:** give them two or three codes from your file.
+  They can sign up, redeem one, and see the tier applied at once.
+- **Stacking instructions** for the Pricing tab: "After your first code is
+  redeemed, open app.protectedcentral.com/appsumo (or Plan & billing →
+  Redeem an AppSumo code) and enter each extra code — your allowances go up at
+  once."

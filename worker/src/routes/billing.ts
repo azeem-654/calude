@@ -40,6 +40,7 @@ import {
 import { decryptSecret, encryptSecret } from '../lib/crypto';
 import { DEFAULT_PROVIDER, providerChoices, providerFor, type ProviderContext } from '../lib/payments';
 import { recordCommission } from '../lib/affiliate';
+import { applyAppsumoTier } from './appsumo';
 
 const SECRET_KEY = 'mailbox_key';
 const KIND = 'payments';
@@ -385,8 +386,11 @@ async function applyPlan(
     .bind(accountId).first<{ owner_email: string }>();
   if (!owner?.owner_email) return;
   if (status === 'cancelled') {
-    await env.DB.prepare("DELETE FROM crm_plans WHERE owner_email = ? AND source NOT IN ('manual', 'default')")
+    await env.DB.prepare("DELETE FROM crm_plans WHERE owner_email = ? AND source NOT IN ('manual', 'default', 'appsumo')")
       .bind(owner.owner_email).run();
+    /* An AppSumo buyer who also subscribed, then cancelled, falls back to the
+       lifetime tier they bought — not to nothing (routes/appsumo.ts). */
+    await applyAppsumoTier(env, owner.owner_email).catch(() => null);
     return;
   }
   if (status !== 'active') return;

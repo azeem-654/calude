@@ -38,7 +38,7 @@ export default function PlanLimits() {
     { id: 'trial', name: 'Free trial', price: '7 days', base: TRIAL_LIMITS, now: table.trial.limits },
     ...table.plans.map(p => ({
       id: p.id, name: p.kind === 'legacy' ? `${p.name} (no longer sold)` : p.name,
-      price: p.kind === 'custom' ? 'given by hand' : `$${dollars(p.monthlyCents)}/mo`,
+      price: p.kind === 'custom' ? 'given by hand' : p.kind === 'deal' ? 'AppSumo codes' : `$${dollars(p.monthlyCents)}/mo`,
       base: PLAN_DEFS.find(d => d.id === p.id)!.limits, now: p.limits,
     })),
   ] : [], [table]);

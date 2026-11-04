@@ -11,9 +11,10 @@
  *
  * installTenantStorage() MUST run before any module reads storage (see main.tsx).
  */
-import { PLAN_DEFS, SOLD_PLANS, featureLines } from '../../worker/src/lib/allowances';
+import { PLAN_DEFS, SOLD_PLANS, featureLines, type PlanKey } from '../../worker/src/lib/allowances';
 
-export type PlanId = 'starter' | 'growth' | 'scale' | 'pro' | 'custom' | 'agency';
+/* The plan table's own ids, so a plan added there (AppSumo's tiers) is a plan here too. */
+export type PlanId = PlanKey;
 export type AccountStatus = 'active' | 'trial' | 'paused' | 'cancelled';
 
 export interface Plan {

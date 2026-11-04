@@ -68,6 +68,7 @@ import { handlePush } from './routes/push';
 import { handleSmsOptin } from './routes/smsOptin';
 import { handlePlatform } from './routes/platform';
 import { handleAllowances } from './routes/allowances';
+import { handleAppsumo } from './routes/appsumo';
 import { handleCloud } from './routes/cloud';
 import { handleAffiliate } from './routes/affiliate';
 import { handleResell, handleResellWebhook } from './routes/resell';
@@ -118,6 +119,8 @@ const ROUTES: Record<string, Handler> = {
   '/api/platform.php': handlePlatform,
   '/api/hosted-mail.php': handleHostedMail,
   '/api/allowances.php': handleAllowances,
+  /* AppSumo lifetime-deal codes: redeem (customer), make and revoke (owner). */
+  '/api/appsumo.php': handleAppsumo,
   '/api/cloud.php': handleCloud,
   '/api/aikeys.php': handleAiKeys,
   '/api/geoapify.php': handleGeoapify,

@@ -58,6 +58,7 @@ import ReviewQueue from './components/Moderation/ReviewQueue';
 import PolicyPage from './components/Site/PolicyPage';
 import TrustCenter from './components/Site/TrustCenter';
 import PricingPage from './components/Site/PricingPage';
+import AppSumoPage, { pendingAppsumoCode } from './components/AppSumo/AppSumoPage';
 import IndustryPage from './components/Site/IndustryPage';
 import MedicalBillingPage from './components/Site/MedicalBillingPage';
 import EcommercePage from './components/Site/EcommercePage';
@@ -126,6 +127,25 @@ function SitePlanHandoff({ isClient }: { isClient: boolean }) {
   return null;
 }
 
+/**
+ * A buyer who typed their AppSumo code before creating an account comes back
+ * to /appsumo once signed in, with the code filled in (AppSumoPage keeps it in
+ * this browser). Once per tab, so leaving the page is not undone on every load.
+ */
+function AppSumoHandoff({ isClient }: { isClient: boolean }) {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (isClient || !pendingAppsumoCode() || window.location.pathname.endsWith('/appsumo')) return;
+    try {
+      if (sessionStorage.getItem('pc_appsumo_opened')) return;
+      sessionStorage.setItem('pc_appsumo_opened', '1');
+    } catch { /* storage off: open it anyway */ }
+    navigate('/appsumo', { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
+  }, []);
+  return null;
+}
+
 function AppLayout({ isClient }: { isClient: boolean }) {
   const location = useLocation();
   const isBooking = location.pathname.startsWith('/book');
@@ -141,10 +161,13 @@ function AppLayout({ isClient }: { isClient: boolean }) {
   const isEditor = location.pathname.startsWith('/social-creator/editor');
 
   /* The Trust Center is public on every host, signed in or not. */
-  if (['/security', '/privacy', '/terms-of-service', '/affiliate-terms', '/growth-service-terms', '/pricing'].includes(location.pathname)) {
+  if (['/security', '/privacy', '/terms-of-service', '/affiliate-terms', '/growth-service-terms', '/pricing', '/appsumo'].includes(location.pathname)) {
     return (
       <Routes>
         <Route path="/pricing" element={<PricingPage />} />
+        {/* Standalone, outside the app's chrome: a buyer whose trial ended
+            must still reach it, and the trial's plan screen sits in the chrome. */}
+        <Route path="/appsumo" element={<AppSumoPage />} />
         <Route path="/security" element={<TrustCenter />} />
         <Route path="/privacy" element={<LegalPage doc="privacy" />} />
         <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
@@ -216,6 +239,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
       <TrialBar />
       <IconRail />
       <SitePlanHandoff isClient={isClient} />
+      <AppSumoHandoff isClient={isClient} />
       <DueWorkRunner />
       <ProspectSync />
       <NativeBridge />
@@ -580,6 +604,7 @@ export default function App() {
           <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
         <Route path="/growth-service-terms" element={<LegalPage doc="growth" />} />
           <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/appsumo" element={<AppSumoPage />} />
           <Route path="*" element={<SiteHome />} />
         </Routes>
       </BrowserRouter>
@@ -611,6 +636,7 @@ export default function App() {
           <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
         <Route path="/growth-service-terms" element={<LegalPage doc="growth" />} />
           <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/appsumo" element={<AppSumoPage />} />
           <Route path="/login" element={<LoginScreen onAuthed={signedIn} intent="signin" />} />
           <Route path="/signup" element={<LoginScreen onAuthed={signedIn} intent="signup" />} />
           <Route path="/" element={siteAtRoot() ? <SiteHome /> : <LoginScreen onAuthed={signedIn} />} />

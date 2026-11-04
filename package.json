@@ -94,6 +94,7 @@
     "test:phi": "npx --yes tsx test/phiGuard.test.mts",
     "test:socialtemplates": "npx --yes tsx test/socialTemplates.test.mts",
     "test:allowancese2e": "node test/allowances.e2e.mjs",
+    "test:appsumo": "node test/appsumo.e2e.mjs",
     "test:videoe2e": "node test/videoStudio.e2e.mjs",
     "test:videoyoutube": "node test/videoYoutube.e2e.mjs"
   },
