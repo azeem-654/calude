@@ -9,6 +9,7 @@ import { appHref, isCrossOrigin } from '../../services/hosts';
 import { usePageTitle } from '../../services/pageTitle';
 import { RELEASES } from './changelog';
 import { FOUNDER, SUPPORT_EMAIL } from './company';
+import { servicesPublic } from '../../../worker/src/lib/industryPages';
 import './site.css';
 
 const cross = (href: string) => (isCrossOrigin(href) ? { rel: 'noopener' as const } : {});
@@ -45,7 +46,7 @@ export default function Changelog() {
             <li key={`${r.date}-${r.title}`} className="tc-card chg-item">
               <div className="chg-meta"><time dateTime={r.date}>{when(r.date)}</time><span className="chg-area">{r.area}</span></div>
               <div className="tc-card-head"><span className="dc-tile-icon"><Sparkles size={16} /></span><h2>{r.title}</h2></div>
-              <ul>{r.points.map(p => <li key={p}><Check size={13} /> <span>{p}</span></li>)}</ul>
+              <ul>{[...r.points, ...(servicesPublic(window.location.hostname) ? r.servicePoints ?? [] : [])].map(p => <li key={p}><Check size={13} /> <span>{p}</span></li>)}</ul>
             </li>
           ))}
         </ol>

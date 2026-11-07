@@ -109,6 +109,23 @@ export function speaksAsUs(hostname: string): boolean {
   return OUR_HOSTS.has(h) || h.endsWith('.workers.dev');
 }
 
+/**
+ * Where the managed services (the four service sites, the home page's
+ * "What we offer" and "Managed services" sections, their links) are shown.
+ *
+ * The owner's call, 2026-11-07: they are still being tested, so they are off
+ * the live site and shown only on the testing site — which is behind the
+ * owner's password lock — and on a developer's machine, where every test
+ * drives them. One predicate for the page, the Worker's redirects and
+ * sitemap, and the support bot, so the three can never disagree about what
+ * the public can see. To publish them, add the live hosts here.
+ */
+export function servicesPublic(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  return h === 'testing.protectedcentral.com' || h === 'localhost' || h === '127.0.0.1'
+    || (h.endsWith('.workers.dev') && h.includes('crmpro-staging'));
+}
+
 /** The public site itself — where a sitemap and robots.txt describe pages that exist. */
 export function isSiteHost(hostname: string): boolean {
   const h = hostname.toLowerCase();
@@ -193,8 +210,9 @@ export function industryJsonLd(m: IndustryMeta): string {
 /** Every public page worth indexing. Signed-in screens are not pages anybody searches for. */
 export const SITEMAP_PATHS = ['/', '/pricing', '/ecommerce-management-services', '/hvac', '/roofing', '/medical-billing', '/book/strategy-call', '/security', '/changelog', '/privacy', '/terms-of-service', '/terms', '/affiliate-terms', '/growth-service-terms'];
 
-export function sitemapXml(): string {
-  const urls = SITEMAP_PATHS.map(p => `  <url><loc>${SITE_ORIGIN}${p}</loc></url>`).join('\n');
+/** The sitemap, without the service sites where they are not public (servicesPublic). */
+export function sitemapXml(withServices = true): string {
+  const urls = SITEMAP_PATHS.filter(p => withServices || !industryFor(p)).map(p => `  <url><loc>${SITE_ORIGIN}${p}</loc></url>`).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
 }
 

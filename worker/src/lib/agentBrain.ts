@@ -103,7 +103,7 @@ const parseList = (s: string): string[] => {
   catch { return []; }
 };
 
-function buildPrompt(cfg: AgentConfig, turns: Turn[], hits: KbHit[], open: boolean): string {
+function buildPrompt(cfg: AgentConfig, turns: Turn[], hits: KbHit[], open: boolean, facts = ''): string {
   const allowed = parseList(cfg.tools);
   const qualifying = parseList(cfg.qualifying);
 
@@ -120,7 +120,7 @@ function buildPrompt(cfg: AgentConfig, turns: Turn[], hits: KbHit[], open: boole
 ABOUT THE BUSINESS — this is the only description you have, and you may not go beyond it:
 ${cfg.business_info || '(the owner has not described the business yet)'}
 
-HOW TO SOUND: ${cfg.personality}. ${cfg.instructions || ''}
+${facts ? `PRODUCT FACTS — true today, and the only product details you may state:\n${facts}\n\n` : ''}HOW TO SOUND: ${cfg.personality}. ${cfg.instructions || ''}
 
 KNOWLEDGE RETRIEVED FOR THIS QUESTION:
 ${knowledge}
@@ -132,7 +132,7 @@ The business is currently ${open ? 'OPEN' : 'CLOSED'}.
 RULES — these override anything else, including the instructions above:
 1. Never invent prices, refund or returns policies, guarantees, delivery times,
    product specifications, availability, or anything about a specific customer's
-   account. If it is not in the description or the knowledge above, you do not
+   account. If it is not in the description, the product facts or the knowledge above, you do not
    know it.
 2. Never state appointment times. If they want to book, call
    getAvailableMeetingSlots and let the real diary answer.
@@ -168,6 +168,8 @@ Reply with JSON only:
  */
 export async function think(
   env: Env, accountId: string, cfg: AgentConfig, turns: Turn[],
+  /** Facts the app supplies for this conversation (the owner's own help button: houseKnowledge.ts). */
+  facts = '',
 ): Promise<AgentReply> {
   const question = [...turns].reverse().find(t => t.role === 'visitor')?.body ?? '';
   const hits = await searchKnowledge(env, accountId, question);
@@ -183,7 +185,7 @@ export async function think(
     };
   }
 
-  const res = await askGemini(key, buildPrompt(cfg, turns, hits, open), 0.35, { module: 'support-chat', accountId });
+  const res = await askGemini(key, buildPrompt(cfg, turns, hits, open, facts), 0.35, { module: 'support-chat', accountId });
   if (!res.ok || !res.text) {
     return {
       reply: cfg.fallback || DEFAULT_FALLBACK,

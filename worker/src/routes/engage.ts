@@ -32,6 +32,7 @@ import {
   cleanEmail, guestKey, publicKey, recordEvent, rid, upsertPerson, nextTicketRef,
 } from '../lib/engagement';
 import { think, type AgentConfig, type Turn } from '../lib/agentBrain';
+import { HOUSE_AGENT, houseFacts } from '../lib/houseKnowledge';
 import { runTool } from '../lib/agentTools';
 import { enrolOnEvent } from '../lib/automationEngine';
 import {
@@ -250,7 +251,9 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
       },
       /* Named rather than assumed: a widget with no live agent can still take a
          ticket, and saying so beats a chat box that answers nothing. */
-      agent: agent ? { name: agent.name, greeting: agent.greeting, avatarUrl: agent.avatarUrl } : null,
+      agent: agent ? { name: agent.name, greeting: agent.greeting, avatarUrl: agent.avatarUrl }
+        /* The owner's help button answers with the built-in assistant (houseKnowledge.ts) when no agent is attached. */
+        : String(d.widgetKey ?? '') === await houseWidgetKey(env) ? { name: HOUSE_AGENT.name, greeting: '', avatarUrl: '' } : null,
     }));
   }
 
@@ -352,12 +355,18 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
       return withCors(json({ success: true, handedOver: true, message: mine, messages: [] }));
     }
 
-    const widget = await env.DB.prepare('SELECT agent_id AS agentId FROM crm_widgets WHERE id = ?')
-      .bind(String(conv.widgetId)).first<{ agentId: string }>();
-    const cfg = widget?.agentId
+    const widget = await env.DB.prepare('SELECT agent_id AS agentId, public_key AS publicKey, in_app AS inApp FROM crm_widgets WHERE id = ?')
+      .bind(String(conv.widgetId)).first<{ agentId: string; publicKey: string; inApp: number }>();
+    /* The owner's own help button (the house widget) answers about Protected
+       Central itself: with the owner's agent if one is attached, otherwise the
+       built-in one, and either way with the product facts (houseKnowledge.ts).
+       A customer's widget is never given them. */
+    const house = !!widget?.inApp && !!widget.publicKey && widget.publicKey === await houseWidgetKey(env);
+    const own = widget?.agentId
       ? await env.DB.prepare('SELECT * FROM crm_ai_agents WHERE id = ? AND account_id = ?')
           .bind(widget.agentId, accountId).first<AgentConfig>()
       : null;
+    const cfg = own ?? (house ? HOUSE_AGENT : null);
 
     if (!cfg) {
       /* No agent configured. Said plainly rather than left as a chat box that
@@ -380,7 +389,7 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
        WHERE conversation_id = ? AND internal = 0 AND body != '' ORDER BY created_at ASC LIMIT 40`,
     ).bind(String(conv.id)).all<Turn>();
 
-    const out = await think(env, accountId, cfg, history ?? []);
+    const out = await think(env, accountId, cfg, history ?? [], house ? await houseFacts(env) : '');
 
     /* What the AI says goes through the same gate as what the visitor said. It
        is writing in somebody else's brand voice on somebody else's website. */

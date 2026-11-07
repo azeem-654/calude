@@ -20,6 +20,7 @@ import { usePageTitle } from '../../services/pageTitle';
 import { CARD_PLANS, isUnlimited, sendEnquiry, type EnquiryNeed } from '../../services/allowances';
 import { BillingToggle, ComparisonTable, PlanCards, usePlanTable } from './PricingParts';
 import { BILLING_CLAUSE, hasYearly } from './pricingTerms';
+import { servicesPublic } from '../../../worker/src/lib/industryPages';
 import './site.css';
 
 const cross = (href: string) => (isCrossOrigin(href) ? { rel: 'noopener' as const } : {});
@@ -78,12 +79,13 @@ export default function PricingPage() {
             7 days free, no card required; then {BILLING_CLAUSE}.
           </p>
         </div>
-        <p className="pcp-service" data-testid="pricing-service-note">
+        {/* Points at the managed services, so it goes where they go (servicesPublic). */}
+        {servicesPublic(window.location.hostname) && <p className="pcp-service" data-testid="pricing-service-note">
           These are self-serve software subscriptions. Want us to do the work for you? Our managed services —
           e-commerce management, HVAC and roofing growth, and medical billing — are separate offers with their own
           prices and written terms.
           {' '}<a href={`${siteOrigin()}/#services`}>See the managed services <ArrowRight size={13} /></a>
-        </p>
+        </p>}
         <nav className="tc-toc pcp-toc" aria-label="On this page">
           <a href="#plans">Plans</a><a href="#compare">Compare every feature</a><a href="#white-label">White-label</a>
           <a href="#billing">Billing questions</a><a href="#custom">Custom plans</a>

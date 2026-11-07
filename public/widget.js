@@ -178,6 +178,12 @@
    * panel and by the teaser, so the two can never offer different things —
    * and only what the widget's `features` switch on.
    */
+  /* The operator's own strategy call is reserved at /book/strategy-call
+   * (lib/strategyCall.ts) and has its own name; any other booking page is "a call". */
+  function bookLabel() {
+    return state.cfg && state.cfg.bookingSlug === 'strategy-call' ? 'Book a strategy call' : 'Book a call';
+  }
+
   function homeOptions() {
     var cfg = state.cfg || {};
     var o = [];
@@ -197,7 +203,7 @@
     }
     if (has('meeting') && cfg.bookingSlug) {
       o.push({
-        key: 'calendar', view: '', label: 'Book a call', hint: 'Pick a time that suits you',
+        key: 'calendar', view: '', label: bookLabel(), hint: 'Pick a time that suits you',
         go: function () { window.open(ORIGIN + '/book/' + encodeURIComponent(cfg.bookingSlug), '_blank', 'noopener'); },
       });
     }
@@ -880,7 +886,7 @@
       into.appendChild(t);
     }
     if (has('meeting') && state.cfg && state.cfg.bookingSlug) {
-      var b = el('button', BTN, 'Book a call at a time that suits you');
+      var b = el('button', BTN, bookLabel() + ' at a time that suits you');
       b.onclick = function () { window.open(ORIGIN + '/book/' + encodeURIComponent(state.cfg.bookingSlug), '_blank', 'noopener'); };
       into.appendChild(b);
     }

@@ -80,6 +80,16 @@ three.
 
 ## The industry microsites — /hvac, /roofing, /medical-billing, /ecommerce-management-services
 
+**Not on the live site (owner, 2026-11-07).** The four service sites, the home
+page's *What we offer* (`#industries`) and *Managed services* (`#services`)
+sections, the nav's "Services", the footer's service links, the pricing page's
+service note and the changelog's `servicePoints` show only where
+`servicesPublic(hostname)` (`lib/industryPages.ts`) says so: the testing site
+(behind the owner's lock) and a developer's machine, where every test runs.
+On live the Worker sends the four paths and their aliases home (302) and
+leaves them out of the sitemap, and the support bot leaves the services out of
+what it knows. To publish them, add the live hosts there — one place.
+
 Each reads as a site of its own: `Site/Microsite.tsx` (`MicrositeLayout`) is
 the only nav and footer they have — logo and "Home" go to the microsite's own
 root, the menu is in-page anchors only, **no link to `/` or to another

@@ -18,6 +18,8 @@ export interface Release {
   /** Which part of the product, as the menu names it. */
   area: string;
   points: string[];
+  /** Points about the managed services: shown only where they are public (servicesPublic). */
+  servicePoints?: string[];
 }
 
 export const RELEASES: Release[] = [
@@ -78,6 +80,8 @@ export const RELEASES: Release[] = [
     date: '2026-10-28', area: 'Plans', title: 'New plans and industry snapshots',
     points: [
       'The Growth, Scale and Custom software plans, each with its allowances enforced on the server.',
+    ],
+    servicePoints: [
       'Ready-made pipelines for an online store and for a medical practice, installed for you.',
     ],
   },
@@ -85,6 +89,8 @@ export const RELEASES: Release[] = [
     date: '2026-10-26', area: 'Sales', title: 'Jobs & revenue, and industry pages',
     points: [
       'Jobs & revenue: follow a lead from first contact to estimate, quote, invoice and money collected — only what you confirm counts.',
+    ],
+    servicePoints: [
       'Pages for HVAC, roofing, medical billing and e-commerce businesses, each showing the real screens.',
       'Medical billing (claims, remittances, denials and A/R) — on synthetic test data until a practice’s launch checklist is signed off.',
     ],

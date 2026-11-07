@@ -9,7 +9,7 @@ import { pendingPlan } from './services/sitePlan';
 import { trackKnown } from './services/funnel';
 import { getActiveAccountId, setActiveAccountId, activeBranding } from './services/tenancy';
 import { isAppHost, isMarketingHost, isStagingHost, isWhiteLabelHost, markWhiteLabelHost, siteAtRoot } from './services/hosts';
-import { industryFor, speaksAsUs } from '../worker/src/lib/industryPages';
+import { industryFor, servicesPublic, speaksAsUs } from '../worker/src/lib/industryPages';
 import { cachedHost, resolveHost, type ResolvedHost } from './services/whitelabel';
 import { initCloudSync, startCloudRefresh } from './services/serverData';
 import { retireBrowserTwilio } from './services/legacyTwilio';
@@ -523,7 +523,9 @@ export default function App() {
    * advertising the platform would undo their white label.
    */
   const trade = industryFor(window.location.pathname.slice(base.length));
-  if (trade && speaksAsUs(window.location.hostname) && !isWhiteLabelHost()) {
+  /* Not on the live site while the services are being tested (servicesPublic):
+     there the path falls through to the home page, as the Worker's redirect does. */
+  if (trade && speaksAsUs(window.location.hostname) && servicesPublic(window.location.hostname) && !isWhiteLabelHost()) {
     return (
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
         {trade.slug === 'medical-billing' ? <MedicalBillingPage /> : trade.slug === 'ecommerce' ? <EcommercePage /> : <IndustryPage slug={trade.slug} />}

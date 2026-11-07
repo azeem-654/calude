@@ -56,7 +56,7 @@ import ServiceOffers from './ServiceOffers';
 import { rememberArrival, strategyCallHref } from '../../services/strategyCall';
 import { track } from '../../services/funnel';
 import { motionReduced } from '../../services/motion';
-import { INDUSTRY_PAGES } from '../../../worker/src/lib/industryPages';
+import { INDUSTRY_PAGES, servicesPublic } from '../../../worker/src/lib/industryPages';
 import './site.css';
 import './industry.css';
 
@@ -344,6 +344,7 @@ function ChapterBlock({ c, onFind }: { c: Chapter; onFind: () => void }) {
 export default function SiteHome() {
   /* Campaign tags this visit arrived with, for the strategy call's source. */
   useEffect(() => { rememberArrival(); }, []);
+  const services = servicesPublic(window.location.hostname);
   const [stuck, setStuck] = useState(false);
   const [tab, setTab] = useState(0);
 
@@ -471,7 +472,7 @@ export default function SiteHome() {
           {featureReady('prospects') && <a href="#prospecting">AI Prospecting</a>}
           <a href="#scale">Agencies</a>
           <a href="#pricing">Pricing</a>
-          <a href="#services" className="ind-nav-link">Services</a>
+          {services && <a href="#services" className="ind-nav-link">Services</a>}
           <a href="#faq">FAQ</a>
           <a href="/security">Security</a>
         </nav>
@@ -570,7 +571,9 @@ export default function SiteHome() {
              the software they run themselves, and four services we run for
              them, each with its own site. Prices are in the two pricing
              sections further down (HomePricing, ServiceOffers), never mixed. ── */}
-      <section className="ind-strip" id="industries" aria-label="What we offer">
+      {/* Off the live site while the services are tested (servicesPublic): the
+             strip is the software beside four services, so without them it says nothing. */}
+      {services && <section className="ind-strip" id="industries" aria-label="What we offer">
         <div className="dc-chapter-head">
           <span className="dc-eyebrow">What we offer</span>
           <h2>Software you run, <em>or services we run for you.</em></h2>
@@ -608,7 +611,7 @@ export default function SiteHome() {
             <i>See the medical billing page <ArrowRight size={13} /></i>
           </a>
         </div>
-      </section>
+      </section>}
 
       {/* ── AI Autopilot ──
              First, because it is what the rest is now driven by, and because
@@ -758,7 +761,7 @@ export default function SiteHome() {
 
       {/* ── Software pricing, then the managed services — two sections, never one table ── */}
       <HomePricing />
-      <ServiceOffers />
+      {services && <ServiceOffers />}
 
       {/* ── Questions ── */}
       <FaqSection />
@@ -803,11 +806,13 @@ export default function SiteHome() {
             <a href="#scale">Analytics</a><a href="#pricing">Software pricing</a>
           </div>
           <div>
-            <h5>Managed services</h5>
-            <a href={INDUSTRY_PAGES.ecommerce.path}>E-commerce management</a>
-            <a href={INDUSTRY_PAGES.hvac.path}>HVAC</a>
-            <a href={INDUSTRY_PAGES.roofing.path}>Roofing</a>
-            <a href={INDUSTRY_PAGES['medical-billing'].path}>Medical billing</a>
+            <h5>{services ? 'Managed services' : 'Talk to us'}</h5>
+            {services && <>
+              <a href={INDUSTRY_PAGES.ecommerce.path}>E-commerce management</a>
+              <a href={INDUSTRY_PAGES.hvac.path}>HVAC</a>
+              <a href={INDUSTRY_PAGES.roofing.path}>Roofing</a>
+              <a href={INDUSTRY_PAGES['medical-billing'].path}>Medical billing</a>
+            </>}
             <a href={strategyCallHref('main')}>Book a Strategy Call</a>
           </div>
           <div>

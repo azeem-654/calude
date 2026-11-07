@@ -16,7 +16,7 @@ import * as ECOM from '../src/components/Site/ecommerce';
 import { ECOMMERCE_OFFER, MEDICAL_BILLING_OFFER, TRADE_GROWTH_OFFER, ecommerceLine, feeOn, growthExample, growthFaq, growthLine, medicalExample, medicalLine } from '../worker/src/lib/offers';
 import { readFileSync } from 'node:fs';
 import {
-  INDUSTRY_PAGES, PAGE_ALIASES, SITEMAP_PATHS, industryFor, industryJsonLd, isSiteHost, speaksAsUs,
+  INDUSTRY_PAGES, PAGE_ALIASES, SITEMAP_PATHS, industryFor, industryJsonLd, isSiteHost, servicesPublic, sitemapXml, speaksAsUs,
 } from '../worker/src/lib/industryPages';
 
 const out: string[] = [];
@@ -49,6 +49,12 @@ for (const site of sites) {
   ok(`${site.id}: home is its own root`, site.root === INDUSTRY_PAGES[site.id as 'hvac'].path);
   ok(`${site.id}: books with its own words`, /Book|Request/.test(site.bookLabel));
 }
+/* The services are off the live site while they are tested (owner, 2026-11-07). */
+ok('services: hidden on the live site and app', !servicesPublic('protectedcentral.com') && !servicesPublic('www.protectedcentral.com') && !servicesPublic('app.protectedcentral.com'));
+ok('services: shown on the testing site and a developer machine', servicesPublic('testing.protectedcentral.com') && servicesPublic('localhost') && servicesPublic('crmpro-staging.x.workers.dev'));
+ok('services: never on a reseller host or the live worker preview', !servicesPublic('crm.agency-example.com') && !servicesPublic('crmpro.x.workers.dev'));
+ok('the live sitemap leaves out every service site', Object.values(INDUSTRY_PAGES).every(m => !sitemapXml(false).includes(`${m.path}<`)) && sitemapXml(false).includes('/pricing<'));
+ok('…and the testing sitemap keeps them', Object.values(INDUSTRY_PAGES).every(m => sitemapXml(true).includes(`${m.path}<`)));
 ok('the four sites book with different words', new Set(sites.map(s => s.bookLabel)).size === 4);
 ok('HVAC never routes to roofing and roofing never to HVAC', !JSON.stringify(INDUSTRIES.hvac.site).includes('/roofing') && !JSON.stringify(INDUSTRIES.roofing.site).includes('/hvac'));
 ok('the medical site has its required sections', ['#audit', '#claims', '#ar', '#reporting', '#security', '#process', '#pricing', '#faq'].every(h => MED.MEDICAL_SITE.nav.some(l => l.href === h)));

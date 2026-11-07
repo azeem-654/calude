@@ -105,7 +105,7 @@ import { runHousekeeping } from './lib/housekeeping';
 import { handleLogo } from './lib/brandLogo';
 import { handleWidgetAvatar } from './lib/widgetAvatar';
 import { handleUserAvatar } from './routes/userAvatar';
-import { PAGE_ALIASES, industryFor, isSiteHost, robotsTxt, sitemapXml, speaksAsUs } from './lib/industryPages';
+import { PAGE_ALIASES, industryFor, isSiteHost, robotsTxt, servicesPublic, sitemapXml, speaksAsUs } from './lib/industryPages';
 import { markGated, stagingGate } from './lib/stagingGate';
 import { rewriteIndustryHead } from './lib/industryHead';
 
@@ -324,6 +324,12 @@ async function serve(req: Request, env: Env, ctx: ExecutionContext, url: URL): P
 
   /* A typed short address for a service page: one permanent redirect, so the canonical page is the only copy. */
   const alias = PAGE_ALIASES[url.pathname.replace(/\/+$/, '').toLowerCase()];
+  /* A service site where the services are not public yet (servicesPublic): a
+     temporary redirect home, so neither a visitor nor a crawler finds a page
+     the owner is still testing, and nothing is cached for good. */
+  if ((alias || industryFor(url.pathname)) && speaksAsUs(url.hostname) && !servicesPublic(url.hostname)) {
+    return Response.redirect(`${url.origin}/`, 302);
+  }
   if (alias && speaksAsUs(url.hostname)) return Response.redirect(`${url.origin}${alias}${url.search}`, 301);
 
   /* The trade pages' head, for crawlers and link previews (lib/industryPages.ts). */
@@ -337,7 +343,7 @@ async function serve(req: Request, env: Env, ctx: ExecutionContext, url: URL): P
      the platform, as they always did. */
   if ((url.pathname === '/sitemap.xml' || url.pathname === '/robots.txt') && isSiteHost(url.hostname)) {
     const xml = url.pathname === '/sitemap.xml';
-    return new Response(xml ? sitemapXml() : robotsTxt(), {
+    return new Response(xml ? sitemapXml(servicesPublic(url.hostname)) : robotsTxt(), {
       headers: { 'Content-Type': xml ? 'application/xml; charset=utf-8' : 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
     });
   }

@@ -236,6 +236,18 @@ checked by magic bytes, PNG/JPEG ≤256px, served at
 public config as `agentName` / `agentAvatar` / `businessName`.
 `npm run test:voicecall` (same arguments as `test:livehelp`, plus `PERSIST=`).
 
+**The owner's help button answers about Protected Central itself**
+(`lib/houseKnowledge.ts`, 2026-11-07). On the house widget only, `engage.php
+send` uses the owner's attached agent or, with none, `HOUSE_AGENT`, and
+passes `houseFacts(env)` to `think()` as PRODUCT FACTS: plans and AppSumo
+tiers built from `effectivePlans` + `featureLines` (with the owner's
+overrides), service prices from `offers.ts` only where `servicesPublic`, and
+prose about what ships — never a copied number. A customer's widget never gets
+them. It answers only once an AI key is set (Platform services); until then the
+fallback names support@. Migration 0086 set the house widget to chat, ticket
+and `meeting` with `booking_slug = 'strategy-call'` (call and screen share off,
+the owner's request); widget.js names that option "Book a strategy call".
+
 ## Phone apps — two Capacitor shells around the live site
 
 `mobile/` holds **Protected Central** (`customer/`, `com.protectedcentral.app`)
