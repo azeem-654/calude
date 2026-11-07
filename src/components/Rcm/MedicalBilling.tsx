@@ -23,6 +23,7 @@ import { AlertTriangle, Check, ClipboardCheck, Download, FileText, Loader, Lock,
 import { API_BASE } from '../../services/apiBase';
 import { getSession, sessionToken } from '../../services/auth';
 import { getActiveAccountId } from '../../services/tenancy';
+import { isInstallOwner } from '../../services/moderation';
 import { usePageTitle } from '../../services/pageTitle';
 import {
   AGING_BUCKETS, APPEAL_STATUSES, AUTH_STATUSES, CH_STATUSES, DENIAL_CATEGORIES, DENIAL_STATUSES, LEAK_KINDS, PAYER_KINDS, PAYER_STATUSES, WORK_STATUSES,
@@ -118,6 +119,11 @@ export default function MedicalBilling() {
   const [workspaces, setWorkspaces] = useState<{ accountId: string; email: string; name: string; mode: string | null; practices: number; claims: number; openDenials: number }[]>([]);
   const [showChecklist, setShowChecklist] = useState(false);
   useEffect(() => {
+    /* Only the install owner can list every practice. Asking anyway, to learn
+       from the refusal, put a red 403 in every customer's console — the first
+       thing a reviewer with developer tools open sees. The server still
+       decides; this only stops asking a question whose answer is known. */
+    if (!isInstallOwner()) return;
     void rcmApi<{ workspaces: typeof workspaces }>('practices_all').then(d => { if (d.success) { setIsOwner(true); setWorkspaces(d.workspaces); } });
   }, []);
   return (

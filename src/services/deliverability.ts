@@ -739,3 +739,19 @@ export function listHygiene(contacts: Contact[]): ListHygiene {
   return { total, valid, risky, invalid, unchecked, suppressed,
     cleanPercent: total ? Math.round(((total - invalid) / total) * 100) : 100 };
 }
+
+/**
+ * The headline a screen shows for list health, or null when there is nothing
+ * to score yet. cleanPercent counts unchecked addresses as clean (right for the
+ * alerts, which only fire on known-bad ones), so an empty or never-checked list
+ * read "100%" — a score with nothing behind it, the first number a new
+ * customer (or an AppSumo reviewer) sees on Contacts.
+ */
+export function hygieneHeadline(h: ListHygiene): string | null {
+  if (!h.total) return null;
+  if (h.unchecked === h.total) return null;
+  return `${h.cleanPercent}%`;
+}
+export const hygieneEmptyLabel = (h: ListHygiene) => (h.total ? 'not checked yet' : 'no contacts yet');
+export const hygieneColor = (h: ListHygiene) =>
+  hygieneHeadline(h) === null ? '#94a3b8' : h.cleanPercent >= 95 ? '#16a34a' : h.cleanPercent >= 85 ? '#d97706' : '#dc2626';

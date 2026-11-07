@@ -11,7 +11,7 @@ import { useMemo } from 'react';
 import { TrendingUp, TrendingDown, Minus, Gauge, Inbox, ShieldCheck } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { loadEmails, type ContactEmail } from '../../services/contactEmail';
-import { reputation, listHygiene, loadSuppression } from '../../services/deliverability';
+import { reputation, listHygiene, loadSuppression, hygieneHeadline, hygieneEmptyLabel, hygieneColor } from '../../services/deliverability';
 import { placementSummary } from '../../services/warmup';
 
 const INK = '#17191c';
@@ -181,8 +181,8 @@ export default function DeliverabilityReport() {
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: INK, display: 'flex', alignItems: 'center', gap: 7 }}>
             <ShieldCheck size={15} /> List health
           </h3>
-          <div style={{ fontSize: 26, fontWeight: 800, marginTop: 8, color: hygiene.cleanPercent >= 95 ? '#16a34a' : hygiene.cleanPercent >= 85 ? '#d97706' : '#dc2626' }}>
-            {hygiene.cleanPercent}% clean
+          <div style={{ fontSize: 26, fontWeight: 800, marginTop: 8, color: hygieneColor(hygiene) }}>
+            {hygieneHeadline(hygiene) ? `${hygieneHeadline(hygiene)} clean` : hygieneEmptyLabel(hygiene)}
           </div>
           <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', marginTop: 10, background: '#eef0f3' }}>
             {[

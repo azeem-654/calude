@@ -35,8 +35,20 @@ build a new version when something in `mobile/` changes.
 2. Tap the file. If Android says *"For your security, your phone is not
    allowed to install unknown apps from this source"*, tap **Settings**.
    Switch on **Allow from this source**, then go back.
-3. Tap **Install**, then **Open**.
-4. Sign in with your email and the code.
+3. Tap **Install**. If **Google Play Protect** then says *"Unsafe app
+   blocked"*, *"App not verified"* or *"This app wasn't downloaded from Play"*,
+   that is only because it did not come from the Play Store. The file is
+   ours. Tap **More details** (or the small arrow) → **Install anyway**.
+   If no such button shows: open the **Play Store** app → your picture →
+   **Play Protect** → the gear → switch off **Scan apps with Play Protect**,
+   install, then switch it straight back on.
+4. Tap **Open** and sign in with your email and the code.
+
+**The way with no warnings at all** is Play's own testing track (part 2.3).
+Once the app is in **Internal testing**, you open the opt-in link on your phone
+and install from the Play Store like any other app. It also updates itself.
+Anyone you add as a tester (up to 100) installs it the same way, with no
+review wait.
 
 These installed files work like the store versions, but they have no push
 alerts until part 4 is done and the apps are rebuilt.

@@ -25,6 +25,7 @@ import { currentActor, can, denyReason, ownersInUse, ownerOf } from '../../servi
 import {
   healthFor, localCheck, verifyEmails, recordHealth, listHygiene, isSuppressed,
   HEALTH_META, type Verdict,
+  hygieneHeadline, hygieneEmptyLabel, hygieneColor,
 } from '../../services/deliverability';
 import { ListEditor, ListHeader, ListsSidebar } from './ListsPanel';
 import SendToWorkspace from './SendToWorkspace';
@@ -609,9 +610,9 @@ export default function Contacts() {
 
         {/* Email list health */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 14px', background: '#fff', border: '1px solid #e6e9f0', borderRadius: 14, marginBottom: 12, boxShadow: '0 1px 2px rgba(16,24,40,0.04)' }}>
-          <ShieldCheck size={15} color={hygiene.cleanPercent >= 95 ? '#16a34a' : hygiene.cleanPercent >= 85 ? '#d97706' : '#dc2626'} />
+          <ShieldCheck size={15} color={hygieneColor(hygiene)} />
           <span style={{ fontSize: 12.5, color: '#475569' }}>
-            Email list health <strong style={{ color: '#17191c' }}>{hygiene.cleanPercent}%</strong>
+            Email list health <strong style={{ color: '#17191c' }}>{hygieneHeadline(hygiene) ?? hygieneEmptyLabel(hygiene)}</strong>
             <span style={{ color: '#94a3b8' }}>
               {' '}· {hygiene.valid} valid · {hygiene.risky} risky · {hygiene.invalid} invalid · {hygiene.unchecked} unchecked
             </span>

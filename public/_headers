@@ -17,6 +17,11 @@
 # replace), whose person-finding model runs in MediaPipe's WebAssembly; the
 # files are our own (served from 'self'), loaded only when somebody picks a
 # camera background.
+# static.cloudflareinsights.com is Cloudflare Web Analytics, which Cloudflare
+# itself injects into every page when the zone has it switched on. Without it
+# here the beacon was refused on every page: a red console error on each one an
+# AppSumo reviewer opened, and no visitor numbers. It is an external file from
+# our own CDN provider, so 'unsafe-inline' is still not needed.
 #
 # microphone=(self) because voice prompts and the Screen Recorder use it;
 # camera=(self) because the Media Library's Screen Recorder (Video Studio)
@@ -24,7 +29,7 @@
 # whatever the person allows. display-capture is left at its default ('self').
 # Location is not used anywhere and is refused.
 /*
-  Content-Security-Policy: script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com https://s.ytimg.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
+  Content-Security-Policy: script-src 'self' 'wasm-unsafe-eval' https://www.youtube.com https://s.ytimg.com https://static.cloudflareinsights.com; object-src 'none'; base-uri 'self'; frame-ancestors 'self'
   X-Content-Type-Options: nosniff
   X-Frame-Options: SAMEORIGIN
   Referrer-Policy: strict-origin-when-cross-origin

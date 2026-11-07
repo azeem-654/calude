@@ -23,6 +23,7 @@ import {
   unsuppress, suppress, listHygiene,
   type AuthCheck, type BlacklistCheck, type HostCapabilities, type CheckStatus,
   type DeliverabilitySettings,
+  hygieneHeadline, hygieneEmptyLabel, hygieneColor,
 } from '../../services/deliverability';
 
 const INK = '#17191c';
@@ -389,7 +390,7 @@ function DeliverabilityHealth() {
           </div>
           <div style={{ padding: 12, background: '#f8fafc', border: '1px solid #eef0f3', borderRadius: 11 }}>
             <div style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>List health</div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: hygiene.cleanPercent >= 95 ? '#16a34a' : hygiene.cleanPercent >= 85 ? '#d97706' : '#dc2626', marginTop: 3 }}>{hygiene.cleanPercent}% clean</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: hygieneColor(hygiene), marginTop: 3 }}>{hygieneHeadline(hygiene) ? `${hygieneHeadline(hygiene)} clean` : hygieneEmptyLabel(hygiene)}</div>
             <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 5, lineHeight: 1.5 }}>
               {hygiene.valid} valid · {hygiene.risky} risky · {hygiene.invalid} invalid · {hygiene.unchecked} unchecked
             </div>

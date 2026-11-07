@@ -190,13 +190,21 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
   /* The chat poll and a picture being fetched back are the same kind of
      thing — read-only, asked every few seconds by somebody mid-conversation —
      and get budgets of their own for the same reason. */
+  /* What a page asks for just by loading — the widget's look, the help
+     button's key, a form's fields, a ticket's status — writes nothing either.
+     Charged to the shared 60 it ran out after ~30 page loads from one address:
+     an office of testers behind one IP (AppSumo's, or a customer's staff) lost
+     the help button, and a busy site its own embedded form, for ten minutes. */
+  const READS = new Set(['widget', 'house', 'form', 'ticket_status']);
   const limit = act === 'live_poll'
     ? await rateLimit(env, { what: 'engage-live', who: ip, max: 600, windowSeconds: 600 })
     : act === 'poll'
       ? await rateLimit(env, { what: 'engage-poll', who: ip, max: 600, windowSeconds: 600 })
       : act === 'file'
         ? await rateLimit(env, { what: 'engage-file', who: ip, max: 300, windowSeconds: 600 })
-        : await rateLimit(env, { what: 'engage', who: ip, max: 60, windowSeconds: 600 });
+        : READS.has(act)
+          ? await rateLimit(env, { what: 'engage-read', who: ip, max: 600, windowSeconds: 600 })
+          : await rateLimit(env, { what: 'engage', who: ip, max: 60, windowSeconds: 600 });
   if (!limit.allowed) {
     return withCors(fail('Too many requests from this connection. Try again shortly.', 429));
   }

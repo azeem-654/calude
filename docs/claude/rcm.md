@@ -2,7 +2,7 @@
 
 ## Medical billing / RCM
 
-**Sales → Medical billing** (`/rcm`, `Rcm/MedicalBilling.tsx`), API
+**Sales → Medical billing** (`/rcm`, `Rcm/MedicalBilling.tsx`; in the menu for the install owner only since 2026-11-07, so customers and AppSumo reviewers never meet the synthetic-data banner; a practice opens it by link), API
 `/api/rcm.php` (`routes/rcm.ts`), rules `lib/rcm.ts` (pure, imported by the
 screen too), tables `crm_rcm_*` (migration 0080). Tests: `npm run test:rcm`
 (rules), `npm run test:rcme2e` (Worker + D1 + both screens at 1280/390),
