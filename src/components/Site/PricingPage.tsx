@@ -86,6 +86,11 @@ export default function PricingPage() {
           prices and written terms.
           {' '}<a href={`${siteOrigin()}/#services`}>See the managed services <ArrowRight size={13} /></a>
         </p>}
+        {/* Screen sharing in the help button is off the plans (owner, 2026-11-08) until
+            its relay is set up; the testing site still names it so it stays in view there. */}
+        {servicesPublic(window.location.hostname) && <p className="pcp-service" data-testid="pricing-screenshare-note">
+          Being tested here, not on the live site yet: screen sharing in the help button.
+        </p>}
         <nav className="tc-toc pcp-toc" aria-label="On this page">
           <a href="#plans">Plans</a><a href="#compare">Compare every feature</a><a href="#white-label">White-label</a>
           <a href="#billing">Billing questions</a><a href="#custom">Custom plans</a>

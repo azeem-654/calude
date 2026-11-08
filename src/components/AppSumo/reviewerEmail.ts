@@ -28,7 +28,7 @@ What it is, in one line: a CRM and marketing-automation platform where you descr
 What it does beyond the AI. We know you're careful about AI wrappers, so here is what the product itself does:
 - CRM, pipeline and contacts, with email and SMS sequences sent from the customer's own mailbox and domain. Nothing sends until they approve it.
 - AI Prospecting: "dentists in Austin with a website" becomes a list of businesses. It searches our business contacts database first, then live business directories, and each lead carries the email it publishes, checked before sending, with where it was found.
-- Booking pages, websites and funnels, Google reviews, a support widget with chat, tickets and screen sharing, and an AI Video Studio.
+- Booking pages, websites and funnels, Google reviews, a support widget with chat and tickets, and an AI Video Studio.
 - Agency mode: a workspace per client under the agency's own brand. Protected Central itself is our own software, built in-house. It is not a rebranded platform.
 
 Ready for your review:
@@ -42,13 +42,13 @@ ${access}
   1. AI Autopilot → New business workspace → type one sentence → approve the blueprint.
   2. AI Prospecting → "dentists in Austin, Texas with a website".
   3. Connect a Gmail or Microsoft 365 mailbox and see a sequence step wait as a draft.
-  4. Press the help button in the corner: chat, tickets and screen sharing.
+  4. Press the help button in the corner: chat, a ticket, or book a strategy call.
 
 - Redemption: both models are built and tested. Codes are at ${APP}/appsumo, with up to 3 stacking; we'll upload our code file at your Redemption step. AppSumo Licensing v2 (webhooks plus the OAuth Activate button) is also built: purchase, activate, upgrade, downgrade and deactivate are all handled. We'll use whichever you prefer.
 
 - We ship continuously: ${SITE}/changelog lists every release with its date.
 
-- Support: ${SUPPORT_EMAIL}, plus in-app chat, tickets and screen sharing. I'm personally involved in support and onboarding calls.
+- Support: ${SUPPORT_EMAIL}, plus in-app chat and tickets. I'm personally involved in support and onboarding calls.
 
 - Security and privacy: ${SITE}/security, which says what we do and what we don't claim. The Privacy Policy and Terms are at ${SITE}/privacy and ${SITE}/terms-of-service.
 

@@ -32,7 +32,7 @@ import {
   cleanEmail, guestKey, publicKey, recordEvent, rid, upsertPerson, nextTicketRef,
 } from '../lib/engagement';
 import { think, type AgentConfig, type Turn } from '../lib/agentBrain';
-import { HOUSE_AGENT, houseFacts } from '../lib/houseKnowledge';
+import { HOUSE_AGENT, HOUSE_STYLE, houseFacts } from '../lib/houseKnowledge';
 import { runTool } from '../lib/agentTools';
 import { enrolOnEvent } from '../lib/automationEngine';
 import {
@@ -229,6 +229,7 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     const biz = await env.DB.prepare('SELECT business_name AS name FROM crm_engage_settings WHERE account_id = ?')
       .bind(String(w.accountId)).first<{ name: string }>().catch(() => null);
     const live = offers(w.features, 'voice') || offers(w.features, 'screen');
+    const isHouse = String(d.widgetKey ?? '') === await houseWidgetKey(env);
 
     return withCors(json({
       success: true,
@@ -246,14 +247,21 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
         /* A person at the business has a page open right now (lib/liveHelp.ts
            markPresent). Only known for a widget offering a call or a screen
            share — that check is what writes it — so for any other widget it
-           is null, "not known", and the widget claims nothing either way. */
-        online: live ? await isPresent(env, String(w.accountId)) : null,
+           is null, "not known", and the widget claims nothing either way —
+           except the owner's own help button, whose owner's signed-in pages
+           write it too (engagement.ts live_waiting). */
+        online: live || isHouse ? await isPresent(env, String(w.accountId)) : null,
+        /* The owner's help button paces its chat like a conversation (the
+           owner's request, 2026-11-08): ticks for sent, received and read,
+           a typing indicator and replies that take as long as a person's
+           would. A customer's widget keeps answering as fast as it can. */
+        natural: isHouse,
       },
       /* Named rather than assumed: a widget with no live agent can still take a
          ticket, and saying so beats a chat box that answers nothing. */
       agent: agent ? { name: agent.name, greeting: agent.greeting, avatarUrl: agent.avatarUrl }
         /* The owner's help button answers with the built-in assistant (houseKnowledge.ts) when no agent is attached. */
-        : String(d.widgetKey ?? '') === await houseWidgetKey(env) ? { name: HOUSE_AGENT.name, greeting: '', avatarUrl: '' } : null,
+        : isHouse ? { name: HOUSE_AGENT.name, greeting: '', avatarUrl: '' } : null,
     }));
   }
 
@@ -389,7 +397,9 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
        WHERE conversation_id = ? AND internal = 0 AND body != '' ORDER BY created_at ASC LIMIT 40`,
     ).bind(String(conv.id)).all<Turn>();
 
-    const out = await think(env, accountId, cfg, history ?? [], house ? await houseFacts(env) : '');
+    const out = house
+      ? await think(env, accountId, cfg, history ?? [], await houseFacts(env), { module: 'house-support', temperature: 0.7, style: HOUSE_STYLE })
+      : await think(env, accountId, cfg, history ?? [], '');
 
     /* What the AI says goes through the same gate as what the visitor said. It
        is writing in somebody else's brand voice on somebody else's website. */

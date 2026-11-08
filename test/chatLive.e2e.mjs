@@ -396,6 +396,59 @@ for (const width of [390, 1280]) {
   if (process.env.SHOTS) await app.locator('[data-testid="support-waiting"]').screenshot({ path: `${process.env.SHOTS}/support-card-${width}.png` }).catch(() => {});
 }
 
+
+/* The owner's help button paces its chat (widget `natural`, set by the server
+   for the house widget only — patched in here): one grey tick, two grey, two
+   green, a typing indicator, and the reply only after it — never at once. A
+   poll that sees the reply early must not draw it ahead of the pace. */
+{
+  const page3 = await (await browser.newContext({ viewport: { width: 390, height: 760 } })).newPage();
+  page3.on('pageerror', e => errs.push(`site3: ${String(e).slice(0, 160)}`));
+  await page3.route(`${B}/api/engage.php`, async r => {
+    const req = JSON.parse(r.request().postData() || '{}');
+    if (req.action !== 'widget') return r.continue();
+    const res = await r.fetch();
+    const j = await res.json();
+    j.widget = { ...j.widget, natural: true, online: false };
+    return r.fulfill({ response: res, json: j });
+  });
+  await page3.route('http://acme.localhost:9914/**', r => r.fulfill({
+    contentType: 'text/html',
+    body: `<!doctype html><title>Acme</title><script src="${B}/widget.js" data-pc-widget="${key}" async></script>`,
+  }));
+  await page3.goto('http://acme.localhost:9914/');
+  await page3.getByRole('button', { name: /Open the chat/ }).click();
+  const d3 = page3.getByRole('dialog');
+  ok('paced: the header says the chat is online', await d3.locator('[data-pc-online="chat"]').count() === 1);
+  ok('paced: and says plainly that an assistant replies first', (await d3.innerText()).includes('assistant replies first'));
+  await d3.getByPlaceholder('Type a message…').fill(`Paced ${run}`);
+  const t0 = Date.now();
+  await page3.keyboard.press('Enter');
+  const seen = {};
+  const when = k => { if (seen[k] == null) seen[k] = Date.now() - t0; };
+  while (Date.now() - t0 < 15000 && seen.reply == null) {
+    const tick = await d3.locator('[data-pc-tick]').last().getAttribute('data-pc-tick').catch(() => '');
+    if (tick) when(tick);
+    if (await d3.locator('[data-pc-typing]').count()) when('typing');
+    if ((await d3.innerText()).includes('colleague will pick this up')) when('reply');
+    await page3.waitForTimeout(120);
+  }
+  const final = await d3.locator('[data-pc-tick]').last().getAttribute('data-pc-tick').catch(() => '');
+  ok('paced: one grey tick first', seen.sent != null && seen.sent < 900, JSON.stringify(seen));
+  ok('paced: two grey ticks after one to two seconds', seen.delivered >= 900 && seen.delivered <= 2600, JSON.stringify(seen));
+  ok('paced: green ticks one to two seconds after that', seen.read >= seen.delivered + 800 && seen.read <= 4600, JSON.stringify(seen));
+  ok('paced: a typing indicator before the reply', seen.typing != null && seen.typing >= seen.read && seen.typing < seen.reply, JSON.stringify(seen));
+  ok('paced: the reply is not instant, and not lost', seen.reply >= 3000 && seen.reply <= 14000, JSON.stringify(seen));
+  ok('paced: the ticks end green and the indicator is gone', final === 'read' && await d3.locator('[data-pc-typing]').count() === 0, final);
+  await page3.waitForTimeout(3500);
+  const n = ((await d3.innerText()).match(/colleague will pick this up/g) ?? []).length;
+  ok('paced: the reply is drawn once, though a poll saw it too', n === 1, `drawn ${n} times`);
+  const over = await page3.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  ok('paced: no sideways scroll at 390', over <= 0, String(over));
+  await shot(page3, 'widget-paced-390');
+  await page3.context().close();
+}
+
 ok('no page errors in either browser', errs.length === 0, errs.join(' | '));
 await browser.close();
 

@@ -69,6 +69,10 @@ export interface StrategySettings {
   reminderHours: number;
   notifyOnBook: boolean;
   notifyEmail: string;
+  /** After the call, email the guest once asking how it went (routes/strategyCall.ts strategyReviewAsks). */
+  askReview: boolean;
+  /** Optional public review page (Google, Trustpilot…) offered to every guest who reviews — never only the happy ones. */
+  reviewUrl: string;
 }
 
 const W = (from: string, to: string): Window[] => [{ from, to }];
@@ -105,6 +109,8 @@ export const DEFAULT_SETTINGS: StrategySettings = {
   reminderHours: 24,
   notifyOnBook: true,
   notifyEmail: '',
+  askReview: true,
+  reviewUrl: '',
 };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -207,6 +213,10 @@ export function cleanSettings(input: unknown): { settings: StrategySettings; err
   s.notifyOnBook = d.notifyOnBook === true;
   s.notifyEmail = str(d.notifyEmail, 254);
   if (s.notifyEmail && !EMAIL_RE.test(s.notifyEmail)) errors.push({ field: 'strategy.notifyEmail', message: 'That is not an email address.' });
+  /* On unless switched off: a row saved before 2026-11-08 has no such key and asks. */
+  s.askReview = d.askReview !== false;
+  s.reviewUrl = str(d.reviewUrl, 300);
+  if (s.reviewUrl && !/^https:\/\/[^\s]+\.[^\s]+$/.test(s.reviewUrl)) errors.push({ field: 'strategy.reviewUrl', message: 'A review page is an https:// link — or leave it empty to keep reviews in your own list.' });
 
   if (s.enabled && !DAY_KEYS.some(k => s.weekly[k].length) && !s.overrides.some(o => o.windows.length)) {
     errors.push({ field: 'strategy.weekly', message: 'Bookings are switched on but no day has any hours.' });

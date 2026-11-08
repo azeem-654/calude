@@ -193,6 +193,10 @@ for (const act of ['note', 'cancel', 'reschedule', 'set_status']) {
 }
 const scGuest = await api('strategy-call.php', { action: 'manage_get', id: 'sc_anything', key: 'guess' });
 check('a guessed strategy-call id and key show nothing', !scGuest.ok && !scGuest.data.booking, JSON.stringify(scGuest.data).slice(0, 120));
+for (const act of ['review_get', 'review_save']) {
+  const r = await api('strategy-call.php', { action: act, id: 'sc_anything', key: 'guess', rating: 1, text: 'x' });
+  check(`a guessed id and key cannot ${act === 'review_get' ? 'read' : 'write'} a strategy-call review`, !r.ok && !r.data.title && !r.data.review, JSON.stringify(r.data).slice(0, 120));
+}
 /* The lead-to-revenue ledger (routes/leadRevenue.ts): B reaches nothing of A's by naming
    A's workspace or by naming A's ids from B's own; and no customer acts as the owner. */
 const lrLead = await api('lead-revenue.php', { action: 'lead_create', token: A.token, accountId: A.acct, lead: { name: 'A homeowner', channel: 'service_ads' } });

@@ -12,9 +12,14 @@
  *
  * `?manage=<id>.<key>` is the guest's own link from their email: it shows the
  * booking and lets them move or cancel it, proven by the key alone.
+ *
+ * `?review=<id>.<key>[&stars=n]` is the after-call email's: the guest rates
+ * the call and says how it went, proven by that email's own key. The owner's
+ * public review page, when set, is offered to everyone who reviews, whatever
+ * they gave — asking only the happy ones would be review gating.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, CalendarCheck, Check, ChevronLeft, ChevronRight, Clock, Globe, Loader, MapPin, Phone, Video } from 'lucide-react';
+import { ArrowLeft, CalendarCheck, Check, ChevronLeft, ChevronRight, Clock, ExternalLink, Globe, Loader, MapPin, Phone, Star, Video } from 'lucide-react';
 import { API_BASE } from '../../services/apiBase';
 import { usePageTitle } from '../../services/pageTitle';
 import { allZones, browserZone, clockLabel, dayWords, addDays, weekdayOf } from '../../services/bookingTime';
@@ -159,6 +164,7 @@ export default function StrategyCallPage() {
   const q = new URLSearchParams(window.location.search);
   const src = (SITE_SOURCES as readonly string[]).includes(q.get('src') ?? '') ? q.get('src') as SiteSource : 'main';
   const manage = q.get('manage') ?? '';
+  const review = q.get('review') ?? '';
   useEffect(() => { rememberArrival(); }, []);
 
   const [cfg, setCfg] = useState<{ settings: PublicSettings; delivery: { confirms: boolean } } | null>(null);
@@ -173,6 +179,7 @@ export default function StrategyCallPage() {
 
   if (loadErr) return <Frame site={src}><div className="sc-card"><p className="sc-error" role="alert">{loadErr}</p></div></Frame>;
   if (!cfg) return <Frame site={src}><div className="sc-card"><p className="sc-muted"><Loader size={14} className="spin" /> Loading…</p></div></Frame>;
+  if (review) return <Frame site={src}><Review token={review} initial={Number(q.get('stars')) || 0} /></Frame>;
   if (manage) return <Frame site={src}><Manage token={manage} settings={cfg.settings} /></Frame>;
   if (!cfg.settings.enabled) {
     return (
@@ -369,6 +376,80 @@ function Manage({ token, settings }: { token: string; settings: PublicSettings }
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+interface ReviewView { title: string; name: string; startsAt: string; timezone: string; hostName: string; reviewUrl: string; review: { rating: number; text: string } | null }
+
+function Review({ token, initial }: { token: string; initial: number }) {
+  const [id, key] = [token.slice(0, token.indexOf('.')), token.slice(token.indexOf('.') + 1)];
+  const [v, setV] = useState<ReviewView | null>(null);
+  const [rating, setRating] = useState(initial >= 1 && initial <= 5 ? Math.round(initial) : 0);
+  const [text, setText] = useState('');
+  const [error, setError] = useState<{ text: string; field?: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    void call<ReviewView>('review_get', { id, key }).then(d => {
+      if (!d.success) { setError({ text: d.error ?? 'That link does not match a call.' }); return; }
+      setV(d);
+      if (d.review) { setRating(r => r || d.review!.rating); setText(d.review.text); }
+    }).catch(() => setError({ text: 'Could not reach the server. Check your connection and try again.' }));
+  }, [id, key]);
+
+  if (error && !v) return <div className="sc-card"><p className="sc-error" role="alert">{error.text}</p></div>;
+  if (!v) return <div className="sc-card"><p className="sc-muted"><Loader size={14} className="spin" /> Loading…</p></div>;
+  const day = dayWords(Date.parse(v.startsAt), v.timezone, { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const save = async () => {
+    setBusy(true); setError(null);
+    try {
+      const d = await call<ReviewView>('review_save', { id, key, rating, text });
+      if (!d.success) { setError({ text: d.error ?? 'That did not save.', field: d.field }); return; }
+      setV(d); setSaved(true);
+    } catch { setError({ text: 'Could not reach the server. Your review is not saved yet — try again.' }); } finally { setBusy(false); }
+  };
+
+  if (saved) {
+    return (
+      <div className="sc-card sc-review" data-testid="sc-review-done">
+        <h1>Thank you{v.name ? `, ${v.name}` : ''}</h1>
+        <p>Your review is saved. {rating >= 4 ? 'We are glad the call helped.' : 'Thank you for being honest — we will read it carefully and use it to do better.'}</p>
+        {v.reviewUrl && (
+          <>
+            <p className="sc-muted">Would you also share it publicly? It helps other business owners decide whether a call is worth their time.</p>
+            <div className="sc-actions sc-center"><a className="dc-btn dc-btn-primary" href={v.reviewUrl} target="_blank" rel="noopener noreferrer" data-testid="sc-review-public">Post it publicly <ExternalLink size={13} /></a></div>
+          </>
+        )}
+        <p className="sc-muted">Anything left unanswered? Reply to the email we sent you and we will pick it up.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sc-card sc-review" data-testid="sc-review">
+      <h1>How was your {v.title.toLowerCase()}?</h1>
+      <p className="sc-muted">{day}{v.hostName ? ` with ${v.hostName}` : ''}</p>
+      <div className="sc-stars" role="radiogroup" aria-label="Your rating" data-field="strategy.review.rating">
+        {[1, 2, 3, 4, 5].map(n => (
+          <button key={n} type="button" role="radio" aria-checked={rating === n} aria-label={`${n} star${n > 1 ? 's' : ''}`}
+            className={`sc-star${n <= rating ? ' on' : ''}`} onClick={() => setRating(n)} data-testid={`sc-star-${n}`}>
+            <Star size={30} fill={n <= rating ? 'currentColor' : 'none'} />
+          </button>
+        ))}
+      </div>
+      {error?.field === 'strategy.review.rating' && <p className="sc-error" role="alert">{error.text}</p>}
+      <label className="sc-zone sc-review-label">What helped, and what could have been better? (optional)
+        <textarea rows={5} maxLength={2000} value={text} onChange={e => setText(e.target.value)} data-field="strategy.review.text" data-testid="sc-review-text" />
+      </label>
+      {error && error.field !== 'strategy.review.rating' && <p className="sc-error" role="alert">{error.text}</p>}
+      <div className="sc-actions">
+        <button className="dc-btn dc-btn-primary" disabled={busy || !rating} onClick={() => void save()} data-testid="sc-review-save">
+          {busy ? <Loader size={14} className="spin" /> : <Check size={14} />} {v.review ? 'Update my review' : 'Send my review'}
+        </button>
+      </div>
     </div>
   );
 }

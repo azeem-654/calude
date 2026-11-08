@@ -41,7 +41,7 @@ here is what the product itself does:
   business directories, and each lead carries the email it publishes,
   checked before sending, with where it was found.
 - Booking pages, websites and funnels, Google reviews, a support widget with
-  chat, tickets and screen sharing, and an AI Video Studio.
+  chat and tickets, and an AI Video Studio.
 - Agency mode: a workspace per client under the agency's own brand.
   Protected Central itself is our own software, built in-house. It is not a
   rebranded platform.
@@ -61,7 +61,7 @@ here is what the product itself does:
   2. AI Prospecting → "dentists in Austin, Texas with a website".
   3. Connect a Gmail or Microsoft 365 mailbox and see a sequence step wait as
      a draft.
-  4. Press the help button in the corner: chat, tickets and screen sharing.
+  4. Press the help button in the corner: chat, a ticket, or book a strategy call.
 - **Redemption:** both models are built and tested. Codes are at
   https://app.protectedcentral.com/appsumo, with up to 3 stacking; we'll
   upload our code file at your Redemption step. AppSumo
@@ -70,8 +70,8 @@ here is what the product itself does:
   use whichever you prefer.
 - **We ship continuously:** https://protectedcentral.com/changelog lists every
   release with its date.
-- **Support:** support@protectedcentral.com, plus in-app chat, tickets and
-  screen sharing. I'm personally involved in support and onboarding calls.
+- **Support:** support@protectedcentral.com, plus in-app chat and
+  tickets. I'm personally involved in support and onboarding calls.
 - **Security and privacy:** https://protectedcentral.com/security, which says
   what we do and what we don't claim. The Privacy Policy and Terms are at
   /privacy and /terms-of-service.

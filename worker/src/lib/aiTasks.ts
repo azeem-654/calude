@@ -23,7 +23,7 @@
  * itself is rested.
  */
 
-export type AiTask = 'chat' | 'write' | 'reason' | 'vision' | 'extract' | 'code' | 'research';
+export type AiTask = 'chat' | 'converse' | 'write' | 'reason' | 'vision' | 'extract' | 'code' | 'research';
 export type GeminiTier = 'lite' | 'flash' | 'pro';
 
 export interface TaskProfile {
@@ -43,6 +43,12 @@ export const TASKS: Record<AiTask, TaskProfile> = {
     gemini: ['lite', 'flash'],
     openrouter: [/gemma-4/i, /llama-4/i, /mistral-small/i, /qwen3/i],
     why: 'A person is waiting: the fastest model that writes a good sentence. Lite has the largest free daily allowance.',
+  },
+  converse: {
+    label: 'Advice in conversation',
+    gemini: ['pro', 'flash', 'lite'],
+    openrouter: [/llama-4-maverick|llama-3\.3-70b/i, /deepseek-(v3|chat)/i, /qwen3.*(235|max)/i, /gemma-4-31b|gemma-4/i, /mistral-(medium|large)/i],
+    why: 'Somebody deciding whether to trust the business, in their own words: the model that understands and advises best. Pro first, then Flash; the chat already paces its replies like a person, so the extra second is not felt.',
   },
   write: {
     label: 'Marketing writing',
@@ -90,6 +96,9 @@ export const TASKS: Record<AiTask, TaskProfile> = {
  */
 export const MODULES: Record<string, { label: string; task: AiTask }> = {
   'support-chat': { label: 'Support chat assistant', task: 'chat' },
+  /* The owner's own help button (houseKnowledge.ts): few conversations, each a
+     possible customer, so it gets the stronger tier a customer's widget does not. */
+  'house-support': { label: 'Help button — Protected Central’s own support', task: 'converse' },
   'forms': { label: 'Form follow-ups', task: 'chat' },
   'booking': { label: 'Booking page', task: 'chat' },
   'inbox-replies': { label: 'Inbox & email replies', task: 'write' },

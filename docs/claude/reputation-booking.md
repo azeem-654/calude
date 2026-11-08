@@ -174,7 +174,24 @@ workspace's `/book/<slug>` (our hosts only).
 - **Mail** goes through `installMailbox()` + `deliver()`; each booking keeps
   `notify` = `sent` | `failed: …` | `not_configured` | `off`, and the page
   promises an email only when the server says one was accepted. Reminders
-  are a cron pass after the trial mail (`strategyReminders`). **No calendar
+  are a cron pass after the trial mail (`strategyReminders`). The guest's
+  words live in `lib/strategyMail.ts` (pure, previewable): the confirmation
+  quotes their own answers back ("What you would like help with") with a
+  promise to come prepared on each, says how the call runs and what we can
+  help with — **no figures, testimonials or claims about other customers**.
+  The owner's notice carries the same answers.
+- **After the call** (2026-11-08): `strategyReviewAsks`, right after the
+  reminders in the cron, emails "How did your … go?" once per call, an hour
+  after it ends and only within three days of it (no surprise mail about old
+  calls), never for `no_show`/`cancelled`. The ask has **its own key**
+  (`review_key_hash`, migration 0087) because the manage key is never stored;
+  the row is claimed before the send so overlapping runs cannot double-ask.
+  `?review=<id>.<key>[&stars=n]` on the booking page saves 1–5 stars and words
+  (`review_get`/`review_save`, rate-limited, refusals named
+  `strategy.review.*`); the owner sees them in the list. Settings: `askReview`
+  (on unless switched off) and an optional https `reviewUrl`, offered after
+  saving **to every reviewer whatever the rating** — offering it only to happy
+  ones is review gating, which Google and the FTC forbid. **No calendar
   or video integration** — the panel says so; a fixed https room link is sent
   as typed.
 - The source site, UTM tags, click ids and referrer are kept per booking
@@ -182,5 +199,6 @@ workspace's `/book/<slug>` (our hosts only).
 - `npm run test:strategycall` (pure) and `npm run test:strategycalle2e`
   (self-contained: wrangler :8871, fresh D1, needs a `VITE_BASE=/` build):
   owner-only access, field refusals with no dead end, idempotent submits, a
-  five-way race, daily limit, closed dates, guest move/cancel, the sites'
+  five-way race, daily limit, closed dates, guest move/cancel, the review by
+  its own key (not the manage key) and its page at 1280/390, the sites'
   links and isolation at 1280/390. `test:security` covers the route by id.

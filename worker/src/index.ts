@@ -82,7 +82,7 @@ import { handleTrack } from './routes/track';
 import { handleUnsubscribe } from './routes/unsubscribe';
 import { handleBooking } from './routes/booking';
 import { handleBookingMedia } from './routes/bookingMedia';
-import { handleStrategyCall, strategyReminders } from './routes/strategyCall';
+import { handleStrategyCall, strategyReminders, strategyReviewAsks } from './routes/strategyCall';
 import { handleLeadRevenue } from './routes/leadRevenue';
 import { handleRcm } from './routes/rcm';
 import { handleSnapshots } from './routes/snapshots';
@@ -532,6 +532,8 @@ export default {
          this one, so it goes with the owner's other mail; it never throws into
          the passes after it. */
       await strategyReminders(env).catch(() => 0);
+      /* And the "how did it go?" an hour after each call — the same mailbox, the same never-throws. */
+      await strategyReviewAsks(env).catch(() => 0);
 
       /*
        * Telling somebody an engagement event happened.

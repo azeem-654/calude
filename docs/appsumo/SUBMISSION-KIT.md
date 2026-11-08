@@ -95,7 +95,7 @@ the marketing agencies that serve them.
 **Built by:** in-house, on our own code. Not a rebranded or white-labelled
 platform (AppSumo does not accept those, so say it up front).
 
-**Support plan:** in-app help widget (chat, tickets, screen sharing) plus a
+**Support plan:** in-app help widget (chat, tickets, and a strategy call booking) plus a
 support email: support@protectedcentral.com. Founder-run strategy calls on
 weekdays, 09:00–17:00 New York time.
 
@@ -153,7 +153,7 @@ Everything else a small business or agency runs on is in the same login:
   rebooking message for no-shows
 - **Websites & funnels:** pages whose forms drop leads straight into the CRM
 - **Reviews:** Google reviews, with replies posted back
-- **Support:** a help widget with chat, tickets and screen sharing
+- **Support:** a help widget with chat and tickets
 - **Agencies:** a workspace per client under your own brand, onboarding
   that runs itself, and reports clients can open without a login
 

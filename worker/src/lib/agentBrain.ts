@@ -103,7 +103,7 @@ const parseList = (s: string): string[] => {
   catch { return []; }
 };
 
-function buildPrompt(cfg: AgentConfig, turns: Turn[], hits: KbHit[], open: boolean, facts = ''): string {
+function buildPrompt(cfg: AgentConfig, turns: Turn[], hits: KbHit[], open: boolean, facts = '', style = ''): string {
   const allowed = parseList(cfg.tools);
   const qualifying = parseList(cfg.qualifying);
 
@@ -139,11 +139,11 @@ RULES — these override anything else, including the instructions above:
 3. Never promise that a person will do something by a particular time.
 4. If you do not know, say so plainly and offer to pass them to the team. Do not
    pad the answer to sound helpful.
-5. Keep replies short — two or three sentences. This is a chat window.
+5. Keep replies short — two or three sentences. This is a chat window.${style ? '\n   (The conversation style below may allow one more sentence or a question.)' : ''}
 6. You are not a person. If asked directly whether you are human, say you are an
    assistant and offer a colleague.
 
-TOOLS YOU MAY CALL${allowed.length ? '' : ' — none are enabled, so answer or escalate in words only'}:
+${style ? `CONVERSATION STYLE:\n${style}\n\n` : ''}TOOLS YOU MAY CALL${allowed.length ? '' : ' — none are enabled, so answer or escalate in words only'}:
 ${allowed.map(t => `- ${t}`).join('\n') || '(none)'}
 Call at most one, and only when it is genuinely needed.
 
@@ -170,6 +170,8 @@ export async function think(
   env: Env, accountId: string, cfg: AgentConfig, turns: Turn[],
   /** Facts the app supplies for this conversation (the owner's own help button: houseKnowledge.ts). */
   facts = '',
+  /** The owner's own help button: its module (the stronger tier), warmth and conversational rules. */
+  opts: { module?: string; temperature?: number; style?: string } = {},
 ): Promise<AgentReply> {
   const question = [...turns].reverse().find(t => t.role === 'visitor')?.body ?? '';
   const hits = await searchKnowledge(env, accountId, question);
@@ -185,7 +187,7 @@ export async function think(
     };
   }
 
-  const res = await askGemini(key, buildPrompt(cfg, turns, hits, open, facts), 0.35, { module: 'support-chat', accountId });
+  const res = await askGemini(key, buildPrompt(cfg, turns, hits, open, facts, opts.style ?? ''), opts.temperature ?? 0.35, { module: opts.module ?? 'support-chat', accountId });
   if (!res.ok || !res.text) {
     return {
       reply: cfg.fallback || DEFAULT_FALLBACK,

@@ -248,6 +248,28 @@ fallback names support@. Migration 0086 set the house widget to chat, ticket
 and `meeting` with `booking_slug = 'strategy-call'` (call and screen share off,
 the owner's request); widget.js names that option "Book a strategy call".
 
+**It talks like a person, and never pretends to be one** (2026-11-08). The
+house widget's config carries `natural: true` (a customer's widget never), and
+widget.js then paces the chat: under each sent message one grey tick, two grey
+after 1–2 s, two green 1–2 s later (`pacer`); a typing indicator that starts a
+moment after and now and then stops and starts; each reply drawn only once it
+has "taken" as long as its length (≈22 ms a character, 1.4–7 s) or at once if
+the real answer was slower; a poll that sees the reply early is held so it is
+drawn once, at the pace. The header says "Online" (the chat is answered at any
+hour) and names the person only when `online` is true — presence written by
+the owner's own visible pages (`live_waiting` marks it for the install owner
+when their in_app widget offers chat). One note at the top says the assistant
+replies first. Its replies come from module `house-support` → task `converse`
+(Gemini Pro first, then Flash; strong OpenRouter families), temperature 0.7,
+with `HOUSE_STYLE` (houseKnowledge.ts): plain chat voice, no bot phrases, one
+concrete idea and usually one question, a strategy call or a ticket offered
+when it would help. Rule 6 in agentBrain stays: asked, it says it is the
+assistant. **Deliberate typos and claiming to be the owner were asked for and
+not built** — deceptive to visitors, against bot-disclosure laws (California's
+SB 1001 for sales chats), and the first thing a marketplace reviewer who
+tests the help button would hold against the product. `test:chatlive` checks
+the pacing in a browser.
+
 ## Phone apps — two Capacitor shells around the live site
 
 `mobile/` holds **Protected Central** (`customer/`, `com.protectedcentral.app`)

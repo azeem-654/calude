@@ -27,6 +27,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execSync, spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import pw from '/opt/node22/lib/node_modules/playwright/index.js';
 
 const PORT = Number(process.env.PORT ?? 8871), INSPECT = Number(process.env.INSPECT_PORT ?? 9371);
@@ -195,6 +196,32 @@ r = await sc({ action: 'set_status', token: T, id: winner.id, status: 'completed
 ok('the owner marks a call held', r.d.success);
 r = await sc({ action: 'set_status', token: T, id: winner.id, status: 'deleted' });
 ok('…and cannot invent a status', !r.d.success);
+
+
+/* After the call: the review, by its own key (the after-call email's).
+   The cron needs a mailbox to send the ask, which this run has none of, so the
+   key it would have made is written here, hashed, as the cron writes it. */
+console.log('\nAfter the call: the review');
+const RKEY = 'review-key-for-the-test-0123456789';
+const rhash = crypto.createHash('sha256').update(RKEY).digest('hex');
+sql(`UPDATE crm_strategy_calls SET review_key_hash = '${rhash}', review_asked_at = '2026-01-01T00:00:00Z' WHERE id = '${winner.id}'`);
+r = await sc({ action: 'review_get', id: winner.id, key: 'wrong' });
+ok('a wrong review key shows nothing', !r.d.success && !r.d.title, JSON.stringify(r.d));
+r = await sc({ action: 'review_get', id: winner.id, key: winner.key ?? '' });
+ok('the manage key does not open the review', !r.d.success, JSON.stringify(r.d));
+r = await sc({ action: 'review_get', id: winner.id, key: RKEY });
+ok('the review key opens it, with no review yet', r.d.success && r.d.review === null && r.d.title, JSON.stringify(r.d));
+r = await sc({ action: 'review_save', id: winner.id, key: RKEY, rating: 9, text: 'x' });
+ok('a rating out of range is refused and named', !r.d.success && r.d.field === 'strategy.review.rating', JSON.stringify(r.d));
+r = await sc({ action: 'review_save', id: winner.id, key: RKEY, rating: 4, text: 'Clear answers.\nWould book again.' });
+ok('a review is saved', r.d.success && r.d.review?.rating === 4, JSON.stringify(r.d));
+r = await sc({ action: 'list', token: T, view: 'all' });
+const held = (r.d.bookings ?? []).find(b => b.id === winner.id);
+ok('the owner sees the rating and the words', held?.review?.rating === 4 && /Would book again/.test(held.review.text), JSON.stringify(held?.review));
+r = await sc({ action: 'settings_save', token: T, settings: { ...(await sc({ action: 'settings_get', token: T })).d.settings, reviewUrl: 'http://not-https.example' } });
+ok('a public review page that is not https is refused and named', !r.d.success && r.d.field === 'strategy.reviewUrl', JSON.stringify(r.d));
+r = await sc({ action: 'settings_save', token: T, settings: { ...(await sc({ action: 'settings_get', token: T })).d.settings, reviewUrl: 'https://g.page/r/example/review' } });
+ok('an https review page is kept', r.d.success, JSON.stringify(r.d));
 
 console.log('\nThe four sites and the booking page, in a browser');
 br = await pw.chromium.launch();
@@ -395,6 +422,29 @@ for (const width of [1280, 390]) {
   await page.goto(`${B}/settings?tab=platform`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1200);
   ok('customer: no strategy call settings on screen', await page.getByTestId('strategy-settings').count() === 0);
+  await ctx.close();
+}
+
+
+/* The guest's review page, from the email's star links. The closed-bookings
+   checks above saved the settings back without the review page, so it is set again. */
+await sc({ action: 'settings_save', token: T, settings: { ...(await sc({ action: 'settings_get', token: T })).d.settings, reviewUrl: 'https://g.page/r/example/review' } });
+for (const width of [1280, 390]) {
+  const ctx = await br.newContext({ viewport: { width, height: 860 } });
+  const page = await ctx.newPage();
+  page.on('pageerror', e => errs.push(`review@${width}: ${e}`));
+  await page.goto(`${B}/book/strategy-call?review=${winner.id}.${RKEY}&stars=5`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('[data-testid="sc-review"]', { timeout: 15_000 });
+  ok(`review @${width}: the star pressed in the email is chosen`, (await page.locator('.sc-star.on').count()) === 5);
+  ok(`review @${width}: the earlier words are there to change`, (width === 1280 ? /Would book again/ : /Two stars at 1280/).test(await page.getByTestId('sc-review-text').inputValue()));
+  await page.getByTestId('sc-star-2').click();
+  await page.getByTestId('sc-review-text').fill(`Two stars at ${width}`);
+  await page.getByTestId('sc-review-save').click();
+  await page.waitForSelector('[data-testid="sc-review-done"]', { timeout: 10_000 });
+  ok(`review @${width}: thanked, and offered the public page whatever the rating`, (await page.getByTestId('sc-review-public').getAttribute('href')) === 'https://g.page/r/example/review');
+  ok(`review @${width}: stored`, sql(`SELECT review_rating AS n, review_text AS t FROM crm_strategy_calls WHERE id = '${winner.id}'`)[0].t === `Two stars at ${width}`);
+  ok(`review @${width}: no sideways scroll`, (await overflow(page)) <= 0, String(await overflow(page)));
+  await page.screenshot({ path: `test-results/strategy-review-${width}.png` });
   await ctx.close();
 }
 

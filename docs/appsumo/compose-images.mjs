@@ -13,7 +13,7 @@ const shots = [
  ['08-sites','sites-builder','Websites and funnels, built in','Pages with forms that drop leads straight into your CRM.'],
  ['09-booking','cal-booking','A booking page of your own','Reminders before each visit, and a rebooking message for anybody who misses one.'],
  ['10-agency','agency','Run agency clients under your own name','A workspace per client, onboarding that runs itself, white-label branding.'],
- ['11-tickets','eng-tickets','Support tickets and live help','Chat, tickets and screen sharing from one help widget.'],
+ ['11-tickets','eng-tickets','Support tickets and live help','Chat and tickets from one help widget.'],
  ['12-revenue','analytics-revenue','Analytics from lead to revenue','See which sources and workflows bring in paying customers.'],
 ];
 const b = await pw.chromium.launch();

@@ -290,7 +290,119 @@
     return name || src ? { name: name, src: src } : null;
   }
 
-  function bubble(role, text, attachments) {
+  /* ── The owner's help button talks at a person's pace (cfg.natural) ──
+   * Ticks under what the visitor sent: one grey when it left, two grey once
+   * the server holds it, two green once it has been read (the assistant or a
+   * person has it). A typing indicator that comes and goes, and replies that
+   * take about as long as somebody typing them would. Only on the widget the
+   * server marks natural; a customer's widget answers as fast as it can. */
+  function natural() { return !!(state.cfg && state.cfg.natural); }
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function clock() {
+    try { return new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); } catch (e) { return ''; }
+  }
+  function chatStyle() {
+    if (document.getElementById('pc-chat-style')) return;
+    var st = document.createElement('style');
+    st.id = 'pc-chat-style';
+    st.textContent = '@keyframes pcDot{0%,60%,100%{transform:translateY(0);opacity:.45}30%{transform:translateY(-3px);opacity:1}}'
+      + '.pc-dot{display:inline-block;width:7px;height:7px;margin:0 2px;border-radius:50%;background:#94a3b8;animation:pcDot 1.2s infinite ease-in-out}'
+      + '.pc-dot:nth-child(2){animation-delay:.15s}.pc-dot:nth-child(3){animation-delay:.3s}'
+      + '@media (prefers-reduced-motion: reduce){.pc-dot{animation:none}}';
+    (document.head || document.documentElement).appendChild(st);
+  }
+  var TICK_ONE = ['M3 12.5l4.5 4.5L18 6.5'];
+  var TICK_TWO = ['M1 12.5l4.5 4.5L16 6.5', 'M10.5 16.2l.8.8L22 6.5'];
+  function setTick(holder, st) {
+    while (holder.firstChild) holder.removeChild(holder.firstChild);
+    holder.setAttribute('data-pc-tick', st);
+    if (st === 'failed') { holder.appendChild(el('span', 'color:#dc2626;font-weight:700;', 'Not sent')); return; }
+    var svg = icon(st === 'sent' ? TICK_ONE : TICK_TWO, 16);
+    svg.style.color = st === 'read' ? '#16a34a' : '#94a3b8';
+    holder.setAttribute('aria-label', st === 'sent' ? 'Sent' : st === 'delivered' ? 'Delivered' : 'Read');
+    holder.appendChild(svg);
+  }
+  /* Every visitor bubble still short of green: a reply means all were read. */
+  var unreadTicks = [];
+  function readAll() {
+    unreadTicks.forEach(function (n) { if (n.pcTick) n.pcTick('read'); });
+    unreadTicks = [];
+  }
+
+  function typingBubble() {
+    if (!log) return null;
+    chatStyle();
+    var t = el('div', 'align-self:flex-start;background:#f1f3f7;border-radius:14px;padding:12px 12px 10px;display:flex;align-items:center;');
+    t.setAttribute('role', 'status');
+    t.setAttribute('aria-label', 'Typing');
+    t.setAttribute('data-pc-typing', '1');
+    for (var i = 0; i < 3; i++) t.appendChild(el('span', '', null)).className = 'pc-dot';
+    log.appendChild(t);
+    log.scrollTop = log.scrollHeight;
+    return t;
+  }
+
+  /*
+   * One sent message's pacing: the ticks on their own clock (one to two
+   * seconds each), then typing that starts after a moment and now and then
+   * stops and starts again, then each reply once it has "taken" as long to
+   * write as its length — or at once, if the real answer was slower than that.
+   */
+  function pacer(node) {
+    var p = { timers: [], typing: null, over: false, stage: 'sent' };
+    var t0 = Date.now();
+    p.deliveredAt = t0 + rand(1000, 2000);
+    p.readAt = p.deliveredAt + rand(1000, 2000);
+    p.typingAt = p.readAt + rand(500, 1800);
+    function at(when, fn) { p.timers.push(window.setTimeout(fn, Math.max(0, when - Date.now()))); }
+    function tick(st) { p.stage = st; if (node && node.pcTick) node.pcTick(st); }
+    function off() { if (p.typing) { p.typing.remove(); p.typing = null; } }
+    function on() {
+      if (p.over) return;
+      if (!p.typing) p.typing = typingBubble();
+      at(Date.now() + rand(1800, 4200), function () {
+        if (p.over || p.holding) return;
+        if (Math.random() < 0.35) { off(); at(Date.now() + rand(700, 1600), on); } else on();
+      });
+    }
+    at(p.deliveredAt, function () { if (!p.failed) tick('delivered'); });
+    at(p.readAt, function () { if (!p.failed) { tick('read'); unreadTicks = unreadTicks.filter(function (n) { return n !== node; }); } });
+    at(p.typingAt, function () { if (!p.failed) on(); });
+    p.stop = function () {
+      p.over = true;
+      p.timers.forEach(function (x) { window.clearTimeout(x); });
+      p.timers = [];
+      off();
+    };
+    p.fail = function () { p.failed = true; p.stop(); tick('failed'); };
+    /* The replies, one after another, then whatever else the answer said. */
+    p.reply = function (msgs, after) {
+      var list = msgs.slice();
+      var first = true;
+      function next() {
+        if (!list.length) { p.stop(); readAll(); after(); return; }
+        var m = list.shift();
+        var len = String(m.body || '').length;
+        var typeMs = Math.min(7000, Math.max(1400, len * 22)) * rand(0.85, 1.2);
+        var showAt = first ? Math.max(Date.now() + 250, p.typingAt + typeMs) : Date.now() + rand(600, 1300) + typeMs;
+        if (!first) { p.holding = true; off(); at(Date.now() + rand(400, 900), function () { if (!p.over && !p.typing) p.typing = typingBubble(); }); }
+        first = false;
+        at(showAt, function () {
+          if (p.stage !== 'read') { tick('read'); }
+          off();
+          p.holding = true;
+          addMessage(m);
+          if (list.length) next();
+          else { p.stop(); readAll(); after(); }
+        });
+        if (!p.typing && Date.now() >= p.typingAt) p.typing = typingBubble();
+      }
+      next();
+    };
+    return p;
+  }
+
+  function bubble(role, text, attachments, tickState) {
     if (!log) return null;
     var mine = role === 'visitor';
     var b = el('div', [
@@ -306,6 +418,20 @@
     }
 
     var node = b;
+    if (mine && natural()) {
+      /* The time and the ticks sit under the bubble, as in a phone's chat. */
+      node = el('div', 'align-self:flex-end;display:flex;flex-direction:column;align-items:flex-end;max-width:82%;min-width:0;');
+      b.style.maxWidth = '100%';
+      node.appendChild(b);
+      var meta = el('div', 'display:flex;gap:4px;align-items:center;font-size:10.5px;color:#94a3b8;margin-top:2px;padding-right:2px;');
+      meta.appendChild(el('span', '', clock()));
+      var holder = el('span', 'display:inline-flex;align-items:center;');
+      meta.appendChild(holder);
+      node.appendChild(meta);
+      node.pcTick = function (st) { setTick(holder, st); };
+      node.pcTick(tickState || 'read');
+      if (tickState && tickState !== 'read') unreadTicks.push(node);
+    }
     var face = role === 'agent' ? agentFace() : null;
     if (face) {
       /* The face goes on the first of a run of their messages, as a person
@@ -453,6 +579,9 @@
   function addMessage(m, how) {
     if (!m) return;
     how = how || {};
+    /* The assistant's answer to the message being sent, seen early by a poll:
+       left for the send to draw at its pace (it is in the send's answer). */
+    if (how.polled && state.sending && natural() && (m.role === 'ai' || m.role === 'system')) return;
     if (m.id) {
       if (seenIds[m.id]) return;
       seenIds[m.id] = 1;
@@ -466,6 +595,7 @@
     var entry = { id: m.id, role: m.role, body: m.body, attachments: m.attachments || [] };
     history.push(entry);
     if (state.view === 'chat' && log) draw(entry);
+    if (m.role !== 'visitor' && m.role !== 'note') readAll();
     if (m.role !== 'visitor' && how.polled && !how.baseline) {
       lastActivity = Date.now();
       if (!chatOnScreen()) markUnread(true);
@@ -617,6 +747,8 @@
         || 'Hello — how can we help?';
       var intro = [{ role: 'ai', body: hello }];
       if (state.cfg && state.cfg.consentText && onlyChat()) intro.push({ role: 'note', body: state.cfg.consentText });
+      /* Paced like a person, so said once and plainly who answers first. */
+      if (natural()) intro.push({ role: 'note', body: 'Our assistant replies first — ask for a person any time.' });
       history = intro.concat(history);
     }
     lastDrawnRole = '';
@@ -650,11 +782,12 @@
     state.sending = true;
     remember('visitor', text);
     pendingBodies.push(text);
-    bubble('visitor', text);
+    var mineNode = bubble('visitor', text, null, natural() ? 'sent' : '');
     input.value = '';
     lastActivity = Date.now();
 
-    var thinking = bubble('ai', '…');
+    var pace = natural() ? pacer(mineNode) : null;
+    var thinking = pace ? null : bubble('ai', '…');
 
     ensureConv().then(function () {
       wakePoll();
@@ -663,37 +796,48 @@
       });
     }).then(function (r) {
       if (thinking) thinking.remove();
-      state.sending = false;
       if (!r.success) {
+        state.sending = false;
+        if (pace) pace.fail();
         var at = pendingBodies.indexOf(text);
         if (at !== -1) pendingBodies.splice(at, 1);
         say(r.message || 'That could not be sent.');
         return;
       }
       claimOwn(r.message);
+      if (pace) {
+        pace.reply(r.messages || [], function () { state.sending = false; afterReply(r); });
+        return;
+      }
+      state.sending = false;
       (r.messages || []).forEach(function (m) { addMessage(m); });
-
-      /* Said plainly rather than hidden. A chat that has quietly stopped
-         thinking should offer the alternative rather than look broken. */
-      if (r.degraded) say('The assistant is unavailable at the moment — a person will pick this up.');
-      if (r.handedOver && !toldHandover) {
-        toldHandover = true;
-        say('A colleague has joined and will reply here.');
-      }
-      if (r.tool && r.tool.message) say(r.tool.message);
-      if (r.tool && r.tool.data && r.tool.data.bookingSlug && log) {
-        var a = el('a', 'align-self:flex-start;font-size:13px;font-weight:700;color:' + accent() + ';text-decoration:underline;', 'Pick a time');
-        a.href = ORIGIN + '/book/' + r.tool.data.bookingSlug;
-        a.target = '_blank';
-        a.rel = 'noopener';
-        log.appendChild(a);
-      }
-      wakePoll();
+      afterReply(r);
     }).catch(function (e) {
       if (thinking) thinking.remove();
+      if (pace) pace.fail();
       state.sending = false;
       note(e.message || 'Something went wrong. Please try again.');
     });
+  }
+
+  /* What the answer said besides its messages — after they are drawn, so a note never jumps ahead of the reply. */
+  function afterReply(r) {
+    /* Said plainly rather than hidden. A chat that has quietly stopped
+       thinking should offer the alternative rather than look broken. */
+    if (r.degraded) say('The assistant is unavailable at the moment — a person will pick this up.');
+    if (r.handedOver && !toldHandover) {
+      toldHandover = true;
+      say('A colleague has joined and will reply here.');
+    }
+    if (r.tool && r.tool.message) say(r.tool.message);
+    if (r.tool && r.tool.data && r.tool.data.bookingSlug && log) {
+      var a = el('a', 'align-self:flex-start;font-size:13px;font-weight:700;color:' + accent() + ';text-decoration:underline;', 'Pick a time');
+      a.href = ORIGIN + '/book/' + r.tool.data.bookingSlug;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      log.appendChild(a);
+    }
+    wakePoll();
   }
 
   function sendImage(file) {
@@ -1682,6 +1826,16 @@
     titles.appendChild(headTitle);
     if (state.cfg && state.cfg.subtitle) {
       titles.appendChild(el('div', 'font-size:12px;opacity:.85;margin-top:2px;', state.cfg.subtitle));
+    }
+    /* The chat is answered at any hour, so it is online; a person's name is
+       said only while that person really has a page open (cfg.online). */
+    if (natural() && has('chat')) {
+      var who = state.cfg.online === true && state.cfg.agentName ? String(state.cfg.agentName).slice(0, 40) + ' is online' : 'Online';
+      var st = el('div', 'display:flex;gap:5px;align-items:center;font-size:12px;font-weight:600;margin-top:2px;opacity:.95;');
+      st.setAttribute('data-pc-online', state.cfg.online === true ? 'person' : 'chat');
+      st.appendChild(el('span', 'width:8px;height:8px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 2px rgba(255,255,255,.35);flex-shrink:0;'));
+      st.appendChild(el('span', '', who));
+      titles.appendChild(st);
     }
     var close = el('button', 'position:absolute;top:12px;right:12px;display:flex;background:none;border:0;color:#fff;cursor:pointer;padding:2px;');
     close.setAttribute('aria-label', 'Close');

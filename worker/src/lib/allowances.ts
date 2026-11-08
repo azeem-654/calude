@@ -168,7 +168,7 @@ export const PLAN_DEFS: PlanDef[] = [
     id: 'starter', name: 'Starter', kind: 'legacy', color: '#3e63dd',
     tagline: 'No longer offered — kept for the subscribers who have it.',
     monthlyCents: 4_900, annualCents: 49_000,
-    support: 'In-app help: chat, tickets and screen sharing',
+    support: 'In-app help: chat and tickets',
     limits: {
       autopilot_projects: 3, workflows_per_project: 6, sub_accounts: 2,
       ai_requests: 1_500, social_posts: 60, blog_articles: 8, ai_emails: 300,
@@ -181,7 +181,7 @@ export const PLAN_DEFS: PlanDef[] = [
     id: 'growth', name: 'Advanced', kind: 'self', color: '#8b5cf6', featured: true,
     tagline: 'One business running its CRM, follow-up and marketing automation in one place.',
     monthlyCents: 9_700, annualCents: 97_000,
-    support: 'In-app help: chat, tickets and screen sharing',
+    support: 'In-app help: chat and tickets',
     limits: {
       autopilot_projects: 10, workflows_per_project: 12, sub_accounts: 5,
       ai_requests: 5_000, social_posts: 200, blog_articles: 30, ai_emails: 1_500,

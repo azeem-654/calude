@@ -4,6 +4,7 @@
  * Who may call what:
  *   visitor  config, slots, create                 — public, rate-limited
  *   guest    manage_get, manage_cancel, manage_reschedule — proven by the key in their email
+ *            review_get, review_save — proven by the separate key in the after-call email
  *   owner    settings_get, settings_save, list, note, cancel, reschedule, set_status
  *            — the install owner only, checked here on every call
  *
@@ -22,6 +23,7 @@ import { newToken, timingSafeEqual } from '../lib/crypto';
 import { rateLimit } from '../lib/rateLimit';
 import { deliver, fromAddressOf } from '../lib/deliver';
 import { installMailbox } from './auth';
+import { concernsOf, guestMail, meetingWords, QUOTES, type MailKind } from '../lib/strategyMail';
 import { addDays, clockLabel, isZone, utcToWall, wallToUtc, type Busy } from '../lib/bookingTime';
 import {
   cleanAnswers, cleanSettings, cleanSource, DEFAULT_SETTINGS, publicSettings, slotRefusal, visitorSlots,
@@ -36,6 +38,7 @@ interface Row {
   name: string; email: string; company: string; website: string; industry: string; phone: string;
   answers: string; meeting_type: string; source_site: string; source: string; internal_note: string;
   history: string; notify: string; reminded_at: string | null; created_at: string; updated_at: string;
+  review_key_hash: string; review_asked_at: string | null; review_rating: number | null; review_text: string; reviewed_at: string | null;
 }
 
 const DATE_OK = /^\d{4}-\d{2}-\d{2}$/;
@@ -77,11 +80,6 @@ function whenWords(ms: number, tz: string): string {
   return `${day}, ${clockLabel(w.time)} (${tz})`;
 }
 
-function meetingWords(s: StrategySettings): string {
-  if (s.meetingType === 'phone') return s.meetingDetails || 'We will call you on the number you gave.';
-  if (s.meetingType === 'in_person') return s.meetingDetails || 'The address will follow by email.';
-  return s.meetingDetails ? `Join: ${s.meetingDetails}` : 'The video link will be sent to you before the call.';
-}
 
 type Sent = 'sent' | 'not_configured' | 'off' | string;
 
@@ -90,10 +88,10 @@ type Sent = 'sent' | 'not_configured' | 'off' | string;
  * through the one door. A send that fails is recorded as failed with the
  * reason; no mailbox is "not_configured" — never "sent".
  */
-async function mailFor(env: Env, origin: string, s: StrategySettings, r: Row, what: 'booked' | 'moved' | 'cancelled' | 'reminder', key = ''): Promise<{ guest: Sent; owner: Sent }> {
+async function mailFor(env: Env, origin: string, s: StrategySettings, r: Row, what: MailKind, key = ''): Promise<{ guest: Sent; owner: Sent }> {
   const result: { guest: Sent; owner: Sent } = { guest: 'off', owner: 'off' };
-  const wantGuest = what === 'reminder' ? s.reminderHours > 0 : s.confirmEmail;
-  const wantOwner = what !== 'reminder' && s.notifyOnBook;
+  const wantGuest = what === 'reminder' ? s.reminderHours > 0 : what === 'review' ? s.askReview : s.confirmEmail;
+  const wantOwner = what !== 'reminder' && what !== 'review' && s.notifyOnBook;
   if (!wantGuest && !wantOwner) return result;
   const mb = await installMailbox(env).catch(() => null);
   if (!mb) {
@@ -104,20 +102,9 @@ async function mailFor(env: Env, origin: string, s: StrategySettings, r: Row, wh
   const fromEmail = fromAddressOf(mb);
   const theirs = r.visitor_tz && r.visitor_tz !== r.host_tz ? whenWords(r.start_ms, r.visitor_tz) : '';
   const hostWhen = whenWords(r.start_ms, r.host_tz);
-  const manage = key ? `${origin}${STRATEGY_CALL_PATH}?manage=${encodeURIComponent(r.id)}.${encodeURIComponent(key)}` : '';
-  const first = r.name.split(/\s+/)[0] || 'there';
+  const manage = key && what !== 'review' ? `${origin}${STRATEGY_CALL_PATH}?manage=${encodeURIComponent(r.id)}.${encodeURIComponent(key)}` : '';
   if (wantGuest) {
-    const lead = what === 'cancelled' ? `Your ${esc(s.title)} is cancelled.`
-      : what === 'moved' ? `Your ${esc(s.title)} has moved to <strong>${esc(theirs || hostWhen)}</strong>.`
-        : what === 'reminder' ? `A reminder: your ${esc(s.title)} is on <strong>${esc(theirs || hostWhen)}</strong>.`
-          : `You're booked: <strong>${esc(s.title)}</strong> on <strong>${esc(theirs || hostWhen)}</strong>.`;
-    const html = `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:520px;color:#17191c;line-height:1.6">`
-      + `<p>Hi ${esc(first)},</p><p>${lead}</p>`
-      + (what !== 'cancelled' ? `<p>${esc(meetingWords(s))}</p>` : '')
-      + (what !== 'cancelled' && manage ? `<p><a href="${esc(manage)}" style="display:inline-block;padding:11px 22px;background:#17191c;color:#c8f24d;border-radius:999px;text-decoration:none;font-weight:700">Reschedule or cancel</a></p>` : '')
-      + (what !== 'cancelled' && !manage ? '<p>To change it, use the link in your confirmation email or reply to this one.</p>' : '')
-      + '</div>';
-    const subject = what === 'cancelled' ? `Cancelled: ${s.title}` : what === 'moved' ? `Moved: ${s.title}` : what === 'reminder' ? `Reminder: ${s.title}` : `Confirmed: ${s.title}`;
+    const { subject, html } = guestMail(s, r, what, theirs || hostWhen, manage, { origin, key });
     const d = await deliver(mb, { fromName: s.hostName || mb.from.name || 'Protected Central', fromEmail, to: r.email, subject, html, replyTo: (await ownerAddress(env, s)) ?? undefined })
       .catch(e => ({ ok: false, error: String((e as Error)?.message ?? e) }));
     result.guest = d.ok ? 'sent' : `failed: ${String(d.error).slice(0, 160)}`;
@@ -128,9 +115,12 @@ async function mailFor(env: Env, origin: string, s: StrategySettings, r: Row, wh
     else {
       const verb = what === 'cancelled' ? 'cancelled' : what === 'moved' ? 'moved' : 'booked';
       const src = parse<{ utm?: Record<string, string> }>(r.source, {});
+      const concerns = concernsOf(r);
       const html = `<div style="font-family:system-ui,sans-serif;line-height:1.6;color:#17191c">`
         + `<p><strong>${esc(r.name)}</strong> (${esc(r.email)}${r.company ? `, ${esc(r.company)}` : ''}) ${verb} a ${esc(s.title)} — ${esc(hostWhen)}.</p>`
         + `<p>From: ${esc(SOURCE_LABEL[r.source_site as keyof typeof SOURCE_LABEL] ?? r.source_site)}${src.utm?.campaign ? ` · campaign ${esc(src.utm.campaign)}` : ''}</p>`
+        /* What they want answered, so the owner can prepare without opening the app — the confirmation promised they would. */
+        + (verb !== 'cancelled' && concerns.length ? `<p><strong>They want help with:</strong></p>${QUOTES(concerns)}` : '')
         + `<p>Details and answers are in Settings → Platform services → Strategy Call Booking.</p></div>`;
       const d = await deliver(mb, { fromName: 'Strategy calls', fromEmail, to, subject: `${r.name} ${verb}: ${s.title}`, html, replyTo: r.email })
         .catch(e => ({ ok: false, error: String((e as Error)?.message ?? e) }));
@@ -156,6 +146,7 @@ function ownerView(r: Row) {
     name: r.name, email: r.email, company: r.company, website: r.website, industry: r.industry, phone: r.phone,
     answers: parse(r.answers, {}), meetingType: r.meeting_type, sourceSite: r.source_site, source: parse(r.source, {}),
     note: r.internal_note, history: parse(r.history, []), notify: parse(r.notify, {}), createdAt: r.created_at, updatedAt: r.updated_at,
+    review: r.review_rating ? { rating: r.review_rating, text: r.review_text ?? '', at: r.reviewed_at } : null,
   };
 }
 
@@ -317,6 +308,36 @@ export async function handleStrategyCall(req: Request, env: Env): Promise<Respon
     return json({ success: true, booking: guestView(moved, s), notify });
   }
 
+  /* ── Guest, after the call, by the key in the review email ──
+     Its own key, not the manage key: the cron that asks has no manage key to
+     send (only its hash is kept), and a review link forwarded to somebody
+     else lets them rate one call — never move or cancel it. */
+  if (action === 'review_get' || action === 'review_save') {
+    const id = clip(d.id, 60), key = clip(d.key, 200);
+    const row = id && key ? await env.DB.prepare('SELECT * FROM crm_strategy_calls WHERE id = ?').bind(id).first<Row>() : null;
+    if (!row || !row.review_key_hash || !timingSafeEqual(await sha256(key), row.review_key_hash)) {
+      return json({ success: false, error: 'That link does not match a call. Use the one in your email.' });
+    }
+    const s = await loadSettings(env);
+    const view = () => ({
+      title: s.title, name: row.name.split(/\s+/)[0] || '', startsAt: new Date(row.start_ms).toISOString(),
+      timezone: row.visitor_tz || row.host_tz, hostName: s.hostName, reviewUrl: s.reviewUrl,
+      review: row.review_rating ? { rating: row.review_rating, text: row.review_text ?? '' } : null,
+    });
+    if (action === 'review_get') return json({ success: true, ...view() });
+    const ip = req.headers.get('CF-Connecting-IP') ?? 'unknown';
+    const limit = await rateLimit(env, { what: 'strategy-review', who: ip, max: 20, windowSeconds: 3600 });
+    if (!limit.allowed) return fail('Too many tries from here in the last hour. Try again later.', 429);
+    const rating = Math.round(Number(d.rating));
+    if (!(rating >= 1 && rating <= 5)) return fail('Choose how many stars, from 1 to 5.', 200, { field: 'strategy.review.rating' });
+    const text = String(d.text ?? '').replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ').trim().slice(0, 2000);
+    /* Changing one's mind is allowed — the latest words are what the guest means now. */
+    await env.DB.prepare('UPDATE crm_strategy_calls SET review_rating = ?, review_text = ?, reviewed_at = ?, history = ?, updated_at = ? WHERE id = ?')
+      .bind(rating, text, nowIso(), JSON.stringify([...parse<unknown[]>(row.history, []), { at: nowIso(), by: 'guest', what: `reviewed ${rating}★` }]), nowIso(), id).run();
+    row.review_rating = rating; row.review_text = text;
+    return json({ success: true, ...view() });
+  }
+
   /* ── Owner ── */
   const user = await userFromToken(env.DB, d.token as string | undefined);
   if (!user) return fail('Sign in again — this needs a current session.', 401, { code: 'unauthorised' });
@@ -418,6 +439,42 @@ export async function strategyReminders(env: Env): Promise<number> {
     const n = await mailFor(env, env.APP_ORIGIN || '', s, r, 'reminder');
     const notify = { ...parse<Record<string, string>>(r.notify, {}), reminder: n.guest };
     await env.DB.prepare('UPDATE crm_strategy_calls SET reminded_at = ?, notify = ? WHERE id = ?').bind(nowIso(), JSON.stringify(notify), r.id).run();
+    if (n.guest === 'sent') sent++;
+  }
+  return sent;
+}
+
+/** Asked from this long after a call ends — time to get back to work and still remember it. */
+const REVIEW_AFTER_MS = 60 * 60_000;
+/** And not after this: a call from last month gets no surprise email the day this ships. */
+const REVIEW_WITHIN_MS = 3 * 86_400_000;
+
+/**
+ * The cron's after-call pass: one "how did it go?" email per call, an hour
+ * after it ends, with a key of its own (only its hash is stored). A call the
+ * owner marked a no-show, or that was cancelled, is never asked. Every call
+ * it looks at is marked asked — sent, failed or switched off — so nobody is
+ * written to twice; with no mailbox at all it waits, like the reminders.
+ */
+export async function strategyReviewAsks(env: Env): Promise<number> {
+  const s = await loadSettings(env);
+  if (!s.askReview) return 0;
+  const now = Date.now();
+  const { results } = await env.DB.prepare(
+    "SELECT * FROM crm_strategy_calls WHERE status IN ('confirmed', 'completed') AND review_asked_at IS NULL AND end_ms <= ? AND end_ms > ? LIMIT 25",
+  ).bind(now - REVIEW_AFTER_MS, now - REVIEW_WITHIN_MS).all<Row>();
+  if (!(results ?? []).length) return 0;
+  if (!(await installMailbox(env).catch(() => null))) return 0;
+  let sent = 0;
+  for (const r of results ?? []) {
+    const key = newToken();
+    /* Claimed before the send: two overlapping cron runs cannot both ask. */
+    const claim = await env.DB.prepare('UPDATE crm_strategy_calls SET review_asked_at = ?, review_key_hash = ? WHERE id = ? AND review_asked_at IS NULL')
+      .bind(nowIso(), await sha256(key), r.id).run();
+    if (!claim.meta.changes) continue;
+    const n = await mailFor(env, env.APP_ORIGIN || '', s, r, 'review', key);
+    const notify = { ...parse<Record<string, string>>(r.notify, {}), review: n.guest };
+    await env.DB.prepare('UPDATE crm_strategy_calls SET notify = ? WHERE id = ?').bind(JSON.stringify(notify), r.id).run();
     if (n.guest === 'sent') sent++;
   }
   return sent;

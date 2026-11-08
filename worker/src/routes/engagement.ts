@@ -916,12 +916,18 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
   if (act === 'live_waiting') {
     const cut = new Date(Date.now() - 3 * 60_000).toISOString();
     const { results: widgets } = await env.DB.prepare(
-      "SELECT features FROM crm_widgets WHERE account_id = ? AND status = 'live'",
-    ).bind(accountId).all<{ features: string }>();
+      "SELECT features, in_app AS inApp FROM crm_widgets WHERE account_id = ? AND status = 'live'",
+    ).bind(accountId).all<{ features: string; inApp: number }>();
     const voice = (widgets ?? []).some(w => offers(w.features, 'voice'));
     const screen = (widgets ?? []).some(w => offers(w.features, 'screen'));
-    if (!voice && !screen) return json({ success: true, waiting: 0, calls: [], enabled: false, voice, screen });
+    /* The owner's help button (in_app) shows "online" in its chat, so the
+       owner's own visible pages keep saying they are here — every thirty
+       seconds, the same as a screen-share-only workspace. Only the install
+       owner can be the house (a tenant's in_app is ignored by engage.ts). */
+    const house = !!user && user.role === 'agency' && !user.accountId && (widgets ?? []).some(w => w.inApp && offers(w.features, 'chat'));
+    if (!voice && !screen && !house) return json({ success: true, waiting: 0, calls: [], enabled: false, voice, screen });
     await markPresent(env, accountId);
+    if (!voice && !screen) return json({ success: true, waiting: 0, calls: [], enabled: true, voice, screen });
     const row = await env.DB.prepare(
       "SELECT count(*) AS n FROM crm_live_sessions WHERE account_id = ? AND status = 'waiting' AND kind != 'voice' AND seen_at >= ?",
     ).bind(accountId, cut).first<{ n: number }>();

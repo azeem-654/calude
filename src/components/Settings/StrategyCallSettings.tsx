@@ -34,6 +34,7 @@ interface Booking {
   answers: Record<string, string> & { _asked?: Record<string, string> }; sourceSite: string;
   source: { utm?: Record<string, string>; clickIds?: Record<string, string>; referrer?: string };
   note: string; history: { at: string; by: string; what: string }[]; notify: Record<string, string>; createdAt: string;
+  review: { rating: number; text: string; at: string | null } | null;
 }
 
 const api = async <T,>(action: string, extra: Record<string, unknown> = {}) => {
@@ -227,6 +228,8 @@ export default function StrategyCallSettings() {
             <input type="number" min={0} max={72} style={{ ...input, width: 70 }} value={s.reminderHours} onChange={e => set('reminderHours', Number(e.target.value))} data-field="strategy.reminderHours" /> hours before (0 = no reminder)</label>
           <label style={{ display: 'inline-flex', gap: 6 }}><input type="checkbox" checked={s.notifyOnBook} onChange={e => set('notifyOnBook', e.target.checked)} /> Email me when somebody books, moves or cancels</label>
           <label style={{ ...label, maxWidth: 360 }}>Send my notices to (empty = your sign-in address)<input style={bad('strategy.notifyEmail')} data-field="strategy.notifyEmail" type="email" value={s.notifyEmail} onChange={e => set('notifyEmail', e.target.value)} /></label>
+          <label style={{ display: 'inline-flex', gap: 6 }}><input type="checkbox" checked={s.askReview} onChange={e => set('askReview', e.target.checked)} data-field="strategy.askReview" /> An hour after each call, email the guest asking how it went (with a review button; never after a no-show)</label>
+          <label style={{ ...label, maxWidth: 480 }}>Public review page, offered to everyone who leaves a review (optional — Google, Trustpilot…)<input style={bad('strategy.reviewUrl')} data-field="strategy.reviewUrl" type="url" placeholder="https://…" value={s.reviewUrl} onChange={e => set('reviewUrl', e.target.value)} /></label>
         </div>
 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 18, flexWrap: 'wrap' }}>
@@ -296,12 +299,14 @@ function Row({ b, open, onToggle, onChanged }: { b: Booking; open: boolean; onTo
         <span style={{ fontSize: 12.5, color: '#334155' }}>{when(b)}</span>
         <span style={{ fontSize: 11.5, color: MUTED }}>{src}</span>
         {b.status !== 'confirmed' && <span style={{ fontSize: 11, fontWeight: 700, color: MUTED, textTransform: 'uppercase' }}>{b.status.replace('_', '-')}</span>}
+        {b.review && <span style={{ fontSize: 12, fontWeight: 700, color: '#b45309' }} title="The guest's rating">{b.review.rating}★</span>}
       </button>
       {open && (
         <div style={{ display: 'grid', gap: 8, marginTop: 10, fontSize: 12.5, color: '#334155', lineHeight: 1.55 }}>
           <div style={{ overflowWrap: 'anywhere' }}>{b.email}{b.phone ? ` · ${b.phone}` : ''}{b.website ? ` · ${b.website}` : ''}{b.industry ? ` · ${b.industry}` : ''} · {b.duration} min{b.visitorTimezone ? ` · visitor in ${b.visitorTimezone}` : ''}</div>
           {Object.entries(b.answers).filter(([k]) => k !== '_asked').map(([k, v]) => <div key={k}><b>{asked[k] ?? k}</b><br />{String(v)}</div>)}
-          <div style={{ color: MUTED }}>Emails: confirmation {b.notify.guest ?? '—'}, your notice {b.notify.owner ?? '—'}{b.notify.reminder ? `, reminder ${b.notify.reminder}` : ''}</div>
+          {b.review && <div data-testid="strategy-review"><b>Their review: {'★'.repeat(b.review.rating)}{'☆'.repeat(5 - b.review.rating)}</b>{b.review.text ? <><br /><span style={{ whiteSpace: 'pre-wrap' }}>{b.review.text}</span></> : null}</div>}
+          <div style={{ color: MUTED }}>Emails: confirmation {b.notify.guest ?? '—'}, your notice {b.notify.owner ?? '—'}{b.notify.reminder ? `, reminder ${b.notify.reminder}` : ''}{b.notify.review ? `, review ask ${b.notify.review}` : ''}</div>
           <label style={label}>Private note (never shown to the guest)
             <textarea style={{ ...input, minHeight: 54 }} value={note} onChange={e => setNote(e.target.value)} />
           </label>
