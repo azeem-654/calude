@@ -291,6 +291,41 @@ export is a canvas recording; Video Studio is the real one.
   and queued jobs, 390 wide), `test:security` (video actions by id from
   another workspace → 404). **Not changed**: the welcome wizard's "make N
   Shorts" still asks for the number the customer typed (their choice).
+- **Thumbnails without stray shapes, and design themes (2026-11, phase 3 of
+  the overhaul)** — the owner found square and round "diagram" shapes on AI
+  thumbnails. Sources found and removed as defaults: the no-example trio
+  included "modern" (the frame as a bordered **screenshot card**), every
+  9:16 "short" cover drew a **spotlight + accent halo** round the face, the
+  picked word sat in a **tilted box**, and a spec with no `faceFrame` got the
+  **round bubble**. Now `modernStyles` is person-beside-words (both sides)
+  then a headline (Shorts: cover low, cover high, headline), all
+  `hlStyle: 'color'`, `faceFrame/pointer: 'none'`, `glow: false`, no border
+  or sticker; the job's `base` spec says the same; `normaliseSpec.glow` is
+  true only for the "glow" layout or when asked. New design fields in
+  `thumbLayout.mjs` (both painters read them through the plan): `font`
+  (Noto Sans / Serif / Sans Display), `upper`, `outline` (stroke 0),
+  `treatment` (vivid / natural / muted / dark / mono → `plan.grade`),
+  `glow`. The example reader (`EXAMPLE_PROMPT`) now also asks for type,
+  case, outline, image treatment and a **list of decorations**; that list
+  is the last word on stickers, rings, arrows and borders (`styleFromReading`).
+  **Design themes**: `lib/design/thumbThemes.ts` (pure: `ThemeDesign` = the
+  engine's design fields only — never words, moment or badge; `cleanDesign`,
+  `cleanLogo` {on, corner, size 6–30%}, `cleanTheme`, `styleOfTheme`,
+  `describeTheme`; 60 per workspace), migration **0088** `crm_design_themes`
+  (kind 'thumbnail', `config` JSON), `routes/designThemes.ts` →
+  `/api/design-themes.php` (list / save / duplicate / delete, account-scoped,
+  `themeById` for the video route). Video route: `thumbnails` takes
+  `themeId` (no AI call; three PNGs in the theme at three moments with this
+  video's own words), `thumbs_theme` puts one theme on many outputs,
+  `shorts_create` honours `prefs.thumbnail = 'theme:<id>'`. Thumbnail job
+  input `logo` → engine `params.logoAt` (corner, size; `logo.on: false` drops
+  the brand logo). UI: ThumbShowcase "Save as a theme" (name, description;
+  saves the chosen PNG's spec) and themes in "New thumbnail" (with "For all N
+  Shorts"); the Shorts wizard's thumbnail step lists themes; the Graphics
+  Designer & Editor page shows **Thumbnail themes** (`ThemeLibrary.tsx`,
+  lazy): cards drawn live with `PlanPreview` on the customer's own video
+  posters (or a plain frame), edit every field with a live 16:9 / 9:16
+  preview and "try it on" another video, duplicate, delete.
 - **The preview shows every effect (2026-11)**: the look/colour filter sits
   on `.vse-picture` (deck + keyed canvas + layout canvas) — it was on the deck
   only, so a laid-out Short lost its look; **sharpness** is an SVG

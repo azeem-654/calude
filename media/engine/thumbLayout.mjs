@@ -53,6 +53,14 @@ export const POINTERS = ['auto', 'none', 'arrow', 'circle', 'both'];
 export const HL_STYLES = ['color', 'box'];
 /** How "modern" shows the speaker: inside the screenshot card only ('none'), or also cropped into a round frame ('round'). */
 export const FACE_FRAMES = ['none', 'round'];
+/**
+ * A design's type and picture (2026-11, "a thumbnail theme"): the family of
+ * the words, capitals or as written, an outline or none, and how the frame
+ * is graded. A reference's own treatment is followed rather than every
+ * thumbnail getting the same punchy grade and black outline.
+ */
+export const FONTS = { sans: 'Noto Sans', serif: 'Noto Serif', display: 'Noto Sans Display' };
+export const TREATMENTS = ['vivid', 'natural', 'muted', 'dark', 'mono'];
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const clamp = (v, lo, hi, d) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
@@ -103,6 +111,13 @@ export function normaliseSpec(it) {
        new thumbnails ask for 'none' unless the customer's example has one —
        the owner found a circle drawn round every speaker (2026-11). */
     faceFrame: pick(s.faceFrame, FACE_FRAMES, 'round'),
+    font: pick(s.font, Object.keys(FONTS), 'sans'),
+    upper: s.upper !== false,
+    outline: s.outline !== false,
+    treatment: pick(s.treatment, TREATMENTS, 'vivid'),
+    /* The spotlight and accent glow round a face: the "glow" layout's whole point, anywhere else only when
+       asked — the Shorts cover drew one round every speaker, and the owner found it a circle on every Short. */
+    glow: s.glow === true || (s.glow !== false && layout === 'glow'),
   };
 }
 
@@ -133,7 +148,7 @@ export const EM = 0.734;
  */
 function setLines(sp, area, { size, per = 2, maxLines = 4, align = 'center', anchor = 'middle', box = null, upper = true, gap = 1.06, color, spacing = 0 }) {
   const rtl = RTL.test(sp.text);
-  const shown = upper && !rtl ? sp.text.toLocaleUpperCase() : sp.text;
+  const shown = upper && sp.upper !== false && !rtl ? sp.text.toLocaleUpperCase() : sp.text;
   const words = shown.split(' ').filter(Boolean);
   const hl = bare(String(sp.highlight).toLocaleUpperCase());
   const isHl = w => !!hl && bare(w.toLocaleUpperCase()) === hl;
@@ -174,12 +189,12 @@ function setLines(sp, area, { size, per = 2, maxLines = 4, align = 'center', anc
     const h = g.box ? lh + fs * 0.25 : lh;
     const text = g.words.join(' ');
     const line = {
-      x: r1(x), y: r1(y + h / 2), fs, align, font: rtl ? 'Noto Naskh Arabic' : 'Noto Sans',
+      x: r1(x), y: r1(y + h / 2), fs, align, font: rtl ? 'Noto Naskh Arabic' : (FONTS[sp.font] ?? 'Noto Sans'),
       /* Estimated width, for placing the arrow and the sticker clear of the words. */
       w: Math.round(text.length * CHAR * condense * fs + (g.box ? fs * 0.28 : 0)),
       runs: g.words.map((w, i) => ({ t: (i ? ' ' : '') + w, color: !g.box && isHl(w) ? sp.accent : g.box ? inkOn(box) : color })),
       box: g.box ? { color: box, pad: Math.round(fs * 0.14), tilt: -3 } : null,
-      stroke: g.box ? 0 : Math.max(2, Math.round(fs * 0.075)),
+      stroke: g.box || sp.outline === false ? 0 : Math.max(2, Math.round(fs * 0.075)),
       shadow: Math.max(2, Math.round(fs * 0.06)),
       glow: g.box ? 0 : Math.round(fs * 0.16),
       spacing,
@@ -297,7 +312,7 @@ export function thumbPlan(it, W, H, src, face, face2 = null) {
       if (layout === 'headline') plan.fills.push({ alpha: { axis: 'y', from: 0.35, to: 1, max: 0.6 }, c0solid: '#000000', c1solid: '#000000' });
       plan.vignette = true;
     }
-    if (layout === 'glow' || (layout === 'short' && faceAt)) {
+    if (layout === 'glow' || (layout === 'short' && faceAt && sp.glow)) {
       const at = faceAt ?? { cx: (portrait ? 0.5 : faceLeft ? 0.3 : 0.7) * W, cy: (portrait ? 0.32 : 0.46) * H, rx: Math.min(W, H) * 0.14, ry: Math.min(W, H) * 0.18 };
       /* The subject sharp in a spotlight round the head and shoulders, feathered
          into the background — and, round a found face only, a glow of the
@@ -383,6 +398,12 @@ export function thumbPlan(it, W, H, src, face, face2 = null) {
     }
     plan.half = half;
   }
+  /* The picture's treatment, over the layout's own grade: a reference that is natural, muted, dark or black and white is followed. */
+  const t = sp.treatment;
+  if (t === 'natural') plan.grade = { ...plan.grade, contrast: Math.min(plan.grade.contrast, 1.04), saturation: Math.min(plan.grade.saturation, 1.05) };
+  else if (t === 'muted') plan.grade = { ...plan.grade, contrast: Math.min(plan.grade.contrast, 1.05), saturation: 0.72 };
+  else if (t === 'dark') plan.grade = { ...plan.grade, brightness: Math.min(plan.grade.brightness, -0.14), contrast: Math.max(plan.grade.contrast, 1.1) };
+  else if (t === 'mono') plan.grade = { ...plan.grade, saturation: 0, contrast: Math.max(plan.grade.contrast, 1.12) };
   plan.faceAt = faceAt;
   /* The words' footprint, so the arrow, the ring and the sticker keep clear of them. */
   const boxes = plan.lines.map(lineRect);

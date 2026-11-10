@@ -1,5 +1,5 @@
 import { askConfirm } from '../shared/ConfirmDialog';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Search, Trash2, Edit3, Copy, Share2,
@@ -12,6 +12,8 @@ import { PLATFORM_PRESETS, RATIO_SIZES, TEMPLATES } from './templates';
 import { normalisePosts } from './normalise';
 import { generateSocialPostDesign, hasGeminiKey } from '../../lib/gemini';
 import DesignTemplateGallery from './design/TemplateGallery';
+/* Thumbnail themes (the Design Studio's reusable thumbnail designs) load with their own preview code, only when shown. */
+const ThemeLibrary = lazy(() => import('./design/ThemeLibrary'));
 import DesignCanvas from './design/DesignCanvas';
 
 /** The status as the customer should read it — see the note in the card. */
@@ -544,6 +546,7 @@ export default function SocialCreator() {
         </button>
       </div>
       <DesignTemplateGallery onCreate={(p: DesignPost) => { addSocialPost(p); navigate(`/social-creator/design/${p.id}`); }} />
+      <Suspense fallback={null}><ThemeLibrary /></Suspense>
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(170px, 100%), 1fr))', gap: 16, marginBottom: 32 }}>

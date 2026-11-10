@@ -952,9 +952,43 @@ ok('…and renders again', reOut.version > outBefore.version && !reOut.stale, re
   const set2 = S.outputs.find(o => o.kind === 'long').thumbs.filter(t => t.set === 2);
   ok('…"Create another set" makes three more, also checked PNGs', set2.length === 3 && set2.every(t => t.verified), set2.length);
   const first = S.outputs.find(o => o.kind === 'long').thumbs;
-  ok('…the modern look first (face + screen), then a trending face layout', first.filter(t => t.set === 1)[0]?.layout === 'modern' && new Set(first.filter(t => t.set === 1).map(t => t.layout)).size >= 2, first.map(t => t.layout));
+  /* Since 2026-11 (the owner's "strange square or circular shapes"): the plain looks draw nothing the video did not give — no screenshot card, round frame, glow ring, boxed word, arrow, sticker or border. */
+  const plainSets = first.filter(t => t.set === 1 || t.set === 2);
+  ok('…the plain looks: the person beside big words, then a headline — no card, circle, ring, glow, boxed word, arrow, sticker or border', plainSets.length >= 3 && plainSets[0].layout === 'bold' && plainSets.every(t => t.layout !== 'modern' && t.spec && t.spec.faceFrame === 'none' && t.spec.pointer === 'none' && !t.spec.glow && t.spec.hlStyle === 'color' && !t.spec.border && !t.spec.sticker), first.map(t => [t.layout, t.spec?.faceFrame, t.spec?.pointer, t.spec?.glow, t.spec?.hlStyle]));
   ok('…the chosen one shown big under the video', await long.getByTestId('vs-thumb-chosen').isVisible());
   ok('…each made from two to five words, kept with the PNG so it can be edited', first.every(t => t.spec && t.spec.text.split(/\s+/).length <= 5 && t.spec.text.length > 0), first.map(t => t.spec?.text));
+
+  /* ── Design themes: a thumbnail saved as a theme, used again with this video's own words ── */
+  const th = await api('design-themes.php', { action: 'save', token: T, accountId: A, theme: { name: 'Tutorial — serif', description: 'For tutorial Shorts', design: { ...plainSets[0].spec, font: 'serif', upper: false, outline: false, treatment: 'muted', color: '#123456', faceFrame: 'round', sticker: 'star' }, logo: { on: true, corner: 'bl', size: 18 }, words: 3, source: 'thumbnail' } });
+  ok('themes · a thumbnail is saved as a theme: its design (layout, colours, type, treatment, logo place) — not its words or picture', th.success && th.theme.design.font === 'serif' && th.theme.design.upper === false && th.theme.design.treatment === 'muted' && th.theme.design.color === '#123456' && th.theme.logo.corner === 'bl' && th.theme.logo.size === 18 && !('text' in th.theme.design) && !('at' in th.theme.design), th);
+  const noName = await api('design-themes.php', { action: 'save', token: T, accountId: A, theme: { name: ' ', design: {} } });
+  ok('themes · a theme needs a name, and the refusal names the box', !noName.success && noName.field === 'theme.name', noName);
+  const longO = S.outputs.find(o => o.kind === 'long');
+  const mk = await v('thumbnails', { projectId: PID, outputId: longO.id, themeId: th.theme.id });
+  ok('themes · "New thumbnail" in a theme starts at once (no AI call) and says it is the theme', mk.success && /Tutorial — serif/.test(mk.note), mk);
+  let TS;
+  for (let i = 0; i < 90; i++) { TS = await v('status', { projectId: PID, knownVersion: -1 }); if (TS.outputs.find(o => o.id === longO.id).thumbs.some(t => t.set === mk.set)) break; await sleep(2000); }
+  const inTheme = TS.outputs.find(o => o.id === longO.id).thumbs.filter(t => t.set === mk.set);
+  ok('themes · …three checked PNGs in that design, each with this video\'s own words (three of them), the theme\'s type and picture', inTheme.length === 3 && inTheme.every(t => t.verified && t.spec.font === 'serif' && t.spec.upper === false && t.spec.treatment === 'muted' && t.spec.color === '#123456' && t.spec.text.split(/\s+/).length <= 3), inTheme.map(t => [t.verified, t.spec?.font, t.spec?.treatment, t.spec?.text]));
+  const shortsO = TS.outputs.filter(o => o.kind === 'short').map(o => o.id);
+  const many = await v('thumbs_theme', { projectId: PID, themeId: th.theme.id, outputIds: shortsO });
+  ok('themes · one theme on every Short at once, so they match', many.success && many.queued === shortsO.length, many);
+  const dup = await api('design-themes.php', { action: 'duplicate', token: T, accountId: A, id: th.theme.id });
+  const listed = await api('design-themes.php', { action: 'list', token: T, accountId: A });
+  ok('themes · duplicated and listed, newest first', dup.success && /\(copy\)/.test(dup.theme.name) && listed.themes.length >= 2 && listed.themes.some(t => t.id === th.theme.id), listed.themes?.map(t => t.name));
+  /* In the Graphics Designer & Editor: the library, drawn live; edit and save. */
+  await page.goto(`${B}/social-creator`, { waitUntil: 'networkidle' });
+  await page.getByTestId('theme-library').waitFor({ timeout: 20_000 });
+  const card = page.locator(`[data-theme="${th.theme.id}"]`);
+  ok('themes · the Graphics Designer lists the themes, each drawn live (not a stored picture) with what it is', await card.isVisible() && (await card.getByTestId('theme-preview').count()) === 1 && /Tutorial — serif[\s\S]*serif type/.test(await card.innerText()), await card.innerText().catch(() => ''));
+  await card.locator('[data-act="theme-edit"]').click();
+  await page.getByTestId('theme-editor').waitFor({ timeout: 10_000 });
+  await page.locator('[data-testid="theme-editor"] input[data-field="theme.name"]').fill('Tutorial — serif v2');
+  await page.getByTestId('theme-save').click();
+  await page.getByTestId('theme-editor').waitFor({ state: 'detached', timeout: 15_000 });
+  const after = await api('design-themes.php', { action: 'list', token: T, accountId: A });
+  ok('themes · edited in the library and saved, the design kept', after.themes.some(t => t.id === th.theme.id && t.name === 'Tutorial — serif v2' && t.design.font === 'serif'), after.themes?.map(t => t.name));
+  await api('design-themes.php', { action: 'delete', token: T, accountId: A, id: dup.theme.id });
 }
 
 /* ── 12 · Metadata for each video, from its own words ── */

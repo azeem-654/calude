@@ -25,6 +25,7 @@ import {
   type WizardPrefs, type Proposal, type Rejected, type ProposeMode, type Platform, type FrameStrategy,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
+import { listThemes, type ThumbTheme } from '../../services/designThemes';
 
 type Step = 1 | 2 | 3 | 4 | 5;
 const STEPS: [Step, string][] = [[1, 'Recording'], [2, 'How'], [3, 'Style'], [4, 'Review'], [5, 'Make']];
@@ -64,6 +65,9 @@ export default function ShortsWizard({ ctx, onClose }: { ctx: EditorCtx; onClose
   const [madeNote, setMadeNote] = useState('');
 
   useEffect(() => { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch { /* private window */ } }, [prefs]);
+  /* Saved design themes, for every new Short's thumbnail in one look; a remembered theme that was deleted falls back to the plain looks. */
+  const [themes, setThemes] = useState<ThumbTheme[]>([]);
+  useEffect(() => { void listThemes().then(r => { const list = r.success ? r.themes : []; setThemes(list); setPrefs(p => p.thumbnail.startsWith('theme:') && !list.some(t => `theme:${t.id}` === p.thumbnail) ? { ...p, thumbnail: 'modern' } : p); }); }, []);
   useEffect(() => {
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose(); };
     window.addEventListener('keydown', esc);
@@ -256,7 +260,8 @@ export default function ShortsWizard({ ctx, onClose }: { ctx: EditorCtx; onClose
               <small className="vs-kbd" style={{ fontWeight: 500 }}>Captions are in the language spoken; this sets their look for all Shorts.</small></div>
             <label className="vs-label">Language of the titles and descriptions<input className="vs-input" value={prefs.language} onChange={e => setPrefs(p => ({ ...p, language: e.target.value }))} placeholder={transcript?.language ? `As spoken (${transcript.language})` : 'As spoken'} maxLength={30} /></label>
             <label className="vs-opt"><input type="checkbox" checked={prefs.logo && logoSet} disabled={!logoSet} onChange={e => setPrefs(p => ({ ...p, logo: e.target.checked }))} /> Your logo on the Shorts{logoSet ? ' (one setting for every Short)' : ' — add a logo in the Logo panel first'}</label>
-            <div className="vs-label">Thumbnail{chips(prefs.thumbnail, [['modern', 'Made with each Short'], ['none', 'Not now']], v => setPrefs(p => ({ ...p, thumbnail: v })), 'Thumbnail')}</div>
+            <div className="vs-label">Thumbnail{chips<WizardPrefs['thumbnail']>(prefs.thumbnail, [['modern', 'Made with each Short'], ...themes.map(t => [`theme:${t.id}`, `Theme: ${t.name}`] as [WizardPrefs['thumbnail'], string]), ['none', 'Not now']], v => setPrefs(p => ({ ...p, thumbnail: v })), 'Thumbnail')}
+              <small className="vs-kbd" style={{ fontWeight: 500 }}>{themes.length ? 'A theme makes every new Short’s thumbnail in the same design, with its own words and picture.' : 'Save a thumbnail as a theme (on any video’s thumbnail) to make every Short in the same design.'}</small></div>
             <label className="vs-label">Call to action (optional)<input className="vs-input" value={prefs.cta} onChange={e => setPrefs(p => ({ ...p, cta: e.target.value }))} maxLength={140} placeholder="e.g. Book a free call at acme.com" /></label>
             <label className="vs-opt"><input type="checkbox" checked={ownLength} onChange={e => { setOwnLength(e.target.checked); if (e.target.checked && !prefs.min) setPrefs(p => ({ ...p, min: PLATFORMS[p.platform].ideal[0], max: PLATFORMS[p.platform].ideal[1] })); }} /> Set the length myself (otherwise {PLATFORMS[prefs.platform].ideal[0]}–{Math.min(75, PLATFORMS[prefs.platform].max)} s, as {PLATFORMS[prefs.platform].label} suggests)</label>
             {ownLength && (

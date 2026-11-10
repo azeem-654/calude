@@ -400,8 +400,10 @@ export type { MusicTrack, AudioSettings, Denoise } from '../../worker/src/lib/vi
  * PNGs are drawn in it; without one, three in the modern look. `note` says
  * what was read, or why the example could not be and the modern look was used.
  */
-export const createThumbnails = (projectId: string, outputId: string, exampleKey?: string, examplePalette?: string[]) =>
-  call<{ set: number; read: boolean; note: string }>('thumbnails', { projectId, outputId, ...(exampleKey ? { exampleKey, examplePalette: examplePalette ?? [] } : {}) });
+export const createThumbnails = (projectId: string, outputId: string, exampleKey?: string, examplePalette?: string[], themeId?: string) =>
+  call<{ set: number; read: boolean; note: string }>('thumbnails', { projectId, outputId, ...(exampleKey ? { exampleKey, examplePalette: examplePalette ?? [] } : {}), ...(themeId ? { themeId } : {}) });
+/** One saved design theme on several videos (every Short, say). */
+export const thumbsInTheme = (projectId: string, themeId: string, outputIds: string[]) => call<{ queued: number; note: string }>('thumbs_theme', { projectId, themeId, outputIds });
 
 /**
  * The example's real colours, measured from its pixels here (a 96-wide copy,

@@ -31,6 +31,8 @@ import { fileUrl, projectPrefix, workspacePrefix, sign, deletePrefix, looksLikeV
 import { adoptSiteTestOrigin, urlProblem, wireUrl } from '../lib/readSite';
 import { allowance, meter, PRICE, refusal } from '../lib/video/usage';
 import { readExample, styleFromReading } from '../lib/video/thumbStyle';
+import { themeById } from './designThemes';
+import { styleOfTheme } from '../lib/design/thumbThemes';
 import { sniffImage } from '../lib/chatFiles';
 import { check as allowanceCheck, counted as countedAllowance, record as recordAllowance, refusalBody } from '../lib/allowanceStore';
 import { searchMusic, trackById, storeTrack, musicQuery, looksLikeAudio } from '../lib/video/music';
@@ -66,6 +68,8 @@ interface Req {
   youtubeUrl?: string;
   /** The Shorts wizard (shorts_propose, shorts_create): how to look, what for, what to exclude, the preferences, the approved Shorts. */
   mode?: string; query?: string; range?: unknown; exclude?: unknown; prefs?: unknown; items?: unknown;
+  /** A saved design theme (routes/designThemes.ts) to make thumbnails in. */
+  themeId?: string;
   want?: { repurpose?: { posts?: number; blog?: boolean; email?: boolean }; quiz?: boolean; denoise?: string; voice?: boolean; music?: string };
   /** screen_save: what the Screen Recorder noted (pointer.ts ScreenMeta). */
   meta?: unknown;
@@ -879,7 +883,14 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
          budget, no key that reads pictures): the modern look, said so. */
       const exampleKey = s(d.exampleKey, 300);
       let style: Record<string, unknown> | undefined, words: number | undefined, note = '', read = false, ai = false;
-      if (exampleKey) {
+      let logo: { on: boolean; corner: string; size: number } | undefined, themeId = '';
+      /* A saved theme: its design with this video's own words and picture; no AI call. */
+      if (d.themeId) {
+        const th = await themeById(env, accountId, s(d.themeId, 80));
+        if (!th) return fail('That design theme is not in this workspace.', 404, { code: 'no_theme' });
+        style = styleOfTheme(th); words = th.words; logo = th.logo; themeId = th.id;
+        note = `Made in your “${th.name}” theme, with this video’s own words and picture.`;
+      } else if (exampleKey) {
         if (!env.VIDEO) return fail('Video storage is not set up yet.', 503, { code: 'no_storage' });
         if (!exampleKey.startsWith(`${projectPrefix(accountId, p.id)}out/${o.id}/thumbs/ex-`) || !exampleKey.endsWith('/example.jpg') || exampleKey.includes('..')) return fail('That upload is not part of this video.', 403);
         const obj = await env.VIDEO.get(exampleKey);
@@ -899,11 +910,30 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
           note = `Read from your example: ${st.said}. Change the words or anything else with Edit.`;
         } else note = `Your example could not be read (${r.why.replace(/\.$/, '')}), so yours is designed in the modern style instead.`;
       }
-      const q = await enqueue(env, { accountId, projectId: p.id, kind: 'thumbnails', target: o.id, idem: `thumbs:${o.id}:${set}:${Date.now()}`, input: { set, ...(style ? { style, words } : {}) } });
+      const q = await enqueue(env, { accountId, projectId: p.id, kind: 'thumbnails', target: o.id, idem: `thumbs:${o.id}:${set}:${Date.now()}`, input: { set, ...(style ? { style, words } : {}), ...(logo ? { logo, theme: themeId } : {}) } });
       /* The reading is an AI call whether or not it was understood: metered once, on the job it made. */
       if (ai) await meter(env, { jobId: q.id, kind: 'ai-thumb-example', accountId, units: 1, unit: 'ai_call', costMicros: PRICE.aiCall });
       kick(p.id);
       return json({ success: true, set, read, note });
+    }
+
+    /* One saved theme on several videos at once (every Short, say): a set each, in that design. */
+    case 'thumbs_theme': {
+      const th = await themeById(env, accountId, s(d.themeId, 80));
+      if (!th) return fail('That design theme is not in this workspace.', 404, { code: 'no_theme' });
+      const want = new Set((Array.isArray(d.outputIds) ? d.outputIds : []).slice(0, 60).map(x => s(x, 80)));
+      const outs = (await outputsOf(env, p.id)).filter(o => want.has(o.id));
+      if (!outs.length) return fail('Choose the videos to make thumbnails for.', 200, { field: 'video.themeTargets' });
+      let queued = 0, full = 0;
+      for (const o of outs) {
+        const sets = (await setsOf(env, o)).filter(n => n < 100);
+        if (sets.includes(6)) { full++; continue; }
+        const set = Math.min(6, (sets.length ? Math.max(...sets) : 0) + 1);
+        await enqueue(env, { accountId, projectId: p.id, kind: 'thumbnails', target: o.id, idem: `thumbs:${o.id}:${set}:${th.id}`, input: { set, style: styleOfTheme(th), words: th.words, logo: th.logo, theme: th.id } });
+        queued++;
+      }
+      kick(p.id);
+      return json({ success: true, queued, note: `${queued} video${queued === 1 ? '' : 's'} getting thumbnails in “${th.name}”.${full ? ` ${full} already keep${full === 1 ? 's' : ''} six sets — choose one of those first.` : ''}` });
     }
 
     /* An example thumbnail the customer likes, through a signed link under this
@@ -1114,9 +1144,12 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       if (heads.length) { const h = await saveEdit(env, p, docVersion, heads, 'Shorts wizard: thumbnail words', user.email); if (h.ok) { doc = h.doc; docVersion = h.version; } }
       const note = await afterEdit(env, origin, p, doc);
       if (prefs.thumbnail !== 'none') {
+        /* A saved design theme from the wizard: every new Short's thumbnail in it (consistent across the set); otherwise the plain looks. */
+        const th = prefs.thumbnail.startsWith('theme:') ? await themeById(env, accountId, prefs.thumbnail.slice(6)) : null;
+        const input = th ? { set: 1, style: styleOfTheme(th), words: th.words, logo: th.logo, theme: th.id } : { set: 1 };
         for (const c of added) {
           const o = outs.find(x => x.kind === 'short' && x.clip_id === c.id);
-          if (o) await enqueue(env, { accountId, projectId: p.id, kind: 'thumbnails', target: o.id, idem: `thumbs:${o.id}:1`, input: { set: 1 }, revive: true });
+          if (o) await enqueue(env, { accountId, projectId: p.id, kind: 'thumbnails', target: o.id, idem: `thumbs:${o.id}:1`, input, revive: true });
         }
       }
       kick(p.id);

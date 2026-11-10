@@ -21,6 +21,7 @@ import { cameraPath, cutTimes, punchSpans, overlayAss, overlaySpan, overlayPlace
 import { layoutOptions, layoutPlan } from '../worker/src/lib/video/layouts';
 import { knownOf, framingOptions, resolveFraming, framingMatters, framePlan, glidePath, windowCentre } from '../worker/src/lib/video/reframe';
 import { visualSpec } from '../worker/src/lib/video/visual';
+import { cleanDesign, cleanTheme, cleanLogo, styleOfTheme, describeTheme } from '../worker/src/lib/design/thumbThemes';
 import { cleanPrefs, lengthOf, checksFor, tidy, snapRange, pausesIn, partsWithout, honestTitles, thumbTextFor, fromAi, byRule, fromRange, fromAiRange, wizardCtx, proposePrompt, PLATFORMS } from '../worker/src/lib/video/shortsWizard';
 import { vignetteStops, grainOpacity, sharpenKernel, type Analysis, type TrackFile } from '../worker/src/lib/video/motion';
 import { toXmeml, editorialScore } from '../worker/src/lib/video/xml';
@@ -659,7 +660,19 @@ console.log('\nThumbnails on a press: the example read into a style, the words')
   ok('words that would vanish into the background are drawn white', styleFromReading({ background_color: '#111111', text_color: '#141414' }, false).style.textColor === '#ffffff');
   ok('a 9:16 example with a person is drawn as the Shorts cover', styleFromReading({ person: 'one', person_side: 'center' }, true).style.layout === 'short');
   const looks = modernStyles(1, false);
-  ok('no example: three looks, none with a circle or a ring — the person beside the words first, the screen card second', looks.length === 3 && looks[0].layout === 'bold' && looks[1].layout === 'modern' && looks[1].faceFrame === 'none' && looks.every(l => l.pointer === 'none' && l.faceFrame !== 'round') && looks.every(l => /^#[0-9a-f]{6}$/.test(l.color!)) && modernStyles(2, false)[0].color !== looks[0].color);
+  ok('no example: three looks, the person beside the words (both sides) then a big headline — no card, circle, ring, glow, box, sticker or border', looks.length === 3 && looks[0].layout === 'bold' && looks[1].layout === 'bold' && looks[0].side !== looks[1].side && looks[2].layout === 'headline' && looks.every(l => l.pointer === 'none' && l.faceFrame === 'none' && l.glow === false && l.hlStyle === 'color' && !l.border && !l.sticker && l.layout !== 'modern') && looks.every(l => /^#[0-9a-f]{6}$/.test(l.color!)) && modernStyles(2, false)[0].color !== looks[0].color);
+  {
+    const face = { x: 0.42, y: 0.2, w: 0.12, h: 0.22 };
+    const shortOld = thumbPlan({ layout: 'short', text: 'Book a call' }, 1080, 1920, { w: 1280, h: 720 }, face);
+    const shortGlow = thumbPlan({ layout: 'short', text: 'Book a call', glow: true }, 1080, 1920, { w: 1280, h: 720 }, face);
+    const plainLooks = [...modernStyles(1, false), ...modernStyles(1, true)].map(st => thumbPlan({ ...st, text: 'Price explained in full', highlight: 'price' }, st.layout === 'short' || st === modernStyles(1, true)[2] ? 1080 : 1280, st.layout === 'short' ? 1920 : 720, { w: 1280, h: 720 }, face));
+    ok('the Shorts cover draws no spotlight or halo round the face unless asked (the "circle on every Short")', !shortOld.spot && !shortOld.halo && !!shortGlow.halo && !!thumbPlan({ layout: 'glow', text: 'x' }, 1280, 720, { w: 1280, h: 720 }, face).halo);
+    ok('…and none of the six default looks draws a ring, arrow, sticker, tile, card, bubble, halo, badge or edge — or a boxed word', plainLooks.every(pl => !pl.ring && !pl.arrow && !pl.sticker && !pl.tile && !pl.card && !pl.bubble && !pl.halo && !pl.badge && !pl.edge && pl.lines.every(l => !l.box)), plainLooks.map(pl => pl.layout));
+    const typed = thumbPlan({ layout: 'bold', text: 'Simple pricing', font: 'serif', upper: false, outline: false, treatment: 'mono' }, 1280, 720, { w: 1280, h: 720 }, face);
+    ok('type and picture follow the design: a serif, as written, no outline, black and white', typed.lines.every(l => l.font === 'Noto Serif' && l.stroke === 0) && typed.lines.map(l => l.runs.map(r => r.t).join('')).join(' ').includes('Simple') && typed.grade.saturation === 0);
+    const read = styleFromReading({ person: 'one', person_side: 'left', person_size: 'large', background: 'gradient', text_area: 'right', font_style: 'display', text_case: 'mixed', text_outline: false, image_treatment: 'muted', annotation: 'arrow', sticker: 'star', decorations: ['none'] }, false);
+    ok('a reference read for its type and treatment; its own list of decorations ("none") wins over a stray arrow or sticker in the answer', read.style.font === 'display' && read.style.upper === false && read.style.outline === false && read.style.treatment === 'muted' && read.style.pointer === 'none' && !read.style.sticker && /display type/.test(read.said), read);
+  }
   ok('a "modern" spec without a round frame draws no bubble; an older spec keeps its bubble', !!thumbPlan({ layout: 'modern', text: 'CRM tutorial' }, 1280, 720, { w: 1280, h: 720 }, { x: 0.6, y: 0.2, w: 0.1, h: 0.2 }).bubble && !thumbPlan({ layout: 'modern', text: 'CRM tutorial', faceFrame: 'none' }, 1280, 720, { w: 1280, h: 720 }, { x: 0.6, y: 0.2, w: 0.1, h: 0.2 }).bubble);
   ok('…a Short gets the Shorts cover first', modernStyles(1, true)[0].layout === 'short');
 }
@@ -987,6 +1000,18 @@ console.log('\nThumbnails on a press: the example read into a style, the words')
   const doc = newDoc(parseRequest('a video'));
   const added = applyOps(doc, [{ op: 'clip.add', s: 10, e: 40, title: 'x', aspect: '4:5', framing: { strategy: 'whole' }, scores: { hook: 9, clarity: 2, relevance: 3, completeness: 4 } }, { op: 'clip.add', s: 50, e: 80 }], 120).doc;
   ok('a new Short takes the wizard\'s shape, framing and scores; every new Short is framed "auto", never a bare centre crop', added.clips[0].aspect === '4:5' && added.clips[0].framing?.strategy === 'whole' && added.clips[0].reframe.mode === 'fit' && added.clips[0].scores?.hook === 5 && added.clips[1].framing?.strategy === 'auto' && added.clips[1].reframe.mode === 'crop');
+}
+
+/* ── Thumbnail design themes (lib/design/thumbThemes.ts) ─────────────────── */
+{
+  const d = cleanDesign({ layout: 'nonsense', color: 'red', accent: '#ABCDEF', font: 'comic', treatment: 'mono', upper: false, text: 'Their words', at: 12, badge: 'x' });
+  ok('a theme\'s design keeps only the engine\'s own names and #rrggbb colours — never words, a moment or a badge', d.layout === 'bold' && d.color === '#0b0b12' && d.accent === '#abcdef' && d.font === 'sans' && d.treatment === 'mono' && d.upper === false && !('text' in d) && !('at' in d) && !('badge' in d), d);
+  ok('…a theme with no face frame or pointer named gets none (not the round bubble older thumbnails kept)', d.faceFrame === 'none' && d.pointer === 'none' && cleanDesign({ faceFrame: 'round' }).faceFrame === 'round');
+  ok('a theme needs a name; words 2–6; the logo\'s corner and size held to their lists', cleanTheme({ name: '  ', design: {} }) === null && cleanTheme({ name: 'T', words: 40 })!.words === 6 && JSON.stringify(cleanLogo({ on: true, corner: 'middle', size: 99 })) === JSON.stringify({ on: true, corner: 'tr', size: 30 }));
+  const t = cleanTheme({ name: 'Tutorial', design: { layout: 'short', font: 'display', color: '#111111', color2: '#222222', glow: false }, logo: { on: true, corner: 'bl', size: 12 }, words: 3 })!;
+  const plan = thumbPlan({ ...styleOfTheme(t), text: 'Book your first call', highlight: 'call' }, 1080, 1920, { w: 1280, h: 720 }, { x: 0.45, y: 0.2, w: 0.1, h: 0.2 });
+  ok('a theme makes the thumbnail in its design with the video\'s words: its type, no shapes it does not have', plan.layout === 'short' && plan.lines.every(l => l.font === 'Noto Sans Display') && !plan.halo && !plan.ring && !plan.sticker && !plan.bubble, plan.layout);
+  ok('…and its card says what it is, in words from its fields', /Shorts cover[\s\S]*display type[\s\S]*3 words[\s\S]*logo bottom left/.test(describeTheme(t)), describeTheme(t));
 }
 
 console.log(`\n${pass} passed, ${failN} failed`);

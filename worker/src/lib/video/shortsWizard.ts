@@ -58,8 +58,8 @@ export interface WizardPrefs {
   framing: FrameStrategy;
   /** The customer's logo on the Shorts (only when one is set up). */
   logo: boolean;
-  /** Thumbnails made with the Shorts: the modern look, or none (saved design themes join in Phase 3). */
-  thumbnail: 'modern' | 'none';
+  /** Thumbnails made with the Shorts: the plain looks, a saved design theme (`theme:<id>`), or none. */
+  thumbnail: 'modern' | 'none' | `theme:${string}`;
   cta: string;
   /** The customer's own length, overriding the platform's (seconds). */
   min?: number;
@@ -81,7 +81,7 @@ export function cleanPrefs(raw: unknown): WizardPrefs {
     captions: pick(o.captions, CAPTION_PRESETS, DEFAULT_PREFS.captions),
     framing: pick(o.framing, FRAMINGS, 'auto'),
     logo: o.logo !== false,
-    thumbnail: o.thumbnail === 'none' ? 'none' : 'modern',
+    thumbnail: o.thumbnail === 'none' ? 'none' : typeof o.thumbnail === 'string' && /^theme:th-[0-9a-f-]{36}$/.test(o.thumbnail) ? o.thumbnail as `theme:${string}` : 'modern',
     cta: String(o.cta ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 140),
   };
   const lim = PLATFORMS[p.platform].max;

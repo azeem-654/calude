@@ -203,7 +203,7 @@ API failures, memory) and the final report, written to
   a real e2e render check of a planner Short (the engine path is the
   existing `screenFrame`, exercised by the Screen Recorder e2e).
 
-### Phase 2 — status: BUILT 2026-11-10 (awaiting the owner's go-ahead for Phase 3)
+### Phase 2 — status: DONE 2026-11-10 (commits c238b0e, d389835)
 
 **What was built** (details word for word in `docs/claude/video-studio.md`
 → "The Shorts wizard"):
@@ -254,11 +254,30 @@ panel's "kept after a reload". A run on the commit before Phase 1
   until Phase 3's saved themes exist — Phase 3 adds them to step 3
   (`WizardPrefs.thumbnail`) and to `shorts_create`'s thumbnails enqueue.
 
-### Phase 3 — status: NOT STARTED
-Start here: read this file, then `docs/claude/video-studio.md` →
-"Thumbnails" and the 2026-11 "Thumbnails without a circle" note, then
-`worker/src/lib/video/thumbStyle.ts`, `media/engine/thumbLayout.mjs`
-(`thumbPlan`, stickers, arrow/ring, panels, number), `ThumbnailDesigner.tsx`,
-`ThumbShowcase.tsx`, `designerHandoff.ts`, `worker/src/lib/design/`
-(`spec.ts`, `templates.ts`) and `docs/claude/graphics.md`. Build what **The
-plan → Phase 3** says; plug saved themes into the wizard (above).
+### Phase 3 — status: BUILT 2026-11-10 (owner asked: phase 3, then live)
+
+**What was built** (details word for word in `docs/claude/video-studio.md`
+→ "Thumbnails without stray shapes, and design themes"; `graphics.md` →
+"Thumbnail themes"):
+- `media/engine/thumbLayout.mjs`: `FONTS`, `TREATMENTS`; spec fields
+  `font`, `upper`, `outline`, `treatment`, `glow`; the Shorts cover's halo
+  only when asked. `.d.mts` updated. Engine `thumbnail`: `params.logoAt`.
+- `thumbStyle.ts`: `modernStyles` rewritten (no card, bubble, halo, box,
+  sticker, border); `EXAMPLE_PROMPT` reads type, case, outline, treatment,
+  decorations; `styleFromReading` maps them. `pipeline.ts`: `ThumbSpec` and
+  `cleanThumbSpec` carry the new fields; the job's base spec draws nothing
+  unasked; `input.logo` → `logoAt`; a cancelled thumbnail of a removed Short
+  is no stage (`stagesOf`).
+- Themes: `worker/src/lib/design/thumbThemes.ts`, migration
+  `0088_design_themes.sql`, `worker/src/routes/designThemes.ts`
+  (`/api/design-themes.php`, registered in `index.ts`); video route
+  `thumbnails` + `themeId`, `thumbs_theme`, `shorts_create` theme prefs;
+  `shortsWizard.ts` `thumbnail: 'theme:<id>'`.
+- Browser: `src/services/designThemes.ts`, `ThumbShowcase.tsx` (Save as a
+  theme; themes in New thumbnail, for all Shorts), `ShortsWizard.tsx`
+  (themes in step 3), `SocialCreator/design/ThemeLibrary.tsx` + mount in
+  `SocialCreator.tsx`, CSS in `videoStudio.css` and `design.css`.
+- Tests: `test:video` 381 (+10), `test:security` 205 (+4 themes),
+  `test:videoe2e` themes section + updated thumbnail-look check.
+
+**Final report**: `docs/VIDEO-STUDIO-OVERHAUL-REPORT.md`.

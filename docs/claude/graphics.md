@@ -81,3 +81,13 @@ text or draw a mask.
   and a price), `npm run test:security` (media tenancy). Rendering is checked by
   eye: the contact-sheet harness used on 2026-10-29 bundled `render.ts` with
   esbuild and screenshotted every template in every format.
+- **Thumbnail themes** (2026-11, `design/ThemeLibrary.tsx`, lazy, under the
+  template gallery on `/social-creator`): the Design Studio's reusable
+  thumbnail designs (`worker/src/lib/design/thumbThemes.ts`, table
+  `crm_design_themes`, `/api/design-themes.php`). A theme is the engine's
+  design fields (layout, colours, type, case, outline, treatment, places,
+  logo corner/size, word count) — never a flattened picture. Cards and the
+  editor draw it with the Video Studio's `PlanPreview` from the same
+  `thumbPlan` the engine paints, on the customer's own video posters. Used
+  from AI Video Studio and the Shorts wizard — `docs/claude/video-studio.md`
+  says how.

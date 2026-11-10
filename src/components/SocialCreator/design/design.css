@@ -140,3 +140,17 @@
   .dz-bar .dz-btn { flex: 1 1 auto; }
   .dz-name { flex-basis: 100%; order: -1; }
 }
+
+/* ── Thumbnail themes (ThemeLibrary.tsx) ── */
+.th-lib { margin-top: 28px; }
+.th-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+.th-card-art { background: #0f1115; padding: 10px; display: grid; place-items: center; }
+.th-card-art .td-canvas.tall { width: min(100%, 150px); }
+.th-edit { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; padding: 16px 18px; overflow: auto; }
+.th-stage { display: grid; gap: 10px; align-content: start; justify-items: stretch; }
+.th-stage .td-canvas.tall { justify-self: center; width: min(100%, 300px); }
+.th-fields { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.th-fields input:not([type]), .th-fields select, .th-stage select, .th-stage input:not([type]) { border: 1px solid var(--dz-line); border-radius: 9px; padding: 7px 9px; font: inherit; font-size: 13px; font-weight: 500; min-width: 0; }
+.th-color input { width: 44px; height: 30px; padding: 0; border: 1px solid var(--dz-line); border-radius: 8px; background: #fff; }
+.dz-check { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; font-weight: 600; }
+@media (max-width: 760px) { .th-edit { grid-template-columns: 1fr; } }

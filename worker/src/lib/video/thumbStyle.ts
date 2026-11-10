@@ -30,7 +30,7 @@ import { TREND_LAYOUTS, STICKERS } from '../../../../media/engine/thumbLayout.mj
 import type { ThumbSpec } from './pipeline';
 
 /** The look options a style may set — never the words, the moment or the layout list itself. */
-export type ThumbStyle = Partial<Pick<ThumbSpec, 'layout' | 'accent' | 'color' | 'color2' | 'textColor' | 'hlStyle' | 'side' | 'textPos' | 'textSize' | 'sticker' | 'pointer' | 'border' | 'zoom' | 'faceFrame'>>;
+export type ThumbStyle = Partial<Pick<ThumbSpec, 'layout' | 'accent' | 'color' | 'color2' | 'textColor' | 'hlStyle' | 'side' | 'textPos' | 'textSize' | 'sticker' | 'pointer' | 'border' | 'zoom' | 'faceFrame' | 'font' | 'upper' | 'outline' | 'treatment' | 'glow'>>;
 
 /* ── Words ────────────────────────────────────────────────────────────────── */
 
@@ -69,26 +69,30 @@ const PALETTES: { color: string; color2: string; accent: string }[] = [
 ];
 
 /**
- * Three looks for one press: the modern face-and-screen card twice (two
- * palettes, the picked word boxed then coloured, the face on either side),
- * then one of the trending face layouts for contrast. `set` turns the palette
- * wheel, so asking again gives different colours.
+ * Three looks for one press when there is no example (rewritten 2026-11,
+ * the owner's "strange square or circular shapes"): the person large beside
+ * the words on a gradient, the same the other way round in another palette,
+ * then a big headline over the darkened frame — a Short's cover with the
+ * words low, then high. Nothing is added that the video did not give: no
+ * screenshot card, no round frame, no glow ring, no word in a tilted box, no
+ * arrow, sticker or border. Those come only from an example that has them,
+ * or from the customer's own design. `set` turns the palette wheel.
  */
 export function modernStyles(set: number, portrait: boolean, brandAccent = ''): ThumbStyle[] {
   const p = (k: number) => PALETTES[((set - 1) * 2 + k) % PALETTES.length];
   const a = p(0), b = p(1);
   const accent = (x: string) => (/^#[0-9a-f]{6}$/i.test(brandAccent) && brandAccent.toLowerCase() !== '#ffffff' && set === 1 ? brandAccent : x);
+  const plain = { textColor: '#ffffff', hlStyle: 'color', border: false, pointer: 'none', faceFrame: 'none', glow: false, sticker: '' } as const;
   if (portrait) return [
-    { layout: 'short', color: a.color, color2: a.color2, accent: accent(a.accent), textColor: '#ffffff', hlStyle: 'box', border: false, zoom: 0.6, pointer: 'none' },
-    { layout: 'modern', color: b.color, color2: b.color2, accent: b.accent, textColor: '#ffffff', hlStyle: 'color', border: false, zoom: 0.5, faceFrame: 'none', pointer: 'none' },
-    { layout: 'headline', color: a.color, color2: a.color2, accent: a.accent, textColor: '#ffffff', hlStyle: 'box', border: false, zoom: 0.5, pointer: 'none' },
+    { ...plain, layout: 'short', color: a.color, color2: a.color2, accent: accent(a.accent), zoom: 0.6 },
+    { ...plain, layout: 'short', color: b.color, color2: b.color2, accent: b.accent, zoom: 0.5, textPos: 'top' },
+    { ...plain, layout: 'headline', color: a.color, color2: a.color2, accent: a.accent, zoom: 0.5 },
   ];
-  /* Face beside the words (either side by set), the screen as a card, then a big headline. */
-  const side = set % 2 ? 'auto' : (set % 4 === 2 ? 'right' : 'left');
+  const side = set % 2 ? 'left' : 'right';
   return [
-    { layout: 'bold', color: a.color, color2: a.color2, accent: accent(a.accent), textColor: '#ffffff', hlStyle: 'box', side, border: false, zoom: 0.65, pointer: 'none' },
-    { layout: 'modern', color: b.color, color2: b.color2, accent: b.accent, textColor: '#ffffff', hlStyle: 'color', side: 'auto', border: false, zoom: 0.5, faceFrame: 'none', pointer: 'none' },
-    { layout: (['headline', 'cinematic', 'bold'] as const)[(set - 1) % 3], color: a.color, color2: a.color2, accent: a.accent, textColor: '#ffffff', hlStyle: 'box', side: 'auto', border: false, zoom: 0.55, pointer: 'none' },
+    { ...plain, layout: 'bold', color: a.color, color2: a.color2, accent: accent(a.accent), side, zoom: 0.65 },
+    { ...plain, layout: 'bold', color: b.color, color2: b.color2, accent: b.accent, side: side === 'left' ? 'right' : 'left', zoom: 0.55 },
+    { ...plain, layout: 'headline', color: a.color, color2: a.color2, accent: a.accent, side: 'auto', zoom: 0.55 },
   ];
 }
 
@@ -130,6 +134,11 @@ export const EXAMPLE_PROMPT = [
   '"annotation": "none" | "arrow" | "circle" | "both" — a hand-drawn style arrow or ring drawn ON the picture (not a frame);',
   `"sticker": ${STICKERS.map(s => `"${s}"`).join(' | ')} | "none" — an emoji-like badge, if any;`,
   '"border": true only if the whole picture has a coloured outline round its edge;',
+  '"font_style": "sans" | "serif" | "display" — the headline\'s type: a plain heavy sans, a serif, or a tall condensed display face;',
+  '"text_case": "upper" | "mixed" — all capitals, or as written;',
+  '"text_outline": true if the headline letters have a dark outline or stroke round them;',
+  '"image_treatment": "vivid" | "natural" | "muted" | "dark" | "mono" — how the photo is graded (punchy colour, true to life, desaturated, darkened, black and white);',
+  '"decorations": a list of any of "arrow" | "circle" | "screenshot_card" | "sticker" | "badge" | "border" | "number_tile" | "none" — every shape or element drawn ON the design besides the photo and the words. Most professional thumbnails: ["none"].',
   '"layout_guess": one of modern | bold | glow | headline | callout | split | number | cinematic — only as a hint.',
 ].join('\n');
 
@@ -219,6 +228,19 @@ export function styleFromReading(raw: unknown, portrait: boolean, palette: strin
   /* In "modern" a round frame is itself the circle a model sees: no second red ring inside it. */
   if (layout === 'modern' && style.faceFrame === 'round' && annot !== 'none') style.pointer = annot === 'circle' ? 'none' : 'arrow';
   style.border = yes(r.border);
+  /* The type and the picture, as the example has them. */
+  const font = one(r.font_style, ['sans', 'serif', 'display'] as const);
+  if (font) style.font = font;
+  if (one(r.text_case, ['upper', 'mixed'] as const) === 'mixed') style.upper = false;
+  if (r.text_outline !== undefined) style.outline = yes(r.text_outline);
+  const treat = one(r.image_treatment, ['vivid', 'natural', 'muted', 'dark', 'mono'] as const);
+  if (treat) style.treatment = treat;
+  style.glow = yes(r.glow);
+  /* Only what the example shows is drawn: its list of decorations is the last word on stickers, rings, arrows and boxes. */
+  const decor = new Set((Array.isArray(r.decorations) ? r.decorations : []).map(x => String(x).toLowerCase().trim()));
+  if (decor.size && !decor.has('sticker')) delete style.sticker;
+  if (decor.size && !decor.has('arrow') && !decor.has('circle')) style.pointer = 'none';
+  if (decor.size && !decor.has('border')) style.border = false;
   const n = Math.round(Number(r.word_count));
   const words = Number.isFinite(n) ? Math.min(5, Math.max(2, n)) : 4;
   const NAMES: Record<string, string> = { modern: 'screen + words', bold: 'person beside big words', glow: 'person in a glow', headline: 'big headline', callout: 'callout', split: 'two halves', number: 'big number', cinematic: 'cinematic', short: 'Shorts cover' };
@@ -229,6 +251,10 @@ export function styleFromReading(raw: unknown, portrait: boolean, palette: strin
     style.side && style.side !== 'auto' ? `person ${style.side === 'center' ? 'in the middle' : `on the ${style.side}`}` : '',
     style.textPos ? `words ${style.textPos === 'middle' ? 'beside' : `at the ${style.textPos}`}` : '',
     style.faceFrame === 'round' ? 'face in a circle (as in your example)' : '',
+    style.font && style.font !== 'sans' ? `${style.font} type` : '',
+    style.upper === false ? 'words as written (not capitals)' : '',
+    style.outline === false ? 'no outline on the words' : '',
+    style.treatment && style.treatment !== 'vivid' ? `${style.treatment === 'mono' ? 'black-and-white' : style.treatment} picture` : '',
     annot !== 'none' ? `${annot === 'both' ? 'an arrow and a ring' : `a${annot === 'arrow' ? 'n' : ''} ${annot}`} (as in your example)` : '',
     pal.length ? 'colours taken from your picture' : '',
     `${words} words`,

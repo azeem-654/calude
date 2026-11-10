@@ -140,6 +140,12 @@ export interface ThumbSpec {
   badge?: string;
   /** "modern" only: the speaker also cropped into a round frame ('round'), or left in the card ('none'). Absent = round, as older specs were drawn. */
   faceFrame?: 'none' | 'round';
+  /** The words' family, capitals or as written, an outline or none; the picture's grade; the glow round a face (thumbLayout.mjs). */
+  font?: 'sans' | 'serif' | 'display';
+  upper?: boolean;
+  outline?: boolean;
+  treatment?: 'vivid' | 'natural' | 'muted' | 'dark' | 'mono';
+  glow?: boolean;
 }
 export interface Thumb { key: string; width: number; height: number; layout: string; bytes: number; verified: boolean; check: string; headline: string; set: number; spec?: ThumbSpec; face?: boolean }
 
@@ -1152,6 +1158,7 @@ export function cleanThumbSpec(raw: unknown, fallback: ThumbSpec): ThumbSpec {
   return {
     ...base, color2: o.color2, hlStyle: o.hlStyle, side: o.side, textPos: o.textPos, textSize: o.textSize,
     sticker: o.sticker, pointer: o.pointer, badge: o.badge, faceFrame: o.faceFrame,
+    font: o.font, upper: o.upper, outline: o.outline, treatment: o.treatment, glow: o.glow,
   };
 }
 
@@ -1160,7 +1167,8 @@ async function thumbnailJob(env: Env, origin: string, job: JobRow, p: ProjectRow
   if (!out) { await save(env, job, { state: 'cancelled', error: 'output removed' }); return; }
   /* `style`: read from the customer's example (thumbStyle.ts) — three PNGs in
      that style at three moments. Neither `style` nor `custom`: the modern looks. */
-  const input = parse<{ set?: number; custom?: ThumbSpec; style?: ThumbStyle; words?: number }>(job.input, {});
+  /* `logo`: a design theme's logo place ({on, corner, size}); absent, the brand's logo top right as before. */
+  const input = parse<{ set?: number; custom?: ThumbSpec; style?: ThumbStyle; words?: number; logo?: { on: boolean; corner: string; size: number }; theme?: string }>(job.input, {});
   const set = input.set ?? 1;
   const doc = parse<VideoDoc>(p.doc, null as unknown as VideoDoc);
   const src = parse<Source>(p.source, {});
@@ -1185,7 +1193,8 @@ async function thumbnailJob(env: Env, origin: string, job: JobRow, p: ProjectRow
   const accent = /^#[0-9a-f]{6}$/i.test(brand.accent) && brand.accent.toLowerCase() !== '#ffffff' ? brand.accent : '#facc15';
   /* Words the customer typed are theirs as typed; otherwise the title, cut to a punchy few. */
   const words = doc.thumbnails.headline[out.id] ? thumbWords(headline, 8) : punchyWords(headline, input.words ?? 4);
-  const base: ThumbSpec = { layout: 'modern', text: words, highlight: pickHighlight(words), at, accent, color: '#0b0b12', textColor: '#ffffff', border: true, zoom: 0.5 };
+  /* Nothing drawn that nobody asked for: no round frame, ring, arrow, glow or border unless the style or the customer's design has it. */
+  const base: ThumbSpec = { layout: 'bold', text: words, highlight: pickHighlight(words), at, accent, color: '#0b0b12', textColor: '#ffffff', border: false, zoom: 0.5, faceFrame: 'none', pointer: 'none', glow: false, hlStyle: 'color' };
   const shares = [0.2, 0.45, 0.7];
   const specs: ThumbSpec[] = input.custom
     ? [cleanThumbSpec(input.custom, base)]
@@ -1197,14 +1206,14 @@ async function thumbnailJob(env: Env, origin: string, job: JobRow, p: ProjectRow
   return engineStep(env, origin, job, p, async () => ({
     op: 'thumbnail' as const,
     params: {
-      at, width: W, height: H,
+      at, width: W, height: H, ...(input.logo?.on ? { logoAt: { corner: input.logo.corner, size: input.logo.size } } : {}),
       items: specs.map((sp, k) => (TREND_LAYOUTS as readonly string[]).includes(sp.layout)
         ? { ...cleanThumbSpec(sp, sp), name: `thumb-${k + 1}.png`, id: `${set}-${k + 1}` }
         : { name: `thumb-${k + 1}.png`, id: `${set}-${k + 1}`, layout: sp.layout, at: sp.at, color: brand.color, accent: sp.accent, ass: thumbAss(sp.text, sp.layout as 'left' | 'band' | 'frame', W, H, sp.accent) }),
     },
     inputs: {
       source: await fileUrl(env, origin, p.account_id, src.key!, 4 * 3600),
-      ...(brand.logoKey ? { logo: await fileUrl(env, origin, p.account_id, brand.logoKey, 4 * 3600) } : {}),
+      ...(brand.logoKey && input.logo?.on !== false ? { logo: await fileUrl(env, origin, p.account_id, brand.logoKey, 4 * 3600) } : {}),
     },
     upload: await uploadPrefixUrl(env, origin, p.account_id, dir, 4 * 3600),
   }), async r => {
@@ -1327,7 +1336,8 @@ export function stagesOf(p: ProjectRow, jobs: JobRow[], outs: OutputRow[], uploa
         : list.some(j => j.state === 'running' || j.attempts > 0) ? 'active' : 'waiting';
   const pctOf = (list: JobRow[]) => { const r = list.find(j => j.state === 'running' && typeof j.progress === 'number'); return r ? Math.round(r.progress!) : null; };
   const noteOf = (list: JobRow[]) => list.find(j => j.state !== 'done' && (j.error || j.stage))?.error || list.find(j => j.state === 'running')?.stage || '';
-  const renders = of('render'), thumbs = of('thumbnails');
+  /* A thumbnail cancelled because its Short was removed is no stage of this project's. */
+  const renders = of('render'), thumbs = of('thumbnails').filter(j => !(j.state === 'cancelled' && /output removed/.test(j.error ?? '')));
   const doc = parse<VideoDoc>(p.doc, null as unknown as VideoDoc);
   const renderedN = outs.filter(o => o.status !== 'processing' && o.status !== 'failed').length;
   const fetches = of('fetch_url');

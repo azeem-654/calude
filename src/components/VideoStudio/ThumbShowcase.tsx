@@ -15,11 +15,12 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, Image as ImageIcon, ImagePlus, Loader, Paintbrush, Pencil, Sparkles, Upload, Wand2, X, Check } from 'lucide-react';
+import { Download, Image as ImageIcon, ImagePlus, Loader, Paintbrush, Pencil, Sparkles, Upload, Wand2, X, Check, Bookmark, Palette } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { thumbAsDesign } from './designerHandoff';
 import ThumbnailDesigner from './ThumbnailDesigner';
-import { chooseThumb, createThumbnails, uploadThumbExample, videoStatus, type OutputView, type ThumbView } from '../../services/videoStudio';
+import { chooseThumb, createThumbnails, thumbsInTheme, uploadThumbExample, videoStatus, type OutputView, type ThumbView } from '../../services/videoStudio';
+import { listThemes, saveTheme, describeTheme, type ThumbTheme } from '../../services/designThemes';
 import type { EditorCtx } from './VideoEditor';
 
 /** Opens a thumbnail as a new design in the Graphics Designer & Editor (see designerHandoff.ts). */
@@ -59,19 +60,36 @@ function ThumbStart({ ctx, o, onClose, onDone }: { ctx: EditorCtx; o: OutputView
     return () => window.removeEventListener('keydown', k);
   }, [busy, onClose]);
   const pid = ctx.view.project.id;
-  const go = async (withExample: boolean) => {
+  /* Saved design themes (Graphics Designer & Editor → Thumbnail themes): one press, this video's own words and picture. */
+  const [themes, setThemes] = useState<ThumbTheme[] | null>(null);
+  const [themeId, setThemeId] = useState('');
+  const shorts = ctx.view.outputs.filter(x => x.kind === 'short');
+  const [allShorts, setAllShorts] = useState(false);
+  useEffect(() => { void listThemes().then(r => setThemes(r.success ? r.themes : [])); }, []);
+  const go = async (withExample: boolean, theme = '') => {
     setErr('');
     let key: string | undefined;
     let palette: string[] = [];
-    if (withExample) {
+    if (theme && allShorts && o.kind === 'short') {
+      setBusy('Starting the thumbnails for every Short…');
+      const r = await thumbsInTheme(pid, theme, shorts.map(x => x.id));
+      setBusy('');
+      if (!r.success) { setErr(r.error ?? 'The thumbnails could not be started.'); return; }
+      await ctx.refresh();
+      onDone(r.note);
+      onClose();
+      return;
+    }
+    if (theme) setBusy('Starting in your theme…');
+    else if (withExample) {
       if (!file) { setErr('Attach an example first — or design a modern one.'); return; }
       setBusy('Uploading your example…');
       const up = await uploadThumbExample(pid, o.id, file);
       if (!up.ok) { setBusy(''); setErr(up.error); return; }
       key = up.key; palette = up.palette;
       setBusy('Reading your example’s design…');
-    } else setBusy('Starting…');
-    const r = await createThumbnails(pid, o.id, key, palette);
+    } else if (!theme) setBusy('Starting…');
+    const r = await createThumbnails(pid, o.id, key, palette, theme || undefined);
     if (!r.success) { setBusy(''); setErr(r.error ?? 'The thumbnail could not be started.'); return; }
     const note = r.note ?? '';
     setBusy(note ? `${note} Drawing it now…` : 'Drawing your thumbnails…');
@@ -104,6 +122,21 @@ function ThumbStart({ ctx, o, onClose, onDone }: { ctx: EditorCtx; o: OutputView
           {seen ? <img src={seen} alt="Your example thumbnail" /> : <span><Upload size={18} /><b>Choose or drop an example</b><small>A JPEG, PNG or WebP — a screenshot of a thumbnail you like is fine</small></span>}
           <input type="file" accept="image/png,image/jpeg,image/webp" onChange={e => setFile(e.target.files?.[0] ?? null)} disabled={!!busy} data-testid="vs-thumb-example" />
         </label>
+        {themes && themes.length > 0 && (
+          <div className="ts-themes" data-testid="vs-thumb-themes">
+            <b><Palette size={14} /> Or use one of your design themes</b>
+            <div className="ts-theme-list" role="radiogroup" aria-label="Design themes">
+              {themes.map(t => (
+                <button key={t.id} type="button" role="radio" aria-checked={themeId === t.id} className="ts-theme" onClick={() => setThemeId(themeId === t.id ? '' : t.id)} data-theme-id={t.id}>
+                  <i style={{ background: `linear-gradient(135deg, ${t.design.color}, ${t.design.color2 || t.design.color})` }}><em style={{ color: t.design.accent }}>Aa</em></i>
+                  <span><b>{t.name}</b><small>{t.description || describeTheme(t)}</small></span>
+                </button>
+              ))}
+            </div>
+            {o.kind === 'short' && shorts.length > 1 && <label className="vs-opt"><input type="checkbox" checked={allShorts} onChange={e => setAllShorts(e.target.checked)} /> For all {shorts.length} Shorts, so they match</label>}
+            <button type="button" className="vs-btn ai sm" disabled={!themeId || !!busy} onClick={() => void go(false, themeId)} data-act="thumb-from-theme"><Palette size={14} /> Make it in this theme</button>
+          </div>
+        )}
         {err && <div className="vs-note bad" role="alert">{err}</div>}
         {busy ? (
           <div className="vs-note" role="status" data-testid="vs-thumb-start-busy"><Loader size={14} className="spin" /> <span>{busy}</span></div>
@@ -119,8 +152,43 @@ function ThumbStart({ ctx, o, onClose, onDone }: { ctx: EditorCtx; o: OutputView
   );
 }
 
+/**
+ * "Save as a theme": the chosen thumbnail's design (its spec without the
+ * words or the moment) kept in the Design Studio, to make the next Short's
+ * thumbnail in the same look. Named and described here; edited, duplicated
+ * and previewed on other videos in the Graphics Designer & Editor.
+ */
+function SaveTheme({ t, onSaved, onClose }: { t: ThumbView; onSaved: (note: string) => void; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [desc, setDesc] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<{ text: string; field?: string } | null>(null);
+  const words = Math.min(6, Math.max(2, (t.spec?.text ?? t.headline).split(/\s+/).filter(Boolean).length));
+  const save = async () => {
+    setBusy(true); setErr(null);
+    const r = await saveTheme({ name, description: desc, design: (t.spec ?? {}) as Record<string, unknown>, logo: { on: true, corner: 'tr', size: 13 }, words, source: 'thumbnail' });
+    setBusy(false);
+    if (!r.success) { setErr({ text: r.error ?? 'The theme could not be saved.', field: r.field }); return; }
+    onSaved(`Saved as the theme “${r.theme.name}” — use it from “New thumbnail”, the Shorts wizard, or edit it in Graphics Designer & Editor → Thumbnail themes.`);
+    onClose();
+  };
+  return (
+    <div className="ts-save" data-testid="vs-thumb-save-theme">
+      <label className="vs-label">Theme name<input className="vs-input" value={name} onChange={e => setName(e.target.value)} maxLength={60} placeholder="e.g. Tutorial — purple" data-field="theme.name" autoFocus /></label>
+      <label className="vs-label">What it is for (optional)<input className="vs-input" value={desc} onChange={e => setDesc(e.target.value)} maxLength={300} placeholder="e.g. every software tutorial Short" /></label>
+      <small className="vs-kbd">Saves the design itself — layout, colours, type, how the picture is treated, where the logo goes — not this picture or its words.</small>
+      {err && <div className="vs-note bad" role="alert" data-field-error={err.field}>{err.text}</div>}
+      <div className="vs-row" style={{ gap: 6 }}>
+        <button type="button" className="vs-btn ai sm" disabled={busy || !name.trim()} onClick={() => void save()} data-act="save-theme">{busy ? <Loader size={13} className="spin" /> : <Bookmark size={13} />} Save theme</button>
+        <button type="button" className="vs-btn ghost sm" onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 export default function ThumbShowcase({ ctx, o, testId = "vs-board-thumbs" }: { ctx: EditorCtx; o: OutputView; testId?: string }) {
   const designer = useEditInDesigner(ctx);
+  const [saving, setSaving] = useState(false);
   const [start, setStart] = useState(false);
   const [edit, setEdit] = useState<ThumbView | null | 'new'>(null);
   const [note, setNote] = useState('');
@@ -159,7 +227,9 @@ export default function ThumbShowcase({ ctx, o, testId = "vs-board-thumbs" }: { 
             </button>
           )}
           {canMake && <button type="button" className="ob-act" onClick={() => setEdit('new')} data-act="design-new-thumb"><Wand2 size={14} /> Design one yourself</button>}
+          {chosen?.verified && chosen.spec && !saving && <button type="button" className="ob-act" onClick={() => setSaving(true)} data-act="thumb-save-theme"><Bookmark size={14} /> Save as a theme</button>}
         </div>
+        {saving && chosen && <SaveTheme t={chosen} onSaved={setNote} onClose={() => setSaving(false)} />}
         {chosen && !chosen.verified && <small className="vs-kbd">{chosen.check}</small>}
         {others.length > 0 && (
           <div className="ts-strip" aria-label="Other thumbnails">

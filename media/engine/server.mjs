@@ -1428,10 +1428,16 @@ async function thumbnail(job, dir) {
     await exec(FFMPEG, [...base, ...inImage(job.inputs.portrait), '-frames:v', '1', '-vf', cover, portrait], job);
   }
   let logo = '';
+  /* Where the logo goes and how big (a design theme's choice; absent: top right, 13% of the width, as before). Numbers and four names only. */
+  const la = job.params.logoAt && typeof job.params.logoAt === 'object' ? job.params.logoAt : {};
+  const corner = ['tl', 'tr', 'bl', 'br'].includes(la.corner) ? la.corner : 'tr';
+  const logoW = Math.round(W * num(la.size, 13, 6, 30) / 100);
   if (job.inputs.logo) {
     logo = path.join(dir, 'logo.png');
-    await exec(FFMPEG, [...base, ...inImage(job.inputs.logo), '-frames:v', '1', '-vf', `scale=${Math.round(W * 0.13)}:-1`, logo], job);
+    await exec(FFMPEG, [...base, ...inImage(job.inputs.logo), '-frames:v', '1', '-vf', `scale=${logoW}:-1`, logo], job);
   }
+  const mx = Math.round(W * 0.03), my = Math.round(H * 0.05);
+  const logoPos = `${corner[1] === 'l' ? mx : `W-w-${mx}`}:${corner[0] === 'b' ? `H-h-${my}` : my}`;
   const made = [];
   for (const [i, it] of items.entries()) {
     job.stage = `thumbnail ${i + 1} of ${items.length}`;
@@ -1462,7 +1468,7 @@ async function thumbnail(job, dir) {
       graph = `[0:v]${layoutFilter(String(it.layout), W, H, String(it.color ?? ''), String(it.accent ?? ''))},subtitles=filename=${assFile}:fontsdir=${FONTS}`;
     }
     const logoAt = inputs.filter(x => x === '-i').length;
-    graph = logo ? `${graph}[b];[b][${logoAt}:v]overlay=W-w-${Math.round(W * 0.03)}:${Math.round(H * 0.05)},format=rgb24[o]` : `${graph},format=rgb24[o]`;
+    graph = logo ? `${graph}[b];[b][${logoAt}:v]overlay=${logoPos},format=rgb24[o]` : `${graph},format=rgb24[o]`;
     await exec(FFMPEG, [...base, ...inputs, ...(logo ? ['-i', logo] : []), '-filter_complex', graph, '-map', '[o]', '-frames:v', '1', '-c:v', 'png', '-f', 'image2', out], job);
     /* What came out is decoded again before it is called a PNG: right codec,
        right size. The Worker checks the bytes once more after upload. */

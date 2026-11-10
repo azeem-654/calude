@@ -43,6 +43,7 @@ import { handleSitePlan } from './routes/sitePlan';
 import { handleVideo } from './routes/video';
 import { handleVideoFile } from './routes/videoFile';
 import { handleMedia, handleMediaPhoto } from './routes/media';
+import { handleDesignThemes } from './routes/designThemes';
 import { runVideoJobs } from './lib/video/pipeline';
 /** The every-minute tick that only advances Video Studio jobs (wrangler.jsonc). */
 const VIDEO_CRON = '* * * * *';
@@ -190,6 +191,7 @@ const ROUTES: Record<string, Handler> = {
   /* The Media Center's pictures: graphics exported from the designer, uploads
      to design with, and CC0 photo search (GET ?photo= serves one). */
   '/api/media.php': (req, env) => (req.method === 'GET' ? handleMediaPhoto(req, env) : handleMedia(req, env)),
+  '/api/design-themes.php': handleDesignThemes,
   '/api/setup.php': handleSetup,
   '/api/whitelabel.php': handleWhitelabel,
   /* The client report. `view` answers to nobody signed in — see routes/portal.ts

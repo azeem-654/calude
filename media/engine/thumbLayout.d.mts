@@ -22,6 +22,10 @@ export type FaceFrame = 'none' | 'round';
 export const FACE_FRAMES: readonly FaceFrame[];
 export const HALO: { max: number; inner: number; rise: number; outer: number; soft: number };
 export const NUMBER: RegExp;
+export type FontKey = 'sans' | 'serif' | 'display';
+export type Treatment = 'vivid' | 'natural' | 'muted' | 'dark' | 'mono';
+export const FONTS: Record<FontKey, string>;
+export const TREATMENTS: Treatment[];
 
 /** A thumbnail request with every option, defaulted and clamped. */
 export interface ThumbOptions {
@@ -29,6 +33,7 @@ export interface ThumbOptions {
   accent: string; color: string; color2: string; textColor: string; border: boolean; zoom: number;
   hlStyle: HlStyle; side: Side; textPos: TextPos; textSize: number; sticker: StickerName | ''; pointer: Pointer; badge: string;
   faceFrame: FaceFrame;
+  font: FontKey; upper: boolean; outline: boolean; treatment: Treatment; glow: boolean;
 }
 
 export interface Rect { x: number; y: number; w: number; h: number }

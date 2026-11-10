@@ -386,6 +386,21 @@ check("B cannot overwrite A's project by id", !hijackProject.ok && stillA?.name 
   check("…and A's video project is untouched", after?.doc_version === 1 && after?.a === A.acct, JSON.stringify(after));
 }
 {
+  /* Design themes (the Design Studio's saved thumbnail designs): one workspace's themes are another's "not found". */
+  const mine = await api('design-themes.php', { action: 'save', token: A.token, accountId: A.acct, theme: { name: 'A theme', design: { color: '#123456' } } });
+  check('A saves a design theme', mine.data.success && !!mine.data.theme?.id, JSON.stringify(mine.data).slice(0, 200));
+  const id = mine.data.theme?.id;
+  const over = await api('design-themes.php', { action: 'save', token: B.token, accountId: B.acct, id, theme: { name: 'Taken', design: {} } });
+  const dupe = await api('design-themes.php', { action: 'duplicate', token: B.token, accountId: B.acct, id });
+  const del = await api('design-themes.php', { action: 'delete', token: B.token, accountId: B.acct, id });
+  const seen = await api('design-themes.php', { action: 'list', token: B.token, accountId: B.acct });
+  check("B cannot overwrite, copy or delete A's theme by id, nor see it in its list", over.status === 404 && dupe.status === 404 && del.status === 404 && seen.data.success && !seen.data.themes.some(t => t.id === id), JSON.stringify([over.status, dupe.status, del.status, seen.data.themes?.length]));
+  const intoA = await api('design-themes.php', { action: 'list', token: B.token, accountId: A.acct });
+  check("B cannot read A's themes by naming A's workspace", !intoA.data.success && intoA.status === 403, JSON.stringify([intoA.status, intoA.data]).slice(0, 160));
+  const still = d1rows(`SELECT name, account_id AS a FROM crm_design_themes WHERE id = '${id}'`)[0];
+  check("…and A's theme is untouched", still?.name === 'A theme' && still?.a === A.acct, JSON.stringify(still));
+}
+{
   /* Plan allowances (routes/allowances.ts): a project id is checked against
      the workspace named, a workspace against the session, and only the
      install owner changes what a plan allows. */
