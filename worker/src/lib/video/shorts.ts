@@ -51,7 +51,7 @@ const txt = (v: unknown, n: number) => String(v ?? '').replace(/[\u0000-\u001f]/
 const score = (v: unknown) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(5, Math.max(1, n)) : 3; };
 
 /** Grow or shrink a sentence range to the length asked for, on sentence boundaries. */
-function fit(sentences: Sentence[], a: number, b: number, min: number, max: number): [number, number] | null {
+export function fit(sentences: Sentence[], a: number, b: number, min: number, max: number): [number, number] | null {
   if (a < 0 || b >= sentences.length || b < a) return null;
   const len = () => sentences[b].e - sentences[a].s;
   while (len() > max && b > a) b--;
@@ -191,8 +191,16 @@ export interface VideoMeta {
   chapters: { s: number; title: string }[];
   pinnedComment: string;
   cta: string;
-  by: 'ai' | 'rules';
+  /** A platform category (YouTube's list, shortsWizard.ts `CATEGORIES`) — absent when none was chosen. */
+  category?: string;
+  /** The words for the thumbnail, from the title's or the passage's own words (shortsWizard.ts). */
+  thumbText?: string;
+  by: 'ai' | 'rules' | 'you';
 }
+
+/** YouTube's own category names — the only ones a video's metadata may carry (anything else is dropped, not guessed). */
+export const CATEGORIES = ['Education', 'Science & Technology', 'Howto & Style', 'People & Blogs', 'Entertainment', 'News & Politics', 'Comedy', 'Film & Animation', 'Music', 'Gaming', 'Sports', 'Travel & Events', 'Autos & Vehicles', 'Pets & Animals', 'Nonprofits & Activism'] as const;
+const categoryOf = (v: unknown): string | undefined => CATEGORIES.find(c => c.toLowerCase() === String(v ?? '').trim().toLowerCase());
 
 const uniq = (xs: string[]) => [...new Set(xs.map(x => x.trim()).filter(Boolean))];
 
@@ -221,6 +229,8 @@ export function cleanMeta(raw: Record<string, unknown>, kind: 'long' | 'short', 
     chapters,
     pinnedComment: txt(raw.pinnedComment ?? raw.pinned_comment, 500),
     cta: txt(raw.cta, 140),
+    ...(categoryOf(raw.category) ? { category: categoryOf(raw.category) } : {}),
+    ...(typeof (raw.thumbText ?? raw.thumb_text) === 'string' && String(raw.thumbText ?? raw.thumb_text).trim() ? { thumbText: txt(raw.thumbText ?? raw.thumb_text, 60) } : {}),
     by: 'ai',
   };
 }

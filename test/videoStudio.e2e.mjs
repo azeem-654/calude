@@ -634,16 +634,79 @@ await page.getByTestId('vs-search').fill('');
   await page.waitForTimeout(400);
   await page.locator('.vs-w').nth(300).click();
   await page.getByTestId('vs-composition').click();
-  await page.locator('[data-act="new-short"]').click();
+  await page.locator('[data-act="quick-short"]').click();
   let S1;
   /* While the engine renders, a save can take longer than a few seconds on this machine: up to thirty. */
   for (let i = 0; i < 100; i++) { S1 = await at(); if (S1.doc.clips.length > S0.doc.clips.length) break; await sleep(300); }
   const added = S1.doc.clips.find(c => !S0.doc.clips.some(x => x.id === c.id));
   await page.waitForTimeout(800);
-  ok('…"New short composition" makes a Short from the selection and opens it', !!added && (await page.getByTestId('vs-composition').innerText()).includes(`Short ${S1.doc.clips.length}`), { added, label: await page.getByTestId('vs-composition').innerText() });
+  ok('…"Quick Short" makes a Short from the selection, framed automatically (never a bare centre crop), and opens it', !!added && added.framing?.strategy === 'auto' && (await page.getByTestId('vs-composition').innerText()).includes(`Short ${S1.doc.clips.length}`), { added, label: await page.getByTestId('vs-composition').innerText() });
   if (added) await v('edit', { projectId: PID, baseVersion: S1.docVersion, ops: [{ op: 'clip.remove', id: added.id }], note: 'test: remove the new composition' });
   await page.reload({ waitUntil: 'networkidle' });
   await page.getByTestId('vs-timeline').waitFor({ timeout: 20_000 });
+
+  /* ── The Shorts wizard ── */
+  {
+    const W0 = await at();
+    /* Let AI decide: every passage the mock proposes is one the project already has as a Short, so nothing is offered twice. */
+    const auto = await v('shorts_propose', { projectId: PID, mode: 'auto', prefs: { platform: 'youtube', min: 15, max: 60 } });
+    ok('wizard · "Let AI decide" never proposes footage that is already a Short — those are turned down, with the reason', auto.success && auto.by === 'ai' && auto.proposals.every(p => !W0.doc.clips.some(c => Math.min(c.e, p.e) - Math.max(c.s, p.s) > 1)) && auto.rejected.some(r => /same footage|same topic/.test(r.why)), { n: auto.proposals.length, rejected: auto.rejected.slice(0, 3) });
+    const none = await v('shorts_propose', { projectId: PID, mode: 'topic', query: 'underwater basket weaving', prefs: {} });
+    ok('wizard · a topic the recording never covers gets none, and says so', none.success && none.proposals.length === 0 && /not cover|does not come up/.test(none.verdict), none.verdict);
+    const sent = LONG.script.sentences.find(x => x.e - x.s > 4 && x.s > 60);
+    const rng = await v('shorts_propose', { projectId: PID, mode: 'range', range: [sent.s + 1.3, sent.s + 34], prefs: { min: 10, max: 60 } });
+    ok('wizard · a time range is moved to whole sentences, and says so', rng.success && rng.proposals.length === 1 && Math.abs(rng.proposals[0].s - sent.s) < 0.6 && rng.notes.some(n => /whole sentences/.test(n)), { p: rng.proposals[0] && [rng.proposals[0].s, rng.proposals[0].e], sent: [sent.s, sent.e], notes: rng.notes });
+    const bad = await v('shorts_propose', { projectId: PID, mode: 'topic', query: '', prefs: {} });
+    ok('wizard · an empty topic is refused, naming the box', !bad.success && bad.field === 'video.shortsTopic', bad);
+
+    /* Through the screens: composition menu → wizard → a topic → the proposal → make it. */
+    await page.getByTestId('vs-composition').click();
+    await page.locator('[data-act="new-short"]').click();
+    await page.getByTestId('vs-shorts-wizard').waitFor({ timeout: 10_000 });
+    const step1 = await page.getByTestId('vs-wz-step1').innerText();
+    ok('wizard · "New short composition" opens the wizard (not a crop): first what the recording holds — length, shape, speech, kind', /Length[\s\S]*Shape[\s\S]*landscape[\s\S]*Speech[\s\S]*sentences[\s\S]*Kind of recording/i.test(step1), step1.slice(0, 400));
+    await page.locator('[data-act="wz-next"]').click();
+    ok('wizard · "Let AI decide" is the default way, marked recommended', (await page.locator('[data-way="auto"]').getAttribute('aria-checked')) === 'true' && /Recommended/.test(await page.locator('[data-way="auto"]').innerText()));
+    await page.locator('[data-way="topic"]').click();
+    await page.getByTestId('vs-wz-topic').fill('the pricing');
+    await page.locator('[data-act="wz-next"]').click();
+    const step3 = await page.getByTestId('vs-wz-step3').innerText();
+    ok('wizard · then only what changes the result: platform, shape, framing, captions, language, logo, thumbnail, call to action, length', /YouTube Shorts[\s\S]*9:16[\s\S]*Framing[\s\S]*Captions[\s\S]*Language[\s\S]*logo[\s\S]*Thumbnail[\s\S]*Call to action[\s\S]*length/i.test(step3), step3.slice(0, 500));
+    await page.locator('[data-act="wz-propose"]').click();
+    await page.getByTestId('vs-wz-step4').waitFor({ timeout: 60_000 });
+    const card = page.getByTestId('vs-wz-proposal').first();
+    await card.locator('summary').click();
+    const cardText = await card.innerText();
+    ok('wizard · the proposal: title, topic, times, why, its checks, what is said, framing, thumbnail idea and the words to publish', (await page.getByTestId('vs-wz-proposal').count()) === 1 && /Pricing[\s\S]*\d+:\d\d–\d+:\d\d[\s\S]*Opens on a sentence[\s\S]*Framing:[\s\S]*Thumbnail:[\s\S]*Description[\s\S]*Hashtags[\s\S]*Pinned comment[\s\S]*Category/.test(cardText), cardText.slice(0, 700));
+    await card.locator('.vs-wz-title').fill('What it costs, in plain words');
+    await page.locator('[data-act="wz-make"]').click();
+    await page.getByTestId('vs-wz-step5').waitFor({ timeout: 60_000 });
+    let W1;
+    for (let i = 0; i < 60; i++) { W1 = await v('get', { projectId: PID }); if (W1.doc.clips.length > W0.doc.clips.length) break; await sleep(500); }
+    const made = W1.doc.clips.find(c => !W0.doc.clips.some(x => x.id === c.id));
+    const mo = made && W1.outputs.find(o => o.clipId === made.id);
+    ok('wizard · "Make" saves the Short with the title as edited, framed automatically, in 9:16, with its words written (not left to be guessed later)', !!made && made.title === 'What it costs, in plain words' && made.aspect === '9:16' && made.framing?.strategy === 'auto' && mo && mo.meta.titles?.[0] === 'What it costs, in plain words' && mo.meta.hashtags?.length === 3 && mo.meta.category === 'Science & Technology' && /costs|pricing/i.test(mo.meta.thumbText ?? ''), { made, meta: mo?.meta });
+    ok('wizard · …its render and its thumbnail are queued, and the last screen follows them', W1.jobs.some(j => j.target === mo?.id && j.kind === 'render') && W1.jobs.some(j => j.target === mo?.id && j.kind === 'thumbnails') && (await page.getByTestId('vs-wz-made').count()) === 1);
+    await page.keyboard.press('Escape');
+    /* On a phone: the wizard fits, every step, with no sideways scroll. */
+    const vp = page.viewportSize();
+    await page.setViewportSize({ width: 390, height: 780 });
+    await page.getByTestId('vs-composition').click();
+    await page.locator('[data-act="new-short"]').click();
+    await page.getByTestId('vs-shorts-wizard').waitFor({ timeout: 10_000 });
+    const fits = [];
+    for (let k = 0; k < 2; k++) {
+      fits.push(await page.evaluate(() => { const m = document.querySelector('[data-testid="vs-shorts-wizard"]'); return { doc: document.documentElement.scrollWidth <= window.innerWidth + 1, box: !!m && m.scrollWidth <= m.clientWidth + 1 && m.getBoundingClientRect().right <= window.innerWidth + 1 }; }));
+      await page.locator('[data-act="wz-next"]').click();
+    }
+    fits.push(await page.evaluate(() => { const m = document.querySelector('[data-testid="vs-shorts-wizard"]'); return { doc: document.documentElement.scrollWidth <= window.innerWidth + 1, box: !!m && m.scrollWidth <= m.clientWidth + 1 }; }));
+    ok('wizard · at 390 wide every step fits, with no sideways scroll', fits.every(f => f.doc && f.box), fits);
+    await page.keyboard.press('Escape');
+    await page.setViewportSize(vp);
+    if (made) { const W2 = await v('get', { projectId: PID }); await v('edit', { projectId: PID, baseVersion: W2.docVersion, ops: [{ op: 'clip.remove', id: made.id }], note: 'test: remove the wizard Short' }); }
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByTestId('vs-timeline').waitFor({ timeout: 20_000 });
+  }
 
   /* Blocks: every phrase and every gap can be selected. */
   /* In until a phrase is wide enough to press: on an 18-minute recording eight presses (376%) still left every block at 14 px. */
@@ -1405,9 +1468,12 @@ const halvesDiffer = (file, t) => Number(String(execFileSync('sh', ['-c',
   await page.locator(`[data-media="${clip.id}"]`).click();
   await openPanel(page, 'video');
   await page.getByTestId('vs-layouts').waitFor({ timeout: 15_000 });
-  const opts = Object.fromEntries(await Promise.all(['speaker', 'screen', 'split', 'two', 'pip'].map(async k => [k, await page.locator(`[data-layout-opt="${k}"]`).isEnabled()])));
+  const opts = Object.fromEntries(await Promise.all(['split', 'two', 'pip'].map(async k => [k, await page.locator(`[data-layout-opt="${k}"]`).isEnabled()])));
+  /* "Speaker" and "whole screen" are framings now (the Framing tiles above the layouts). */
+  opts.screen = await page.locator('[data-framing-opt="whole"]').isEnabled();
+  opts.speaker = await page.locator('[data-framing-opt="speaker"]').isEnabled();
   const whyTwo = await page.locator('[data-layout-opt="two"]').innerText();
-  ok('the layout picker offers split and picture-in-picture for it — not "both people", saying why', opts.split && opts.pip && opts.screen && !opts.two && /one person/i.test(whyTwo), { opts, whyTwo });
+  ok('the layout picker offers split and picture-in-picture for it — not "both people", saying why; the framings offer the speaker and the whole screen', opts.split && opts.pip && opts.screen && opts.speaker && !opts.two && /one person/i.test(whyTwo), { opts, whyTwo });
   await page.locator('[data-layout-opt="split"]').click();
   await page.getByTestId('vs-layout-preview').waitFor({ timeout: 10_000 });
   ok('…choosing "split" shows it in the preview', (await page.getByTestId('vs-layout-preview').getAttribute('data-layout')) === 'split');

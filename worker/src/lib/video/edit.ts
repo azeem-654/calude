@@ -359,6 +359,21 @@ export const effectsOn = (fx: Effects): Partial<Effects> =>
 export type ShortLayout = 'speaker' | 'screen' | 'split' | 'two' | 'pip' | 'screencam' | 'follow';
 export const SHORT_LAYOUTS: ShortLayout[] = ['speaker', 'screen', 'split', 'two', 'pip', 'screencam', 'follow'];
 
+/**
+ * What a new Short carries besides its time: its shape (the Shorts' own
+ * unless the wizard chose one), its framing (`auto` for every new one —
+ * reframe.ts decides from the analysis, so a new Short is never a centre
+ * crop where the recording says otherwise) and the AI's editorial scores.
+ */
+function addExtras(o: { aspect?: unknown; framing?: unknown; scores?: unknown }, d: VideoDoc, duration: number): Pick<Clip, 'aspect' | 'reframe' | 'scores' | 'by'> & { framing?: Framing } {
+  const aspect = typeof o.aspect === 'string' && ['9:16', '1:1', '4:5', '16:9'].includes(o.aspect) ? o.aspect as Clip['aspect'] : d.shorts.aspect;
+  const framing = cleanFraming({ strategy: 'auto', ...(o.framing && typeof o.framing === 'object' ? o.framing : {}) }, duration) ?? { strategy: 'auto' as const };
+  const sc = o.scores && typeof o.scores === 'object' ? o.scores as Record<string, unknown> : null;
+  const one = (v: unknown) => Math.min(5, Math.max(1, Math.round(Number(v) || 3)));
+  const mode = framing.strategy === 'whole' ? 'fit' : (d.shorts.mode ?? 'crop');
+  return { aspect, framing, scores: sc ? { hook: one(sc.hook), clarity: one(sc.clarity), relevance: one(sc.relevance), completeness: one(sc.completeness) } : null, by: 'you', reframe: { mode, x: 0.5, y: 0.5 } };
+}
+
 /** A framing as the edit keeps it: known strategy, numbers inside their limits, at most twelve pins inside the recording. */
 export function cleanFraming(raw: unknown, duration: number): Framing | null {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
@@ -678,7 +693,7 @@ export type Op =
   | { op: 'caption.edit'; i: number; text: string }
   | { op: 'caption.style'; target: 'long' | 'short'; patch: Partial<CaptionStyle> }
   | { op: 'captions.set'; on?: boolean; burn?: boolean }
-  | { op: 'clip.add'; s: number; e: number; title?: string; topic?: string; reason?: string; parts?: [number, number][] }
+  | { op: 'clip.add'; s: number; e: number; title?: string; topic?: string; reason?: string; parts?: [number, number][]; aspect?: Clip['aspect']; framing?: Partial<Framing>; scores?: Scores | null }
   | { op: 'chapters.set'; list: { s: number; title: string }[] }
   | { op: 'clip.update'; id: string; patch: Partial<Pick<Clip, 's' | 'e' | 'title' | 'topic' | 'aspect'>> & { reframe?: Partial<Reframe>; layout?: ShortLayout | null; framing?: Partial<Framing> | null } }
   | { op: 'clip.remove'; id: string }
@@ -848,14 +863,14 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
           const total = clean.reduce((n, [a, b]) => n + b - a, 0);
           if (total < 3 || total > 180) { refused.push('a highlight reel is between three seconds and three minutes'); break; }
           d.clips.push({ id: newId('cl'), title: text(o.title, 100) || 'Highlight reel', topic: text(o.topic, 80), reason: text(o.reason, 240) || 'Highlights chosen by you',
-            s: clean[0][0], e: clean[clean.length - 1][1], parts: clean, scores: null, by: 'you', aspect: d.shorts.aspect, reframe: { mode: d.shorts.mode ?? 'crop', x: 0.5, y: 0.5 } });
+            s: clean[0][0], e: clean[clean.length - 1][1], parts: clean, ...addExtras(o, d, duration) });
           break;
         }
         const r = range(o.s, o.e);
         if (!r || r[1] - r[0] < 3) { refused.push('a Short needs at least three seconds'); break; }
         if (r[1] - r[0] > 180) { refused.push('a Short is at most three minutes'); break; }
         d.clips.push({ id: newId('cl'), title: text(o.title, 100) || 'New Short', topic: text(o.topic, 80), reason: text(o.reason, 240) || 'Added by you',
-          s: r[0], e: r[1], scores: null, by: 'you', aspect: d.shorts.aspect, reframe: { mode: d.shorts.mode ?? 'crop', x: 0.5, y: 0.5 } });
+          s: r[0], e: r[1], ...addExtras(o, d, duration) });
         break;
       }
       case 'clip.update': {

@@ -152,7 +152,7 @@ API failures, memory) and the final report, written to
 
 ## Phase ledger
 
-### Phase 1 — status: BUILT 2026-11-10 (awaiting the owner's go-ahead for Phase 2)
+### Phase 1 — status: DONE 2026-11-10 (commit 5192082)
 
 **What was built** (details word for word in `docs/claude/video-studio.md`
 → "Framing a Short round what matters" and "The preview shows every effect"):
@@ -203,12 +203,53 @@ API failures, memory) and the final report, written to
   a real e2e render check of a planner Short (the engine path is the
   existing `screenFrame`, exercised by the Screen Recorder e2e).
 
-### Phase 2 — status: NOT STARTED
-Start here: read this file, then `docs/claude/video-studio.md` sections
-named above, then `worker/src/lib/video/shorts.ts`, `routes/video.ts`
-(`shorts`/`create` cases), `WelcomeWizard.tsx`, `CompositionMenu` in
-`VideoEditor.tsx`, `AiTools.tsx`. Build the wizard described in **The plan →
-Phase 2**; "New short composition" opens it; its Step 5 creates clips with
-`framing: { strategy: 'auto' }` (or the preference) and renders.
+### Phase 2 — status: BUILT 2026-11-10 (awaiting the owner's go-ahead for Phase 3)
+
+**What was built** (details word for word in `docs/claude/video-studio.md`
+→ "The Shorts wizard"):
+- `worker/src/lib/video/shortsWizard.ts` (new, pure): `PLATFORMS`,
+  `WizardPrefs`/`cleanPrefs`/`lengthOf`, `checksFor`, `tidy`, `snapRange`,
+  `pausesIn`, `partsWithout`, `honestTitles`, `thumbTextFor`,
+  `proposePrompt`, `fromAi`, `fromAiRange`, `byRule`, `fromRange`,
+  `wizardCtx`, `MAX_PROPOSALS` (12).
+- `shorts.ts`: `fit` exported, `CATEGORIES`, `VideoMeta.category/thumbText`,
+  `by: 'you'`. `edit.ts`: `clip.add` takes `aspect`, `framing`, `scores`
+  (`addExtras`; every new Short `framing: auto`). `visual.ts`: an older
+  Short with Tracking-tab face following keeps it (planner skipped).
+- `routes/video.ts`: `shorts_propose`, `shorts_create` (see the notes).
+- Browser: `ShortsWizard.tsx` (new), `VideoEditor.tsx` (mounts it on
+  `vs-shorts-wizard`; menu: "New short composition" → wizard, "Quick
+  Short"), `services/videoStudio.ts` (`proposeShorts`, `createShorts`,
+  re-exports), `videoStudio.css` (`.vs-wz*`).
+- Tests: `test/videoStudio.test.mts` (+16), `test/videoStudio.e2e.mjs`
+  (wizard section; "Quick Short" step; layout step reads the framing
+  tiles), `test/videoStudioMock.mjs` (topic answers), `test/security.e2e.mjs`
+  (+6 video checks).
+
+**Verified**: typecheck, Worker tsc, `test:video` 371/371,
+`test:security` 201/201. `test:videoe2e`: see "End-to-end status" below.
+
+**End-to-end status (keep updated)**: Phase 1's run on its own commit had
+4 failures in code neither phase touched — the thumbnail order check
+expects "modern" first (the 2026-11-03 change made "bold" first on
+purpose), the noise command expects `strong` (it is `max` by design since
+2026-11), the Audio panel check that follows from it, and the Publishing
+panel's "kept after a reload". A run on the commit before Phase 1
+(f7abd78) decides whether they were already failing — result below.
+
+**Decisions to remember**
+- Proposals are not stored; the browser holds the cards. The server trusts
+  none of them: `shorts_create` re-snaps and re-checks.
+- Pause trimming uses `clip.parts`, never global cuts.
+- Thumbnail theme choice in the wizard is "made with each Short / not now"
+  until Phase 3's saved themes exist — Phase 3 adds them to step 3
+  (`WizardPrefs.thumbnail`) and to `shorts_create`'s thumbnails enqueue.
 
 ### Phase 3 — status: NOT STARTED
+Start here: read this file, then `docs/claude/video-studio.md` →
+"Thumbnails" and the 2026-11 "Thumbnails without a circle" note, then
+`worker/src/lib/video/thumbStyle.ts`, `media/engine/thumbLayout.mjs`
+(`thumbPlan`, stickers, arrow/ring, panels, number), `ThumbnailDesigner.tsx`,
+`ThumbShowcase.tsx`, `designerHandoff.ts`, `worker/src/lib/design/`
+(`spec.ts`, `templates.ts`) and `docs/claude/graphics.md`. Build what **The
+plan → Phase 3** says; plug saved themes into the wizard (above).

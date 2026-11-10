@@ -64,9 +64,10 @@ export function visualSpec(i: VisualInput): VisualSpec {
   const screenLayout = screenLayoutFor(clip, i.screen);
   let layout: VisualSpec['layout'] = screenLayout ? null : clip?.layout === 'split' || clip?.layout === 'two' || clip?.layout === 'pip' ? (i.tracked ? clip.layout : null) : null;
   /* The planner frames a cropped Short that has no layout of its own and no Screen Recorder notes:
-     every new Short, and every older one cropped at a point — unless what it decides is that very crop. */
+     every new Short, and every older one cropped at a point — unless what it decides is that very crop.
+     An older Short the customer had follow a face (Tracking tab) keeps that until a framing is chosen. */
   let framing: Resolved | null = null;
-  if (clip && !screenLayout && !layout && !clip.layout && (clip.framing || mode === 'crop')) {
+  if (clip && !screenLayout && !layout && !clip.layout && (clip.framing || (mode === 'crop' && tracking === 'off'))) {
     const r = resolveFraming(clip.framing, i.known, reframe);
     if (r.layout === 'two' && i.tracked) layout = 'two';
     else if (framingMatters(r) && (i.tracked || r.strategy === 'whole')) framing = r;

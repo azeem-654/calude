@@ -27,6 +27,7 @@
 import { OverallProgress } from './ProcessingProgress';
 import ActivityPanel, { type ChangeItem, type OpItem } from './ActivityPanel';
 import ExportDialog from './ExportDialog';
+import ShortsWizard from './ShortsWizard';
 import LogoPanel from './LogoPanel';
 import { askConfirm } from '../shared/ConfirmDialog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -315,8 +316,11 @@ function CompositionMenu({ ctx }: { ctx: EditorCtx }) {
             </button>
           ))}
           <hr />
-          <button type="button" role="menuitem" onClick={() => void newShort()} data-act="new-short" disabled={!duration}>
-            <Plus size={14} /><span><b>New short composition</b><small>{ctx.selection ? 'From your selection' : 'From the playhead, about half a minute'}</small></span>
+          <button type="button" role="menuitem" onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent('vs-shorts-wizard')); }} data-act="new-short" disabled={!duration}>
+            <Wand2 size={14} /><span><b>New short composition</b><small>Let AI find the Shorts, or pick a topic or a time range</small></span>
+          </button>
+          <button type="button" role="menuitem" onClick={() => void newShort()} data-act="quick-short" disabled={!duration}>
+            <Plus size={14} /><span><b>Quick Short</b><small>{ctx.selection ? 'From your selection, framed automatically' : 'From the playhead, about half a minute, framed automatically'}</small></span>
           </button>
         </div>
       )}
@@ -517,6 +521,13 @@ export default function VideoEditor({ id }: { id: string }) {
   const [showKeys, setShowKeys] = useState(false);
   const [showHistory, setShowHistory] = useState(asked === 'versions');
   const [showExport, setShowExport] = useState(false);
+  /* "New short composition" opens the Shorts wizard (ShortsWizard.tsx); anything may ask for it with `vs-shorts-wizard`. */
+  const [showWizard, setShowWizard] = useState(false);
+  useEffect(() => {
+    const on = () => setShowWizard(true);
+    window.addEventListener('vs-shorts-wizard', on);
+    return () => window.removeEventListener('vs-shorts-wizard', on);
+  }, []);
   const [name, setName] = useState('');
   const [transportEl, setTransportEl] = useState<HTMLDivElement | null>(null);
   const transcriptUrlSeen = useRef('');
@@ -935,6 +946,7 @@ export default function VideoEditor({ id }: { id: string }) {
       {hasSource && duration > 0 && <section className="vse-time"><Timeline ctx={ctx} wave={wave} /></section>}
 
       {showCaps && caps && <CapabilityPanel caps={caps} usage={null} onClose={() => setShowCaps(false)} />}
+      {showWizard && ctx && <ShortsWizard ctx={ctx} onClose={() => setShowWizard(false)} />}
       {showExport && <ExportDialog ctx={ctx} onClose={() => setShowExport(false)} onBoard={() => { setShowExport(false); document.getElementById('vs-outputs-board')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />}
       {showKeys && (
         <div className="vs-modal-back" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" onClick={() => setShowKeys(false)}>

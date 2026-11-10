@@ -17,14 +17,14 @@ import type { Env } from '../lib/db';
 import { nowIso, userFromToken, workspaceAccess } from '../lib/db';
 import { body, fail, json } from '../lib/http';
 import { rateLimit } from '../lib/rateLimit';
-import { loadAiKey } from '../lib/ai';
+import { aiBudget, askGeminiParts, extractJson, loadAiKey } from '../lib/ai';
 import {
   applyOps, describeRequest, newDoc, parseRequest, sentencesOf, SHORTS_MAX, MUSIC_DEFAULTS,
   type MusicTrack, type Op, type VideoDoc, type VideoRequest,
 } from '../lib/video/edit';
 import { proposeCleanup, cleanFillerKinds } from '../lib/video/cleanup';
 import { parseVideoCommand } from '../lib/video/commands';
-import { cleanMeta, type VideoMeta } from '../lib/video/shorts';
+import { cleanMeta, findSection, type VideoMeta } from '../lib/video/shorts';
 import { engineHealth, engineMode } from '../lib/video/engine';
 import { transcriberMode } from '../lib/video/transcribe';
 import { fileUrl, projectPrefix, workspacePrefix, sign, deletePrefix, looksLikeVideo } from '../lib/video/store';
@@ -41,8 +41,9 @@ import { autoFocus, cleanScreenMeta, pointerOf, type ScreenRef } from '../lib/vi
 import {
   advanceProject, cancelProject, enqueue, originOf, outputsOf, parse, readTranscript, renderSpec, stagesOf, syncOutputs, queueAfterEdit,
   recreditOutputs, type Extras, type JobRow, type OutputRow, type ProjectRow, type Source, type Thumb,
-  cleanThumbSpec, thumbWords, readWave, cleanupOptionsOf,
+  cleanThumbSpec, thumbWords, readWave, cleanupOptionsOf, withoutStrangeLinks,
 } from '../lib/video/pipeline';
+import { byRule, cleanPrefs, fromAi, fromAiRange, fromRange, lengthOf, partsWithout, proposePrompt, snapRange, wizardCtx, MAX_PROPOSALS, type ProposeAsk, type ProposalSet } from '../lib/video/shortsWizard';
 
 interface Req {
   token?: string; accountId?: string; action?: string;
@@ -63,6 +64,8 @@ interface Req {
   fillers?: unknown; maxPause?: number | null;
   /** Start from the customer's own YouTube video instead of an upload (create, youtube_info). */
   youtubeUrl?: string;
+  /** The Shorts wizard (shorts_propose, shorts_create): how to look, what for, what to exclude, the preferences, the approved Shorts. */
+  mode?: string; query?: string; range?: unknown; exclude?: unknown; prefs?: unknown; items?: unknown;
   want?: { repurpose?: { posts?: number; blog?: boolean; email?: boolean }; quiz?: boolean; denoise?: string; voice?: boolean; music?: string };
   /** screen_save: what the Screen Recorder noted (pointer.ts ScreenMeta). */
   meta?: unknown;
@@ -1002,6 +1005,122 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       const refusedRender = await afterEdit(env, origin, p, r.doc);
       kick(p.id);
       return json({ success: true, doc: r.doc, docVersion: r.version, note: refusedRender });
+    }
+
+    /*
+     * ── The Shorts wizard ──
+     * shorts_propose asks the AI (once, metered, inside the AI budget) which
+     * passages work — or which match a topic, or what to call a marked
+     * stretch — and returns only what shortsWizard.ts lets through, with
+     * the turned-down ones and why. Nothing is saved: the customer reviews
+     * the cards. shorts_create saves the approved ones as Shorts (whole
+     * sentences again, checked again — the browser's copy is not trusted),
+     * writes their words, and queues the renders and thumbnails.
+     */
+    case 'shorts_propose': {
+      const rl = await rateLimit(env, { what: 'video-propose', who: accountId, max: 60, windowSeconds: 3600 });
+      if (!rl.allowed) return fail('That is a lot of proposals in an hour — try again shortly.', 429);
+      const tr = await readTranscript(env, p);
+      if (!tr?.words.length) return fail('The transcript is not ready yet — Shorts are found from what is said.', 200, { code: 'no_transcript' });
+      const sentences = sentencesOf(tr.words);
+      const prefs = cleanPrefs(d.prefs);
+      const mode = d.mode === 'topic' || d.mode === 'range' ? d.mode : 'auto';
+      const query = s(d.query, 300);
+      if (mode === 'topic' && !query) return fail('Say what the Short should be about.', 200, { field: 'video.shortsTopic' });
+      const rg = Array.isArray(d.range) ? [Number(d.range[0]), Number(d.range[1])] as [number, number] : null;
+      if (mode === 'range' && (!rg || !(rg[1] > rg[0]))) return fail('Choose where the Short starts and ends.', 200, { field: 'video.shortsRange' });
+      const exclude = (Array.isArray(d.exclude) ? d.exclude : []).slice(0, 40).map(x => [Number(x?.[0]), Number(x?.[1])] as [number, number]).filter(([a, b]) => Number.isFinite(a) && b > a);
+      const doc = parse<VideoDoc>(p.doc, null as unknown as VideoDoc);
+      const taken = [...exclude, ...(mode === 'auto' ? doc.clips.map(c => [c.s, c.e] as [number, number]) : [])];
+      const brand = await brandOf(env, accountId, p.autopilot_project_id);
+      const ctx = wizardCtx(sentences, tr.words, prefs, brand, mode === 'range' ? [] : taken, (m, text) => withoutStrangeLinks(m, text, brand.website));
+      const ask: ProposeAsk = { mode, query, range: rg ?? undefined, exclude: taken };
+      const snap = mode === 'range' ? snapRange(sentences, rg![0], rg![1]) : null;
+      if (mode === 'range' && !snap) return fail('There are no spoken sentences between those times.', 200, { field: 'video.shortsRange' });
+      const no = await aiBudget(env, accountId);
+      const key = no ? null : await loadAiKey(env, accountId).catch(() => null);
+      let set: ProposalSet | null = null;
+      const notes: string[] = [];
+      if (key) {
+        const res = await askGeminiParts(key, [{ text: proposePrompt(sentences, ask, prefs, brand, snap ? [snap.a, snap.b] : undefined) }], 0.4, { module: 'video-analysis', accountId, json: true, timeoutMs: 40_000 });
+        await meter(env, { kind: 'ai-shorts-wizard', accountId, units: 1, unit: 'ai_call', costMicros: PRICE.aiCall, jobId: `wiz-${p.id}-${Date.now()}` });
+        const out = res.ok ? extractJson<unknown>(res.text) : null;
+        if (out) set = mode === 'range' ? fromAiRange(out, ctx, rg![0], rg![1]) : fromAi(out, ctx, ask);
+        else notes.push(`The AI did not answer usefully (${(res.error || 'no JSON').slice(0, 120)}), so the passages were chosen by rule.`);
+      } else notes.push(`No AI judged these (${no || 'no AI key is set up'}).`);
+      if (!set) set = mode === 'range' ? fromRange(ctx, rg![0], rg![1]) : byRule(ctx, ask);
+      /* Asked for a topic and the AI found nothing: the transcript search, said so — or a plain "not in this recording". */
+      if (mode === 'topic' && !set.proposals.length) {
+        const [min, max] = lengthOf(prefs);
+        const hit = findSection(query, sentences, { count: 1, min, max, aspect: prefs.aspect });
+        if (hit) {
+          const r = fromRange(wizardCtx(sentences, tr.words, prefs, brand, [], ctx.strangeLinks), hit.s, hit.e);
+          if (r.proposals.length) { set = { ...r, proposals: r.proposals.map(x => ({ ...x, why: `Where “${hit.terms.join(' ')}” is talked about most (found in the transcript)` })) }; notes.push('Found by searching the transcript for those words.'); }
+        }
+        if (!set.proposals.length && !set.verdict) set.verdict = `“${query}” does not come up in this recording.`;
+      }
+      return json({ success: true, ...set, notes: [...notes, ...set.notes], max: MAX_PROPOSALS, length: lengthOf(prefs) });
+    }
+
+    case 'shorts_create': {
+      const tr = await readTranscript(env, p);
+      if (!tr?.words.length) return fail('The transcript is not ready yet.');
+      const sentences = sentencesOf(tr.words);
+      const prefs = cleanPrefs(d.prefs);
+      const [min, max] = lengthOf(prefs);
+      const items = (Array.isArray(d.items) ? d.items : []).slice(0, MAX_PROPOSALS) as Record<string, unknown>[];
+      if (!items.length) return fail('Approve at least one Short first.', 200, { field: 'video.shortsApprove' });
+      const brand = await brandOf(env, accountId, p.autopilot_project_id);
+      const ctx = wizardCtx(sentences, tr.words, { ...prefs, min: Math.min(min, 3), max: Math.max(max, 180) }, brand, [], (m, text) => withoutStrangeLinks(m, text, brand.website));
+      const doc0 = parse<VideoDoc>(p.doc, null as unknown as VideoDoc);
+      const before = new Set(doc0.clips.map(c => c.id));
+      /* Each one again on whole sentences, from the server's own transcript; its words re-checked. */
+      const made: { title: string; topic: string; reason: string; s: number; e: number; parts: [number, number][] | null; meta: VideoMeta; scores: unknown }[] = [];
+      for (const it of items) {
+        const snap = snapRange(sentences, Number(it.s), Number(it.e));
+        if (!snap || snap.e - snap.s < 3 || snap.e - snap.s > 180) continue;
+        const r = fromAiRange({ shorts: [{ ...(it.meta && typeof it.meta === 'object' ? it.meta : {}), title: Array.isArray((it.meta as { titles?: unknown })?.titles) ? (it.meta as { titles: unknown[] }).titles : [it.title], topic: it.topic, why: it.why, thumb_text: (it.meta as { thumbText?: unknown })?.thumbText ?? it.thumbText }] }, ctx, snap.s, snap.e);
+        const pr = r.proposals[0];
+        if (!pr) continue;
+        const title = s(it.title, 100) || pr.title;
+        const meta: VideoMeta = { ...pr.meta, titles: [title, ...pr.meta.titles.filter(t => t !== title)].slice(0, 3), by: it.edited ? 'you' : pr.meta.by };
+        made.push({ title, topic: pr.topic, reason: s(it.why, 240) || pr.why, s: pr.s, e: pr.e, parts: it.trimPauses === false ? null : partsWithout(pr.s, pr.e, pr.pauses), meta, scores: it.scores });
+      }
+      if (!made.length) return fail('None of those could be made into a Short — they need at least one whole sentence between 3 seconds and 3 minutes.');
+      const framing = prefs.framing === 'auto' ? undefined : { strategy: prefs.framing, by: 'you' as const };
+      const ops: Op[] = made.map(m => ({ op: 'clip.add' as const, s: m.s, e: m.e, title: m.title, topic: m.topic, reason: m.reason, ...(m.parts ? { parts: m.parts } : {}), aspect: prefs.aspect, ...(framing ? { framing } : {}), scores: (m.scores ?? null) as null }));
+      if (prefs.captions === 'off') ops.push({ op: 'captions.set', on: false });
+      else ops.push({ op: 'captions.set', on: true, burn: true }, { op: 'caption.style', target: 'short', patch: { preset: prefs.captions } });
+      /* The logo is one setting for every Short (edit.ts LogoSettings.applyTo): on asks for it on the Shorts too, off takes it off them; the long video is left as it was. */
+      const lg = doc0.logo;
+      if (lg && prefs.logo && !(lg.on && lg.applyTo !== 'long')) ops.push({ op: 'logo.patch', patch: { on: true, applyTo: lg.on && lg.applyTo === 'long' ? 'all' : 'shorts' } });
+      if (lg && !prefs.logo && lg.on && lg.applyTo !== 'long') ops.push({ op: 'logo.patch', patch: lg.applyTo === 'all' ? { applyTo: 'long' } : { on: false } });
+      const r = await saveEdit(env, p, d.baseVersion, ops, `Shorts wizard: ${made.length} Short${made.length === 1 ? '' : 's'}`, user.email);
+      if (!r.ok) return json({ success: false, conflict: true, error: 'This project changed in another window — showing the latest version.', doc: r.doc, docVersion: r.version });
+      const added = r.doc.clips.filter(c => !before.has(c.id));
+      /* Their words written before anything is queued, so the metadata job leaves them alone (it writes only empty ones). */
+      const outs = await syncOutputs(env, p, r.doc);
+      const stmts: D1PreparedStatement[] = [];
+      const heads: Op[] = [];
+      added.forEach((c, i) => {
+        const o = outs.find(x => x.kind === 'short' && x.clip_id === c.id);
+        const m = made[i];
+        if (!o || !m) return;
+        stmts.push(env.DB.prepare('UPDATE crm_video_outputs SET meta = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(m.meta), nowIso(), o.id));
+        if (m.meta.thumbText) heads.push({ op: 'thumbnail.headline', target: o.id, text: m.meta.thumbText });
+      });
+      if (stmts.length) await env.DB.batch(stmts);
+      let doc = r.doc, docVersion = r.version;
+      if (heads.length) { const h = await saveEdit(env, p, docVersion, heads, 'Shorts wizard: thumbnail words', user.email); if (h.ok) { doc = h.doc; docVersion = h.version; } }
+      const note = await afterEdit(env, origin, p, doc);
+      if (prefs.thumbnail !== 'none') {
+        for (const c of added) {
+          const o = outs.find(x => x.kind === 'short' && x.clip_id === c.id);
+          if (o) await enqueue(env, { accountId, projectId: p.id, kind: 'thumbnails', target: o.id, idem: `thumbs:${o.id}:1`, input: { set: 1 }, revive: true });
+        }
+      }
+      kick(p.id);
+      return json({ success: true, doc, docVersion, created: added.map(c => c.id), skipped: items.length - made.length, note });
     }
 
     case 'track_now': {

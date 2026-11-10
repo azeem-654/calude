@@ -236,6 +236,19 @@ export function startGeminiMock(port) {
       answer = { posts: Array.from({ length: n }, (_, i) => ({ platform: 'instagram', headline: ['Thirty new businesses a day', 'Follow-up wins the deal', 'Let people book themselves', 'Know who to call', '$49 a month, no setup', 'Fewer missed calls'][i % 6], body: 'From this week\'s show. Every lead lands in the pipeline.', hashtags: ['#smallbusiness', '#growth'] })) };
     } else if (/"steps": \[/.test(prompt)) {
       answer = { name: 'From the weekly growth show', steps: [0, 3, 6].map((day, i) => ({ day, subject: ['Thirty new businesses a day', 'Why follow-up wins', 'Your booking page'][i], body: `Hi {{firstName}},\n\nFrom this week's show, part ${i + 1}.` })) };
+    } else if (/<<<ASK ([\s\S]*?) ASK>>>/.test(prompt) && /<transcript>/.test(prompt)) {
+      /* The Shorts wizard asked for a topic: the one passage about it, with every word to publish — or none, said so. */
+      const q = prompt.match(/<<<ASK ([\s\S]*?) ASK>>>/)[1].toLowerCase();
+      const lines = lineList();
+      const k = KEYWORDS.find(x => q.split(/\s+/).some(w => w.length > 3 && (x.topic.toLowerCase().includes(w) || x.title.toLowerCase().includes(w))));
+      const at = k && lines.find(l => k.re.test(l.text));
+      if (!at) answer = { shorts: [], rejected: [], verdict: 'The recording does not cover that.' };
+      else {
+        let end = at.i;
+        while (lines[end + 1] && lines[end + 1].t - at.t < 42) end++;
+        answer = { verdict: 'One passage covers it.', rejected: [], shorts: [{ start_sentence: at.i, end_sentence: end, title: [k.title, `${k.topic} in under a minute`], topic: k.topic, description: `What ${k.topic.toLowerCase()} is and how it works, in the show's own words.`, why: `The part of the show about ${k.topic.toLowerCase()}, complete on its own.`,
+          hashtags: ['smallbusiness', 'growth', 'crm', 'sales'], tags: ['crm', 'small business'], keywords: ['crm'], cta: 'Try it free', pinned_comment: 'What would you ask about this?', category: 'Science & Technology', thumb_text: k.topic, thumb_concept: 'The speaker at the moment the point is made', hook: 4, clarity: 5, relevance: 5, completeness: 4 }] };
+      }
     } else if (/<transcript>/.test(prompt)) {
       const lines = [...prompt.matchAll(/^\[(\d+)\] \((\d+):(\d+)\) (.*)$/gm)].map(m => ({ i: Number(m[1]), t: Number(m[2]) * 60 + Number(m[3]), text: m[4] }));
       const shorts = [];

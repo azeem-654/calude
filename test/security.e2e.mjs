@@ -374,6 +374,18 @@ check("B cannot overwrite A's project by id", !hijackProject.ok && stillA?.name 
   check("B cannot reorder A's workspace", !reorderA.ok, JSON.stringify(reorderA.data));
 }
 {
+  /* AI Video Studio: every action names a project, and the route reads it only inside the caller's
+     workspace (readProject). The Shorts wizard's actions (2026-11) are covered with the rest. */
+  const vid = `vp-sec-${run}`;
+  d1rows(`INSERT INTO crm_video_projects (id, account_id, name, doc, doc_version, created_at, updated_at) VALUES ('${vid}', '${A.acct}', 'A video', '{"v":1,"clips":[]}', 1, datetime('now'), datetime('now'))`);
+  for (const [action, extra] of [['get', {}], ['shorts_propose', { mode: 'auto' }], ['shorts_create', { baseVersion: 1, items: [{ s: 0, e: 20 }] }], ['edit', { baseVersion: 1, ops: [{ op: 'clip.add', s: 0, e: 20 }] }], ['track_now', {}]]) {
+    const r = await api('video.php', { action, token: B.token, accountId: B.acct, projectId: vid, ...extra });
+    check(`B cannot use A's video project by id (${action})`, !r.data.success && r.status === 404, JSON.stringify([r.status, r.data]).slice(0, 200));
+  }
+  const after = d1rows(`SELECT doc_version, account_id AS a FROM crm_video_projects WHERE id = '${vid}'`)[0];
+  check("…and A's video project is untouched", after?.doc_version === 1 && after?.a === A.acct, JSON.stringify(after));
+}
+{
   /* Plan allowances (routes/allowances.ts): a project id is checked against
      the workspace named, a workspace against the session, and only the
      install owner changes what a plan allows. */

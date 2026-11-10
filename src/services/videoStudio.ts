@@ -26,6 +26,8 @@ export {
 export { toXmeml, editorialScore } from '../../worker/src/lib/video/xml';
 export { STRATEGY_LABEL, STRATEGY_HINT, knownOf, framingOptions, resolveFraming, framingMatters, framePlan, windowCentre, type Known, type Resolved, type FramePlan, type FramingOption } from '../../worker/src/lib/video/reframe';
 export { visualSpec, framingKey, type VisualSpec, type VisualInput } from '../../worker/src/lib/video/visual';
+export { PLATFORMS, DEFAULT_PREFS, cleanPrefs, lengthOf, checksFor, snapRange, MAX_PROPOSALS, type Platform, type WizardPrefs, type Proposal, type Rejected, type ProposalSet, type ProposeMode, type Check } from '../../worker/src/lib/video/shortsWizard';
+export { CATEGORIES } from '../../worker/src/lib/video/shorts';
 export { KIND_LABEL, type Analysis, type AnalysisSummary, type VideoKind } from '../../worker/src/lib/video/motion';
 export type { VideoMeta } from '../../worker/src/lib/video/shorts';
 export { parseYoutubeUrl, youtubeThumb, YOUTUBE_WAY_FORWARD, type YoutubeLink } from '../../worker/src/lib/video/youtube';
@@ -220,6 +222,11 @@ export async function applyDesignAsThumb(target: { projectId: string; outputId: 
   return { ok: true, note: a.note ?? '' };
 }
 export const trackNow = (projectId: string) => call('track_now', { projectId });
+/** The Shorts wizard: proposals to review (nothing is saved), then the approved ones made. */
+export const proposeShorts = (projectId: string, p: { mode: import('../../worker/src/lib/video/shortsWizard').ProposeMode; query?: string; range?: [number, number]; exclude?: [number, number][]; prefs: import('../../worker/src/lib/video/shortsWizard').WizardPrefs }) =>
+  call<import('../../worker/src/lib/video/shortsWizard').ProposalSet & { max: number; length: [number, number] }>('shorts_propose', { projectId, ...p });
+export const createShorts = (projectId: string, baseVersion: number, items: Record<string, unknown>[], prefs: import('../../worker/src/lib/video/shortsWizard').WizardPrefs) =>
+  call<{ doc: VideoDoc; docVersion: number; created: string[]; skipped: number; note: string }>('shorts_create', { projectId, baseVersion, items, prefs });
 
 /**
  * The logo: made a PNG here (any picture the browser can open — and with its

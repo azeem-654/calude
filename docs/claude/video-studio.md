@@ -245,6 +245,49 @@ export is a canvas recording; Video Studio is the real one.
   renderSpec), `npm run test:videoanalysis` (synthetic clips through
   track.py: kinds, pointer within 12 px median, a 9:16 Short keeping the
   pointer in frame >90% where a centre crop had it <60%).
+- **The Shorts wizard (2026-11, `ShortsWizard.tsx`, `shortsWizard.ts`)** —
+  "New short composition" (composition menu) opens it (`vs-shorts-wizard`);
+  the old one-press Short is **Quick Short** (`data-act="quick-short"`).
+  Steps: 1 what the recording holds (length, shape, speech, kind, people,
+  scene changes; "Analyse now" when the picture was not analysed); 2 how —
+  **Let AI decide** (default; no target number, none is an answer with the
+  reason), a topic or moment, or a time range; 3 only what changes the
+  result — platform (`PLATFORMS`: limits and hashtag counts), shape, framing
+  (the reframe strategies with why-not), captions look, language of the
+  words, logo (one setting for every Short — said so), thumbnail (made with
+  each Short / not now), call to action, own length (prefs kept in
+  `crm_vs_wizard_prefs`); 4 proposal cards — title (editable), topic,
+  times, why, **checks** (`checksFor`: clean opening, finished ending,
+  stands alone, length, share of speech), what is said, framing note,
+  thumbnail words + concept, editorial scores, and every word to publish
+  (description, hashtags, tags, CTA, pinned comment, category, thumbnail
+  words); approve / reject; ends moved snap to whole sentences and are
+  re-checked in the browser with the same functions; Find another (auto,
+  excluding the cards) / Ask again; the turned-down passages with why;
+  5 the made Shorts followed (render, thumbnail) with Open.
+  Server: `shorts_propose` (rate-limited 60/h, `aiBudget` → one
+  `askGeminiParts` call metered `ai-shorts-wizard`, nothing saved) →
+  `fromAi` / `fromAiRange` / `byRule` / `fromRange` (`findSection` for a
+  topic the AI missed); auto excludes footage already a Short.
+  `shorts_create` re-snaps every item on the server's own transcript,
+  re-checks its words (`honestTitles`: no number the passage never says, no
+  stock bait; `thumbTextFor`: only the title's or passage's words;
+  `withoutStrangeLinks`; categories only from YouTube's list `CATEGORIES`),
+  adds the Shorts (`clip.add` now takes `aspect`, `framing`, `scores`; every
+  new Short is `framing: auto`), long pauses taken out of **the Short only**
+  (`partsWithout` → `clip.parts`; a cut would take them out of the long video
+  too), caption look and logo set, writes each output's `meta` **before**
+  `afterEdit` (the metadata job writes only empty ones) and
+  `thumbnail.headline`, then queues renders (AI Shorts allowance as ever) and
+  `thumbnails` set 1. `VideoMeta` gained `category?`, `thumbText?`, `by:
+  'you'`. Tests: `test:video` (+16: prefs, checks, tidy, snap, pauses→parts,
+  honest titles, thumbnail words, AI answer → 3 kept / 3 turned down, none
+  with the reason, rules labelled, range, prompt fencing, clip.add extras),
+  `test:videoe2e` (wizard section through the screens, a topic, a range, an
+  empty topic refused by field, nothing proposed twice, made Short's words
+  and queued jobs, 390 wide), `test:security` (video actions by id from
+  another workspace → 404). **Not changed**: the welcome wizard's "make N
+  Shorts" still asks for the number the customer typed (their choice).
 - **The preview shows every effect (2026-11)**: the look/colour filter sits
   on `.vse-picture` (deck + keyed canvas + layout canvas) — it was on the deck
   only, so a laid-out Short lost its look; **sharpness** is an SVG
