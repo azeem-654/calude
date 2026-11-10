@@ -19,6 +19,9 @@ import { parseVideoCommand } from '../worker/src/lib/video/commands';
 import { checkPng } from '../worker/src/lib/video/png';
 import { cameraPath, cutTimes, punchSpans, overlayAss, overlaySpan, overlayPlace, logoBox, trackAt, cssLook, cssEffects, skinBox, type TrackRow } from '../worker/src/lib/video/motion';
 import { layoutOptions, layoutPlan } from '../worker/src/lib/video/layouts';
+import { knownOf, framingOptions, resolveFraming, framingMatters, framePlan, glidePath, windowCentre } from '../worker/src/lib/video/reframe';
+import { visualSpec } from '../worker/src/lib/video/visual';
+import { vignetteStops, grainOpacity, sharpenKernel, type Analysis, type TrackFile } from '../worker/src/lib/video/motion';
 import { toXmeml, editorialScore } from '../worker/src/lib/video/xml';
 import { pickHighlight, thumbWords, cleanThumbSpec, renderSpec, withoutStrangeLinks, TRANSIENT } from '../worker/src/lib/video/pipeline';
 import { thumbPlan, normaliseSpec, lineRect, TREND_LAYOUTS, STICKERS } from '../media/engine/thumbLayout.mjs';
@@ -844,6 +847,85 @@ console.log('\nThumbnails on a press: the example read into a style, the words')
   ok('Studio Sound is named as converting, with its strength', soundSteps({ studio: true, strength: 60 }).some(s => /^Converting to Studio Sound.*60%/.test(s.label)));
   ok('no fixes → no passes of their own (the render keeps one pass)', !needsSoundPasses({ denoise: 'off' }) && needsSoundPasses({ denoise: 'light' }) && needsSoundPasses({ hum: '60' }));
   ok('every step the browser can play has Web Audio nodes; click repair says it is render-only', soundSteps({ studio: true, hum: '60', declick: true, gate: true }).every(s => s.web.length > 0 || !!s.webNote));
+}
+
+/* ── Framing a Short round what matters (reframe.ts, visual.ts) ─────────── */
+{
+  const probe = { duration: 60, width: 1280, height: 720, fps: 30, vcodec: 'h264', acodec: 'aac', hasAudio: true, format: 'mp4', rotation: 0 };
+  const base: Omit<TrackFile, 'analysis'> = { detector: 'yunet', fps: 5, frames: 300, seen: 0, faces: 0, tracks: 0, switches: { speaker: 0, face: 0 }, speaker: [], face: [], people: [] };
+  const an = (o: Partial<Analysis>): Analysis => ({ v: 2, kind: 'camera', why: 'test', flat: 0.9, still: 0.95, cursorSeen: 0, moving: 0.1, cuts: [], content: [0, 0, 1, 1], cursor: [], activity: [], grid: [12, 7], edges: [], ...o });
+  /* A screen recording whose pointer works down the LEFT third of the screen for the whole minute — the part a centre crop threw away. */
+  const cursor: [number, number, number][] = Array.from({ length: 300 }, (_, i) => [i / 5, 0.12 + 0.06 * Math.sin(i / 9), 0.3 + 0.4 * ((i % 50) / 50)]);
+  const screen: TrackFile = { ...base, analysis: an({ kind: 'screen', why: 'a flat, still picture with a pointer', cursorSeen: 0.9, content: [0.04, 0, 0.96, 1], cursor }) };
+  const keeps: [number, number][] = [[5, 40]];
+  const kScreen = knownOf(screen);
+  ok('a screen recording with a pointer is known as such, and "follow the pointer" is offered', kScreen.analysed && kScreen.kind === 'screen' && framingOptions(kScreen).find(o => o.key === 'cursor')!.ok && !framingOptions(kScreen).find(o => o.key === 'speaker')!.ok);
+  const rScreen = resolveFraming(undefined, kScreen);
+  ok('…so "auto" follows the pointer, and says why', rScreen.strategy === 'cursor' && rScreen.by === 'ai' && /pointer/i.test(rScreen.note));
+  const fpS = framePlan(rScreen, screen, 1280, 720, 1080, 1920, keeps)!;
+  const inWindow = fpS.path.filter(([t, x, y]) => { const s = 5 + t; const c = cursor.find(r => Math.abs(r[0] - s) < 0.11); if (!c) return true; const px = c[1] * 1280, py = c[2] * 720; return px >= x - 2 && px <= x + fpS.plan.crop[0] + 2 && py >= y - 2 && py <= y + fpS.plan.crop[1] + 2; }).length;
+  ok('the window follows the pointer: it is inside the window in nearly every step (a centre crop never had it)', fpS.path.length > 300 && inWindow / fpS.path.length > 0.97, { steps: fpS.path.length, inWindow, crop: fpS.plan.crop, first: fpS.path[0], region: fpS.plan.region });
+  ok('…the window keeps the output shape, is 70% of the region (the default zoom) and never leaves the region', Math.abs(fpS.plan.crop[0] / fpS.plan.crop[1] - 1080 / 1920) < 0.01 && Math.abs(fpS.plan.crop[1] - 720 * 0.7) <= 2
+    && fpS.path.every(([, x, y]) => x >= fpS.plan.region[0] && y >= fpS.plan.region[1] && x + fpS.plan.crop[0] <= fpS.plan.region[0] + fpS.plan.region[2] + 1 && y + fpS.plan.crop[1] <= fpS.plan.region[1] + fpS.plan.region[3] + 1));
+  const steps = fpS.path.slice(1).map((r, i) => Math.hypot(r[1] - fpS.path[i][1], r[2] - fpS.path[i][2])).sort((a, b) => a - b);
+  ok('…and glides rather than jumps: the pointer\'s three sawtooth leaps are eased over several steps, every other step is small', steps.filter(d => d > 60).length <= 4 && steps[Math.floor(steps.length / 2)] < 12, { big: steps.filter(d => d > 60).length, median: steps[Math.floor(steps.length / 2)] });
+  const zoomed = framePlan(resolveFraming({ strategy: 'cursor', zoom: 0.5 }, kScreen), screen, 1280, 720, 1080, 1920, keeps)!;
+  ok('"Window size" changes the window, and the hash key with it', Math.abs(zoomed.plan.crop[1] - 360) <= 2 && JSON.stringify(zoomed.plan.crop) !== JSON.stringify(fpS.plan.crop));
+  const pinned = framePlan(resolveFraming({ strategy: 'cursor', pins: [[20, 0.9, 0.5]] }, kScreen), screen, 1280, 720, 1080, 1920, keeps)!;
+  const atPin = pinned.path[Math.round(15.5 / 0.1)];
+  ok('a pin points the window at the right of the screen for a moment, then it goes back to the pointer', atPin[1] + pinned.plan.crop[0] / 2 > 1280 * 0.8 && pinned.path[Math.round(30 / 0.1)][1] < 1280 * 0.4, { atPin, later: pinned.path[300] });
+
+  /* Slides: nothing of the slide is ever cut off. */
+  const slides: TrackFile = { ...base, analysis: an({ kind: 'slides', why: 'a flat picture that hardly changes', still: 0.99, content: [0.05, 0.1, 0.9, 0.8] }) };
+  const rSl = resolveFraming(undefined, knownOf(slides));
+  const fpSl = framePlan(rSl, slides, 1280, 720, 1080, 1920, keeps)!;
+  ok('slides are shown whole: the content box fitted for the whole Short (a wide stretch across it), no window', rSl.strategy === 'whole' && fpSl.wide.length === 1 && fpSl.wide[0][0] === 0 && fpSl.wide[0][1] >= 35 && fpSl.plan.region[0] === 64);
+  /* Slides with a webcam bubble: the camera in a band, the slide whole in the rest. */
+  const bubble = { cx: 0.92, cy: 0.86, w: 0.05, h: 0.1, share: 0.98 };
+  const slidesCam: TrackFile = { ...base, seen: 0.98, faces: 1, tracks: 1, people: [bubble], analysis: an({ kind: 'slides', why: 'slides and a camera', still: 0.99 }) };
+  const rSc = resolveFraming(undefined, knownOf(slidesCam));
+  const fpSc = framePlan(rSc, slidesCam, 1280, 720, 1080, 1920, keeps)!;
+  ok('slides with a camera picture: camera band below, the slide whole above (fitScreen), a third of the height', rSc.strategy === 'screencam' && rSc.fitScreen && fpSc.plan.kind === 'screencam' && fpSc.plan.fitScreen === true && fpSc.plan.camAt === 'bottom' && fpSc.plan.top === 634 && !!fpSc.plan.cam);
+
+  /* A talking head: the face followed with headroom. */
+  const faceRows = Array.from({ length: 60 }, (_, i) => [i, 0.5 + 0.05 * Math.sin(i / 7), 0.38, 0.26, i === 0 ? 1 : 0] as [number, number, number, number, number]);
+  const talking: TrackFile = { ...base, seen: 1, faces: 1, tracks: 1, speaker: faceRows, face: faceRows, people: [{ cx: 0.5, cy: 0.38, w: 0.12, h: 0.26, share: 1 }], analysis: an({ kind: 'talking', why: 'one face', flat: 0.2, still: 0.3 }) };
+  const rT = resolveFraming(undefined, knownOf(talking));
+  const fpT = framePlan(rT, talking, 1280, 720, 1080, 1920, keeps)!;
+  const [, , y0] = fpT.path[50];
+  ok('a talking head follows the speaker at the full height with the face at 42% of the window (headroom kept)', rT.strategy === 'speaker' && fpT.plan.crop[1] === 720 && y0 === 0 && Math.abs(windowCentre(fpT, 5)[0] - 0.5) < 0.08, { crop: fpT.plan.crop, centre: windowCentre(fpT, 5) });
+  const two: TrackFile = { ...talking, faces: 2, people: [{ cx: 0.233, cy: 0.442, w: 0.102, h: 0.23, share: 1 }, { cx: 0.746, cy: 0.424, w: 0.109, h: 0.258, share: 1 }], analysis: an({ kind: 'two', why: 'two people', flat: 0.2, still: 0.2 }) };
+  ok('two people taking turns become the stacked "both people" layout', resolveFraming(undefined, knownOf(two)).layout === 'two');
+  /* Not analysed at all: nothing is invented. */
+  const kNone = knownOf(null, undefined);
+  const rNone = resolveFraming(undefined, kNone);
+  ok('without an analysis "auto" is an honest still crop that changes nothing, and the options say to analyse', rNone.strategy === 'still' && !framingMatters(rNone) && /not been analysed/i.test(rNone.note) && /Analyse again/.test(framingOptions(kNone).find(o => o.key === 'cursor')!.why));
+  ok('a strategy the recording cannot carry falls back and says so', /not possible here/.test(resolveFraming({ strategy: 'cursor' }, kNone).note));
+  const doc0 = newDoc(parseRequest('a video'));
+  ok('a bad framing is refused by the edit; a good one is cleaned and the Short becomes a crop', applyOps(doc0, [{ op: 'clip.add', s: 5, e: 40 }, { op: 'clip.update', id: 'x', patch: { framing: { strategy: 'sideways' as never } } }], 60).refused.length === 1
+    && (() => { const d = applyOps(doc0, [{ op: 'clip.add', s: 5, e: 40 }], 60).doc; const r = applyOps(d, [{ op: 'clip.update', id: d.clips[0].id, patch: { reframe: { mode: 'fit' }, framing: { strategy: 'cursor', zoom: 7, pins: [[99, 2, 0.5], [10, 0.2, 0.3]] } } }], 60); const f = r.doc.clips[0].framing!; return r.refused.length === 0 && f.zoom === 1 && f.pins!.length === 1 && f.pins![0][0] === 10 && r.doc.clips[0].reframe.mode === 'crop'; })());
+
+  /* The preview and the render read one spec. */
+  const src = { key: 'v/a/p/source.mp4', probe, track: { key: 'v/a/p/prep/faces.json', at: 't', summary: { detector: 'yunet', seen: 0, faces: 0, tracks: 0, switches: { speaker: 0, face: 0 }, frames: 300, analysis: { v: 2 as const, kind: 'screen' as const, why: 'pointer', cursorSeen: 0.9, people: [] } } } };
+  const withClip = applyOps(doc0, [{ op: 'clip.add', s: 5, e: 40 }, { op: 'look.set', target: 'short', patch: { filter: 'bw', vignette: 30 } }], 60).doc;
+  const out = { kind: 'short' as const, clip_id: withClip.clips[0].id };
+  const rs = renderSpec(withClip, src, out, null)!;
+  const vs = visualSpec({ doc: withClip, clip: withClip.clips[0], probe, tracked: true, known: knownOf(null, src.track.summary), screen: null, keeps: rs.keeps });
+  const same = (['width', 'height', 'mode', 'tracking', 'layout', 'screenLayout'] as const).every(k => JSON.stringify(rs[k]) === JSON.stringify(vs[k])) && JSON.stringify(rs.framing) === JSON.stringify(vs.framing) && JSON.stringify(rs.look) === JSON.stringify(vs.look) && JSON.stringify(rs.effects) === JSON.stringify(vs.effects);
+  ok('renderSpec and the preview\'s visualSpec agree on every visual decision — the planner included', same && rs.framing?.strategy === 'cursor' && rs.tracking === 'off' && rs.mode === 'crop', { rs: rs.framing, vs: vs.framing });
+  const srcNoAn = { ...src, track: { key: src.track.key, at: 't' } };
+  const plain = renderSpec(withClip, srcNoAn, out, null)!;
+  ok('a Short of a recording without the analysis renders as before (no framing, same old crop) — nothing re-renders for old projects', plain.framing === null && plain.mode === 'crop' && plain.hash !== rs.hash);
+  const chosen = applyOps(withClip, [{ op: 'clip.update', id: out.clip_id, patch: { framing: { strategy: 'whole' } } }], 60).doc;
+  ok('the framing is in the hash: choosing "whole picture" is "Edited — render again"', renderSpec(chosen, src, out, null)!.hash !== rs.hash && renderSpec(chosen, src, out, null)!.framing?.strategy === 'whole');
+  const sameTwice = renderSpec(withClip, src, out, null)!.hash === rs.hash;
+  ok('…and stable: the same edit hashes the same', sameTwice);
+
+  /* What CSS filters could not say, now drawn. */
+  ok('vignette, grain and sharpness have preview layers from the engine\'s own curves; nothing is drawn when they are off', vignetteStops(0) === '' && /radial-gradient/.test(vignetteStops(40)) && grainOpacity({ grain: 0, filter: 'none' }) === 0 && grainOpacity({ grain: 0, filter: 'vintage' }) > 0 && sharpenKernel(0) === '' && sharpenKernel(50).split(' ').length === 9);
+  /* glidePath: a cut in the edit cuts the window too. */
+  const gp = glidePath(t => [t < 20 ? 100 : 1100, 360], { region: [0, 0, 1280, 720], crop: [405, 720] }, [[0, 10], [30, 40]], { dead: 0.2, tau: 0.22, cuts: [], pins: [], start: [640, 360], srcW: 1280, srcH: 720 });
+  ok('glidePath cuts at a jump cut of the edit instead of panning across the gap', gp[101][1] > 700 && gp[99][1] < 300 && gp[100][1] < 300, { before: gp[99], at: gp[100], after: gp[101] });
 }
 
 console.log(`\n${pass} passed, ${failN} failed`);

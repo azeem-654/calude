@@ -532,7 +532,10 @@ async function track(job, dir) {
   });
   await fsp.writeFile(path.join(dir, 'faces.json'), JSON.stringify(out));
   const up = await upload(job, path.join(dir, 'faces.json'), 'faces.json', 'application/json');
-  return { file: up, summary: { detector: out.detector, seen: out.seen, faces: out.faces, tracks: out.tracks, switches: out.switches, frames: out.frames } };
+  /* The analysis's headline (the kind of recording, the people) travels in the summary so a Short can be planned before the file is opened. */
+  const an = out.analysis && typeof out.analysis === 'object' ? out.analysis : null;
+  const analysis = an ? { v: 2, kind: String(an.kind ?? 'camera'), why: String(an.why ?? '').slice(0, 240), cursorSeen: Number(an.cursorSeen) || 0, people: Array.isArray(out.people) ? out.people.slice(0, 4) : [] } : undefined;
+  return { file: up, summary: { detector: out.detector, seen: out.seen, faces: out.faces, tracks: out.tracks, switches: out.switches, frames: out.frames, ...(analysis ? { analysis } : {}) } };
 }
 
 /** Faces in one still (a thumbnail's frame), largest first, as fractions of the picture. */
@@ -899,7 +902,7 @@ function cleanScreenLayout(l, srcW, srcH, W, H) {
   const region = [Math.round(num(rb[0], 0, 0, srcW - rw)), Math.round(num(rb[1], 0, 0, srcH - rh)), rw, rh];
   const wide = (Array.isArray(l.wide) ? l.wide : []).slice(0, 60)
     .map(r => [num(r?.[0], 0, 0, 1e6), num(r?.[1], 0, 0, 1e6)]).filter(([a, b]) => b - a >= 0.5).sort((a, b) => a[0] - b[0]);
-  return { kind: l.kind, crop: [cw, ch], top, cam, camAt, region, wide, path };
+  return { kind: l.kind, crop: [cw, ch], top, cam, camAt, region, wide, path, fitScreen: l.fitScreen === true };
 }
 
 function screenFrame(l, W, H, fps, cmds) {
@@ -917,7 +920,9 @@ function screenFrame(l, W, H, fps, cmds) {
   }
   const [cx, cy, bw, bh] = l.cam;
   const stack = l.camAt === 'top' ? '[sct][scb]vstack' : '[scb][sct]vstack';
-  const base = `[sc1]crop=${bw}:${bh}:${cx}:${cy},${fitFrame('sct', W, l.top, bw, bh, null, fps, '[sct]')};[sc2]${win(H - l.top)}[scb];${stack}`;
+  /* Slides under the camera: the screen band carries the region whole (fitted on a blurred copy) rather than a window — nothing of a slide is ever cut off. */
+  const screenBand = l.fitScreen && rw >= 16 && rh >= 16 ? `crop=${rw}:${rh}:${rx}:${ry},${fitFrame('scf', W, H - l.top, rw, rh, null, fps)}` : win(H - l.top);
+  const base = `[sc1]crop=${bw}:${bh}:${cx}:${cy},${fitFrame('sct', W, l.top, bw, bh, null, fps, '[sct]')};[sc2]${screenBand}[scb];${stack}`;
   return whole ? `split=3[sc1][sc2][scw0];${base}[scv];${whole};[scv][scw]overlay=0:0:enable='${wide}'` : `split[sc1][sc2];${base}`;
 }
 

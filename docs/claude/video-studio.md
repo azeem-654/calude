@@ -202,6 +202,63 @@ export is a canvas recording; Video Studio is the real one.
   appearance (hqdn3d, normalize, unsharp, bilateral skin smoothing inside the
   tracked face box only — `skinBox`, sendcmd). Only effects switched on are
   hashed. Preview: `cssEffects`, shadow div; key and skin say "in the render".
+- **Framing a Short round what matters (2026-11, `reframe.ts`, `visual.ts`)** —
+  "New short composition" used to be a centre crop (`clip.add` → `reframe
+  x 0.5`, tracking off). Now `track.py` also runs an **`Analyser`** on the
+  same frames (nothing per frame is kept): the mouse **pointer** (the one small
+  blob that changes on a still picture, with an arrow's contrast, followed
+  frame to frame; a caret never moves so it is never one), a 12×7 **motion
+  grid** per second → `activity` (centre + spread), **scene cuts**, the
+  **content box** (where edges or movement ever are), `flat`/`still`, and a
+  **`kind`** with `why`: screen / screencam / slides / talking / two / camera.
+  All in `faces.json` under `analysis` (v2); the headline (kind, why,
+  cursorSeen, people) travels in `Source.track.summary.analysis` so a plan can
+  be made before the file is opened. **Older `faces.json` have no analysis**:
+  the Video panel says so and offers "Analyse again" (`track_now`); the
+  editor re-fetches the file when `track.at` changes.
+  `clip.framing` (`Framing` in edit.ts, `cleanFraming`) holds only the
+  customer's choices — strategy (`auto`/cursor/speaker/screencam/content/
+  still/whole), zoom (window size, 0.35–1), focus, band share, camAt, ≤12
+  pins — never a path. `resolveFraming` settles `auto` from `knownOf()`
+  (screen → cursor, else content; screencam → screencam; slides → whole, or
+  screencam with `fitScreen` when there is a bubble; talking → speaker; two
+  → the classic `two` layout; camera → content at the full height; not
+  analysed → speaker if faces else an honest still crop that `framingMatters`
+  says changes nothing, so **old projects keep their hash**). `framePlan`
+  turns it into the one thing the engine and the preview already draw: a
+  `ScreenPlan` (region = content box, a window of the output's shape ×
+  zoom, a camera band for screencam) plus a `glidePath` (0.1 s rows,
+  dead zone, glide, hard cuts at scene cuts / speaker switches / pins /
+  edit cuts) and `wide` spans (reusing `wideSpans` on a meta built from the
+  cursor). The render sends it as the engine's screen layout (`screenFrame`,
+  `crop@ptr` by sendcmd; new `fitScreen` for slides under a camera); the
+  preview draws it with `drawScreenLayout` from the same plan. **`visualSpec`
+  (`visual.ts`) is the single source of every visual decision** — mode,
+  tracking, layout, screenLayout, framing, look, motion, effects, overlays,
+  logo — read by `renderSpec` (hash includes `fr` + the track key) and by
+  the Player; `test:video` asserts they agree. Video panel → **Framing**:
+  strategy tiles with why-not, Window size, Camera band / above / below,
+  "Point the window" (the preview shows the whole recording with the window
+  drawn — `vs-aim`/`vs-aimed` — a click sets `focus` for a still window or
+  adds a pin), pins as chips; the Layout list no longer lists speaker/screen
+  (they are framings). Tests: `test:video` (planner, cleaner, visualSpec ≡
+  renderSpec), `npm run test:videoanalysis` (synthetic clips through
+  track.py: kinds, pointer within 12 px median, a 9:16 Short keeping the
+  pointer in frame >90% where a centre crop had it <60%).
+- **The preview shows every effect (2026-11)**: the look/colour filter sits
+  on `.vse-picture` (deck + keyed canvas + layout canvas) — it was on the deck
+  only, so a laid-out Short lost its look; **sharpness** is an SVG
+  `feConvolveMatrix` (`sharpenKernel`) in the chain where the engine's
+  unsharp runs; **vignette** a radial gradient from the engine's own
+  `cos(a·r)^4` (`vignetteStops`); **grain** a feTurbulence texture at
+  `grainOpacity` (presets' own grain included); the **green screen** is keyed
+  in WebGL (`greenKey.ts`: the same UV distance / similarity / blend as
+  FFmpeg's chromakey, despill mix 0.6) and every painter draws the keyed
+  picture (`picOf`); **skin smoothing** softens the tracked face box under an
+  oval where the frame maps straight onto the recording (badge "≈"). Sliders
+  send `vs-tweak` while dragged (`onLive` on `Slider`/`FxSlider`) so the
+  preview shows the value before it is saved on release. Badges say "keyed"
+  or "in the render" truthfully (no WebGL → in the render).
 - **Shorts layouts** (`clip.layout`, `layouts.ts`): speaker/screen/split/two/pip
   offered from `faces.json` `people` (track.py) — `layoutOptions` says why not;
   `layoutPlan` boxes (numbers only) → engine `layoutFrame`; preview drawn on a

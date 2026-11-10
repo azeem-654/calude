@@ -16,6 +16,7 @@ import {
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
 import EffectRow, { FxSlider } from './EffectRow';
+import { tweak } from './Player';
 
 type Kind = 'long' | 'short';
 
@@ -48,14 +49,15 @@ function RenderHint({ ctx }: { ctx: EditorCtx }) {
 }
 
 /** A slider that saves on release, not on every pixel — one version per change, not forty. */
-function Slider({ label, value, min, max, step = 1, unit = '', onSave, field }: { label: string; value: number; min: number; max: number; step?: number; unit?: string; onSave: (v: number) => void; field?: string }) {
+function Slider({ label, value, min, max, step = 1, unit = '', onSave, field, onLive }: { label: string; value: number; min: number; max: number; step?: number; unit?: string; onSave: (v: number) => void; field?: string; onLive?: (v: number | null) => void }) {
   const [v, setV] = useState<number | null>(null);
   const shown = v ?? value;
-  const save = () => { if (v !== null && v !== value) onSave(v); setV(null); };
+  /* While it is dragged the preview shows the value (onLive → Player `vs-tweak`); on release it is saved once. */
+  const save = () => { onLive?.(null); if (v !== null && v !== value) onSave(v); setV(null); };
   return (
     <label className="vs-slider" data-field={field}>
       <span><b>{label}</b><i>{shown > 0 && min < 0 ? '+' : ''}{shown}{unit}</i></span>
-      <input type="range" min={min} max={max} step={step} value={shown} onChange={e => setV(Number(e.target.value))} onPointerUp={save} onKeyUp={save} onBlur={save} aria-label={label} />
+      <input type="range" min={min} max={max} step={step} value={shown} onChange={e => { const n = Number(e.target.value); setV(n); onLive?.(n); }} onPointerUp={save} onKeyUp={save} onBlur={save} aria-label={label} />
     </label>
   );
 }
@@ -68,6 +70,7 @@ export function AdjustPanel({ ctx }: { ctx: EditorCtx }) {
   const [k, setK] = useTarget(ctx);
   const l = lookOf(ctx.doc, k);
   const set = (patch: Partial<Look>, note: string) => void ctx.apply([{ op: 'look.set', target: k, patch }], note);
+  const live = (key: keyof Look) => (v: number | null) => tweak(v === null ? null : { target: k, look: { [key]: v } });
   const frame = ctx.view.source.posterUrl;
   return (
     <div className="vs-col" data-testid="vs-adjust-panel">
@@ -81,25 +84,25 @@ export function AdjustPanel({ ctx }: { ctx: EditorCtx }) {
         ))}
       </div>
       <div className="vs-group"><b>White balance</b>
-        <Slider label="Temperature" value={l.temperature} min={-100} max={100} onSave={v => set({ temperature: v }, 'Temperature')} field="video.temperature" />
-        <Slider label="Tint" value={l.tint} min={-100} max={100} onSave={v => set({ tint: v }, 'Tint')} />
+        <Slider label="Temperature" value={l.temperature} min={-100} max={100} onLive={live('temperature')} onSave={v => set({ temperature: v }, 'Temperature')} field="video.temperature" />
+        <Slider label="Tint" value={l.tint} min={-100} max={100} onLive={live('tint')} onSave={v => set({ tint: v }, 'Tint')} />
       </div>
       <div className="vs-group"><b>Tone</b>
-        <Slider label="Exposure" value={l.exposure} min={-100} max={100} onSave={v => set({ exposure: v }, 'Exposure')} />
-        <Slider label="Brightness" value={l.brightness} min={-100} max={100} onSave={v => set({ brightness: v }, 'Brightness')} />
-        <Slider label="Contrast" value={l.contrast} min={-100} max={100} onSave={v => set({ contrast: v }, 'Contrast')} />
-        <Slider label="Saturation" value={l.saturation} min={-100} max={100} onSave={v => set({ saturation: v }, 'Saturation')} />
+        <Slider label="Exposure" value={l.exposure} min={-100} max={100} onLive={live('exposure')} onSave={v => set({ exposure: v }, 'Exposure')} />
+        <Slider label="Brightness" value={l.brightness} min={-100} max={100} onLive={live('brightness')} onSave={v => set({ brightness: v }, 'Brightness')} />
+        <Slider label="Contrast" value={l.contrast} min={-100} max={100} onLive={live('contrast')} onSave={v => set({ contrast: v }, 'Contrast')} />
+        <Slider label="Saturation" value={l.saturation} min={-100} max={100} onLive={live('saturation')} onSave={v => set({ saturation: v }, 'Saturation')} />
       </div>
       <div className="vs-group"><b>Creative</b>
-        <Slider label="Hue" value={l.hue} min={-180} max={180} unit="°" onSave={v => set({ hue: v }, 'Hue')} />
-        <Slider label="Sharpness" value={l.sharpness} min={0} max={100} onSave={v => set({ sharpness: v }, 'Sharpness')} />
-        <Slider label="Blur" value={l.blur} min={0} max={100} onSave={v => set({ blur: v }, 'Blur')} />
-        <Slider label="Vignette" value={l.vignette} min={0} max={100} onSave={v => set({ vignette: v }, 'Vignette')} />
-        <Slider label="Film grain" value={l.grain} min={0} max={100} onSave={v => set({ grain: v }, 'Film grain')} />
+        <Slider label="Hue" value={l.hue} min={-180} max={180} unit="°" onLive={live('hue')} onSave={v => set({ hue: v }, 'Hue')} />
+        <Slider label="Sharpness" value={l.sharpness} min={0} max={100} onLive={live('sharpness')} onSave={v => set({ sharpness: v }, 'Sharpness')} />
+        <Slider label="Blur" value={l.blur} min={0} max={100} onLive={live('blur')} onSave={v => set({ blur: v }, 'Blur')} />
+        <Slider label="Vignette" value={l.vignette} min={0} max={100} onLive={live('vignette')} onSave={v => set({ vignette: v }, 'Vignette')} />
+        <Slider label="Film grain" value={l.grain} min={0} max={100} onLive={live('grain')} onSave={v => set({ grain: v }, 'Film grain')} />
       </div>
       <div className="vs-row">
         <button type="button" className="vs-btn sm" onClick={() => void ctx.apply([{ op: 'look.set', target: k, patch: {}, reset: true }], 'Colour reset')} data-act="look-reset"><RotateCcw size={13} /> Reset all</button>
-        <span className="vs-kbd">The preview is close; vignette and grain show only in the render.</span>
+        <span className="vs-kbd">The preview shows every setting here — sharpness, blur, vignette and grain included — drawn from the same numbers the render uses; the render's own filters are exact.</span>
       </div>
       <RenderHint ctx={ctx} />
     </div>
@@ -208,26 +211,27 @@ export function VisualEffectsPanel({ ctx }: { ctx: EditorCtx }) {
   const framed = k === 'short' ? ((clip?.reframe.mode ?? ctx.doc.shorts.mode ?? 'crop') === 'fit' || clip?.layout === 'pip' || clip?.layout === 'screen') : ctx.doc.long.aspect !== 'source' && ctx.doc.long.reframe.mode === 'fit';
   const faces = !!ctx.view.source.track?.ready && (ctx.view.source.track.summary?.faces ?? 0) > 0;
   const c = fx.color, sh = fx.shadow, g = fx.green, ap = fx.appearance;
+  const live = (effect: EffectKey, key: string) => (v: number | null) => tweak(v === null ? null : { target: k, effect: { key: effect, patch: { [key]: v } } });
   return (
     <div className="vs-col" data-testid="vs-effects-panel">
       <TargetChips k={k} set={setK} what="Effects" />
       <div className="vs-group"><b>Visual effects</b>
         <EffectRow id="color" icon={<SunMedium size={15} />} title="Color adjustments" on={c.on} onToggle={toggle('color', 'Color adjustments')} onRemove={() => remove('color', 'Color adjustments')}
           summary={c.on ? `${kelvinLabel(c.kelvin)} · exposure ${c.exposure > 0 ? '+' : ''}${c.exposure}` : 'Exposure, contrast, highlights, shadows, saturation, temperature'}>
-          <FxSlider label="Exposure" value={c.exposure} min={-100} max={100} onSave={v => set('color', { exposure: v, on: true }, 'Exposure')} />
-          <FxSlider label="Contrast" value={c.contrast} min={-100} max={100} onSave={v => set('color', { contrast: v, on: true }, 'Contrast')} />
-          <FxSlider label="Highlights" value={c.highlights} min={-100} max={100} onSave={v => set('color', { highlights: v, on: true }, 'Highlights')} />
-          <FxSlider label="Shadows" value={c.shadows} min={-100} max={100} onSave={v => set('color', { shadows: v, on: true }, 'Shadows')} />
-          <FxSlider label="Saturation" value={c.saturation} min={-100} max={100} onSave={v => set('color', { saturation: v, on: true }, 'Saturation')} />
-          <FxSlider label="Temperature" value={c.kelvin} min={2000} max={12000} step={100} fmt={kelvinLabel} onSave={v => set('color', { kelvin: v, on: true }, `Temperature ${v} K`)} />
+          <FxSlider label="Exposure" value={c.exposure} min={-100} max={100} onLive={live('color', 'exposure')} onSave={v => set('color', { exposure: v, on: true }, 'Exposure')} />
+          <FxSlider label="Contrast" value={c.contrast} min={-100} max={100} onLive={live('color', 'contrast')} onSave={v => set('color', { contrast: v, on: true }, 'Contrast')} />
+          <FxSlider label="Highlights" value={c.highlights} min={-100} max={100} onLive={live('color', 'highlights')} onSave={v => set('color', { highlights: v, on: true }, 'Highlights')} />
+          <FxSlider label="Shadows" value={c.shadows} min={-100} max={100} onLive={live('color', 'shadows')} onSave={v => set('color', { shadows: v, on: true }, 'Shadows')} />
+          <FxSlider label="Saturation" value={c.saturation} min={-100} max={100} onLive={live('color', 'saturation')} onSave={v => set('color', { saturation: v, on: true }, 'Saturation')} />
+          <FxSlider label="Temperature" value={c.kelvin} min={2000} max={12000} step={100} fmt={kelvinLabel} onLive={live('color', 'kelvin')} onSave={v => set('color', { kelvin: v, on: true }, `Temperature ${v} K`)} />
           <small className="vs-kbd">6,500 K is neutral daylight; lower warms the picture, higher cools it.</small>
         </EffectRow>
         <EffectRow id="shadow" icon={<Square size={15} />} title="Shadow" on={sh.on} onToggle={toggle('shadow', 'Shadow')} onRemove={() => remove('shadow', 'Shadow')}
           summary={sh.on ? (framed ? `${sh.opacity}% · blur ${sh.blur}` : 'On, but this framing fills the frame — nothing to cast it') : 'Under the picture where it sits in a frame'}>
-          <FxSlider label="X" value={sh.x} min={-80} max={80} unit=" px" onSave={v => set('shadow', { x: v, on: true }, 'Shadow X')} />
-          <FxSlider label="Y" value={sh.y} min={-80} max={80} unit=" px" onSave={v => set('shadow', { y: v, on: true }, 'Shadow Y')} />
-          <FxSlider label="Blur" value={sh.blur} min={0} max={80} unit=" px" onSave={v => set('shadow', { blur: v, on: true }, 'Shadow blur')} />
-          <FxSlider label="Opacity" value={sh.opacity} min={0} max={100} unit="%" onSave={v => set('shadow', { opacity: v, on: true }, 'Shadow opacity')} />
+          <FxSlider label="X" value={sh.x} min={-80} max={80} unit=" px" onLive={live('shadow', 'x')} onSave={v => set('shadow', { x: v, on: true }, 'Shadow X')} />
+          <FxSlider label="Y" value={sh.y} min={-80} max={80} unit=" px" onLive={live('shadow', 'y')} onSave={v => set('shadow', { y: v, on: true }, 'Shadow Y')} />
+          <FxSlider label="Blur" value={sh.blur} min={0} max={80} unit=" px" onLive={live('shadow', 'blur')} onSave={v => set('shadow', { blur: v, on: true }, 'Shadow blur')} />
+          <FxSlider label="Opacity" value={sh.opacity} min={0} max={100} unit="%" onLive={live('shadow', 'opacity')} onSave={v => set('shadow', { opacity: v, on: true }, 'Shadow opacity')} />
           <label className="vs-row" style={{ gap: 8, fontSize: 13 }}>Colour <input type="color" value={sh.color} onChange={e => set('shadow', { color: e.target.value, on: true }, 'Shadow colour')} aria-label="Shadow colour" /></label>
           <small className="vs-kbd">Shows where the video sits inside the frame: “whole picture” framing, or the camera bubble of a picture-in-picture Short. A video that fills its frame has nothing to cast a shadow on.</small>
         </EffectRow>
@@ -236,18 +240,18 @@ export function VisualEffectsPanel({ ctx }: { ctx: EditorCtx }) {
           <label className="vs-row" style={{ gap: 8, fontSize: 13 }}>Screen colour <input type="color" value={g.color} onChange={e => set('green', { color: e.target.value, on: true }, 'Key colour')} aria-label="Screen colour" />
             <button type="button" className="vs-chip" onClick={() => set('green', { color: '#00ff00', on: true }, 'Key: green')}>Green</button>
             <button type="button" className="vs-chip" onClick={() => set('green', { color: '#0047bb', on: true }, 'Key: blue')}>Blue</button></label>
-          <FxSlider label="Similarity" value={g.similarity} min={1} max={60} unit="%" onSave={v => set('green', { similarity: v, on: true }, 'Key similarity')} />
-          <FxSlider label="Edge softness" value={g.blend} min={0} max={40} unit="%" onSave={v => set('green', { blend: v, on: true }, 'Key softness')} />
+          <FxSlider label="Similarity" value={g.similarity} min={1} max={60} unit="%" onLive={live('green', 'similarity')} onSave={v => set('green', { similarity: v, on: true }, 'Key similarity')} />
+          <FxSlider label="Edge softness" value={g.blend} min={0} max={40} unit="%" onLive={live('green', 'blend')} onSave={v => set('green', { blend: v, on: true }, 'Key softness')} />
           <label className="vs-row" style={{ gap: 8, fontSize: 13 }}>Background <input type="color" value={g.bg} onChange={e => set('green', { bg: e.target.value, on: true }, 'Key background')} aria-label="Background colour" /></label>
-          <small className="vs-kbd">A real chroma key: every pixel near the screen colour is replaced by the background colour, and green spill is taken off the edges. On ordinary footage it would cut holes in the picture — use it only for a green or blue screen. The preview shows the footage as recorded; the key is in the render.</small>
+          <small className="vs-kbd">A real chroma key: every pixel near the screen colour is replaced by the background colour, and green spill is taken off the edges. On ordinary footage it would cut holes in the picture — use it only for a green or blue screen. The preview keys it with the same colour, similarity and softness (where the browser has WebGL); the render is exact.</small>
         </EffectRow>
         <EffectRow id="appearance" icon={<Sparkles size={15} />} title="Improve appearance" on={ap.on} onToggle={toggle('appearance', 'Improve appearance')} onRemove={() => remove('appearance', 'Improve appearance')}
           summary={ap.on ? `Amount ${ap.amount}%${faces ? '' : ' · no face found, so no skin smoothing'}` : 'Smooths and evens the picture'}>
-          <FxSlider label="Amount" value={ap.amount} min={0} max={100} unit="%" onSave={v => set('appearance', { amount: v, on: true }, `Improve appearance ${v}%`)} />
-          <small className="vs-kbd">Smooths and evens the picture: a mild denoise, gentle automatic white balance and exposure, a light sharpen{faces ? ', and skin smoothed only inside the face the Tracking tab found (edges and eyes kept)' : '. Skin smoothing needs a face — find faces in the Tracking tab'}. It does not reshape anything. The preview shows it only roughly; the render is exact.</small>
+          <FxSlider label="Amount" value={ap.amount} min={0} max={100} unit="%" onLive={live('appearance', 'amount')} onSave={v => set('appearance', { amount: v, on: true }, `Improve appearance ${v}%`)} />
+          <small className="vs-kbd">Smooths and evens the picture: a mild denoise, gentle automatic white balance and exposure, a light sharpen{faces ? ', and skin smoothed only inside the face the Tracking tab found (edges and eyes kept)' : '. Skin smoothing needs a face — find faces in the Tracking tab'}. It does not reshape anything. The preview softens the face roughly where the render smooths it; the render is exact.</small>
         </EffectRow>
       </div>
-      <span className="vs-kbd">The preview shows colour and shadow closely, not exactly; green screen and skin smoothing are seen in the render.</span>
+      <span className="vs-kbd">Every effect shows in the preview from the same numbers the render uses — colour and shadow closely, the green screen keyed, skin smoothing roughly; the render is exact.</span>
       <RenderHint ctx={ctx} />
     </div>
   );

@@ -482,7 +482,8 @@ export default function VideoEditor({ id }: { id: string }) {
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [wave, setWave] = useState<Uint8Array | null>(null);
   const [track, setTrack] = useState<TrackFile | null>(null);
-  const trackUrlSeen = useRef(false);
+  /* The analysis file is fetched once per analysis: a new one ("Analyse again") has a new `at`, and is fetched again. */
+  const trackUrlSeen = useRef('');
   const [screen, setScreen] = useState<ScreenMeta | null>(null);
   const screenUrlSeen = useRef(false);
   const [error, setError] = useState('');
@@ -583,7 +584,8 @@ export default function VideoEditor({ id }: { id: string }) {
     }
     if (v.source.waveUrl && !wave) void loadWave(v.source.waveUrl).then(w => { if (w) setWave(w); });
     if (v.source.screenUrl && !screenUrlSeen.current) { screenUrlSeen.current = true; void loadScreen(v.source.screenUrl).then(m => { if (m) setScreen(m); else screenUrlSeen.current = false; }); }
-    if (v.source.trackUrl && !trackUrlSeen.current) { trackUrlSeen.current = true; void loadTrack(v.source.trackUrl).then(t => { if (t) setTrack(t); else trackUrlSeen.current = false; }); }
+    const trackStamp = v.source.trackUrl ? (v.source.track?.at ?? 'x') : '';
+    if (trackStamp && trackUrlSeen.current !== trackStamp) { trackUrlSeen.current = trackStamp; void loadTrack(v.source.trackUrl!).then(t => { if (t) setTrack(t); else trackUrlSeen.current = ''; }); }
   }, [doc, narrate, transcript, wave]);
 
   const load = useCallback(async () => {

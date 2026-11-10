@@ -32,13 +32,15 @@ import { nowIso } from '../db';
 import { aiBudget, askGeminiParts, extractJson, loadAiKey } from '../ai';
 import { recordAgentRun, repurposeRecording } from '../projectAgents';
 import {
-  dimsFor, hashOf, logoFor, keepRanges, keptLength, mutedIn, clipKeeps, retimeWords, sentencesOf, toOutput, clock, lookOf, motionOf, trackingOf, effectsOf, effectsOn,
+  hashOf, keepRanges, keptLength, mutedIn, clipKeeps, retimeWords, sentencesOf, toOutput, clock, lookOf, motionOf,
   type Clip, type Effects, type Look, type LogoSettings, type Motion, type MusicTrack, type Overlay, type Sentence, type TrackMode, type Transcript, type VideoDoc, type Word,
 } from './edit';
-import { cameraPath, cutTimes, logoBox, overlayAss, overlaySpan, punchSpans, skinBox, type TrackFile } from './motion';
+import { cameraPath, cutTimes, logoBox, overlayAss, punchSpans, skinBox, type AnalysisSummary, type TrackFile } from './motion';
 import { layoutPlan } from './layouts';
+import { framePlan, knownOf, type Resolved } from './reframe';
+import { framingKey, visualSpec } from './visual';
 import {
-  autoFocus, focusWindows, followAt, followPath, frameMap, isWide, pointerAss, wideSpans, screenLayoutFor, pointerMarks, pointerOf, resolveCursor, screenPlan, sfxEvents, zoomAt, zoomPlan,
+  autoFocus, focusWindows, followAt, followPath, frameMap, isWide, pointerAss, wideSpans, pointerMarks, pointerOf, resolveCursor, screenPlan, sfxEvents, zoomAt, zoomPlan,
   type PointerSettings, type ScreenMeta, type ScreenRef,
 } from './pointer';
 import { cuesOf, toAss, toSrt, toVtt, thumbAss } from './captions';
@@ -105,7 +107,7 @@ export interface Source {
   chunks?: { key: string; s: number; e: number }[];
   silences?: [number, number][];
   /** Faces and the speaker (engine `track`): the file, what it found, or why it could not run. */
-  track?: { key?: string; summary?: Pick<TrackFile, 'detector' | 'seen' | 'faces' | 'tracks' | 'switches' | 'frames'>; error?: string; at: string };
+  track?: { key?: string; summary?: Pick<TrackFile, 'detector' | 'seen' | 'faces' | 'tracks' | 'switches' | 'frames'> & { analysis?: AnalysisSummary }; error?: string; at: string };
   /**
    * Started from the customer's own YouTube video instead of an upload: the
    * id (the only thing the engine is given), what oEmbed said it was called,
@@ -746,6 +748,8 @@ export interface RenderSpec {
   mutes: [number, number][];
   /** A Screen Recorder Short laid out round the pointer (pointer.ts screenPlan); null otherwise. */
   screenLayout: 'screencam' | 'follow' | null;
+  /** The planner's framing of a Short (reframe.ts): a window on a path from the analysis; null otherwise. */
+  framing: Resolved | null;
   /** Following the pointer in this video (zoom, drawn pointer, sounds); null when it does not apply. */
   pointer: PointerSettings | null;
   /** The Screen Recorder's notes, when this render needs them. */
@@ -758,18 +762,17 @@ export interface RenderSpec {
 export const musicFor = (doc: VideoDoc, kind: 'long' | 'short'): MusicTrack | null =>
   doc.music && (doc.music.applyTo === 'all' || (doc.music.applyTo === 'long' ? kind === 'long' : kind === 'short')) ? doc.music : null;
 
-/** Everything a render depends on; its hash says whether a file is still current. */
+/** Everything a render depends on; its hash says whether a file is still current. The visual decisions are visual.ts's — the preview reads the same. */
 export function renderSpec(doc: VideoDoc, src: Source, out: Pick<OutputRow, 'kind' | 'clip_id'>, tr: Transcript | null, screen: ScreenRef | null = null): RenderSpec | null {
   const probe = src.probe;
   if (!probe) return null;
   const clip = out.kind === 'short' ? doc.clips.find(c => c.id === out.clip_id) : undefined;
   if (out.kind === 'short' && !clip) return null;
   const keeps = clipKeeps(probe.duration, doc, clip);
-  const aspect = clip ? clip.aspect : doc.long.aspect;
-  const { width, height } = dimsFor(aspect, probe.width, probe.height);
-  const reframe = clip ? clip.reframe : doc.long.reframe;
-  const mode = aspect === 'source' ? 'source' : reframe.mode === 'source' && !clip ? 'crop' : reframe.mode;
-  const kind = clip ? 'short' as const : 'long' as const;
+  const tracked = !!src.track?.key;
+  const v = visualSpec({ doc, clip, probe, tracked, known: knownOf(null, src.track?.summary), screen, keeps });
+  const { kind, width, height, mode, tracking, layout, screenLayout, framing, look, motion, effects, overlays, logo } = v;
+  const reframe = { x: v.x, y: v.y };
   /* Only the caption corrections to words inside this video count: fixing a
      word in minute forty must not re-render a Short from minute three. */
   const [from, to] = clip ? [clip.s, clip.e] : [0, probe.duration];
@@ -778,23 +781,12 @@ export function renderSpec(doc: VideoDoc, src: Source, out: Pick<OutputRow, 'kin
     ? { st: doc.captions[kind], ed: edits, w: tr.words.length } : null;
   const music = musicFor(doc, kind);
   const musicKey = music ? { k: music.key, v: music.volume, i: music.fadeIn, o: music.fadeOut, l: music.loop, d: music.duck } : null;
-  const look = lookOf(doc, kind), motion = motionOf(doc, kind);
-  /* Following a face only means something where the picture is cropped, and only once the faces are known.
-     A Short laid out as "speaker" follows the speaker whatever the Shorts' own tracking says. */
-  const tracked = !!src.track?.key;
-  const tracking: TrackMode = mode === 'crop' && tracked ? (clip?.layout === 'speaker' ? 'speaker' : trackingOf(doc, kind)) : 'off';
-  /* A Screen Recorder Short: the layout asked for, or — not asked, in a tall shape — the camera on top
-     if there was one, else the screen following the pointer, which is what a screen Short is for. */
-  const screenLayout = screenLayoutFor(clip, screen);
-  const layout = screenLayout ? null : clip?.layout === 'split' || clip?.layout === 'two' || clip?.layout === 'pip' ? (tracked ? clip.layout : null) : null;
   /* The pointer is followed where the picture maps straight onto the recording: a screen Short, or a long
      video shown whole or cropped still (a crop that follows a face moves under it). */
   const ptr = pointerOf(doc);
   const maps = kind === 'short' ? !!screenLayout || (mode !== 'crop' || tracking === 'off') : tracking === 'off';
-  const ptrOn = !!screen && ptr.on && (kind === 'long' ? ptr.long : ptr.shorts) && maps && focusWindows(ptr.focus, keeps).length > 0;
+  const ptrOn = !!screen && ptr.on && (kind === 'long' ? ptr.long : ptr.shorts) && maps && !framing && focusWindows(ptr.focus, keeps).length > 0;
   const pointer = ptrOn && (kind === 'long' || screenLayout) ? ptr : null;
-  const overlays = (doc.overlays ?? []).filter(ov => overlaySpan(ov, keeps));
-  const effects = effectsOn(effectsOf(doc, kind));
   const extra = {
     ...(JSON.stringify(look) !== JSON.stringify(lookOf({}, kind)) ? { look } : {}),
     ...(JSON.stringify(motion) !== JSON.stringify(motionOf({}, kind)) ? { motion } : {}),
@@ -803,13 +795,13 @@ export function renderSpec(doc: VideoDoc, src: Source, out: Pick<OutputRow, 'kin
     ...(Object.keys(effects).length ? { fx: effects, ...(effects.appearance && tracked ? { tk: src.track?.key } : {}) } : {}),
     ...(layout ? { layout, tk: src.track?.key } : {}),
     ...(screenLayout ? { sl: screenLayout, sk: screen?.key } : {}),
+    ...(framing ? { fr: framingKey(framing), tk: src.track?.key } : {}),
     ...(pointer ? { ptr: { f: focusWindows(pointer.focus, keeps).map(w => [w.a, w.b, w.range.cursor, w.range.moment]), z: pointer.zoom, c: pointer.cursor, sz: pointer.size, col: pointer.color, k: pointer.click, m: pointer.moments, v: pointer.volume }, sk: screen?.key } : {}),
   };
   const mutes = mutedIn(doc, keeps);
-  const logo = logoFor(doc, kind);
   const logoKey = logo ? { k: logo.key, b: logoBox(logo, width, height), r: logo.radius, o: logo.opacity } : null;
   const hash = hashOf({ keeps, width, height, mode, x: reframe.x, y: reframe.y, captionsKey, audio: doc.audio, ...(musicKey ? { musicKey } : {}), ...extra, ...(mutes.length ? { mutes } : {}), ...(logoKey ? { logoKey } : {}), v: 1 });
-  return { hash, keeps, width, height, mode, x: reframe.x, y: reframe.y, kind, clip, music, look, motion, tracking, overlays, effects, layout, mutes, screenLayout, pointer, screen: screenLayout || pointer ? screen : null, logo };
+  return { hash, keeps, width, height, mode, x: reframe.x, y: reframe.y, kind, clip, music, look, motion, tracking, overlays, effects, layout, mutes, screenLayout, framing, pointer, screen: screenLayout || pointer ? screen : null, logo };
 }
 
 /**
@@ -1066,13 +1058,16 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
     /* The face or the speaker, followed through the edit; a layout's boxes; the face box for skin smoothing. */
     let camera: [number, number, number, number][] = [];
     let tf: TrackFile | null = null;
-    if ((spec.tracking !== 'off' || spec.layout || spec.effects.appearance) && src.track?.key) {
+    if ((spec.tracking !== 'off' || spec.layout || spec.effects.appearance || spec.framing) && src.track?.key) {
       const obj = await env.VIDEO!.get(src.track.key);
       tf = obj ? parse<TrackFile | null>(await obj.text(), null) : null;
     }
     if (spec.tracking !== 'off' && tf?.[spec.tracking]?.length) camera = cameraPath(tf[spec.tracking], spec.keeps);
     const srcW = src.probe!.width, srcH = src.probe!.height;
     const layout = spec.layout ? layoutPlan(spec.layout, tf, srcW, srcH, spec.width, spec.height) : null;
+    /* The planner's window on its path (reframe.ts), as the engine's screen layout — the preview draws the same plan. */
+    const fp = spec.framing ? framePlan(spec.framing, tf, srcW, srcH, spec.width, spec.height, spec.keeps) : null;
+    const framed = fp ? { kind: fp.plan.kind, cam: fp.plan.cam, camAt: fp.plan.camAt, crop: fp.plan.crop, top: fp.plan.top, region: fp.plan.region, path: fp.path, wide: fp.wide, fitScreen: !!fp.plan.fitScreen } : null;
     const skin = spec.effects.appearance ? skinBox(tf, spec.keeps, srcW, srcH) : null;
     const m = spec.motion;
     const ptr = await pointerParams(env, spec, src, tr);
@@ -1083,8 +1078,8 @@ async function renderJob(env: Env, origin: string, job: JobRow, p: ProjectRow): 
       op: 'render' as const,
       params: {
         keeps: spec.keeps, mutes: spec.mutes, width: spec.width, height: spec.height, srcWidth: src.probe!.width, srcHeight: src.probe!.height,
-        mode: layout ? 'fit' : spec.layout ? 'fit' : spec.mode, cropX: spec.x, cropY: spec.y, ass, audio: doc.audio, speech, hasAudio: src.probe!.hasAudio, fps: 30, name: 'video.mp4',
-        effects: spec.effects, layout: ptr.screenLayout ?? layout, skin,
+        mode: layout || framed ? 'fit' : spec.layout ? 'fit' : spec.mode, cropX: spec.x, cropY: spec.y, ass, audio: doc.audio, speech, hasAudio: src.probe!.hasAudio, fps: 30, name: 'video.mp4',
+        effects: spec.effects, layout: ptr.screenLayout ?? framed ?? layout, skin,
         pointerZoom: ptr.pointerZoom, pointerAss: ptr.ass, sfx: src.probe!.hasAudio && ptr.sfx.length ? { volume: spec.pointer?.volume ?? 0.6, events: ptr.sfx } : null,
         music: spec.music ? { volume: spec.music.volume, fadeIn: spec.music.fadeIn, fadeOut: spec.music.fadeOut, loop: spec.music.loop, duck: spec.music.duck } : null,
         preset: spec.kind === 'long' && keptLength(spec.keeps) > 1800 ? 'faster' : 'veryfast',

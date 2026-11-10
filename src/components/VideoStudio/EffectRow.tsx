@@ -51,14 +51,15 @@ export default function EffectRow({ icon, title, on, onToggle, summary, children
 }
 
 /** A slider that saves on release, not on every pixel — one version per change, not forty. */
-export function FxSlider({ label, value, min, max, step = 1, unit = '', onSave, fmt }: { label: string; value: number; min: number; max: number; step?: number; unit?: string; onSave: (v: number) => void; fmt?: (v: number) => string }) {
+export function FxSlider({ label, value, min, max, step = 1, unit = '', onSave, fmt, onLive }: { label: string; value: number; min: number; max: number; step?: number; unit?: string; onSave: (v: number) => void; fmt?: (v: number) => string; onLive?: (v: number | null) => void }) {
   const [v, setV] = useState<number | null>(null);
   const shown = v ?? value;
-  const save = () => { if (v !== null && v !== value) onSave(v); setV(null); };
+  /* While it is dragged the preview shows the value (onLive); on release it is saved once and the preview reads the edit again. */
+  const save = () => { onLive?.(null); if (v !== null && v !== value) onSave(v); setV(null); };
   return (
     <label className="vs-slider">
       <span><b>{label}</b><i>{fmt ? fmt(shown) : `${shown > 0 && min < 0 ? '+' : ''}${shown}${unit}`}</i></span>
-      <input type="range" min={min} max={max} step={step} value={shown} onChange={e => setV(Number(e.target.value))} onPointerUp={save} onKeyUp={save} onBlur={save} aria-label={label} />
+      <input type="range" min={min} max={max} step={step} value={shown} onChange={e => { const n = Number(e.target.value); setV(n); onLive?.(n); }} onPointerUp={save} onKeyUp={save} onBlur={save} aria-label={label} />
     </label>
   );
 }

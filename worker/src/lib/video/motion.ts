@@ -31,7 +31,35 @@ export interface TrackFile {
   face: TrackRow[];
   /** Each person's median place and face size, and their share of the frames (track.py); absent in older files. */
   people?: { cx: number; cy: number; w: number; h: number; share: number }[];
+  /** What else the frames said (track.py `Analyser`, 2026-11): the pointer, where things happen, the kind of recording. Absent in older files. */
+  analysis?: Analysis;
 }
+
+/** The kind of recording track.py read from the frames and the faces — what decides how a Short is framed (reframe.ts). */
+export type VideoKind = 'screen' | 'screencam' | 'slides' | 'talking' | 'two' | 'camera';
+export const KIND_LABEL: Record<VideoKind, string> = {
+  screen: 'Screen recording', screencam: 'Screen recording with a camera', slides: 'Slides or a still screen', talking: 'One person talking', two: 'Two people', camera: 'Camera footage',
+};
+export interface Analysis {
+  v: 2;
+  kind: VideoKind;
+  /** One sentence on why, for the customer ("a flat, still picture with a pointer moving in 80% of the seconds"). */
+  why: string;
+  /** Share of pixels that are flat (a screen), of frames that did not change, of seconds with the pointer moving, of seconds with any movement. */
+  flat: number; still: number; cursorSeen: number; moving: number;
+  /** Source times where most of the frame changed at once. */
+  cuts: number[];
+  /** The part of the frame that ever carries edges or movement, [x, y, w, h] of the frame. */
+  content: [number, number, number, number];
+  /** The mouse pointer, [t, x, y] of the frame, only while it moves. */
+  cursor: [number, number, number][];
+  /** Per second with movement: [t, centre x, centre y, spread, amount] — where things happen. */
+  activity: [number, number, number, number, number][];
+  grid: [number, number];
+  edges: number[];
+}
+/** What the project keeps of the analysis without opening the file (Source.track.summary). */
+export type AnalysisSummary = Pick<Analysis, 'v' | 'kind' | 'why' | 'cursorSeen'> & { people: NonNullable<TrackFile['people']> };
 
 /** The value of a track at a source time: the keyframe before it, eased towards the next unless the next is a cut. */
 export function trackAt(rows: TrackRow[], t: number): [number, number] {
@@ -288,4 +316,34 @@ export function skinBox(tf: TrackFile | null, keeps: [number, number][], srcW: n
   const fh = hs[Math.floor(hs.length / 2)];
   const fw = tf?.people?.[0]?.w ?? (fh * srcH * 0.8) / srcW;
   return { w: Math.round(fw * srcW * 1.3), h: Math.round(fh * srcH * 1.35), path: cameraPath(rows, keeps) };
+}
+
+/* ── The preview of what CSS filters cannot say (Player.tsx) ─────────────── */
+
+/**
+ * The engine's `vignette=angle=a` darkens towards the corners by cos(a·r)^4
+ * with r the distance from the centre (0 in the middle, 1 at the corners).
+ * The preview lays a radial gradient over the picture with the same
+ * darkness at the edge of the picture and at its corners.
+ */
+export function vignetteStops(vignette: number): string {
+  const v = Math.max(0, Math.min(100, vignette));
+  if (!v) return '';
+  const a = 0.15 + (v / 100) * 0.6;
+  const dark = (r: number) => (1 - Math.pow(Math.cos(Math.min(Math.PI / 2, a * r)), 4)).toFixed(3);
+  return `radial-gradient(ellipse at center, rgba(0,0,0,0) 0%, rgba(0,0,0,${dark(0.5)}) 50%, rgba(0,0,0,${dark(0.75)}) 75%, rgba(0,0,0,${dark(1)}) 100%)`;
+}
+
+/** The grain laid over the picture: the engine's `noise=alls=g/4` (plus a preset's own), as the opacity of a noise texture. */
+export function grainOpacity(look: { grain: number; filter: string }): number {
+  const g = Math.max(0, Math.min(100, look.grain)) + (look.filter === 'vintage' ? 12 : 0);
+  return g ? Math.min(0.45, g / 100 * 0.42) : 0;
+}
+
+/** The engine's `unsharp=5:5:k` as a 3×3 sharpening kernel for an SVG feConvolveMatrix; k from the slider as the engine scales it. */
+export function sharpenKernel(sharpness: number): string {
+  const k = Math.max(0, Math.min(100, sharpness)) / 100 * 1.6;
+  if (!k) return '';
+  const c = 1 + 4 * (k / 4), s = -(k / 4);
+  return [0, s, 0, s, c, s, 0, s, 0].map(n => n.toFixed(3)).join(' ');
 }

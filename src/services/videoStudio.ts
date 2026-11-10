@@ -16,7 +16,7 @@ import type { VideoMeta } from '../../worker/src/lib/video/shorts';
 export * from '../../worker/src/lib/video/edit';
 export { cuesOf, isRtl, type Cue } from '../../worker/src/lib/video/captions';
 export { cleanupSummary, isFiller, findFillers, fillerCounts, FILLER_KINDS, FILLER_INFO, DEFAULT_FILLERS, type FillerKind } from '../../worker/src/lib/video/cleanup';
-export { cameraPath, cutTimes, punchSpans, overlaySpan, overlayPlace, logoBox, OVERLAY_SIZE, OVERLAY_FAMILY, trackAt, cssLook, cssEffects, type TrackFile, type TrackRow } from '../../worker/src/lib/video/motion';
+export { cameraPath, cutTimes, punchSpans, overlaySpan, overlayPlace, logoBox, OVERLAY_SIZE, OVERLAY_FAMILY, trackAt, cssLook, cssEffects, vignetteStops, grainOpacity, sharpenKernel, type TrackFile, type TrackRow } from '../../worker/src/lib/video/motion';
 export { layoutOptions, layoutPlan, LAYOUT_LABEL, type LayoutPlan, type LayoutOption } from '../../worker/src/lib/video/layouts';
 export {
   autoFocus, pointerOf, pointerAt, pointerInFrame, segAt, focusWindows, zoomPlan, zoomAt, zoomLevel, screenPlan, screenLayoutOptions, followPath, followAt, wideSpans, isWide,
@@ -24,6 +24,9 @@ export {
   type ScreenMeta, type ScreenSeg, type ScreenRef, type NBox, type CamShape, type FocusRange, type PointerSettings, type CursorStyle, type ClickSound, type Moment, type ZoomPlan, type ScreenPlan, type Sensitivity,
 } from '../../worker/src/lib/video/pointer';
 export { toXmeml, editorialScore } from '../../worker/src/lib/video/xml';
+export { STRATEGY_LABEL, STRATEGY_HINT, knownOf, framingOptions, resolveFraming, framingMatters, framePlan, windowCentre, type Known, type Resolved, type FramePlan, type FramingOption } from '../../worker/src/lib/video/reframe';
+export { visualSpec, framingKey, type VisualSpec, type VisualInput } from '../../worker/src/lib/video/visual';
+export { KIND_LABEL, type Analysis, type AnalysisSummary, type VideoKind } from '../../worker/src/lib/video/motion';
 export type { VideoMeta } from '../../worker/src/lib/video/shorts';
 export { parseYoutubeUrl, youtubeThumb, YOUTUBE_WAY_FORWARD, type YoutubeLink } from '../../worker/src/lib/video/youtube';
 
@@ -71,7 +74,7 @@ export interface ThumbSpec {
 export { thumbPlan, normaliseSpec, inkOn, lineRect, TREND_LAYOUTS, STICKERS, EM, CONDENSE, HALO, type Plan as ThumbPlan } from '../../media/engine/thumbLayout.mjs';
 export { soundSteps, type SoundStep, type WebStep } from '../../media/engine/soundPlan.mjs';
 export interface ThumbView { index: number; layout: string; width: number; height: number; bytes: number; verified: boolean; check: string; headline: string; set: number; url: string; downloadUrl: string; spec: ThumbSpec | null; face: boolean }
-export interface TrackStatus { ready: boolean; summary: { detector: string; seen: number; faces: number; tracks: number; switches: { speaker: number; face: number }; frames: number } | null; error: string; at: string }
+export interface TrackStatus { ready: boolean; summary: { detector: string; seen: number; faces: number; tracks: number; switches: { speaker: number; face: number }; frames: number; analysis?: import('../../worker/src/lib/video/motion').AnalysisSummary } | null; error: string; at: string }
 
 export type OutputStatus = 'processing' | 'needs_review' | 'approved' | 'ready_to_publish' | 'failed';
 export interface OutputView {

@@ -19,8 +19,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Search, Play, Pause, Music2, Upload, Trash2, Loader, ExternalLink, Check, Wand2, Volume2, Mic, Sparkles, Clapperboard } from 'lucide-react';
 import {
-  searchMusic, chooseMusic, uploadMusic, renderOutputs, clock, layoutOptions, screenLayoutFor,
-  type FoundTrack, type Denoise, type Aspect, type Op, type ShortLayout,
+  searchMusic, chooseMusic, uploadMusic, renderOutputs, clock, layoutOptions, screenLayoutFor, trackNow,
+  knownOf, framingOptions, resolveFraming, STRATEGY_LABEL, STRATEGY_HINT, KIND_LABEL,
+  type FoundTrack, type Denoise, type Aspect, type Op, type ShortLayout, type Framing,
 } from '../../services/videoStudio';
 import type { EditorCtx } from './VideoEditor';
 import EffectRow, { FxSlider, Switch } from './EffectRow';
@@ -53,6 +54,78 @@ function LayoutIcon({ kind }: { kind: ShortLayout }) {
   return <svg className="vs-layout-ic" viewBox="0 0 18 30" width={18} height={30} aria-hidden="true">{parts}</svg>;
 }
 
+/**
+ * How a Short is framed inside its shape (reframe.ts): the strategy the
+ * analysis chose, or the customer's; the window's size; the camera band;
+ * and pins — moments the window is pointed at by clicking the preview. Every
+ * change is in the preview at once; the render reads the same plan.
+ */
+function FramingSection({ ctx, clip, n, set }: { ctx: EditorCtx; clip: NonNullable<ReturnType<EditorCtx['doc']['clips']['find']>>; n: number; set: (patch: Extract<Op, { op: 'clip.update' }>['patch'], note: string) => void }) {
+  const t = ctx.view.source.track;
+  const known = knownOf(ctx.track, t?.summary);
+  const f = clip.framing ?? { strategy: 'auto' as const };
+  const res = resolveFraming(clip.framing, known, clip.reframe);
+  const [aiming, setAiming] = useState(false);
+  const [asked, setAsked] = useState(false);
+  const running = ctx.view.jobs.some(j => j.kind === 'track' && (j.state === 'queued' || j.state === 'running'));
+  const setF = (patch: Partial<Framing>, note: string) => set({ framing: { ...patch, by: 'you' } }, note);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('vs-aim', { detail: aiming }));
+    if (!aiming) return;
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<{ x: number; y: number; t: number }>).detail;
+      if (res.strategy === 'still') setF({ focus: { x: d.x, y: d.y } }, `Short ${n}: window moved`);
+      else setF({ pins: [...(clip.framing?.pins ?? []).filter(p => Math.abs(p[0] - d.t) > 0.75), [Math.round(d.t * 100) / 100, d.x, d.y]] }, `Short ${n}: pinned at ${clock(d.t)}`);
+    };
+    window.addEventListener('vs-aimed', on);
+    return () => window.removeEventListener('vs-aimed', on);
+  }, [aiming, res.strategy, clip.framing?.pins, n]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { window.dispatchEvent(new CustomEvent('vs-aim', { detail: false })); }, []);
+  const layoutOn = !!clip.layout && clip.layout !== 'speaker' && clip.layout !== 'screen';
+  const sized = !layoutOn && clip.reframe.mode !== 'fit' && res.strategy !== 'whole';
+  return (
+    <div className="vs-label" data-testid="vs-framing">Framing
+      <div className="vs-framing-opts" role="radiogroup" aria-label="Framing">
+        {framingOptions(known).map(o => (
+          <button key={o.key} type="button" role="radio" aria-checked={f.strategy === o.key} className="vs-framing-opt" disabled={!o.ok} data-framing-opt={o.key} title={o.ok ? STRATEGY_HINT[o.key] : o.why}
+            onClick={() => setF({ strategy: o.key }, `Short ${n}: ${STRATEGY_LABEL[o.key].toLowerCase()}`)}>
+            <b>{o.label}</b><small>{o.ok ? (o.key === 'auto' && f.strategy === 'auto' ? res.note : STRATEGY_HINT[o.key]) : o.why}</small>
+          </button>
+        ))}
+      </div>
+      {layoutOn && <div className="vs-note">The layout below is in charge of this Short; pick a framing to go back to a window on the recording.</div>}
+      {!layoutOn && f.strategy !== 'auto' && <small className="vs-kbd" data-testid="vs-framing-note" style={{ fontWeight: 500 }}>{res.note}</small>}
+      <small className="vs-kbd" style={{ fontWeight: 500 }} data-testid="vs-analysis-note">
+        {running ? 'Analysing the recording…' : known.analysed && known.kind ? `Analysed: ${KIND_LABEL[known.kind]} — ${known.why}.` : t?.ready ? 'Faces were found, but this recording was analysed before pointer and action detection existed.' : 'Not analysed yet.'}
+        {!running && (!known.analysed) && <> <button type="button" className="vs-btn ghost sm" disabled={asked || !ctx.view.source.proxyUrl} data-act="analyse-again" onClick={() => { setAsked(true); void trackNow(ctx.view.project.id).then(() => ctx.refresh()); }}>Analyse {t?.ready ? 'again' : 'now'}</button></>}
+      </small>
+      {sized && (
+        <FxSlider label="Window size" value={Math.round(res.zoom * 100)} min={35} max={100} unit="%" onSave={v => setF({ zoom: v / 100 }, `Short ${n}: window ${v}%`)} />
+      )}
+      {!layoutOn && res.strategy === 'screencam' && (
+        <>
+          <FxSlider label="Camera band" value={Math.round(res.share * 100)} min={20} max={50} unit="%" onSave={v => setF({ share: v / 100 }, `Short ${n}: camera band ${v}%`)} />
+          <div className="vs-chips">
+            <button type="button" className="vs-chip" aria-pressed={res.camAt === 'bottom'} onClick={() => setF({ camAt: 'bottom' }, `Short ${n}: camera below`)}>Camera below</button>
+            <button type="button" className="vs-chip" aria-pressed={res.camAt === 'top'} onClick={() => setF({ camAt: 'top' }, `Short ${n}: camera above`)}>Camera above</button>
+          </div>
+        </>
+      )}
+      {sized && (
+        <div className="vs-row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" className={`vs-btn sm ${aiming ? 'ai' : ''}`} aria-pressed={aiming} data-act="aim" onClick={() => setAiming(a => !a)}>{aiming ? 'Done pointing' : res.strategy === 'still' ? 'Move the window' : 'Point the window at a moment'}</button>
+          <small className="vs-kbd" style={{ fontWeight: 500 }}>{res.strategy === 'still' ? 'Click the preview where the window should sit.' : 'Click the preview where the window should look at the current moment; it holds there for a moment, then carries on following.'}</small>
+        </div>
+      )}
+      {!!clip.framing?.pins?.length && (
+        <div className="vs-pins" data-testid="vs-pins">
+          {clip.framing.pins.map(p => <button key={p[0]} type="button" className="vs-chip" title="Remove this pin" onClick={() => setF({ pins: clip.framing!.pins!.filter(q => q !== p) }, `Short ${n}: pin removed`)}>{clock(p[0])} · {Math.round(p[1] * 100)}%, {Math.round(p[2] * 100)}% ×</button>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function VideoPanel({ ctx }: { ctx: EditorCtx }) {
   const { doc } = ctx;
   const clip = ctx.activeClip ? doc.clips.find(c => c.id === ctx.activeClip) ?? null : null;
@@ -72,30 +145,19 @@ export function VideoPanel({ ctx }: { ctx: EditorCtx }) {
         <div className="vs-label">Shape
           <div className="vs-chips">{(['9:16', '1:1', '4:5', '16:9'] as const).map(a => <button key={a} type="button" className="vs-chip" aria-pressed={clip.aspect === a} onClick={() => set({ aspect: a }, `Short ${n}: ${a}`)}>{a}</button>)}</div>
         </div>
+        <FramingSection ctx={ctx} clip={clip} n={n} set={set} />
         <div className="vs-label" data-testid="vs-layouts">Layout
           <div className="vs-layouts" role="radiogroup" aria-label="Layout">
-            {layoutOptions(ctx.track, ctx.view.extras?.screen ?? null).map(o => (
+            {layoutOptions(ctx.track, ctx.view.extras?.screen ?? null).filter(o => o.key !== 'speaker' && o.key !== 'screen').map(o => (
               <button key={o.key} type="button" role="radio" aria-checked={clip.layout === o.key || (!clip.layout && autoLayout === o.key)} className="vs-layout-opt" disabled={!o.ok} data-layout-opt={o.key}
                 title={o.ok ? o.label : o.why} onClick={() => set({ layout: o.key }, `Short ${n}: ${o.label.toLowerCase()}`)}>
                 <LayoutIcon kind={o.key} /><span><b>{o.label}</b>{!clip.layout && autoLayout === o.key && <small>Chosen for this screen recording</small>}{!o.ok && <small>{o.why}</small>}</span>
               </button>
             ))}
+            {clip.layout && clip.layout !== 'speaker' && clip.layout !== 'screen' && <button type="button" className="vs-layout-opt" data-layout-opt="none" onClick={() => set({ layout: null }, `Short ${n}: framed, no layout`)}><span><b>No layout</b><small>Back to the framing above</small></span></button>}
           </div>
-          <small className="vs-kbd" style={{ fontWeight: 500 }}>Worked out from the faces in the recording{ctx.view.extras?.screen ? ' and from where the Screen Recorder saw the pointer' : ''}; only the layouts it can carry are offered. The preview shows the layout; the render builds the same boxes.</small>
+          <small className="vs-kbd" style={{ fontWeight: 500 }}>Fixed layouts from the faces{ctx.view.extras?.screen ? ' and from where the Screen Recorder saw the pointer' : ''}; a layout takes the place of the framing above. The preview shows the layout; the render builds the same boxes.</small>
         </div>
-        {(!clip.layout || clip.layout === 'speaker' || clip.layout === 'screen') && <div className="vs-label">Framing
-          <div className="vs-chips">
-            <button type="button" className="vs-chip" aria-pressed={clip.reframe.mode === 'crop'} onClick={() => set({ reframe: { mode: 'crop' }, layout: null }, 'Crop to the speaker')}>Crop to the speaker</button>
-            <button type="button" className="vs-chip" aria-pressed={clip.reframe.mode === 'fit'} onClick={() => set({ reframe: { mode: 'fit' }, layout: null }, 'Keep the whole screen')}>Whole screen</button>
-          </div>
-        </div>}
-        {clip.reframe.mode === 'crop' && !clip.layout && (
-          <label className="vs-label">Crop position · {Math.round(clip.reframe.x * 100)}%
-            <input type="range" min={0} max={100} defaultValue={Math.round(clip.reframe.x * 100)} key={`${clip.id}:${clip.reframe.x}`} aria-label="Crop position"
-              onPointerUp={e => set({ reframe: { x: Number((e.target as HTMLInputElement).value) / 100 } }, 'Moved the crop')}
-              onKeyUp={e => set({ reframe: { x: Number((e.target as HTMLInputElement).value) / 100 } }, 'Moved the crop')} />
-          </label>
-        )}
         <p className="vs-kbd" style={{ margin: 0 }}>Trim it in the Shorts list (left) or mark a stretch on the timeline.</p>
         <RenderHint ctx={ctx} />
       </div>

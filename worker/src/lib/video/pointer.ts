@@ -395,7 +395,7 @@ function toOut(t: number, keeps: [number, number][]): number | null {
   for (const [a, b] of keeps) { if (t < a) return null; if (t <= b) return acc + (t - a); acc += b - a; }
   return null;
 }
-function toSrc(t: number, keeps: [number, number][]): number {
+export function toSrc(t: number, keeps: [number, number][]): number {
   let acc = 0;
   for (const [a, b] of keeps) { if (t <= acc + (b - a)) return a + (t - acc); acc += b - a; }
   return keeps.length ? keeps[keeps.length - 1][1] : 0;

@@ -99,8 +99,41 @@ export interface Clip {
   reframe: Reframe;
   /** The layout chosen for this Short (see ShortLayout); absent, its crop / fit. */
   layout?: ShortLayout;
+  /**
+   * How a cropped Short is framed round what matters (reframe.ts): the
+   * strategy and the customer's few settings. Paths are never stored — they
+   * are worked out from the analysis by the preview and the render alike.
+   * Absent: `auto` (decided from the analysis; a plain crop when there is none).
+   */
+  framing?: Framing;
   /** A highlight reel: the stretches it is made of, in order (inside s–e). Absent: the whole of s–e. */
   parts?: [number, number][];
+}
+
+/**
+ * The ways a Short can be framed inside its shape:
+ *   auto      chosen from the recording's analysis (reframe.ts says how)
+ *   cursor    a window that follows the mouse pointer (a screen recording)
+ *   speaker   a window that follows the speaker's face
+ *   screencam the screen following the pointer, the camera in a band
+ *   content   a window that follows where things happen on screen
+ *   still     a window held where the customer put it (`focus`)
+ *   whole     the whole picture, fitted, on a blurred copy of itself
+ */
+export const FRAME_STRATEGIES = ['auto', 'cursor', 'speaker', 'screencam', 'content', 'still', 'whole'] as const;
+export type FrameStrategy = typeof FRAME_STRATEGIES[number];
+export interface Framing {
+  strategy: FrameStrategy;
+  /** How much of the picture the window shows, 0.35–1 (1 = the largest window the shape allows). Absent: the strategy's own. */
+  zoom?: number;
+  /** Where a still window is centred, 0–1 of the frame; also the start for a following one. */
+  focus?: { x: number; y: number };
+  /** screencam: the camera band's share of the height (0.2–0.5) and which end it sits at. */
+  share?: number;
+  camAt?: 'top' | 'bottom';
+  /** [source time, x, y]: moments the customer pointed the window at, held for a moment, then the strategy carries on. */
+  pins?: [number, number, number][];
+  by?: 'ai' | 'you';
 }
 
 export type CleanupPreset = 'conservative' | 'balanced' | 'aggressive';
@@ -325,6 +358,28 @@ export const effectsOn = (fx: Effects): Partial<Effects> =>
  */
 export type ShortLayout = 'speaker' | 'screen' | 'split' | 'two' | 'pip' | 'screencam' | 'follow';
 export const SHORT_LAYOUTS: ShortLayout[] = ['speaker', 'screen', 'split', 'two', 'pip', 'screencam', 'follow'];
+
+/** A framing as the edit keeps it: known strategy, numbers inside their limits, at most twelve pins inside the recording. */
+export function cleanFraming(raw: unknown, duration: number): Framing | null {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const strategy = (FRAME_STRATEGIES as readonly string[]).includes(String(o.strategy)) ? o.strategy as FrameStrategy : null;
+  if (!strategy) return null;
+  const n = (v: unknown, lo: number, hi: number): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v * 1000) / 1000)) : undefined);
+  const f: Framing = { strategy };
+  const zoom = n(o.zoom, 0.35, 1); if (zoom !== undefined) f.zoom = zoom;
+  const fo = o.focus as { x?: unknown; y?: unknown } | undefined;
+  if (fo && typeof fo === 'object') { const x = n(fo.x, 0, 1), y = n(fo.y, 0, 1); if (x !== undefined && y !== undefined) f.focus = { x, y }; }
+  const share = n(o.share, 0.2, 0.5); if (share !== undefined) f.share = share;
+  if (o.camAt === 'top' || o.camAt === 'bottom') f.camAt = o.camAt;
+  if (Array.isArray(o.pins)) {
+    /* A pin outside the recording is dropped (not clamped to its end); a point is clamped into the frame. */
+    const pins = o.pins.map(p => (Array.isArray(p) && typeof p[0] === 'number' && p[0] >= 0 && p[0] <= Math.max(0, duration) ? [n(p[0], 0, Math.max(0, duration)), n(p[1], 0, 1), n(p[2], 0, 1)] : null))
+      .filter((p): p is [number, number, number] => !!p && p.every(v => v !== undefined)).sort((a, b) => a[0] - b[0]).slice(0, 12);
+    if (pins.length) f.pins = pins;
+  }
+  if (o.by === 'ai' || o.by === 'you') f.by = o.by;
+  return f;
+}
 
 export const lookOf = (doc: Pick<VideoDoc, 'look'>, kind: 'long' | 'short'): Look => ({ ...LOOK_DEFAULT, ...(doc.look?.[kind] ?? {}) });
 export const motionOf = (doc: Pick<VideoDoc, 'motion'>, kind: 'long' | 'short'): Motion => ({ ...MOTION_DEFAULT, ...(doc.motion?.[kind] ?? {}) });
@@ -625,7 +680,7 @@ export type Op =
   | { op: 'captions.set'; on?: boolean; burn?: boolean }
   | { op: 'clip.add'; s: number; e: number; title?: string; topic?: string; reason?: string; parts?: [number, number][] }
   | { op: 'chapters.set'; list: { s: number; title: string }[] }
-  | { op: 'clip.update'; id: string; patch: Partial<Pick<Clip, 's' | 'e' | 'title' | 'topic' | 'aspect'>> & { reframe?: Partial<Reframe>; layout?: ShortLayout | null } }
+  | { op: 'clip.update'; id: string; patch: Partial<Pick<Clip, 's' | 'e' | 'title' | 'topic' | 'aspect'>> & { reframe?: Partial<Reframe>; layout?: ShortLayout | null; framing?: Partial<Framing> | null } }
   | { op: 'clip.remove'; id: string }
   | { op: 'long.set'; patch: { on?: boolean; aspect?: Aspect; reframe?: Partial<Reframe> } }
   | { op: 'audio.set'; patch: Partial<VideoDoc['audio']> }
@@ -825,6 +880,15 @@ export function applyOps(doc: VideoDoc, ops: Op[], duration: number): { doc: Vid
           /* "Speaker" and "screen" are the crop and the fit, said as layouts — one framing, not two. */
           if (p.layout === 'speaker') c.reframe = { ...c.reframe, mode: 'crop' };
           if (p.layout === 'screen') c.reframe = { ...c.reframe, mode: 'fit' };
+        }
+        if (p.framing === null) delete c.framing;
+        else if (p.framing !== undefined) {
+          const f = cleanFraming({ ...(c.framing ?? { strategy: 'auto' }), ...p.framing }, duration);
+          if (!f) { refused.push('unknown framing'); break; }
+          c.framing = f;
+          /* A framing is a crop, said as a strategy; "whole" is the fit. A layout chosen earlier gives way. */
+          c.reframe = { ...c.reframe, mode: f.strategy === 'whole' ? 'fit' : 'crop' };
+          delete c.layout;
         }
         break;
       }
