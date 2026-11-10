@@ -22,7 +22,7 @@ import type { Framing, FrameStrategy } from './edit';
 import { toSource } from './edit';
 import type { Analysis, AnalysisSummary, TrackFile, TrackRow, VideoKind } from './motion';
 import { KIND_LABEL, trackAt } from './motion';
-import { faceBox, twoPeople, webcamBubble, type Box, type Person } from './layouts';
+import { faceBox, webcamBubble, type Box, type Person } from './layouts';
 import { wideSpans, type ScreenMeta, type ScreenPlan } from './pointer';
 
 export type Strategy = Exclude<FrameStrategy, 'auto'>;
@@ -107,7 +107,6 @@ const DEFAULT_ZOOM: Record<Strategy, number> = { cursor: 0.7, speaker: 1, screen
 export function resolveFraming(f: Framing | undefined | null, k: Known, reframe: { x: number; y: number } = { x: 0.5, y: 0.5 }): Resolved {
   const want = f?.strategy ?? 'auto';
   const bubble = webcamBubble({ people: k.people } as TrackFile);
-  const two = !!twoPeople({ people: k.people } as TrackFile);
   let strategy: Strategy, layout: 'two' | null = null, fitScreen = false, note = '';
   const kindLine = k.kind ? `${KIND_LABEL[k.kind].toLowerCase()} (${k.why})` : '';
   if (want !== 'auto') {
@@ -120,14 +119,16 @@ export function resolveFraming(f: Framing | undefined | null, k: Known, reframe:
     note = k.faces ? 'Follows the speaker (faces were found; the recording has not been analysed further yet).' : 'A still window — the recording has not been analysed yet, so nothing is known to follow. Analyse again from the Tracking tab.';
   } else {
     switch (k.kind) {
-      case 'two': if (two) { strategy = 'speaker'; layout = 'two'; } else strategy = 'speaker'; break;
+      /* Two people: the one talking, cut to when the talk changes hands (track.py holds two seconds before a switch,
+         so a pause or a laugh does not cut) — the stacked layout halves both pictures and is offered as a layout instead. */
+      case 'two': strategy = k.faces ? 'speaker' : 'content'; break;
       case 'talking': strategy = k.faces ? 'speaker' : 'content'; break;
       case 'screencam': strategy = bubble ? 'screencam' : k.cursorSeen >= 0.03 ? 'cursor' : 'content'; break;
       case 'screen': strategy = k.cursorSeen >= 0.03 ? 'cursor' : 'content'; break;
       case 'slides': if (bubble) { strategy = 'screencam'; fitScreen = true; } else strategy = 'whole'; break;
       default: strategy = k.faces ? 'speaker' : 'content';
     }
-    note = `${layout === 'two' ? 'Both people, stacked' : STRATEGY_LABEL[strategy]} — ${kindLine || 'from the analysis'}.`;
+    note = `${STRATEGY_LABEL[strategy]}${k.kind === 'two' ? ' who is talking, cutting when the talk changes hands' : ''} — ${kindLine || 'from the analysis'}.`;
   }
   const zoom = f?.zoom ?? DEFAULT_ZOOM[strategy];
   return {

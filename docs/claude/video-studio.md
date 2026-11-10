@@ -222,7 +222,8 @@ export is a canvas recording; Video Studio is the real one.
   pins — never a path. `resolveFraming` settles `auto` from `knownOf()`
   (screen → cursor, else content; screencam → screencam; slides → whole, or
   screencam with `fitScreen` when there is a bubble; talking → speaker; two
-  → the classic `two` layout; camera → content at the full height; not
+  → speaker (whoever is talking, cut on the track's switches; the stacked
+  `two` stays a layout); camera → content at the full height; not
   analysed → speaker if faces else an honest still crop that `framingMatters`
   says changes nothing, so **old projects keep their hash**). `framePlan`
   turns it into the one thing the engine and the preview already draw: a
@@ -236,6 +237,8 @@ export is a canvas recording; Video Studio is the real one.
   (`visual.ts`) is the single source of every visual decision** — mode,
   tracking, layout, screenLayout, framing, look, motion, effects, overlays,
   logo — read by `renderSpec` (hash includes `fr` + the track key) and by
+  the Player. "Follow the face/speaker" from the Tracking tab wins over
+  `auto` until a framing is named (`named` in visual.ts); read by
   the Player; `test:video` asserts they agree. Video panel → **Framing**:
   strategy tiles with why-not, Window size, Camera band / above / below,
   "Point the window" (the preview shows the whole recording with the window

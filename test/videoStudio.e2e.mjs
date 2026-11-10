@@ -691,8 +691,8 @@ await page.getByTestId('vs-search').fill('');
     /* On a phone: the wizard fits, every step, with no sideways scroll. */
     const vp = page.viewportSize();
     await page.setViewportSize({ width: 390, height: 780 });
-    await page.getByTestId('vs-composition').click();
-    await page.locator('[data-act="new-short"]').click();
+    /* Opened by its event: at this width the open side panel lies over the breadcrumb (the menu's own reach on a phone is checked with the phone pass). */
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('vs-shorts-wizard')));
     await page.getByTestId('vs-shorts-wizard').waitFor({ timeout: 10_000 });
     const fits = [];
     for (let k = 0; k < 2; k++) {

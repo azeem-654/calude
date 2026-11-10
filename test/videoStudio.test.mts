@@ -896,7 +896,12 @@ console.log('\nThumbnails on a press: the example read into a style, the words')
   const [, , y0] = fpT.path[50];
   ok('a talking head follows the speaker at the full height with the face at 42% of the window (headroom kept)', rT.strategy === 'speaker' && fpT.plan.crop[1] === 720 && y0 === 0 && Math.abs(windowCentre(fpT, 5)[0] - 0.5) < 0.08, { crop: fpT.plan.crop, centre: windowCentre(fpT, 5) });
   const two: TrackFile = { ...talking, faces: 2, people: [{ cx: 0.233, cy: 0.442, w: 0.102, h: 0.23, share: 1 }, { cx: 0.746, cy: 0.424, w: 0.109, h: 0.258, share: 1 }], analysis: an({ kind: 'two', why: 'two people', flat: 0.2, still: 0.2 }) };
-  ok('two people taking turns become the stacked "both people" layout', resolveFraming(undefined, knownOf(two)).layout === 'two');
+  const rTwo = resolveFraming(undefined, knownOf(two));
+  ok('two people taking turns: follow whoever is talking (the stacked layout stays a choice in the Layout list)', rTwo.strategy === 'speaker' && rTwo.layout === null && /talking/.test(rTwo.note), rTwo);
+  const trackedDoc = applyOps(newDoc(parseRequest('a video')), [{ op: 'clip.add', s: 5, e: 40 }, { op: 'tracking.set', target: 'short', mode: 'speaker' }], 60).doc;
+  const vT = visualSpec({ doc: trackedDoc, clip: trackedDoc.clips[0], probe: { width: 1280, height: 720 }, tracked: true, known: knownOf(two), screen: null, keeps: [[5, 40]] });
+  ok('"Follow the speaker" from the Tracking tab wins over "auto", new Shorts included; a framing picked by name wins over it', vT.tracking === 'speaker' && vT.framing === null
+    && visualSpec({ doc: applyOps(trackedDoc, [{ op: 'clip.update', id: trackedDoc.clips[0].id, patch: { framing: { strategy: 'whole' } } }], 60).doc, clip: applyOps(trackedDoc, [{ op: 'clip.update', id: trackedDoc.clips[0].id, patch: { framing: { strategy: 'whole' } } }], 60).doc.clips[0], probe: { width: 1280, height: 720 }, tracked: true, known: knownOf(two), screen: null, keeps: [[5, 40]] }).framing?.strategy === 'whole', vT);
   /* Not analysed at all: nothing is invented. */
   const kNone = knownOf(null, undefined);
   const rNone = resolveFraming(undefined, kNone);

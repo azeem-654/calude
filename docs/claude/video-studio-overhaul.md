@@ -241,6 +241,15 @@ panel's "kept after a reload". A run on the commit before Phase 1
 - Proposals are not stored; the browser holds the cards. The server trusts
   none of them: `shorts_create` re-snaps and re-checks.
 - Pause trimming uses `clip.parts`, never global cuts.
+- Found by the Phase 1 end-to-end run and fixed: two people taking turns in
+  `auto` now **follow whoever is talking** (speaker window, cuts on the
+  speaker track's switches) — the stacked `two` stays a layout choice; and
+  "Follow the speaker" from the Tracking tab wins over `auto` (new Shorts
+  included) until a framing is named in the Video panel (`visual.ts`
+  `named`).
+- For Phase 3's QA sweep: at 390 wide the open side panel lies over the
+  editor's breadcrumb, so the composition menu cannot be pressed until the
+  panel is closed (the suite opens the wizard by its event there).
 - Thumbnail theme choice in the wizard is "made with each Short / not now"
   until Phase 3's saved themes exist — Phase 3 adds them to step 3
   (`WizardPrefs.thumbnail`) and to `shorts_create`'s thumbnails enqueue.
