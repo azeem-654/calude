@@ -125,6 +125,7 @@ export const MODULES: Record<string, { label: string; task: AiTask }> = {
      gets the planning tier. */
   'protron': { label: 'Protron — AI business manager', task: 'write' },
   'protron-plan': { label: 'Protron — business workspace instruction', task: 'reason' },
+  'protron-voice': { label: 'Protron — spoken replies', task: 'chat' },
   'strategy': { label: 'Marketing strategy & plans', task: 'reason' },
   'workflows': { label: 'Workflow builder', task: 'reason' },
   'pipeline': { label: 'Sales pipeline AI', task: 'reason' },

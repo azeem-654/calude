@@ -699,6 +699,33 @@ console.log('\nThe owner\'s customer view and crash reports (OPS-2, OPS-3)');
   check('…and only the owner can list them', list.status === 403);
 }
 
+console.log('\nProtron — conversations and the audit trail are per person and workspace');
+{
+  d1rows('DELETE FROM crm_signup_attempts');
+  /* Their own two: earlier sections sign A out and change B's sessions. */
+  const A = await signUp('pa');
+  const B = await signUp('pb');
+  const saved = await api('protron.php', { action: 'save', token: A.token, accountId: A.acct, turns: [{ id: 't1', role: 'user', text: 'A private plan', at: 1 }], prefs: { speak: true, dock: { x: 1, y: 1 } } });
+  check('A can keep its own Protron conversation', saved.ok, JSON.stringify(saved.data));
+  const back = await api('protron.php', { action: 'load', token: A.token, accountId: A.acct });
+  check('…and read it back, without where the launcher sat', back.ok && back.data.turns?.[0]?.text === 'A private plan' && back.data.prefs?.speak === true && !('dock' in (back.data.prefs ?? {})), JSON.stringify(back.data).slice(0, 200));
+  for (const action of ['load', 'save', 'clear', 'audit', 'speak']) {
+    const r = await api('protron.php', { action, token: B.token, accountId: A.acct, turns: [], name: 'fill_form', status: 'done', text: 'hello' });
+    check(`B cannot ${action} Protron in A's workspace`, !r.ok && r.status === 403, JSON.stringify(r.data).slice(0, 160));
+  }
+  const own = await api('protron.php', { action: 'load', token: B.token, accountId: B.acct });
+  check("B's own conversation does not hold A's", own.ok && !(own.data.turns ?? []).length, JSON.stringify(own.data).slice(0, 160));
+  const noSession = await api('protron.php', { action: 'load', accountId: A.acct });
+  check('No session, no conversation', !noSession.ok && noSession.status === 401);
+  const big = await api('protron.php', { action: 'save', token: A.token, accountId: A.acct, turns: [{ id: 'x', role: 'user', text: 'x'.repeat(210_000), at: 1 }] });
+  check('A conversation over 200 KB is refused', !big.ok && big.status === 413);
+  const au = await api('protron.php', { action: 'audit', token: A.token, accountId: A.acct, name: 'create_pipeline', title: 'Create a deals pipeline', status: 'done', detail: 'Built Roofing' });
+  const row = d1rows(`SELECT actor_email AS e, kind, detail FROM crm_audit_events WHERE kind = 'protron_action' AND account_id = '${A.acct}' ORDER BY id DESC LIMIT 1`)[0];
+  check("Protron's actions are in the audit trail, under the session's person", au.ok && row?.e === A.email && /create_pipeline\): done — Built Roofing/.test(row?.detail ?? ''), JSON.stringify(row));
+  const badName = await api('protron.php', { action: 'audit', token: A.token, accountId: A.acct, name: "x'; DROP", status: 'done' });
+  check('…and an audit line must name an action', !badName.ok);
+}
+
 console.log('\nThe retired Stripe callback (M-6)');
 const oldHook = await fetch(`${BASE}/api/stripe-webhook.php`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': 't=1,v1=00', Connection: 'close' }, body: JSON.stringify({ type: 'checkout.session.completed', data: { object: { metadata: { accountId: C2.acct } } } }) });
 check('/api/stripe-webhook.php answers 410 and changes nothing', oldHook.status === 410, String(oldHook.status));

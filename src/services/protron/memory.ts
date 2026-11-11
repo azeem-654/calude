@@ -4,17 +4,12 @@
  * ── Where it lives, and why there ──
  *
  * In this browser, under a key made of the signed-in person and the workspace
- * they are in. Two people sharing a computer, or one agency switching between
- * clients, each get their own conversation — the key changes with either, so
- * one client's business can never appear in another's chat. Nothing is sent
- * to the server to be kept; the AI provider sees only the turns of the
- * current question (brain.ts) and keeps nothing it is not told to.
- *
- * A server-side history (a table, synced across devices) would be the next
- * step; it was left out of the first version because it would be a second
- * copy of every customer conversation to secure, export and delete, and a
- * browser history does the job the brief needs — context that survives moving
- * between screens and reloads.
+ * they are in, and on the server (/api/protron.php, one row per person per
+ * workspace — services/protron/sync.ts) so it follows them to another device.
+ * Two people sharing a computer, or one agency switching between clients, each
+ * get their own conversation — the key changes with either, so one client's
+ * business can never appear in another's chat. The browser copy opens the
+ * panel instantly and works offline; the newer of the two wins on load.
  *
  * Voice is never stored: only the text that came of it.
  */
@@ -25,11 +20,20 @@ export interface ActionCard {
   id: string;
   name: string;
   title: string;
-  args: Record<string, string | string[] | boolean>;
+  args: Record<string, string | string[] | boolean | Record<string, string>>;
   /** waiting: needs Confirm; done/failed/cancelled: settled; refused: never allowed. */
   status: 'waiting' | 'running' | 'done' | 'failed' | 'cancelled' | 'refused';
   confirmText?: string;
   result?: string;
+  /** What it is doing, step by step, as it does it — shown on the card live. */
+  steps?: Step[];
+  /** Boxes it filled, with what was there before, so Undo can put them back. */
+  undo?: { key: string; previous: string }[];
+}
+
+export interface Step {
+  label: string;
+  status: 'pending' | 'running' | 'done' | 'failed';
 }
 
 export interface Turn {
@@ -44,6 +48,8 @@ export interface Turn {
   /** Said without the AI (offline matching), so the screen can say so. */
   offline?: boolean;
   error?: boolean;
+  /** Protron spoke first (the customer paused on a screen); no question came before it. */
+  auto?: boolean;
 }
 
 export interface Prefs {
@@ -53,10 +59,15 @@ export interface Prefs {
   dock: { x: number; y: number } | null;
   /** The customer's business, as they told it — company name and trade. */
   business: { name: string; about: string };
+  /** commander: the AI voice through the robot filter; natural: the browser's own voice. */
+  voice: 'commander' | 'natural';
+  /** Seconds of nothing touched before Protron starts a conversation (0 = never). */
+  idleSeconds: number;
 }
 
 const MAX_TURNS = 60;
-export const DEFAULT_PREFS: Prefs = { proactive: true, speak: false, dock: null, business: { name: '', about: '' } };
+export const DEFAULT_PREFS: Prefs = { proactive: true, speak: false, dock: null, business: { name: '', about: '' }, voice: 'commander', idleSeconds: 10 };
+export const IDLE_CHOICES = [0, 10, 30, 120];
 
 /** A short, stable id for the signed-in person, so the key does not carry their address. */
 function personKey(): string {
@@ -91,17 +102,49 @@ export function loadTurns(): Turn[] {
   } catch { return []; }
 }
 
+/** Kept in this browser and marked as not yet on the server (sync.ts saves it). */
 export function saveTurns(turns: Turn[]): void {
-  try { localStorage.setItem(storeKey('chat'), JSON.stringify(turns.slice(-MAX_TURNS))); } catch { /* full or private mode: the conversation lasts this page */ }
+  try {
+    localStorage.setItem(storeKey('chat'), JSON.stringify(turns.slice(-MAX_TURNS)));
+    localStorage.setItem(storeKey('chat') + '_dirty', '1');
+  } catch { /* full or private mode: the conversation lasts this page */ }
+}
+
+/** The server's stamp of the copy this browser last saved or loaded. */
+export function localStamp(): number {
+  try { return Number(localStorage.getItem(storeKey('chat') + '_at') || 0); } catch { return 0; }
+}
+
+/** Whether this browser has turns the server has not got yet. */
+export function isDirty(): boolean {
+  try { return localStorage.getItem(storeKey('chat') + '_dirty') === '1'; } catch { return false; }
+}
+
+export function markSynced(at: number): void {
+  try { localStorage.setItem(storeKey('chat') + '_at', String(at)); localStorage.removeItem(storeKey('chat') + '_dirty'); } catch { /* next save tries again */ }
+}
+
+/** Replaces this browser's copy with the server's. */
+export function adoptTurns(turns: Turn[], at: number): void {
+  try { localStorage.setItem(storeKey('chat'), JSON.stringify(turns.slice(-MAX_TURNS))); } catch { /* shown this page only */ }
+  markSynced(at);
 }
 
 export function clearTurns(): void {
-  try { localStorage.removeItem(storeKey('chat')); } catch { /* nothing kept anyway */ }
+  try { localStorage.removeItem(storeKey('chat')); localStorage.removeItem(storeKey('chat') + '_dirty'); } catch { /* nothing kept anyway */ }
 }
 
 export function loadPrefs(): Prefs {
   const p = read<Prefs>(storeKey('prefs'), DEFAULT_PREFS);
-  return { ...DEFAULT_PREFS, ...p, business: { ...DEFAULT_PREFS.business, ...(p.business ?? {}) } };
+  return normalisePrefs(p);
+}
+
+/** Prefs from anywhere (this browser, the server, an older version), made whole and in range. */
+export function normalisePrefs(p: Partial<Prefs>): Prefs {
+  const out = { ...DEFAULT_PREFS, ...p, business: { ...DEFAULT_PREFS.business, ...(p.business ?? {}) } };
+  if (out.voice !== 'natural') out.voice = 'commander';
+  if (!IDLE_CHOICES.includes(Number(out.idleSeconds))) out.idleSeconds = DEFAULT_PREFS.idleSeconds;
+  return out;
 }
 
 export function savePrefs(p: Prefs): void {

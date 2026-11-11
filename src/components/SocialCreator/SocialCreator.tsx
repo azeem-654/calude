@@ -1,5 +1,5 @@
 import { askConfirm } from '../shared/ConfirmDialog';
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Search, Trash2, Edit3, Copy, Share2,
@@ -377,6 +377,8 @@ function NewPostModal({ onClose, onCreate, initial }: { onClose: () => void; onC
               <div>
                 <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 8 }}>Design Name</label>
                 <input
+                  data-field="social.designName"
+                  aria-label="Design Name"
                   value={name}
                   onChange={e => setName(e.target.value)}
                   style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
@@ -426,6 +428,8 @@ function NewPostModal({ onClose, onCreate, initial }: { onClose: () => void; onC
                 <div>
                   <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 8 }}>AI Prompt</label>
                   <textarea
+                    data-field="social.aiPrompt"
+                    aria-label="AI Prompt"
                     value={aiPrompt}
                     onChange={e => setAiPrompt(e.target.value)}
                     placeholder="Describe your design... e.g. 'A bold motivational post with purple gradient, large white text saying KEEP GOING, and fire emoji'"
@@ -475,8 +479,19 @@ export default function SocialCreator() {
   const [filterPlatform, setFilterPlatform] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [view, setView] = useState<'grid' | 'list'>('grid');
-  const [showNew, setShowNew] = useState(false);
-  const [modalInit, setModalInit] = useState<ModalInit | undefined>(undefined);
+  /* Protron's draft_social_post opens "Create with AI" here and then types
+     the design's name and prompt into it in front of the customer
+     (services/protron/actions.ts). `?compose=ai` when it arrives from another
+     screen; the event when this screen is already open. Generating is still
+     the customer's button. */
+  const composeAi = new URLSearchParams(window.location.search).get('compose') === 'ai';
+  const [showNew, setShowNew] = useState(composeAi);
+  const [modalInit, setModalInit] = useState<ModalInit | undefined>(composeAi ? { step: 'ai' } : undefined);
+  useEffect(() => {
+    const on = () => { setModalInit({ step: 'ai' }); setShowNew(true); };
+    window.addEventListener('pc-protron-compose', on);
+    return () => window.removeEventListener('pc-protron-compose', on);
+  }, []);
   const [sortBy, setSortBy] = useState<'updated' | 'created' | 'name'>('updated');
 
 

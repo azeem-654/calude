@@ -253,6 +253,8 @@ export async function handleSecurity(req: Request, env: Env): Promise<Response> 
       await env.DB.batch([
         env.DB.prepare('DELETE FROM crm_sessions WHERE email = ?').bind(user.email),
         env.DB.prepare('DELETE FROM crm_users WHERE email = ?').bind(user.email),
+        /* Their Protron conversations are theirs, not the workspace's. */
+        env.DB.prepare('DELETE FROM crm_protron_threads WHERE user_email = ?').bind(user.email),
       ]);
     } else {
       const { results } = await env.DB.prepare('SELECT account_id AS id FROM crm_workspaces WHERE owner_email = ?').bind(user.email).all<{ id: string }>();

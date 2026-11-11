@@ -14,6 +14,8 @@
  *   P7  the onboarding: cards → catalogue keys, interview, instruction
  *   P8  memory is per person and per workspace
  *   P9  what the model is told: the screen's name, never its data
+ *   P10 2026-11-11 pass: filling forms live, step-by-step cards, the social
+ *       draft, salvaged replies, speaking first, prefs and server sync stamps
  */
 const store = new Map<string, string>();
 const ls = {
@@ -34,6 +36,7 @@ const K = await import('../src/services/protron/knowledge.ts');
 const I = await import('../src/services/protron/intake.ts');
 const M = await import('../src/services/protron/memory.ts');
 const S = await import('../src/services/projectSolutions.ts');
+const SC = await import('../src/services/protron/screen.ts');
 
 const out: string[] = [];
 const ok = (n: string, p: boolean, d = '') => out.push(`${p ? 'PASS' : 'FAIL'}  ${n}${p ? '' : ` — ${d}`}`);
@@ -77,7 +80,7 @@ const owner = { isClient: false, isOwner: true };
 {
   const nav: string[] = [];
   const added: unknown[] = [];
-  const ctx = { who: customer, navigate: (p: string) => nav.push(p), addContact: (c: unknown) => added.push(c), createPipeline: () => undefined, counts: () => ({ contacts: 3 }) };
+  const ctx = { who: customer, navigate: (p: string) => nav.push(p), addContact: (c: unknown) => added.push(c), createPipeline: () => 'p1', setStages: () => undefined, counts: () => ({ contacts: 3 }) };
   const find = A.checkCall({ name: 'find_prospects', args: { who: 'roofing companies', where: 'Dallas' } }, customer);
   ok('P3 a prospect search needs confirming', find.ok && A.needsConfirm((find as { def: { tier: string } }).def as never));
   const unconfirmed = find.ok ? await A.runChecked(find, ctx, false) : null;
@@ -197,6 +200,86 @@ const owner = { isClient: false, isOwner: true };
     { id: 'c', role: 'protron', text: 'Searching', at: 3, actions: [{ id: 'x', name: 'find_prospects', title: 'Search for prospects', args: {}, status: 'done', result: 'Started the search.' }] },
   ]);
   ok('P9 history starts with the customer and carries action results', hist[0].role === 'user' && /Started the search/.test(hist[1].parts[0].text));
+}
+
+/* ── P10 the 2026-11-11 pass ── */
+{
+  type St = { label: string; status: string }[];
+  const reports: St[] = [];
+  const filled: [string, string][] = [];
+  const nav: string[] = [];
+  const staged: string[][] = [];
+  const ctx = {
+    who: customer, navigate: (p: string) => nav.push(p),
+    createPipeline: () => 'p9', setStages: (_id: string, st: string[]) => staged.push(st),
+    fill: async (k: string, v: string) => { filled.push([k, v]); return k === 'gone' ? { ok: false, label: 'Gone', previous: '', message: 'not on screen' } : { ok: true, label: k, previous: 'old' }; },
+    waitFor: async () => true, labelOf: (k: string) => `Label ${k}`, signal: () => undefined,
+    report: (s: St) => reports.push(s), wait: async () => undefined,
+  };
+
+  const f = A.checkCall({ name: 'fill_form', args: { fields: { 'social.aiPrompt': 'A spring sale post', box3: 'Hello' } } }, customer);
+  ok('P10 fill_form is reversible: it runs without a Confirm', f.ok && !A.needsConfirm((f as { def: never }).def));
+  const fr = f.ok ? await A.runChecked(f, ctx as never, false) : null;
+  ok('P10 it types each box in turn', filled.length === 2 && filled[0][0] === 'social.aiPrompt', JSON.stringify(filled));
+  ok('P10 its steps are reported, ending all done', reports.length > 0 && reports[reports.length - 1].every(x => x.status === 'done') && /Label social.aiPrompt/.test(reports[0][0].label));
+  ok('P10 it hands back what was there, for Undo', fr?.undo?.length === 2 && fr.undo[0].previous === 'old');
+  ok('P10 it says it saved nothing', !!fr && /press the screen's own button/.test(fr.message));
+  filled.length = 0;
+  const part = A.checkCall({ name: 'fill_form', args: { fields: { box1: 'x', gone: 'y' } } }, customer);
+  const pr = part.ok ? await A.runChecked(part, ctx as never, false) : null;
+  ok('P10 a box that went away is reported, not hidden', !!pr?.ok && /Not filled — Gone/.test(pr.message), pr?.message);
+  ok('P10 a box key with odd characters is refused', !A.checkCall({ name: 'fill_form', args: { fields: { 'a"]; x': 'y' } } }, customer).ok);
+  ok('P10 a value that is an object is refused', !A.checkCall({ name: 'fill_form', args: { fields: { a: { b: 1 } } } }, customer).ok);
+  ok('P10 at most 15 boxes at a time', !A.checkCall({ name: 'fill_form', args: { fields: Object.fromEntries(Array.from({ length: 16 }, (_, i) => [`b${i}`, 'x'])) } }, customer).ok);
+  ok('P10 fields must be a set, not a list', !A.checkCall({ name: 'fill_form', args: { fields: ['a', 'b'] } }, customer).ok);
+  ok('P10 control characters are stripped from a value', (() => { const c = A.checkCall({ name: 'fill_form', args: { fields: { a: 'x\u0007y\nz' } } }, customer); return c.ok && (c.args.fields as Record<string, string>).a === 'xy\nz'; })());
+
+  reports.length = 0;
+  const pipe = A.checkCall({ name: 'create_pipeline', args: { name: 'Roofing', stages: ['New', 'Quoted', 'Won'] } }, customer);
+  const pres = pipe.ok ? await A.runChecked(pipe, ctx as never, true) : null;
+  ok('P10 a pipeline is built stage by stage', !!pres?.ok && staged.length === 3 && staged[0].length === 1 && staged[2].join() === 'New,Quoted,Won', JSON.stringify(staged));
+  ok('P10 its card lists open, create and every stage', reports[reports.length - 1]?.length === 5 && reports[reports.length - 1].every(x => x.status === 'done'));
+  ok('P10 it opens Deals first', nav.includes('/pipelines'));
+
+  filled.length = 0;
+  const soc = A.checkCall({ name: 'draft_social_post', args: { prompt: 'Bold spring sale, 20% off roof checks', name: 'Spring' } }, customer);
+  const sres = soc.ok ? await A.runChecked(soc, ctx as never, false) : null;
+  ok('P10 a social draft opens Create with AI in Graphics Designer', nav.includes('/social-creator?compose=ai'));
+  ok('P10 it types the name and the brief, and generating stays the customer\'s', !!sres?.ok && filled.map(x => x[0]).join() === 'social.designName,social.aiPrompt' && /press Generate/.test(sres.message));
+  ok('P10 a social draft needs a brief', !A.checkCall({ name: 'draft_social_post', args: {} }, customer).ok);
+
+  const cut = '{"reply": "I can build that pipeline for you with five stag';
+  ok('P10 a reply cut off mid-JSON keeps its sentence', B.parseReply(cut)?.reply === 'I can build that pipeline for you with five stag');
+  ok('P10 a cut-off reply proposes nothing', (B.parseReply(cut)?.actions ?? [1]).length === 0);
+
+  const snap = { dialog: 'Create with AI', headings: ['Graphics Designer'], fields: [
+    { key: 'social.aiPrompt', label: 'AI Prompt', kind: 'long text', filled: false, required: true },
+    { key: 'box2', label: 'Design Name', kind: 'text', filled: true, required: false },
+  ], alerts: [], buttons: ['Generate', 'Back'] };
+  const described = SC.describeScreen(snap);
+  ok('P10 the screen is described by labels and states', /social.aiPrompt — AI Prompt — long text — empty, required/.test(described) && /Design Name — text — filled/.test(described));
+  const sys = B.systemPrompt({ who: customer, path: '/social-creator', pageTitle: '', business: { name: '', about: '' }, screen: described });
+  ok('P10 the model is given SCREEN', /SCREEN\n[\s\S]*AI Prompt/.test(sys));
+  const ahead = B.offlineAhead({ who: customer, path: '/social-creator', screen: described });
+  ok('P10 without the AI, speaking first names the empty required box', /AI Prompt still needs filling/.test(ahead.reply), ahead.reply);
+  ok('P10 and offers to fill it in', ahead.suggestions.includes('Fill this form in for me'));
+  const withAlert = B.offlineAhead({ who: customer, path: '/settings', screen: SC.describeScreen({ ...snap, alerts: ['The mailbox password was refused'] }) });
+  ok('P10 an error on screen comes first', /The mailbox password was refused/.test(withAlert.reply));
+  const froze = B.offlineAhead({ who: customer, path: '/', screen: '' }, 'froze');
+  ok('P10 a frozen screen is said as such', /stopped responding/.test(froze.reply));
+
+  ok('P10 prefs default to the commander voice and ten seconds', M.DEFAULT_PREFS.voice === 'commander' && M.DEFAULT_PREFS.idleSeconds === 10);
+  const np = M.normalisePrefs({ voice: 'shouty' as never, idleSeconds: 7 });
+  ok('P10 prefs from elsewhere are put back in range', np.voice === 'commander' && np.idleSeconds === 10 && np.business.name === '');
+  M.saveTurns([{ id: 'q', role: 'user', text: 'hi', at: 1 }]);
+  ok('P10 a new turn is marked for the server', M.isDirty());
+  M.markSynced(12345);
+  ok('P10 a save clears the mark and keeps the server stamp', !M.isDirty() && M.localStamp() === 12345);
+  M.adoptTurns([{ id: 'r', role: 'protron', text: 'from the phone', at: 2 }], 22222);
+  ok('P10 the server\'s newer copy replaces this browser\'s', M.loadTurns()[0]?.text === 'from the phone' && M.localStamp() === 22222);
+  const offPost = B.offlineTurn('Draft a social post about our spring roof check sale', { who: customer, path: '/' });
+  ok('P10 without the AI, "draft a post about X" still drafts it', offPost.actions[0]?.name === 'draft_social_post' && /spring roof check sale/.test(String(offPost.actions[0]?.args.prompt)) && A.checkCall(offPost.actions[0], customer).ok);
+  ok('P10 fill_form and draft_social_post are described to the model', /fill_form\(fields: object of box key → text/.test(A.describeActions(customer)) && /draft_social_post/.test(A.describeActions(customer)));
 }
 
 console.log(out.join('\n'));

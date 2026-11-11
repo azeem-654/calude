@@ -3,63 +3,155 @@
  *
  * Loaded the first time Protron is opened (Protron.tsx), then kept mounted
  * while hidden so a half-typed message or a waiting confirmation survives
- * minimising. The conversation itself is kept per person and workspace
- * (services/protron/memory.ts), so it also survives moving between screens
- * and reloading.
+ * minimising. The conversation is kept per person and workspace, in this
+ * browser and on the server (services/protron/memory.ts, sync.ts), so it
+ * survives moving between screens, reloads and moving to another device.
+ *
+ * ── Where it floats ──
+ *
+ * Beside the helmet, wherever the helmet was dragged: to its right when there
+ * is room, else to its left, clamped inside the window. The header drags the
+ * panel itself. On a phone it is the whole screen, as before.
  *
  * ── A turn ──
  *
  *   1. The customer types or speaks. Speech goes through the same recorder and
  *      transcriber as the Autopilot box; a transcript the engine doubts is put
  *      in the box to be checked instead of being sent.
- *   2. `think` (brain.ts) asks the AI through /api/ai.php for a reply and
- *      proposed actions — or matches the words itself when the AI is down,
- *      and says so.
+ *   2. The screen's shape is read (screen.ts: headings, boxes, messages —
+ *      never values) and `think` (brain.ts) asks the AI through /api/ai.php for
+ *      a reply and proposed actions — or matches the words itself when the AI
+ *      is down, and says why.
  *   3. Every proposed action is checked (`checkCall`). Refused ones show as a
- *      refused card with the reason. Read-only ones run at once and their card
- *      says what happened. Anything that creates or spends waits on a card
- *      with Confirm and Cancel; it is checked again when Confirm is pressed.
+ *      refused card with the reason. Read-only and reversible ones run at once;
+ *      anything that creates or spends waits on a card with Confirm and Cancel,
+ *      checked again when Confirm is pressed. A running card lists its steps
+ *      and ticks them off live while the screen behind it changes; one that
+ *      filled boxes offers Undo. Each settled card is written to the
+ *      workspace's audit trail (sync.ts `audit`).
  *   4. A read action that returns numbers (the workspace overview) is handed
  *      back to the AI once for the answer; that second answer may not act.
- *   5. The reply is read aloud when the customer spoke, or asked for replies
- *      to be spoken. A spoken question gets the microphone back afterwards,
- *      so a conversation can go on hands-free; typing, the microphone or Stop
- *      interrupt the voice at once.
+ *   5. The reply is spoken when the customer spoke, is in Talk mode, or asked
+ *      for replies aloud.
  *
- * ── What it does when the customer changes screen ──
+ * ── Talk mode ──
  *
- * With the panel open, a short line says where they are now and offers that
- * screen's starters — written here, not by the AI, so moving around costs
- * nothing. A move Protron itself made is not announced twice.
+ * Hands-free: the microphone opens, a pause sends, the answer is spoken in
+ * the commander voice and the microphone opens again. Talking over Protron
+ * stops it (barge-in: a level meter on the microphone while it speaks, echo
+ * cancelled). Turn by turn underneath, not a realtime duplex call — see
+ * voice.ts — and labelled "Talk", never "live".
+ *
+ * ── Speaking first ──
+ *
+ * Protron.tsx opens the panel with `seed.auto` when the customer has paused
+ * (or something failed, or the screen froze); the panel reads the screen and
+ * `thinkAhead` writes the opening. It never acts on its own — only offers.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Maximize2, Minimize2, Minus, Mic, Square, Send, Volume2, VolumeX, Settings2, RotateCcw,
-  Check, X, Loader, Ban, CircleCheck, CircleAlert, Clock,
+  Check, X, Loader, Ban, CircleCheck, CircleAlert, Clock, AudioLines, MessageSquare, Undo2, Circle,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import ProtronAvatar, { type AvatarState } from './ProtronAvatar';
 import VoiceBars from '../Autopilot/voice/VoiceBars';
 import { useVoiceInput, defaultLocale } from '../Autopilot/voice/useVoiceInput';
 import { actionByName, checkCall, needsConfirm, runChecked, type ActionCtx, type Who } from '../../services/protron/actions';
-import { think, type BrainReply, type TurnContext } from '../../services/protron/brain';
+import { think, thinkAhead, type BrainReply, type TurnContext } from '../../services/protron/brain';
 import { screenContext, startersFor } from '../../services/protron/knowledge';
-import { clearTurns, loadTurns, newId, saveTurns, type ActionCard, type Prefs, type Turn } from '../../services/protron/memory';
-import { browserSpeaker } from '../../services/protron/voice';
+import {
+  adoptTurns, clearTurns, IDLE_CHOICES, isDirty, loadTurns, localStamp, markSynced, newId, normalisePrefs, saveTurns,
+  type ActionCard, type Prefs, type Step, type Turn,
+} from '../../services/protron/memory';
+import { browserSpeaker, commanderSpeaker, onVoiceLevel, speakerFor, unlockAudio } from '../../services/protron/voice';
+import { describeScreen, EDITING_EVENT, fillField, readScreen, restoreFields, waitForField, type ScreenSnapshot } from '../../services/protron/screen';
+import { audit, clearRemote, loadRemote, saveRemoteSoon } from '../../services/protron/sync';
 import type { Stage } from '../../types';
 
 const STAGE_COLOURS = ['#6366f1', '#0ea5e9', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6', '#22c55e', '#64748b'];
 const MIN_GAP_MS = 1200;
 
+export type AutoWhy = 'idle' | 'trouble' | 'froze' | 'loop';
+export interface Seed { message?: string; intro?: string; talk?: boolean; auto?: AutoWhy; n: number }
+
 /** Cards left mid-run by a reload did not finish as far as anybody can tell. */
 function settleInterrupted(turns: Turn[]): Turn[] {
   return turns.map(t => (t.actions?.some(a => a.status === 'running')
-    ? { ...t, actions: t.actions.map(a => (a.status === 'running' ? { ...a, status: 'failed' as const, result: 'Interrupted before it finished.' } : a)) }
+    ? { ...t, actions: t.actions.map(a => (a.status === 'running' ? { ...a, status: 'failed' as const, result: 'Interrupted before it finished.', steps: a.steps?.map(s => (s.status === 'running' ? { ...s, status: 'failed' as const } : s)) } : a)) }
     : t));
 }
 
-export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, face, onFace, seed, onClose }: {
+const sleep = (ms: number) => new Promise<void>(r => window.setTimeout(r, ms));
+
+/**
+ * Barge-in: while Protron speaks in Talk mode, a level meter on the microphone
+ * (echo-cancelled, so its own voice from the speakers mostly does not count).
+ * A third of a second of somebody talking stops the voice and opens the mic.
+ */
+function useBargeIn(active: boolean, onSpeech: () => void): void {
+  const cb = useRef(onSpeech);
+  useEffect(() => { cb.current = onSpeech; }, [onSpeech]);
+  useEffect(() => {
+    if (!active || !navigator.mediaDevices?.getUserMedia) return;
+    let stream: MediaStream | null = null;
+    let ctx: AudioContext | null = null;
+    let raf = 0;
+    let stopped = false;
+    void (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+        if (stopped) { stream.getTracks().forEach(t => t.stop()); return; }
+        ctx = new AudioContext();
+        const an = ctx.createAnalyser();
+        an.fftSize = 512;
+        ctx.createMediaStreamSource(stream).connect(an);
+        const data = new Uint8Array(an.fftSize);
+        let loud = 0;
+        const started = performance.now();
+        const tick = () => {
+          an.getByteTimeDomainData(data);
+          let sum = 0;
+          for (const d of data) { const x = (d - 128) / 128; sum += x * x; }
+          const rms = Math.sqrt(sum / data.length);
+          /* The first half-second is the voice starting through the speakers. */
+          if (performance.now() - started > 500 && rms > 0.09) loud++; else loud = Math.max(0, loud - 1);
+          if (loud > 18) { cb.current(); return; }
+          raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+      } catch { /* no microphone permission: the Stop button still interrupts */ }
+    })();
+    return () => { stopped = true; cancelAnimationFrame(raf); stream?.getTracks().forEach(t => t.stop()); void ctx?.close().catch(() => undefined); };
+  }, [active]);
+}
+
+/** Where the floating panel goes, beside the helmet. */
+function besideAnchor(anchor: { left: number; top: number } | null, large: boolean): { left: number; top: number } {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const w = Math.min(large ? 680 : 400, vw - 16), h = Math.min(large ? 820 : 640, vh - 16);
+  const a = anchor ?? { left: 16, top: vh - 82 };
+  let left = a.left + 72 + w <= vw - 8 ? a.left + 72 : a.left - w - 12;
+  if (left < 8) left = Math.min(vw - w - 8, Math.max(8, a.left));
+  const top = Math.max(8, Math.min(vh - h - 8, a.top + 64 - h));
+  return { left: Math.round(left), top: Math.round(top) };
+}
+
+function StepList({ steps }: { steps: Step[] }) {
+  return (
+    <ol className="pt-steps" aria-label="Steps">
+      {steps.map((s, i) => (
+        <li key={i} data-s={s.status}>
+          {s.status === 'done' ? <Check size={13} /> : s.status === 'failed' ? <X size={13} /> : s.status === 'running' ? <Loader size={13} className="spin" /> : <Circle size={9} />}
+          <span>{s.label}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, face, onFace, seed, anchor, onClose }: {
   open: boolean;
   who: Who;
   size: 'normal' | 'large';
@@ -68,7 +160,9 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
   onPrefs: (p: Prefs) => void;
   face: AvatarState;
   onFace: (s: AvatarState) => void;
-  seed: { message?: string; intro?: string; n: number } | null;
+  seed: Seed | null;
+  /** The helmet's top-left corner, for floating beside it. */
+  anchor: { left: number; top: number } | null;
   onClose: () => void;
 }) {
   const loc = useLocation();
@@ -76,21 +170,36 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
   const app = useApp();
   const [turns, setTurns] = useState<Turn[]>(() => settleInterrupted(loadTurns()));
   const turnsRef = useRef(turns);
+  const prefsRef = useRef(prefs);
+  useEffect(() => { prefsRef.current = prefs; }, [prefs]);
   const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState('');
   const [input, setInput] = useState('');
   const [voiceNote, setVoiceNote] = useState('');
   const [menu, setMenu] = useState(false);
   const [speaking, setSpeaking] = useState(false);
-  const [aiDown, setAiDown] = useState(false);
+  const [aiDown, setAiDown] = useState('');
   const [online, setOnline] = useState(() => navigator.onLine);
+  const [talk, setTalk] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  useEffect(() => { talkRef.current = talk; }, [talk]);
   const box = useRef<HTMLTextAreaElement>(null);
   const logEnd = useRef<HTMLDivElement>(null);
+  const ring = useRef<HTMLDivElement>(null);
   const lastSend = useRef(0);
   const navTarget = useRef('');
   const loop = useRef(false);
+  const talkRef = useRef(false);
+  const lastScreen = useRef<ScreenSnapshot | null>(null);
   const v = useVoiceInput(defaultLocale(), { silenceStopSeconds: 1.8 });
+  const speaker = speakerFor(prefs.voice);
 
-  const commit = useCallback((next: Turn[]) => { turnsRef.current = next; setTurns(next); saveTurns(next); }, []);
+  const commit = useCallback((next: Turn[]) => {
+    turnsRef.current = next;
+    setTurns(next);
+    saveTurns(next);
+    saveRemoteSoon(next, prefsRef.current, markSynced);
+  }, []);
   const patchCard = useCallback((turnId: string, cardId: string, patch: Partial<ActionCard>) => {
     commit(turnsRef.current.map(t => (t.id === turnId ? { ...t, actions: (t.actions ?? []).map(a => (a.id === cardId ? { ...a, ...patch } : a)) } : t)));
   }, [commit]);
@@ -103,6 +212,72 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
     return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down); };
   }, []);
 
+  /* ── The same conversation on every device ── */
+  useEffect(() => {
+    if (!open) return;
+    let gone = false;
+    void loadRemote().then(r => {
+      if (gone || !r) return;
+      if (r.updatedAt > localStamp() && !busy) {
+        const remote = settleInterrupted(r.turns);
+        adoptTurns(remote, r.updatedAt);
+        turnsRef.current = remote;
+        setTurns(remote);
+        if (r.prefs && Object.keys(r.prefs).length) onPrefs(normalisePrefs({ ...prefsRef.current, ...r.prefs, dock: prefsRef.current.dock }));
+      } else if (isDirty()) {
+        saveRemoteSoon(turnsRef.current, prefsRef.current, markSynced);
+      }
+    });
+    return () => { gone = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- each time it is opened
+  }, [open]);
+
+  /* ── Floating beside the helmet ── */
+  /* Placed while rendering when it is opened or its helmet moves (React's
+     "adjust state on a prop change"), so it never paints in the old spot. */
+  const [placedFor, setPlacedFor] = useState<unknown[]>([]);
+  if (open && (placedFor[0] !== open || placedFor[1] !== anchor || placedFor[2] !== size)) {
+    setPlacedFor([open, anchor, size]);
+    setPos(besideAnchor(anchor, size === 'large'));
+  }
+  if (!open && placedFor[0]) { setPlacedFor([false]); if (talk) setTalk(false); if (speaking) setSpeaking(false); }
+  useEffect(() => {
+    const keep = () => setPos(p => (p ? besideAnchor(anchor, size === 'large') : p));
+    window.addEventListener('resize', keep);
+    return () => window.removeEventListener('resize', keep);
+  }, [anchor, size]);
+  /* A box it is about to type into is under the panel: the panel moves to
+     whichever side of the box has room, so the typing is seen. */
+  useEffect(() => {
+    const on = (e: Event) => {
+      const r = (e as CustomEvent<{ left: number; top: number; right: number; bottom: number }>).detail;
+      const el = document.querySelector<HTMLElement>('.pt-panel');
+      if (!r || !el || window.innerWidth <= 760) return;
+      const p = el.getBoundingClientRect();
+      if (p.right <= r.left || p.left >= r.right || p.bottom <= r.top || p.top >= r.bottom) return;
+      const w = p.width, vw = window.innerWidth;
+      const left = vw - r.right - 12 >= w ? r.right + 12 : r.left - 12 >= w ? r.left - w - 12 : (r.left + r.right) / 2 > vw / 2 ? 8 : vw - w - 8;
+      setPos(prev => ({ left: Math.round(left), top: prev?.top ?? Math.round(p.top) }));
+    };
+    window.addEventListener(EDITING_EVENT, on);
+    return () => window.removeEventListener(EDITING_EVENT, on);
+  }, []);
+  const drag = useRef<{ dx: number; dy: number } | null>(null);
+  const onHeadDown = (e: React.PointerEvent<HTMLElement>) => {
+    if ((e.target as HTMLElement).closest('button') || window.innerWidth <= 760 || !pos) return;
+    drag.current = { dx: e.clientX - pos.left, dy: e.clientY - pos.top };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onHeadMove = (e: React.PointerEvent<HTMLElement>) => {
+    if (!drag.current) return;
+    const el = e.currentTarget.parentElement as HTMLElement;
+    setPos({
+      left: Math.max(8, Math.min(window.innerWidth - el.offsetWidth - 8, e.clientX - drag.current.dx)),
+      top: Math.max(8, Math.min(window.innerHeight - el.offsetHeight - 8, e.clientY - drag.current.dy)),
+    });
+  };
+  const onHeadUp = () => { drag.current = null; };
+
   /* ── What the actions may touch ── */
   const actx: ActionCtx = useMemo(() => ({
     who,
@@ -114,10 +289,10 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
         source: 'Protron (AI business manager)', createdAt: now, lastActivity: now, value: 0,
       });
     },
-    createPipeline: (name, stages) => {
-      const p = app.createPipeline(name);
-      const list: Stage[] = stages.map((s, i) => ({ id: `stage-${Date.now()}-${i}`, name: s, color: STAGE_COLOURS[i % STAGE_COLOURS.length], deals: [] }));
-      app.updatePipeline(p.id, { stages: list });
+    createPipeline: name => app.createPipeline(name).id,
+    setStages: (id, stages) => {
+      const list: Stage[] = stages.map((s, i) => ({ id: `stage-${id}-${i}`, name: s, color: STAGE_COLOURS[i % STAGE_COLOURS.length], deals: [] }));
+      app.updatePipeline(id, { stages: list });
     },
     counts: () => ({
       contacts: app.contacts.length,
@@ -129,13 +304,18 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
       appointments: app.appointments.length,
       conversations: app.conversations.length,
     }),
-    setProactive: on => onPrefs({ ...prefs, proactive: on }),
+    setProactive: on => onPrefs({ ...prefsRef.current, proactive: on }),
     handOffToAutopilot: text => {
       try { sessionStorage.setItem('pc_protron_handoff', text); } catch { /* the wizard opens with an empty box instead */ }
       navTarget.current = '/autopilot';
       navigate('/autopilot?new=1&from=protron');
     },
-  }), [who, navigate, app, prefs, onPrefs]);
+    fill: fillField,
+    waitFor: key => waitForField(key),
+    labelOf: key => lastScreen.current?.fields.find(f => f.key === key)?.label ?? '',
+    signal: (event, detail) => window.dispatchEvent(new CustomEvent(event, { detail })),
+    wait: sleep,
+  }), [who, navigate, app, onPrefs]);
 
   /* ── The face follows what is happening ── */
   const settleFace = useCallback((s: AvatarState, ms = 1400) => {
@@ -146,43 +326,56 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
     if (v.phase === 'listening' || v.phase === 'starting') onFace('listening');
     else if (v.phase === 'transcribing') onFace('thinking');
   }, [v.phase, onFace]);
+  useEffect(() => onVoiceLevel(l => { ring.current?.style.setProperty('--pt-lvl', l.toFixed(3)); }), []);
 
   /* ── Speaking ── */
   const micRef = useRef<() => void>(() => undefined);
   const speak = useCallback(async (text: string) => {
-    if (!browserSpeaker.supported() || !text.trim()) return;
+    if (!speaker.supported() || !text.trim()) return;
     setSpeaking(true);
     onFace('speaking');
-    await browserSpeaker.speak(text);
+    await speaker.speak(text);
     setSpeaking(false);
     onFace('idle');
     if (loop.current) micRef.current();
-  }, [onFace]);
-  const hush = useCallback(() => { loop.current = false; browserSpeaker.stop(); setSpeaking(false); onFace('idle'); }, [onFace]);
+  }, [onFace, speaker]);
+  const hush = useCallback(() => { loop.current = false; commanderSpeaker.stop(); browserSpeaker.stop(); setSpeaking(false); onFace('idle'); }, [onFace]);
 
   /* ── Carrying out a card ── */
+  const settle = (card: ActionCard, status: 'done' | 'failed' | 'cancelled' | 'refused', result: string) => {
+    const tier = actionByName(card.name)?.tier;
+    /* Moving around is not worth a row; everything that wrote, filled, spent or was stopped is. */
+    if (!(tier === 'read' && status === 'done')) audit(card.name, card.title, status, result);
+  };
   const execute = useCallback(async (turnId: string, card: ActionCard, confirmed: boolean): Promise<{ ok: boolean; data?: Record<string, number | string> }> => {
     /* Checked again at the moment it runs: a card confirmed after a reload,
        or after the customer's permissions changed, is judged as of now. */
     const c = checkCall({ name: card.name, args: card.args }, who);
-    if (!c.ok) { patchCard(turnId, card.id, { status: 'refused', result: c.error }); return { ok: false }; }
+    if (!c.ok) { patchCard(turnId, card.id, { status: 'refused', result: c.error }); settle(card, 'refused', c.error); return { ok: false }; }
     patchCard(turnId, card.id, { status: 'running' });
     onFace('working');
-    const res = await runChecked(c, actx, confirmed);
-    patchCard(turnId, card.id, { status: res.ok ? 'done' : 'failed', result: res.message });
+    const res = await runChecked(c, { ...actx, report: steps => patchCard(turnId, card.id, { steps }) }, confirmed);
+    patchCard(turnId, card.id, { status: res.ok ? 'done' : 'failed', result: res.message, undo: res.undo });
+    settle(card, res.ok ? 'done' : 'failed', res.message);
     settleFace(res.ok ? 'done' : 'error', res.ok ? 1200 : 2600);
     return { ok: res.ok, data: res.data };
   }, [who, actx, patchCard, onFace, settleFace]);
 
+  const undo = useCallback(async (turnId: string, card: ActionCard) => {
+    const n = await restoreFields(card.undo ?? []);
+    patchCard(turnId, card.id, { undo: undefined, result: n ? `Undone — put back what was in ${n === 1 ? 'that box' : `those ${n} boxes`} before.` : 'Those boxes are not on screen any more, so there was nothing to put back.' });
+    if (n) audit(card.name, card.title, 'cancelled', 'Undone by the customer');
+  }, [patchCard]);
+
   /* Through a ref, because a read action's follow-up answer is delivered by
      the same function that delivered the question's. */
-  const respondRef = useRef<(r: BrainReply, ctx: TurnContext, spoken: boolean, allowFollowUp: boolean) => Promise<void>>(async () => undefined);
-  const respond = useCallback(async (r: BrainReply, ctx: TurnContext, spoken: boolean, allowFollowUp: boolean) => {
-    setAiDown(r.offline);
+  const respondRef = useRef<(r: BrainReply, ctx: TurnContext, spoken: boolean, allowFollowUp: boolean, auto?: boolean) => Promise<void>>(async () => undefined);
+  const respond = useCallback(async (r: BrainReply, ctx: TurnContext, spoken: boolean, allowFollowUp: boolean, auto = false) => {
+    setAiDown(r.offline ? (r.reason || 'the AI is not answering') : '');
     const cards: ActionCard[] = (allowFollowUp ? r.actions : []).map(call => {
       const c = checkCall(call, who);
       const def = actionByName(call.name);
-      if (!c.ok) return { id: newId(), name: call.name, title: def?.title ?? 'Not available', args: {}, status: 'refused' as const, result: c.error };
+      if (!c.ok) { settle({ id: '', name: call.name, title: def?.title ?? call.name, args: {}, status: 'refused' }, 'refused', c.error); return { id: newId(), name: call.name, title: def?.title ?? 'Not available', args: {}, status: 'refused' as const, result: c.error }; }
       return {
         id: newId(), name: c.def.name, title: c.def.title, args: c.args,
         status: needsConfirm(c.def) ? 'waiting' as const : 'running' as const,
@@ -196,10 +389,11 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
       suggestions: r.suggestions.length ? r.suggestions : undefined,
       offline: r.offline,
       error: !!r.error && !r.reply,
+      auto: auto || undefined,
     };
     if (r.error) turn.text = `${turn.text}${turn.text ? '\n\n' : ''}(${r.error})`;
     commit([...turnsRef.current, turn]);
-    if (spoken || prefs.speak) void speak(r.reply);
+    if (spoken || prefsRef.current.speak) void speak(r.reply);
 
     for (const card of cards.filter(c => c.status === 'running')) {
       const def = actionByName(card.name);
@@ -209,25 +403,36 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
         await respondRef.current(again, ctx, spoken, false);
       }
     }
-  }, [who, commit, execute, prefs.speak, speak]);
+  }, [who, commit, execute, speak]);
   useEffect(() => { respondRef.current = respond; }, [respond]);
+
+  const context = useCallback((): TurnContext => {
+    const snap = readScreen();
+    lastScreen.current = snap;
+    return { who, path: loc.pathname, pageTitle: document.title, business: prefsRef.current.business, screen: describeScreen(snap) };
+  }, [who, loc.pathname]);
 
   const send = useCallback(async (raw: string, spoken = false) => {
     const text = raw.trim().slice(0, 2000);
     if (!text || busy) return;
     if (Date.now() - lastSend.current < MIN_GAP_MS) return;
     lastSend.current = Date.now();
+    unlockAudio();
+    commanderSpeaker.stop();
     browserSpeaker.stop();
     setSpeaking(false);
     loop.current = spoken;
     setInput('');
     setVoiceNote('');
-    const ctx: TurnContext = { who, path: loc.pathname, pageTitle: document.title, business: prefs.business };
+    setPhase('Reading your screen');
+    const ctx = context();
     commit([...turnsRef.current, { id: newId(), role: 'user', text, at: Date.now(), path: loc.pathname }]);
     setBusy(true);
     onFace('thinking');
     try {
+      setPhase('Asking the AI');
       const r = await think(turnsRef.current, ctx);
+      setPhase(r.actions.length ? 'Checking what it proposed' : 'Writing the answer');
       onFace('idle');
       await respond(r, ctx, spoken, true);
     } catch (e) {
@@ -235,8 +440,25 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
       settleFace('error', 2600);
     } finally {
       setBusy(false);
+      setPhase('');
     }
-  }, [busy, who, loc.pathname, prefs.business, commit, onFace, respond, settleFace]);
+  }, [busy, loc.pathname, commit, onFace, respond, settleFace, context]);
+
+  /** Protron speaks first: the customer paused, something failed, or the screen froze. */
+  const opening = useCallback(async (why: AutoWhy) => {
+    if (busy) return;
+    setBusy(true);
+    setPhase('Reading your screen');
+    onFace('thinking');
+    const ctx = context();
+    const seconds = prefsRef.current.idleSeconds || 10;
+    try {
+      setPhase('Working out what might help');
+      const r = await thinkAhead(turnsRef.current, ctx, why === 'idle' ? seconds : 0, why);
+      onFace('idle');
+      await respond(r, ctx, false, true, true);
+    } finally { setBusy(false); setPhase(''); }
+  }, [busy, context, onFace, respond]);
 
   const retry = useCallback(() => {
     const list = turnsRef.current;
@@ -250,12 +472,15 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
 
   /* ── The microphone ── */
   const mic = useCallback(async () => {
-    if (browserSpeaker.speaking()) hush();
+    unlockAudio();
+    if (speaker.speaking()) hush();
     if (v.phase === 'listening') { void v.stop(); return; }
     if (v.phase === 'starting' || v.phase === 'transcribing' || busy) return;
     const r = await v.start();
+    /* Nothing heard: Talk mode waits for the microphone rather than reopening
+       it forever on a silent room or a refused permission. */
     if (!r || !r.text.trim()) { loop.current = false; onFace('idle'); return; }
-    if (r.doubtful) {
+    if (r.doubtful && !talkRef.current) {
       loop.current = false;
       onFace('idle');
       setInput(r.text);
@@ -264,20 +489,29 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
       return;
     }
     void send(r.text, true);
-  }, [v, busy, hush, onFace, send]);
+  }, [v, busy, hush, onFace, send, speaker]);
   useEffect(() => { micRef.current = () => { if (open) void mic(); }; }, [mic, open]);
+  useBargeIn(open && talk && speaking, () => { hush(); loop.current = true; void mic(); });
+
+  const startTalk = useCallback(() => {
+    unlockAudio();
+    setTalk(true);
+    loop.current = true;
+    window.setTimeout(() => micRef.current(), 150);
+  }, []);
+  const endTalk = useCallback(() => { setTalk(false); loop.current = false; v.cancel(); hush(); }, [v, hush]);
 
   /* Hidden: nothing keeps listening or talking. */
   useEffect(() => {
-    if (open) { window.setTimeout(() => box.current?.focus(), 50); return; }
+    if (open) { if (!seed?.auto) window.setTimeout(() => box.current?.focus({ preventScroll: true }), 50); return; }
     loop.current = false;
     v.cancel();
+    commanderSpeaker.stop();
     browserSpeaker.stop();
-    setSpeaking(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only when shown or hidden
   }, [open]);
 
-  /* Opened with something to say: an offer's introduction, or a message to send. */
+  /* Opened with something to say: an offer's introduction, a message, Talk mode or an opening. */
   const seen = useRef(0);
   useEffect(() => {
     if (!seed || seed.n === seen.current) return;
@@ -286,6 +520,8 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
       commit([...turnsRef.current, { id: newId(), role: 'protron', at: Date.now(), path: loc.pathname, text: seed.intro, suggestions: startersFor(loc.pathname) }]);
     }
     if (seed.message) { lastSend.current = 0; void send(seed.message); }
+    if (seed.talk) startTalk();
+    if (seed.auto) void opening(seed.auto);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- once per seed
   }, [seed]);
 
@@ -296,36 +532,73 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
     const last = list[list.length - 1];
     if (!last || last.path === loc.pathname) return;
     if (navTarget.current === loc.pathname) { navTarget.current = ''; commit(list.map((t, i) => (i === list.length - 1 ? { ...t, path: loc.pathname } : t))); return; }
+    if (busy) return;
     const here = screenContext(loc.pathname, who);
     commit([...list, {
       id: newId(), role: 'protron', at: Date.now(), path: loc.pathname,
       text: `You're now in ${here.label}${here.desc ? ` — ${here.desc.charAt(0).toLowerCase()}${here.desc.slice(1)}` : ''}. Want a hand with anything here?`,
       suggestions: startersFor(loc.pathname),
     }]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- on a move only
   }, [loc.pathname, open, who, commit]);
 
-  useEffect(() => { logEnd.current?.scrollIntoView({ block: 'end' }); }, [turns.length, busy, open]);
+  useEffect(() => { logEnd.current?.scrollIntoView({ block: 'end' }); }, [turns, busy, open, phase]);
 
   const newConversation = () => {
     hush();
     clearTurns();
-    commit([]);
+    turnsRef.current = [];
+    setTurns([]);
+    void clearRemote().then(() => markSynced(Date.now()));
     setMenu(false);
   };
 
   const here = screenContext(loc.pathname, who);
+  const listening = v.phase === 'listening' || v.phase === 'starting';
+  const working = face === 'working';
   const status: { text: string; tone: 'ok' | 'warn' | 'bad' } = !online ? { text: 'You are offline', tone: 'bad' }
-    : v.phase === 'listening' ? { text: 'Listening…', tone: 'ok' }
+    : listening ? { text: 'Listening…', tone: 'ok' }
       : v.phase === 'transcribing' ? { text: 'Working out what you said…', tone: 'ok' }
-        : busy ? { text: 'Thinking…', tone: 'ok' }
+        : busy ? { text: `${phase || 'Thinking'}…`, tone: 'ok' }
           : speaking ? { text: 'Speaking…', tone: 'ok' }
-            : face === 'working' ? { text: 'Carrying it out…', tone: 'ok' }
-              : aiDown ? { text: 'Basic mode — AI not answering', tone: 'warn' }
+            : working ? { text: 'Carrying it out, step by step…', tone: 'ok' }
+              : aiDown ? { text: `Basic mode — ${aiDown}`, tone: 'warn' }
                 : { text: `Ready · on ${here.label}`, tone: 'ok' };
 
-  const side = prefs.dock && prefs.dock.x > 0.5 ? 'right' : 'left';
-  const listening = v.phase === 'listening' || v.phase === 'starting';
   const lastTurn = turns[turns.length - 1];
+  const lastBot = [...turns].reverse().find(t => t.role === 'protron');
+  const isLive = (a: ActionCard) => a.status === 'running' || a.status === 'waiting';
+  const liveTurn = [...turns].reverse().find(t => (t.actions ?? []).some(isLive));
+  const liveCard = liveTurn?.actions?.find(isLive);
+  const style = pos && window.innerWidth > 760 ? { left: pos.left, top: pos.top, bottom: 'auto', right: 'auto' } : undefined;
+
+  const card = (t: Turn, a: ActionCard) => (
+    <div key={a.id} className="pt-card" data-s={a.status}>
+      <div className="pt-card-top">
+        {a.status === 'done' ? <CircleCheck size={15} color="#16a34a" />
+          : a.status === 'failed' ? <CircleAlert size={15} color="#dc2626" />
+            : a.status === 'refused' ? <Ban size={15} color="#dc2626" />
+              : a.status === 'running' ? <Loader size={15} className="spin" />
+                : a.status === 'cancelled' ? <X size={15} color="#64748b" /> : <Clock size={15} color="#b45309" />}
+        <span>{a.title}</span>
+        <span className="pt-chip" data-s={a.status}>
+          {a.status === 'waiting' ? 'Needs your OK' : a.status === 'running' ? 'Working' : a.status === 'done' ? 'Done' : a.status === 'failed' ? 'Did not work' : a.status === 'refused' ? 'Not allowed' : 'Cancelled'}
+        </span>
+      </div>
+      {a.status === 'waiting' && a.confirmText && <p>{a.confirmText}</p>}
+      {a.steps && a.steps.length > 0 && <StepList steps={a.steps} />}
+      {a.result && <p>{a.result}</p>}
+      {a.status === 'waiting' && (
+        <div className="pt-card-row">
+          <button type="button" className="pt-btn pt-btn-primary" onClick={() => { unlockAudio(); void execute(t.id, a, true); }}><Check size={14} /> Confirm</button>
+          <button type="button" className="pt-btn" onClick={() => { patchCard(t.id, a.id, { status: 'cancelled', result: 'Cancelled — nothing was changed.' }); settle(a, 'cancelled', 'Cancelled by the customer'); }}>Cancel</button>
+        </div>
+      )}
+      {a.status === 'done' && a.undo && a.undo.length > 0 && (
+        <div className="pt-card-row"><button type="button" className="pt-btn" onClick={() => void undo(t.id, a)}><Undo2 size={14} /> Undo</button></div>
+      )}
+    </div>
+  );
 
   return (
     <section
@@ -333,19 +606,25 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
       role="dialog"
       aria-label="Protron, your AI business manager"
       data-size={size}
-      data-side={side}
+      data-talk={talk ? '1' : '0'}
+      data-peek={face === 'working' && !talk ? '1' : '0'}
       hidden={!open}
+      style={style}
       onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}
     >
-      <header className="pt-head-bar">
+      <header className="pt-head-bar" onPointerDown={onHeadDown} onPointerMove={onHeadMove} onPointerUp={onHeadUp} title="Drag to move">
         <span className="pt-mini" style={{ width: 44, height: 44 }}><ProtronAvatar size={40} state={face} /></span>
         <span className="pt-title">
           <b>Protron</b>
-          <span className="pt-status" data-tone={status.tone} aria-live="polite"><i aria-hidden />{status.text}</span>
+          <span className="pt-status" data-tone={status.tone} aria-live="polite" title={status.text}><i aria-hidden />{status.text}</span>
         </span>
+        <button type="button" className="pt-icon" aria-pressed={talk} title={talk ? 'Back to the chat' : 'Talk to Protron, hands-free'}
+          aria-label={talk ? 'Back to the chat' : 'Talk to Protron'} onClick={() => (talk ? endTalk() : startTalk())}>
+          {talk ? <MessageSquare size={17} /> : <AudioLines size={17} />}
+        </button>
         <button type="button" className="pt-icon" aria-pressed={prefs.speak} title={prefs.speak ? 'Stop reading replies aloud' : 'Read replies aloud'}
           aria-label={prefs.speak ? 'Stop reading replies aloud' : 'Read replies aloud'}
-          onClick={() => { if (prefs.speak) hush(); onPrefs({ ...prefs, speak: !prefs.speak }); }}>
+          onClick={() => { unlockAudio(); if (prefs.speak) hush(); onPrefs({ ...prefs, speak: !prefs.speak }); }}>
           {prefs.speak ? <Volume2 size={17} /> : <VolumeX size={17} />}
         </button>
         <button type="button" className="pt-icon" aria-expanded={menu} aria-label="Protron settings" title="Settings" onClick={() => setMenu(m => !m)}><Settings2 size={17} /></button>
@@ -360,142 +639,165 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
         <div className="pt-menu">
           <label>
             <input type="checkbox" checked={prefs.proactive} onChange={e => onPrefs({ ...prefs, proactive: e.target.checked })} />
-            <span>Offer help when I seem stuck<small>At most three times a day, never twice in ten minutes. Protron only offers — it never acts on its own.</small></span>
+            <span>Start a conversation when I pause<small>Protron reads the screen (labels and messages, never what you typed) and offers help. It only offers — it never acts on its own.</small></span>
+          </label>
+          <label style={{ cursor: 'default' }}>
+            <span style={{ flex: 1 }}>After</span>
+            <select data-field="protron.idleSeconds" className="pt-select" value={prefs.idleSeconds} disabled={!prefs.proactive}
+              onChange={e => onPrefs({ ...prefs, idleSeconds: Number(e.target.value) })}>
+              {IDLE_CHOICES.filter(n => n > 0).map(n => <option key={n} value={n}>{n < 60 ? `${n} seconds` : `${n / 60} minutes`} without a touch</option>)}
+            </select>
+          </label>
+          <label style={{ cursor: 'default' }}>
+            <span style={{ flex: 1 }}>Voice</span>
+            <select data-field="protron.voice" className="pt-select" value={prefs.voice} onChange={e => onPrefs({ ...prefs, voice: e.target.value === 'natural' ? 'natural' : 'commander' })}>
+              <option value="commander">Commander — deep robot (AI voice)</option>
+              <option value="natural">Natural — this browser&rsquo;s voice</option>
+            </select>
           </label>
           <label>
             <input type="checkbox" checked={prefs.speak} onChange={e => { if (!e.target.checked) hush(); onPrefs({ ...prefs, speak: e.target.checked }); }} />
-            <span>Read replies aloud<small>Spoken questions are always answered aloud. Your voice is turned into text and not kept.</small></span>
+            <span>Read replies aloud<small>Spoken questions and Talk mode are always answered aloud. The commander voice is one AI request a reply; your voice is turned into text and not kept.</small></span>
           </label>
           <label style={{ display: 'grid', gap: 4, cursor: 'default' }}>
             <span style={{ fontWeight: 600 }}>Your business, so answers fit it</span>
-            <input data-field="protron.business" className="pt-input" style={{ font: 'inherit', fontSize: 13, padding: '7px 9px', border: '1px solid #e2e5ea', borderRadius: 9, marginTop: 0 }}
-              value={prefs.business.name} maxLength={80} placeholder="Company name"
+            <input data-field="protron.business" className="pt-input" value={prefs.business.name} maxLength={80} placeholder="Company name"
               onChange={e => onPrefs({ ...prefs, business: { ...prefs.business, name: e.target.value } })} />
-            <input className="pt-input" style={{ font: 'inherit', fontSize: 13, padding: '7px 9px', border: '1px solid #e2e5ea', borderRadius: 9, marginTop: 0 }}
-              value={prefs.business.about} maxLength={200} placeholder="What you do, e.g. roofing in Dallas, TX"
+            <input data-field="protron.about" className="pt-input" value={prefs.business.about} maxLength={200} placeholder="What you do, e.g. roofing in Dallas, TX"
               onChange={e => onPrefs({ ...prefs, business: { ...prefs.business, about: e.target.value } })} />
           </label>
           {prefs.dock && <button type="button" className="pt-btn" style={{ justifySelf: 'start' }} onClick={() => onPrefs({ ...prefs, dock: null })}>Put Protron back in the corner</button>}
           <button type="button" className="pt-danger" onClick={newConversation}>Clear this conversation</button>
-          <small>Kept in this browser for you and this workspace only. Clearing removes it.</small>
+          <small>Kept for you in this workspace — in this browser and on our server, so it follows you to other devices. Clearing removes both. What Protron does is also written to the workspace&rsquo;s audit trail.</small>
         </div>
       )}
 
-      <div className="pt-log" aria-live="polite">
-        {!turns.length && (
-          <div style={{ display: 'grid', gap: 12, justifyItems: 'start' }}>
-            <div className="pt-msg pt-msg-bot">
-              <span className="pt-mini"><ProtronAvatar size={22} state="idle" alive={false} /></span>
-              <span className="pt-bubble-text">
-                Hi, I&rsquo;m <b>Protron</b>, your AI business manager. Ask me how anything in here works, or tell me what you want done — I can open the right screen, search for prospects, start an AI Autopilot business workspace, add contacts and set up a deals pipeline.
-                {'\n\n'}Anything that sends, publishes, deletes or charges stays your button to press. You&rsquo;re on <b>{here.label}</b>.
-              </span>
-            </div>
-            <div className="pt-sugs">
-              {startersFor(loc.pathname).map(s => <button key={s} type="button" className="pt-sug" onClick={() => void send(s)}>{s}</button>)}
-            </div>
+      {talk ? (
+        <div className="pt-talk-stage" aria-live="polite">
+          <div className="pt-talk-orb" ref={ring} data-state={listening ? 'listening' : speaking ? 'speaking' : busy || working ? 'thinking' : 'idle'}>
+            <ProtronAvatar size={112} state={face} />
           </div>
-        )}
-
-        {turns.map(t => (t.role === 'user'
-          ? <div key={t.id} className="pt-msg pt-msg-user">{t.text}</div>
-          : (
-            <div key={t.id} style={{ display: 'grid', gap: 8 }}>
-              <div className="pt-msg pt-msg-bot" data-error={t.error ? '1' : '0'}>
-                <span className="pt-mini"><ProtronAvatar size={22} state={t.error ? 'error' : 'idle'} alive={false} /></span>
-                <span style={{ minWidth: 0 }}>
-                  {t.text && <span className="pt-bubble-text" style={{ display: 'block' }}>{t.text}</span>}
-                  {t.offline && !t.error && <span className="pt-note" style={{ display: 'block' }}>Answered without the AI.</span>}
-                  {(t.actions ?? []).map(a => (
-                    <div key={a.id} className="pt-card">
-                      <div className="pt-card-top">
-                        {a.status === 'done' ? <CircleCheck size={15} color="#16a34a" />
-                          : a.status === 'failed' ? <CircleAlert size={15} color="#dc2626" />
-                            : a.status === 'refused' ? <Ban size={15} color="#dc2626" />
-                              : a.status === 'running' ? <Loader size={15} className="spin" />
-                                : a.status === 'cancelled' ? <X size={15} color="#64748b" /> : <Clock size={15} color="#b45309" />}
-                        <span>{a.title}</span>
-                        <span className="pt-chip" data-s={a.status}>
-                          {a.status === 'waiting' ? 'Needs your OK' : a.status === 'running' ? 'Working' : a.status === 'done' ? 'Done' : a.status === 'failed' ? 'Did not work' : a.status === 'refused' ? 'Not allowed' : 'Cancelled'}
-                        </span>
-                      </div>
-                      {a.status === 'waiting' && a.confirmText && <p>{a.confirmText}</p>}
-                      {a.result && <p>{a.result}</p>}
-                      {a.status === 'waiting' && (
-                        <div className="pt-card-row">
-                          <button type="button" className="pt-btn pt-btn-primary" onClick={() => void execute(t.id, a, true)}><Check size={14} /> Confirm</button>
-                          <button type="button" className="pt-btn" onClick={() => patchCard(t.id, a.id, { status: 'cancelled', result: 'Cancelled — nothing was changed.' })}>Cancel</button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {t.error && t === lastTurn && (
-                    <button type="button" className="pt-btn" style={{ marginTop: 8 }} onClick={retry}><RotateCcw size={14} /> Try again</button>
-                  )}
+          <div className="pt-talk-state">
+            {listening ? 'Listening — pause when you are done' : v.phase === 'transcribing' ? 'Working out what you said…' : busy ? `${phase || 'Thinking'}…` : speaking ? 'Speaking — just talk to interrupt' : working ? 'Carrying it out…' : 'Your turn — press the microphone or just talk'}
+          </div>
+          {listening && <div className="pt-voice-bars" style={{ width: '70%' }}><VoiceBars meter={v.meter} count={28} height={28} /></div>}
+          {lastBot?.text && <p className="pt-talk-caption">{lastBot.text}</p>}
+          {liveTurn && liveCard && <div className="pt-talk-card">{card(liveTurn, liveCard)}</div>}
+          {v.problem && v.phase === 'error' && <div className="pt-voice" role="alert" style={{ background: '#3b1d12', color: '#fed7aa' }}>{v.problem}</div>}
+          <div className="pt-talk-row">
+            <button type="button" className="pt-round pt-mic pt-mic-big" data-on={listening ? '1' : '0'} disabled={!v.supported || v.phase === 'transcribing'}
+              aria-label={listening ? 'Stop listening' : 'Talk to Protron'} onClick={() => { loop.current = true; void mic(); }}>
+              {listening ? <Square size={20} /> : <Mic size={24} />}
+            </button>
+            {speaking && <button type="button" className="pt-btn" onClick={hush}><Square size={13} /> Stop</button>}
+            <button type="button" className="pt-btn" onClick={endTalk}><MessageSquare size={14} /> Back to chat</button>
+          </div>
+          <small className="pt-foot-note" style={{ color: '#8aa0b2' }}>Talk is turn by turn: you speak, Protron answers aloud, then listens again.</small>
+        </div>
+      ) : (
+        <div className="pt-log" aria-live="polite">
+          {!turns.length && (
+            <div style={{ display: 'grid', gap: 12, justifyItems: 'start' }}>
+              <div className="pt-msg pt-msg-bot">
+                <span className="pt-mini"><ProtronAvatar size={22} state="idle" alive={false} /></span>
+                <span className="pt-bubble-text">
+                  Hi, I&rsquo;m <b>Protron</b>, your AI business manager. Ask me how anything in here works, or tell me what you want done — I can open the right screen, fill in the form you have open, draft a social post, search for prospects, start an AI Autopilot business workspace, add contacts and build a deals pipeline, step by step in front of you.
+                  {'\n\n'}Anything that sends, publishes, deletes or charges stays your button to press. You&rsquo;re on <b>{here.label}</b>.
                 </span>
               </div>
-              {t === lastTurn && t.suggestions && !busy && (
-                <div className="pt-sugs" style={{ paddingLeft: 34 }}>
-                  {t.suggestions.map(s => <button key={s} type="button" className="pt-sug" onClick={() => void send(s)}>{s}</button>)}
-                </div>
-              )}
+              <div className="pt-sugs">
+                {startersFor(loc.pathname).map(s => <button key={s} type="button" className="pt-sug" onClick={() => void send(s)}>{s}</button>)}
+                <button type="button" className="pt-sug" onClick={startTalk}><AudioLines size={13} style={{ verticalAlign: '-2px' }} /> Talk to me</button>
+              </div>
             </div>
-          )))}
+          )}
 
-        {busy && (
-          <div className="pt-typing" role="status">
-            <span className="pt-mini"><ProtronAvatar size={22} state="thinking" alive={false} /></span>
-            <span className="pt-dots" aria-hidden><span /><span /><span /></span>
-            <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>Protron is thinking</span>
-          </div>
-        )}
-        <div ref={logEnd} />
-      </div>
+          {turns.map(t => (t.role === 'user'
+            ? <div key={t.id} className="pt-msg pt-msg-user">{t.text}</div>
+            : (
+              <div key={t.id} style={{ display: 'grid', gap: 8 }}>
+                <div className="pt-msg pt-msg-bot" data-error={t.error ? '1' : '0'}>
+                  <span className="pt-mini"><ProtronAvatar size={22} state={t.error ? 'error' : 'idle'} alive={false} /></span>
+                  <span style={{ minWidth: 0 }}>
+                    {t.text && <span className="pt-bubble-text" style={{ display: 'block' }}>{t.text}</span>}
+                    {t.auto && (
+                      <span className="pt-note" style={{ display: 'block', color: '#6b7280' }}>
+                        I spoke up because you paused.{' '}
+                        <button type="button" className="pt-link" onClick={() => onPrefs({ ...prefs, proactive: false })}>Don&rsquo;t start chats</button>
+                      </span>
+                    )}
+                    {t.offline && !t.error && <span className="pt-note" style={{ display: 'block' }}>Answered without the AI{aiDown && t === lastBot ? ` — ${aiDown}` : ''}.</span>}
+                    {(t.actions ?? []).map(a => card(t, a))}
+                    {t.error && t === lastTurn && (
+                      <button type="button" className="pt-btn" style={{ marginTop: 8 }} onClick={retry}><RotateCcw size={14} /> Try again</button>
+                    )}
+                  </span>
+                </div>
+                {t === lastTurn && t.suggestions && !busy && (
+                  <div className="pt-sugs" style={{ paddingLeft: 34 }}>
+                    {t.suggestions.map(s => <button key={s} type="button" className="pt-sug" onClick={() => void send(s)}>{s}</button>)}
+                  </div>
+                )}
+              </div>
+            )))}
 
-      <div className="pt-compose">
-        {(listening || v.phase === 'transcribing') && (
-          <div className="pt-voice">
-            <span style={{ fontWeight: 700 }}>{v.phase === 'transcribing' ? 'Working out what you said…' : 'Listening — pause when you are done'}</span>
-            {listening && <span className="pt-voice-bars"><VoiceBars meter={v.meter} count={22} height={22} /></span>}
-            {listening && <button type="button" className="pt-btn" onClick={() => { loop.current = false; v.cancel(); onFace('idle'); }}>Cancel</button>}
-          </div>
-        )}
-        {speaking && (
-          <div className="pt-voice">
-            <span style={{ flex: 1 }}>Speaking… press the microphone to talk over me.</span>
-            <button type="button" className="pt-btn" onClick={hush}><Square size={13} /> Stop</button>
-          </div>
-        )}
-        {v.problem && v.phase === 'error' && <div className="pt-voice" role="alert" style={{ background: '#fff7ed', color: '#9a3412' }}>{v.problem}</div>}
-        {voiceNote && <div className="pt-voice" style={{ background: '#fffbeb', color: '#92400e' }}>{voiceNote}</div>}
-        <div className="pt-compose-row">
-          <textarea
-            ref={box}
-            rows={1}
-            value={input}
-            maxLength={2000}
-            aria-label="Message Protron"
-            placeholder={listening ? 'Listening…' : 'Ask or tell Protron…'}
-            onChange={e => {
-              setInput(e.target.value);
-              if (speaking) hush();
-              const el = e.currentTarget;
-              el.style.height = 'auto';
-              el.style.height = `${Math.min(140, el.scrollHeight)}px`;
-            }}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(input); } }}
-          />
-          <button type="button" className="pt-round pt-mic" data-on={listening ? '1' : '0'}
-            disabled={!v.supported || v.phase === 'transcribing'}
-            aria-label={listening ? 'Stop listening' : 'Talk to Protron'}
-            title={!v.supported ? 'This browser cannot use a microphone — type instead' : listening ? 'Stop listening' : 'Talk to Protron (turn by turn)'}
-            onClick={() => void mic()}>
-            {listening ? <Square size={16} /> : <Mic size={18} />}
-          </button>
-          <button type="button" className="pt-round pt-send" disabled={!input.trim() || busy} aria-label="Send" onClick={() => void send(input)}><Send size={17} /></button>
+          {busy && (
+            <div className="pt-typing" role="status">
+              <span className="pt-mini"><ProtronAvatar size={22} state="thinking" alive={false} /></span>
+              <span className="pt-dots" aria-hidden><span /><span /><span /></span>
+              <span className="pt-phase">{phase || 'Thinking'}…</span>
+            </div>
+          )}
+          <div ref={logEnd} />
         </div>
-        <div className="pt-foot-note">Protron can be wrong. It never sends, publishes, deletes or charges for you.</div>
-      </div>
+      )}
+
+      {!talk && (
+        <div className="pt-compose">
+          {(listening || v.phase === 'transcribing') && (
+            <div className="pt-voice">
+              <span style={{ fontWeight: 700 }}>{v.phase === 'transcribing' ? 'Working out what you said…' : 'Listening — pause when you are done'}</span>
+              {listening && <span className="pt-voice-bars"><VoiceBars meter={v.meter} count={22} height={22} /></span>}
+              {listening && <button type="button" className="pt-btn" onClick={() => { loop.current = false; v.cancel(); onFace('idle'); }}>Cancel</button>}
+            </div>
+          )}
+          {speaking && (
+            <div className="pt-voice">
+              <span style={{ flex: 1 }}>Speaking… press the microphone to talk over me.</span>
+              <button type="button" className="pt-btn" onClick={hush}><Square size={13} /> Stop</button>
+            </div>
+          )}
+          {v.problem && v.phase === 'error' && <div className="pt-voice" role="alert" style={{ background: '#fff7ed', color: '#9a3412' }}>{v.problem}</div>}
+          {voiceNote && <div className="pt-voice" style={{ background: '#fffbeb', color: '#92400e' }}>{voiceNote}</div>}
+          <div className="pt-compose-row">
+            <textarea
+              ref={box}
+              rows={1}
+              value={input}
+              maxLength={2000}
+              aria-label="Message Protron"
+              placeholder={listening ? 'Listening…' : 'Ask or tell Protron…'}
+              onChange={e => {
+                setInput(e.target.value);
+                if (speaking) hush();
+                const el = e.currentTarget;
+                el.style.height = 'auto';
+                el.style.height = `${Math.min(140, el.scrollHeight)}px`;
+              }}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(input); } }}
+            />
+            <button type="button" className="pt-round pt-mic" data-on={listening ? '1' : '0'}
+              disabled={!v.supported || v.phase === 'transcribing'}
+              aria-label={listening ? 'Stop listening' : 'Speak to Protron'}
+              title={!v.supported ? 'This browser cannot use a microphone — type instead' : listening ? 'Stop listening' : 'Speak one message'}
+              onClick={() => void mic()}>
+              {listening ? <Square size={16} /> : <Mic size={18} />}
+            </button>
+            <button type="button" className="pt-round pt-send" disabled={!input.trim() || busy} aria-label="Send" onClick={() => void send(input)}><Send size={17} /></button>
+          </div>
+          <div className="pt-foot-note">Protron can be wrong. It never sends, publishes, deletes or charges for you.</div>
+        </div>
+      )}
     </section>
   );
 }

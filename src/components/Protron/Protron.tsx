@@ -19,38 +19,43 @@
  * wizard's Back button lives in the bottom-left corner (the same lesson
  * CornerHelp learned covering "Continue").
  *
- * ── Offering help without nagging ──
+ * ── Speaking first ──
  *
- * Protron offers, never acts. It speaks up only when:
- *   - something just failed on this screen (fieldGuard's TROUBLE_EVENT),
- *   - the same dialog has been opened and closed three times in two minutes,
- *   - nothing has been touched for two minutes on a screen somebody has been
- *     on for at least that long, with the tab in front of them.
- * Each kind at most once per screen per session, never twice within ten
- * minutes, never while its panel is open or the human-help card is showing,
- * at most three times a day — and "Don't offer again" turns it off for good
- * (also in the panel's menu). Reading is not being stuck: scrolling or moving
- * the pointer counts as activity.
+ * The owner's brief: when somebody stops — nothing touched for ten seconds
+ * (the default; 30 s, 2 min or off in the panel's menu) — Protron opens
+ * beside its helmet and starts the conversation: it reads the screen's shape
+ * (screen.ts — headings, empty boxes, error messages; never what was typed),
+ * says what the person seems to be doing and what may be in the way, and
+ * offers ways to help (brain.ts `thinkAhead`). It also speaks up when
+ * something on the screen just failed (fieldGuard's TROUBLE_EVENT or an
+ * uncaught error), when the screen froze for a few seconds, and when the same
+ * dialog was opened and closed three times in two minutes.
+ *
+ * It offers; it never acts on its own. Kept from nagging: once per screen per
+ * visit (moving to another screen re-arms it), never within 45 seconds of the
+ * last time, at most 30 a day, never while its panel is open, the tab is in
+ * the background or the human-help card is up — and "Don't start chats" on
+ * the message, or the panel's menu, turns it off.
  */
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import { AudioLines } from 'lucide-react';
 import { getSession } from '../../services/auth';
 import { TROUBLE_EVENT } from '../../services/fieldGuard';
-import { screenContext } from '../../services/protron/knowledge';
 import { loadPrefs, savePrefs, type Prefs } from '../../services/protron/memory';
 import type { Who } from '../../services/protron/actions';
 import { PROTRON_OPEN } from '../../services/protron/open';
 import ProtronAvatar, { type AvatarState } from './ProtronAvatar';
+import type { AutoWhy, Seed } from './ProtronPanel';
 import './protron.css';
 
 const ProtronPanel = lazy(() => import('./ProtronPanel'));
 
 
-const IDLE_MS = 120_000;
-const COOLDOWN_MS = 10 * 60_000;
-const MAX_A_DAY = 3;
-
-type Offer = { why: 'trouble' | 'idle' | 'loop'; path: string };
+const GAP_MS = 45_000;
+const MAX_A_DAY = 30;
+/** A heartbeat this late means the page's main thread was stuck. */
+const FROZE_MS = 4000;
 
 function useModalOpen(): boolean {
   const [open, setOpen] = useState(false);
@@ -64,23 +69,19 @@ function useModalOpen(): boolean {
   return open;
 }
 
-function offerAllowed(kind: string, path: string): boolean {
+function autoAllowed(): boolean {
   try {
     const day = new Date().toISOString().slice(0, 10);
-    const last = Number(sessionStorage.getItem('pc_protron_last_offer') || 0);
-    if (Date.now() - last < COOLDOWN_MS) return false;
-    if (sessionStorage.getItem(`pc_protron_offer_${kind}_${path}`)) return false;
-    const n = Number(localStorage.getItem(`pc_protron_offers_${day}`) || 0);
-    return n < MAX_A_DAY;
+    if (Date.now() - Number(sessionStorage.getItem('pc_protron_last_auto') || 0) < GAP_MS) return false;
+    return Number(localStorage.getItem(`pc_protron_autos_${day}`) || 0) < MAX_A_DAY;
   } catch { return false; }
 }
-function markOffered(kind: string, path: string): void {
+function markAuto(): void {
   try {
     const day = new Date().toISOString().slice(0, 10);
-    sessionStorage.setItem('pc_protron_last_offer', String(Date.now()));
-    sessionStorage.setItem(`pc_protron_offer_${kind}_${path}`, '1');
-    localStorage.setItem(`pc_protron_offers_${day}`, String(Number(localStorage.getItem(`pc_protron_offers_${day}`) || 0) + 1));
-  } catch { /* private mode: offered once more, at worst */ }
+    sessionStorage.setItem('pc_protron_last_auto', String(Date.now()));
+    localStorage.setItem(`pc_protron_autos_${day}`, String(Number(localStorage.getItem(`pc_protron_autos_${day}`) || 0) + 1));
+  } catch { /* private mode: at worst once more */ }
 }
 
 export default function Protron() {
@@ -97,16 +98,13 @@ export default function Protron() {
   const [everOpened, setEverOpened] = useState(false);
   const [size, setSize] = useState<'normal' | 'large'>('normal');
   const [face, setFace] = useState<AvatarState>('idle');
-  const [seed, setSeed] = useState<{ message?: string; intro?: string; n: number } | null>(null);
-  const [offer, setOffer] = useState<Offer | null>(null);
+  const [seed, setSeed] = useState<Seed | null>(null);
   const modalOpen = useModalOpen();
-  const here = screenContext(loc.pathname, who);
 
-  const show = useCallback((s?: { message?: string; intro?: string }) => {
+  const show = useCallback((s?: Omit<Seed, 'n'>) => {
     setOpen(true);
     setEverOpened(true);
-    setOffer(null);
-    if (s && (s.message || s.intro)) setSeed(prev => ({ ...s, n: (prev?.n ?? 0) + 1 }));
+    if (s && (s.message || s.intro || s.talk || s.auto)) setSeed(prev => ({ ...s, n: (prev?.n ?? 0) + 1 }));
   }, []);
 
   /* Opened from elsewhere in the app (the wizard's "Plan it with Protron", a link). */
@@ -116,23 +114,29 @@ export default function Protron() {
     return () => window.removeEventListener(PROTRON_OPEN, on);
   }, [show]);
 
-  /* ── Offers of help ── */
-  const canOffer = prefs.proactive && !open;
-  const propose = useCallback((why: Offer['why']) => {
+  /* ── Speaking first ── */
+  const canSpeakFirst = prefs.proactive && prefs.idleSeconds > 0 && !open;
+  const spokenHere = useRef('');
+  const speakFirst = useCallback((why: AutoWhy) => {
     const path = window.location.pathname;
-    if (!offerAllowed(why, path)) return;
+    if (why === 'idle' && spokenHere.current === path) return;
+    if (document.visibilityState !== 'visible' || !autoAllowed()) return;
     /* The human-help card is already asking. */
     if (document.querySelector('[role="dialog"][aria-label="Help with this screen"]')) return;
-    markOffered(why, path);
-    setOffer({ why, path });
-  }, []);
+    spokenHere.current = path;
+    markAuto();
+    show({ auto: why });
+  }, [show]);
+  useEffect(() => { spokenHere.current = ''; }, [loc.pathname]);
 
   useEffect(() => {
-    if (!canOffer) return;
-    const onTrouble = () => propose('trouble');
+    if (!prefs.proactive || open) return;
+    const onTrouble = () => speakFirst('trouble');
+    const onError = (e: ErrorEvent) => { if (e.error instanceof Error) speakFirst('trouble'); };
     window.addEventListener(TROUBLE_EVENT, onTrouble);
-    return () => window.removeEventListener(TROUBLE_EVENT, onTrouble);
-  }, [canOffer, propose]);
+    window.addEventListener('error', onError);
+    return () => { window.removeEventListener(TROUBLE_EVENT, onTrouble); window.removeEventListener('error', onError); };
+  }, [prefs.proactive, open, speakFirst]);
 
   /* The same dialog opened and closed again and again. */
   const opens = useRef<number[]>([]);
@@ -141,30 +145,31 @@ export default function Protron() {
     if (modalOpen && !wasModal.current) {
       const now = Date.now();
       opens.current = [...opens.current.filter(t => now - t < 120_000), now];
-      if (canOffer && opens.current.length >= 3) { opens.current = []; propose('loop'); }
+      if (canSpeakFirst && opens.current.length >= 3) { opens.current = []; speakFirst('loop'); }
     }
     wasModal.current = modalOpen;
-  }, [modalOpen, canOffer, propose]);
+  }, [modalOpen, canSpeakFirst, speakFirst]);
   useEffect(() => { opens.current = []; }, [loc.pathname]);
 
-  /* Two minutes untouched, tab in front, on a screen they have been on that long. */
+  /* Nothing touched for the chosen time, tab in front; and a page that froze. */
   useEffect(() => {
-    if (!canOffer) return;
+    if (!canSpeakFirst) return;
+    const idleMs = prefs.idleSeconds * 1000;
     let last = Date.now();
-    const arrived = Date.now();
+    let beat = Date.now();
     const touch = () => { last = Date.now(); };
-    const evs = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'scroll'] as const;
+    const evs = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'scroll', 'input'] as const;
     evs.forEach(e => window.addEventListener(e, touch, { passive: true, capture: true }));
     const timer = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') { last = Date.now(); return; }
       const now = Date.now();
-      if (now - last >= IDLE_MS && now - arrived >= IDLE_MS) { window.clearInterval(timer); propose('idle'); }
-    }, 10_000);
+      const late = now - beat;
+      beat = now;
+      if (document.visibilityState !== 'visible') { last = now; return; }
+      if (late > FROZE_MS) { speakFirst('froze'); return; }
+      if (now - last >= idleMs) speakFirst('idle');
+    }, 1000);
     return () => { window.clearInterval(timer); evs.forEach(e => window.removeEventListener(e, touch, { capture: true })); };
-  }, [canOffer, propose, loc.pathname]);
-
-  /* An offer belongs to the screen it was made on. */
-  useEffect(() => { setOffer(o => (o && o.path !== loc.pathname ? null : o)); }, [loc.pathname]);
+  }, [canSpeakFirst, prefs.idleSeconds, speakFirst, loc.pathname]);
 
   /* ── Dragging the launcher ── */
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
@@ -202,13 +207,14 @@ export default function Protron() {
     }
   };
 
+  const aside = modalOpen && !open;
+  const anchor = useMemo(() => (aside ? { left: 0, top: Math.round(window.innerHeight / 2 - 21) } : dockPx ?? null),
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- by value, so the panel is not moved on every render
+  [aside, dockPx?.left, dockPx?.top]);
+
   if (!session) return null;
 
-  const aside = modalOpen && !open;
   const launcherStyle = !aside && dockPx ? { left: dockPx.left, top: dockPx.top, bottom: 'auto' } : undefined;
-  const offerText = offer?.why === 'trouble' ? 'That did not go through. Want me to look at it with you?'
-    : offer?.why === 'loop' ? 'Going back and forth with this? Tell me what you are trying to do and I will walk you through it.'
-      : `Need a hand with ${here.label}? Tell me what you are trying to accomplish.`;
 
   return (
     <>
@@ -218,7 +224,7 @@ export default function Protron() {
             type="button"
             className="pt-orb"
             aria-label="Open Protron, your AI business manager"
-            title="Protron — your AI business manager (drag to move)"
+            title="Protron — your AI business manager (drag to move it anywhere)"
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
@@ -227,24 +233,15 @@ export default function Protron() {
                where a drag can be told from a tap. */
             onClick={e => { if (e.detail === 0) show(); }}
           >
+            <span className="pt-orb-glow" aria-hidden />
             <ProtronAvatar size={aside ? 34 : 50} state={face} />
-            {offer && <span className="pt-orb-dot" aria-hidden />}
           </button>
+          {!aside && (
+            <button type="button" className="pt-talk" aria-label="Talk to Protron" title="Talk to Protron, hands-free" onClick={() => show({ talk: true })}>
+              <AudioLines size={15} />
+            </button>
+          )}
           <span className="pt-name">Protron</span>
-        </div>
-      )}
-
-      {offer && !open && !aside && (
-        <div className="pt-bubble" role="status" style={launcherStyle ? { left: launcherStyle.left, bottom: 'auto', top: Math.max(8, (launcherStyle.top as number) - 120) } : undefined}>
-          <b style={{ display: 'block', marginBottom: 2 }}>Protron</b>
-          {offerText}
-          <div className="pt-bubble-row">
-            <button type="button" className="pt-yes" onClick={() => show({ intro: offer.why === 'trouble'
-              ? `Something on ${here.label} did not go through. Tell me what you were doing and I will help you finish it — or ask me to open the right screen.`
-              : `You're on ${here.label}. What are you trying to get done? I can explain it, open the right screen or set things up with you.` })}>Yes, help me</button>
-            <button type="button" onClick={() => setOffer(null)}>Not now</button>
-            <button type="button" onClick={() => { setOffer(null); setPrefs({ ...prefs, proactive: false }); }}>Don&rsquo;t offer again</button>
-          </div>
         </div>
       )}
 
@@ -260,6 +257,7 @@ export default function Protron() {
             face={face}
             onFace={setFace}
             seed={seed}
+            anchor={anchor}
             onClose={() => setOpen(false)}
           />
         </Suspense>

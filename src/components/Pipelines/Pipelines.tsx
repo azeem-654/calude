@@ -2059,6 +2059,14 @@ export default function Pipelines() {
 
   const [selectedId, setSelectedId] = useState(pipelines[0]?.id ?? '');
   const [view, setView] = useState<ViewMode>('board');
+  /* Protron builds a pipeline on this screen stage by stage (services/protron
+     actions.ts, create_pipeline) and asks for it to be the one showing, so the
+     customer watches the stages arrive instead of finding them later. */
+  useEffect(() => {
+    const on = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) setSelectedId(id); };
+    window.addEventListener('pc-protron-show-pipeline', on);
+    return () => window.removeEventListener('pc-protron-show-pipeline', on);
+  }, []);
   const [showBrain, setShowBrain] = useState(false);
   const [showDesigner, setShowDesigner] = useState(false);
   const [search, setSearch] = useState('');

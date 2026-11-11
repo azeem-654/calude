@@ -176,8 +176,111 @@
 .pt-voice .pt-voice-bars { flex: 1; min-width: 0; }
 .pt-foot-note { font-size: 11px; color: #9aa3b2; text-align: center; }
 .pt-panel[hidden] { display: none; }
-.pt-panel[data-side="right"] { left: auto; right: 16px; }
 @media (max-width: 760px) {
-  .pt-panel[data-side="right"] { left: 0; right: 0; }
   .pt-wide-only { display: none !important; }
 }
+
+/* ── 2026-11 refresh: a floating, glowing assistant ── */
+
+/* The orb: glass over a slowly turning ring of the visor's colours. */
+.pt-orb { background: radial-gradient(circle at 50% 30%, #2b3644 0%, #0b0f14 72%); border-color: rgba(120, 255, 200, .18); overflow: visible; }
+.pt-orb-glow {
+  position: absolute; inset: -4px; border-radius: 50%; z-index: -1; pointer-events: none;
+  background: conic-gradient(from 0deg, #3dff8f, #22d3ee, #6366f1, #a855f7, #3dff8f);
+  filter: blur(6px); opacity: .55;
+}
+.pt-launch[data-aside="1"] .pt-orb-glow { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .pt-orb-glow { animation: pt-spin 9s linear infinite; }
+  .pt-orb:hover .pt-orb-glow { opacity: .85; }
+}
+@keyframes pt-spin { to { transform: rotate(360deg); } }
+
+/* Talk, one press from the helmet. */
+.pt-talk {
+  position: absolute; left: 44px; top: -6px; width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center; cursor: pointer; padding: 0;
+  background: linear-gradient(135deg, #22d3ee, #6366f1); color: #fff; border: 2px solid #0b0f14;
+  box-shadow: 0 6px 14px -6px rgba(34, 211, 238, .8);
+}
+.pt-talk:focus-visible { outline: 3px solid #5b46e5; outline-offset: 2px; }
+@media (prefers-reduced-motion: no-preference) { .pt-talk { transition: transform .15s; } .pt-talk:hover { transform: scale(1.12); } }
+@media (max-width: 760px) { .pt-talk { left: 38px; } }
+
+/* The panel floats beside the helmet (left/top set inline); glass and depth. */
+@media (min-width: 761px) {
+  .pt-panel {
+    background: rgba(255, 255, 255, .92); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    border: 1px solid rgba(99, 102, 241, .18); border-radius: 24px;
+    box-shadow: 0 40px 90px -30px rgba(15, 23, 42, .55), 0 0 0 1px rgba(255, 255, 255, .5) inset;
+    width: min(400px, calc(100vw - 16px)); height: min(640px, calc(100vh - 16px));
+  }
+  .pt-panel[data-size="large"] { width: min(680px, calc(100vw - 16px)); height: min(820px, calc(100vh - 16px)); }
+  .pt-head-bar { cursor: grab; touch-action: none; }
+  .pt-head-bar:active { cursor: grabbing; }
+}
+.pt-head-bar { background: linear-gradient(120deg, #0b0f14 0%, #17202b 55%, #1e1b4b 100%); position: relative; }
+.pt-head-bar::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+  background: linear-gradient(90deg, #3dff8f, #22d3ee, #6366f1, #a855f7);
+  opacity: .8;
+}
+.pt-log { background: linear-gradient(180deg, #f6f7fb 0%, #f1f3f9 100%); }
+.pt-msg-bot .pt-bubble-text { box-shadow: 0 6px 18px -14px rgba(15, 23, 42, .4); }
+.pt-msg-user { background: linear-gradient(135deg, #6366f1, #5b46e5); box-shadow: 0 8px 18px -12px rgba(91, 70, 229, .9); }
+
+.pt-select, .pt-input { font: inherit; font-size: 13px; padding: 7px 9px; border: 1px solid #e2e5ea; border-radius: 9px; background: #fff; color: #111827; min-width: 0; }
+.pt-menu label .pt-select { flex: 2; }
+.pt-link { font: inherit; font-size: inherit; color: #4f46e5; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+.pt-phase { font-size: 12.5px; color: #4b5563; }
+
+/* A card's steps, ticking over live. */
+.pt-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.pt-steps li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #6b7280; }
+.pt-steps li > svg { flex-shrink: 0; width: 16px; }
+.pt-steps li[data-s="running"] { color: #3730a3; font-weight: 700; }
+.pt-steps li[data-s="done"] { color: #166534; }
+.pt-steps li[data-s="done"] > svg { color: #16a34a; }
+.pt-steps li[data-s="failed"] { color: #991b1b; }
+.pt-card[data-s="running"] { border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99, 102, 241, .1); }
+
+/* Talk mode: the face, large, breathing with the voice. */
+.pt-talk-stage {
+  flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 26px 18px 18px; text-align: center; color: #e8edf2;
+  background: radial-gradient(120% 80% at 50% 20%, #1e293b 0%, #0b0f14 70%);
+}
+.pt-talk-orb {
+  --pt-lvl: 0; position: relative; width: 168px; height: 168px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0;
+  background: radial-gradient(circle at 50% 35%, #26303a, #070a0d 70%);
+  box-shadow: 0 0 0 calc(4px + var(--pt-lvl) * 18px) rgba(61, 255, 143, calc(.12 + var(--pt-lvl) * .3)), 0 0 60px -10px rgba(34, 211, 238, .5);
+}
+.pt-talk-orb[data-state="listening"] { box-shadow: 0 0 0 10px rgba(255, 77, 94, .22), 0 0 60px -10px rgba(255, 77, 94, .55); }
+.pt-talk-orb[data-state="thinking"] { box-shadow: 0 0 0 8px rgba(99, 102, 241, .25), 0 0 60px -10px rgba(99, 102, 241, .6); }
+@media (prefers-reduced-motion: no-preference) {
+  .pt-talk-orb { transition: box-shadow .08s linear; }
+  .pt-talk-orb[data-state="listening"], .pt-talk-orb[data-state="thinking"] { animation: pt-breathe 1.6s ease-in-out infinite; }
+}
+@keyframes pt-breathe { 50% { transform: scale(1.04); } }
+.pt-talk-state { font-weight: 700; font-size: 14px; color: #cbd5e1; }
+.pt-talk-caption { margin: 0; font-size: 15px; line-height: 1.55; color: #f1f5f9; max-width: 34ch; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pt-talk-card { width: 100%; text-align: left; color: #111827; }
+.pt-talk-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; margin-top: auto; }
+.pt-mic-big { width: 64px; height: 64px; box-shadow: 0 10px 30px -10px rgba(61, 255, 143, .6); }
+.pt-talk-stage .pt-btn { background: rgba(255, 255, 255, .08); color: #e8edf2; border-color: rgba(255, 255, 255, .16); }
+
+/* Above the app's own dialogs (1000–2000), so a card's steps stay readable
+   while Protron works inside one; below confirmations and toasts (4000+). */
+.pt-panel { z-index: 3000; }
+/* On a phone it is the whole screen; while it works it drops to the bottom
+   half so the boxes it is filling are seen being filled. */
+@media (max-width: 760px) {
+  .pt-panel[data-peek="1"] { top: auto; height: 44vh; border-radius: 18px 18px 0 0; box-shadow: 0 -20px 50px -20px rgba(15,23,42,.5); }
+}
+
+/* A box Protron is typing into, anywhere on the page. */
+.pt-editing { outline: 3px solid #6366f1 !important; outline-offset: 2px; box-shadow: 0 0 0 8px rgba(99, 102, 241, .18) !important; border-radius: 6px; }
+@media (prefers-reduced-motion: no-preference) {
+  .pt-editing { transition: outline-color .2s, box-shadow .2s; animation: pt-edit-pulse 1s ease-in-out infinite; }
+}
+@keyframes pt-edit-pulse { 50% { box-shadow: 0 0 0 12px rgba(99, 102, 241, .08) !important; } }

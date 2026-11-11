@@ -30,7 +30,9 @@ export type AuditKind =
      customer asks "why did my plan change", the answer is a row, not memory. */
   | 'operator_plan_granted' | 'operator_plan_removed' | 'operator_limits_changed'
   | 'operator_codes_created' | 'operator_code_revoked' | 'operator_reviewers_created'
-  | 'snapshot_installed';
+  | 'snapshot_installed'
+  /* What Protron, the in-app AI manager, carried out or was refused (routes/protron.ts). */
+  | 'protron_action';
 
 export interface AuditEvent {
   email: string;

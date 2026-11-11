@@ -126,7 +126,7 @@ for (const width of [390, 1280]) {
 await b.close();
 console.log(out.join('\n'));
 const want = [
-  /launcher visible=true overflow=0/, /welcome=true starters=3 overflow=0/, /card -> Search for prospects Needs your OK/,
+  /launcher visible=true overflow=0/, /welcome=true starters=4 overflow=0/, /card -> Search for prospects Needs your OK/,
   /after cancel -> Search for prospects Cancelled .* url=\//, /email question -> url=\/settings/, /conversation turns kept=4/,
   /context note on video studio=true/, /asks name=true .*launcherAside=1/, /solutions chosen=2 overflow=0/,
   /instruction has company=true problem=true/, /solutions shown=true&true; overflow=0/, /pageerrors=\[\]/,

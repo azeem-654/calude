@@ -67,7 +67,7 @@ export const STARTERS: Record<string, string[]> = {
   '/pipelines': ['Create a sales pipeline for real estate', 'How do stage checklists work?'],
   '/marketing': ['Where do I connect my email?', 'Write a follow-up email for estimates'],
   '/video-studio': ['How do I make Shorts from a video?', 'Write a hook for a roofing video'],
-  '/social-creator': ['Write a post about our spring offer', 'How do I change the template colours?'],
+  '/social-creator': ['Draft a post about our spring offer', 'How do I change the template colours?'],
   '/settings': ['Where do I connect my email?', 'How do I turn on 2-step sign-in?'],
 };
 
@@ -75,7 +75,7 @@ export function startersFor(path: string): string[] {
   return STARTERS[path] ?? ['What can you do here?', 'Where do I configure my email settings?', 'Find prospects for my business'];
 }
 
-/** The screen somebody is on, as the model is told it: label and purpose only — never the screen's data. */
+/** The screen somebody is on, by its module: label and purpose. Its shape (boxes, messages) is screen.ts. */
 export function screenContext(path: string, who: Who): { label: string; desc: string; note: string } {
   const mods = modulesFor(who);
   const hit = mods.filter(m => m.path === '/' ? path === '/' : path === m.path || path.startsWith(`${m.path}/`))

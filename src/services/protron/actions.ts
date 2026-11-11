@@ -21,15 +21,24 @@
  * ── The four tiers ──
  *
  *   read        moves around or reads what the screen already shows; runs at once
- *   reversible  changes a preference of Protron's own; runs at once, says so
+ *   reversible  changes a preference of Protron's own, or types into a form on
+ *               screen without saving it (Undo puts it back); runs at once
  *   confirm     creates a record or spends an allowance; waits for Confirm
  *   sensitive   sends, publishes, deletes, charges — none is registered. Protron
  *               opens the screen and the customer presses the button there.
+ *
+ * ── Live, step by step ──
+ *
+ * A handler that does more than one thing reports each step as it starts and
+ * ends (`steps`), and the card in the chat shows them ticking over while the
+ * screen behind it changes — a pipeline's stages appear one at a time, a
+ * form's boxes are typed into one at a time. Nothing is done out of sight.
  *
  * Adding an action: give it the narrowest tier that is true, a spec for every
  * argument, and a test in test/protron.test.mts.
  */
 import { allModules, type NavItem } from '../../components/Layout/navModel';
+import type { Step } from './memory';
 
 export type Tier = 'read' | 'reversible' | 'confirm' | 'sensitive';
 
@@ -44,9 +53,11 @@ export type ParamSpec =
   | { type: 'string'; required?: boolean; max: number; desc: string }
   | { type: 'list'; required?: boolean; maxItems: number; maxEach: number; desc: string }
   | { type: 'boolean'; required?: boolean; desc: string }
-  | { type: 'enum'; required?: boolean; values: (who: Who) => string[]; desc: string };
+  | { type: 'enum'; required?: boolean; values: (who: Who) => string[]; desc: string }
+  /** Box key → value, for filling a form (keys are checked against the screen when it runs). */
+  | { type: 'map'; required?: boolean; maxKeys: number; maxEach: number; desc: string };
 
-export type Args = Record<string, string | string[] | boolean>;
+export type Args = Record<string, string | string[] | boolean | Record<string, string>>;
 
 export interface ActionResult {
   ok: boolean;
@@ -54,6 +65,8 @@ export interface ActionResult {
   message: string;
   /** Facts a read action hands back to the model for its answer (counts, never records). */
   data?: Record<string, number | string>;
+  /** Boxes filled, with what was in them before — the card offers Undo. */
+  undo?: { key: string; previous: string }[];
 }
 
 /** What a handler may touch. Passed in, so the registry stays testable without a page. */
@@ -61,11 +74,34 @@ export interface ActionCtx {
   who: Who;
   navigate: (path: string) => void;
   addContact?: (c: { name: string; email: string; phone: string; company?: string }) => void;
-  createPipeline?: (name: string, stages: string[]) => void;
+  /** Creates an empty pipeline and returns its id; `setStages` then gives it its stages. */
+  createPipeline?: (name: string) => string;
+  setStages?: (id: string, stages: string[]) => void;
   counts?: () => Record<string, number>;
   setProactive?: (on: boolean) => void;
   handOffToAutopilot?: (instruction: string) => void;
+  /** Types a value into a box on screen (services/protron/screen.ts). */
+  fill?: (key: string, value: string) => Promise<{ ok: boolean; label: string; previous: string; message?: string }>;
+  /** Waits for a box to appear (a dialog still opening). */
+  waitFor?: (key: string) => Promise<boolean>;
+  /** The label of a box on screen, for the card's steps. */
+  labelOf?: (key: string) => string;
+  /** Tells a screen something (a window event it listens for). */
+  signal?: (event: string, detail?: Record<string, unknown>) => void;
+  /** The card's steps, as they change. */
+  report?: (steps: Step[]) => void;
+  wait?: (ms: number) => Promise<void>;
 }
+
+/** A handler's steps, reported to its card as each starts and ends. */
+function stepsFor(ctx: ActionCtx, labels: string[]) {
+  const list: Step[] = labels.map(label => ({ label, status: 'pending' }));
+  const push = () => ctx.report?.(list.map(x => ({ ...x })));
+  const set = (i: number, status: Step['status']) => { if (list[i]) { list[i].status = status; push(); } };
+  push();
+  return { run: (i: number) => set(i, 'running'), ok: (i: number) => set(i, 'done'), bad: (i: number) => set(i, 'failed') };
+}
+const pause = (ctx: ActionCtx, ms: number) => ctx.wait?.(ms) ?? Promise.resolve();
 
 export interface ActionDef {
   name: string;
@@ -155,9 +191,13 @@ export const ACTIONS: ActionDef[] = [
       where: { type: 'string', required: false, max: 80, desc: 'city, region or country' },
     },
     confirmText: a => `Search AI Prospecting for ${a.who}${a.where ? ` in ${a.where}` : ''}? It uses one search from your plan, and the results open on the AI Prospecting screen.`,
-    run: (a, ctx) => {
+    run: async (a, ctx) => {
       const q = `${a.who}${a.where ? ` in ${a.where}` : ''}`;
+      const st = stepsFor(ctx, ['Open AI Prospecting', `Search for ${q}`]);
+      st.run(0);
       ctx.navigate(`/prospecting?q=${encodeURIComponent(q)}`);
+      await pause(ctx, 400);
+      st.ok(0); st.run(1); await pause(ctx, 300); st.ok(1);
       return { ok: true, message: `Started the search for ${q} on AI Prospecting.` };
     },
   },
@@ -168,9 +208,14 @@ export const ACTIONS: ActionDef[] = [
     module: '/autopilot',
     tier: 'read',
     params: { instruction: { type: 'string', required: true, max: 4000, desc: 'what the business workspace should do, written as the customer would' } },
-    run: (a, ctx) => {
+    run: async (a, ctx) => {
       if (!ctx.handOffToAutopilot) return { ok: false, message: 'AI Autopilot could not be opened from here.' };
+      const st = stepsFor(ctx, ['Open AI Autopilot', 'Open New business workspace', 'Write your instruction in its box']);
+      st.run(0);
       ctx.handOffToAutopilot(String(a.instruction));
+      await pause(ctx, 350); st.ok(0); st.run(1);
+      await pause(ctx, 350); st.ok(1); st.run(2);
+      await pause(ctx, 300); st.ok(2);
       return { ok: true, message: 'Opened the New business workspace wizard with your instruction in the box. Nothing is saved until you build it.' };
     },
   },
@@ -208,13 +253,89 @@ export const ACTIONS: ActionDef[] = [
       stages: { type: 'list', required: true, maxItems: 8, maxEach: 40, desc: 'stage names in order' },
     },
     confirmText: a => `Create the pipeline “${a.name}” in Deals with ${(a.stages as string[]).length} stages: ${(a.stages as string[]).join(' → ')}?`,
-    run: (a, ctx) => {
-      if (!ctx.createPipeline) return { ok: false, message: 'Deals are not available here.' };
+    run: async (a, ctx) => {
+      if (!ctx.createPipeline || !ctx.setStages) return { ok: false, message: 'Deals are not available here.' };
       const stages = (a.stages as string[]).map(s => s.trim()).filter(Boolean);
       if (stages.length < 2) return { ok: false, message: 'A pipeline needs at least two stages.' };
-      ctx.createPipeline(String(a.name).trim(), stages);
+      const name = String(a.name).trim();
+      /* Built on the Deals screen in front of the customer: the board first,
+         then each stage as it is added. */
+      const st = stepsFor(ctx, ['Open Deals', `Create “${name}”`, ...stages.map(x => `Add the stage “${x}”`)]);
+      st.run(0);
       ctx.navigate('/pipelines');
-      return { ok: true, message: `Created “${a.name}” in Deals and opened it.` };
+      await pause(ctx, 600);
+      st.ok(0); st.run(1);
+      const id = ctx.createPipeline(name);
+      await pause(ctx, 150);
+      ctx.signal?.('pc-protron-show-pipeline', { id });
+      await pause(ctx, 350);
+      st.ok(1);
+      for (let i = 0; i < stages.length; i++) {
+        st.run(i + 2);
+        ctx.setStages(id, stages.slice(0, i + 1));
+        await pause(ctx, 420);
+        st.ok(i + 2);
+      }
+      return { ok: true, message: `Built “${name}” in Deals with ${stages.length} stages — it is the board on screen.` };
+    },
+  },
+  {
+    name: 'fill_form',
+    title: 'Fill in the form on screen',
+    description: 'Type values into the boxes of the form the customer has open, one box at a time while they watch. `fields` maps a box key listed under SCREEN to its value. It never saves or sends: the customer checks it and presses the screen\'s own button. Use only keys listed under SCREEN; never invent an email address, phone number or price — use what the customer gave, or copy they asked you to write.',
+    module: 'screen',
+    tier: 'reversible',
+    params: { fields: { type: 'map', required: true, maxKeys: 15, maxEach: 4000, desc: 'box key → value' } },
+    run: async (a, ctx) => {
+      if (!ctx.fill) return { ok: false, message: 'There is no form here I can reach.' };
+      const fields = Object.entries(a.fields as Record<string, string>);
+      const st = stepsFor(ctx, fields.map(([k]) => `Fill “${ctx.labelOf?.(k) || k}”`));
+      const undo: { key: string; previous: string }[] = [];
+      const missed: string[] = [];
+      for (let i = 0; i < fields.length; i++) {
+        const [k, v] = fields[i];
+        st.run(i);
+        const out = await ctx.fill(k, v);
+        if (out.ok) { st.ok(i); undo.push({ key: k, previous: out.previous }); } else { st.bad(i); missed.push(`${out.label}: ${out.message ?? 'not filled'}`); }
+      }
+      if (!undo.length) return { ok: false, message: missed[0] ?? 'None of those boxes is on this screen.' };
+      return {
+        ok: true, undo,
+        message: `Filled ${undo.length} of ${fields.length} boxes.${missed.length ? ` Not filled — ${missed.join('; ')}.` : ''} Check them, then press the screen's own button to save or send.`,
+      };
+    },
+  },
+  {
+    name: 'draft_social_post',
+    title: 'Draft a social post design',
+    description: 'Open Graphics Designer → Create with AI and type a design brief into it in front of the customer: what the post shows and the words on it. The customer presses Generate there (that uses the AI). `prompt` is the full brief; `name` a short design name.',
+    module: '/social-creator',
+    tier: 'reversible',
+    params: {
+      prompt: { type: 'string', required: true, max: 1000, desc: 'the design brief: look, colours and the exact words on the post' },
+      name: { type: 'string', required: false, max: 60, desc: 'design name' },
+    },
+    refusal: who => (modulePaths(who).includes('/social-creator') ? '' : 'Graphics Designer is not part of this login.'),
+    run: async (a, ctx) => {
+      if (!ctx.fill || !ctx.waitFor) return { ok: false, message: 'Graphics Designer could not be reached from here.' };
+      const st = stepsFor(ctx, ['Open Graphics Designer & Editor', 'Open Create with AI', 'Name the design', 'Write the design brief']);
+      st.run(0);
+      ctx.navigate('/social-creator?compose=ai');
+      await pause(ctx, 500);
+      st.ok(0); st.run(1);
+      ctx.signal?.('pc-protron-compose');
+      if (!(await ctx.waitFor('social.aiPrompt'))) { st.bad(1); return { ok: false, message: 'Create with AI did not open. Press “Create with AI” on Graphics Designer and ask me again.' }; }
+      st.ok(1);
+      const undo: { key: string; previous: string }[] = [];
+      st.run(2);
+      const named = await ctx.fill('social.designName', String(a.name || 'Post by Protron'));
+      if (named.ok) { st.ok(2); undo.push({ key: 'social.designName', previous: named.previous }); } else st.bad(2);
+      st.run(3);
+      const brief = await ctx.fill('social.aiPrompt', String(a.prompt));
+      if (!brief.ok) { st.bad(3); return { ok: false, message: brief.message ?? 'The brief could not be written in.' }; }
+      st.ok(3);
+      undo.push({ key: 'social.aiPrompt', previous: brief.previous });
+      return { ok: true, undo, message: 'The brief is in Graphics Designer → Create with AI. Choose the platform and size, then press Generate — that is your button.' };
     },
   },
   {
@@ -296,6 +417,22 @@ export function checkCall(call: unknown, who: Who): Checked {
         if (typeof v !== 'boolean') return { ok: false, error: `${def.title}: ${spec.desc} must be true or false.` };
         out[k] = v;
         break;
+      case 'map': {
+        if (typeof v !== 'object' || Array.isArray(v)) return { ok: false, error: `${def.title}: ${spec.desc} must be a set of boxes and values.` };
+        const entries = Object.entries(v as Record<string, unknown>);
+        if (entries.length > spec.maxKeys) return { ok: false, error: `${def.title}: at most ${spec.maxKeys} boxes at a time.` };
+        const m: Record<string, string> = {};
+        for (const [k, x] of entries) {
+          if (!/^[\w.-]{1,80}$/.test(k)) return { ok: false, error: `${def.title}: “${k.slice(0, 30)}” is not a box on this screen.` };
+          if (typeof x !== 'string' && typeof x !== 'number' && typeof x !== 'boolean') return { ok: false, error: `${def.title}: the value for “${k.slice(0, 30)}” must be text.` };
+          const t = String(x).replace(/[^\P{Cc}\n\t]/gu, '');
+          if (t.length > spec.maxEach) return { ok: false, error: `${def.title}: the value for “${k.slice(0, 30)}” is too long.` };
+          m[k] = t;
+        }
+        if (!Object.keys(m).length && spec.required) return { ok: false, error: `${def.title} needs ${spec.desc}.` };
+        out[k] = m;
+        break;
+      }
       case 'enum': {
         const allowed = spec.values(who);
         if (typeof v !== 'string' || !allowed.includes(v)) return { ok: false, error: `${def.title}: “${String(v).slice(0, 60)}” is not one you can open.` };
@@ -324,7 +461,7 @@ export async function runChecked(c: Extract<Checked, { ok: true }>, ctx: ActionC
 export function describeActions(who: Who): string {
   return ACTIONS.filter(a => a.tier !== 'sensitive' && !(a.refusal?.(who))).map(a => {
     const params = Object.entries(a.params).map(([k, s]) => {
-      const kind = s.type === 'enum' ? `one of ${JSON.stringify(s.values(who))}` : s.type === 'list' ? 'list of text' : s.type;
+      const kind = s.type === 'enum' ? `one of ${JSON.stringify(s.values(who))}` : s.type === 'list' ? 'list of text' : s.type === 'map' ? 'object of box key → text' : s.type;
       return `${k}${s.required ? '' : '?'}: ${kind} — ${s.desc}`;
     });
     return `- ${a.name}(${params.join('; ')}): ${a.description}${a.tier === 'confirm' ? ' [the customer confirms first]' : ''}`;

@@ -16,6 +16,7 @@
 import { sameOrigin, withCookieToken, withSessionCookie } from './lib/session';
 import { useWrapKey } from './lib/db';
 import { handleAi } from './routes/ai';
+import { handleProtron } from './routes/protron';
 import { handleHostedMail } from './routes/hostedMail';
 import { receive as receiveHostedMail } from './lib/hostedMail';
 import { handleSecurity } from './routes/security';
@@ -153,6 +154,7 @@ const ROUTES: Record<string, Handler> = {
      button — see lib/trialMail.ts. */
   '/api/trial-optout.php': handleTrialOptout,
   '/api/ai.php': handleAi,
+  '/api/protron.php': handleProtron,
   /* Content held for review, and what became of the accounts that produced it.
      Owner-only but for one action, which tells a customer why they cannot
      send. */
