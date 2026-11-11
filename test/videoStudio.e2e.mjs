@@ -1075,7 +1075,8 @@ ok('…and renders again', reOut.version > outBefore.version && !reOut.stale, re
   await page.getByTestId('vs-thumb-text').fill('Big news for owners');
   await page.getByTestId('vs-thumb-designer').getByRole('button', { name: 'news', exact: true }).click();
   const preview = await page.getByTestId('vs-thumb-preview').innerText();
-  ok('the designer shows the thumbnail as it is being made — layout, words, the highlighted word', /BIG NEWS FOR OWNERS/.test(preview.replace(/\s+/g, ' ')), preview);
+  /* Case follows the design: a Short's chosen thumbnail may be in a saved theme written "as written" (the themes section above). */
+  ok('the designer shows the thumbnail as it is being made — layout, words, the highlighted word', /BIG NEWS FOR OWNERS/i.test(preview.replace(/\s+/g, ' ')), preview);
   await page.locator('[data-act="make-thumb"]').click();
   await page.getByTestId('vs-thumb-designer').waitFor({ state: 'detached', timeout: 120_000 });
   const o = (await v('get', { projectId: PID })).outputs.find(x => x.id === oid);
@@ -1176,8 +1177,10 @@ ok('15 · the Shorts and the long video are in the Content Library, with statuse
   ok('the Audio panel shows the noise level chosen, voice clarity and loudness — and says they are heard in the render', /Strong/.test(audio) && /Voice clarity/.test(audio) && /Even loudness/.test(audio) && /applied when the videos render/.test(audio), audio.slice(0, 400));
   ok('…with Audio effects as rows: Studio Sound, and "Lower audio of other layers" (the music is ducked under speech)', /Studio Sound/.test(audio) && /Lower audio of other layers/.test(audio) && (await page.locator('[data-effect="duck"] [role="switch"]').getAttribute('aria-checked')) === 'true', audio.slice(0, 400));
   await page.locator('[data-denoise="light"]').click();
-  await page.waitForTimeout(1200);
-  ok('…a level can be picked there', (await v('get', { projectId: PID })).doc.audio.denoise === 'light');
+  /* Saved within a few seconds (a local wrangler restart just before can hold the save up); a click that never saves still fails. */
+  let lvl = '';
+  for (let i = 0; i < 20 && lvl !== 'light'; i++) { await page.waitForTimeout(500); lvl = (await v('get', { projectId: PID })).doc.audio.denoise; }
+  ok('…a level can be picked there', lvl === 'light', lvl);
   await openPanel(page, 'music');
   await page.getByTestId('vs-music-q').fill('calm');
   await page.getByTestId('vs-music-search').click();
