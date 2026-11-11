@@ -34,6 +34,7 @@
  */
 import { body, fail, json } from '../lib/http';
 import { dataGet, dataUpdate, nowIso, userFromToken, type Env, type SessionUser } from '../lib/db';
+import { recordAuthEvent } from '../lib/audit';
 import { SNAPSHOTS, planCounts, planInstall, snapshotById, snapshotForIndustry, validateSnapshot, type Snapshot } from '../lib/snapshots';
 
 const isOwner = (u: SessionUser): boolean => u.role === 'agency' && !u.accountId;
@@ -193,6 +194,7 @@ async function record(env: Env, c: Ctx, snap: Snapshot, restore: boolean, modeIn
   if (added.length || (!lastVersion?.v)) {
     await env.DB.prepare('INSERT INTO crm_snapshot_installs (id, account_id, snapshot_id, version, mode, added, present, skipped, by_email, by_role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(id(), c.accountId, snap.id, snap.version, mode, JSON.stringify(added), counts.present, counts.removed, c.user.email, c.role, r.at).run();
+    await recordAuthEvent(env, { email: c.user.email, kind: 'snapshot_installed', accountId: c.accountId, detail: `${mode} ${snap.id} v${snap.version}: ${added.length} added` });
   }
   /* The first snapshot installed names the workspace's industry, if nothing has yet. */
   await env.DB.prepare("UPDATE crm_workspaces SET industry = ? WHERE account_id = ? AND industry = ''").bind(snap.industry, c.accountId).run();

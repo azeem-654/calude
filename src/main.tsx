@@ -5,6 +5,7 @@ import App from './App.tsx'
 import { installTenantStorage } from './services/tenancy'
 import { adoptSessionWorkspace, moveSessionToCookie } from './services/auth'
 import { installFieldGuard } from './services/fieldGuard'
+import { installCrashReport } from './services/crashReport'
 import { captureRef } from './services/referral'
 import { captureIndustry } from './services/industrySetup'
 import { capturePlan } from './services/sitePlan'
@@ -20,6 +21,8 @@ adoptSessionWorkspace();
 /* Every refused call that names a field is checked against the screen
    (services/fieldGuard.ts): a form must never ask for a box it does not show. */
 installFieldGuard();
+/* And a screen that crashed is reported, not just seen (services/crashReport.ts). */
+installCrashReport();
 /* An affiliate's `?ref=` is remembered before anything routes (services/referral.ts). */
 captureRef();
 /* The trade a sign-up came from (`?industry=`), for its first workspace (services/industrySetup.ts). */

@@ -14,7 +14,7 @@ import { useEffect, useState } from 'react';
 import { ScanSearch, CheckCircle, Loader, Trash2 } from 'lucide-react';
 import { sessionToken } from '../../services/auth';
 
-interface Report { id: string; api: string; field: string; path: string; message: string; firstAt: string; lastAt: string; hits: number }
+interface Report { id: string; kind?: string; api: string; field: string; path: string; message: string; firstAt: string; lastAt: string; hits: number }
 
 const call = (action: string, extra: Record<string, unknown> = {}) =>
   fetch('/api/uireport.php', {
@@ -35,8 +35,8 @@ export default function ScreenChecksCard() {
         <div style={{ flex: 1 }}>
           <h3 style={{ margin: 0, fontSize: 15.5, fontWeight: 700, color: '#0f172a' }}>Screen checks</h3>
           <p style={{ margin: '3px 0 0', fontSize: 12.5, color: '#64748b', lineHeight: 1.55 }}>
-            Every time a screen tells somebody to fill in a box it is not showing them, it is recorded here — with how often and where.
-            These are faults in the product, not in anyone&apos;s settings. Only you see this.
+            Every time a screen tells somebody to fill in a box it is not showing them, or a screen crashes in somebody&apos;s browser,
+            it is recorded here — with how often and where. These are faults in the product, not in anyone&apos;s settings. Only you see this.
           </p>
         </div>
         {rows && rows.length > 0 && (
@@ -51,7 +51,7 @@ export default function ScreenChecksCard() {
           : rows === null ? <span style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12.5, color: '#64748b' }}><Loader size={14} className="spin" /> Checking…</span>
             : rows.length === 0 ? (
               <span style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, color: '#15803d', fontWeight: 600 }}>
-                <CheckCircle size={15} /> No dead ends reported. Every refusal so far pointed at a box the screen was showing.
+                <CheckCircle size={15} /> Nothing reported — no dead ends and no screen crashes.
               </span>
             ) : (
               <div style={{ display: 'grid', gap: 8 }}>
@@ -59,8 +59,10 @@ export default function ScreenChecksCard() {
                   <div key={r.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 10, padding: '10px 12px', border: '1px solid #fde68a', background: '#fffbeb', borderRadius: 12 }}>
                     <div style={{ minWidth: 0 }}>
                       <b style={{ fontSize: 13, color: '#0f172a' }}>{r.path}</b>
-                      <span style={{ fontSize: 12, color: '#92400e' }}> · asked for <code>{r.field}</code> via <code>{r.api}</code> · {r.hits}×</span>
-                      <p style={{ margin: '4px 0 0', fontSize: 12, color: '#475569', lineHeight: 1.5 }}>“{r.message}”</p>
+                      {r.kind === 'crash'
+                        ? <span style={{ fontSize: 12, color: '#b42318' }}> · crashed with <code>{r.field}</code> · {r.hits}×</span>
+                        : <span style={{ fontSize: 12, color: '#92400e' }}> · asked for <code>{r.field}</code> via <code>{r.api}</code> · {r.hits}×</span>}
+                      <p style={{ margin: '4px 0 0', fontSize: 12, color: '#475569', lineHeight: 1.5, whiteSpace: r.kind === 'crash' ? 'pre-wrap' : undefined, overflowWrap: 'anywhere' }}>“{r.message}”</p>
                       <span style={{ fontSize: 11, color: '#94a3b8' }}>Last {new Date(r.lastAt).toLocaleString()}</span>
                     </div>
                     <button type="button" aria-label="Mark fixed" title="Mark fixed" onClick={() => void call('clear', { id: r.id }).then(load)}

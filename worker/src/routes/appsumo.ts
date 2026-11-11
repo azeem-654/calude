@@ -44,6 +44,7 @@ import { APPSUMO_MAX_CODES, appsumoPlanFor, effectivePlans, featureLines, limits
 import { loadOverrides } from '../lib/allowanceStore';
 import { rateLimit } from '../lib/rateLimit';
 import { licensingReady } from './appsumoLicense';
+import { recordAuthEvent } from '../lib/audit';
 
 interface Req {
   token?: string;
@@ -239,7 +240,9 @@ export async function handleAppsumo(req: Request, env: Env): Promise<Response> {
       if (!Number.isFinite(n) || n < 1 || have + n > MAX_REVIEWERS) {
         return fail(`At most ${MAX_REVIEWERS} reviewer logins in all${have ? ` — ${have} exist already` : ''}. Give one a new password instead.`, 200, { field: 'appsumo.reviewers' });
       }
-      return json({ success: true, logins: await makeReviewers(env, user, n), reviewers: await reviewersOf(env) });
+      const logins = await makeReviewers(env, user, n);
+      await recordAuthEvent(env, { email: user.email, kind: 'operator_reviewers_created', detail: `Made ${logins.length} AppSumo reviewer login(s)` });
+      return json({ success: true, logins, reviewers: await reviewersOf(env) });
     }
 
     if (act === 'reviewer_reset') {
@@ -280,6 +283,7 @@ export async function handleAppsumo(req: Request, env: Env): Promise<Response> {
           'INSERT OR IGNORE INTO crm_appsumo_codes (code_hash, batch, status, created_at) VALUES (?, ?, \'unused\', ?)',
         ).bind(r.h, batch, at)));
       }
+      await recordAuthEvent(env, { email: user.email, kind: 'operator_codes_created', detail: `${act === 'generate' ? 'Generated' : 'Imported'} ${codes.length} AppSumo code(s) in batch ${batch}` });
       return json({ success: true, batch, count: codes.length, codes: act === 'generate' ? codes : undefined });
     }
 
@@ -294,6 +298,7 @@ export async function handleAppsumo(req: Request, env: Env): Promise<Response> {
       await env.DB.prepare("UPDATE crm_appsumo_codes SET status = 'revoked', revoked_at = ?, revoked_note = ? WHERE code_hash = ?")
         .bind(nowIso(), String(d.note ?? '').slice(0, 200), h).run();
       const planId = row.email ? await applyAppsumoTier(env, row.email) : null;
+      await recordAuthEvent(env, { email: user.email, kind: 'operator_code_revoked', detail: `Revoked an AppSumo code${row.email ? ` held by ${row.email}; their plan is now ${planId ?? 'none'}` : ''}` });
       return json({ success: true, wasRedeemed: row.status === 'redeemed', email: row.email, planId });
     }
 

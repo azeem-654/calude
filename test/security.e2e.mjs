@@ -685,6 +685,20 @@ console.log('\nText delivery receipts (S-2)');
   check('a later "delivered" settles it', row('dl-s2-c') === 'delivered', row('dl-s2-c'));
 }
 
+console.log('\nThe owner\'s customer view and crash reports (OPS-2, OPS-3)');
+{
+  const cv = await api('customer-view.php', { token: C2.token, email: B2.email });
+  check('a customer cannot look up another customer', cv.status === 403 && !cv.data.customer, `${cv.status} ${JSON.stringify(cv.data).slice(0, 120)}`);
+  const anon = await api('customer-view.php', { email: B2.email });
+  check('…nor can anyone signed out', anon.status === 401);
+  const crash = await api('uireport.php', { token: C2.token, action: 'crash', field: 'TypeError', path: '/contacts?x=1', message: `Cannot read properties of undefined (reading 'id') for ann@buyer.test 4155550123\n at Contacts (index.js:1:2)` });
+  const row = d1rows(`SELECT kind, path, message, account_id AS a FROM crm_ui_reports WHERE kind = 'crash' AND account_id = '${C2.acct}'`)[0];
+  check('a screen crash is recorded for the owner, against its workspace', crash.ok && row?.path === '/contacts', JSON.stringify(row));
+  check('…with addresses and long numbers scrubbed from it', row && !/ann@buyer\.test|4155550123/.test(row.message), row?.message);
+  const list = await api('uireport.php', { token: C2.token, action: 'list' });
+  check('…and only the owner can list them', list.status === 403);
+}
+
 console.log('\nThe retired Stripe callback (M-6)');
 const oldHook = await fetch(`${BASE}/api/stripe-webhook.php`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': 't=1,v1=00', Connection: 'close' }, body: JSON.stringify({ type: 'checkout.session.completed', data: { object: { metadata: { accountId: C2.acct } } } }) });
 check('/api/stripe-webhook.php answers 410 and changes nothing', oldHook.status === 410, String(oldHook.status));

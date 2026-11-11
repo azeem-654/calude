@@ -25,7 +25,12 @@ export type AuditKind =
   | 'mfa_enabled' | 'mfa_disabled' | 'mfa_failed'
   | 'user_created' | 'user_removed' | 'user_invited' | 'invite_accepted'
   | 'integration_connected' | 'integration_removed'
-  | 'data_exported' | 'account_deleted' | 'workspace_closed';
+  | 'data_exported' | 'account_deleted' | 'workspace_closed'
+  /* What the install owner does to other people's accounts (OPS-2): when a
+     customer asks "why did my plan change", the answer is a row, not memory. */
+  | 'operator_plan_granted' | 'operator_plan_removed' | 'operator_limits_changed'
+  | 'operator_codes_created' | 'operator_code_revoked' | 'operator_reviewers_created'
+  | 'snapshot_installed';
 
 export interface AuditEvent {
   email: string;

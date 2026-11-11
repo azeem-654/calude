@@ -29,6 +29,7 @@ import {
 } from '../lib/allowances';
 import { check, loadOverrides, readAll, refusalBody } from '../lib/allowanceStore';
 import { rateLimit } from '../lib/rateLimit';
+import { origin, recordAuthEvent } from '../lib/audit';
 
 interface Req {
   token?: string;
@@ -146,6 +147,7 @@ export async function handleAllowances(req: Request, env: Env): Promise<Response
         ).bind(planId, k as MeterId, v, nowIso(), user.email));
       }
       if (stmts.length) await env.DB.batch(stmts);
+      if (stmts.length) await recordAuthEvent(env, { email: user.email, kind: 'operator_limits_changed', detail: `${planId}: ${Object.entries(d.limits ?? {}).map(([k, v]) => `${k}=${v === '' || v === null ? 'default' : v}`).join(', ')}`, ...origin(req) });
       return json({ success: true, ...(await table(env)) });
     }
 
@@ -158,6 +160,7 @@ export async function handleAllowances(req: Request, env: Env): Promise<Response
       if (!planId) {
         /* Only a plan given by hand is taken back here; a paid one is the processor's. */
         await env.DB.prepare("DELETE FROM crm_plans WHERE owner_email = ? AND source = 'manual'").bind(email).run();
+        await recordAuthEvent(env, { email: user.email, kind: 'operator_plan_removed', detail: `Took back the plan given by hand to ${email}`, ...origin(req) });
         return json({ success: true });
       }
       if (!planDef(planId)) return fail('Choose one of the plans.', 200, { field: 'grant.plan' });
@@ -168,6 +171,7 @@ export async function handleAllowances(req: Request, env: Env): Promise<Response
          ON CONFLICT(owner_email) DO UPDATE SET plan_id = excluded.plan_id, resell_limit = excluded.resell_limit,
            source = 'manual', updated_at = excluded.updated_at`,
       ).bind(email, planId, sub, nowIso()).run();
+      await recordAuthEvent(env, { email: user.email, kind: 'operator_plan_granted', detail: `Gave ${email} the ${planId} plan by hand`, ...origin(req) });
       return json({ success: true });
     }
 

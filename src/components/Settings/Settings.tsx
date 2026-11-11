@@ -27,6 +27,7 @@ import OperatorPayments from './OperatorPayments';
 import { cachedPrimary } from '../../services/mailboxStore';
 import DiagnosticsCard from './DiagnosticsCard';
 import ScreenChecksCard from './ScreenChecksCard';
+import CustomerLookupCard from './CustomerLookupCard';
 import SystemMailCard from './SystemMailCard';
 import DeliveryCheck from './DeliveryCheck';
 import { deliveryLog } from '../../services/engagement';
@@ -1018,6 +1019,7 @@ export default function Settings() {
           {activeTab === 'api-validation' && (
             <>
               {getSession()?.user?.accountId == null && getSession()?.user?.role === 'agency' && <ScreenChecksCard />}
+              {getSession()?.user?.accountId == null && getSession()?.user?.role === 'agency' && <CustomerLookupCard />}
               <IntegrationsTab />
             </>
           )}

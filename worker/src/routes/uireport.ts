@@ -49,6 +49,34 @@ export async function handleUiReport(req: Request, env: Env): Promise<Response> 
     return json({ success: true });
   }
 
+  /*
+   * A screen that crashed (OPS-3): window.onerror and unhandled rejections,
+   * sent by services/crashReport.ts. Folded per (error, screen) like a dead
+   * end, so a loop that throws a thousand times is one row with a count, and
+   * rate-limited per account. The message is cut and scrubbed of addresses
+   * and long numbers: an error string can quote what was on screen.
+   */
+  if (action === 'crash') {
+    const path = clip(d.path, 160).replace(/[?#].*$/, '');
+    const name = clip(d.field, 40).replace(/[^\w.-]/g, '') || 'Error';
+    const message = clip(d.message, 400)
+      .replace(/[^\s@<>"']+@[^\s@<>"']+/g, '<email>').replace(/\d{6,}/g, '<number>');
+    if (!path.startsWith('/') || !message) return fail('Not a report this app makes.', 400);
+    const limit = await rateLimit(env, { what: 'uicrash', who: user.accountId || user.email, max: 20, windowSeconds: 3600 });
+    if (!limit.allowed) return json({ success: true, dropped: true });
+    /* The first line identifies the error; the key folds repeats of it. */
+    const head = message.split('\n')[0].slice(0, 200);
+    const key = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(head)))].slice(0, 6).map(b => b.toString(16).padStart(2, '0')).join('');
+    const now = nowIso();
+    await env.DB.prepare(
+      `INSERT INTO crm_ui_reports (id, kind, api, field, path, message, account_id, first_at, last_at, hits)
+       VALUES (?, 'crash', ?, ?, ?, ?, ?, ?, ?, 1)
+       ON CONFLICT(kind, api, field, path) DO UPDATE SET
+         hits = crm_ui_reports.hits + 1, last_at = excluded.last_at, message = excluded.message, account_id = excluded.account_id`,
+    ).bind(`ui-${crypto.randomUUID()}`, `js:${key}`, name, path, message, user.accountId ?? null, now, now).run();
+    return json({ success: true });
+  }
+
   if (!isOwner(user)) return fail('Only the install owner can see these.', 403);
 
   if (action === 'list') {

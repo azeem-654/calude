@@ -105,6 +105,7 @@ import { runProspectFinders } from './prospectFinderTick';
 import { runHousekeeping } from './lib/housekeeping';
 import { runStoragePurges, sweepOrphans } from './lib/storageSweep';
 import { handleMailWebhook } from './lib/bounces';
+import { handleCustomerView } from './routes/customerView';
 import { handleLogo } from './lib/brandLogo';
 import { handleWidgetAvatar } from './lib/widgetAvatar';
 import { handleUserAvatar } from './routes/userAvatar';
@@ -250,6 +251,8 @@ const ROUTES: Record<string, Handler> = {
      way in and still work — see routes/billing.ts. */
   '/api/billing.php': handleBilling,
   '/api/billing-webhook.php': handleBillingWebhook,
+  /* The install owner's one-customer support view (OPS-2). */
+  '/api/customer-view.php': handleCustomerView,
   /* Bounces and complaints from the hosted-mail sending provider (E-7). */
   '/api/mail-webhook.php': handleMailWebhook,
   '/api/stripe-config.php': handleStripeConfig,
