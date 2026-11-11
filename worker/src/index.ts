@@ -110,8 +110,9 @@ import { handleLogo } from './lib/brandLogo';
 import { handleWidgetAvatar } from './lib/widgetAvatar';
 import { handleUserAvatar } from './routes/userAvatar';
 import { PAGE_ALIASES, industryFor, isSiteHost, robotsTxt, servicesPublic, sitemapXml, speaksAsUs } from './lib/industryPages';
+import { NOT_FOUND_HEAD, headFor, isKnownPublicPath, isPublicSiteHost } from './lib/publicPages';
 import { markGated, stagingGate } from './lib/stagingGate';
-import { rewriteIndustryHead } from './lib/industryHead';
+import { rewriteIndustryHead, rewritePageHead } from './lib/industryHead';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -357,6 +358,18 @@ async function serve(req: Request, env: Env, ctx: ExecutionContext, url: URL): P
     return new Response(xml ? sitemapXml(servicesPublic(url.hostname)) : robotsTxt(), {
       headers: { 'Content-Type': xml ? 'application/xml; charset=utf-8' : 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
     });
+  }
+
+  /* The public site: its own head for each page, and a real 404 for an
+     address it does not have (PUB-4, lib/publicPages.ts). */
+  if (isPublicSiteHost(url.hostname) && (req.method === 'GET' || req.method === 'HEAD') && !url.pathname.startsWith('/api/')) {
+    const known = isKnownPublicPath(url.pathname);
+    const head = known ? headFor(url.pathname) : NOT_FOUND_HEAD;
+    if (head) {
+      const res = await env.ASSETS.fetch(req);
+      if ((res.headers.get('content-type') ?? '').includes('text/html')) return rewritePageHead(res, head, url.pathname, !known);
+      return res;
+    }
   }
 
   if (!url.pathname.startsWith('/api/')) {

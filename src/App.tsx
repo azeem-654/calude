@@ -8,6 +8,7 @@ import { attributeIfPending } from './services/referral';
 import { pendingPlan } from './services/sitePlan';
 import { trackKnown } from './services/funnel';
 import { getActiveAccountId, setActiveAccountId, activeBranding } from './services/tenancy';
+import { isKnownPublicPath } from '../worker/src/lib/publicPages';
 import { isAppHost, isMarketingHost, isStagingHost, isWhiteLabelHost, markWhiteLabelHost, siteAtRoot } from './services/hosts';
 import { industryFor, servicesPublic, speaksAsUs } from '../worker/src/lib/industryPages';
 import { cachedHost, resolveHost, type ResolvedHost } from './services/whitelabel';
@@ -114,6 +115,7 @@ const MedicalBillingPage = screen(() => import('./components/Site/MedicalBilling
 const EcommercePage = screen(() => import('./components/Site/EcommercePage'));
 const StrategyCallPage = screen(() => import('./components/StrategyCall/StrategyCallPage'));
 const LegalPage = screen(() => import('./components/Site/LegalPage'));
+const SiteNotFound = screen(() => import('./components/Site/SiteNotFound'));
 const Signups = screen(() => import('./components/Agency/Signups'));
 const GrowthService = screen(() => import('./components/Agency/GrowthService'));
 const Snapshots = screen(() => import('./components/Agency/Snapshots'));
@@ -674,7 +676,9 @@ function AppTrees() {
         <Route path="/growth-service-terms" element={<LegalPage doc="growth" />} />
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/appsumo" element={<AppSumoPage />} />
-          <Route path="*" element={<SiteHome />} />
+          {/* The home page for the site's own addresses; anything else says it
+              is not there, as the Worker's 404 does (lib/publicPages.ts). */}
+          <Route path="*" element={isKnownPublicPath(window.location.pathname.slice(base.length) || '/') ? <SiteHome /> : <SiteNotFound />} />
         </Routes>
       </BrowserRouter>
     );
