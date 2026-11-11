@@ -144,7 +144,8 @@ export async function handleMedia(req: Request, env: Env): Promise<Response> {
     if (!rl.allowed) return fail('That is a lot of pictures at once — wait a few minutes.', 429);
     const id = `med_${crypto.randomUUID().replace(/-/g, '').slice(0, 20)}`;
     const prefix = `${base}${id}/`;
-    const url = `${origin}/api/video-file.php?t=${await sign(env, { a: accountId, k: prefix, m: 'put' }, 1800)}`;
+    /* Exact name and size (W-5): this link stores one picture, not a folder. */
+    const url = `${origin}/api/video-file.php?t=${await sign(env, { a: accountId, k: prefix, m: 'put', n: [`file.${ext(mime)}`], b: MAX_BYTES }, 1800)}`;
     return json({ success: true, id, url, name: `file.${ext(mime)}`, key: `${prefix}file.${ext(mime)}`, mime });
   }
 

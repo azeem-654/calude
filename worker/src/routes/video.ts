@@ -790,7 +790,8 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
     case 'music_upload_url': {
       if (!env.VIDEO) return fail('Video storage is not set up yet.', 503);
       const prefix = `${projectPrefix(accountId, p.id)}music/up-${crypto.randomUUID().slice(0, 8)}/`;
-      return json({ success: true, url: `${origin}/api/video-file.php?t=${await sign(env, { a: accountId, k: prefix, m: 'put' }, 1800)}`, prefix });
+      /* One track, whole, within the 16 MB the screen states (W-5). */
+      return json({ success: true, url: `${origin}/api/video-file.php?t=${await sign(env, { a: accountId, k: prefix, m: 'put', n: ['track.mp3', 'track.m4a', 'track.wav', 'track.ogg', 'track.flac'], b: 16 * 1024 * 1024 }, 1800)}`, prefix });
     }
 
     case 'music_attach': {
@@ -949,7 +950,7 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       const room = await refusal(env, accountId, { bytes: 3e6 });
       if (room) return fail(room, 402, { code: 'allowance' });
       const prefix = `${projectPrefix(accountId, p.id)}out/${o.id}/thumbs/ex-${crypto.randomUUID().slice(0, 8)}/`;
-      return json({ success: true, url: `${origin}/api/video-file.php?t=${await sign(env, { a: accountId, k: prefix, m: 'put' }, 900)}`, key: `${prefix}example.jpg` });
+      return json({ success: true, url: `${origin}/api/video-file.php?t=${await sign(env, { a: accountId, k: prefix, m: 'put', n: ['example.jpg'], b: 8 * 1024 * 1024 }, 900)}`, key: `${prefix}example.jpg` });
     }
 
     case 'thumb_custom': {
@@ -976,7 +977,7 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       const room = await refusal(env, accountId, { bytes: 4e6 });
       if (room) return fail(room, 402, { code: 'allowance' });
       const prefix = `${projectPrefix(accountId, p.id)}out/${o.id}/thumbs/up-${crypto.randomUUID().slice(0, 8)}/`;
-      return json({ success: true, url: `${origin}/api/video-file.php?t=${await sign(env, { a: accountId, k: prefix, m: 'put' }, 1800)}`, key: `${prefix}designed.png`,
+      return json({ success: true, url: `${origin}/api/video-file.php?t=${await sign(env, { a: accountId, k: prefix, m: 'put', n: ['designed.png'], b: 12 * 1024 * 1024 }, 1800)}`, key: `${prefix}designed.png`,
         width: o.kind === 'short' ? 1080 : 1280, height: o.kind === 'short' ? 1920 : 720 });
     }
 
@@ -1015,7 +1016,7 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       const room = await refusal(env, accountId, { bytes: 4e6 });
       if (room) return fail(room, 402, { code: 'allowance' });
       const prefix = `${projectPrefix(accountId, p.id)}logo/up-${crypto.randomUUID().slice(0, 8)}/`;
-      return json({ success: true, url: `${origin}/api/video-file.php?t=${await sign(env, { a: accountId, k: prefix, m: 'put' }, 1800)}`, key: `${prefix}logo.png` });
+      return json({ success: true, url: `${origin}/api/video-file.php?t=${await sign(env, { a: accountId, k: prefix, m: 'put', n: ['logo.png'], b: 12 * 1024 * 1024 }, 1800)}`, key: `${prefix}logo.png` });
     }
 
     case 'logo_attach': {

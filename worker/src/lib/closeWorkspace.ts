@@ -5,6 +5,7 @@
  * their own account. Both must leave nothing reachable behind — see below.
  */
 import type { Env } from './db';
+import { queuePurge, runStoragePurges } from './storageSweep';
 
 export async function closeWorkspace(env: Env, target: string): Promise<void> {
   /*
@@ -51,4 +52,21 @@ export async function closeWorkspace(env: Env, target: string): Promise<void> {
        either, because that counts rows owned by the agency's own address. */
     env.DB.prepare("UPDATE crm_workspaces SET owner_email = '~closed~' || owner_email WHERE account_id = ?").bind(target),
   ]);
+
+  /*
+   * Its stored files too (T-3). Deleting the rows left every video, picture,
+   * booking clip and hosted message in R2 — unreachable, still stored, still
+   * paid for, and still the customer's data after they asked for it gone. A
+   * big workspace has more files than one request may delete, so they are
+   * queued (crm_storage_purges) and the cron finishes what this first pass
+   * does not; `done_at` records when each prefix listed empty.
+   */
+  try {
+    await queuePurge(env, target);
+    await runStoragePurges(env, 1000);
+  } catch {
+    /* Queued rows are retried by the cron. A queue that never got written is
+       retried by nothing, so it is at least logged with the workspace id. */
+    console.error(`closeWorkspace: could not queue file deletion for ${target}`);
+  }
 }

@@ -103,6 +103,7 @@ import { applyContactChangesInCloud, runAutomations } from './lib/automationEngi
 import { runProjectAgents } from './lib/projectAgents';
 import { runProspectFinders } from './prospectFinderTick';
 import { runHousekeeping } from './lib/housekeeping';
+import { runStoragePurges, sweepOrphans } from './lib/storageSweep';
 import { handleLogo } from './lib/brandLogo';
 import { handleWidgetAvatar } from './lib/widgetAvatar';
 import { handleUserAvatar } from './routes/userAvatar';
@@ -612,6 +613,10 @@ export default {
        * there is nothing they could do about it.
        */
       const swept = await runHousekeeping(env);
+      /* Stored files: closed workspaces' (T-3) every tick until done, and one
+         page of the daily orphan pass (W-5). Both bounded, both silent. */
+      const purged = await runStoragePurges(env);
+      const orphans = await sweepOrphans(env);
 
       const ms = Date.now() - started;
 
@@ -650,6 +655,7 @@ export default {
         ...(reputation.ran ? { reputation: { checked: reputation.checked, added: reputation.added, failed: reputation.failed, requestsSent: reputation.requestsSent, requestsFailed: reputation.requestsFailed } } : {}),
         /* Absent on most ticks, which is the point of the gate. */
         ...(swept.ran ? { housekeeping: { deleted: swept.deleted } } : {}),
+        ...(purged || orphans.deleted ? { storage: { purged, orphans: orphans.deleted } } : {}),
         notes: report.notes.slice(0, 20),
       }));
     })());

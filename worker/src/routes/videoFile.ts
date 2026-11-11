@@ -165,6 +165,11 @@ export async function handleVideoFile(req: Request, env: Env, ctx: ExecutionCont
     if (!NAME.test(name) || !g.k.endsWith('/')) return json({ success: false, error: 'bad name' }, 400);
     const key = g.k + name;
     const op = url.searchParams.get('op') ?? '';
+    /* A browser's grant (W-5): its one file, whole, within its size. */
+    if (g.n) {
+      if (!g.n.includes(name)) return json({ success: false, error: 'This link is for another file.' }, 403);
+      if (op) return json({ success: false, error: 'This file is sent in one piece.' }, 413);
+    }
     const type = OUT_TYPES.has(url.searchParams.get('type') ?? '') ? url.searchParams.get('type')! : 'application/octet-stream';
     if (op === 'mpu-start' && req.method === 'POST') {
       const up = await env.VIDEO.createMultipartUpload(key, { httpMetadata: { contentType: type } });
@@ -189,8 +194,9 @@ export async function handleVideoFile(req: Request, env: Env, ctx: ExecutionCont
         await env.VIDEO.put(key, new Uint8Array(0), { httpMetadata: { contentType: type } }); // captions of a silent video
         return json({ success: true, bytes: 0 });
       }
-      const st = sized(req, MAX_PART);
-      if (!st) return json({ success: false, error: 'a file needs its length and, over 16 MB, parts' }, 413);
+      const cap = g.n ? Math.min(MAX_PART, Math.max(0, Number(g.b) || 0)) : MAX_PART;
+      const st = sized(req, cap);
+      if (!st) return json({ success: false, error: g.n ? `That file is over the ${Math.floor(cap / 1048576)} MB this upload allows.` : 'a file needs its length and, over 16 MB, parts' }, 413);
       const put = await env.VIDEO.put(key, st.body, { httpMetadata: { contentType: type } }).catch(() => null);
       if (!put) return json({ success: false, error: 'the file did not arrive whole' }, 400);
       return json({ success: true, bytes: st.len });

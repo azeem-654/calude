@@ -36,6 +36,14 @@ export interface Grant {
   p?: string;
   /** Open ranges answered in short pieces (the editor's player only — see videoFile.ts). */
   c?: 1;
+  /**
+   * A browser's upload (put): the only file names it may write, in one piece
+   * and at most `b` bytes (W-5). Without them a put grant is the engine's —
+   * any name under the prefix, multipart allowed — and a prefix grant handed
+   * to a browser let it store thousands of 16 MB parts outside every meter.
+   */
+  n?: string[];
+  b?: number;
 }
 
 const enc = new TextEncoder();
