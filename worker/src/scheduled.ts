@@ -235,7 +235,7 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
      * The alternative was two nearly-identical loops, and they would have
      * drifted the first time one of them was fixed.
      */
-    let out: { ok: boolean; error: string };
+    let out: { ok: boolean; error: string; id?: string };
     /* Tracked separately from `ok`, because an opt-out is the person's own
        decision rather than a delivery fault — counting it as a failure is how
        a healthy list looks broken. */
@@ -248,8 +248,8 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
       /* A found business that has not said yes to texts is never texted —
          treated like an opt-out: the step is passed over, not retried. */
       const block = await prospectSmsBlock(env, accountId, contact, target);
-      const r = block ? { ok: false, error: block, suppressed: true } : await sendSms(env, sms!, target, text, accountId);
-      out = { ok: r.ok, error: r.error };
+      const r: { ok: boolean; error: string; suppressed?: boolean; id?: string } = block ? { ok: false, error: block, suppressed: true } : await sendSms(env, sms!, target, text, accountId);
+      out = { ok: r.ok, error: r.error, id: r.id };
       /* An opt-out is not a failure to retry or a fault to fix — it is the
          person's decision, and it is worth naming as that in the log. */
       if (r.suppressed) {
@@ -327,6 +327,7 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
       status: suppressed ? 'suppressed' : out.ok ? 'sent' : 'failed',
       detail: out.error ?? '',
       sentFrom: isSms ? '' : (mailbox?.from.email ?? ''),
+      providerRef: isSms && out.ok ? out.id : undefined,
     });
 
     if (out.ok) { report.sent++; sentHere++; }

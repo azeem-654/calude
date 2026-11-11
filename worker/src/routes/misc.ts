@@ -367,7 +367,7 @@ export async function handleSmsSend(req: Request, env: Env): Promise<Response> {
  * — replying with text here would send a second message to somebody who may
  * have just asked us to stop.
  */
-async function twilioSigned(authToken: string, given: string, url: string, origin: string | undefined, form: FormData): Promise<boolean> {
+export async function twilioSigned(authToken: string, given: string, url: string, origin: string | undefined, form: FormData): Promise<boolean> {
   const fields = [...form.entries()].map(([k, v]) => [k, String(v)] as const).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   const tail = fields.map(([k, v]) => `${k}${v}`).join('');
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(authToken), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
@@ -689,4 +689,39 @@ export function handleInstall(): Response {
     message: 'Nothing to install — this deployment uses D1, set up by its migration. '
       + 'Run `wrangler d1 migrations apply crmpro` if the tables are missing.',
   });
+}
+
+/**
+ * POST /api/sms-status-webhook.php?a=<workspace> — Twilio saying what became
+ * of a text (S-2). Signed like the inbound webhook, with the workspace's own
+ * auth token, so only Twilio can move a row; matched on the message SID and
+ * the workspace, so one workspace's callback cannot touch another's log.
+ * Twilio's 21610 ("the recipient replied STOP") is recorded as the opt-out it is.
+ */
+export async function handleSmsStatus(req: Request, env: Env): Promise<Response> {
+  const done = () => new Response('', { status: 204 });
+  const accountId = String(new URL(req.url).searchParams.get('a') ?? '');
+  const form = await req.formData().catch(() => null);
+  if (!form || !/^[A-Za-z0-9_.:-]{1,80}$/.test(accountId)) return done();
+  const given = req.headers.get('X-Twilio-Signature') ?? '';
+  const cfg = await loadSmsConfig(env, accountId);
+  if (!given || !cfg?.authToken || !(await twilioSigned(cfg.authToken, given, req.url, env.APP_ORIGIN, form))) {
+    return new Response('not signed', { status: 403 });
+  }
+  const sid = String(form.get('MessageSid') ?? form.get('SmsSid') ?? '');
+  const st = String(form.get('MessageStatus') ?? form.get('SmsStatus') ?? '').toLowerCase();
+  const code = String(form.get('ErrorCode') ?? '');
+  /* Only the answers that settle it. queued/sending/sent are on the way. */
+  const status = st === 'delivered' ? 'delivered' : st === 'undelivered' ? 'undelivered' : st === 'failed' ? 'failed' : '';
+  if (!/^(SM|MM)[0-9a-f]{32}$/i.test(sid) || !status) return done();
+  const detail = status === 'delivered' ? 'The carrier confirmed delivery.'
+    : `${status === 'failed' ? 'Twilio could not send it' : 'The carrier did not deliver it'}${code ? ` (Twilio error ${code})` : ''}.`;
+  await env.DB.prepare(
+    "UPDATE crm_delivery_log SET status = ?, detail = ? WHERE account_id = ? AND channel = 'sms' AND provider_ref = ? AND status IN ('sent', 'delivered', 'undelivered', 'failed')",
+  ).bind(status, detail, accountId, sid).run();
+  if (code === '21610') {
+    const to = String(form.get('To') ?? '').trim();
+    if (E164.test(to)) await recordOptOut(env, accountId, to, 'reply');
+  }
+  return done();
 }

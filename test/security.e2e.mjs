@@ -667,6 +667,24 @@ await fetch(smsUrl, { method: 'POST', headers: { 'Content-Type': 'application/x-
 const lifted = d1rows(`SELECT account_id AS a FROM crm_sms_optouts WHERE phone = '${FROM}'`);
 check('a START from the number, signed by the owner, lifts its STOP', !lifted.some(o => o.a === C2.acct), JSON.stringify(lifted));
 
+console.log('\nText delivery receipts (S-2)');
+{
+  const sid = 'SM' + 'c'.repeat(32), now = new Date().toISOString();
+  d1rows(`INSERT INTO crm_delivery_log (id, account_id, channel, recipient, status, created_at, provider_ref) VALUES ('dl-s2-c', '${C2.acct}', 'sms', '${FROM}', 'sent', '${now}', '${sid}'), ('dl-s2-b', '${B2.acct}', 'sms', '${FROM}', 'sent', '${now}', '${sid}')`);
+  const statusUrl = (a) => `${BASE}/api/sms-status-webhook.php?a=${encodeURIComponent(a)}`;
+  const signAt = (u, tok, f) => crypto.createHmac('sha1', tok).update(u + Object.keys(f).sort().map(k => k + f[k]).join('')).digest('base64');
+  const cb = (a, tok, f) => fetch(statusUrl(a), { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': signAt(statusUrl(a), tok, f), Connection: 'close' }, body: new URLSearchParams(f).toString() });
+  const form = { AccountSid: sidA, MessageSid: sid, MessageStatus: 'undelivered', ErrorCode: '30003', To: FROM };
+  const forged = await cb(C2.acct, 'tok-b', form);
+  const row = (id) => d1rows(`SELECT status AS s FROM crm_delivery_log WHERE id = '${id}'`)[0]?.s;
+  check('a status callback not signed with the workspace\'s token is refused', forged.status === 403 && row('dl-s2-c') === 'sent', `${forged.status} ${row('dl-s2-c')}`);
+  await cb(C2.acct, 'tok-a', form);
+  check('a signed "undelivered" flips that workspace\'s row', row('dl-s2-c') === 'undelivered', row('dl-s2-c'));
+  check('…and not another workspace\'s row with the same id', row('dl-s2-b') === 'sent', row('dl-s2-b'));
+  await cb(C2.acct, 'tok-a', { ...form, MessageStatus: 'delivered', ErrorCode: '' });
+  check('a later "delivered" settles it', row('dl-s2-c') === 'delivered', row('dl-s2-c'));
+}
+
 console.log('\nThe retired Stripe callback (M-6)');
 const oldHook = await fetch(`${BASE}/api/stripe-webhook.php`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': 't=1,v1=00', Connection: 'close' }, body: JSON.stringify({ type: 'checkout.session.completed', data: { object: { metadata: { accountId: C2.acct } } } }) });
 check('/api/stripe-webhook.php answers 410 and changes nothing', oldHook.status === 410, String(oldHook.status));

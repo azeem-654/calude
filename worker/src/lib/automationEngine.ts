@@ -589,7 +589,7 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
             channel: 'sms', source: 'automation', sourceId: a.id, sourceName: a.name,
             stepIndex: steps, contactId: contact.id, recipient: to, subject: '',
             status: r.suppressed ? 'suppressed' : r.ok ? 'sent' : 'failed',
-            detail: r.error ?? '', sentFrom: '',
+            detail: r.error ?? '', sentFrom: '', providerRef: r.ok ? r.id : undefined,
           });
           await log(env, accountId, run.id, node.id, node.type,
             r.suppressed ? 'skipped' : r.ok ? 'ok' : 'failed',

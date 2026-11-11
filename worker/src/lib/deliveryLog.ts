@@ -31,6 +31,8 @@ export interface LogEntry {
   status: 'sent' | 'failed' | 'suppressed';
   detail?: string;
   sentFrom?: string;
+  /** The provider's id for the message (a Twilio SID), so its status callback can find this row (S-2). */
+  providerRef?: string;
 }
 
 export async function logDelivery(env: Env, accountId: string, e: LogEntry): Promise<void> {
@@ -38,8 +40,8 @@ export async function logDelivery(env: Env, accountId: string, e: LogEntry): Pro
     await env.DB.prepare(
       `INSERT INTO crm_delivery_log
        (id, account_id, channel, source, source_id, source_name, step_index,
-        contact_id, recipient, subject, status, detail, sent_from, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        contact_id, recipient, subject, status, detail, sent_from, created_at, provider_ref)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     ).bind(
       `dl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
       accountId,
@@ -57,6 +59,7 @@ export async function logDelivery(env: Env, accountId: string, e: LogEntry): Pro
       String(e.detail ?? '').slice(0, 600),
       String(e.sentFrom ?? '').slice(0, 200),
       nowIso(),
+      String(e.providerRef ?? '').slice(0, 80),
     ).run();
   } catch {
     /* See the note at the top: the message has already gone. */

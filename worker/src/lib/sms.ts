@@ -138,6 +138,12 @@ export async function sendSms(
      rejected outright rather than split, so it is trimmed here where the reason
      is visible. */
   const form = new URLSearchParams({ From: creds.fromNumber, To: to, Body: text.slice(0, 1600) });
+  /* Twilio says later whether it arrived (S-2): its signed callback moves the
+     delivery-log row from "sent" to delivered, undelivered or failed. Only
+     for a workspace's send with an absolute origin — a settings test has no
+     row to update, and Twilio will not call a relative address. */
+  const origin = (env.APP_ORIGIN ?? '').trim().replace(/\/$/, '');
+  if (accountId && /^https:\/\//.test(origin)) form.set('StatusCallback', `${origin}/api/sms-status-webhook.php?a=${encodeURIComponent(accountId)}`);
   try {
     const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${creds.accountSid}/Messages.json`, {
       method: 'POST',

@@ -90,7 +90,7 @@ import { handleSnapshots } from './routes/snapshots';
 import { handleYtThumb, handleImgProxy } from './routes/proxies';
 import { handleStripeConfig, handleStripeCheckout, handleStripePortal, handleStripeWebhook } from './routes/stripe';
 import {
-  handleImapFetch, handleMailProbe, handleSmsSend, handleSmsInbound, handleDeliverability,
+  handleImapFetch, handleMailProbe, handleSmsSend, handleSmsInbound, handleSmsStatus, handleDeliverability,
   handleBlogPublish, handleDiagnostics, handleInstall,
 } from './routes/misc';
 import { runScheduledSends, recordTick } from './scheduled';
@@ -227,6 +227,8 @@ const ROUTES: Record<string, Handler> = {
      session — so it identifies the workspace by the number the message was
      sent to, and does nothing at all for a number we do not own. */
   '/api/sms-inbound.php': handleSmsInbound,
+  /* Twilio's delivery receipts for texts (S-2). */
+  '/api/sms-status-webhook.php': handleSmsStatus,
 
   '/api/track.php': handleTrack,
   '/api/unsubscribe.php': handleUnsubscribe,
