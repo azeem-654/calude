@@ -16,6 +16,9 @@ import { ArrowRight, Check, ChevronDown, Minus } from 'lucide-react';
 import { appHref, isCrossOrigin } from '../../services/hosts';
 import { track } from '../../services/funnel';
 import { BILLING_TERMS, hasYearly } from './pricingTerms';
+/* The plan cards are drawn with site.css's classes. Every page used to get it
+   from the one bundle; with each page loaded on its own, the parts bring it. */
+import './site.css';
 import {
   CARD_PLANS, COMPARE_NOTES, CUSTOM_OFFER, DEFAULT_TABLE, annualSaving, comparison, dollars, featureLines, fetchPlans,
   type Cell, type PlanDef, type PlanTable,

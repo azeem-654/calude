@@ -1,5 +1,15 @@
 <!-- Moved from CLAUDE.md, word for word: read this before working on the top bar and the dashboard. -->
 
+## Every screen is its own download (PERF-1)
+
+`src/App.tsx` loads each route through `screen()` (React.lazy): the first load
+is the shell plus the screen opened (main chunk ~130 kB gzip, was 1.25 MB).
+A chunk a deploy removed reloads the page once (`pc_chunk_reload` in
+sessionStorage stops a loop). **A lazy screen must import the CSS its class
+names need** — one bundle hid that `PricingParts.tsx` used `site.css` without
+importing it. Rail buttons carry `aria-label` = their tooltip, and the tooltip
+shows on `:focus-visible` too (UX-1).
+
 ## The top bar
 
 `Layout/TopNav.tsx`: the shield (`LogoMark`, no name beside it — a

@@ -790,15 +790,39 @@ async function exportToPNG(post: DesignPost): Promise<void> {
 /* ══════════════════════════════════════════════════════ */
 /*                    MAIN EDITOR                         */
 /* ══════════════════════════════════════════════════════ */
+/*
+ * The guard and the editor are two components because the editor's hooks must
+ * run in the same order on every render (rules of hooks): a design that is not
+ * found has to return before any of them, and an early return in the middle
+ * of them would change their count the moment the posts arrived.
+ */
 export default function PostEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { socialPosts, updateSocialPost } = useApp() as any;
+  const { socialPosts } = useApp() as any;
 
   /* Put it through the same normaliser the gallery uses: a record saved by
      content setup has no canvas on it, and the editor would open onto nothing. */
   const post: DesignPost | undefined =
     normalisePost(socialPosts?.find((p: { id?: string }) => p?.id === id)) ?? undefined;
+
+  if (!post) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 16 }}>
+        <p style={{ color: '#64748b', fontSize: 16 }}>Design not found</p>
+        <button onClick={() => navigate('/social-creator')} style={{ padding: '10px 20px', border: 'none', borderRadius: 8, background: '#6366f1', color: '#fff', cursor: 'pointer' }}>Go Back</button>
+      </div>
+    );
+  }
+
+  /* Keyed by the design: opening another one from here starts with its own
+     canvas and history rather than the previous design's. */
+  return <PostEditorCanvas key={post.id} post={post} />;
+}
+
+function PostEditorCanvas({ post }: { post: DesignPost }) {
+  const navigate = useNavigate();
+  const { updateSocialPost } = useApp() as any;
 
   const [elements, setElements] = useState<CanvasElement[]>(post?.elements ?? []);
   const [background, setBackground] = useState<CanvasBackground>(post?.background ?? { type: 'color', color: '#ffffff', gradientStart: '#6366f1', gradientEnd: '#a855f7', gradientAngle: 135, imageFit: 'cover' });
@@ -835,15 +859,6 @@ export default function PostEditor() {
     origEl: CanvasElement;
   } | null>(null);
   const didDragRef = useRef(false);
-
-  if (!post) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 16 }}>
-        <p style={{ color: '#64748b', fontSize: 16 }}>Design not found</p>
-        <button onClick={() => navigate('/social-creator')} style={{ padding: '10px 20px', border: 'none', borderRadius: 8, background: '#6366f1', color: '#fff', cursor: 'pointer' }}>Go Back</button>
-      </div>
-    );
-  }
 
   // ── History ──
   const pushHistory = useCallback((els: CanvasElement[], bg: CanvasBackground) => {

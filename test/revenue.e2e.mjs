@@ -35,7 +35,7 @@ async function signed(accountId, secret, event) {
   })).status;
 }
 let evt = 1;
-const paidEvent = (orderId) => ({ id: `evt_${evt++}`, type: 'checkout.session.completed', data: { object: { id: `cs_${orderId}`, client_reference_id: orderId, metadata: { orderId } } } });
+const paidEvent = (orderId) => ({ id: `evt_${evt++}`, type: 'checkout.session.completed', data: { object: { id: `cs_${orderId}`, client_reference_id: orderId, metadata: { orderId }, payment_status: 'paid' } } });
 const refundEvent = (orderId) => ({ id: `evt_${evt++}`, type: 'charge.refunded', data: { object: { id: `ch_${orderId}`, metadata: { orderId } } } });
 
 console.log('\nRevenue by project');
@@ -50,9 +50,13 @@ const asAnn = (path, body) => api(path, { token: ann.token, accountId: A, ...bod
 const asBob = (path, body) => api(path, { token: bob.token, accountId: BB, ...body });
 
 /* ── Projects, through the real route ── */
+/* Ann needs three business workspaces and a trial allows two
+   (allowances.ts), so the operator gives her a plan by hand — the same
+   manual row Plans & allowances writes. */
+sql("INSERT OR REPLACE INTO crm_plans (owner_email, plan_id, resell_limit, source, updated_at) VALUES ('ann@shop.test', 'agency', -1, 'manual', '2026-01-01T00:00:00.000Z')");
 const pfA = await asAnn('projects.php', { action: 'save_portfolio', name: 'Ann Tees Ltd', profile: { companyName: 'Ann Tees Ltd' } });
 const pfB = await asBob('projects.php', { action: 'save_portfolio', name: 'Bob Goods', profile: { companyName: 'Bob Goods' } });
-const proj = async (as, pf, name) => (await as('projects.php', { action: 'save_project', name, objective: `Sell more through ${name}`, portfolioId: pf.id, kind: 'ecommerce' })).id;
+const proj = async (as, pf, name) => { const r = await as('projects.php', { action: 'save_project', name, objective: `Sell more through ${name}`, portfolioId: pf.id, kind: 'ecommerce' }); if (!r.id) console.log('  save_project refused:', JSON.stringify(r).slice(0, 200)); return r.id; };
 const P1 = await proj(asAnn, pfA, 'Tees drop');
 const P2 = await proj(asAnn, pfA, 'Mugs launch');
 const P3 = await proj(asAnn, pfA, 'Hoodies');
@@ -254,7 +258,9 @@ ok('no sideways scroll at 390px', (await over()) <= 0, String(await over()));
 ok('the chart still renders at 390px', await p.locator('.recharts-bar-rectangle path').count() > 0);
 await p.screenshot({ path: `${process.env.SHOTS ?? '/tmp'}/revenue-390.png`, fullPage: true });
 
-/* The project's own strip and link. */
+/* The project's own strip and link. A new business workspace lands on top
+   of the board, so Tees drop — the first made — is put back on top first. */
+await asAnn('projects.php', { action: 'reorder_projects', ids: [P1, P2, P3] });
 await p.setViewportSize({ width: 1280, height: 900 });
 await p.goto(`${B}/autopilot`, { waitUntil: 'networkidle' });
 await p.waitForTimeout(2000);

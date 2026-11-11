@@ -144,6 +144,8 @@ export default function MicrositeLayout({ site, children }: { site: MicrositeCon
               <h5>Legal</h5>
               <a href="/privacy">Privacy policy</a>
               <a href="/terms-of-service">Terms of service</a>
+              <a href="/refund-policy">Refund policy</a>
+              <a href="/cookie-policy">Cookie policy</a>
               {site.growthTerms && <a href="/growth-service-terms">Growth service terms</a>}
               <a href="/security">Security &amp; privacy</a>
             </div>

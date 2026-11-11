@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense, type ComponentType } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import TopNav, { IconRail } from './components/Layout/TopNav';
@@ -18,67 +18,108 @@ import ErrorBoundary from './components/shared/ErrorBoundary';
 import DueWorkRunner from './components/shared/DueWorkRunner';
 import ProspectSync from './components/shared/ProspectSync';
 import NativeBridge from './components/shared/NativeBridge';
-import Dashboard from './components/Dashboard/Dashboard';
-import Contacts from './components/Contacts/Contacts';
-import AiProspecting from './components/Prospecting/AiProspecting';
-import LeadDirectory from './components/Prospecting/LeadDirectory';
 import { isInstallOwner } from './services/moderation';
-import Conversations from './components/Conversations/Conversations';
-import CalendarView from './components/Calendar/CalendarView';
-import Pipelines from './components/Pipelines/Pipelines';
-import Marketing from './components/Marketing/Marketing';
-import CampaignDetail from './components/AISalesAgent/CampaignDetail';
-import Funnels from './components/Funnels/Funnels';
-import Websites from './components/Websites/Websites';
-import SitePreview from './components/Websites/SitePreview';
-import BlogAutomation from './components/BlogAutomation/BlogAutomation';
-import FunnelPreview from './components/Funnels/FunnelPreview';
-import Scheduling from './components/Scheduling/Scheduling';
-import BookingPage from './components/Scheduling/BookingPage';
-import Analytics from './components/Analytics/Analytics';
-import Reputation from './components/Reputation/Reputation';
-import Settings from './components/Settings/Settings';
-/* Lazy: the studio is large and most sessions never open it. */
-const VideoStudio = lazy(() => import('./components/VideoStudio/VideoStudio'));
-import SocialCreator from './components/SocialCreator/SocialCreator';
-import PostEditor from './components/SocialCreator/PostEditor';
-/* Lazy: the template editor brings its own fonts and renderer, and most visits never open it. */
-const DesignStudio = lazy(() => import('./components/SocialCreator/design/DesignStudio'));
-import AgencyDashboard from './components/Agency/AgencyDashboard';
-import ClientBilling from './components/Billing/ClientBilling';
-import SiteHome from './components/Site/SiteHome';
-import Autopilot from './components/Autopilot/Autopilot';
-import Commerce from './components/Commerce/Commerce';
-import ShopPage from './components/Shop/ShopPage';
-import Engagement from './components/Engagement/Engagement';
-import FormPage from './components/Engagement/FormPage';
-import ClientReport from './components/Portal/ClientReport';
-import GoogleCallback from './components/Auth/GoogleCallback';
-import ReviewQueue from './components/Moderation/ReviewQueue';
-import PolicyPage from './components/Site/PolicyPage';
-import TrustCenter from './components/Site/TrustCenter';
-import Changelog from './components/Site/Changelog';
-import PricingPage from './components/Site/PricingPage';
-import AppSumoPage, { pendingAppsumo } from './components/AppSumo/AppSumoPage';
-import IndustryPage from './components/Site/IndustryPage';
-import MedicalBillingPage from './components/Site/MedicalBillingPage';
-import EcommercePage from './components/Site/EcommercePage';
-import StrategyCallPage from './components/StrategyCall/StrategyCallPage';
+import { pendingAppsumo } from './components/AppSumo/pending';
 import { STRATEGY_CALL_PATH } from '../worker/src/lib/strategyCall';
-import LegalPage from './components/Site/LegalPage';
 import StandingBanner from './components/shared/StandingBanner';
 import StagingBanner from './components/shared/StagingBanner';
 import { LogoMark } from './components/shared/Logo';
 import HelpLauncher from './components/shared/HelpLauncher';
 import TrialBar from './components/shared/TrialBar';
 import CornerHelp from './components/shared/CornerHelp';
-import Signups from './components/Agency/Signups';
-import GrowthService from './components/Agency/GrowthService';
-import Snapshots from './components/Agency/Snapshots';
 import { claimIndustryIfPending } from './services/industrySetup';
-import JobsRevenue from './components/Jobs/JobsRevenue';
-import MedicalBilling from './components/Rcm/MedicalBilling';
-import Affiliate from './components/Affiliate/Affiliate';
+
+/*
+ * Every screen is its own download, fetched the first time it is opened.
+ *
+ * The whole product used to arrive as one 4.6 MB script on the first visit —
+ * the public home page included — because every route was imported here
+ * statically. Now the first screen costs only the shell and itself.
+ *
+ * A tab left open across a deploy still holds the old build's chunk names, and
+ * those files are gone: the import fails. One reload fetches the new build;
+ * the session flag stops a chunk that is genuinely missing from reloading
+ * forever, and such a failure falls through to the ErrorBoundary instead.
+ */
+const RELOADED_FOR_CHUNK = 'pc_chunk_reload';
+function screen<P extends object>(load: () => Promise<{ default: ComponentType<P> }>) {
+  return lazy(() => load().then(
+    mod => { try { sessionStorage.removeItem(RELOADED_FOR_CHUNK); } catch { /* storage off */ } return mod; },
+    (err: unknown) => {
+      try {
+        if (!sessionStorage.getItem(RELOADED_FOR_CHUNK)) {
+          sessionStorage.setItem(RELOADED_FOR_CHUNK, '1');
+          window.location.reload();
+          return new Promise<never>(() => { /* the reload replaces this page */ });
+        }
+      } catch { /* storage off: show the error rather than risk a reload loop */ }
+      throw err;
+    },
+  ));
+}
+
+/** What a screen shows while its code arrives: neutral, the same on every
+ *  host, so a reseller's client never sees our name flash past. */
+function ScreenLoading({ full }: { full?: boolean }) {
+  return (
+    <div role="status" aria-live="polite" style={{ minHeight: full ? '100vh' : '40vh', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#8a8f98', fontSize: 13, fontWeight: 500 }}>
+      <Loader size={15} className="spin" /> Loading…
+    </div>
+  );
+}
+
+const Dashboard = screen(() => import('./components/Dashboard/Dashboard'));
+const Contacts = screen(() => import('./components/Contacts/Contacts'));
+const AiProspecting = screen(() => import('./components/Prospecting/AiProspecting'));
+const LeadDirectory = screen(() => import('./components/Prospecting/LeadDirectory'));
+const Conversations = screen(() => import('./components/Conversations/Conversations'));
+const CalendarView = screen(() => import('./components/Calendar/CalendarView'));
+const Pipelines = screen(() => import('./components/Pipelines/Pipelines'));
+const Marketing = screen(() => import('./components/Marketing/Marketing'));
+const CampaignDetail = screen(() => import('./components/AISalesAgent/CampaignDetail'));
+const Funnels = screen(() => import('./components/Funnels/Funnels'));
+const Websites = screen(() => import('./components/Websites/Websites'));
+const SitePreview = screen(() => import('./components/Websites/SitePreview'));
+const BlogAutomation = screen(() => import('./components/BlogAutomation/BlogAutomation'));
+const FunnelPreview = screen(() => import('./components/Funnels/FunnelPreview'));
+const Scheduling = screen(() => import('./components/Scheduling/Scheduling'));
+const BookingPage = screen(() => import('./components/Scheduling/BookingPage'));
+const Analytics = screen(() => import('./components/Analytics/Analytics'));
+const Reputation = screen(() => import('./components/Reputation/Reputation'));
+const Settings = screen(() => import('./components/Settings/Settings'));
+/* Lazy: the studio is large and most sessions never open it. */
+const VideoStudio = screen(() => import('./components/VideoStudio/VideoStudio'));
+const SocialCreator = screen(() => import('./components/SocialCreator/SocialCreator'));
+const PostEditor = screen(() => import('./components/SocialCreator/PostEditor'));
+/* Lazy: the template editor brings its own fonts and renderer, and most visits never open it. */
+const DesignStudio = screen(() => import('./components/SocialCreator/design/DesignStudio'));
+const AgencyDashboard = screen(() => import('./components/Agency/AgencyDashboard'));
+const ClientBilling = screen(() => import('./components/Billing/ClientBilling'));
+const SiteHome = screen(() => import('./components/Site/SiteHome'));
+const Autopilot = screen(() => import('./components/Autopilot/Autopilot'));
+const Commerce = screen(() => import('./components/Commerce/Commerce'));
+const ShopPage = screen(() => import('./components/Shop/ShopPage'));
+const Engagement = screen(() => import('./components/Engagement/Engagement'));
+const FormPage = screen(() => import('./components/Engagement/FormPage'));
+const ClientReport = screen(() => import('./components/Portal/ClientReport'));
+const GoogleCallback = screen(() => import('./components/Auth/GoogleCallback'));
+const ReviewQueue = screen(() => import('./components/Moderation/ReviewQueue'));
+const PolicyPage = screen(() => import('./components/Site/PolicyPage'));
+const TrustCenter = screen(() => import('./components/Site/TrustCenter'));
+const Changelog = screen(() => import('./components/Site/Changelog'));
+const PricingPage = screen(() => import('./components/Site/PricingPage'));
+const AppSumoPage = screen(() => import('./components/AppSumo/AppSumoPage'));
+const IndustryPage = screen(() => import('./components/Site/IndustryPage'));
+const MedicalBillingPage = screen(() => import('./components/Site/MedicalBillingPage'));
+const EcommercePage = screen(() => import('./components/Site/EcommercePage'));
+const StrategyCallPage = screen(() => import('./components/StrategyCall/StrategyCallPage'));
+const LegalPage = screen(() => import('./components/Site/LegalPage'));
+const Signups = screen(() => import('./components/Agency/Signups'));
+const GrowthService = screen(() => import('./components/Agency/GrowthService'));
+const Snapshots = screen(() => import('./components/Agency/Snapshots'));
+const JobsRevenue = screen(() => import('./components/Jobs/JobsRevenue'));
+const MedicalBilling = screen(() => import('./components/Rcm/MedicalBilling'));
+const Affiliate = screen(() => import('./components/Affiliate/Affiliate'));
 
 /**
  * After sign-up, straight to the plan made on the public site.
@@ -163,7 +204,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
   const isEditor = location.pathname.startsWith('/social-creator/editor');
 
   /* The Trust Center is public on every host, signed in or not. */
-  if (['/security', '/changelog', '/privacy', '/terms-of-service', '/affiliate-terms', '/growth-service-terms', '/pricing', '/appsumo'].includes(location.pathname)) {
+  if (['/security', '/changelog', '/privacy', '/refund-policy', '/cookie-policy', '/terms-of-service', '/affiliate-terms', '/growth-service-terms', '/pricing', '/appsumo'].includes(location.pathname)) {
     return (
       <Routes>
         <Route path="/pricing" element={<PricingPage />} />
@@ -173,6 +214,8 @@ function AppLayout({ isClient }: { isClient: boolean }) {
         <Route path="/security" element={<TrustCenter />} />
         <Route path="/changelog" element={<Changelog />} />
         <Route path="/privacy" element={<LegalPage doc="privacy" />} />
+        <Route path="/refund-policy" element={<LegalPage doc="refunds" />} />
+        <Route path="/cookie-policy" element={<LegalPage doc="cookies" />} />
         <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
         <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
         <Route path="/growth-service-terms" element={<LegalPage doc="growth" />} />
@@ -256,6 +299,10 @@ function AppLayout({ isClient }: { isClient: boolean }) {
         {/* Keyed on the path so moving to another screen clears a crash rather
             than trapping the user on the error page. */}
         <ErrorBoundary resetKey={location.pathname}>
+        {/* Inside the boundary, so a screen whose code failed to arrive gets
+            the crash page and a way out; inside main, so the nav and rail stay
+            put while it loads. */}
+        <Suspense fallback={<ScreenLoading />}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/contacts" element={<Contacts />} />
@@ -316,6 +363,8 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/security" element={<TrustCenter />} />
           <Route path="/changelog" element={<Changelog />} />
           <Route path="/privacy" element={<LegalPage doc="privacy" />} />
+          <Route path="/refund-policy" element={<LegalPage doc="refunds" />} />
+          <Route path="/cookie-policy" element={<LegalPage doc="cookies" />} />
           <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
           <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
         <Route path="/growth-service-terms" element={<LegalPage doc="growth" />} />
@@ -332,6 +381,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
            */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
         </ErrorBoundary>
       </main>
     </div>
@@ -414,7 +464,17 @@ function SyncGate({ children }: { children: React.ReactNode }) {
   );
 }
 
+/* One boundary for every tree below that is not the signed-in shell (which
+   keeps its own inside main): the public pages, sign-in, the booking page. */
 export default function App() {
+  return (
+    <Suspense fallback={<ScreenLoading full />}>
+      <AppTrees />
+    </Suspense>
+  );
+}
+
+function AppTrees() {
   const [session, setSession] = useState(getSession());
 
   // Clients are locked to their own workspace — force the active account.
@@ -607,6 +667,8 @@ export default function App() {
           <Route path="/security" element={<TrustCenter />} />
           <Route path="/changelog" element={<Changelog />} />
           <Route path="/privacy" element={<LegalPage doc="privacy" />} />
+          <Route path="/refund-policy" element={<LegalPage doc="refunds" />} />
+          <Route path="/cookie-policy" element={<LegalPage doc="cookies" />} />
           <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
           <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
         <Route path="/growth-service-terms" element={<LegalPage doc="growth" />} />
@@ -640,6 +702,8 @@ export default function App() {
           <Route path="/security" element={<TrustCenter />} />
           <Route path="/changelog" element={<Changelog />} />
           <Route path="/privacy" element={<LegalPage doc="privacy" />} />
+          <Route path="/refund-policy" element={<LegalPage doc="refunds" />} />
+          <Route path="/cookie-policy" element={<LegalPage doc="cookies" />} />
           <Route path="/terms-of-service" element={<LegalPage doc="terms" />} />
           <Route path="/affiliate-terms" element={<LegalPage doc="affiliate" />} />
         <Route path="/growth-service-terms" element={<LegalPage doc="growth" />} />

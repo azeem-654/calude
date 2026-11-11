@@ -502,7 +502,8 @@ button:focus-visible, a:focus-visible {
   position: relative;
 }
 
-.rail-btn:hover {
+.rail-btn:hover,
+.rail-btn:focus-visible {
   background-color: #17191c !important;
   color: #fff !important;
 }
@@ -526,7 +527,10 @@ button:focus-visible, a:focus-visible {
   z-index: 500;
 }
 
-.rail-btn:hover::after {
+/* On keyboard focus too: someone tabbing down the rail otherwise meets ten
+   identical round icons with nothing to tell them apart. */
+.rail-btn:hover::after,
+.rail-btn:focus-visible::after {
   opacity: 1;
   transform: translateY(-50%) translateX(0);
 }

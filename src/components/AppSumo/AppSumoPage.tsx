@@ -29,26 +29,16 @@ import { featureLines } from '../../services/allowances';
 import { usePlanTable } from '../Site/PricingParts';
 import { FOUNDER, SUPPORT_EMAIL } from '../Site/company';
 import { APPSUMO_PARTNERS, reviewerEmail } from './reviewerEmail';
+import { PENDING_CODE_KEY, PENDING_LICENSE_KEY, pendingAppsumoCode, pendingLicense } from './pending';
 
-/** The code typed before signing in, carried across sign-up in this browser. */
-export const PENDING_CODE_KEY = 'pc_appsumo_code';
-export function pendingAppsumoCode(): string {
-  try { return localStorage.getItem(PENDING_CODE_KEY) ?? ''; } catch { return ''; }
-}
+/* The pending code and claim are read in ./pending (the shell checks them on
+   every load); only this page writes them. */
 function keepCode(code: string) {
   try { if (code.trim()) localStorage.setItem(PENDING_CODE_KEY, code.trim()); else localStorage.removeItem(PENDING_CODE_KEY); } catch { /* storage off */ }
-}
-
-/** The one-use claim from AppSumo's Activate button, carried across sign-up the same way. */
-const PENDING_LICENSE_KEY = 'pc_appsumo_license';
-function pendingLicense(): string {
-  try { return localStorage.getItem(PENDING_LICENSE_KEY) ?? ''; } catch { return ''; }
 }
 function keepLicense(claim: string) {
   try { if (claim) localStorage.setItem(PENDING_LICENSE_KEY, claim); else localStorage.removeItem(PENDING_LICENSE_KEY); } catch { /* storage off */ }
 }
-/** Anything waiting to be added to the account once signed in. */
-export const pendingAppsumo = () => pendingAppsumoCode() || pendingLicense();
 
 const LICENSE_ERRORS: Record<string, string> = {
   not_connected: 'AppSumo activation is not switched on here yet. Write to support with your AppSumo order and we will set your account up by hand.',

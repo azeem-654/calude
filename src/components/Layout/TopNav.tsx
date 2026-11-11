@@ -495,7 +495,7 @@ export default function TopNav() {
         <QuickCreate />
         <span className="nav-corner-div" aria-hidden="true" />
         <CloudBadge />
-        <button title={theme === 'dark' ? 'Light mode' : 'Dark mode'} data-noinvert onClick={() => setTheme(toggleTheme())} className="icon-btn" style={circleBtn}>
+        <button title={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'} data-noinvert onClick={() => setTheme(toggleTheme())} className="icon-btn" style={circleBtn}>
           {theme === 'dark' ? <Sun size={18} strokeWidth={1.8} /> : <Moon size={18} strokeWidth={1.8} />}
         </button>
         <button
@@ -702,7 +702,9 @@ export function IconRail() {
             {group.map(({ icon: Icon, tip, path, onClick }) => {
               const active = !!path && (path === '/' ? location.pathname === '/' : location.pathname.startsWith(path));
               return (
-                <button key={tip} className="rail-btn" data-tip={tip} onClick={onClick} style={railBtn(active)}>
+                /* The tooltip is drawn by CSS from data-tip, which no screen
+                   reader announces — aria-label carries the same words. */
+                <button key={tip} type="button" className="rail-btn" data-tip={tip} aria-label={tip} aria-current={active ? 'page' : undefined} onClick={onClick} style={railBtn(active)}>
                   <Icon size={15} strokeWidth={2} />
                 </button>
               );
@@ -717,11 +719,11 @@ export function IconRail() {
         padding: 6, borderRadius: 999, backgroundColor: '#fff',
         boxShadow: '0 4px 16px rgba(23,25,28,0.08)',
       }}>
-        <button className="rail-btn" data-tip="Settings" onClick={() => navigate('/settings')}
+        <button type="button" className="rail-btn" data-tip="Settings" aria-label="Settings" aria-current={location.pathname.startsWith('/settings') ? 'page' : undefined} onClick={() => navigate('/settings')}
           style={railBtn(location.pathname.startsWith('/settings'))}>
           <SettingsIcon size={15} strokeWidth={2} />
         </button>
-        <button className="rail-btn" data-tip={theme === 'dark' ? 'Light mode' : 'Dark mode'} data-noinvert
+        <button type="button" className="rail-btn" data-tip={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'} data-noinvert
           onClick={() => setTheme(toggleTheme())}
           style={{ ...railBtn(false), backgroundColor: '#17191c', color: '#fff' }}>
           {theme === 'dark' ? <Sun size={15} strokeWidth={2} /> : <Moon size={15} strokeWidth={2} />}

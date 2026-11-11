@@ -173,7 +173,7 @@ export const REELS: Record<string, ReelShot[]> = {
     {
       file: 'pr-every-day',
       caption: '"Connect to AI Autopilot" makes a tested search a business workspace\'s recurring lead source.',
-      alt: 'The Connect to AI Autopilot wizard: the linked search, its criteria, and how many verified leads a run',
+      alt: 'The Connect to AI Autopilot wizard: the linked search, its criteria, and how many leads a run',
     },
   ],
 
@@ -272,7 +272,7 @@ const NOTES: Record<string, string[]> = {
   'pr-dentists': ['The same sentence works for any trade, in any town', 'Websites read live, addresses found where the business published them', 'Each address checked as it goes'],
   'pr-lawyers': ['Firms found with the address each one publishes', 'Whether that address takes mail, checked as it goes', 'Every row says when it was found'],
   'pr-addto': ['Tick the businesses you want', 'Save them to a list, or add them to a workflow, a business workspace or a campaign', 'They are imported once, never twice'],
-  'pr-every-day': ['Connect a search you tested to an AI Autopilot business workspace', 'Pick the schedule and how many verified leads a run', 'Duplicates and opt-outs are turned away automatically'],
+  'pr-every-day': ['Connect a search you tested to an AI Autopilot business workspace', 'Pick the schedule and how many leads a run', 'Duplicates and opt-outs are turned away automatically'],
   'contacts-list': ['Everyone you have spoken to, in one list', 'Health, stage, deals and value on every row', 'Sort, filter, tag and export in a couple of clicks'],
   'contacts-profile': ['One person, on one page', 'Lifecycle stage, open deals and meetings at the top', 'The next best action, suggested'],
   'contacts-deals': ['Every deal with this person', 'Its stage and its value', 'Without leaving their page'],

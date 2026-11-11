@@ -211,10 +211,12 @@ const AUTOPILOT = [
 ];
 
 /* What a project's board says as it works — the kind of line it writes, shown
-   beside the screens on a wide window. Illustrations of the events, not figures. */
+   beside the screens on a wide window. Illustrations of the events, not figures:
+   no counts, because a number here reads as somebody's result. (20 is the real
+   size of an outreach batch, not a tally.) */
 const AUTOPILOT_CHIPS = [
-  { icon: Workflow, title: '3 workflows built', sub: 'From one sentence, waiting for your yes' },
-  { icon: Mail, title: '20 follow-ups ready', sub: 'Each batch waits for approval' },
+  { icon: Workflow, title: 'Workflows built', sub: 'From one sentence, waiting for your yes' },
+  { icon: Mail, title: 'Follow-ups ready', sub: 'Each batch of 20 waits for approval' },
   { icon: CalendarCheck, title: 'Call booked', sub: 'A reply became a meeting' },
   { icon: ImageIcon, title: 'Posts drafted', sub: 'In your colours, for tomorrow' },
 ];
@@ -826,6 +828,8 @@ export default function SiteHome() {
             <a href="/privacy">Privacy policy</a>
             <a href="/terms-of-service">Terms of service</a>
             <a href="/terms">Acceptable use</a>
+            <a href="/refund-policy">Refund policy</a>
+            <a href="/cookie-policy">Cookie policy</a>
           </div>
         </div>
         <div className="dc-foot-base">

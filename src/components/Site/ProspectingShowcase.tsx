@@ -15,8 +15,11 @@
  * Every line in PROSPECTING and DAILY is something the product does today
  * (services/aiProspecting.ts, worker/src/prospectFinderTick.ts). The one that
  * depends on the owner — mailbox-level verification — says so. The figures in
- * TRADES are example searches from the sample workspace and are labelled as
- * such; nothing here is a customer's result.
+ * TRADES and the daily card are an illustration, and say so on the page where
+ * they are shown, not only here: an unlabelled "51 found" reads as a result
+ * somebody got. Nothing here is a customer's result, and nothing says
+ * "verified" — every address is checked (format, domain, mail server), but the
+ * mailbox itself only when the owner connects a verifier.
  */
 import { useState } from 'react';
 import {
@@ -31,7 +34,7 @@ import { motionReduced } from '../../services/motion';
 
 const PROSPECTING = [
   { icon: Sparkles, title: 'Ask in a sentence', body: '"Real estate agents in Richmond, Virginia with a website." It searches, reads, checks — and shows each step as it runs, with what it found.' },
-  { icon: MapPin, title: 'Three kinds of source', body: 'Business directories, verified business directories (the UK company register, with directors) and Google Maps — named for what they are, on every row.' },
+  { icon: MapPin, title: 'Three kinds of source', body: 'Business directories, official registers (the UK company register, with directors) and Google Maps — named for what they are, on every row.' },
   { icon: Globe, title: 'The email they publish', body: 'Each business\'s own website is read for the address it chose to publish. Never a guessed firstname@ that bounces.' },
   { icon: ShieldCheck, title: 'Checked before you send', body: 'Format, domain and mail server on every address — and the mailbox itself, catch-alls and named people when a mailbox verifier is connected.' },
   { icon: ListChecks, title: 'Straight into work', body: 'Save a list, or add the ticked ones to a workflow, an AI Autopilot business workspace or an email campaign — each row time-stamped with when it was found.' },
@@ -41,34 +44,35 @@ const PROSPECTING = [
   { icon: Ban, title: 'Nothing anonymous', body: 'Every lead says where it came from and when it was found, and anybody who asks to be taken out is removed and kept out.' },
 ];
 
-/* Example searches from the sample workspace — trade, town, found, with an
-   address, verified mailboxes. Shown moving, two rows the opposite way. */
-type Trade = { icon: typeof Home; trade: string; town: string; found: number; emails: number; verified: number };
+/* Illustrative searches — trade, town, found, with a checked address. Shown
+   moving, two rows the opposite way. No mailbox-verified count: that needs a
+   verifier the owner may not have connected. */
+type Trade = { icon: typeof Home; trade: string; town: string; found: number; emails: number };
 const TRADES: Trade[] = [
-  { icon: Home, trade: 'Real estate agents', town: 'Richmond, VA', found: 51, emails: 44, verified: 33 },
-  { icon: Stethoscope, trade: 'Dentists', town: 'Leeds', found: 58, emails: 52, verified: 41 },
-  { icon: Scale, trade: 'Law firms', town: 'Denver, CO', found: 48, emails: 43, verified: 35 },
-  { icon: Dumbbell, trade: 'Gyms', town: 'Austin, TX', found: 47, emails: 42, verified: 30 },
-  { icon: Coffee, trade: 'Cafés', town: 'Bristol', found: 39, emails: 33, verified: 24 },
-  { icon: Calculator, trade: 'Accountants', town: 'Manchester', found: 44, emails: 40, verified: 34 },
-  { icon: Scissors, trade: 'Hair salons', town: 'Miami, FL', found: 53, emails: 45, verified: 31 },
-  { icon: Car, trade: 'Auto repair', town: 'Phoenix, AZ', found: 46, emails: 39, verified: 28 },
-  { icon: ShieldCheck, trade: 'Insurance agencies', town: 'Norfolk, VA', found: 35, emails: 32, verified: 27 },
-  { icon: PawPrint, trade: 'Veterinarians', town: 'Plano, TX', found: 39, emails: 35, verified: 29 },
-  { icon: Hotel, trade: 'Hotels', town: 'Virginia Beach, VA', found: 42, emails: 37, verified: 30 },
-  { icon: Zap, trade: 'Electricians', town: 'Leeds', found: 36, emails: 30, verified: 22 },
-  { icon: HeartPulse, trade: 'Chiropractors', town: 'Denver, CO', found: 41, emails: 37, verified: 31 },
-  { icon: Flower2, trade: 'Florists', town: 'Manchester', found: 34, emails: 29, verified: 21 },
-  { icon: Camera, trade: 'Photographers', town: 'Austin, TX', found: 45, emails: 41, verified: 33 },
-  { icon: Building2, trade: 'Architects', town: 'Bristol', found: 37, emails: 34, verified: 28 },
-  { icon: KeyRound, trade: 'Mortgage brokers', town: 'Richmond, VA', found: 43, emails: 39, verified: 32 },
-  { icon: Landmark, trade: 'Property managers', town: 'Norfolk, VA', found: 38, emails: 33, verified: 26 },
-  { icon: Car, trade: 'Driving schools', town: 'Leeds', found: 36, emails: 31, verified: 23 },
-  { icon: PartyPopper, trade: 'Wedding venues', town: 'Virginia Beach, VA', found: 36, emails: 33, verified: 27 },
-  { icon: Croissant, trade: 'Bakeries', town: 'Miami, FL', found: 40, emails: 34, verified: 25 },
-  { icon: Monitor, trade: 'IT support', town: 'Phoenix, AZ', found: 44, emails: 41, verified: 36 },
-  { icon: Megaphone, trade: 'Marketing agencies', town: 'Manchester', found: 49, emails: 46, verified: 38 },
-  { icon: UtensilsCrossed, trade: 'Restaurants', town: 'Austin, TX', found: 59, emails: 48, verified: 34 },
+  { icon: Home, trade: 'Real estate agents', town: 'Richmond, VA', found: 51, emails: 44 },
+  { icon: Stethoscope, trade: 'Dentists', town: 'Leeds', found: 58, emails: 52 },
+  { icon: Scale, trade: 'Law firms', town: 'Denver, CO', found: 48, emails: 43 },
+  { icon: Dumbbell, trade: 'Gyms', town: 'Austin, TX', found: 47, emails: 42 },
+  { icon: Coffee, trade: 'Cafés', town: 'Bristol', found: 39, emails: 33 },
+  { icon: Calculator, trade: 'Accountants', town: 'Manchester', found: 44, emails: 40 },
+  { icon: Scissors, trade: 'Hair salons', town: 'Miami, FL', found: 53, emails: 45 },
+  { icon: Car, trade: 'Auto repair', town: 'Phoenix, AZ', found: 46, emails: 39 },
+  { icon: ShieldCheck, trade: 'Insurance agencies', town: 'Norfolk, VA', found: 35, emails: 32 },
+  { icon: PawPrint, trade: 'Veterinarians', town: 'Plano, TX', found: 39, emails: 35 },
+  { icon: Hotel, trade: 'Hotels', town: 'Virginia Beach, VA', found: 42, emails: 37 },
+  { icon: Zap, trade: 'Electricians', town: 'Leeds', found: 36, emails: 30 },
+  { icon: HeartPulse, trade: 'Chiropractors', town: 'Denver, CO', found: 41, emails: 37 },
+  { icon: Flower2, trade: 'Florists', town: 'Manchester', found: 34, emails: 29 },
+  { icon: Camera, trade: 'Photographers', town: 'Austin, TX', found: 45, emails: 41 },
+  { icon: Building2, trade: 'Architects', town: 'Bristol', found: 37, emails: 34 },
+  { icon: KeyRound, trade: 'Mortgage brokers', town: 'Richmond, VA', found: 43, emails: 39 },
+  { icon: Landmark, trade: 'Property managers', town: 'Norfolk, VA', found: 38, emails: 33 },
+  { icon: Car, trade: 'Driving schools', town: 'Leeds', found: 36, emails: 31 },
+  { icon: PartyPopper, trade: 'Wedding venues', town: 'Virginia Beach, VA', found: 36, emails: 33 },
+  { icon: Croissant, trade: 'Bakeries', town: 'Miami, FL', found: 40, emails: 34 },
+  { icon: Monitor, trade: 'IT support', town: 'Phoenix, AZ', found: 44, emails: 41 },
+  { icon: Megaphone, trade: 'Marketing agencies', town: 'Manchester', found: 49, emails: 46 },
+  { icon: UtensilsCrossed, trade: 'Restaurants', town: 'Austin, TX', found: 59, emails: 48 },
 ];
 
 /* What a project does every day once it is told who and where. */
@@ -96,7 +100,7 @@ function TradeRow({ items, reverse }: { items: Trade[]; reverse?: boolean }) {
             </span>
             <span className="dc-trade-nums">
               <em>{t.found}</em><small>found</small>
-              <em className="ok">{t.verified}</em><small>verified</small>
+              <em className="ok">{t.emails}</em><small>address checked</small>
             </span>
           </div>
         ))}
@@ -106,11 +110,12 @@ function TradeRow({ items, reverse }: { items: Trade[]; reverse?: boolean }) {
 }
 
 /* What a search says as it runs — beside the screens on a wide window. */
+/* No counts: a number floating beside the screens reads as somebody's result. */
 const CHIPS = [
-  { icon: Search, title: '51 found live', sub: 'Realtors in Richmond, Virginia' },
+  { icon: Search, title: 'Found live', sub: 'For example, realtors in Richmond, Virginia' },
   { icon: Globe, title: 'Websites read', sub: 'The address each one publishes' },
-  { icon: ShieldCheck, title: '33 mailboxes verified', sub: 'Checked before you send' },
-  { icon: CalendarClock, title: '20 new every day', sub: 'Added to an AI Autopilot business workspace' },
+  { icon: ShieldCheck, title: 'Addresses checked', sub: 'Format, domain and mail server, before you send' },
+  { icon: CalendarClock, title: 'New leads every day', sub: 'As many as you choose, into an AI Autopilot business workspace' },
 ];
 
 export default function ProspectingShowcase() {
@@ -136,9 +141,10 @@ export default function ProspectingShowcase() {
           <h3>Whoever you sell to.</h3>
           <p>Realtors, dentists, law firms, gyms, restaurants, salons, garages, vets, venues — in any town, the same sentence.</p>
         </div>
+        {/* Above the rows, not under them: the label has to be read before the figures are. */}
+        <p className="dc-trades-note">Example searches — an illustration, not real results.</p>
         <TradeRow items={TRADES.slice(0, half)} />
         <TradeRow items={TRADES.slice(half)} reverse />
-        <p className="dc-trades-note">Example searches from the sample workspace.</p>
       </div>
 
       <div className="dc-daily reveal" ref={daily}>
@@ -147,7 +153,7 @@ export default function ProspectingShowcase() {
           <h3>And a business workspace that finds its own, every day.</h3>
           <p>
             Tell an AI Autopilot business workspace "sell to real estate agents in Virginia" — in the wizard, or with
-            <b> Connect to AI Autopilot</b> on any search you have tested — and it keeps finding new verified leads on its own schedule.
+            <b> Connect to AI Autopilot</b> on any search you have tested — and it keeps finding new leads, each address checked, on its own schedule.
           </p>
           <ol className="dc-daily-steps">
             {DAILY.map((d, i) => (
@@ -159,7 +165,7 @@ export default function ProspectingShowcase() {
             ))}
           </ol>
         </div>
-        <figure className="dc-daily-card" aria-label="Thirty days of a sample business workspace's daily prospecting">
+        <figure className="dc-daily-card" aria-label="Illustration: thirty days of a sample business workspace's daily prospecting">
           <div className="dc-daily-top">
             <span><BarChart3 size={14} /> Brightline Realty — Virginia listings</span>
             <i><CheckCircle2 size={12} /> Finding every day</i>
@@ -176,7 +182,7 @@ export default function ProspectingShowcase() {
           <div className="dc-daily-chips">
             {['real estate agents · Richmond', 'property managers · Norfolk', 'mortgage brokers · Virginia Beach'].map(c => <span key={c}>{c}</span>)}
           </div>
-          <figcaption>Sample business workspace — the same chart its Prospects tab draws.</figcaption>
+          <figcaption>Illustration of a sample business workspace, not real results — the same chart its Prospects tab draws.</figcaption>
         </figure>
       </div>
       </>}

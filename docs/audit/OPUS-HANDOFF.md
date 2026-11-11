@@ -10,6 +10,17 @@ This document stands on its own. The evidence behind every task is in `docs/audi
 - **T-1:** live data under the raw `__agency__` name was not inspected (no access from the session); OWNER-CHECKLIST #47.
 - Still to do from P2 and below, in the order given.
 
+## Status (2026-11-11, remediation pass 2)
+
+- **Fixed, with tests:** W-1, W-2, S-1, E-3, E-4, F-1, F-3, E-6, M-6, DEP-1 (P2); PUB-3, UX-1, PERF-1 (main chunk 1,255 → 130 kB gzip); FE-1 (P3). Details in `docs/claude/security.md`, `money.md`, `autopilot.md`.
+- **PUB-1:** `/refund-policy` and `/cookie-policy` exist and are in the sitemap and footers. They state only facts — AppSumo refunds go through AppSumo, what a refunded licence does, which cookies are set — and promise no refund window of our own. The owner (and a lawyer) still decide the policy itself (OWNER-CHECKLIST #46).
+- **PUB-5:** Google Business Profile is off the public "connects to" strip until Business Profile API access exists (#24); put it back then (`shared/WorksWith.tsx`).
+- **Pass-1 leftovers closed:** the five "add a Gemini key in Settings" messages; the Quick Shorts upload window is a modal (the welcome card steps aside), fits 390 wide, states the real formats and 2 GB limit, and says the upload counts as one long video.
+- **Stale tests fixed:** `test:revenue` (signed webhook now carries `payment_status`, after M-4; a manual plan for a third business workspace; board order).
+- **Not done (P2):** W-5, T-3, DATA-1, D-3, M-5, E-7, S-2, F-2, OPS-2, OPS-3, PUB-4. **Owner first:** E-5 (sending cap numbers), D-2, PUB-2.
+- **UX-1 follow-up:** unnamed buttons remain inside pages (dashboard checklist collapse and dots, Settings password show/hide, two view toggles on `/social-creator`) — UX-6 to UX-8 territory.
+- **No SMS unique index** (T-2): the app enforces one verified owner; a database rule would fail the deploy if live already has duplicates.
+
 ## 1. The application in brief
 
 - **One Cloudflare Worker serves everything.**
