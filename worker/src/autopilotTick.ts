@@ -23,6 +23,7 @@ import { briefWantsOptIn, withOptIn } from './lib/optInText';
 import { briefWantsResearch, withResearch } from './lib/emailStyle';
 import { signTrackedLinks } from './lib/trackSign';
 import { dataGet, dataPut, installSecret, metaGet, metaPut, nowIso, type Env } from './lib/db';
+import { poolState } from './lib/poolState';
 import { addr } from './lib/http';
 import { loadMailbox, loadMailboxes } from './routes/mailbox';
 import { encryptSecret } from './lib/crypto';
@@ -113,36 +114,8 @@ const rid = () => `ap-${Date.now().toString(36)}-${Math.random().toString(36).sl
  * not a domain this workspace can send from, and treating it as one produces a
  * plan that thinks the work is done.
  */
-async function readPool(env: Env, accountId: string): Promise<PoolState> {
-  const mailboxes = await loadMailboxes(env, accountId);
-  const byDomain: Record<string, number> = {};
-  for (const mb of mailboxes) {
-    const addr = mb.from.email || mb.smtp.username;
-    const dm = addr.includes('@') ? addr.split('@')[1].toLowerCase() : '';
-    if (dm) byDomain[dm] = (byDomain[dm] ?? 0) + 1;
-  }
-
-  /* crm_provisioned is infra.ts's own audit of what it set up, which is the
-     only record of a domain having had its DNS written. */
-  const rows = await env.DB.prepare(
-    `SELECT DISTINCT kind, subject FROM crm_provisioned
-     WHERE account_id = ? AND outcome = 'ok' AND kind IN ('domain','dns')`,
-  ).bind(accountId).all<{ kind: string; subject: string }>();
-
-  const domains = new Set<string>(Object.keys(byDomain));
-  const authenticated = new Set<string>();
-  for (const r of rows.results ?? []) {
-    const dm = (r.subject ?? '').toLowerCase();
-    if (!dm) continue;
-    domains.add(dm);
-    if (r.kind === 'dns') authenticated.add(dm);
-  }
-
-  return {
-    domains: [...domains],
-    mailboxesByDomain: byDomain,
-    authenticated: [...authenticated],
-  };
+export async function readPool(env: Env, accountId: string): Promise<PoolState> {
+  return poolState(env, accountId, await loadMailboxes(env, accountId));
 }
 
 async function readWorkspace(env: Env, accountId: string, run?: RunRow): Promise<Workspace> {

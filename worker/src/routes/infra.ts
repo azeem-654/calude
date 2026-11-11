@@ -678,10 +678,26 @@ export async function handleInfra(req: Request, env: Env): Promise<Response> {
       };
     }));
 
+    /*
+     * Authenticated, as a fact the planner can read (D-3). The sending-pool
+     * planner only builds mailboxes and warm-up on a domain recorded as
+     * `crm_provisioned kind='dns'` — and nothing wrote that, so it never
+     * planned them. Written here, when SPF, DKIM and DMARC were each looked
+     * up and found; a lookup that could not run proves nothing and writes
+     * nothing. Once per domain.
+     */
+    const authed = (['spf', 'dkim', 'dmarc'] as const).every(p => live.some(r => r.purpose === p && r.checked && r.present));
+    if (authed) {
+      const already = await env.DB.prepare("SELECT 1 AS n FROM crm_provisioned WHERE account_id = ? AND kind = 'dns' AND subject = ? AND outcome = 'ok'")
+        .bind(accountId, domain).first();
+      if (!already) await record(env, accountId, 'dns', domain, 'dns-check', 'ok', 'SPF, DKIM and DMARC found in public DNS.');
+    }
+
     const dns = await loadProvider(env, accountId, 'dns');
     return json({
       success: true,
       domain,
+      authenticated: authed,
       records: live,
       /* Whether the app can fix this itself, which is the whole question the
          screen is asking. */
