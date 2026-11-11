@@ -254,3 +254,20 @@ Gemini mock on :8833 via `GEMINI_BASE`, wrangler :8822, fresh D1). Customers are
 capability `needs` strings stopped mentioning it in the same commit that added
 the fallback — removing the ask before supplying the thing would have been a
 promise the product could not keep.
+
+## Fairness, authenticated domains and managed buying
+
+- **Every live project is visited** (F-2): `runAutopilot` walks projects in id
+  order from `crm_meta.autopilot_cursor`, 400 a tick, wrapping round. Scheduled
+  agents are chosen in SQL by their `schedule` trigger and paged until the
+  tick's budget is met, so other workflows cannot fill the page. `test:fairness`.
+- **The pool planner sees authenticated domains** (D-3): `dns_records` writes
+  `crm_provisioned kind='dns'` once SPF, DKIM and DMARC were each looked up and
+  found; a verified hosted domain in the pool counts too
+  (`lib/poolState.ts`). `test:poolauth`.
+- **"Buy them for me" is off on live** (owner, 2026-11-11, checklist #48):
+  `managedBuyingEnabled` needs `MANAGED_BUYING=on` (staging sets it). Off, it
+  is refused by `set_infra` / `set_mode`, hidden in `ProjectInfra`, and
+  `credsForMode` returns nothing for managed, so a project already set to it
+  buys nothing.
+

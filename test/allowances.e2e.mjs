@@ -121,7 +121,7 @@ for (const width of [1280, 390]) {
   const row = await card.locator('[data-meter="autopilot_projects"]').innerText();
   ok(`${width}: the Usage card says 2 of 2 projects`, /AI Autopilot business workspaces/.test(row) && /2 of 2/.test(row), row);
   const shorts = await card.locator('[data-meter="ai_shorts"]').innerText();
-  ok(`${width}: …and every other meter, used and allowed`, /0 of 10/.test(shorts) && (await card.locator('[data-meter]').count()) === 14, shorts);
+  ok(`${width}: …and every other meter, used and allowed`, /0 of 10/.test(shorts) && (await card.locator('[data-meter]').count()) === 15 /* 14 + hosted_emails (E-5) */, shorts);
   ok(`${width}: …on the free trial`, /Free trial/.test(await card.innerText()));
   ok(`${width}: Plan & billing offers Advanced and Scale with their numbers`, (await page.locator('[data-plan]').count()) === 2 && /100 AI Shorts/.test(await page.locator('[data-plan="growth"]').innerText()) && /\$97\/month/.test(await page.locator('[data-plan="growth"]').innerText()) && /\$297\/month/.test(await page.locator('[data-plan="scale"]').innerText()) && /White-label/.test(await page.locator('[data-plan="scale"]').innerText()));
   ok(`${width}: …and a way to ask about Custom`, (await page.getByRole('link', { name: 'Ask about a Custom plan' }).count()) === 1);

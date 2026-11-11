@@ -38,6 +38,28 @@ one-off emails and automation emails skip a suppressed address and log it
 and `List-Unsubscribe` / `List-Unsubscribe-Post`. It needs `APP_ORIGIN`
 (audit E-2). `test:cloud`.
 
+**Bounces and complaints suppress** (`lib/bounces.ts`, E-7). Resend and Brevo
+post events for hosted mail to `/api/mail-webhook.php?p=…&t=<install token>`
+(the owner copies the address from Email on customers' domains; Resend's
+`whsec_` signing secret, once saved, is required too). A permanent bounce or a
+complaint goes into `crm_unsubscribes` (`campaign_id` 'bounced' /
+'complained') for the workspace whose hosted domain sent it, and its last
+delivery row is marked. The reply cron reads delivery-status notifications
+(`parseDsn`) instead of answering them and suppresses what failed for good;
+a delay or a full mailbox suppresses nothing. `test:bounces`.
+
+**Hosted mail has a daily cap** (`hosted_emails`, a `daily` meter in
+`allowances.ts`, E-5): trial 50, Advanced 500, Scale 2,000, AppSumo tiers 150 /
+300 / 500. `hydrate` puts a `quota` on a hosted mailbox and `deliver` checks it
+before and counts after an accepted send; own-key mailboxes have none. The
+install owner is unlimited, so sign-in codes are never stopped by it.
+
+**A text's delivery is known** (S-2): workspace sends set Twilio's
+`StatusCallback` to `/api/sms-status-webhook.php?a=<workspace>`, verified with
+that workspace's auth token; the SID is `crm_delivery_log.provider_ref` and
+the callback moves the row to delivered, undelivered or failed (21610 records
+the opt-out). `test:security`.
+
 ## Connecting mailboxes in bulk — paste, screenshot, connect and test all
 
 Settings → Email, under the mailbox list: **Paste your mail settings**

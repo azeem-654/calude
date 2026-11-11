@@ -21,6 +21,14 @@ This document stands on its own. The evidence behind every task is in `docs/audi
 - **UX-1 follow-up:** unnamed buttons remain inside pages (dashboard checklist collapse and dots, Settings password show/hide, two view toggles on `/social-creator`) — UX-6 to UX-8 territory.
 - **No SMS unique index** (T-2): the app enforces one verified owner; a database rule would fail the deploy if live already has duplicates.
 
+## Status (2026-11-11, remediation pass 3)
+
+- **Owner decisions applied:** PUB-1 (14-day refund of a new subscription's first payment), PUB-2 (Protected Central, Delaware, United States; Delaware and US federal law), E-5 (`hosted_emails` daily meter: trial 50 to Scale 2,000), D-2 (managed buying off on live: `MANAGED_BUYING`, staging only). A lawyer's read is still open (OWNER-CHECKLIST #46).
+- **Fixed, with tests (P2):** W-5 and T-3 (`test:storage`), DATA-1 (`test:merge`), D-3 (`test:poolauth`), M-5 (`test:affiliate`, `test:revenue`), E-7 (`test:bounces`), S-2, OPS-2, OPS-3 (`test:security`), F-2 (`test:fairness`). PUB-4 (P3) too (`test:publicpages`). Details in `docs/claude/security.md`, `money.md`, `platform.md`, `autopilot.md`, `site.md`.
+- **CI:** Promote testing to live now passes the promoted commit to Deploy to Cloudflare, which deploys exactly that commit and refuses one not on `main`.
+- **Owner first, new:** OWNER-CHECKLIST #49 (bounce webhook at Resend/Brevo) and #50 (Stripe `charge.refunded` / `charge.dispute.created` on the billing webhook). Without them E-7's provider path and M-5's commission voiding have nothing to act on.
+- **Still to do:** the P3 items and the UX-1 follow-ups listed in pass 2.
+
 ## 1. The application in brief
 
 - **One Cloudflare Worker serves everything.**

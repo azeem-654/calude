@@ -5,8 +5,9 @@ single Cloudflare Worker.
 
 Two hostnames, one deployment:
 
-- **protectedcentral.com** — the marketing site. No login, no session. Every
-  path renders `SiteHome`; the two ways in are links to the app host.
+- **protectedcentral.com** — the marketing site. No login, no session. Its own
+  pages render `SiteHome` (or their page); any other address is a real 404
+  (`worker/src/lib/publicPages.ts`). The two ways in are links to the app host.
 - **app.protectedcentral.com** — the product.
 
 Which one you get is decided at runtime from `location.hostname`

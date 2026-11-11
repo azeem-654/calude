@@ -128,6 +128,24 @@ signing. **Every real send names its workspace** (E-4): `smtp-send.php` and
 `provider-send.php` refuse a send with no `accountId` (only a sign-in check may
 go without), so the content gate and a suspension always apply.
 
+## Stored files — bounded going in, deleted going out
+
+**A browser's upload link names its one file** (W-5): `sign(…, { m: 'put', n:
+[names], b: bytes })` for media pictures, thumbnails, logos and music; such a
+grant refuses another name, any multipart and anything over `b`. Engine grants
+(no `n`) are unchanged. `lib/storageSweep.ts` runs on the cron: once a day,
+paged, it deletes uncommitted Media Center uploads and deleted Video Studio
+projects' folders older than a day and aborts open multipart uploads idle a
+day (brand/, music/ and unknown folders are kept); and **closing a workspace
+queues its `v/`, `booking/` and `mail/` prefixes** in `crm_storage_purges`
+(T-3), deleted a bounded batch per tick until each lists empty (`done_at`).
+`test:storage`.
+
+**Two tabs cannot silently overwrite each other** (DATA-1): `bulk_set` takes a
+`base` stamp per key (and `put` an `expectedUpdatedAt`); a stale save comes
+back in `conflicts` with the current value, and `serverData.ts` merges its own
+change in by record id (`mergeDoc.ts`) and re-sends. `test:merge`.
+
 ## Secrets
 
 Customer credentials — mailbox passwords, registrar and DNS API keys, Stripe

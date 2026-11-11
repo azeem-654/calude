@@ -19,9 +19,10 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 
 | # | What | Where | Blocks |
 |---|---|---|---|
-| 46 | **Decide the AppSumo-readiness items only you can decide** (added 2026-11-11 by the readiness audit). The refund policy and how it fits AppSumo's buyer refund window. Your legal entity, address and governing law for the terms and privacy page. Whether the home page's sample prospecting figures stay, and under what label. Whether "Google Business Profile replies" stays before Google grants access. Whether managed domain and mailbox buying stays on before it can bill. The hosted-mail daily cap. Whether the lifetime-deal limits fit real unit costs. The full list with reasons is in `docs/audit/OPUS-HANDOFF.md` §4. **Done meanwhile (2026-11-11):** `/refund-policy` and `/cookie-policy` now exist and state only facts (AppSumo refunds through AppSumo; what a refunded licence removes; the two cookies) — read them and have them checked; the refund window for in-app subscriptions is still "at our discretion" until you decide. Google Business Profile is off the public logo strip until #24 is done | a lawyer for the first two; the app | AppSumo submission |
+| 46 | **Have a lawyer read the legal pages, and decide what is left** (added 2026-11-11; updated 2026-11-11). **Decided by you and applied:** a 14-day refund of the first payment of a new in-app subscription (once per account; renewals not refunded) in the Refund Policy and Terms; the legal identity "Protected Central, Delaware, United States" with Delaware and US federal law governing (US contract law is state law, so "USA" is written that way — change `GOVERNING_LAW` in `legalText.ts` if your lawyer prefers otherwise); the hosted-mail daily cap (trial 50, Advanced 500, Scale 2,000, AppSumo 150/300/500 — change them in Sign-ups & trials → Plans & allowances); managed buying off on live (#48). **Still yours:** a lawyer's read of those pages; whether the home page's sample prospecting figures stay, and under what label; whether "Google Business Profile replies" stays before Google grants access (#24); whether the lifetime-deal limits fit real unit costs. Reasons in `docs/audit/OPUS-HANDOFF.md` §4 | a lawyer; the app | AppSumo submission |
 | 47 | **Check for old rows under the shared `__agency__` name** (added 2026-11-11 with the T-1 fix). Most routes now refuse that name, so anything stored under it before is no longer reachable. Run `SELECT COUNT(*) FROM crm_projects WHERE account_id = '__agency__'` (and the same on `crm_portfolios`, `crm_products`, `crm_mailbox_accounts`) on the live database. If any come back, say whose they are and they can be moved to that person's own bucket | Cloudflare → D1 → crmpro (live) → Console | nothing until a customer misses something |
-| 48 | **Managed domain and mailbox buying still is not charged for** (D-2). The screen no longer says "added to your bill", but a customer on managed mode still gets domains and mailboxes registered on your Openprovider balance. Decide: switch managed mode off until it bills, or add a charge before each purchase (part of #46) | the app; a decision | money leaving your registrar balance |
+| 49 | **Send bounces and complaints back to the app** (added 2026-11-11, E-7). Settings → Platform services → Email on customers' domains shows a webhook address. In Resend → Webhooks → Add endpoint (events `email.bounced`, `email.complained`), or Brevo → Transactional → Settings → Webhook (hard bounce, invalid email, spam), paste it; for Resend, paste the endpoint's signing secret back into the same screen and save | resend.com or brevo.com, then the app | Hard-bounced addresses being mailed again, which spends the shared sending key's reputation |
+| 50 | **Subscribe the payment webhooks to refunds and disputes** (added 2026-11-11, M-5). In Stripe → Developers → Webhooks, add `charge.refunded` and `charge.dispute.created` to the endpoint for `/api/billing-webhook.php` (Creem: `refund.created`, `dispute.created`). Until then a refunded subscription payment still pays its affiliate commission | dashboard.stripe.com (or Creem) | Commissions paid on refunded money |
 | 1 | **Fund the Openprovider balance** and switch on their recurring auto top-up | openprovider.eu → Finance | Every domain sale. Checkout refuses orders while it is short |
 | 3 | **Change the master password** | Settings → Security | Security |
 | 4 | **Reset the testing site's password**, or create its owner account. *Since 2026-10-26 https://testing.protectedcentral.com is locked* (item 37): the browser first asks for the testing site's username and password, then opens on the staging copy of the website; press **Sign in** at the top to reach the testing app. Everything pushed to staging is visible there | testing.protectedcentral.com | Being able to sign in to staging at all. See "The testing site has one account" below |
@@ -1094,6 +1095,16 @@ customer changes their nameservers to the two shown. Mail lives in the app
 only (no IMAP for phone mail apps).
 
 ## Done
+
+- **Managed domain and mailbox buying is off on the live site** (2026-11-11,
+  was #48, your decision). "Buy them for me" is hidden and refused unless the
+  Worker has `MANAGED_BUYING=on` (only staging sets it), so nothing is bought
+  on your Openprovider/Porkbun balance for a customer. Turn it back on by adding
+  that variable to `crmpro` once purchases are charged for.
+- **Promote testing to live deploys the commit it promoted** (2026-11-11).
+  The first promotion's deploy was started on the previous commit and had to
+  be cancelled; `promote.yml` now passes the promoted commit to `deploy.yml`,
+  which checks out exactly that one and refuses a commit not on `main`.
 
 - **Master password restored** (2026-09-09) — still needs changing, see 1.
 - **`npm run smoke`** exists — an end-to-end check that a workspace survives

@@ -145,6 +145,17 @@ the operator's subscription billing only — never on a customer's shop or a
 reseller's own billing. `npm run test:affiliate` (fresh D1, `PERSIST=`) signs
 real webhooks.
 
+**A refund or dispute reverses its commission** (M-5). The payment intent is
+stored on the commission (`payment_ref`, and the invoice id) and on a
+storefront order when the payment lands; Stripe checkouts also set
+`payment_intent_data[metadata][orderId]`. `charge.refunded` /
+`charge.dispute.created` (Creem `refund.created` / `dispute.created`, by
+transaction) are matched on it: a pending commission is voided, cut pro rata on
+a partial refund, or — already paid — marked to be deducted (`void_reason`,
+shown on Manage program). A fully refunded storefront order becomes
+`refunded`; a partial refund leaves it paid. A dispute changes no subscription.
+The webhook endpoints must be subscribed to those events at the processor.
+
 ## Revenue by project — what a project earned, on a stated rule
 
 `lib/revenue.ts` holds the rule and the arithmetic (pure); `routes/revenue.ts`

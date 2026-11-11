@@ -61,6 +61,23 @@ product.
   a `VITE_BASE=/` build) drive the owner's eight journeys at 1280 and 390,
   the funnel report, the allowance and the centred slideshows.
 
+## Unknown addresses are a 404, and each page has its own head
+
+`worker/src/lib/publicPages.ts` (PUB-4) lists the public site's pages — the
+sitemap, aliases, trade pages, `/appsumo`, `/login` and `/signup`, the
+`/book/`, `/shop/`, `/p/`, `/f/` prefixes and any file. On
+protectedcentral.com (only) the Worker serves each listed page with its own
+title and description (`PUBLIC_HEADS`) and anything else with status 404 and
+`noindex`, and the app draws `SiteNotFound` there instead of the home page.
+Live's `run_worker_first` is `["/*", "!/assets/*"]` for this. A new public page
+is added to `SITEMAP_PATHS` (and a head here) or it 404s. `test:publicpages`.
+
+**The legal identity** (owner, 2026-11-11): `LEGAL_ENTITY` Protected Central,
+`LEGAL_ADDRESS` Delaware, United States, `GOVERNING_LAW` Delaware and US
+federal law, and `REFUND_WINDOW_DAYS` 14 — the first payment of a new in-app
+subscription, once per account — in `legalText.ts`, used by the privacy page,
+the terms and the refund policy.
+
 ## Logos say only what is true (from Conventions)
 
 **Logos say only what is true.** `shared/WorksWith.tsx` is the logo strip on

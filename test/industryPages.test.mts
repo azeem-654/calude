@@ -116,7 +116,9 @@ ok('the sitemap lists every microsite and the booking page', ['/hvac', '/roofing
 ok('/ecommerce-management-services is the e-commerce page', industryFor('/ecommerce-management-services')?.slug === 'ecommerce' && industryFor('/ecommerce-management-services/')?.slug === 'ecommerce');
 ok('the e-commerce short addresses redirect to the one canonical page, and are not pages themselves', Object.values(PAGE_ALIASES).every(p => p === '/ecommerce-management-services') && Object.keys(PAGE_ALIASES).every(a => !industryFor(a) && !SITEMAP_PATHS.includes(a)));
 const wrangler = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
-ok('the Worker runs first for the e-commerce page and its aliases (head and redirects)', ['/ecommerce-management-services', ...Object.keys(PAGE_ALIASES)].every(p => wrangler.includes(`"${p}"`)));
+/* Since PUB-4 live runs the Worker first for everything but the bundle ("/*", "!/assets/*"), which covers these. */
+const catchAll = /"run_worker_first":\s*\["\/\*",\s*"!\/assets\/\*"\]/.test(wrangler);
+ok('the Worker runs first for the e-commerce page and its aliases (head and redirects)', catchAll || ['/ecommerce-management-services', ...Object.keys(PAGE_ALIASES)].every(p => wrangler.includes(`"${p}"`)));
 
 /* E-commerce: the managed service, its price and its honesty. */
 const ecomText = JSON.stringify({ ...ECOM, ECOMMERCE_OFFER }, (_k, v) => (typeof v === 'function' ? undefined : v));
