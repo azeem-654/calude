@@ -253,3 +253,16 @@ export function quoteBasket(prices: PriceRow[], input: BasketInput): Costed | nu
     wholesaleCents: wholesale,
   };
 }
+
+/**
+ * The mailboxes an order asks for: the names (what will be created) and the
+ * count (what is priced). An array of names is both; a bare number, which the
+ * quote screen sends before names are chosen, is a count with no names.
+ */
+export function mailboxesOf(given: unknown): { names: string[]; count: number } {
+  if (Array.isArray(given)) {
+    const names = given.map(m => String(m).trim()).filter(Boolean).slice(0, 20);
+    return { names, count: names.length };
+  }
+  return { names: [], count: Math.min(Math.max(Math.round(Number(given) || 0), 0), 20) };
+}

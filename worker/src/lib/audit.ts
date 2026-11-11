@@ -23,7 +23,7 @@ export type AuditKind =
   | 'login' | 'login_failed' | 'logout' | 'session_revoked' | 'sessions_revoked'
   | 'password_changed' | 'password_reset_by_admin'
   | 'mfa_enabled' | 'mfa_disabled' | 'mfa_failed'
-  | 'user_created' | 'user_removed'
+  | 'user_created' | 'user_removed' | 'user_invited' | 'invite_accepted'
   | 'integration_connected' | 'integration_removed'
   | 'data_exported' | 'account_deleted' | 'workspace_closed';
 

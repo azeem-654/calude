@@ -8,10 +8,16 @@
  * keys they provide, so it is a card on Platform services, above the backup
  * keys that take over when it fails. What it stores is unchanged — the key
  * of the owner's own workspace, which the pool reads as the main key.
+ *
+ * Server only (AI-1). It used to keep a second copy in this browser's
+ * localStorage, because AI Shorts sent video to Google from the page — which
+ * meant a secret readable by any script here, and a 403 for every customer
+ * whose browser had none. Video now goes through the Worker, so the box is
+ * write-only: never filled from anything stored, checked by the server (not
+ * by this page calling Google), and blank after saving.
  */
 import { useState, useEffect, useCallback } from 'react';
 import { CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Save, ExternalLink } from 'lucide-react';
-import { getGeminiKey, setGeminiKey, testGeminiKey } from '../../lib/gemini';
 import { useApp } from '../../context/AppContext';
 import { getSession } from '../../services/auth';
 import { fetchReplies, saveAiKey, testAiKey, type AiStatus } from '../../services/replies';
@@ -19,11 +25,10 @@ import { fetchReplies, saveAiKey, testAiKey, type AiStatus } from '../../service
 /* ── AI Engine: Gemini API key (powers AI Shorts, content generation, design AI) ── */
 export default function AiEngineCard() {
   const { addNotification } = useApp();
-  const [key, setKey] = useState(() => getGeminiKey());
+  const [key, setKey] = useState('');
   const [show, setShow] = useState(false);
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
-  const savedKey = getGeminiKey();
 
   /*
    * The server's copy, asked for rather than assumed.
@@ -67,50 +72,24 @@ export default function AiEngineCard() {
     );
   };
 
-  /*
-   * Saved twice, on purpose, and they are not the same copy.
-   *
-   * The browser keeps one because AI Shorts analyses video *from the page* —
-   * uploading a file to the Worker to hand on to Google would be a needless
-   * round trip through our own bandwidth.
-   *
-   * The server keeps one, encrypted, because Autopilot writes replies from the
-   * cron and there is no browser there. That is the whole reason a customer who
-   * shut their laptop stopped answering leads: the key was somewhere the
-   * scheduler could not reach.
-   *
-   * If the server copy fails to save, the local one still works and the message
-   * says exactly what is lost — replies while signed out — rather than claiming
-   * success.
-   */
+  /* Checked by the server before it is stored, so a mistyped key is said now
+     rather than found by Autopilot at three in the morning. */
   const handleSaveAndTest = async () => {
     setTesting(true);
     setResult(null);
-    const res = await testGeminiKey(key);
-    if (!res.ok) { setTesting(false); setResult({ ok: false, msg: res.error }); return; }
-
-    setGeminiKey(key);
-    const stored = await saveAiKey(key);
+    const res = await testAiKey(key.trim());
+    if (!res.success) { setTesting(false); setResult({ ok: false, msg: res.error ?? 'Google refused the key.' }); return; }
+    const stored = await saveAiKey(key.trim());
+    if (stored.success) await testAiKey();   // stamps the stored key as verified
     setTesting(false);
-
     if (stored.success) {
+      setKey('');
       void readServer();
-      setResult({ ok: true, msg: 'Key verified and saved. AI Autopilot can now answer replies even when you are signed out.' });
+      setResult({ ok: true, msg: 'Key verified and saved on the server. AI Autopilot can now answer replies even when you are signed out.' });
       addNotification('Gemini key verified and stored on the server.', 'success');
     } else {
-      setResult({
-        ok: true,
-        msg: `Saved in this browser, but not on the server — AI Autopilot will not be able to write replies while you are signed out. ${stored.error ?? ''}`,
-      });
-      addNotification('Saved locally only. AI Autopilot cannot reply while you are signed out.', 'error');
+      setResult({ ok: false, msg: `Google accepted the key, but it could not be saved. ${stored.error ?? ''}` });
     }
-  };
-
-  const handleRemove = () => {
-    setGeminiKey('');
-    setKey('');
-    setResult(null);
-    addNotification('API key removed from this browser. It stays on the server until replaced.', 'info');
   };
 
   const card: React.CSSProperties = { backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '24px' };
@@ -141,17 +120,7 @@ export default function AiEngineCard() {
           </p>
         )}
 
-        {/* Two copies, two answers. Shown apart because they fail apart: the
-            browser one going missing costs you AI Shorts on this device, and
-            the server one going missing costs every customer their replies and
-            their campaign copy, silently, at three in the morning. */}
         <div style={{ display: 'grid', gap: 8, marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, backgroundColor: savedKey ? '#ecfdf5' : '#fff7ed', border: `1px solid ${savedKey ? '#a7f3d0' : '#fed7aa'}` }}>
-            {savedKey
-              ? <><CheckCircle size={15} color="#059669" /><span style={{ fontSize: 13, fontWeight: 600, color: '#065f46' }}>This browser has a key — AI Shorts can analyse video here</span></>
-              : <><XCircle size={15} color="#c2410c" /><span style={{ fontSize: 13, fontWeight: 600, color: '#9a3412' }}>This browser has no key — AI Shorts cannot analyse video on this device</span></>}
-          </div>
-
           {/* Holding a key and having a working key are different states, and
               the green tick belongs only to the second. A stored key Google has
               refused is the worst one to paint green: everything downstream of
@@ -202,7 +171,8 @@ export default function AiEngineCard() {
               type={show ? 'text' : 'password'}
               value={key}
               onChange={e => { setKey(e.target.value); setResult(null); }}
-              placeholder="AIza..."
+              placeholder={server?.hasKey ? 'A key is saved — paste a new one to replace it' : 'AIza...'}
+              autoComplete="off"
               style={{ width: '100%', padding: '10px 40px 10px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box', fontFamily: 'ui-monospace, monospace' }}
             />
             <button onClick={() => setShow(v => !v)} title={show ? 'Hide' : 'Show'}
@@ -214,12 +184,6 @@ export default function AiEngineCard() {
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px', backgroundColor: testing || !key.trim() ? '#cbd5e1' : '#17191c', color: 'white', border: 'none', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: testing || !key.trim() ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
             {testing ? <><Loader size={14} className="spin" /> Verifying…</> : <><Save size={14} /> Verify & Save</>}
           </button>
-          {savedKey && (
-            <button onClick={handleRemove}
-              style={{ padding: '10px 14px', backgroundColor: 'white', color: '#dc2626', border: '1px solid #fecaca', borderRadius: '9px', fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-              Remove
-            </button>
-          )}
         </div>
 
         {result && (
@@ -237,9 +201,8 @@ export default function AiEngineCard() {
             <li>Copy the key (starts with <code>AIza</code>) and paste it above, then Verify &amp; Save</li>
           </ol>
           <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '10px 0 0', lineHeight: 1.5 }}>
-            Verify &amp; Save keeps two copies: one in this browser, which talks to Google directly so a
-            video never passes through us, and one encrypted on the server, which is what lets AI Autopilot
-            write and reply on a schedule with nobody signed in. Neither is ever shown back to a browser.
+            Verify &amp; Save keeps one copy, encrypted on the server — that is what writes, replies and
+            watches videos for AI Shorts, with nobody signed in. It is never shown back to a browser or kept in one.
           </p>
         </div>
       </div>

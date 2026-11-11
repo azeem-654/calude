@@ -455,10 +455,20 @@ export interface AccessResult {
   message?: string;
 }
 
+/**
+ * `allowReserved`: the route stores under `storageWorkspace()`, so the
+ * reserved `__agency__` name becomes the caller's own bucket. Every other
+ * route is refused it — they queried the raw id, so `__agency__` was one
+ * bucket shared by every agency: A read B's projects there, and planted rows
+ * the cron then ran.
+ */
+export interface AccessOptions { allowReserved?: boolean }
+
 export async function workspaceAccess(
   db: D1Database,
   user: SessionUser | null,
   accountId: string,
+  opts: AccessOptions = {},
 ): Promise<AccessResult> {
   if (!user) return { ok: false, code: 'not_yours', message: 'Sign in again.' };
   if (user.role !== 'agency') {
@@ -472,9 +482,10 @@ export async function workspaceAccess(
        then binds that name to them, so what they get is their own. An id that
        arrives already suffixed is someone naming another agency's bucket
        directly, which is the one thing this has to refuse. */
-    return accountId === RESERVED_AGENCY
+    if (accountId !== RESERVED_AGENCY) return { ok: false, code: 'not_yours', message: 'That workspace is not yours.' };
+    return opts.allowReserved
       ? { ok: true }
-      : { ok: false, code: 'not_yours', message: 'That workspace is not yours.' };
+      : { ok: false, code: 'not_yours', message: 'Open one of your workspaces first — this needs a workspace of your own.' };
   }
 
   const row = await db.prepare('SELECT owner_email FROM crm_workspaces WHERE account_id = ?')
@@ -544,8 +555,9 @@ export async function canAccess(
   db: D1Database,
   user: SessionUser | null,
   accountId: string,
+  opts: AccessOptions = {},
 ): Promise<boolean> {
-  return (await workspaceAccess(db, user, accountId)).ok;
+  return (await workspaceAccess(db, user, accountId, opts)).ok;
 }
 
 /**
@@ -694,10 +706,11 @@ export async function denyForeignWorkspace(
   db: D1Database,
   user: SessionUser | null,
   accountId: string | undefined | null,
+  opts: AccessOptions = {},
 ): Promise<Response | null> {
   const id = String(accountId ?? '').trim();
   if (!id || !user) return null;
-  const access = await workspaceAccess(db, user, id);
+  const access = await workspaceAccess(db, user, id, opts);
   if (access.ok) return null;
   return new Response(JSON.stringify({ success: false, error: access.message ?? 'That workspace is not yours.' }), {
     status: 403,

@@ -265,11 +265,14 @@ export async function askGeminiParts(
   return withFailover(apiKey, k => askGeminiOnce(k, parts, temperature, o));
 }
 
+/** A file already uploaded to Google's Files API on the key being asked (askGeminiAboutFile only). */
+type GeminiPart = AiPart | { fileData: { mimeType?: string; fileUri: string } };
+
 async function askGeminiOnce(
-  apiKey: string, parts: AiPart[], temperature: number, opts: AskOpts,
+  apiKey: string, parts: GeminiPart[], temperature: number, opts: AskOpts,
 ): Promise<Attempt<AiResult>> {
   /* An OpenRouter key in the pool is asked through its own adapter (lib/openrouter.ts). */
-  if (isOpenRouterKey(apiKey)) return askOpenRouter(apiKey, { parts, temperature, json: opts.json !== false, timeoutMs: opts.timeoutMs, task: opts.task, module: opts.module, accountId: opts.accountId });
+  if (isOpenRouterKey(apiKey)) return askOpenRouter(apiKey, { parts: parts.filter((x): x is AiPart => !('fileData' in x)), temperature, json: opts.json !== false, timeoutMs: opts.timeoutMs, task: opts.task, module: opts.module, accountId: opts.accountId });
   const use = (model: string, ok: boolean, status: number, meta?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number }) =>
     recordAiUse({ provider: 'gemini', key: apiKey, model, module: opts.module, accountId: opts.accountId, ok, status, tokensIn: meta?.promptTokenCount, tokensOut: (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0) });
   const failed = (status: number, raw: string): Attempt<AiResult> =>
@@ -329,6 +332,100 @@ async function askGeminiOnce(
     }
   }
   return failed(lastStatus, lastError || 'every model failed');
+}
+
+/**
+ * A video the model watches, on the install's keys.
+ *
+ * ── Why the Files API, and why per key ──
+ *
+ * Quick Shorts sends whole recordings, far past what rides inline in a
+ * request (AiPart's `inlineData`). Google's Files API takes them — but a file
+ * uploaded with one key can be read only by that key's project, so the upload,
+ * the wait for Google to process it and the question are one attempt, made
+ * again from the start on the next key when this one is refused
+ * (withFailover). Uploading once and asking on another key would 403.
+ *
+ * The browser used to make this upload itself with a key from localStorage —
+ * empty for every customer, so Google answered 403 "unregistered callers".
+ * Here the bytes are read from Video Studio's own storage (`open`, called once
+ * per attempt, since a stream can be read only once) and the key never leaves
+ * the Worker. The file is deleted from Google after the answer; Google would
+ * drop it after 48 hours anyway, but there is no reason to leave a customer's
+ * recording on somebody else's disk that long.
+ */
+export interface FileForAi { name: string; mimeType: string; size: number; open: () => Promise<ReadableStream | null> }
+
+export async function askGeminiAboutFile(
+  apiKey: string, file: FileForAi, prompt: string, temperature = 0.3, opts: AskOpts & { activeWaitMs?: number } = {},
+): Promise<AiResult> {
+  const o = { ...opts, task: opts.task ?? (opts.module ? taskOf(opts.module) : 'reason' as AiTask) };
+  return withFailover(apiKey, k => askAboutFileOnce(k, file, prompt, temperature, o));
+}
+
+async function askAboutFileOnce(
+  apiKey: string, file: FileForAi, prompt: string, temperature: number, opts: AskOpts & { activeWaitMs?: number },
+): Promise<Attempt<AiResult>> {
+  const failed = (status: number, raw: string, said?: string): Attempt<AiResult> =>
+    ({ ok: false, status, error: raw, value: { ok: false, text: '', error: said ?? friendly(status, raw) } });
+  /* No Files API behind an OpenRouter key: the next key, no rest (-2). */
+  if (isOpenRouterKey(apiKey)) return failed(-2, 'not a Gemini key', 'None of this installation\'s AI keys can watch a video file — a Google Gemini key is needed.');
+  const k = encodeURIComponent(apiKey);
+  let uploadUrl = '';
+  try {
+    const start = await fetch(`${BASE}/upload/v1beta/files?key=${k}`, {
+      method: 'POST',
+      headers: {
+        'X-Goog-Upload-Protocol': 'resumable', 'X-Goog-Upload-Command': 'start',
+        'X-Goog-Upload-Header-Content-Length': String(file.size), 'X-Goog-Upload-Header-Content-Type': file.mimeType,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ file: { display_name: file.name.slice(0, 120) || 'video' } }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!start.ok) return failed(start.status, await start.text().catch(() => `HTTP ${start.status}`));
+    uploadUrl = start.headers.get('x-goog-upload-url') ?? '';
+  } catch (e) {
+    return failed(0, `Could not reach Google: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  if (!uploadUrl) return failed(502, 'Google gave no upload address', 'Google did not accept the video for upload — try again shortly.');
+
+  /* Not a key's fault (404 is not one): withFailover stops here rather than re-reading a missing file on every key. */
+  const stream = await file.open();
+  if (!stream) return failed(404, 'source gone', 'The uploaded video could not be read back from storage. Upload it again.');
+  let meta: { name?: string; uri?: string; mimeType?: string; state?: string } = {};
+  try {
+    /* Exactly the declared length, streamed — a recording is never held in this isolate's memory. */
+    const up = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: { 'X-Goog-Upload-Offset': '0', 'X-Goog-Upload-Command': 'upload, finalize' },
+      body: stream.pipeThrough(new FixedLengthStream(file.size)),
+    });
+    if (!up.ok) return failed(up.status, await up.text().catch(() => `HTTP ${up.status}`));
+    meta = (await up.json<{ file?: typeof meta }>().catch(() => ({} as { file?: typeof meta }))).file ?? {};
+  } catch (e) {
+    return failed(0, `The upload to Google stopped: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  if (!meta.name || !meta.uri) return failed(502, 'no file in the upload answer', 'Google did not confirm the upload — try again shortly.');
+
+  const forget = () => fetch(`${BASE}/v1beta/${meta.name}?key=${k}`, { method: 'DELETE' }).then(() => undefined, () => undefined);
+  /* Google processes a video before it can be read; PROCESSING → ACTIVE (or FAILED). */
+  let state = meta.state ?? 'PROCESSING';
+  const deadline = Date.now() + (opts.activeWaitMs ?? 180_000);
+  while (state === 'PROCESSING' && Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 2500));
+    try {
+      const r = await fetch(`${BASE}/v1beta/${meta.name}?key=${k}`, { signal: AbortSignal.timeout(15_000) });
+      if (r.ok) state = (await r.json<{ state?: string }>().catch(() => ({} as { state?: string }))).state ?? state;
+    } catch { /* asked again on the next turn */ }
+  }
+  /* The video's fault or Google's slowness, not the key's: 422/408 stop the failover. */
+  if (state === 'FAILED') { await forget(); return failed(422, 'file processing failed', 'Google could not read this video file. Try exporting it again as MP4 (H.264).'); }
+  if (state !== 'ACTIVE') { await forget(); return failed(408, 'file still processing', 'Google was still processing the video after three minutes. Try again in a moment, or try a shorter video.'); }
+
+  const r = await askGeminiOnce(apiKey, [{ fileData: { mimeType: meta.mimeType || file.mimeType, fileUri: meta.uri } }, { text: prompt }], temperature, opts);
+  await forget();
+  return r;
 }
 
 /** Turn Google's verbose error bodies into a sentence worth showing. */

@@ -17,6 +17,7 @@ import { providerLabel, sendViaProvider } from '../lib/providerApi';
 import { addr, body, fail, headerSafe, json } from '../lib/http';
 import { requireSessionForSocket, denyForeignWorkspace, type Env } from '../lib/db';
 import { loadMailbox } from './mailbox';
+import { hostedFromProblem } from '../lib/deliver';
 import { gate as contentGate } from '../lib/contentGate';
 
 interface ProviderBody {
@@ -54,8 +55,12 @@ export async function handleProviderSend(req: Request, env: Env): Promise<Respon
   let domain = String(d.domain ?? '').trim();
   let apiUrl = String(d.apiUrl ?? '').trim();
 
+  /* Set when the key is the platform's (a hosted mailbox): then the From is
+     the mailbox's own, never the request's (lib/deliver hostedFromProblem). */
+  let hostedMb: Awaited<ReturnType<typeof loadMailbox>> = null;
   if (!apiKey && d.accountId) {
     const mb = await loadMailbox(env, String(d.accountId));
+    if (mb?.hosted) hostedMb = mb;
     if (mb?.provider.key) {
       provider = provider || mb.provider.name;
       apiKey = mb.provider.key;
@@ -74,6 +79,10 @@ export async function handleProviderSend(req: Request, env: Env): Promise<Respon
   const fromEmail = addr(d.fromEmail);
   if (!String(d.fromEmail ?? '').trim()) return fail('A sending address is required. Set one in Settings → Email & SMS.');
   if (!fromEmail) return fail(`"${d.fromEmail}" is not a valid sending address.`);
+  if (hostedMb) {
+    const wrongFrom = hostedFromProblem(hostedMb, fromEmail);
+    if (wrongFrom) return fail(wrongFrom);
+  }
   const replyRaw = String(d.replyTo ?? '').trim();
   if (replyRaw && !addr(replyRaw)) return fail(`"${replyRaw}" is not a valid reply-to address`);
 

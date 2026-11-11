@@ -22,6 +22,8 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Loader } from 'lucide-react';
 import { googleFinish, googleStateIsOurs } from '../../services/auth';
 import TwoStepPrompt from './TwoStepPrompt';
+import InviteChoice from './InviteChoice';
+import type { InviteOffer } from '../../services/auth';
 import { LogoMark } from '../shared/Logo';
 
 const INK = '#17191c';
@@ -33,6 +35,7 @@ const spent = new Set<string>();
 export default function GoogleCallback({ onAuthed }: { onAuthed: () => void }) {
   const [error, setError] = useState('');
   const [ticket, setTicket] = useState('');
+  const [invite, setInvite] = useState<InviteOffer | null>(null);
   const done = useRef(false);
 
   useEffect(() => {
@@ -66,6 +69,7 @@ export default function GoogleCallback({ onAuthed }: { onAuthed: () => void }) {
     void (async () => {
       const r = await googleFinish(code, state);
       if (r.mfaTicket) { setTicket(r.mfaTicket); return; }
+      if (r.invite) { setInvite(r.invite); return; }
       if (r.ok) { onAuthed(); return; }
       setError(r.error);
     })();
@@ -86,6 +90,10 @@ export default function GoogleCallback({ onAuthed }: { onAuthed: () => void }) {
           {ticket ? (
             <div style={{ textAlign: 'left' }}>
               <TwoStepPrompt ticket={ticket} onDone={onAuthed} onCancel={back} />
+            </div>
+          ) : invite ? (
+            <div style={{ textAlign: 'left' }}>
+              <InviteChoice offer={invite} onDone={onAuthed} onCancel={back} />
             </div>
           ) : error ? (
             <>

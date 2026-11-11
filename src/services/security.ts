@@ -92,6 +92,8 @@ export const EVENT_LABEL: Record<string, string> = {
   mfa_failed: 'Wrong 2-step code entered',
   user_created: 'Added a user',
   user_removed: 'Removed a user',
+  user_invited: 'Invited a client',
+  invite_accepted: 'Accepted an invitation',
   integration_connected: 'Connected a service',
   integration_removed: 'Disconnected a service',
   data_exported: 'Exported workspace data',

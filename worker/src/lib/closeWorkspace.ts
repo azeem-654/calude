@@ -35,7 +35,7 @@ export async function closeWorkspace(env: Env, target: string): Promise<void> {
   } catch { /* the fixed list below still runs */ }
   if (!tables.length) {
     tables = ['crm_data', 'crm_mailboxes', 'crm_mailbox_accounts', 'crm_providers', 'crm_provisioned', 'crm_schedules',
-      'crm_storefront', 'crm_sms_config', 'crm_calendar_connections', 'crm_publish_targets', 'crm_suppliers',
+      'crm_storefront', 'crm_sms_config', 'crm_calendar_connections', 'crm_publish_targets', 'crm_blog_publish_targets', 'crm_suppliers',
       'crm_shops', 'crm_orders', 'crm_products', 'crm_projects', 'crm_portfolios'];
   }
   const clients = await env.DB.prepare("SELECT email FROM crm_users WHERE account_id = ? AND role = 'client'")

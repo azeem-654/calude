@@ -1,35 +1,25 @@
-const BUILD_KEY = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
-const BASE = 'https://generativelanguage.googleapis.com';
+import { quickShortsPrompt } from '../../worker/src/lib/video/quickShorts';
 
-/** localStorage key holding a user-supplied Gemini API key (global, not tenant-scoped). */
-export const GEMINI_KEY_STORAGE = 'crm_gemini_key';
-
-/**
- * The active Gemini API key. A key saved in Settings wins over the build-time
- * VITE_GEMINI_API_KEY, so the app can be pointed at a working key without a
- * rebuild/redeploy.
+/*
+ * No Gemini key lives in this browser — not in localStorage, not baked into
+ * the build. Every AI call from a page goes through the Worker (/api/ai.php,
+ * or /api/video.php `quick_analyze` for an uploaded video), which picks the
+ * key from the install's pool (worker/src/lib/aiPool.ts) and the model from
+ * the task (worker/src/lib/aiTasks.ts). A key here was how Quick Shorts sent
+ * customers' files straight to Google with an empty key and got a 403, and
+ * how a model id retired by Google broke five features at once.
+ *
+ * A key an earlier version saved in this browser is removed on load: nothing
+ * reads it any more, and a secret left in localStorage is readable by any
+ * script on the page.
  */
-export function getGeminiKey(): string {
-  try {
-    const saved = localStorage.getItem(GEMINI_KEY_STORAGE);
-    if (saved && saved.trim()) return saved.trim();
-  } catch { /* storage blocked — fall through to build key */ }
-  return (BUILD_KEY ?? '').trim();
-}
-
-export function setGeminiKey(key: string) {
-  try {
-    if (key.trim()) localStorage.setItem(GEMINI_KEY_STORAGE, key.trim());
-    else localStorage.removeItem(GEMINI_KEY_STORAGE);
-  } catch { /* storage blocked */ }
-}
+try { localStorage.removeItem('crm_gemini_key'); } catch { /* storage blocked — nothing to remove */ }
 
 /**
  * Is AI available to this page?
  *
- * Text AI now runs on the server (/api/ai.php) with the operator's key, so a
- * signed-in session is enough — no key in the browser. Only AI Shorts' video
- * upload still needs a key of the customer's own, via `getGeminiKey`.
+ * AI runs on the server with the operator's key, so a signed-in session is
+ * enough — there is no key in the browser to have or to lack.
  */
 export function aiAvailable(): string {
   try {
@@ -39,7 +29,7 @@ export function aiAvailable(): string {
 }
 
 export function hasGeminiKey() {
-  return !!aiAvailable() || !!getGeminiKey();
+  return !!aiAvailable();
 }
 
 /**
@@ -75,77 +65,20 @@ export async function aiFetch(init: RequestInit | string, module = 'general'): P
   }
 }
 
-/*
- * ── Which models to ask for ───────────────────────────────────────────────
- *
- * Google retires model ids, and every id in this file was a 2.0 that no longer
- * exists: "models/gemini-2.0-flash-lite is no longer available". They were
- * hardcoded in six files, so one retirement broke AI Shorts, the blog writer,
- * the SEO reader, the pipeline coach and the strategy generator at once — and
- * the *key verification* too, which is what made a perfectly good key look
- * rejected.
- *
- * Named once, here. A chain rather than a single id, so the next retirement
- * costs one wasted request instead of an outage: `postGeminiWithFallback`
- * treats a 404 as "this one is gone, try the next".
- *
- * Order is cheapest-capable first. The lite model cannot ingest a YouTube URL —
- * it fetches the watch page and returns a text/html MIME error — so that path
- * has a chain of its own.
- */
-export const TEXT_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash'];
-export const VIDEO_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash'];
-export const YOUTUBE_MODELS = ['gemini-3.5-flash', 'gemini-2.5-flash'];
-
-/** The first model of a chain — for callers that make a single plain call. */
-export const DEFAULT_TEXT_MODEL = TEXT_MODELS[0];
-
-/**
- * Verify a key actually works before saving it.
- *
- * This used to send a one-token `generateContent` to a named model, which tied
- * "is this key good?" to "does that model still exist?" — so when Google
- * retired gemini-2.0-flash-lite, a valid key was reported as an error, and the
- * message shown was Google's 404 about a model the customer had never chosen.
- *
- * ListModels asks the question actually being asked: does this key
- * authenticate, and is the Generative Language API enabled for its project. It
- * is free, it needs no quota, and no model retirement can ever break it.
- */
-export async function testGeminiKey(key: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const k = key.trim();
-  if (!k) return { ok: false, error: 'Enter an API key first.' };
-  try {
-    const res = await fetch(`${BASE}/v1beta/models?key=${encodeURIComponent(k)}&pageSize=1`);
-    if (res.ok) return { ok: true };
-    return { ok: false, error: friendlyGeminiError(res.status, await res.text().catch(() => '')) };
-  } catch {
-    return { ok: false, error: 'Could not reach Google. Check your internet connection.' };
-  }
-}
-
 /** Transient errors worth retrying: rate limit, or Google's servers being overloaded. */
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
-
-/** Google's wording when an id has been retired, in case the status is not 404. */
-const MODEL_GONE = /no longer available|is not found|not supported for|deprecated/i;
 
 /** Turn Gemini's verbose JSON error bodies into a short, human-readable message. */
 function friendlyGeminiError(status: number, raw: string): string {
   let msg = raw;
   try { msg = (JSON.parse(raw) as { error?: { message?: string } })?.error?.message || raw; } catch { /* raw isn't JSON */ }
   if (status === 429) {
-    return "Gemini quota/rate limit reached (429). This API key's free-tier quota is exhausted or not enabled for these models. Wait a minute and retry, enable billing on the key, or generate sample clips instead.";
+    return 'The AI is busy right now (rate limit reached). Wait a minute and try again.';
   }
-  // A key that is wrong, revoked or mistyped comes back as 400 with
-  // API_KEY_INVALID, not 403 — verified against the live endpoint. Matching on
-  // status alone meant the most common failure fell through to the generic
-  // branch and lost the advice that actually fixes it.
-  if (status === 403 || /API[ _]KEY[ _]INVALID|API key not valid/i.test(raw)) {
-    return `Gemini rejected the API key (${status}). Check the key is correct, that it has not been revoked, and that the Generative Language API is enabled for its project at aistudio.google.com.`;
-  }
-  if (/API[ _]KEY[ _]SERVICE[ _]BLOCKED|SERVICE_DISABLED/i.test(raw)) {
-    return `Gemini is not enabled for this key's project (${status}). Enable the Generative Language API at console.cloud.google.com, then try again.`;
+  /* The key is the install's, held by the server — never the customer's to
+     fix, so these say whose it is rather than sending them to Google. */
+  if (/API[ _]KEY[ _]INVALID|API key not valid|API[ _]KEY[ _]SERVICE[ _]BLOCKED|SERVICE_DISABLED/i.test(raw)) {
+    return 'The AI provider refused this installation\'s key. This is on our side, not yours — please try again shortly.';
   }
   if (status === 400 && /Unsupported MIME type/i.test(msg)) {
     return "The AI model couldn't read this video source. For YouTube links this can happen on some models — try downloading the video and uploading the file directly.";
@@ -161,85 +94,24 @@ interface GeminiResponse {
 }
 
 /**
- * POSTs a generateContent body against each model in `models`, retrying transient
- * failures (429/500/502/503/504) with backoff before falling through to the next
- * model. Non-transient errors (bad request, permission, etc.) throw immediately.
+ * POSTs a generateContent body through the server, retrying transient failures
+ * (429/500/502/503/504) with backoff. The server chooses the models and walks
+ * its own chain past a retired id (worker/src/lib/ai.ts modelsFor), so nothing
+ * here names one. Non-transient errors throw at once.
  */
-async function postGeminiWithFallback(
-  models: string[],
-  body: unknown,
-  fallThroughOnBadRequest = false,
-  module = 'general',
-): Promise<GeminiResponse> {
+async function postGemini(body: unknown, module = 'general'): Promise<GeminiResponse> {
   let lastError = '';
   let lastStatus = 0;
-  for (const model of models) {
-    const attempts = 3;
-    for (let attempt = 1; attempt <= attempts; attempt++) {
-      /* Through the server, which chooses the model itself (lib/ai.ts
-         modelsFor); `model` here only paces the retries. */
-      void model;
-      const res = await aiFetch({ body: JSON.stringify(body) }, module);
-      if (res.ok) return await res.json();
-
-      lastError = await res.text().catch(() => `HTTP ${res.status}`);
-      lastStatus = res.status;
-      if (!RETRYABLE_STATUS.has(res.status)) {
-        /*
-         * A 404 means this model id is gone. That is exactly what the chain
-         * exists for, so it always falls through — unconditionally, not only
-         * when the caller opted in. Without this the chain was decorative:
-         * the first id being retired threw before the second was ever tried,
-         * which is how a stale name took out five features at once.
-         */
-        if (res.status === 404 || MODEL_GONE.test(lastError)) break;
-        // Other non-transient failures (e.g. 400 bad request). Some models
-        // don't support a given input — flash-lite can't ingest a YouTube URL
-        // and returns a text/html MIME error — so when asked, fall through
-        // rather than failing the whole request.
-        if (fallThroughOnBadRequest) break;
-        throw new Error(friendlyGeminiError(res.status, lastError));
-      }
-      if (attempt < attempts) {
-        await new Promise(r => setTimeout(r, 1000 * attempt));
-      }
-    }
-    // Exhausted retries / unsupported input for this model — try the next one.
+  const attempts = 3;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const res = await aiFetch({ body: JSON.stringify(body) }, module);
+    if (res.ok) return await res.json();
+    lastError = await res.text().catch(() => `HTTP ${res.status}`);
+    lastStatus = res.status;
+    if (!RETRYABLE_STATUS.has(res.status)) throw new Error(friendlyGeminiError(res.status, lastError));
+    if (attempt < attempts) await new Promise(r => setTimeout(r, 1000 * attempt));
   }
-  throw new Error(friendlyGeminiError(lastStatus, lastError || 'all models failed'));
-}
-
-/** Upload a video file to Gemini File API, returns the file URI. */
-export async function uploadFileToGemini(file: File): Promise<string> {
-  const form = new FormData();
-  form.append(
-    'metadata',
-    new Blob([JSON.stringify({ file: { display_name: file.name } })], { type: 'application/json' })
-  );
-  form.append('file', file, file.name);
-
-  const res = await fetch(
-    `${BASE}/upload/v1beta/files?uploadType=multipart&key=${getGeminiKey()}`,
-    { method: 'POST', body: form }
-  );
-
-  if (!res.ok) throw new Error(`Upload failed: ${await res.text()}`);
-  const data = await res.json();
-  return data.file.uri as string;
-}
-
-/** Poll until the file reaches ACTIVE state (Gemini processes it async). */
-export async function waitForFileActive(fileUri: string, maxWaitMs = 120_000): Promise<void> {
-  const name = fileUri.split('/').pop();
-  const deadline = Date.now() + maxWaitMs;
-  while (Date.now() < deadline) {
-    const res = await fetch(`${BASE}/v1beta/files/${name}?key=${getGeminiKey()}`);
-    const data = await res.json();
-    if (data.state === 'ACTIVE') return;
-    if (data.state === 'FAILED') throw new Error('Gemini file processing failed');
-    await new Promise(r => setTimeout(r, 3000));
-  }
-  throw new Error('File processing timed out');
+  throw new Error(friendlyGeminiError(lastStatus, lastError || 'the AI did not answer'));
 }
 
 export interface GeminiClip {
@@ -271,123 +143,47 @@ export interface GeminiAnalysis {
 }
 
 /**
- * Ask Gemini to analyse the video and return clip suggestions.
- * Pass mimeType=null for YouTube URLs — Gemini's YouTube understanding feature
- * rejects the request if a mimeType is attached to a youtube.com file_uri.
+ * Clip suggestions for a YouTube video, asked through the server.
+ *
+ * The link rides as a `fileData` part with no mimeType — Gemini's YouTube
+ * understanding rejects the request if one is attached to a youtube.com uri.
+ * An uploaded file never comes here: it goes through Video Studio's upload
+ * and `quick_analyze` (src/services/quickShorts.ts), because a file needs a
+ * Files API upload on the same key that then reads it, and only the Worker
+ * holds keys.
  */
-export async function analyzeVideoWithGemini(
-  fileUri: string,
-  mimeType: string | null,
+export async function analyzeYoutubeWithGemini(
+  url: string,
   settings: { maxClipDuration: number; focus: string },
   /** Real source duration, when known — used to clamp AI timestamps. */
   knownDuration?: number,
 ): Promise<GeminiAnalysis> {
-  const focusHint = {
-    emotional: 'Focus on emotionally resonant, personal, or inspiring moments.',
-    educational: 'Focus on insightful, practical, or informative moments.',
-    funny: 'Focus on humorous, entertaining, or surprising moments.',
-    all: 'Find a diverse mix: emotional, educational, funny, and motivational moments.',
-  }[settings.focus] ?? '';
-
-  const prompt = `You are a viral short-form content expert. WATCH this video end-to-end, then identify the best ${settings.maxClipDuration}-second (or shorter) segments most likely to go viral on TikTok, YouTube Shorts, and Instagram Reels.
-
-${focusHint}
-
-STEP 1 — UNDERSTAND THE VIDEO FIRST (do this before choosing any clip):
-Identify what this specific video is actually about: its topic, who is speaking, the main arguments/moments, and how it is structured over time. Every clip you return must come from what you ACTUALLY observed in this video — never from generic assumptions about the genre.
-
-STEP 2 — PICK ONLY GENUINELY STRONG MOMENTS (relevance is the top priority):
-A moment qualifies ONLY if it passes ALL of these:
-- SELF-CONTAINED: a stranger who has not seen the video understands it completely without any prior context. No unexplained "he/she/it/that/this" referring to something said earlier.
-- ONE COMPLETE IDEA: it sets up and finishes a single point, story, insight, question→answer, or reveal. Never a fragment of a longer argument.
-- SUBSTANCE: it contains a real claim, story, number, insight, emotion, or punchline that someone would stop scrolling for.
-- THE TITLE IS LITERALLY TRUE: the title must describe exactly what is said/shown in those seconds — not the video's overall theme.
-
-NEVER select (these are the usual cause of irrelevant clips):
-- Intros, outros, greetings, "welcome back", "don't forget to subscribe", channel promos, sponsor/ad reads
-- Filler, rambling, throat-clearing, repeated restatements, dead air, long pauses
-- Setup that never reaches its payoff, or a payoff whose setup is missing
-- Anything that only makes sense if you watched the earlier part of the video
-Quality beats quantity: if the video only contains 4 genuinely strong moments, return only those 4. Do NOT pad the list with weak filler to reach a count.
-
-Language handling:
-- First detect the video's primary spoken language and report its full English name in "videoLanguage" (e.g. "English", "Turkish", "Arabic", "Spanish").
-- Write each clip's "title", "description", and "transcript" in that SAME original spoken language of the video — do not translate them to English.
-- If the detected language is NOT English, ALSO provide "titleTranslated" and "descriptionTranslated" fields with accurate English translations of the title and description. If the video IS English, omit "titleTranslated" and "descriptionTranslated" entirely (do not repeat the same text).
-
-Videos with little or no speech (CCTV footage, montages, music videos, b-roll):
-- Analyze the VISUAL content instead: what happens on screen, the setting, the key action, and why it grabs attention.
-- "title" and "description" must describe the actual visual events and the video's purpose (e.g. a security-awareness caption for CCTV robbery footage) — never generic filler.
-- Set "transcript" to a short, punchy present-tense narration of the on-screen action (e.g. "A man snatches a phone and sprints across the street as bystanders give chase"). NEVER return placeholders like "(No spoken content)", "(no dialogue)", or empty text — these get burned into the clip as captions.
-- Set "videoLanguage" to "English" for speech-free videos.
-
-Rules:
-- Clips must NOT overlap
-- Each clip should use most of the ${settings.maxClipDuration}-second budget (longer, complete clips beat short ones) but never exceed it
-- TIMESTAMP ACCURACY IS CRITICAL: start/end times must correspond to the REAL moment in this video where those exact words are spoken. Before returning, re-check each timestamp against the video — a clip cut at the wrong time is worse than no clip. Spread selections across the whole video, not all from one region.
-- Return between 4 and 10 clips, ordered best-first (highest quality first). Prefer 5-6 excellent clips over 10 mediocre ones.
-- viralityScore must be between 60 and 99 and must honestly reflect quality — reserve 90+ for genuinely exceptional moments
-- "description" should be a short, engaging 2-3 sentence caption suitable for a social media post (not just a repeat of the transcript)
-
-CRITICAL — build each clip as a coherent short that fully delivers on its title, with CLEAN cuts:
-- Give each clip a "segments" array of 1 to 3 NON-OVERLAPPING ranges that, played in order, form ONE coherent short that completely delivers the promise in the title (hook → point → payoff).
-- STRONGLY PREFER FEWER, LONGER, COMPLETE segments. Often the BEST clip is a SINGLE continuous passage where the speaker makes a full, self-contained point — use 1 segment when the point is delivered in one place. Only add a 2nd or 3rd segment when it genuinely completes the story (e.g. the setup is in one place and the payoff in another). Never chop a coherent passage into pieces.
-- SENTENCE BOUNDARIES ARE MANDATORY: every segment MUST begin exactly at the START of a spoken sentence (right after a natural pause/breath) and MUST end exactly at the END of a completed sentence (at a natural pause). NEVER cut in the middle of a word or sentence — the viewer must hear complete sentences with no clipped words and no dangling half-thoughts.
-- When there are multiple segments, the end of one must flow logically into the start of the next — no jarring non-sequitur.
-- Aim to USE THE FULL LENGTH BUDGET: make the combined length close to (but not over) ${settings.maxClipDuration} seconds so the short has enough context to make sense — do not return tiny 8-second clips when the budget is larger.
-- For EACH segment, include a "text" field: the EXACT complete sentence(s) spoken during that segment, verbatim, in the video's original language. The time range must tightly bracket exactly those sentences.
-- Each segment at least 6 seconds (unless the whole clip is shorter); combined length between ${Math.max(15, settings.maxClipDuration - 20)} and ${settings.maxClipDuration} seconds. Every segment must be directly relevant to the title — no filler.
-- "startTime"/"endTime" span the earliest segment start to the latest segment end.
-- "transcript" = the concatenation of every segment's "text", in play order.
-
-Return ONLY valid JSON with NO markdown fences:
-{
-  "videoSummary": "1-2 sentence summary of the video, in English",
-  "totalDuration": <total video length in seconds as a number>,
-  "videoLanguage": "full English name of the video's primary spoken language",
-  "clips": [
-    {
-      "title": "engaging title under 70 chars, in the video's original language",
-      "titleTranslated": "English translation of title — OMIT this field entirely if videoLanguage is English",
-      "description": "engaging 2-3 sentence social caption, in the video's original language",
-      "descriptionTranslated": "English translation of description — OMIT this field entirely if videoLanguage is English",
-      "startTime": <number, seconds — earliest segment start>,
-      "endTime": <number, seconds — latest segment end>,
-      "segments": [{"start": <seconds>, "end": <seconds>, "text": "the exact COMPLETE sentence(s) spoken in this segment"}, {"start": <seconds>, "end": <seconds>, "text": "..."}],
-      "transcript": "concatenation of every segment's text, in play order, in the video's original language",
-      "viralityScore": <number 60-99>,
-      "focus": "emotional|educational|funny|motivational",
-      "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4"],
-      "reason": "one sentence in English: why this will go viral"
-    }
-  ]
-}`;
-
   const body: Record<string, unknown> = {
-    contents: [{
-      parts: [
-        { fileData: mimeType ? { mimeType, fileUri } : { fileUri } },
-        { text: prompt },
-      ],
-    }],
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.3,
-    },
+    contents: [{ parts: [{ fileData: { fileUri: url } }, { text: quickShortsPrompt(settings) }] }],
+    generationConfig: { responseMimeType: 'application/json', temperature: 0.3 },
   };
-
-  // YouTube URLs (mimeType === null) require native YouTube-video understanding,
-  // which flash-lite lacks — it fetches the watch page and returns a text/html
-  // MIME error. Use the models that support YouTube ingestion for that path.
-  const isYouTube = mimeType === null;
-  const MODELS = isYouTube ? YOUTUBE_MODELS : VIDEO_MODELS;
-
-  const data = await postGeminiWithFallback(MODELS, body, isYouTube, 'video-analysis');
+  const data = await postGemini(body, 'video-analysis');
   if (data.error) throw new Error(data.error.message ?? 'Gemini error');
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-  const json = text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-  const parsed = JSON.parse(json) as GeminiAnalysis;
-  return sanitizeAnalysis(parsed, settings.maxClipDuration, knownDuration);
+  return readAnalysis(text, settings.maxClipDuration, knownDuration);
+}
+
+/**
+ * An analysis answer — the model's JSON text, or the object the server already
+ * parsed — checked by `sanitizeAnalysis`. Throws a sentence when it is not an
+ * analysis at all, rather than handing the page `undefined.clips`.
+ */
+export function readAnalysis(raw: unknown, maxClipDuration: number, knownDuration?: number): GeminiAnalysis {
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    try { parsed = JSON.parse(raw.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()); } catch { parsed = null; }
+  }
+  const a = parsed as Partial<GeminiAnalysis> | null;
+  if (!a || typeof a !== 'object' || !Array.isArray(a.clips)) throw new Error('The AI answered, but not with clips this page can read. Try again.');
+  return sanitizeAnalysis({
+    videoSummary: String(a.videoSummary ?? ''), totalDuration: Number(a.totalDuration) || 0,
+    videoLanguage: String(a.videoLanguage ?? '') || 'English', clips: a.clips,
+  }, maxClipDuration, knownDuration);
 }
 
 /** Text that means "the model had nothing to say" — never usable as a caption. */
@@ -474,12 +270,11 @@ export function sanitizeAnalysis(analysis: GeminiAnalysis, maxClipDuration: numb
 
 /** Shared helper: call Gemini text models with fallback chain. */
 async function callGemini(prompt: string, temperature = 0.7, module = 'general'): Promise<string> {
-  const MODELS = TEXT_MODELS;
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { responseMimeType: 'application/json', temperature },
   };
-  const data = await postGeminiWithFallback(MODELS, body, false, module);
+  const data = await postGemini(body, module);
   if (data.error) throw new Error(data.error.message ?? 'Gemini error');
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
   return text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();

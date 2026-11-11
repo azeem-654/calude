@@ -66,8 +66,12 @@ export async function fetchReplies(): Promise<{ ai: AiStatus | null; drafts: Rep
 /** Blank keeps the stored key, as everywhere else in this app. */
 export async function saveAiKey(apiKey: string): Promise<Reply> { return call('save_key', { apiKey }); }
 
-/** Asks Google whether the key works. Costs no quota. */
-export async function testAiKey(): Promise<Reply> { return call('test_key'); }
+/**
+ * Asks Google — from the server — whether the key works. Costs no quota.
+ * With `apiKey`, a key typed in a box is tried without touching the stored
+ * one's state; without, the stored key is checked and its stamp updated.
+ */
+export async function testAiKey(apiKey?: string): Promise<Reply> { return call('test_key', apiKey ? { apiKey } : {}); }
 
 /**
  * Send a held reply, optionally edited.

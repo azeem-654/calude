@@ -346,6 +346,20 @@ export async function finishTwoStep(ticket: string, code: string): Promise<{ ok:
 const ticketOf = (data: Record<string, unknown>): string | undefined =>
   data.mfaRequired ? String(data.ticket ?? '') : undefined;
 
+/** An invitation waiting for a proved address: the choice, not yet a session. */
+export interface InviteOffer { ticket: string; invitations: { id: string; from: string }[] }
+const inviteOf = (data: Record<string, unknown>): InviteOffer | undefined =>
+  data.invitation ? { ticket: String(data.ticket ?? ''), invitations: (data.invitations as InviteOffer['invitations']) ?? [] } : undefined;
+
+/** Join an invitation, or make an account of your own instead. */
+export async function answerInvite(ticket: string, choice: 'join' | 'own', invitationId = ''): Promise<{ ok: boolean; error: string }> {
+  const res = await php('invite_choice', { ticket, choice, invitationId });
+  if (!res) return { ok: false, error: 'Could not reach the server.' };
+  if (!res.ok) return { ok: false, error: String(res.data.error ?? 'That did not work.') };
+  adoptSession(res.data);
+  return { ok: true, error: '' };
+}
+
 export async function login(email: string, password: string): Promise<{ ok: boolean; error?: string; mfaTicket?: string }> {
   signingInWith = 'password';
   const res = await php('login', { email, password });
@@ -412,12 +426,14 @@ export async function requestLoginCode(email: string): Promise<{ ok: boolean; me
 }
 
 /** Exchange the six digits for a session. Creates the account if it is new. */
-export async function verifyLoginCode(email: string, code: string): Promise<{ ok: boolean; error: string; mfaTicket?: string }> {
+export async function verifyLoginCode(email: string, code: string): Promise<{ ok: boolean; error: string; mfaTicket?: string; invite?: InviteOffer }> {
   signingInWith = 'code';
   const res = await php('verify_code', { email, code });
   if (!res) return { ok: false, error: 'Could not reach the server.' };
   const mfaTicket = ticketOf(res.data);
   if (mfaTicket) return { ok: false, mfaTicket, error: String(res.data.error ?? '') };
+  const invite = inviteOf(res.data);
+  if (invite) return { ok: false, invite, error: '' };
   if (!res.ok) return { ok: false, error: String(res.data.error ?? 'That code did not work.') };
   adoptSession(res.data);
   return { ok: true, error: '' };
@@ -455,12 +471,14 @@ export function googleStateIsOurs(state: string): boolean {
 }
 
 /** Hand Google's code back to the Worker, which swaps it and issues a session. */
-export async function googleFinish(code: string, state: string): Promise<{ ok: boolean; error: string; mfaTicket?: string }> {
+export async function googleFinish(code: string, state: string): Promise<{ ok: boolean; error: string; mfaTicket?: string; invite?: InviteOffer }> {
   signingInWith = 'google';
   const res = await php('google_finish', { code, state });
   if (!res) return { ok: false, error: 'Could not reach the server.' };
   const mfaTicket = ticketOf(res.data);
   if (mfaTicket) return { ok: false, mfaTicket, error: String(res.data.error ?? '') };
+  const invite = inviteOf(res.data);
+  if (invite) return { ok: false, invite, error: '' };
   if (!res.ok) return { ok: false, error: String(res.data.error ?? 'That sign-in did not work.') };
   adoptSession(res.data);
   return { ok: true, error: '' };
@@ -523,10 +541,11 @@ export async function logout() {
 }
 
 /* ── Agency: provision & manage client logins ── */
-export async function createUser(u: { email: string; password: string; name: string; role: Role; accountId: string | null }): Promise<{ ok: boolean; error?: string }> {
+export async function createUser(u: { email: string; password: string; name: string; role: Role; accountId: string | null }): Promise<{ ok: boolean; error?: string; message?: string; invited?: boolean }> {
   const s = getSession();
   const res = await php('create_user', { token: s?.token, ...u });
-  if (res) return res.ok ? { ok: true } : { ok: false, error: res.data.error as string };
+  /* A client comes back as an invitation (`invited`), with the sentence to show. */
+  if (res) return res.ok ? { ok: true, invited: !!res.data.invited, message: String(res.data.message ?? '') } : { ok: false, error: res.data.error as string };
   const users = loadLocalUsers();
   if (users.some(x => x.email === u.email.toLowerCase())) return { ok: false, error: 'Email already exists.' };
   saveLocalUsers([...users, { ...u, email: u.email.toLowerCase() }]);

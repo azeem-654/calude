@@ -45,6 +45,7 @@ import { canSend, cannotSendReason, deliver, fromAddressOf } from './deliver';
 import { wrapEmail } from './designLayouts';
 import { logoAddress } from './brandLogo';
 import { optInLink, prospectSmsBlock } from './smsConsent';
+import { suppressedSet, unsubscribeUrl, withUnsubscribe } from './suppression';
 
 /**
  * The project client's logo as an absolute, signed address — a mail client
@@ -420,6 +421,8 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
     let mailbox: Awaited<ReturnType<typeof loadMailbox>> | undefined;
     let smsCfg: Awaited<ReturnType<typeof loadSmsConfig>> | undefined;
     let mailboxLoaded = false;
+    /* Who has said stop, read on the first email this run sends. */
+    let optedOut: Set<string> | null = null;
     const bizCache = new Map<string, Business>();
     const logoCache = new Map<string, string>();
     let smsLoaded = false;
@@ -511,6 +514,15 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
           const why = cannotSendReason(mailbox);
           await log(env, accountId, run.id, node.id, node.type, 'skipped', why);
           report.notes.push(`"${a.name}" wanted to send an email: ${why}`);
+        } else if ((optedOut ??= await suppressedSet(env, accountId)).has(to.toLowerCase())) {
+          /* Unsubscribed, or on the do-not-email list: passed over, logged,
+             and the run carries on with its tags and tasks. */
+          await logDelivery(env, accountId, {
+            channel: 'email', source: 'automation', sourceId: a.id, sourceName: a.name,
+            stepIndex: steps, contactId: contact.id, recipient: to, subject: '',
+            status: 'suppressed', detail: 'Unsubscribed or on the do-not-email list.', sentFrom: '',
+          });
+          await log(env, accountId, run.id, node.id, node.type, 'skipped', `${to} has unsubscribed, so the email was not sent.`);
         } else {
           /* The business fields are read once per graph per tick, not per
              email: the same project, the same booking page. */
@@ -522,6 +534,9 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
           const bodyText = String(node.config?.body ?? node.config?.preview ?? '');
           /* Their own opt-in link, made only when the email asks for it. */
           let person: Person = bodyText.includes('smsOptInLink') ? { ...contact, smsOptInLink: await optInLink(env, accountId, contact.id) } : contact;
+          /* The signed opt-out: footer (or `{{unsubscribe}}`) and header. */
+          const unsub = await unsubscribeUrl(env, accountId, to, a.id);
+          if (unsub) person = { ...person, unsubscribeUrl: unsub };
           /* The researched opening, only when the email has a place for it. */
           if (hasResearch(bodyText)) {
             const r = await researchFor(env, accountId, { ...(contact as unknown as Record<string, unknown>), email: to }, { myCompany: biz.myCompany, offer: biz.offer ?? '' });
@@ -536,8 +551,9 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
           }
           const fromEmail = fromAddressOf(mailbox!);
           const r = await deliver(mailbox!, {
-            fromName: mailbox!.from.name || 'CRM', fromEmail, to, subject, html: await signTrackedLinks(env, html),
+            fromName: mailbox!.from.name || 'CRM', fromEmail, to, subject, html: withUnsubscribe(await signTrackedLinks(env, html), unsub),
             replyTo: mailbox!.from.replyTo || undefined,
+            unsubscribeUrl: unsub || undefined,
           });
           /* The same per-recipient row every other send writes, so "did that
              reach them" is answered in one place whatever produced it. */

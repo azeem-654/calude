@@ -45,8 +45,27 @@ export function cannotSendReason(mb: Mailbox | null | undefined): string {
 export const fromAddressOf = (mb: Mailbox): string =>
   mb.from.email || (sendsViaApi(mb) ? '' : mb.smtp.username);
 
+/**
+ * Why a hosted mailbox may not send as this address, or '' when it may.
+ *
+ * A hosted mailbox sends on the platform's own key, on which every
+ * customer's hosted domain is verified. The provider accepts any From on
+ * any of those domains, so a From taken from the request let workspace A
+ * send, DKIM-signed, as ceo@<workspace B's domain>. A hosted mailbox sends
+ * as its own address and nothing else.
+ */
+export function hostedFromProblem(mb: Pick<Mailbox, 'hosted' | 'from'>, fromEmail: string): string {
+  if (!mb.hosted) return '';
+  const own = String(mb.from.email ?? '').trim().toLowerCase();
+  const asked = String(fromEmail ?? '').trim().toLowerCase();
+  if (own && asked === own) return '';
+  return `This mailbox sends only as ${own || 'its own hosted address'}${asked ? ` — it cannot send as ${asked}` : ''}.`;
+}
+
 export async function deliver(mb: Mailbox, msg: MessageInput): Promise<Delivered> {
   if (!canSend(mb)) return { ok: false, error: cannotSendReason(mb), via: sendsViaApi(mb) ? 'api' : 'smtp' };
+  const wrongFrom = hostedFromProblem(mb, msg.fromEmail);
+  if (wrongFrom) return { ok: false, error: wrongFrom, via: 'api' };
   if (sendsViaApi(mb)) {
     if (!msg.fromEmail) return { ok: false, error: 'This mailbox has no From address. Add one in Settings → Email & SMS.', via: 'api' };
     const r = await sendViaProvider(mb.provider, msg);

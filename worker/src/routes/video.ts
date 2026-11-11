@@ -17,7 +17,8 @@ import type { Env } from '../lib/db';
 import { nowIso, userFromToken, workspaceAccess } from '../lib/db';
 import { body, fail, json } from '../lib/http';
 import { rateLimit } from '../lib/rateLimit';
-import { aiBudget, askGeminiParts, extractJson, loadAiKey } from '../lib/ai';
+import { aiBudget, askGeminiAboutFile, askGeminiParts, extractJson, loadAiKey } from '../lib/ai';
+import { cleanQuickSettings, quickShortsPrompt } from '../lib/video/quickShorts';
 import {
   applyOps, describeRequest, newDoc, parseRequest, sentencesOf, SHORTS_MAX, MUSIC_DEFAULTS,
   type MusicTrack, type Op, type VideoDoc, type VideoRequest,
@@ -58,6 +59,8 @@ interface Req {
   patch?: Record<string, unknown>; kit?: Record<string, unknown>; file?: string; probe?: boolean; light?: boolean; knownVersion?: number;
   q?: string; page?: number; trackId?: string; key?: string; title?: string; rightsConfirmed?: boolean; applyTo?: string;
   posts?: number; blog?: boolean; email?: boolean;
+  /** quick_analyze: Quick Shorts' clip length and focus. */
+  quick?: unknown;
   /** A direct link to a video file (import_link). */
   url?: string;
   /** publish_save: which composition, and its texts; translation_save: the language and its cues. */
@@ -1047,6 +1050,46 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
      * sentences again, checked again — the browser's copy is not trusted),
      * writes their words, and queues the renders and thumbnails.
      */
+    /*
+     * Quick Shorts' analysis of an uploaded file (AI-1).
+     *
+     * The file came in through this route's own upload (upload_start /
+     * upload_complete on a project made with `long: false, shorts: 0`), so it
+     * sits in R2 under this workspace's prefix and this project — a foreign
+     * project id never got this far (`not_found` above). The Worker hands it
+     * to Google on the install's keys (askGeminiAboutFile, through
+     * withFailover) after the workspace's AI budget agrees; the browser never
+     * talks to Google and never holds a key. The answer goes back as the
+     * model's JSON, and the page checks every timestamp (sanitizeAnalysis) as
+     * it always did — nothing is stored here.
+     */
+    case 'quick_analyze': {
+      if (!env.VIDEO) return fail('Video storage is not set up yet, so nothing can be analysed. The owner enables R2 in Cloudflare; the next deploy creates the bucket.', 503, { code: 'no_storage' });
+      const src = parse<Source>(p.source, {});
+      if (!src.key) return fail('This project has no uploaded video yet — upload it first.', 200, { code: 'no_source' });
+      const head = await env.VIDEO.head(src.key);
+      if (!head) return fail('The uploaded video is no longer in storage. Upload it again.', 200, { code: 'no_source' });
+      /* Google's Files API takes up to 2 GB a file. */
+      if (head.size > 2e9) return fail('Quick Shorts can read videos up to 2 GB. Open this one in Video Studio instead, which takes recordings up to 12 GB.', 200, { field: 'video.file', code: 'too_big' });
+      const rl = await rateLimit(env, { what: 'video-quick', who: accountId, max: 30, windowSeconds: 3600 });
+      if (!rl.allowed) return fail('That is a lot of videos analysed in an hour — try again shortly.', 429);
+      const no = await aiBudget(env, accountId);
+      if (no) return fail(no, 402, { code: 'ai_budget' });
+      const key = await loadAiKey(env, accountId).catch(() => null);
+      if (!key) return fail('No AI key is set up for this installation yet, so the video cannot be analysed. The owner connects one on Platform services.', 503, { code: 'no_ai' });
+      const settings = cleanQuickSettings(d.quick);
+      const vid = env.VIDEO, srcKey = src.key;
+      const res = await askGeminiAboutFile(key, {
+        name: src.name || 'video.mp4', mimeType: head.httpMetadata?.contentType || src.type || 'video/mp4', size: head.size,
+        open: async () => (await vid.get(srcKey))?.body ?? null,
+      }, quickShortsPrompt(settings), 0.3, { module: 'video-analysis', accountId, json: true, timeoutMs: 150_000 });
+      await meter(env, { kind: 'ai-quick-shorts', accountId, units: 1, unit: 'ai_call', costMicros: PRICE.aiCall, jobId: `quick-${p.id}-${Date.now()}` });
+      if (!res.ok) return fail(res.error || 'The AI could not analyse this video.', 502, { code: 'ai_failed' });
+      const analysis = extractJson<unknown>(res.text);
+      if (!analysis || typeof analysis !== 'object') return fail('The AI answered, but not with clips this page can read. Try again.', 502, { code: 'ai_unreadable' });
+      return json({ success: true, analysis, settings });
+    }
+
     case 'shorts_propose': {
       const rl = await rateLimit(env, { what: 'video-propose', who: accountId, max: 60, windowSeconds: 3600 });
       if (!rl.allowed) return fail('That is a lot of proposals in an hour — try again shortly.', 429);

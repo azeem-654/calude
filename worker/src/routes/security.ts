@@ -115,7 +115,7 @@ export async function handleSecurity(req: Request, env: Env): Promise<Response> 
         { key: 'payments', label: 'Payments for your shop', connected: await count("SELECT COUNT(*) AS n FROM crm_storefront WHERE account_id = ? AND (COALESCE(stripe_key,'') != '' OR COALESCE(api_key,'') != '')") },
         { key: 'calendar', label: 'Google Calendar', connected: await count("SELECT COUNT(*) AS n FROM crm_calendar_connections WHERE account_id = ? AND COALESCE(refresh_token,'') != ''") },
         { key: 'sms', label: 'SMS', connected: await count("SELECT COUNT(*) AS n FROM crm_sms_config WHERE account_id = ? AND COALESCE(auth_token,'') != ''") },
-        { key: 'wordpress', label: 'WordPress publishing', connected: await count('SELECT COUNT(*) AS n FROM crm_publish_targets WHERE account_id = ?') },
+        { key: 'wordpress', label: 'WordPress publishing', connected: await count('SELECT (SELECT COUNT(*) FROM crm_publish_targets WHERE account_id = ?1) + (SELECT COUNT(*) FROM crm_blog_publish_targets WHERE account_id = ?1) AS n') },
         { key: 'supplier', label: 'Product supplier', connected: await count("SELECT COUNT(*) AS n FROM crm_suppliers WHERE account_id = ? AND COALESCE(credentials,'') != ''") },
         { key: 'ai', label: 'Your own AI key', connected: await count("SELECT COUNT(*) AS n FROM crm_ai_config WHERE account_id = ? AND COALESCE(api_key,'') != ''") },
       ];

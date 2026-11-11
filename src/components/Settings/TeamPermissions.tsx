@@ -145,7 +145,9 @@ export default function TeamPermissions() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
               <input value={form.name} onChange={e => { setForm(f => ({ ...f, name: e.target.value })); setErr(''); }} placeholder="Full name" style={inp} />
               <input value={form.email} onChange={e => { setForm(f => ({ ...f, email: e.target.value })); setErr(''); }} placeholder="Email" type="email" style={inp} />
-              <input value={form.password} onChange={e => { setForm(f => ({ ...f, password: e.target.value })); setErr(''); }} placeholder="Temporary password" type="text" style={inp} />
+              {form.role === 'agency'
+                ? <input value={form.password} onChange={e => { setForm(f => ({ ...f, password: e.target.value })); setErr(''); }} placeholder="Temporary password" aria-label="Temporary password" type="text" style={inp} />
+                : <p style={{ margin: 0, fontSize: 12, color: '#64748b', alignSelf: 'center' }}>A client is sent an invitation and joins by signing in with that address.</p>}
               <select value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value as 'agency' | 'client' }))} title="Role" style={{ ...inp, cursor: 'pointer' }}>
                 <option value="client">Client — one workspace, own records only</option>
                 <option value="agency">Agency — full access to everything</option>
@@ -162,15 +164,15 @@ export default function TeamPermissions() {
               <button onClick={() => setAdding(false)} style={{ padding: '8px 14px', border: '1px solid #e2e8f0', borderRadius: 9, background: '#fff', color: '#64748b', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
               <button title="Create this team member"
                 onClick={async () => {
-                  if (!form.email.trim() || !form.password) { setErr('Email and a temporary password are required.'); return; }
-                  if (form.password.length < 8) { setErr('Use at least 8 characters for the temporary password.'); return; }
+                  if (!form.email.trim()) { setErr('Enter their email address.'); return; }
+                  if (form.role === 'agency' && form.password.length < 8) { setErr('Use at least 8 characters for the temporary password.'); return; }
                   if (form.role === 'client' && !form.accountId) { setErr('Pick the workspace this client belongs to.'); return; }
                   const res = await createUser({
                     email: form.email.trim(), password: form.password, name: form.name.trim() || form.email.trim(),
                     role: form.role, accountId: form.role === 'client' ? form.accountId : null,
                   });
                   if (!res.ok) { setErr(res.error || 'Could not create that user.'); return; }
-                  addNotification(`${form.email.trim()} added as ${form.role}`);
+                  addNotification(res.invited ? (res.message || `Invitation sent to ${form.email.trim()}`) : `${form.email.trim()} added as ${form.role}`);
                   setForm({ email: '', name: '', password: '', role: 'client', accountId: '' });
                   setAdding(false);
                   void refresh();

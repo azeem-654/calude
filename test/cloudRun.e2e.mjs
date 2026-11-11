@@ -135,6 +135,31 @@ ok('another tenant cannot read this workspace\'s cloud status', foreign.success 
 const anon = await api('cloud.php', { accountId: A, action: 'status' });
 ok('and nobody signed out can', anon.success === false, JSON.stringify(anon));
 
+/* ── E-2: a sequence never mails somebody who unsubscribed ── */
+const A3 = 'acct-cloud-c';
+await api('mailbox.php', { token: T, accountId: A3, action: 'save', label: 'Shop', smtp: { host: '127.0.0.1', port: SMTP, encryption: 'none', username: 'u', password: 'p' }, from: { email: 'hello@shop.test', name: 'Shop' } });
+const step = (id, subject) => ({ id, day: 1, waitUnit: 'days', type: 'auto_email', channel: 'email', subject, body: 'Hello {{firstName}}, thanks for joining.' });
+const enr = (id, contactId) => ({ id, contactId, sequenceId: 'seq1', sequenceName: 'Welcome', status: 'active', currentStep: 0, totalSteps: 2, enrolledAt: ago(60), nextSendAt: ago(5), history: [] });
+await api('data.php', { action: 'bulk_set', token: T, accountId: A3, items: {
+  crm_contacts: JSON.stringify([{ id: 's1', name: 'Una Out', email: 'una@buyer.test' }, { id: 's2', name: 'Vic Stays', email: 'vic@buyer.test' }]),
+  crm_sequences: JSON.stringify([{ id: 'seq1', name: 'Welcome', status: 'active', steps: [step('st1', 'Welcome {{firstName}}'), step('st2', 'Day two')] }]),
+  crm_sequence_enrollments: JSON.stringify([enr('e1', 's1'), enr('e2', 's2')]),
+} });
+/* Only in crm_unsubscribes — the suppression list screen was never opened. */
+sql(`INSERT INTO crm_unsubscribes (account_id, email, campaign_id, at) VALUES ('${A3}', 'una@buyer.test', NULL, '${ago(30)}')`);
+const before = mail.length;
+await tick();
+await sleep(1500);
+const fresh = mail.slice(before);
+ok('an address only in crm_unsubscribes is skipped by the next tick', !fresh.some(m => /una@buyer\.test/i.test(m)) && fresh.some(m => /vic@buyer\.test/i.test(m)), fresh.map(m => m.slice(0, 160)).join(' || '));
+const logRows = sql(`SELECT status, recipient FROM crm_delivery_log WHERE account_id = '${A3}'`);
+ok('…and logged as suppressed', logRows.some(r => r.recipient === 'una@buyer.test' && r.status === 'suppressed'), JSON.stringify(logRows));
+const vic = fresh.find(m => /vic@buyer\.test/i.test(m)) ?? '';
+ok('sequence mail carries List-Unsubscribe and one-click headers', /List-Unsubscribe: <http[^>]*\/api\/unsubscribe\.php\?e=vic%40buyer\.test[^>]*>/.test(vic) && /List-Unsubscribe-Post: List-Unsubscribe=One-Click/.test(vic), vic.slice(0, 900));
+/* The HTML part is base64; decode it to read the footer. */
+const bodyText = (() => { const parts = vic.split(/Content-Transfer-Encoding: base64/i); return parts.slice(1).map(p => { try { return Buffer.from(p.split(/\n--|\n\.\n/)[0].replace(/[^A-Za-z0-9+/=]/g, ''), 'base64').toString('utf8'); } catch { return ''; } }).join('\n'); })();
+ok('…and a signed unsubscribe link in the body', /unsubscribe\.php\?e=vic%40buyer\.test[^"]*t=/.test(bodyText) && /Unsubscribe/.test(bodyText), bodyText.slice(0, 600));
+
 stop();
 console.log(out.join('\n'));
 const failed = out.filter(l => l.startsWith('FAIL')).length;

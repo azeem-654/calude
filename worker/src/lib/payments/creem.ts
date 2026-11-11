@@ -310,10 +310,10 @@ export const creem: PaymentProvider = {
         ['Price the plan in USD or EUR, or bill through Stripe instead.']);
     }
 
-    /* An operator who set the plan up in Creem themselves has a product id
-       already, and theirs wins: it carries the trial and tax settings they
-       chose, which one built here could not know about. */
-    let productId = (req.priceId ?? '').trim();
+    /* The product is always this app's own, found by its plan, amount and
+       currency. A product id from the caller once let anybody buy the $1
+       order product while naming Scale. */
+    let productId = '';
 
     if (!productId) {
       const yearly = req.interval === 'year';

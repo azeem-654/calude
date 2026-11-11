@@ -373,6 +373,16 @@ export const OWNER_LIMITS: Limits = Object.fromEntries(METER_IDS.map(id => [id, 
  * with no plan on record is Scale, because `planByAmount` (current prices)
  * is asked before this list.
  */
+/**
+ * The currency every plan price in this file is in. A price is a number and a
+ * currency together: the checkout once took its currency from the request, so
+ * Scale's 29,700 cents could be bought as 29,700 VND (about $1.20), and the
+ * webhook, matching on the amount alone, gave that payment Scale. Checkout
+ * refuses any other currency and the webhook maps an amount to a plan only in
+ * this one (routes/billing.ts).
+ */
+export const PLAN_CURRENCY = 'USD';
+
 export const LEGACY_CENTS: Partial<Record<PlanKey, number[]>> = {
   starter: [4_900, 49_000],
   growth: [97_000],

@@ -34,7 +34,7 @@ import {
   SETUP_KIND, type Check, type DnsRecord,
 } from '../lib/registrars';
 import {
-  loadPrices, quoteBasket, RETAIL_CURRENCY, retailForDomain, savePrice,
+  loadPrices, mailboxesOf, quoteBasket, RETAIL_CURRENCY, retailForDomain, savePrice,
   type Quote,
 } from '../lib/retail';
 import { advanceOrder, STEPS, type OrderRow, type SetupOptions } from '../lib/setupRun';
@@ -341,6 +341,16 @@ export async function handleSetup(req: Request, env: Env): Promise<Response> {
    * customer was shown. It is carried through instead. The route below returns
    * `q.quote` and never `q`, so the cost still cannot reach a browser.
    */
+  /*
+   * The mailboxes, once, for both the price and the order.
+   *
+   * The browser sends the names as an array; the quote read them as
+   * `Number(d.mailboxes)`, which is NaN for an array, so every mailbox was
+   * priced at nothing and then created on the operator's registrar account.
+   * Priced and provisioned now come from this one list.
+   */
+  const { names: mailboxNames, count: mailboxCount } = mailboxesOf(d.mailboxes);
+
   const quoteFor = async (): Promise<{ quote: Quote; domain: string; wholesaleCents: number } | { error: string }> => {
     const domain = String(d.domain ?? '').trim().toLowerCase();
     if (!domain.includes('.')) return { error: 'Choose a domain first.' };
@@ -358,7 +368,7 @@ export async function handleSetup(req: Request, env: Env): Promise<Response> {
       domain,
       domainCost: row.cost,
       domainPremium: row.premium,
-      mailboxes: Math.min(Math.max(Math.round(Number(d.mailboxes) || 0), 0), 20),
+      mailboxes: mailboxCount,
       hosting: !!d.hosting,
       crm: !!d.crm,
     });
@@ -436,11 +446,20 @@ export async function handleSetup(req: Request, env: Env): Promise<Response> {
     const dueToday = q.quote.dueTodayCents + q.quote.monthlyCents;
     if (dueToday <= 0) return fail('There is nothing to pay for in that order.');
 
+    /* What is charged for is what gets made: a count with no names would
+       price mailboxes that are never created, and names priced at nothing
+       (no email price set, or the old NaN count) would be created on the
+       operator's registrar account for free. */
+    const pricedBoxes = q.quote.lines.find(l => l.kind === 'email')?.quantity ?? 0;
+    if (pricedBoxes !== mailboxNames.length) {
+      return fail(mailboxNames.length && !pricedBoxes
+        ? 'Business email cannot be sold here yet — its price has not been set. Untick the mailboxes to carry on.'
+        : 'Name each mailbox you want — the order is priced from the names.', 200, { field: 'setup.mailboxes' });
+    }
+
     const orderId = rid('so');
     const options: SetupOptions = {
-      mailboxes: Array.isArray(d.mailboxes)
-        ? (d.mailboxes as unknown[]).map(m => String(m)).slice(0, 20)
-        : [],
+      mailboxes: mailboxNames,
       hosting: !!d.hosting,
       crm: !!d.crm,
       owner: (d.owner ?? {}) as SetupOptions['owner'],
@@ -760,3 +779,4 @@ export async function markSetupPaid(env: Env, reference: string): Promise<boolea
   }
   return true;
 }
+

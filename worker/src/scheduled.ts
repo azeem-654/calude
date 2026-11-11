@@ -28,6 +28,7 @@ import { loadMailbox } from './routes/mailbox';
 import { loadSmsConfig, sendSms } from './lib/sms';
 import { optInLink, prospectSmsBlock } from './lib/smsConsent';
 import { canSend, cannotSendReason, CAN_SEND_SQL, deliver, fromAddressOf } from './lib/deliver';
+import { suppressedSet, unsubscribeUrl, withUnsubscribe } from './lib/suppression';
 
 /* Keys the browser syncs up. Same names it uses locally. */
 const ENROLL_KEY = 'crm_sequence_enrollments';
@@ -167,6 +168,8 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
   let sentHere = 0;
 
   let biz: Business | null = null;
+  /* Read once per run, on the first email step: who has said stop. */
+  let optedOut: Set<string> | null = null;
   for (const enr of due) {
     if (sentHere >= MAX_SENDS_PER_ACCOUNT) {
       note(report, accountId, 'Reached this run\'s limit; the rest go on the next tick.');
@@ -214,6 +217,10 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
     if (!biz) biz = await businessFor(env, accountId, null, mailbox?.from.name ?? '');
     /* Their own opt-in link, only when the step asks for it. */
     let person: Person = (step.body ?? '').includes('smsOptInLink') ? { ...contact, smsOptInLink: await optInLink(env, accountId, contact.id) } : contact;
+    /* Every marketing email carries its signed opt-out: a footer link (or
+       where `{{unsubscribe}}` was written) and the List-Unsubscribe header. */
+    const unsub = isSms ? '' : await unsubscribeUrl(env, accountId, target, seq.id);
+    if (unsub) person = { ...person, unsubscribeUrl: unsub };
     /* The researched opening, only for an email step that has a place for it. */
     if (!isSms && hasResearch(step.body ?? '')) {
       const r = await researchFor(env, accountId, { ...(contact as unknown as Record<string, unknown>), email: target }, { myCompany: biz.myCompany, offer: biz.offer ?? '' });
@@ -250,15 +257,25 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
         note(report, accountId, block || `${target} has opted out, so the text was not sent.`);
       }
     } else {
-      const r = await deliver(mailbox!, {
-        fromName: mailbox!.from.name || 'CRM',
-        fromEmail: fromAddressOf(mailbox!),
-        to: target,
-        subject,
-        html: await signTrackedLinks(env, html),
-        replyTo: mailbox!.from.replyTo || undefined,
-      });
-      out = { ok: r.ok, error: r.error };
+      /* Somebody who unsubscribed, or is on the do-not-email list, is never
+         sent the next step — passed over and logged, not retried. */
+      if (!optedOut) optedOut = await suppressedSet(env, accountId);
+      if (optedOut.has(target.toLowerCase())) {
+        suppressed = true;
+        out = { ok: false, error: `${target} has unsubscribed, so the email was not sent.` };
+        note(report, accountId, out.error);
+      } else {
+        const r = await deliver(mailbox!, {
+          fromName: mailbox!.from.name || 'CRM',
+          fromEmail: fromAddressOf(mailbox!),
+          to: target,
+          subject,
+          html: withUnsubscribe(await signTrackedLinks(env, html), unsub),
+          replyTo: mailbox!.from.replyTo || undefined,
+          unsubscribeUrl: unsub || undefined,
+        });
+        out = { ok: r.ok, error: r.error };
+      }
     }
 
     /*
@@ -406,7 +423,6 @@ export async function runScheduledSends(env: Env): Promise<TickReport> {
  * browser, where a failure is shown on the contact for a person to resend.
  */
 const ONE_OFF_GRACE_MS = 10 * 60_000;
-const SUPPRESS_KEY = 'crm_suppression_list';
 
 interface ScheduledEmail {
   id: string; contactId: string; subject?: string; body?: string; status: string;
@@ -439,8 +455,9 @@ async function runOneOffEmails(env: Env, accountId: string, report: TickReport):
   if (!ok || !claimed.length) return;
 
   const contacts = parseJson<Contact[]>(await dataGet(env.DB, accountId, CONTACTS_KEY), []);
-  const suppressed = new Set(parseJson<{ email?: string }[]>(await dataGet(env.DB, accountId, SUPPRESS_KEY), [])
-    .map(x => String(x.email ?? '').toLowerCase()).filter(Boolean));
+  /* Both suppression keys and every unsubscribe — `crm_suppression_list`
+     alone held opt-outs only after somebody opened that screen. */
+  const suppressed = await suppressedSet(env, accountId);
   const biz = await businessFor(env, accountId, null, mailbox!.from.name ?? '');
   const outcome = new Map<string, { status: string; error?: string; sentAt?: string }>();
 
@@ -448,7 +465,15 @@ async function runOneOffEmails(env: Env, accountId: string, report: TickReport):
     const contact = contacts.find(c => c.id === em.contactId);
     const to = String(em.toEmail || contact?.email || '').trim().toLowerCase();
     if (!to) { outcome.set(em.id, { status: 'failed', error: 'The contact has no email address.' }); continue; }
-    if (suppressed.has(to)) { outcome.set(em.id, { status: 'failed', error: `${to} is on the do-not-email list, so it was not sent.` }); continue; }
+    if (suppressed.has(to)) {
+      outcome.set(em.id, { status: 'failed', error: `${to} has unsubscribed or is on the do-not-email list, so it was not sent.` });
+      await logDelivery(env, accountId, {
+        channel: 'email', source: 'manual', sourceId: em.id, sourceName: 'Scheduled email',
+        stepIndex: 0, contactId: String(em.contactId ?? ''), recipient: to, subject: em.subject ?? '',
+        status: 'suppressed', detail: 'Unsubscribed or on the do-not-email list.', sentFrom: mailbox!.from.email ?? '',
+      });
+      continue;
+    }
     const subject = personalise(em.subject ?? '', contact ?? {}, biz);
     const html = textToHtml(personalise(em.body ?? '', contact ?? {}, biz));
     const r = await deliver(mailbox!, {

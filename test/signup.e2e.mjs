@@ -308,6 +308,46 @@ if (!cronOk || !process.env.PERSIST) {
   check('the Sign-ups list shows which emails went, and the opt-out', newRow?.nudges?.filter(n => n.status === 'sent').length === 2 && !!newRow?.nudgesOff, JSON.stringify(newRow?.nudges));
 }
 
+console.log('\nClient logins are invitations (A-1)');
+/* An agency typed a stranger's address; that person's own sign-up used to
+   land inside the agency's workspace. Now it is an invitation they choose. */
+const agencyAcct = quick.user.accountId;
+mail.length = 0;
+r = await api('auth.php', { action: 'create_user', token: quick.token, email: 'invitee@signup.test', name: 'Invitee', role: 'client', accountId: agencyAcct, password: '' });
+check('adding a client sends an invitation and creates no login', r.success && r.invited, JSON.stringify(r));
+await new Promise(res => setTimeout(res, 300));
+check('…by email, from the install mailbox', mail.some(m => /invitee@signup\.test/i.test(m) && /invited you/i.test(decodeMail(m).subject)), mail.map(m => decodeMail(m).subject).join(' | '));
+r = await api('auth.php', { action: 'login', email: 'invitee@signup.test', password: 'anything-1A' }, '10.7.5.1');
+check('the invitee has no password set for them', !r.success);
+mail.length = 0;
+await api('auth.php', { action: 'request_code', email: 'invitee@signup.test' }, '10.7.5.1');
+await new Promise(res => setTimeout(res, 300));
+let icode = (mail.join('\n').match(/(\d{6}) is your sign-in code/) ?? [])[1];
+r = await api('auth.php', { action: 'verify_code', email: 'invitee@signup.test', code: icode }, '10.7.5.1');
+check('proving the mailbox offers the choice, not a session', !r.success && r.invitation && !!r.ticket && !r.token && r.invitations?.length === 1, JSON.stringify(r));
+const offer = r;
+r = await api('auth.php', { action: 'login_mfa', ticket: offer.ticket, code: '123456' }, '10.7.5.1');
+check('the invitation ticket is not a 2-step ticket', !r.success);
+r = await api('auth.php', { action: 'invite_choice', ticket: offer.ticket, choice: 'own' }, '10.7.5.1');
+check('"Create my own account" gives them their own workspace, not the agency\'s', r.success && r.user?.role === 'agency' && !!r.user?.accountId && r.user.accountId !== agencyAcct, JSON.stringify(r.user));
+r = await api('auth.php', { action: 'invite_choice', ticket: offer.ticket, choice: 'join', invitationId: offer.invitations[0].id }, '10.7.5.1');
+check('…and the ticket cannot then join as well', !r.success, JSON.stringify(r));
+
+mail.length = 0;
+r = await api('auth.php', { action: 'create_user', token: quick.token, email: 'joiner@signup.test', name: 'Joiner', role: 'client', accountId: agencyAcct, password: '' });
+await api('auth.php', { action: 'request_code', email: 'joiner@signup.test' }, '10.7.5.2');
+await new Promise(res => setTimeout(res, 300));
+icode = (mail.join('\n').match(/(\d{6}) is your sign-in code/) ?? [])[1];
+const joinOffer = await api('auth.php', { action: 'verify_code', email: 'joiner@signup.test', code: icode }, '10.7.5.2');
+r = await api('auth.php', { action: 'invite_choice', ticket: joinOffer.ticket, choice: 'join', invitationId: 'not-theirs' }, '10.7.5.2');
+check('joining needs one of their own invitations', !r.success, JSON.stringify(r));
+r = await api('auth.php', { action: 'invite_choice', ticket: joinOffer.ticket, choice: 'join', invitationId: joinOffer.invitations?.[0]?.id }, '10.7.5.2');
+check('"Join" makes them a client of that workspace, only when they press it', r.success && r.user?.role === 'client' && r.user?.accountId === agencyAcct, JSON.stringify(r.user));
+
+r = await api('auth.php', { action: 'create_user', token: quick.token, email: 'pw@signup.test', name: 'Pw', role: 'client', accountId: agencyAcct, password: 'Hq4#vL8!mTz2wE' });
+r = await api('auth.php', { action: 'register', email: 'pw@signup.test', password: 'Gv7&hN2!cXe9rK', name: 'Pw Own' }, '10.7.5.3');
+check('an invited address can still sign up for its own account', r.success && (r.needsCode || !!r.token), JSON.stringify(r));
+
 console.log('\nLogos');
 const res = await fetch(`${BASE}/api/logo.php?p=pf-anything&s=0000`);
 check('an unsigned logo address is a 404, not a lookup', res.status === 404);

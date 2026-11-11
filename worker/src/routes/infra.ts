@@ -476,7 +476,9 @@ export async function handleInfra(req: Request, env: Env): Promise<Response> {
       managedAvailable: kinds.includes('registrar'),
       managedKinds: kinds,
       managedNote: kinds.includes('registrar')
-        ? 'Domains and mailboxes can be bought for you and added to your bill.'
+        /* Not "added to your bill": nothing turns a managed purchase into a
+           charge yet (lib/provisioning.ts), so saying so was untrue. */
+        ? 'Domains and mailboxes can be bought for you on this installation’s registrar account.'
         : 'Managed buying is not switched on for this installation yet, so domains have to be bought on your own registrar account.',
     });
   }

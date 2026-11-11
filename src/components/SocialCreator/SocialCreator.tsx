@@ -282,7 +282,7 @@ function NewPostModal({ onClose, onCreate, initial }: { onClose: () => void; onC
     setError('');
     if (step !== 'ai') { createBlank(); return; }
     if (!aiPrompt.trim()) { setError('Please enter a prompt describing your design.'); return; }
-    if (!hasGeminiKey()) { setError('No Gemini API key configured. Add VITE_GEMINI_API_KEY to your environment.'); return; }
+    if (!hasGeminiKey()) { setError('AI is not available on this page — sign in again and retry.'); return; }
     setGenerating(true);
     try {
       const sizes = RATIO_SIZES[ratio] ?? { width: 540, height: 540 };

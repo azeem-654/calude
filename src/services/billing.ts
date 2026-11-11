@@ -112,7 +112,7 @@ async function startSubscription(opts: {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         token: opts.token, action: 'checkout',
-        priceId: opts.priceId || '', planId: opts.planId, currency: 'USD', interval: opts.interval === 'year' ? 'year' : 'month',
+        planId: opts.planId, currency: 'USD', interval: opts.interval === 'year' ? 'year' : 'month',
         planName: opts.productName, customerEmail: opts.customerEmail,
         successUrl: `${base}?billing=success`, cancelUrl: `${base}?billing=cancel`,
         accountId: opts.accountId,

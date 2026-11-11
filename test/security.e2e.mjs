@@ -165,6 +165,17 @@ const prov = await api('provider-send.php', { token: B.token, accountId: A.acct,
 check("B cannot send through A's provider key", !prov.ok && prov.status === 403, JSON.stringify(prov.data));
 const blog = await api('blog-publish.php', { token: B.token, accountId: A.acct, title: 't', content: 'c' });
 check("B cannot publish as A", !blog.ok && blog.status === 403, JSON.stringify(blog.data));
+/* A's connected WordPress site (C-1), planted directly: connecting needs a
+   WordPress to answer, which test:blogpublish provides. */
+const aTgt = `tgt-sec-${run}`;
+d1rows(`INSERT INTO crm_blog_publish_targets (id, account_id, site_url, username, app_password, created_at, updated_at) VALUES ('${aTgt}', '${A.acct}', 'https://a-site.example', 'a', 'enc', 'now', 'now')`);
+for (const action of ['status', 'publish', 'withdraw', 'connect', 'disconnect']) {
+  const r = await api('blog-publish.php', { token: B.token, accountId: B.acct, action, targetId: aTgt, siteUrl: 'https://b-site.example', username: 'b', password: 'B-guess', title: 't', html: 'c', remoteId: '1' });
+  check(`B cannot ${action} A's WordPress target from B's own workspace`, !r.ok && r.status === 403, JSON.stringify(r.data));
+}
+const blogA = await api('blog-publish.php', { token: B.token, accountId: A.acct, action: 'status', targetId: aTgt });
+check("B cannot name A's workspace to reach A's WordPress target", !blogA.ok && blogA.status === 403, JSON.stringify(blogA.data));
+check("A's WordPress target is untouched", d1rows(`SELECT site_url FROM crm_blog_publish_targets WHERE id = '${aTgt}'`)[0]?.site_url === 'https://a-site.example');
 const rev = await api('revenue.php', { action: 'summary', token: B.token, accountId: A.acct, days: 30 });
 check("B cannot read A's revenue", !rev.ok, JSON.stringify(rev.data).slice(0, 120));
 const revPj = await api('revenue.php', { action: 'summary', token: B.token, accountId: B.acct, days: 30, projectId: pj.data.id });
@@ -378,10 +389,13 @@ check("B cannot overwrite A's project by id", !hijackProject.ok && stillA?.name 
      workspace (readProject). The Shorts wizard's actions (2026-11) are covered with the rest. */
   const vid = `vp-sec-${run}`;
   d1rows(`INSERT INTO crm_video_projects (id, account_id, name, doc, doc_version, created_at, updated_at) VALUES ('${vid}', '${A.acct}', 'A video', '{"v":1,"clips":[]}', 1, datetime('now'), datetime('now'))`);
-  for (const [action, extra] of [['get', {}], ['shorts_propose', { mode: 'auto' }], ['shorts_create', { baseVersion: 1, items: [{ s: 0, e: 20 }] }], ['edit', { baseVersion: 1, ops: [{ op: 'clip.add', s: 0, e: 20 }] }], ['track_now', {}]]) {
+  for (const [action, extra] of [['get', {}], ['shorts_propose', { mode: 'auto' }], ['shorts_create', { baseVersion: 1, items: [{ s: 0, e: 20 }] }], ['edit', { baseVersion: 1, ops: [{ op: 'clip.add', s: 0, e: 20 }] }], ['track_now', {}], ['quick_analyze', { quick: { maxClipDuration: 60, focus: 'all' } }]]) {
     const r = await api('video.php', { action, token: B.token, accountId: B.acct, projectId: vid, ...extra });
     check(`B cannot use A's video project by id (${action})`, !r.data.success && r.status === 404, JSON.stringify([r.status, r.data]).slice(0, 200));
   }
+  /* Quick Shorts' analysis (AI-1) spends the AI pool on a stored file: naming A's workspace is refused before any of that. */
+  const intoA = await api('video.php', { action: 'quick_analyze', token: B.token, accountId: A.acct, projectId: vid, quick: { maxClipDuration: 60, focus: 'all' } });
+  check("B cannot have A's video analysed by naming A's workspace", !intoA.data.success && intoA.status === 403, JSON.stringify([intoA.status, intoA.data]).slice(0, 200));
   const after = d1rows(`SELECT doc_version, account_id AS a FROM crm_video_projects WHERE id = '${vid}'`)[0];
   check("…and A's video project is untouched", after?.doc_version === 1 && after?.a === A.acct, JSON.stringify(after));
 }
@@ -603,6 +617,46 @@ if (begin.ok) {
 } else {
   check('security.php mfa_begin answers', false, JSON.stringify(begin.data));
 }
+
+console.log('\nThe reserved "__agency__" name — not one bucket for every agency (T-1)');
+/* Routes that query the raw id refuse it; only routes that store under
+   storageWorkspace() (data, deliverability, lead revenue, RCM, blog
+   publishing) take it, and there it is each agency's own. */
+const R = '__agency__';
+const plant = await api('projects.php', { action: 'save_portfolio', token: A.token, accountId: R, name: 'Planted', profile: {} });
+check('A cannot save a portfolio under the shared reserved name', !plant.ok, JSON.stringify(plant.data).slice(0, 160));
+const plantP = await api('projects.php', { action: 'save_project', token: A.token, accountId: R, name: 'Planted', objective: 'x' });
+check('…nor a project', !plantP.ok, JSON.stringify(plantP.data).slice(0, 160));
+for (const [route, action] of [['projects.php', 'get'], ['autopilot.php', 'get'], ['engagement.php', 'overview'], ['commerce.php', 'list_products'], ['mailbox.php', 'list'], ['sources.php', 'list']]) {
+  const r = await api(route, { action, token: B.token, accountId: R });
+  check(`B cannot read the reserved name on ${route}`, !r.ok && (r.status === 403 || /workspace/i.test(r.data.error ?? r.data.message ?? '')), `${r.status} ${JSON.stringify(r.data).slice(0, 160)}`);
+}
+const reservedRows = d1rows("SELECT COUNT(*) AS n FROM crm_portfolios WHERE account_id = '__agency__'")[0]?.n ?? 0;
+check('nothing was stored under the raw reserved name', reservedRows === 0, String(reservedRows));
+/* A's session was ended by the password checks above, so B writes and a
+   third customer reads. */
+const C = await signUp('c');
+const bPut = await api('data.php', { action: 'put', token: B.token, accountId: R, key: 'crm_t1_probe', value: 'B-own' });
+const bGet = await api('data.php', { action: 'get', token: B.token, accountId: R, key: 'crm_t1_probe' });
+check('B keeps its own record under the reserved name on data', bPut.ok && bGet.data.value === 'B-own', JSON.stringify([bPut.data, bGet.data]).slice(0, 160));
+const cRead = await api('data.php', { action: 'get', token: C.token, accountId: R, key: 'crm_t1_probe' });
+check('where the name is allowed (data), it is each agency\'s own', cRead.ok && cRead.data.value !== 'B-own', JSON.stringify(cRead.data).slice(0, 160));
+
+console.log('\nOne SMS number, two workspaces (T-2)');
+/* B claims A's number first (its row comes first); a STOP signed with A's
+   token must still be recorded for A. */
+const NUM = '+15550001234', FROM = `+1555${String(Date.now()).slice(-7)}`;
+const sidA = 'AC' + 'a'.repeat(32), sidB = 'AC' + 'b'.repeat(32);
+const B2 = await signUp('b2');
+await api('sms-send.php', { action: 'save', token: B2.token, accountId: B2.acct, accountSid: sidB, authToken: 'tok-b', from: NUM });
+const C2 = await signUp('c2');
+await api('sms-send.php', { action: 'save', token: C2.token, accountId: C2.acct, accountSid: sidA, authToken: 'tok-a', from: NUM });
+const smsForm = { AccountSid: sidA, Body: 'STOP', From: FROM, To: NUM };
+const smsUrl = `${BASE}/api/sms-inbound.php`;
+const signTw = (tok, f) => crypto.createHmac('sha1', tok).update(smsUrl + Object.keys(f).sort().map(k => k + f[k]).join('')).digest('base64');
+await fetch(smsUrl, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': signTw('tok-a', smsForm), Connection: 'close' }, body: new URLSearchParams(smsForm).toString() });
+const outs = d1rows(`SELECT account_id AS a FROM crm_sms_optouts WHERE phone = '${FROM}'`);
+check('a STOP signed with the real owner\'s token is recorded for them, whoever claimed the number first', outs.some(o => o.a === C2.acct) && !outs.some(o => o.a === B2.acct), JSON.stringify(outs));
 
 console.log(`\n${passes} passed, ${failures} failed.`);
 process.exit(failures ? 1 : 0);

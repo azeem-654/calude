@@ -18,7 +18,8 @@
 import { newId } from './blogAutomation';
 import { loadPlans, upsertPlan } from './blogPlanner';
 import { postUrl } from './blogExport';
-import { getSession } from './auth';
+import { getSession, sessionToken } from './auth';
+import { getActiveAccountId } from './tenancy';
 import type {
   Article, BlogProject, MonthPlan, PlannedPost, PublishJob, PublishRecord,
   PublishState, PublishTarget,
@@ -90,33 +91,33 @@ export function emptyTarget(projectId: string, kind: PublishTarget['kind'], site
 interface ApiResult { success: boolean; error?: string; [k: string]: unknown }
 
 async function call(action: string, body: Record<string, unknown>): Promise<ApiResult> {
-  const session = getSession();
-  if (!session) return { success: false, error: 'You are signed out. Sign in again before publishing.' };
+  if (!getSession()) return { success: false, error: 'You are signed out. Sign in again before publishing.' };
+  /* The workspace on screen, which the server checks is this person's — the
+     credential is stored against it, so the agency's own id would file every
+     client's site under the agency. */
+  const accountId = getActiveAccountId();
+  if (!accountId) return { success: false, error: 'No workspace is active yet.' };
   try {
     const res = await fetch(`${API_BASE}/api/blog-publish.php`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action,
-        token: session.token,
-        accountId: session.user.accountId ?? '__agency__',
-        ...body,
-      }),
+      body: JSON.stringify({ action, token: sessionToken(), accountId, ...body }),
     });
-    if (!res.ok) return { success: false, error: `The publishing endpoint returned ${res.status}.` };
-    return (await res.json()) as ApiResult;
+    /* A refusal (403 for another workspace's site) still carries the reason. */
+    const data = await res.json().catch(() => null) as ApiResult | null;
+    return data ?? { success: false, error: `The publishing endpoint returned ${res.status}.` };
   } catch (err) {
-    // The most common cause by far, and worth naming rather than showing a
-    // bare TypeError: the PHP backend is not running or not deployed.
     return {
       success: false,
-      error: `Could not reach the publishing endpoint (${err instanceof Error ? err.message : 'network error'}). Publishing needs the PHP backend — the export bundle works without it.`,
+      error: `Could not reach the publishing endpoint (${err instanceof Error ? err.message : 'network error'}). The export bundle works without it.`,
     };
   }
 }
 
 export interface ConnectionStatus {
   connected: boolean;
+  /** A password is stored on the server for this target, whether or not it works today. */
+  stored?: boolean;
   siteUrl?: string;
   username?: string;
   connectedAs?: string;
@@ -127,7 +128,8 @@ export interface ConnectionStatus {
 /**
  * Save and verify a WordPress connection.
  *
- * The password is sent once and never comes back. WordPress application
+ * The password is sent once and never comes back. Left blank, the server keeps
+ * the one it has (so a corrected username does not need it retyped). WordPress application
  * passwords are generated per-application in Users → Profile and can be
  * revoked there without touching the real login, which is the only sane way to
  * give software write access to a site.
@@ -151,6 +153,8 @@ export async function connectionStatus(target: PublishTarget): Promise<Connectio
   if (!r.success) return { connected: false, error: r.error };
   return {
     connected: !!r.connected,
+    stored: !!r.stored,
+    error: r.error,
     siteUrl: String(r.siteUrl ?? ''),
     username: String(r.username ?? ''),
     connectedAs: String(r.connectedAs ?? ''),

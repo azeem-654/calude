@@ -9,6 +9,8 @@ import { activeBranding } from '../../services/tenancy';
 import { passwordProblem, passwordStrength } from '../../services/password';
 import { LogoMark } from '../shared/Logo';
 import TwoStepPrompt from './TwoStepPrompt';
+import InviteChoice from './InviteChoice';
+import type { InviteOffer } from '../../services/auth';
 import AutopilotScene from '../shared/AutopilotScene';
 import WorksWith from '../shared/WorksWith';
 import './auth.css';
@@ -128,6 +130,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
   const [code, setCode] = useState(magic?.code ?? '');
   /* Set when the first step was right and the account has 2-step sign-in on. */
   const [ticket, setTicket] = useState('');
+  const [invite, setInvite] = useState<InviteOffer | null>(null);
 
   /*
    * Whether Google is on offer, decided by the server rather than assumed.
@@ -193,6 +196,7 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
     const r = await verifyLoginCode(email.trim(), typed);
     setBusy(false);
     if (r.mfaTicket) { setTicket(r.mfaTicket); return; }
+    if (r.invite) { setInvite(r.invite); return; }
     if (!r.ok) { setError(r.error); return; }
     onAuthed();
   };
@@ -369,6 +373,12 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
       </div>
     </div>
   );
+
+  if (invite) {
+    return shell(
+      <InviteChoice offer={invite} onDone={onAuthed} onCancel={() => { setInvite(null); setCode(''); setCodeStep('off'); }} />,
+    );
+  }
 
   if (ticket) {
     return shell(

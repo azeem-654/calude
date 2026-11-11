@@ -34,6 +34,8 @@ export interface Person {
   /** The researched opening, written from their own website by the sender only when the email asks for it (lib/prospectResearch.ts). */
   personalOpener?: string;
   theirChallenge?: string;
+  /** Their signed opt-out link (lib/suppression.ts), for `{{unsubscribe}}` — set by marketing senders. */
+  unsubscribeUrl?: string;
 }
 
 export interface Business {
@@ -61,6 +63,7 @@ export function personalise(text: string, c: Person, biz: Business = EMPTY_BUSIN
     myCompany: biz.myCompany, website: biz.website, bookingLink: biz.bookingLink, senderName: biz.senderName,
     smsOptInLink: c.smsOptInLink ?? '',
     personalOpener: c.personalOpener ?? '', theirChallenge: c.theirChallenge ?? '',
+    unsubscribe: c.unsubscribeUrl ?? '',
   };
   /* Fields a line is pointless without: "Say yes here: " with no link is dropped, not sent. */
   /* The research lines too: nothing true found about them means no line, not a blank one. */

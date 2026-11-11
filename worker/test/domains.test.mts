@@ -10,6 +10,7 @@
  * The first four cases below are that, from both ends.
  */
 import { domainCandidates, CANDIDATE_ROOM } from '../src/lib/domainSearch';
+import { mailboxesOf } from '../src/lib/retail';
 
 const out: string[] = [];
 const ok = (n: string, p: boolean, d = '') => out.push(`${p ? 'PASS' : 'FAIL'}  ${n}${p ? '' : ` — ${d}`}`);
@@ -89,6 +90,18 @@ const ok = (n: string, p: boolean, d = '') => out.push(`${p ? 'PASS' : 'FAIL'}  
     r.candidates.length <= CANDIDATE_ROOM, String(r.candidates.length));
   ok('and no duplicates, which would be paid for twice',
     new Set(r.candidates).size === r.candidates.length, r.candidates.join(', '));
+}
+
+/* D-1: the setup checkout priced `Number(['hello','sales','info'])` — NaN, so
+   none — and then created all three. */
+{
+  const m = mailboxesOf(['hello', 'sales', 'info']);
+  ok('three named mailboxes are three priced and three made', m.count === 3 && m.names.length === 3, JSON.stringify(m));
+  const blank = mailboxesOf(['hello', ' ', '']);
+  ok('a blank name is neither priced nor made', blank.count === 1 && blank.names.join() === 'hello', JSON.stringify(blank));
+  const n = mailboxesOf(2);
+  ok('a bare count (the quote screen) prices two and names none', n.count === 2 && n.names.length === 0, JSON.stringify(n));
+  ok('at most twenty', mailboxesOf(Array.from({ length: 30 }, (_, i) => `m${i}`)).count === 20);
 }
 
 console.log(out.join('\n'));

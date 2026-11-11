@@ -169,17 +169,13 @@ export const stripe: PaymentProvider = {
     params.set('success_url', req.successUrl);
     params.set('cancel_url', req.cancelUrl);
     params.set('line_items[0][quantity]', '1');
-    if (req.priceId) {
-      /* A price the operator configured in their own dashboard beats one built
-         here: it carries their tax behaviour, trial and interval as they set
-         them, and this cannot silently disagree with it. */
-      params.set('line_items[0][price]', req.priceId);
-    } else {
-      params.set('line_items[0][price_data][currency]', req.currency.toLowerCase());
-      params.set('line_items[0][price_data][product_data][name]', req.planName.slice(0, 250) || 'Subscription');
-      params.set('line_items[0][price_data][unit_amount]', String(req.amountCents));
-      params.set('line_items[0][price_data][recurring][interval]', req.interval === 'year' ? 'year' : 'month');
-    }
+    /* Always built from the amount this app priced. A configured price id
+       was once accepted from the request, which bought any cheap price on
+       the operator's account while naming the top plan. */
+    params.set('line_items[0][price_data][currency]', req.currency.toLowerCase());
+    params.set('line_items[0][price_data][product_data][name]', req.planName.slice(0, 250) || 'Subscription');
+    params.set('line_items[0][price_data][unit_amount]', String(req.amountCents));
+    params.set('line_items[0][price_data][recurring][interval]', req.interval === 'year' ? 'year' : 'month');
     if (req.email) params.set('customer_email', req.email);
     params.set('client_reference_id', req.reference);
     params.set('metadata[accountId]', req.reference);
@@ -292,11 +288,24 @@ export const stripe: PaymentProvider = {
       };
     }
 
+    /*
+     * A completed checkout is money only when Stripe says it is. For a bank
+     * debit (ACH, SEPA, Bacs, boleto) `completed` arrives with
+     * `payment_status: 'unpaid'` and the money days later, or never — read
+     * as paid, it registered domains and fulfilled orders on nothing. Such a
+     * payment is paid on `async_payment_succeeded`.
+     *
+     * An expired session is a checkout somebody walked away from. It once
+     * read as a failure, which set a paying subscriber who opened a plan
+     * switch and closed the tab to "past due". It is nothing.
+     */
+    const payStatus = String(obj.payment_status ?? '');
     const kind: PaymentEvent['kind'] =
-      type === 'checkout.session.completed' || type === 'checkout.session.async_payment_succeeded' ? 'paid'
-        : type === 'checkout.session.async_payment_failed' || type === 'checkout.session.expired' ? 'failed'
-          : type === 'charge.refunded' ? 'refunded'
-            : 'other';
+      type === 'checkout.session.completed' ? (payStatus === 'paid' || payStatus === 'no_payment_required' ? 'paid' : 'other')
+        : type === 'checkout.session.async_payment_succeeded' ? 'paid'
+          : type === 'checkout.session.async_payment_failed' ? 'failed'
+            : type === 'charge.refunded' ? 'refunded'
+              : 'other';
 
     /**
      * The address, if one was collected.
@@ -316,6 +325,9 @@ export const stripe: PaymentProvider = {
 
     return {
       kind,
+      /* About one checkout session, not a subscription's standing: a failure
+         here fails that session's order and nothing else. */
+      checkout: type.startsWith('checkout.session.'),
       reference: meta.orderId || String(obj.client_reference_id ?? ''),
       sessionId: String(obj.id ?? ''),
       eventId: String((event as { id?: string }).id ?? ''),

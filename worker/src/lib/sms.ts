@@ -176,6 +176,27 @@ export async function verifySmsCredentials(creds: SmsCredentials): Promise<SmsRe
 }
 
 
+/**
+ * Is this sending number one of the account's own (Twilio
+ * IncomingPhoneNumbers)? Checked before a saved number counts as verified,
+ * so typing another business's number does not claim it (T-2). A lookup that
+ * could not run says so rather than passing or failing the number.
+ */
+export async function numberOnAccount(creds: SmsCredentials): Promise<SmsResult> {
+  try {
+    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${creds.accountSid}/IncomingPhoneNumbers.json?PhoneNumber=${encodeURIComponent(creds.fromNumber)}`, {
+      headers: { Authorization: 'Basic ' + btoa(`${creds.accountSid}:${creds.authToken}`) },
+    });
+    if (!r.ok) return { ok: false, error: `Could not check ${creds.fromNumber} with Twilio (HTTP ${r.status}). Try again.` };
+    const data = await r.json<{ incoming_phone_numbers?: { phone_number?: string }[] }>().catch(() => ({ incoming_phone_numbers: [] }));
+    const found = (data.incoming_phone_numbers ?? []).some(n => n.phone_number === creds.fromNumber);
+    return found ? { ok: true, id: creds.fromNumber, error: '' }
+      : { ok: false, error: `${creds.fromNumber} is not a number on this Twilio account. Use one of your own numbers, or buy one here.` };
+  } catch (e) {
+    return { ok: false, error: `Could not reach Twilio to check ${creds.fromNumber}: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
 /* ── Numbers ───────────────────────────────────────────────────────────────
  *
  * Buying a number is the one thing in this file that spends money, so it is

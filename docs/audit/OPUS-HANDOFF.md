@@ -2,6 +2,14 @@
 
 This document stands on its own. The evidence behind every task is in `docs/audit/APPSUMO-READINESS-AUDIT.md` under the same ID. Read `CLAUDE.md` first: its rules bind every task here. Then read only the `docs/claude/<area>.md` file for the area of the task in hand.
 
+## Status (2026-11-11, remediation pass 1)
+
+- **Fixed, with tests:** M-1, E-1 (P0); T-1, A-1, T-2, C-1, AI-1 (with F-4), M-2, M-3, M-4, D-1, E-2 (P1). Details in each area's `docs/claude/` file.
+- **D-2:** only the false "added to your bill" text is corrected; managed buying is still uncharged pending the owner's decision (OWNER-CHECKLIST #48).
+- **PUB-1:** not started — needs the owner and a lawyer (OWNER-CHECKLIST #46).
+- **T-1:** live data under the raw `__agency__` name was not inspected (no access from the session); OWNER-CHECKLIST #47.
+- Still to do from P2 and below, in the order given.
+
 ## 1. The application in brief
 
 - **One Cloudflare Worker serves everything.**

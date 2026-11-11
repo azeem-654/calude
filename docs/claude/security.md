@@ -79,6 +79,28 @@ is claimed only by the install owner or the account it was issued to
 the top bar, that AI Prospecting shows nobody from the owner's lead library,
 and that the library is closed to customers.
 
+**`__agency__` is refused unless a route opts in.** `workspaceAccess` (and
+`canAccess`, `denyForeignWorkspace`) refuse the reserved name unless called
+with `{ allowReserved: true }`, which only routes that store under
+`storageWorkspace()` pass (data, deliverability, blog publishing; lead revenue
+and RCM handle it before the check). Routes that queried the raw id made it one
+bucket shared by every agency (audit T-1). `test:security`.
+
+**A client login is an invitation** (`crm_invitations`, migration 0090).
+`create_user` with role client stores an invitation and emails it; no password
+is set. Proving the mailbox (code or Google) with an invitation waiting returns
+`invitation: true` and a ticket good only for `invite_choice` (`join` or
+`own`) — `InviteChoice.tsx`. A client row made before this and never proved is
+turned back into an invitation the first time its mailbox is proved (audit
+A-1). `test:signup`.
+
+**An SMS number has one verified owner.** "Test" verifies a saved number only
+if it is on that Twilio account (`numberOnAccount`) and no other workspace has
+it verified. Inbound tries every workspace claiming the number, and the owner
+is the one whose token signed it (`lib/smsInbound.ts`; audit T-2). There is no
+unique index: existing duplicates on live were not inspected, and a failing
+migration would stop the deploy. `test:smsinbound`, `test:security`.
+
 ## Secrets
 
 Customer credentials — mailbox passwords, registrar and DNS API keys, Stripe

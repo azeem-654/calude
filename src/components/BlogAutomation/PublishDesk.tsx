@@ -140,7 +140,8 @@ export default function PublishDesk({ project }: Props) {
       const r = await connectWordPress(next, next.username ?? '', form.password);
       if (!r.connected) {
         addNotification(r.error || 'That connection could not be verified.', 'error');
-        upsertTarget({ ...next, hasCredential: false, verifyNote: r.error });
+        /* A refused connect stores nothing, so whatever was stored before stays. */
+        upsertTarget({ ...next, verifyNote: r.error });
         bump();
         return;
       }
@@ -162,7 +163,10 @@ export default function PublishDesk({ project }: Props) {
         ...s,
         [t.id]: r.connected ? `Connected as ${r.connectedAs || r.username}` : (r.error || 'Not connected'),
       }));
-      upsertTarget({ ...t, hasCredential: r.connected });
+      /* A stored password that WordPress refuses today is still stored —
+         keep Disconnect on screen so it can be removed. When the check could
+         not run at all (`stored` unknown), what was known stands. */
+      upsertTarget({ ...t, hasCredential: r.stored ?? t.hasCredential });
       bump();
     } finally { setBusy(''); }
   }
@@ -426,7 +430,7 @@ export default function PublishDesk({ project }: Props) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
             <Field label="Site address" hint="Where the site lives, e.g. https://example.com">
               <input value={form.siteUrl} onChange={e => setForm(f => ({ ...f, siteUrl: e.target.value }))}
-                placeholder="https://example.com" style={input()} />
+                data-field="blog.siteUrl" placeholder="https://example.com" style={input()} />
             </Field>
             <Field label="Posts live under" hint={`e.g. blog → ${postUrl({ ...target, basePath: form.basePath }, 'a-post')}`}>
               <input value={form.basePath} onChange={e => setForm(f => ({ ...f, basePath: e.target.value }))}
@@ -436,13 +440,13 @@ export default function PublishDesk({ project }: Props) {
               <>
                 <Field label="WordPress username" hint="The account the posts are published as">
                   <input value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
-                    autoComplete="off" style={input()} />
+                    data-field="blog.username" autoComplete="off" style={input()} />
                 </Field>
                 <Field
                   label="Application password"
                   hint="WordPress → Users → Profile → Application Passwords. Not the login password; it can be revoked on its own."
                 >
-                  <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  <input type="password" data-field="blog.password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                     placeholder={target.hasCredential ? '•••••••• stored on the server' : 'xxxx xxxx xxxx xxxx xxxx xxxx'}
                     autoComplete="new-password" style={input()} />
                 </Field>

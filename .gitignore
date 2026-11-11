@@ -64,6 +64,7 @@ test-results/
 .wrangler-video/
 .recbench/
 .wrangler-ytvideo/
+.wrangler-quickshorts/
 __pycache__/
 
 # The code graph graphify builds locally (not shared)

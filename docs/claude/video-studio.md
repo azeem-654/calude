@@ -20,7 +20,15 @@ until the video errors. The old browser-only **AI Shorts** and **Repurposing**
 modules are tabs inside the studio (`?tab=quick-shorts`, `?tab=repurpose`;
 `/ai-shorts` and `/social-automation` redirect there, query kept), drawn
 outside its dark frame — AI Shorts' "transcript" is written by Gemini and its
-export is a canvas recording; Video Studio is the real one.
+export is a canvas recording; Video Studio is the real one. **Quick Shorts never talks to
+Google from the page** (AI-1, 2026-11): an uploaded file goes up through this
+route's own upload (a project made with `long: false, shorts: 0`,
+`services/quickShorts.ts`) and `quick_analyze` hands it to the pool on the
+Worker (`askGeminiAboutFile`, `lib/ai.ts`: Files API upload, wait for ACTIVE,
+ask and delete — all on one key per attempt, since a file is readable only by
+the key that uploaded it), after `aiBudget`; a YouTube link goes through
+`/api/ai.php`. The prompt is `lib/video/quickShorts.ts`, shared by both. No
+Gemini key or model id lives in the browser. `npm run test:quickshorts`.
 
 - **Three Cloudflare pieces, all optional at deploy.** `VIDEO` (R2, created by name),
   `MEDIA` (service binding to the FFmpeg engine, a Container Worker) and `AI` (Workers

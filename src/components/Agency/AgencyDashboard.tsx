@@ -411,14 +411,12 @@ function SubAccountModal({ account, creating, onSave, onClose }: { account: SubA
   const canSave = a.name.trim() && a.contactEmail.trim();
   const pickPlan = (id: PlanId) => set({ plan: id, price: planById(id).price });
 
-  // Client login provisioning
-  const [loginPw, setLoginPw] = useState('');
+  // Client login: an invitation the client accepts by signing in with that address (no password is set for them).
   const [loginMsg, setLoginMsg] = useState('');
   const provision = async () => {
-    if (!a.contactEmail.trim() || loginPw.length < 6) { setLoginMsg('Enter a contact email and a password of 6+ characters.'); return; }
-    const res = await createUser({ email: a.contactEmail.trim(), password: loginPw, name: a.contactName || a.businessName || a.name, role: 'client', accountId: a.id });
-    setLoginMsg(res.ok ? `✓ Login created for ${a.contactEmail}` : (res.error || 'Could not create login.'));
-    if (res.ok) setLoginPw('');
+    if (!a.contactEmail.trim()) { setLoginMsg('Enter a contact email first.'); return; }
+    const res = await createUser({ email: a.contactEmail.trim(), password: '', name: a.contactName || a.businessName || a.name, role: 'client', accountId: a.id });
+    setLoginMsg(res.ok ? `✓ ${res.message || `Invitation sent to ${a.contactEmail}`}` : (res.error || 'Could not send the invitation.'));
   };
 
   return (
@@ -487,8 +485,7 @@ function SubAccountModal({ account, creating, onSave, onClose }: { account: SubA
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}><KeyRound size={14} color={INK} /><span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Client login</span><span style={{ fontSize: 11, color: MUTED }}>— locked to this workspace</span></div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
               <div style={{ flex: 1 }}><label style={lbl}>Login email</label><input style={{ ...inp, background: '#f7f8f9' }} value={a.contactEmail} readOnly placeholder="set the contact email above" /></div>
-              <div style={{ flex: 1 }}><label style={lbl}>Set password</label><input style={inp} type="text" value={loginPw} onChange={e => setLoginPw(e.target.value)} placeholder="6+ characters" /></div>
-              <button onClick={provision} style={{ padding: '9px 16px', background: INK, color: '#fff', border: 'none', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>Create login</button>
+              <button onClick={provision} style={{ padding: '9px 16px', background: INK, color: '#fff', border: 'none', borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>Send invitation</button>
             </div>
             {loginMsg && <div style={{ fontSize: 12, color: loginMsg.startsWith('✓') ? '#3f9142' : '#e5484d', fontWeight: 600, marginTop: 8 }}>{loginMsg}</div>}
           </div>

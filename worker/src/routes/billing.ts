@@ -32,7 +32,7 @@
  * gets paid for everybody.
  */
 import { addr, body, fail, json } from '../lib/http';
-import { LEGACY_CENTS, SOLD_PLANS, limitsFor, planByAmount, soldAt } from '../lib/allowances';
+import { LEGACY_CENTS, PLAN_CURRENCY, SOLD_PLANS, limitsFor, planByAmount, soldAt } from '../lib/allowances';
 import { loadOverrides } from '../lib/allowanceStore';
 import {
   agencyBucketFor, canAccess, dataGet, dataPut, installSecret, nowIso, userFromToken, type Env, type SessionUser,
@@ -58,7 +58,6 @@ interface Req {
   planName?: string;
   amount?: number;
   currency?: string;
-  priceId?: string;
   customerEmail?: string;
   successUrl?: string;
   cancelUrl?: string;
@@ -292,7 +291,13 @@ export async function handleBilling(req: Request, env: Env): Promise<Response> {
        one is refused by name rather than charged as a $0 year. */
     if (interval === 'year' && !plan.annualCents) return fail(`${plan.name} is billed monthly — there is no yearly price.`, 200, { code: 'monthly_only' });
     const amountCents = interval === 'year' ? plan.annualCents : plan.cents;
-    const currency = (String(d.currency ?? 'USD') || 'USD').toUpperCase();
+    /* The plan's price is in the plan's currency, and only that. Taking the
+       currency from the request billed Scale's 29,700 cents as 29,700 VND. */
+    const currency = PLAN_CURRENCY;
+    const asked = String(d.currency ?? '').trim().toUpperCase();
+    if (asked && asked !== currency) {
+      return fail(`Plans are billed in ${currency} only — ${asked} is not offered.`, 200, { field: 'billing.currency' });
+    }
     if (provider.currencies.length && !provider.currencies.includes(currency)) {
       return fail(`${provider.label} cannot bill in ${currency} — it accepts ${provider.currencies.join(' and ')}.`);
     }
@@ -318,7 +323,9 @@ export async function handleBilling(req: Request, env: Env): Promise<Response> {
       email: addr(d.customerEmail) ?? '',
       successUrl: safe(d.successUrl, '/billing?checkout=success'),
       cancelUrl: safe(d.cancelUrl, '/billing?checkout=cancelled'),
-      priceId: String(d.priceId ?? '').trim() || undefined,
+      /* No priceId, ever: a price id from the request bought any cheap price
+         on the operator's account while naming Scale. Line items are built
+         from PLAN_CENTS alone. */
     }, contextFor(env, current.row));
 
     if (!r.ok) {
@@ -355,7 +362,11 @@ async function readJson(env: Env, bucket: string, key: string): Promise<Record<s
  *     amount, not the plan. Last, because an abandoned checkout for a larger
  *     plan must not upgrade a renewal of a smaller one.
  */
-async function planFromEvent(env: Env, bucket: string, accountId: string, amountCents: number | undefined, ownerEmail = ''): Promise<string> {
+async function planFromEvent(env: Env, bucket: string, accountId: string, amountCents: number | undefined, ownerEmail = '', currency = ''): Promise<string> {
+  /* An amount names a plan only in the currency the plans are priced in:
+     29,700 VND is not Scale. Nothing is mapped — not even the checkout
+     intent — from a payment in any other currency. */
+  if (String(currency).toUpperCase() !== PLAN_CURRENCY) return '';
   if (ownerEmail && amountCents) {
     const cur = await env.DB.prepare('SELECT plan_id FROM crm_plans WHERE owner_email = ?').bind(ownerEmail).first<{ plan_id: string }>().catch(() => null);
     if (cur && soldAt(cur.plan_id, amountCents)) return cur.plan_id;
@@ -380,7 +391,7 @@ async function planFromEvent(env: Env, bucket: string, accountId: string, amount
  */
 async function applyPlan(
   env: Env, processor: string, accountId: string, bucket: string,
-  event: { kind: string; amountCents?: number }, status: string,
+  event: { kind: string; amountCents?: number; currency?: string }, status: string,
 ): Promise<void> {
   const owner = await env.DB.prepare('SELECT owner_email FROM crm_workspaces WHERE account_id = ?')
     .bind(accountId).first<{ owner_email: string }>();
@@ -394,7 +405,7 @@ async function applyPlan(
     return;
   }
   if (status !== 'active') return;
-  const planId = await planFromEvent(env, bucket, accountId, event.amountCents, owner.owner_email);
+  const planId = await planFromEvent(env, bucket, accountId, event.amountCents, owner.owner_email, event.currency);
   if (!planId) return;
   /* The sub-accounts it allows, with the owner's change to the plan if any
      (Plans & allowances). Stored on the row, so a later change to the plan
@@ -470,7 +481,11 @@ export async function handleBillingWebhook(req: Request, env: Env): Promise<Resp
      whoever it was about. */
   const status = event.kind === 'paid' ? 'active'
     : event.kind === 'refunded' || event.kind === 'cancelled' ? 'cancelled'
-      : event.kind === 'failed' ? 'past_due'
+      /* A failed checkout session (an abandoned or failed bank payment for
+         one checkout) is about that checkout only. A subscription falls
+         behind when an invoice fails, never because a plan switch was left
+         unpaid. */
+      : event.kind === 'failed' && !event.checkout ? 'past_due'
         : '';
   if (accountId && status) {
     /* Billing state is kept under the agency's own namespace, the same place

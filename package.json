@@ -34,6 +34,7 @@
     "test:plan": "npx --yes tsx test/sendingPlan.test.mts",
     "test:launch": "npx --yes tsx test/launchPlan.test.mts",
     "test:checkout": "npx --yes tsx worker/test/checkout.test.mts",
+    "test:smsinbound": "npx --yes tsx worker/test/smsInbound.test.mts",
     "test:autopilot": "npx --yes tsx worker/test/autopilotPlan.test.mts",
     "test:project": "node test/projectCard.e2e.mjs",
     "test:nodes": "npx --yes tsx test/workflowNodes.test.mts",
@@ -47,6 +48,7 @@
     "test:emailstyle": "npx --yes tsx test/emailStyle.test.mts",
     "test:wizard": "node test/newProject.e2e.mjs",
     "test:security": "node test/security.e2e.mjs",
+    "test:blogpublish": "node test/blogPublish.e2e.mjs",
     "test:models": "npx --yes tsx worker/test/models.test.mts",
     "test:provider-key": "npx --yes tsx worker/test/providerKey.test.mts",
     "test:merge": "npx --yes tsx worker/test/mergeFields.test.mts",
@@ -97,7 +99,8 @@
     "test:allowancese2e": "node test/allowances.e2e.mjs",
     "test:appsumo": "node test/appsumo.e2e.mjs",
     "test:videoe2e": "node test/videoStudio.e2e.mjs",
-    "test:videoyoutube": "node test/videoYoutube.e2e.mjs"
+    "test:videoyoutube": "node test/videoYoutube.e2e.mjs",
+    "test:quickshorts": "node test/quickShorts.e2e.mjs"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "0.10.35",

@@ -160,6 +160,26 @@ const rejText = await er.text().catch(() => '');
 s = await H(C, 'status');
 ok('mail to an address that does not exist is refused, not stored', /No such address/i.test(rejText + wlog) && s.addresses?.[0]?.messages === 1, [er.status, rejText.slice(0, 200), s.addresses]);
 
+console.log('\nSending as somebody else\'s domain (E-1)');
+/* Dan gets his own verified hosted domain, then tries to send as Cara's.
+   The platform's key has every hosted domain verified on it, so the From
+   must be the mailbox's own — never the request's. */
+r = await H(D, 'add_domain', { domain: 'dan-shop.com' });
+const dd = (r.domains ?? []).find(x => x.domain === 'dan-shop.com');
+r = await H(D, 'add_address', { domainId: dd?.id, local: 'sales', name: 'Dan' });
+await H(D, 'refresh', { domainId: dd?.id });
+r = await H(D, 'refresh', { domainId: dd?.id });
+ok('the other workspace has its own verified hosted address', r.domains?.find(x => x.domain === 'dan-shop.com')?.sending === 'verified', r.domains);
+const spoof = { token: D.token, accountId: D.acct, fromEmail: 'hello@cara-bakes.com', fromName: 'Cara', to: 'victim@example.org', subject: 'Invoice', html: '<p>Pay here</p>' };
+r = await api('provider-send.php', spoof);
+ok('provider-send refuses a From on another workspace\'s hosted domain, naming both', !r.success && /sends only as sales@dan-shop\.com/.test(r.error ?? r.message) && /hello@cara-bakes\.com/.test(r.error ?? r.message), r);
+r = await api('smtp-send.php', spoof);
+ok('…and so does smtp-send', !r.success && /sends only as sales@dan-shop\.com/.test(r.error ?? r.message), r);
+r = await api('provider-send.php', { ...spoof, fromEmail: 'ceo@dan-shop.com' });
+ok('…as does another address on its own domain that is not this mailbox', !r.success && /sends only as/.test(r.error ?? r.message), r);
+r = await api('provider-send.php', { ...spoof, fromEmail: 'Sales@Dan-Shop.com', to: 'nobody@invalid.invalid' });
+ok('its own address is not refused for its From', !/sends only as/.test(r.error ?? r.message ?? ''), r);
+
 console.log('\nRemoving');
 r = await H(D, 'remove_domain', { domainId: dom.id });
 ok('another workspace cannot remove it', !r.success, r);

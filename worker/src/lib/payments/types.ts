@@ -70,9 +70,6 @@ export interface SubscriptionRequest {
   email: string;
   successUrl: string;
   cancelUrl: string;
-  /** A price already set up in the processor's dashboard, when there is one.
-   *  Preferred over an amount: it is the operator's own configured plan. */
-  priceId?: string;
   /** How often `amountCents` is charged. Monthly when absent. */
   interval?: 'month' | 'year';
 }
@@ -99,6 +96,10 @@ export interface PaymentEvent {
   /** The processor's own id for this event — what anything counted per
    *  payment (an affiliate commission) is keyed on, so a retry counts once. */
   eventId?: string;
+  /** True when the event is about one checkout session (Stripe
+   *  `checkout.session.*`) rather than a subscription's invoices. A failure
+   *  of one fails that session's order only — never a subscription's status. */
+  checkout?: boolean;
   /** Money that actually moved on this event, in minor units, when the
    *  processor says. */
   amountCents?: number;

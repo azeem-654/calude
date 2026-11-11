@@ -16,6 +16,7 @@
  */
 import { decryptSecret, encryptSecret } from './crypto';
 import { installSecret, nowIso, type Env } from './db';
+import { urlProblem, wireUrl } from './readSite';
 
 export interface PublishTarget {
   kind: string;
@@ -195,4 +196,171 @@ export async function publishPost(
   } catch (e) {
     return { ok: false, link: '', error: `Could not reach that site: ${e instanceof Error ? e.message : String(e)}` };
   }
+}
+
+/* ═══ Blog Automation's sites — one per target on its Publish screen ═══════
+ *
+ * The Publish screen keeps its targets (address, username, where posts live)
+ * in the browser, and the password here, against the browser's target id.
+ * The browser sends the password once, on connect, and never again: status,
+ * publish and withdraw name the target and the Worker reads the credential.
+ *
+ * The site is fetched through `wireUrl`, which only ever changes anything when
+ * the deployment sets SITE_TEST_ORIGIN (a `wrangler dev --var`) and the host is
+ * a reserved `.test` name. The https rule is checked on the address as typed,
+ * so a test proves the real rule rather than a relaxed copy of it.
+ */
+
+export const BLOG_TARGET_ID = /^[\w.\-]{1,80}$/;
+
+export interface BlogTarget {
+  id: string;
+  siteUrl: string;
+  username: string;
+  /** Decrypted. Only ever held in memory, inside the Worker. */
+  appPassword: string;
+  connectedAs: string;
+  verifiedAt: string | null;
+  lastError: string;
+}
+
+interface BlogRow {
+  id: string; account_id: string; site_url: string; username: string; app_password: string;
+  connected_as: string; verified_at: string | null; last_error: string;
+}
+
+/** Whose target this id is, or null when nobody has connected it yet. */
+export async function blogTargetOwner(env: Env, targetId: string): Promise<string | null> {
+  const row = await env.DB.prepare('SELECT account_id FROM crm_blog_publish_targets WHERE id = ?')
+    .bind(targetId).first<{ account_id: string }>();
+  return row?.account_id ?? null;
+}
+
+export async function loadBlogTarget(env: Env, accountId: string, targetId: string): Promise<BlogTarget | null> {
+  const row = await env.DB.prepare(
+    `SELECT id, account_id, site_url, username, app_password, connected_as, verified_at, last_error
+     FROM crm_blog_publish_targets WHERE id = ? AND account_id = ?`,
+  ).bind(targetId, accountId).first<BlogRow>();
+  if (!row?.site_url) return null;
+  let appPassword = '';
+  /* Unreadable reads as empty, as in loadPublishTarget: the caller then says
+     "enter it again", which is the fix, instead of the request dying. */
+  try { appPassword = row.app_password ? await decryptSecret(await installSecret(env.DB, 'mailbox_key'), row.app_password) : ''; }
+  catch { appPassword = ''; }
+  return {
+    id: row.id, siteUrl: row.site_url, username: row.username, appPassword,
+    connectedAs: row.connected_as, verifiedAt: row.verified_at, lastError: row.last_error,
+  };
+}
+
+/**
+ * Store a connection that has just been proved.
+ *
+ * Only ever called after WordPress accepted the credentials, so the verified
+ * stamp is set here rather than cleared: what is stored is exactly what was
+ * checked. The upsert is scoped — an id that belongs to another account does
+ * not match the WHERE and nothing is written.
+ */
+export async function saveBlogTarget(
+  env: Env, accountId: string, targetId: string,
+  input: { siteUrl: string; username: string; appPassword: string; connectedAs: string },
+): Promise<string> {
+  const stored = await encryptSecret(await installSecret(env.DB, 'mailbox_key'), input.appPassword);
+  const now = nowIso();
+  await env.DB.prepare(
+    `INSERT INTO crm_blog_publish_targets
+       (id, account_id, site_url, username, app_password, connected_as, verified_at, last_error, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,'',?,?)
+     ON CONFLICT (id) DO UPDATE SET
+       site_url = excluded.site_url, username = excluded.username, app_password = excluded.app_password,
+       connected_as = excluded.connected_as, verified_at = excluded.verified_at, last_error = '',
+       updated_at = excluded.updated_at
+     WHERE crm_blog_publish_targets.account_id = excluded.account_id`,
+  ).bind(targetId, accountId, input.siteUrl, input.username, stored, input.connectedAs.slice(0, 120), now, now, now).run();
+  return now;
+}
+
+export async function deleteBlogTarget(env: Env, accountId: string, targetId: string): Promise<void> {
+  await env.DB.prepare('DELETE FROM crm_blog_publish_targets WHERE id = ? AND account_id = ?').bind(targetId, accountId).run();
+}
+
+export async function noteBlogTarget(env: Env, accountId: string, targetId: string, ok: boolean, error: string): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE crm_blog_publish_targets SET verified_at = CASE WHEN ? THEN ? ELSE verified_at END, last_error = ?, updated_at = ?
+     WHERE id = ? AND account_id = ?`,
+  ).bind(ok ? 1 : 0, nowIso(), ok ? '' : error.slice(0, 400), nowIso(), targetId, accountId).run();
+}
+
+/** The address a WordPress install answers on: origin plus any sub-folder. */
+export function wordpressBase(raw: string): { base: string; error: string } {
+  const site = raw.trim().replace(/\/+$/, '');
+  if (!site) return { base: '', error: 'Enter the site address, e.g. https://example.com.' };
+  let u: URL;
+  try { u = new URL(site); } catch { return { base: '', error: `"${site}" is not a valid site address. It starts with https://` }; }
+  if (u.protocol !== 'https:') return { base: '', error: 'The WordPress site must be reachable over https.' };
+  const problem = urlProblem(site);
+  if (problem) return { base: '', error: problem };
+  return { base: `${u.origin}${u.pathname.replace(/\/+$/, '')}`, error: '' };
+}
+
+export type WpAnswer =
+  | { ok: true; status: number; data: Record<string, unknown> }
+  | { ok: false; status: number; error: string; field?: 'blog.siteUrl' | 'blog.password' };
+
+/**
+ * One request to a site's REST API, with the failure named for a person.
+ *
+ * Redirects are not followed: a redirect would carry the password to wherever
+ * the site points (possibly http, possibly another host), and "enter the
+ * address it redirects to" is the actual fix anyway.
+ */
+export async function wordpressCall(
+  base: string, username: string, appPassword: string,
+  path: string, init: { method?: string; body?: unknown } = {},
+): Promise<WpAnswer> {
+  let r: Response;
+  try {
+    r = await fetch(wireUrl(`${base}/wp-json${path}`), {
+      method: init.method ?? 'GET',
+      redirect: 'manual',
+      headers: {
+        Authorization: 'Basic ' + btoa(`${username}:${appPassword}`),
+        Accept: 'application/json',
+        ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+    });
+  } catch (e) {
+    return { ok: false, status: 0, field: 'blog.siteUrl', error: `Could not reach ${base}: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  if (r.status >= 300 && r.status < 400) {
+    const to = r.headers.get('Location') ?? '';
+    return { ok: false, status: r.status, field: 'blog.siteUrl', error: `${base} redirects${to ? ` to ${to}` : ' elsewhere'} — enter the address it ends up on.` };
+  }
+  const data = await r.json<Record<string, unknown>>().catch(() => null);
+  if (r.ok && data && typeof data === 'object') return { ok: true, status: r.status, data };
+  if (r.ok) return { ok: false, status: r.status, field: 'blog.siteUrl', error: `${base} did not answer like a WordPress site. Check the address.` };
+
+  const said = data && typeof data.message === 'string' ? String(data.message).replace(/<[^>]+>/g, '').slice(0, 200) : '';
+  /* The common ones, named — a wrong password, a plugin blocking the API and
+     an address that is not WordPress need three different fixes. */
+  if (r.status === 401) {
+    return { ok: false, status: 401, field: 'blog.password', error: 'Wrong username or application password — WordPress refused them (HTTP 401). Use an application password from Users → Profile → Application Passwords, not the login password.' };
+  }
+  if (r.status === 403) {
+    return { ok: false, status: 403, error: `WordPress refused the request (HTTP 403)${said ? `: ${said}` : ''}. That user may not be allowed to publish, or a security plugin is blocking the REST API.` };
+  }
+  if (r.status === 404 && path.startsWith('/wp/v2/users/me')) {
+    return { ok: false, status: 404, field: 'blog.siteUrl', error: `${base} did not answer as a WordPress site (no REST API at /wp-json/). Check the address.` };
+  }
+  return { ok: false, status: r.status, error: `WordPress refused it (HTTP ${r.status})${said ? `: ${said}` : ''}.` };
+}
+
+/** Proved by asking WordPress who we are — it needs exactly the access a post needs and leaves nothing behind. */
+export async function verifyWordPress(base: string, username: string, appPassword: string):
+  Promise<{ ok: true; connectedAs: string } | { ok: false; error: string; field?: 'blog.siteUrl' | 'blog.password' }> {
+  const r = await wordpressCall(base, username, appPassword, '/wp/v2/users/me?context=edit');
+  if (!r.ok) return { ok: false, error: r.error, field: r.field };
+  if (r.data.id === undefined) return { ok: false, field: 'blog.siteUrl', error: `${base} did not answer as a WordPress site. Check the address.` };
+  return { ok: true, connectedAs: String(r.data.name || r.data.slug || username) };
 }

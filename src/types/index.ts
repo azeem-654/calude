@@ -702,6 +702,8 @@ export interface VideoProject {
     autoCaption: boolean;
   };
   contactId?: string;
+  /** The Video Studio project Quick Shorts uploaded the file into (src/services/quickShorts.ts) — a retry analyses it again rather than uploading twice. */
+  studioProjectId?: string;
   totalViews: number;
   createdAt: string;
 }

@@ -12,8 +12,9 @@ import {
 import type { VideoProject, VideoClip, Caption, BRollClip, BrandPosition } from '../../types';
 import { useApp } from '../../context/AppContext';
 import Header, { Toasts } from '../Layout/Header';
-import { hasGeminiKey, uploadFileToGemini, waitForFileActive, analyzeVideoWithGemini, generateHooks, translateClip, suggestBroll, generateScript } from '../../lib/gemini';
+import { hasGeminiKey, analyzeYoutubeWithGemini, generateHooks, translateClip, suggestBroll, generateScript } from '../../lib/gemini';
 import type { GeminiAnalysis } from '../../lib/gemini';
+import { analyseUploadedVideo } from '../../services/quickShorts';
 import { exportClipToVideo, renderSyntheticClip, downloadBlob, canExportVideo, normalizeSegments, segmentsDuration } from '../../lib/videoExport';
 import type { CaptionStyle, ExportResolution, SfxKind } from '../../lib/videoExport';
 import { composeThumbnail, captureVideoFrame, downloadDataUrl, THUMB_PRESETS, THUMB_EMOJIS } from '../../lib/thumbnail';
@@ -92,7 +93,7 @@ async function downloadClip(
 const INK = '#17191c';
 const MUTED = '#8a8f98';
 
-/** Sentinel error marking "no Gemini key configured" so the UI can offer a fix. */
+/** Sentinel error marking "this page is not signed in to the server's AI" so the UI can offer a fix. */
 const AI_KEY_MISSING = 'AI_KEY_MISSING';
 
 /** Placement options offered for the logo and website/CTA overlays. */
@@ -720,7 +721,7 @@ function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (na
               onDrop={handleDrop}
               onClick={() => fileRef.current?.click()}
               style={{ border: `2px dashed ${dragging ? '#6366f1' : '#cbd5e1'}`, borderRadius: '12px', padding: '40px 20px', textAlign: 'center', cursor: 'pointer', backgroundColor: dragging ? '#f5f3ff' : '#f8fafc', transition: 'all 0.15s', marginBottom: '16px' }}>
-              <input ref={fileRef} type="file" accept="video/mp4,video/mov,video/quicktime,video/*" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
+              <input ref={fileRef} data-testid="qs-file" type="file" accept="video/mp4,video/mov,video/quicktime,video/*" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])} />
               {file ? (
                 <>
                   <Film size={40} color="#6366f1" style={{ margin: '0 auto 12px' }} />
@@ -798,7 +799,7 @@ function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (na
             </div>
           </div>
 
-          <button onClick={handleSubmit} disabled={!canSubmit}
+          <button onClick={handleSubmit} disabled={!canSubmit} data-testid="qs-generate"
             style={{ width: '100%', padding: '12px', background: canSubmit ? INK : '#e2e8f0', color: canSubmit ? 'white' : '#94a3b8', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: canSubmit ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
             <Zap size={16} /> Generate AI Shorts
           </button>
@@ -821,22 +822,21 @@ function ProcessingScreen({ project, onRetry, onUseDemo }: { project: VideoProje
         <div style={{ width: '80px', height: '80px', borderRadius: '20px', background: INK, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px' }}>
           <Sparkles size={36} color="#c7f441" />
         </div>
-        <h2 style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', margin: '0 0 10px' }}>Connect AI to analyze this video</h2>
+        <h2 style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', margin: '0 0 10px' }}>Sign in again to analyze this video</h2>
         <p style={{ fontSize: '14px', color: '#64748b', margin: '0 0 6px', maxWidth: '520px', lineHeight: 1.65 }}>
-          AI Shorts needs a Google Gemini API key to actually watch your video and find the moments worth clipping.
+          AI Shorts watches your video on our servers — there is no key for you to add. This page is not signed in, so it cannot ask them.
         </p>
         <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 28px', maxWidth: '520px', lineHeight: 1.6 }}>
-          Without it we won't invent clips — sample clips would have nothing to do with your video's content.
-          A free key takes about 2 minutes to create.
+          We won't invent clips in the meantime — sample clips would have nothing to do with your video's content.
         </p>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
-          <button onClick={() => navigate('/settings')}
+          <button onClick={() => navigate('/login')}
             style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '11px 24px', background: INK, color: 'white', border: 'none', borderRadius: '9px', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
-            <Sparkles size={15} color="#c7f441" /> Add API key in Settings
+            <Sparkles size={15} color="#c7f441" /> Sign in
           </button>
           {onRetry && (
             <button onClick={onRetry} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '11px 24px', background: 'white', color: INK, border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
-              <RefreshCw size={15} /> I've added it — retry
+              <RefreshCw size={15} /> Retry
             </button>
           )}
           {onUseDemo && (
@@ -1501,7 +1501,7 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
   const [brollBusy, setBrollBusy] = useState(false);
 
   const dubNow = async () => {
-    if (!hasGeminiKey()) { addNotification('Video dubbing needs a Gemini API key configured (Settings).', 'error'); return; }
+    if (!hasGeminiKey()) { addNotification('Video dubbing needs AI, and this page is not signed in to it. Sign in again and retry.', 'error'); return; }
     setDubBusy(true);
     try {
       const res = await translateClip(
@@ -2659,7 +2659,7 @@ function ProjectView({ project, onBack, onEditClip, onRetry, onUseDemo }: { proj
         ) : project.isDemo ? (
           <div style={{ padding: '10px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', marginBottom: '16px', fontSize: '13px', color: '#92400e', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Zap size={14} />
-            <strong>Demo mode:</strong> these are sample clips for previewing the workflow — not analyzed from the actual video. Upload your own video (with a Gemini key configured) for real AI analysis. You can still edit and download these.
+            <strong>Demo mode:</strong> these are sample clips for previewing the workflow — not analyzed from the actual video. Upload your own video for real AI analysis. You can still edit and download these.
           </div>
         ) : null}
         {project.status === 'ready' && (showTrash ? (
@@ -2946,51 +2946,60 @@ export default function VideoShorts() {
   ) => {
     const upd = (patch: Partial<VideoProject>) => updateVideoProjectRef.current(projectId, patch);
     try {
-      let fileUri: string;
-      // null mimeType = YouTube URL (Gemini's YouTube understanding rejects a mimeType on the part)
-      let mimeType: string | null = 'video/mp4';
+      const project = videoProjectsRef.current.find(p => p.id === projectId);
+      if (!project) throw new Error('Project not found');
+      let analysis: GeminiAnalysis;
 
-      if (source.type === 'upload' && source.file) {
-        upd({ status: 'uploading', progress: 8, processingStep: 'Uploading video to Gemini AI...' });
-        fileUri = await uploadFileToGemini(source.file);
-        mimeType = source.file.type || 'video/mp4';
-        upd({ progress: 30, processingStep: 'Video uploaded — AI analyzing content...' });
-        await waitForFileActive(fileUri);
+      /*
+       * A file goes up through Video Studio's own upload and is analysed by
+       * the Worker on the install's AI keys (services/quickShorts.ts). It used
+       * to go from this page straight to Google with a key from localStorage —
+       * empty for every customer, so Google answered 403.
+       */
+      const analyseFile = async (file: File | null) => {
+        const r = await analyseUploadedVideo(file, project.name, project.settings, project.duration, step => {
+          if (step.stage === 'upload') {
+            const pr = step.progress;
+            const pct = pr && pr.total ? pr.sent / pr.total : 0;
+            upd({ status: 'uploading', progress: Math.round(8 + pct * 30), processingStep: pr ? `Uploading video… ${Math.round(pct * 100)}%` : 'Uploading video…', studioProjectId: step.studioProjectId });
+          } else {
+            upd({ status: 'processing', progress: 45, processingStep: 'Video uploaded — AI is watching it and finding viral moments…', studioProjectId: step.studioProjectId });
+          }
+        }, project.studioProjectId);
+        return r.analysis;
+      };
+
+      if (source.type === 'upload' && (source.file || project.studioProjectId)) {
+        upd({ status: 'uploading', progress: 5, processingStep: 'Uploading video…' });
+        analysis = await analyseFile(source.file ?? null);
       } else if (source.type === 'youtube' && source.url) {
         if (!getYouTubeId(source.url)) {
           throw new Error('That doesn\'t look like a valid YouTube URL.');
         }
-        fileUri = source.url;
-        mimeType = null;
         upd({ status: 'processing', progress: 25, processingStep: 'Fetching video from YouTube...' });
+        upd({ status: 'processing', progress: 45, processingStep: 'Finding viral moments...' });
+        analysis = await analyzeYoutubeWithGemini(source.url, project.settings, project.duration);
       } else if (source.type === 'url' && source.url) {
-        // Gemini's fileData.fileUri only reliably supports YouTube URLs and File API
-        // URIs — arbitrary direct video URLs must be fetched client-side and
-        // re-uploaded through the File API, same as a local upload.
-        upd({ status: 'uploading', progress: 10, processingStep: 'Fetching video from URL...' });
-        let blob: Blob;
-        try {
-          const res = await fetch(source.url, { mode: 'cors' });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          blob = await res.blob();
-        } catch {
-          throw new Error('Could not download the video from that URL (likely blocked by CORS). Please download the file and upload it directly instead.');
+        // The AI reads only YouTube links and uploaded files — an arbitrary
+        // direct video URL is fetched here and uploaded like a local file.
+        upd({ status: 'uploading', progress: 4, processingStep: 'Fetching video from URL...' });
+        let file: File | null = null;
+        if (!project.studioProjectId) {
+          let blob: Blob;
+          try {
+            const res = await fetch(source.url, { mode: 'cors' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            blob = await res.blob();
+          } catch {
+            throw new Error('Could not download the video from that URL (likely blocked by CORS). Please download the file and upload it directly instead.');
+          }
+          file = new File([blob], source.url.split('/').pop() || 'video.mp4', { type: blob.type || 'video/mp4' });
         }
-        const file = new File([blob], source.url.split('/').pop() || 'video.mp4', { type: blob.type || 'video/mp4' });
-        upd({ progress: 20, processingStep: 'Uploading video to Gemini AI...' });
-        fileUri = await uploadFileToGemini(file);
-        mimeType = file.type || 'video/mp4';
-        upd({ progress: 32, processingStep: 'Video uploaded — AI analyzing content...' });
-        await waitForFileActive(fileUri);
+        analysis = await analyseFile(file);
       } else {
         throw new Error('No video source provided');
       }
 
-      upd({ status: 'processing', progress: 45, processingStep: 'Finding viral moments...' });
-      const project = videoProjectsRef.current.find(p => p.id === projectId);
-      if (!project) throw new Error('Project not found');
-
-      const analysis = await analyzeVideoWithGemini(fileUri, mimeType, project.settings, project.duration);
       if (!analysis.clips || analysis.clips.length === 0) {
         throw new Error('The AI could not find any clip-worthy moments in this video. Try a longer or more eventful video.');
       }
@@ -3052,9 +3061,11 @@ export default function VideoShorts() {
     if (!project) return;
     updateVideoProjectRef.current(projectId, { status: 'uploading', progress: 0, processingStep: 'Retrying...', error: undefined });
     try {
-      if (project.sourceType === 'upload' && project.sourceBlobUrl) {
-        const blob = await fetch(project.sourceBlobUrl).then(r => r.blob());
-        const file = new File([blob], project.sourceName || 'video.mp4', { type: blob.type || 'video/mp4' });
+      if (project.sourceType === 'upload' && (project.sourceBlobUrl || project.studioProjectId)) {
+        /* With the file already in Video Studio (studioProjectId), it is
+           analysed again from there and this copy is not needed. */
+        const blob = project.sourceBlobUrl ? await fetch(project.sourceBlobUrl).then(r => r.blob()).catch(() => null) : null;
+        const file = blob ? new File([blob], project.sourceName || 'video.mp4', { type: blob.type || 'video/mp4' }) : undefined;
         await processWithGemini(projectId, { type: 'upload', file });
       } else {
         await processWithGemini(projectId, { type: project.sourceType, url: project.sourceUrl });

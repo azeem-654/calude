@@ -10,7 +10,7 @@
  *   diagnostics     is this install healthy?
  *   install         no longer a thing, and says so
  */
-import { body, fail, headerSafe, json, ok } from '../lib/http';
+import { body, fail, json, ok } from '../lib/http';
 import { canAccess, dataGet, dataPut, hasAnyUser, requireSessionForSocket, denyForeignWorkspace, storageWorkspace, RESERVED_AGENCY, userFromToken, type Env } from '../lib/db';
 import { imapFetch } from '../lib/imap';
 import { fetchHosted } from '../lib/hostedMail';
@@ -18,7 +18,8 @@ import { loadMailbox, loadMailboxById, noteIncomingSync, type Mailbox } from './
 import { smtpVerify } from '../lib/smtp';
 import { encryptSecret } from '../lib/crypto';
 import { installSecret, nowIso } from '../lib/db';
-import { E164, buyNumber, isStopMessage, loadSmsConfig, recordOptOut, searchNumbers, sendSms, verifySmsCredentials } from '../lib/sms';
+import { E164, buyNumber, isStopMessage, loadSmsConfig, recordOptOut, numberOnAccount, searchNumbers, sendSms, verifySmsCredentials } from '../lib/sms';
+import { inboundOwner, type InboundCandidate } from '../lib/smsInbound';
 import { gate as contentGate } from '../lib/contentGate';
 
 /* ── Inbox ───────────────────────────────────────────────────────────────── */
@@ -293,7 +294,18 @@ export async function handleSmsSend(req: Request, env: Env): Promise<Response> {
       ? { provider: 'twilio', accountSid: explicitSid, authToken: String(d.authToken ?? '').trim(), fromNumber: String(d.from ?? '').trim() }
       : accountId ? await loadSmsConfig(env, accountId) : null;
     if (!creds) return fail('Save your Twilio details first, then test them.');
-    const r = await verifySmsCredentials(creds);
+    let r = await verifySmsCredentials(creds);
+    /* T-2: a saved sending number is verified only when it is on this Twilio
+       account and no other workspace has already verified it. Typing someone
+       else's number used to be enough to claim it. */
+    if (r.ok && accountId && !explicitSid && creds.fromNumber) {
+      const held = await env.DB.prepare(
+        'SELECT 1 AS n FROM crm_sms_config WHERE from_number = ? AND account_id != ? AND verified_at IS NOT NULL LIMIT 1',
+      ).bind(creds.fromNumber, accountId).first();
+      const owned = held ? null : await numberOnAccount(creds);
+      if (held) r = { ok: false, error: `${creds.fromNumber} is already in use by another workspace.` };
+      else if (owned && !owned.ok) r = { ok: false, error: owned.error };
+    }
     /* Only a test of the *saved* sender updates the saved state. Trying a pair
        of credentials in the form is not a statement about the ones on the
        record, and letting it overwrite them turned a working sender amber
@@ -385,9 +397,9 @@ export async function handleSmsInbound(req: Request, env: Env): Promise<Response
   const text = String(form.get('Body') ?? '');
   if (!E164.test(from) || !to) return twiml();
 
-  const owner = await env.DB.prepare('SELECT account_id FROM crm_sms_config WHERE from_number = ?')
-    .bind(to).first<{ account_id: string }>();
-  if (!owner) return twiml();
+  const { results: claimants } = await env.DB.prepare('SELECT account_id FROM crm_sms_config WHERE from_number = ? LIMIT 20')
+    .bind(to).all<{ account_id: string }>();
+  if (!claimants?.length) return twiml();
 
   /*
    * Only Twilio's own deliveries are acted on.
@@ -399,14 +411,21 @@ export async function handleSmsInbound(req: Request, env: Env): Promise<Response
    * The URL is tried as received and on the app's own origin, because a proxy
    * in front can change what the Worker sees.
    */
-  const cfg = await loadSmsConfig(env, owner.account_id);
   const given = req.headers.get('X-Twilio-Signature') ?? '';
-  if (!cfg?.authToken || !given || !(await twilioSigned(cfg.authToken, given, req.url, env.APP_ORIGIN, form))) {
-    return twiml();
+  if (!given) return twiml();
+  /* Every workspace that claims this number, not the first row: the owner is
+     the one whose auth token the signature proves (lib/smsInbound.ts). */
+  const candidates: InboundCandidate[] = [];
+  for (const c of claimants) {
+    const cfg = await loadSmsConfig(env, c.account_id);
+    if (cfg?.authToken) candidates.push({ accountId: c.account_id, accountSid: cfg.accountSid, authToken: cfg.authToken });
   }
+  const ownerId = await inboundOwner(candidates, String(form.get('AccountSid') ?? ''),
+    token => twilioSigned(token, given, req.url, env.APP_ORIGIN, form));
+  if (!ownerId) return twiml();
 
   if (isStopMessage(text)) {
-    await recordOptOut(env, owner.account_id, from, 'reply');
+    await recordOptOut(env, ownerId, from, 'reply');
   }
   return twiml();
 }
@@ -451,7 +470,8 @@ export async function handleDeliverability(req: Request, env: Env): Promise<Resp
   if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
 
   const accountId = String(d.accountId ?? '').trim();
-  if (accountId && !(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours to read.', 403);
+  /* The suppression list is stored under storageWorkspace(), so the reserved name is the caller's own. */
+  if (accountId && !(await canAccess(env.DB, user, accountId, { allowReserved: true }))) return fail('That workspace is not yours to read.', 403);
 
   /*
    * What the Email Deliverability tab can rely on here.
@@ -596,68 +616,10 @@ export async function handleDeliverability(req: Request, env: Env): Promise<Resp
 
 /* ── Blog publishing ─────────────────────────────────────────────────────── */
 
-export async function handleBlogPublish(req: Request, env: Env): Promise<Response> {
-  const d = await body<{
-    token?: string; accountId?: string; siteUrl?: string; username?: string; appPassword?: string;
-    title?: string; content?: string; status?: string; excerpt?: string;
-  }>(req);
-  const gate = await requireSessionForSocket(env.DB, d.token);
-  if ('denied' in gate) return gate.denied;
-  const foreign = await denyForeignWorkspace(env.DB, gate.user, d.accountId);
-  if (foreign) return foreign;
-
-  /*
-   * Screened before it reaches WordPress, not after.
-   *
-   * It is the customer's own site, which is exactly why this matters: a post
-   * published there carries a domain this platform sold them, mail this
-   * platform sends, and in the managed case an address on our registrar
-   * account. "It is their site" stops being a defence at that point.
-   */
-  const acct = String(d.accountId ?? '').trim();
-  if (acct) {
-    const verdict = await contentGate(env, acct, 'blog', `${d.title ?? ''}\n\n${d.excerpt ?? ''}\n\n${d.content ?? ''}`);
-    if (!verdict.ok) {
-      return json({ success: false, held: verdict.verdict === 'review', message: verdict.message, error: verdict.message });
-    }
-  }
-
-  const site = String(d.siteUrl ?? '').trim().replace(/\/$/, '');
-  const username = String(d.username ?? '').trim();
-  const appPassword = String(d.appPassword ?? '').trim();
-  if (!site || !username || !appPassword) {
-    return fail('Connect a WordPress site first — it needs the site URL, a username and an application password.');
-  }
-  let base: URL;
-  try {
-    base = new URL(site);
-    if (base.protocol !== 'https:') return fail('The WordPress site must be reachable over https.');
-  } catch { return fail(`"${site}" is not a valid site address.`); }
-
-  const title = headerSafe(d.title, 250);
-  if (!title) return fail('The post needs a title.');
-
-  try {
-    const r = await fetch(`${base.origin}/wp-json/wp/v2/posts`, {
-      method: 'POST',
-      headers: {
-        Authorization: 'Basic ' + btoa(`${username}:${appPassword}`),
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        title,
-        content: String(d.content ?? ''),
-        excerpt: String(d.excerpt ?? '').slice(0, 500),
-        status: d.status === 'publish' ? 'publish' : 'draft',
-      }),
-    });
-    const data = await r.json<{ id?: number; link?: string; message?: string }>().catch(() => ({}) as { id?: number; link?: string; message?: string });
-    if (r.ok) return json({ success: true, id: data.id, link: data.link, message: 'Published to WordPress.' });
-    return fail(`WordPress refused the post (HTTP ${r.status}): ${data.message ?? 'no reason given'}`);
-  } catch (e) {
-    return fail(`Could not reach that WordPress site: ${e instanceof Error ? e.message : String(e)}`);
-  }
-}
+/* Moved to routes/blogPublish.ts (audit C-1: connect, status, publish and
+   withdraw against a stored, encrypted credential). Re-exported so the route
+   table keeps its import. */
+export { handleBlogPublish } from './blogPublish';
 
 /* ── Health ──────────────────────────────────────────────────────────────── */
 

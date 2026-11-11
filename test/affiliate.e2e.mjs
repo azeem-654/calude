@@ -125,7 +125,8 @@ console.log('\nPlans follow payments');
 const plan = email => sql(`SELECT plan_id AS p, resell_limit AS l, source AS s FROM crm_plans WHERE owner_email = '${email}'`)[0];
 const billing = id => JSON.parse(sql(`SELECT v FROM crm_data WHERE k = 'crm_billing_status_${id}'`)[0]?.v ?? '{}');
 ok('a Studio payment sets Studio', plan('jamie@buyer.test')?.p === 'starter' && plan('jamie@buyer.test')?.s === 'stripe', JSON.stringify(plan('jamie@buyer.test')));
-ok('an Agency payment sets Agency, with its allowance', plan('pat@other.test')?.p === 'pro' && plan('pat@other.test')?.l === 12, JSON.stringify(plan('pat@other.test')));
+/* $97 has been Advanced (`growth`) since 2026-10-29; it was legacy Agency (`pro`) before. */
+ok('a $97 payment from somebody with no plan sets Advanced, with its allowance', plan('pat@other.test')?.p === 'growth' && plan('pat@other.test')?.s === 'stripe', JSON.stringify(plan('pat@other.test')));
 ok('…and records who paid, for the billing portal', billing(acct2).customerId === 'cus_test1', JSON.stringify(billing(acct2)));
 await stripeEvent({ id: 'evt_sub_upd', type: 'customer.subscription.updated', data: { object: { id: 'sub_1', metadata: { accountId: acct2 } } } });
 ok('an event the app does not act on leaves the status alone', billing(acct2).status === 'active' && billing(acct2).lastEvent === 'paid', JSON.stringify(billing(acct2)));
@@ -139,6 +140,29 @@ ok('…and its plan removed', !plan('pat@other.test'), JSON.stringify(plan('pat@
 sql("UPDATE crm_plans SET plan_id = 'agency', resell_limit = -1, source = 'manual' WHERE owner_email = 'jamie@buyer.test'");
 await stripeEvent(invoicePaid('evt_inv_3', acct, 4900));
 ok('a plan the owner granted by hand is not overwritten by a payment', plan('jamie@buyer.test')?.p === 'agency' && plan('jamie@buyer.test')?.s === 'manual', JSON.stringify(plan('jamie@buyer.test')));
+
+/* M-1: a price is a number and a currency. Scale's 29,700 cents paid as
+   29,700 VND (about $1.20) once bought Scale, because the webhook matched
+   the amount alone. */
+console.log('\nCurrency, abandoned and delayed checkouts');
+r = await api('billing.php', { token: other.token, action: 'checkout', accountId: acct2, planId: 'scale', currency: 'VND' });
+ok('a checkout in another currency is refused, naming the box', !r.success && r.field === 'billing.currency', JSON.stringify(r));
+r = await api('billing.php', { token: other.token, action: 'checkout', accountId: acct2, planId: 'scale', currency: 'JPY' });
+ok('…JPY too', !r.success && r.field === 'billing.currency', JSON.stringify(r));
+r = await api('billing.php', { token: other.token, action: 'checkout', accountId: acct2, planId: 'scale', currency: 'USD', priceId: 'price_cheap' });
+ok('a USD checkout is not refused for its currency (it reaches the processor)', r.field !== 'billing.currency' && !/billed in/.test(r.message ?? ''), JSON.stringify(r).slice(0, 200));
+const vnd = invoicePaid('evt_inv_vnd', acct2, 29700); vnd.data.object.currency = 'vnd';
+await stripeEvent(vnd);
+ok('a signed invoice for 29,700 VND sets no plan', !plan('pat@other.test'), JSON.stringify(plan('pat@other.test')));
+await stripeEvent(invoicePaid('evt_inv_usd', acct2, 29700));
+ok('…while $297 sets Scale', plan('pat@other.test')?.p === 'scale', JSON.stringify(plan('pat@other.test')));
+/* M-3: walking away from a plan switch is not falling behind. */
+await stripeEvent({ id: 'evt_cs_exp', type: 'checkout.session.expired', data: { object: { id: 'cs_exp', mode: 'subscription', client_reference_id: acct2, metadata: { accountId: acct2 }, amount_total: 970, currency: 'usd' } } });
+ok('an expired checkout leaves an active subscriber active', billing(acct2).status === 'active', JSON.stringify(billing(acct2)));
+await stripeEvent({ id: 'evt_cs_apf', type: 'checkout.session.async_payment_failed', data: { object: { id: 'cs_apf', mode: 'subscription', client_reference_id: acct2, metadata: { accountId: acct2 }, currency: 'usd' } } });
+ok('…and so does a failed bank payment for one checkout', billing(acct2).status === 'active' && plan('pat@other.test')?.p === 'scale', JSON.stringify(billing(acct2)));
+await stripeEvent({ id: 'evt_inv_fail', type: 'invoice.payment_failed', data: { object: { id: 'in_fail', parent: { subscription_details: { metadata: { accountId: acct2 } } } } } });
+ok('a failed renewal invoice still marks it past due', billing(acct2).status === 'past_due', JSON.stringify(billing(acct2)));
 
 /* The screens. */
 const b = await pw.chromium.launch();

@@ -275,7 +275,7 @@ export default function DigitalSetupStep({ companyName, contactEmail, projectId,
                   <Mail size={13} color={ACCENT} />
                   <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Business email</span>
                 </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <div data-field="setup.mailboxes" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {MAILBOX_CHOICES.map(name => {
                     const on = mailboxes.includes(name);
                     return (

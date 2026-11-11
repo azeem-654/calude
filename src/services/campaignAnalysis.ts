@@ -4,17 +4,15 @@
  * Everything the rest of the pipeline writes is downstream of this: the clips,
  * the captions, the emails, the blog. So it has two implementations, not one.
  *
- * With a Gemini key the video itself is watched. Without one — which is most
- * accounts on day one — a deterministic analyser reads the title, description
+ * With AI available (the server's, through /api/ai.php and Video Studio's
+ * `quick_analyze`) the video itself is watched. Without it, a deterministic analyser reads the title, description
  * and goal and produces the same shape from text alone. It is plainly weaker,
  * says so via `source: 'heuristic'`, and every consumer works either way. A
  * campaign that refuses to run because a key is missing is worse than one that
  * runs on what it has.
  */
-import {
-  analyzeVideoWithGemini, getGeminiKey, sanitizeAnalysis,
-  uploadFileToGemini, waitForFileActive,
-} from '../lib/gemini';
+import { analyzeYoutubeWithGemini, hasGeminiKey, sanitizeAnalysis, type GeminiAnalysis } from '../lib/gemini';
+import { analyseUploadedVideo } from './quickShorts';
 import type { Campaign, CampaignGoal, CampaignSource } from '../types/socialAutomation';
 
 export type Tone = 'professional' | 'casual' | 'inspirational' | 'humorous' | 'urgent';
@@ -234,7 +232,7 @@ export function analyseFromText(
       viralityScore: 55 - i * 3,
       hashtags: tags.slice(0, 5),
       focus: 'educational',
-      reason: 'Evenly spaced window — add a Gemini key in Settings to have the video actually watched.',
+      reason: 'Evenly spaced window — the video was not watched by AI this time.',
     });
   }
 
@@ -256,17 +254,20 @@ export function analyseFromText(
 
 /* ── The AI analyser ── */
 
-/** Gemini needs a file it can reach: an upload for a local file, the URL for YouTube. */
-async function sourceUri(source: CampaignSource): Promise<{ uri: string; mimeType: string | null }> {
-  if (source.kind === 'youtube' && source.url) return { uri: source.url, mimeType: null };
+/**
+ * The AI watches a YouTube link through the server, and an uploaded file after
+ * it has gone up through Video Studio's upload — the browser never sends a
+ * file to Google itself (src/services/quickShorts.ts).
+ */
+async function watch(source: CampaignSource): Promise<GeminiAnalysis> {
+  const settings = { maxClipDuration: 60, focus: 'all' };
+  if (source.kind === 'youtube' && source.url) return analyzeYoutubeWithGemini(source.url, settings, source.durationSec);
   if (!source.blobUrl) {
     throw new Error('The uploaded file is no longer available in this browser session. Re-add the video to analyse it.');
   }
   const blob = await fetch(source.blobUrl).then(r => r.blob());
   const file = new File([blob], source.name, { type: source.mimeType || 'video/mp4' });
-  const uri = await uploadFileToGemini(file);
-  await waitForFileActive(uri);
-  return { uri, mimeType: file.type || 'video/mp4' };
+  return (await analyseUploadedVideo(file, source.name, settings, source.durationSec, () => undefined)).analysis;
 }
 
 /**
@@ -278,13 +279,12 @@ export async function analyseSource(
   campaign: Pick<Campaign, 'title' | 'description' | 'goal'>,
   source: CampaignSource,
 ): Promise<CampaignAnalysis> {
-  if (!getGeminiKey()) {
-    return { ...analyseFromText(campaign, source, source.durationSec ?? 0), note: 'No Gemini key configured — written from the title and description.' };
+  if (!hasGeminiKey()) {
+    return { ...analyseFromText(campaign, source, source.durationSec ?? 0), note: 'AI is not available on this page (not signed in) — written from the title and description.' };
   }
 
   try {
-    const { uri, mimeType } = await sourceUri(source);
-    const raw = await analyzeVideoWithGemini(uri, mimeType, { maxClipDuration: 60, focus: 'all' }, source.durationSec);
+    const raw = await watch(source);
     const clean = sanitizeAnalysis(raw, 60, source.durationSec);
 
     const fromClips = clean.clips.flatMap(c => c.hashtags ?? []);

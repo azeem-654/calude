@@ -67,6 +67,9 @@ interface AuthBody {
   name?: string;
   role?: string;
   accountId?: string | null;
+  /** invite_choice: 'join' an invitation, or make your 'own' account. */
+  choice?: string;
+  invitationId?: string;
 }
 
 /* The same rules the browser applies, re-checked here because a client-side
@@ -256,6 +259,85 @@ async function startTrial(env: Env, email: string): Promise<void> {
   await welcomeNewAccount(env, email);
 }
 
+/* ── Invitations (A-1) ────────────────────────────────────────────────── */
+
+interface Invitation { id: string; accountId: string; name: string; invitedBy: string; inviterName: string }
+
+/** The invitations waiting for this address, with who sent each. */
+async function pendingInvitations(env: Env, email: string): Promise<Invitation[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT i.id, i.account_id AS accountId, i.name, i.invited_by AS invitedBy, COALESCE(u.name, '') AS inviterName
+       FROM crm_invitations i LEFT JOIN crm_users u ON u.email = i.invited_by
+      WHERE i.email = ? AND i.accepted_at IS NULL ORDER BY i.created_at`,
+  ).bind(email).all<Invitation>().catch(() => ({ results: [] as Invitation[] }));
+  return results ?? [];
+}
+
+/**
+ * The address is proved and somebody has invited it: the choice, not a
+ * session. The ticket proves the mailbox for five minutes and is good only
+ * for `invite_choice` (an MFA ticket is not one, nor this one an MFA ticket).
+ */
+async function invitationChoice(env: Env, email: string, method: string, offered: Invitation[]): Promise<Response> {
+  return json({
+    success: false,
+    invitation: true,
+    ticket: await signTicket(env, email, `invite:${method}`),
+    invitations: offered.map(i => ({ id: i.id, from: i.inviterName || i.invitedBy || 'An agency' })),
+    error: 'You have been invited to a workspace. Join it, or create your own account.',
+  });
+}
+
+/** A brand-new account of their own: a workspace, a trial, the policy recorded. */
+async function createOwnAccount(env: Env, email: string, suggestedName: string, ip: string): Promise<{ email: string; name: string; role: string; accountId: string }> {
+  const accountId = crypto.randomUUID();
+  const name = suggestedName.trim().slice(0, 120) || email.split('@')[0];
+  /* An empty hash, not a random one. `verifyPassword` fails against it, so
+     the account simply has no password until somebody sets one — rather than
+     having a password nobody knows, which reads the same to the customer and
+     cannot be told apart in the database. */
+  await env.DB.prepare(
+    'INSERT INTO crm_users (email, name, role, account_id, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+  ).bind(email, name, 'agency', accountId, '', nowIso()).run();
+  await env.DB.prepare(
+    'INSERT OR IGNORE INTO crm_workspaces (account_id, owner_email, created_at) VALUES (?, ?, ?)',
+  ).bind(accountId, email, nowIso()).run();
+  try { await env.DB.prepare('UPDATE crm_users SET email_verified_at = ? WHERE email = ?').bind(nowIso(), email).run(); }
+  catch { /* before 0049 */ }
+  await startTrial(env, email);
+  /*
+   * Recorded on the way in, because these two paths have no checkbox.
+   *
+   * Signing in with a code or with Google is one tap, and bolting a consent
+   * form onto it would undo the reason either exists. So the sign-in screen
+   * says, next to the button, that continuing means accepting the policy —
+   * and this is where that gets written down. A tick nobody was shown would
+   * be worse than no record at all.
+   */
+  await recordPolicy(env, email, ip);
+  return { email, name, role: 'agency', accountId };
+}
+
+/** Tell the invitee, from the install's system mailbox. Reports whether it went. */
+async function sendInvitation(env: Env, req: Request, email: string, inviter: string): Promise<boolean> {
+  const mb = await installMailbox(env);
+  if (!mb) return false;
+  const base = (env.APP_ORIGIN ?? new URL(req.url).origin).replace(/\/$/, '');
+  const link = `${base}/login?email=${encodeURIComponent(email)}`;
+  const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const html = `
+    <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:440px;margin:0 auto;color:#17191c">
+      <p style="font-size:15px;line-height:1.6;margin:0 0 14px">${esc(inviter)} has invited you to their workspace.</p>
+      <p style="margin:0 0 18px"><a href="${esc(link)}" style="display:inline-block;background:#17191c;color:#c8f24d;font-weight:700;font-size:15px;text-decoration:none;padding:12px 22px;border-radius:999px">Sign in to accept</a></p>
+      <p style="font-size:13px;color:#64748b;line-height:1.6;margin:0">Sign in with this address and choose whether to join. Nothing happens until you do — if you were not expecting this, ignore it.</p>
+    </div>`;
+  const sent = await deliver(mb, {
+    fromName: mb.from.name || 'Invitations', fromEmail: fromAddressOf(mb), to: email,
+    subject: `${inviter} invited you to their workspace`, html,
+  }).catch(() => ({ ok: false }));
+  return !!sent.ok;
+}
+
 /**
  * Turn a proven address into a session — the last step of every passwordless
  * path, and only ever one implementation of it.
@@ -290,7 +372,23 @@ async function completeSignIn(env: Env, email: string, suggestedName: string, re
   if (user) {
     try {
       const v = await env.DB.prepare('SELECT email_verified_at AS v FROM crm_users WHERE email = ?').bind(email).first<{ v: string | null }>();
-      if (v && !v.v) {
+      if (v && !v.v && user.role === 'client' && user.accountId) {
+        /*
+         * A client login made for this address before anyone proved it — the
+         * way an agency could pre-register a stranger and catch their sign-up
+         * inside its own workspace. It becomes what it should always have
+         * been, an invitation, and they choose below.
+         */
+        const owner = await env.DB.prepare('SELECT owner_email FROM crm_workspaces WHERE account_id = ?')
+          .bind(user.accountId).first<{ owner_email: string }>().catch(() => null);
+        await env.DB.prepare(
+          `INSERT INTO crm_invitations (id, email, account_id, name, invited_by, created_at) VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(email, account_id) DO UPDATE SET accepted_at = NULL`,
+        ).bind(crypto.randomUUID(), email, user.accountId, user.name ?? '', owner?.owner_email ?? '', nowIso()).run();
+        await env.DB.prepare('DELETE FROM crm_sessions WHERE email = ?').bind(email).run();
+        await env.DB.prepare('DELETE FROM crm_users WHERE email = ?').bind(email).run();
+        user = null;
+      } else if (v && !v.v) {
         const unproved = !!user.hash && !(user.role === 'agency' && !user.accountId);
         await env.DB.prepare(`UPDATE crm_users SET email_verified_at = ?${unproved ? ", hash = ''" : ''} WHERE email = ?`).bind(nowIso(), email).run();
         if (unproved) await env.DB.prepare('DELETE FROM crm_sessions WHERE email = ?').bind(email).run();
@@ -306,32 +404,10 @@ async function completeSignIn(env: Env, email: string, suggestedName: string, re
     if (signupsClosed(env)) {
       return fail('This is the testing site, and it has one account. Sign in at app.protectedcentral.com instead.', 403);
     }
-    const accountId = crypto.randomUUID();
-    const name = suggestedName.trim().slice(0, 120) || email.split('@')[0];
-    /* An empty hash, not a random one. `verifyPassword` fails against it, so
-       the account simply has no password until somebody sets one — rather than
-       having a password nobody knows, which reads the same to the customer and
-       cannot be told apart in the database. */
-    await env.DB.prepare(
-      'INSERT INTO crm_users (email, name, role, account_id, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    ).bind(email, name, 'agency', accountId, '', nowIso()).run();
-    await env.DB.prepare(
-      'INSERT OR IGNORE INTO crm_workspaces (account_id, owner_email, created_at) VALUES (?, ?, ?)',
-    ).bind(accountId, email, nowIso()).run();
-    try { await env.DB.prepare('UPDATE crm_users SET email_verified_at = ? WHERE email = ?').bind(nowIso(), email).run(); }
-    catch { /* before 0049 */ }
-    await startTrial(env, email);
-    user = { email, name, role: 'agency', accountId };
-    /*
-     * Recorded on the way in, because these two paths have no checkbox.
-     *
-     * Signing in with a code or with Google is one tap, and bolting a consent
-     * form onto it would undo the reason either exists. So the sign-in screen
-     * says, next to the button, that continuing means accepting the policy —
-     * and this is where that gets written down. A tick nobody was shown would
-     * be worse than no record at all.
-     */
-    await recordPolicy(env, email, ip);
+    /* Somebody invited them. They choose — joining is never done for them. */
+    const offered = await pendingInvitations(env, email);
+    if (offered.length) return invitationChoice(env, email, method, offered);
+    user = await createOwnAccount(env, email, suggestedName, ip);
   }
 
   const held = await secondStep(env, user.email, method);
@@ -605,6 +681,42 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
   }
 
   /* ── The second step: ticket + authenticator code → session ── */
+  /* ── Answering an invitation, with the mailbox proved (A-1) ── */
+  if (action === 'invite_choice') {
+    const t = await readTicket(env, String(d.ticket ?? ''));
+    if (!t || !t.method.startsWith('invite:')) return fail('That sign-in has expired. Start again.', 401);
+    const method = (t.method.slice('invite:'.length) || 'code') as 'code' | 'google';
+    const email = t.email;
+    const taken = await env.DB.prepare('SELECT 1 AS n FROM crm_users WHERE email = ?').bind(email).first();
+    if (taken) return fail('This address already has an account. Sign in again.', 409);
+    const ip = req.headers.get('CF-Connecting-IP') ?? '';
+    let user: { email: string; name: string; role: string; accountId: string | null };
+    if (d.choice === 'join') {
+      const inv = await env.DB.prepare(
+        'SELECT id, account_id AS accountId, name FROM crm_invitations WHERE id = ? AND email = ? AND accepted_at IS NULL',
+      ).bind(String(d.invitationId ?? ''), email).first<{ id: string; accountId: string; name: string }>();
+      if (!inv) return fail('That invitation is no longer open. Ask for a new one, or create your own account.');
+      const name = inv.name || email.split('@')[0];
+      await env.DB.prepare(
+        'INSERT INTO crm_users (email, name, role, account_id, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      ).bind(email, name, 'client', inv.accountId, '', nowIso()).run();
+      try { await env.DB.prepare('UPDATE crm_users SET email_verified_at = ? WHERE email = ?').bind(nowIso(), email).run(); } catch { /* before 0049 */ }
+      await env.DB.prepare('UPDATE crm_invitations SET accepted_at = ? WHERE id = ?').bind(nowIso(), inv.id).run();
+      await recordPolicy(env, email, ip);
+      await recordAuthEvent(env, { email, kind: 'invite_accepted', detail: 'Joined as client', accountId: inv.accountId, ...origin(req) });
+      user = { email, name, role: 'client', accountId: inv.accountId };
+    } else if (d.choice === 'own') {
+      if (signupsClosed(env)) return fail('This is the testing site, and it has one account. Sign in at app.protectedcentral.com instead.', 403);
+      /* Their own account; the invitation stays where it was. */
+      user = await createOwnAccount(env, email, email.split('@')[0], ip);
+    } else {
+      return fail('Choose whether to join the workspace or create your own account.');
+    }
+    await sweepSessions(env.DB);
+    const token = await issueSession(env, user.email, req, method);
+    return json({ success: true, token, user: publicUser(user), workspaces: await ownedWorkspaces(env, user.email) });
+  }
+
   if (action === 'login_mfa') {
     const t = await readTicket(env, String(d.ticket ?? ''));
     if (!t) return fail('That sign-in has expired. Start again.', 401);
@@ -1040,7 +1152,8 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     const exists = await env.DB.prepare('SELECT 1 AS n FROM crm_users WHERE email = ?')
       .bind(email.toLowerCase()).first();
     if (exists) return fail('An account with that email already exists.');
-    const problem = passwordProblem(String(d.password ?? ''), String(d.name ?? ''), email);
+    /* A password only for an agency login the owner makes; a client is invited. */
+    const problem = d.role === 'agency' ? passwordProblem(String(d.password ?? ''), String(d.name ?? ''), email) : '';
     if (problem) return fail(problem);
 
     /*
@@ -1063,6 +1176,28 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     }
     /* Only the owner makes agency logins; anyone else is adding a client. */
     if (d.role === 'agency' && !owner) return fail('Only the install owner can add another agency login.', 403);
+
+    /*
+     * A client login is an invitation (A-1). Writing the row here put any
+     * address an agency typed inside its workspace, ready to catch that
+     * person's own sign-up. Now nothing binds until they prove the mailbox
+     * and press Join; no password is set for them.
+     */
+    if (d.role !== 'agency') {
+      const invitee = email.toLowerCase();
+      await env.DB.prepare(
+        `INSERT INTO crm_invitations (id, email, account_id, name, invited_by, created_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(email, account_id) DO UPDATE SET name = excluded.name, invited_by = excluded.invited_by, accepted_at = NULL`,
+      ).bind(crypto.randomUUID(), invitee, accountId, String(d.name ?? '').slice(0, 120), actor.email, nowIso()).run();
+      const mailed = await sendInvitation(env, req, invitee, actor.name || actor.email);
+      await recordAuthEvent(env, { email: actor.email, kind: 'user_invited', detail: `Invited ${invitee} as client`, accountId, ...origin(req) });
+      return json({
+        success: true, invited: true, mailed,
+        message: mailed
+          ? `Invitation sent to ${invitee}. They join once they sign in with that address and accept.`
+          : `Invitation saved, but no system mailbox could send it. Ask ${invitee} to sign in at this app with that address to accept.`,
+      });
+    }
 
     await env.DB.prepare(
       'INSERT INTO crm_users (email, name, role, account_id, hash, created_at) VALUES (?, ?, ?, ?, ?, ?)',

@@ -15,7 +15,10 @@
  *     transcript in the prompt, and per-video metadata from each <video>'s own
  *     words; a quiz from the numbered transcript; and the Repurposing
  *     writers' posts, article and emails. It can be told to fail, to prove
- *     the rule-based fallback.
+ *     the rule-based fallback. It also plays Google's Files API (resumable
+ *     upload, processing → ACTIVE, delete) for Quick Shorts: a file is
+ *     readable only by the key that uploaded it, as on Google, and a
+ *     generateContent naming one answers clips (`state.files`, `state.watched`).
  *   startOpenverseMock(port, dir) — the open music library: a search that
  *     answers CC0, CC BY and one NonCommercial track (which must never be
  *     offered), each track's details, and the tracks themselves (real MP3s).
@@ -190,18 +193,66 @@ const KEYWORDS = [
 ];
 
 export function startGeminiMock(port) {
-  const state = { calls: [], fail: false };
+  const state = { calls: [], fail: false, files: new Map(), watched: [], refuseUploadFor: new Set() };
   const server = http.createServer(async (req, res) => {
-    const raw = (await readBody(req)).toString('utf8');
+    const buf = await readBody(req);
+    const raw = buf.toString('utf8');
     const u = new URL(req.url, `http://127.0.0.1:${port}`);
+    const key = u.searchParams.get('key') ?? '';
     if (req.method === 'GET' && u.pathname === '/v1beta/models') {
       return send(res, 200, { models: [{ name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] }] });
     }
+    /* ── The Files API, as the Worker drives it for Quick Shorts ── */
+    if (req.method === 'POST' && u.pathname === '/upload/v1beta/files') {
+      if (!key || state.refuseUploadFor.has(key)) return send(res, 403, { error: { code: 403, message: 'Method doesn\'t allow unregistered callers', status: 'PERMISSION_DENIED' } });
+      if (req.headers['x-goog-upload-protocol'] !== 'resumable' || req.headers['x-goog-upload-command'] !== 'start') return send(res, 400, { error: { code: 400, message: 'resumable start expected' } });
+      const id = crypto.randomBytes(6).toString('hex');
+      state.files.set(id, { id, key, size: Number(req.headers['x-goog-upload-header-content-length']), mime: String(req.headers['x-goog-upload-header-content-type'] ?? ''), displayName: JSON.parse(raw || '{}').file?.display_name ?? '', bytes: 0, sha: '', state: 'NEW', polls: 0, deleted: false });
+      res.writeHead(200, { 'Content-Type': 'application/json', 'x-goog-upload-url': `http://127.0.0.1:${port}/upload-session/${id}`, 'x-goog-upload-status': 'active' });
+      return res.end('{}');
+    }
+    const session = /^\/upload-session\/(\w+)$/.exec(u.pathname);
+    if (req.method === 'POST' && session) {
+      const f = state.files.get(session[1]);
+      if (!f || !/finalize/.test(String(req.headers['x-goog-upload-command']))) return send(res, 400, { error: { code: 400, message: 'bad session' } });
+      f.bytes = buf.length; f.sha = crypto.createHash('sha256').update(buf).digest('hex'); f.state = 'PROCESSING';
+      if (f.bytes !== f.size) return send(res, 400, { error: { code: 400, message: `declared ${f.size} bytes, received ${f.bytes}` } });
+      return send(res, 200, { file: { name: `files/${f.id}`, uri: `http://127.0.0.1:${port}/v1beta/files/${f.id}`, mimeType: f.mime, sizeBytes: String(f.bytes), state: 'PROCESSING' } });
+    }
+    const fileAt = /^\/v1beta\/files\/(\w+)$/.exec(u.pathname);
+    if (fileAt) {
+      const f = state.files.get(fileAt[1]);
+      if (!f || f.deleted) return send(res, 404, { error: { code: 404, message: 'no such file' } });
+      if (f.key !== key) return send(res, 403, { error: { code: 403, message: 'You do not have permission to access the File', status: 'PERMISSION_DENIED' } });
+      if (req.method === 'DELETE') { f.deleted = true; return send(res, 200, {}); }
+      /* Processing for one poll, then ready — so the Worker has to wait for it. */
+      if (f.state === 'PROCESSING' && ++f.polls > 1) f.state = 'ACTIVE';
+      return send(res, 200, { name: `files/${f.id}`, uri: `http://127.0.0.1:${port}/v1beta/files/${f.id}`, mimeType: f.mime, state: f.state });
+    }
     if (req.method !== 'POST' || !/:generateContent$/.test(u.pathname)) return send(res, 404, { error: { code: 404, message: 'no route' } });
-    const prompt = JSON.parse(raw).contents?.[0]?.parts?.map(p => p.text ?? '').join('\n') ?? '';
+    const parts = JSON.parse(raw).contents?.[0]?.parts ?? [];
+    const prompt = parts.map(p => p.text ?? '').join('\n');
     state.calls.push(prompt.slice(0, 120));
     if (state.fail) return send(res, 500, { error: { code: 500, message: 'model unavailable (test)' } });
+    const fileUri = parts.find(p => p.fileData)?.fileData?.fileUri ?? '';
+    const named = /\/v1beta\/files\/(\w+)$/.exec(fileUri);
+    if (named) {
+      const f = state.files.get(named[1]);
+      if (!f || f.deleted) return send(res, 400, { error: { code: 400, message: 'File not found' } });
+      if (f.key !== key) return send(res, 403, { error: { code: 403, message: 'You do not have permission to access the File', status: 'PERMISSION_DENIED' } });
+      if (f.state !== 'ACTIVE') return send(res, 400, { error: { code: 400, message: 'The File is not in an ACTIVE state', status: 'FAILED_PRECONDITION' } });
+      state.watched.push({ id: f.id, key, prompt: prompt.slice(0, 200) });
+    }
     let answer;
+    if (named && /viral short-form content expert/.test(prompt)) {
+      const max = Number(prompt.match(/best (\d+)-second/)?.[1] ?? 60);
+      const clip = (title, s, e, text) => ({ title, description: `${title}. From the weekly growth show.`, startTime: s, endTime: e, segments: [{ start: s, end: e, text }], transcript: text, viralityScore: 88, focus: 'educational', hashtags: ['#growth', '#smallbusiness', '#crm', '#sales'], reason: 'A complete point that needs no context.' });
+      answer = { videoSummary: 'A weekly show about winning customers.', totalDuration: 0, videoLanguage: 'English', clips: [
+        clip('How AI Prospecting finds 30 businesses a day', 4, Math.min(4 + max - 5, 26), 'AI Prospecting finds thirty new businesses every day in the town you choose.'),
+        clip('Why follow-up wins the deal', 28, 28 + Math.min(max - 5, 25), 'Most deals are lost because nobody follows up.'),
+      ] };
+      return send(res, 200, { candidates: [{ content: { parts: [{ text: JSON.stringify(answer) }] } }] });
+    }
     const lineList = () => [...prompt.matchAll(/^\[(\d+)\] \((\d+):(\d+)\) (.*)$/gm)].map(m => ({ i: Number(m[1]), t: Number(m[2]) * 60 + Number(m[3]), text: m[4] }));
     /* The editor's own asks (services/videoAi.ts): numbered, timed sentences in a fence. */
     const fenced = () => [...prompt.matchAll(/^(\d+)\. \[(\d+):(\d+)\] (.*)$/gm)].map(m => ({ n: Number(m[1]), t: Number(m[2]) * 60 + Number(m[3]), text: m[4] }));

@@ -109,6 +109,20 @@ docs/PRICING.md has the market research, costs and what white-label means.
   `.wrangler-allowances`, needs a `VITE_BASE=/` build). Seeded journeys that
   make more than a trial allows (video e2e, site reels) raise the account's
   allowance first.
+- **A price is a number and a currency** (`PLAN_CURRENCY`, USD). Subscription
+  checkout refuses any other currency (`field: 'billing.currency'`) and takes
+  no `priceId` from anybody — line items are always `price_data` from
+  `PLAN_CENTS`. The webhook maps an amount to a plan only in `PLAN_CURRENCY`;
+  29,700 VND once bought Scale (audit M-1, M-2).
+- **Stripe checkout events** (`lib/payments/stripe.ts`): `completed` is `paid`
+  only when `payment_status` is `paid` or `no_payment_required` (a bank debit
+  is paid on `async_payment_succeeded`); `expired` is nothing; a failed
+  checkout session carries `checkout: true` and never sets a subscription
+  `past_due` (billing and resell). Only a failed invoice does (M-3, M-4).
+  `test:checkout` (unit), `test:affiliate` (signed webhooks).
+- **Setup checkout** prices mailboxes from the same list of names it creates
+  (`mailboxesOf`, `lib/retail.ts`) and refuses an order whose priced count
+  differs (D-1). `test:domains`.
 
 ## The affiliate program — 40% of every payment, for as long as it pays
 

@@ -60,7 +60,7 @@ export async function handleData(req: Request, env: Env): Promise<Response> {
   /* Told apart on purpose. "Not yours" and "your plan is full" are different
      problems with different fixes, and returning the first for the second sends
      somebody hunting a permissions bug that does not exist. */
-  const access = await workspaceAccess(env.DB, user, accountId);
+  const access = await workspaceAccess(env.DB, user, accountId, { allowReserved: true });
   if (!access.ok) {
     return fail(access.message ?? 'That workspace is not yours to read.', 403, { code: access.code });
   }

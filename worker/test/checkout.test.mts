@@ -15,6 +15,8 @@ import {
   taxOn, taxRateFor,
   type Discount, type ShippingRate, type TaxRate,
 } from '../src/lib/checkout';
+import { stripe } from '../src/lib/payments/stripe';
+import { PLAN_CURRENCY } from '../src/lib/allowances';
 
 const out: string[] = [];
 const ok = (n: string, p: boolean, d = '') => out.push(`${p ? 'PASS' : 'FAIL'}  ${n}${p ? '' : ` — ${d}`}`);
@@ -210,6 +212,41 @@ const tax = (over: Partial<TaxRate> = {}): TaxRate => ({
       codeTyped: '', rates: [], country: 'GB' }).totalCents === 5000);
   ok('a zero rate is not a tax line', taxOn(tax({ percentBp: 0 }), 10000, false) === 0);
   ok('a switched-off rate is never chosen', taxRateFor([tax({ status: 'off' })], 'GB') === null);
+}
+
+/* ── The operator's processor: what an event means, what a checkout asks for ── */
+{
+  const ev = (type: string, object: Record<string, unknown>) => stripe.readEvent(JSON.stringify({ id: 'evt_1', type, data: { object } }))!;
+  ok('plans are priced in US dollars', PLAN_CURRENCY === 'USD');
+  ok('a card checkout that completed paid is paid',
+    ev('checkout.session.completed', { id: 'cs', payment_status: 'paid', metadata: { orderId: 'o1' } }).kind === 'paid');
+  ok('a free checkout is paid', ev('checkout.session.completed', { id: 'cs', payment_status: 'no_payment_required' }).kind === 'paid');
+  const unpaid = ev('checkout.session.completed', { id: 'cs', payment_status: 'unpaid', metadata: { orderId: 'o1' } });
+  ok('a bank debit that completed unpaid is not paid', unpaid.kind === 'other', unpaid.kind);
+  ok('…until its money arrives', ev('checkout.session.async_payment_succeeded', { id: 'cs', payment_status: 'paid', metadata: { orderId: 'o1' } }).kind === 'paid');
+  const failed = ev('checkout.session.async_payment_failed', { id: 'cs', metadata: { orderId: 'o1' } });
+  ok('a failed bank debit is a failure of that checkout only', failed.kind === 'failed' && failed.checkout === true, JSON.stringify(failed));
+  ok('an abandoned checkout is nothing', ev('checkout.session.expired', { id: 'cs' }).kind === 'other');
+  const inv = stripe.readEvent(JSON.stringify({ id: 'e', type: 'invoice.payment_failed', data: { object: { id: 'in' } } }))!;
+  ok('a failed invoice is a subscription failure', inv.kind === 'failed' && !inv.checkout, JSON.stringify(inv));
+
+  /* What subscribe sends Stripe: the plan's own amount, never a price id. */
+  const sent: string[] = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (_u: unknown, init?: { body?: unknown }) => {
+    sent.push(String(init?.body ?? ''));
+    return new Response(JSON.stringify({ id: 'cs_x', url: 'https://checkout.test/x' }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    await stripe.subscribe('sk_test_x', {
+      reference: 'ws1', planName: 'Scale', amountCents: 29700, currency: 'USD', email: '',
+      successUrl: 'https://a/s', cancelUrl: 'https://a/c', priceId: 'price_cheap',
+    } as Parameters<typeof stripe.subscribe>[1], { providerRef: '' } as Parameters<typeof stripe.subscribe>[2]);
+  } finally { globalThis.fetch = real; }
+  const q = new URLSearchParams(sent[0] ?? '');
+  ok('a price id handed in is never sent', !q.has('line_items[0][price]'), sent[0]);
+  ok('the line item is the plan\'s amount in dollars',
+    q.get('line_items[0][price_data][unit_amount]') === '29700' && q.get('line_items[0][price_data][currency]') === 'usd', sent[0]);
 }
 
 console.log(out.join('\n'));

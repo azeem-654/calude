@@ -24,6 +24,20 @@ otherwise their first validated one — a chosen mailbox that stops working
 falls back rather than silencing every code. Only mailboxes in workspaces the
 install owner owns are candidates. `npm run test:systemmail` (fresh D1).
 
+**A hosted mailbox sends only as its own address** (`hostedFromProblem` in
+`lib/deliver.ts`, also checked in `routes/providerSend.ts`, which calls the
+provider directly). It sends on the platform's key, on which every customer's
+hosted domain is verified, so a From taken from the request let one workspace
+send DKIM-signed as another's domain (audit E-1). `test:hostedmail`.
+
+**Marketing mail asks `lib/suppression.ts` first.** `suppressedSet` reads
+`crm_unsubscribes` and both suppression-list keys; sequence steps, scheduled
+one-off emails and automation emails skip a suppressed address and log it
+`suppressed`. Sequence and automation mail carries the signed opt-out
+(`unsubscribeUrl`: a footer link, or wherever `{{unsubscribe}}` was written)
+and `List-Unsubscribe` / `List-Unsubscribe-Post`. It needs `APP_ORIGIN`
+(audit E-2). `test:cloud`.
+
 ## Connecting mailboxes in bulk — paste, screenshot, connect and test all
 
 Settings → Email, under the mailbox list: **Paste your mail settings**

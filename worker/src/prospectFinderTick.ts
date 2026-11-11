@@ -42,6 +42,7 @@
  * doing is written to `live` as it goes, for the screen to show. Finders
  * without a search run exactly as before.
  */
+import { suppressedSet } from './lib/suppression';
 import { dataGet, dataUpdate, nowIso, type Env } from './lib/db';
 import { findContacts, searchProspects, type Prospect } from './lib/prospects';
 import { creditsToday, installGeoKey, searchGeoapify } from './lib/geoapify';
@@ -327,19 +328,7 @@ async function afterAdded(env: Env, f: FinderRow, conn: Connection, rows: PPRow[
 
 /* ── Who must never be prospected again ── */
 
-/** The workspace's suppression list (both keys the app has used) and every unsubscribe. */
-async function suppressedSet(env: Env, accountId: string): Promise<Set<string>> {
-  const out = new Set<string>();
-  for (const key of ['crm_suppression_list', 'crm_suppressions']) {
-    for (const x of parse<({ email?: string } | string)[]>(await dataGet(env.DB, accountId, key), [])) {
-      const e = (typeof x === 'string' ? x : x?.email ?? '').trim().toLowerCase();
-      if (e) out.add(e);
-    }
-  }
-  const u = await env.DB.prepare('SELECT email FROM crm_unsubscribes WHERE account_id = ? LIMIT 20000').bind(accountId).all<{ email: string }>().catch(() => ({ results: [] }));
-  for (const r of u.results ?? []) out.add(String(r.email).toLowerCase());
-  return out;
-}
+/* suppressedSet: lib/suppression.ts — the one answer every sender shares. */
 
 /* ── A connection's check, candidate by candidate ── */
 
