@@ -22,7 +22,7 @@
 import { briefWantsOptIn, withOptIn } from './lib/optInText';
 import { briefWantsResearch, withResearch } from './lib/emailStyle';
 import { signTrackedLinks } from './lib/trackSign';
-import { dataGet, dataPut, installSecret, nowIso, type Env } from './lib/db';
+import { dataGet, dataPut, installSecret, metaGet, metaPut, nowIso, type Env } from './lib/db';
 import { addr } from './lib/http';
 import { loadMailbox, loadMailboxes } from './routes/mailbox';
 import { encryptSecret } from './lib/crypto';
@@ -1528,12 +1528,27 @@ async function executeFor(env: Env, run: RunRow, report: AutopilotReport): Promi
 export async function runAutopilot(env: Env): Promise<AutopilotReport> {
   const report: AutopilotReport = { planned: 0, carried: 0, awaiting: 0, failed: 0, notes: [] };
 
-  const { results } = await env.DB.prepare(
-    `SELECT id, account_id, portfolio_id, name, objective, kind, status, guardrails,
+  /*
+   * In id order from where the last tick stopped, wrapping round (F-2). A bare
+   * LIMIT 400 with no ORDER BY returned whichever 400 rows the database
+   * happened to, so past 400 live projects some were never visited at all.
+   * Now every project is reached within ceil(n / 400) ticks.
+   */
+  const cols = `id, account_id, portfolio_id, name, objective, kind, status, guardrails,
             last_planned_at, purchase_mode, pool_target,
-            revenue_target, volume_target, goals, brief
-     FROM crm_projects WHERE status IN ('learning','running') LIMIT 400`,
-  ).all<RunRow>();
+            revenue_target, volume_target, goals, brief`;
+  const after = (await metaGet(env.DB, 'autopilot_cursor').catch(() => null)) ?? '';
+  let { results } = await env.DB.prepare(
+    `SELECT ${cols} FROM crm_projects WHERE status IN ('learning','running') AND id > ? ORDER BY id LIMIT 400`,
+  ).bind(after).all<RunRow>();
+  if ((results ?? []).length < 400 && after) {
+    const wrap = await env.DB.prepare(
+      `SELECT ${cols} FROM crm_projects WHERE status IN ('learning','running') AND id <= ? ORDER BY id LIMIT ?`,
+    ).bind(after, 400 - (results ?? []).length).all<RunRow>();
+    results = [...(results ?? []), ...(wrap.results ?? [])];
+  }
+  const last = (results ?? []).at(-1)?.id ?? '';
+  await metaPut(env.DB, 'autopilot_cursor', (results ?? []).length >= 400 ? last : '').catch(() => undefined);
 
   /* One per workspace, for the length of this run. See planFor. */
   const plannedThisRun = new Map<string, Set<string>>();

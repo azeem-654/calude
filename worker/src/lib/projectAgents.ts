@@ -725,16 +725,40 @@ export async function runProjectAgents(env: Env): Promise<AgentReport> {
    * decision — this only avoids reading rows it is certain to refuse.
    */
   const earliest = new Date(Date.now() - CADENCE_HOURS.hourly * 3_600_000).toISOString();
-  const { results } = await env.DB.prepare(
+  /*
+   * Scheduled workflows only, chosen in SQL (F-2), and paged.
+   *
+   * Every active workflow used to be read and the non-schedule ones skipped
+   * here — without a stamp, so 200 "tag added" workflows (never run by this
+   * loop, so never stamped) filled the LIMIT on every tick and a due schedule
+   * behind them never ran. And a page of schedules not yet due (weekly ones
+   * that ran yesterday) could crowd out a due one the same way, so the loop
+   * reads further pages until its budget is spent.
+   */
+  const page = (offset: number) => env.DB.prepare(
     `SELECT id, account_id, project_id, name, nodes, last_run_at
      FROM crm_project_workflows
      WHERE status = 'active' AND (last_run_at IS NULL OR last_run_at < ?)
-     ORDER BY last_run_at IS NOT NULL, last_run_at LIMIT 200`,
-  ).bind(earliest).all<WorkflowRow>();
+       AND json_valid(nodes) AND EXISTS (
+         SELECT 1 FROM json_each(nodes) n
+          WHERE json_extract(n.value, '$.type') = 'trigger' AND json_extract(n.value, '$.config.event') = 'schedule')
+     ORDER BY last_run_at IS NOT NULL, last_run_at, id LIMIT 200 OFFSET ?`,
+  ).bind(earliest, offset).all<WorkflowRow>();
 
   let budget = MAX_AGENTS_PER_TICK;
+  const rows: WorkflowRow[] = [];
+  for (let p = 0; p < 5; p++) {
+    const { results } = await page(p * 200);
+    rows.push(...(results ?? []));
+    /* Enough candidates that are actually due, or nothing more to read. */
+    const due = rows.filter(wf => {
+      const t = parse<GraphNode[]>(wf.nodes, []).find(n => n.type === 'trigger');
+      return cadenceDue(String(t?.config?.cadence ?? 'daily'), wf.last_run_at, Date.now(), String(t?.config?.days ?? ''));
+    }).length;
+    if ((results ?? []).length < 200 || due >= budget) break;
+  }
 
-  for (const wf of results ?? []) {
+  for (const wf of rows) {
     if (budget <= 0) break;
     const nodes = parse<GraphNode[]>(wf.nodes, []);
     const trigger = nodes.find(n => n.type === 'trigger');
