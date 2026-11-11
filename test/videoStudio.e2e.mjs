@@ -989,6 +989,9 @@ ok('…and renders again', reOut.version > outBefore.version && !reOut.stale, re
   const after = await api('design-themes.php', { action: 'list', token: T, accountId: A });
   ok('themes · edited in the library and saved, the design kept', after.themes.some(t => t.id === th.theme.id && t.name === 'Tutorial — serif v2' && t.design.font === 'serif'), after.themes?.map(t => t.name));
   await api('design-themes.php', { action: 'delete', token: T, accountId: A, id: dup.theme.id });
+  /* Back to the editor: the checks after this read its board. */
+  await page.goto(`${B}/video-studio/${PID}`, { waitUntil: 'networkidle' });
+  await page.getByTestId('vs-outputs-board').waitFor({ timeout: 30_000 });
 }
 
 /* ── 12 · Metadata for each video, from its own words ── */
