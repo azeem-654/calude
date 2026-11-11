@@ -209,6 +209,11 @@ touched; a redemption only writes `crm_plans` with **source `appsumo`**.
   cancelled subscription (billing.ts `applyPlan`) keeps the `appsumo` row and
   re-applies the tier. `revoke` (a refund) recomputes it, down to removing
   only an `appsumo` row.
+- **Customers say "AI credits"** (owner, 2026-11-11): the `ai_requests` meter's
+  label and `featureLines` read "AI credits"; the id and stored rows keep
+  `ai_requests`. What one credit is lives once, in `AI_CREDITS_GUIDE`
+  (allowances.ts) — the site FAQ and the help assistant read it; change the
+  examples there when what spends a credit changes.
 - AI requests per month raised 2026-11-11 at the owner's request: 3,000 /
   6,000 / 12,000 (was 1,000 / 2,500 / 5,000); the listing must match
   (OWNER-CHECKLIST 53).

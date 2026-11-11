@@ -422,7 +422,7 @@ export const REFUNDS: LegalSection[] = [
     body: [
       'If you bought Protected Central through AppSumo, you paid AppSumo, and AppSumo handles your refund under its own refund policy and within its own refund window. Ask for a refund from your AppSumo account; we cannot refund a payment we did not receive.',
       'When AppSumo refunds or deactivates a licence, it tells us, and the plan that licence or code gave your account is removed. If you hold more than one code, only the refunded code\'s tier is taken away and the rest stay. Your workspace, contacts and content are not deleted by a refund; you can still sign in and choose another plan.',
-      '"Lifetime" means the plan does not expire and is never charged again while the service runs. The plan\'s allowances — for example emails, AI requests or videos processed — are monthly and reset each month, as shown on the plan. Services that bill you directly, such as an SMS provider or ad platform you connect, are not included.',
+      '"Lifetime" means the plan does not expire and is never charged again while the service runs. The plan\'s allowances — for example emails, AI credits or videos processed — are monthly and reset each month, as shown on the plan. Services that bill you directly, such as an SMS provider or ad platform you connect, are not included.',
     ],
   },
   {

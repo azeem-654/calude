@@ -100,7 +100,7 @@ export default function Build({ steps, say, result, reach = [] }: {
       {/* Said once the build is done, never in the middle of it (lib/gemini.ts aiJob). */}
       {done && result?.creditsOut && (
         <div role="status" data-testid="credits-out" style={{ padding: '12px 16px', borderRadius: 16, background: '#fff7e6', border: '1px solid #fde3a7', fontSize: 13.5, color: '#7a4b00', lineHeight: 1.55 }}>
-          Everything above was finished, but this month’s AI requests on your plan are now used up. {result.creditsOut}
+          Everything above was finished, but this month’s AI credits on your plan are now used up. {result.creditsOut}
         </div>
       )}
 

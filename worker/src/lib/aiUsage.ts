@@ -274,7 +274,7 @@ export async function capRefusal(env: Env, accountId: string): Promise<{ message
   }
   for (const [what, max, windowSeconds] of [['ai-hour', cap.hour, 3600], ['ai-day', cap.day, 86_400]] as const) {
     const v = await rateLimit(env, { what, who: accountId, max: Math.max(1, max), windowSeconds });
-    if (!v.allowed) return { message: `That is a lot of AI requests for one workspace — try again in ${Math.max(1, Math.ceil(v.retryAfter / 60))} minutes.`, code: 'rate_limited', retryAfter: v.retryAfter };
+    if (!v.allowed) return { message: `That is a lot of AI use for one workspace in a short time — try again in ${Math.max(1, Math.ceil(v.retryAfter / 60))} minutes.`, code: 'rate_limited', retryAfter: v.retryAfter };
   }
   return null;
 }

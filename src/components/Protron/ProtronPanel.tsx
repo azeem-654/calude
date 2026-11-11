@@ -657,7 +657,7 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
           </label>
           <label>
             <input type="checkbox" checked={prefs.speak} onChange={e => { if (!e.target.checked) hush(); onPrefs({ ...prefs, speak: e.target.checked }); }} />
-            <span>Read replies aloud<small>Spoken questions and Talk mode are always answered aloud. The commander voice is one AI request a reply; your voice is turned into text and not kept.</small></span>
+            <span>Read replies aloud<small>Spoken questions and Talk mode are always answered aloud. The commander voice is one AI credit a reply; your voice is turned into text and not kept.</small></span>
           </label>
           <label style={{ display: 'grid', gap: 4, cursor: 'default' }}>
             <span style={{ fontWeight: 600 }}>Your business, so answers fit it</span>

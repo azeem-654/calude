@@ -25,7 +25,7 @@
  */
 import type { Env } from './db';
 import type { AgentConfig } from './agentBrain';
-import { effectivePlans, featureLines, type PlanDef } from './allowances';
+import { AI_CREDITS_GUIDE, effectivePlans, featureLines, type PlanDef } from './allowances';
 import { loadOverrides } from './allowanceStore';
 import { ECOMMERCE_OFFER, MEDICAL_BILLING_OFFER, TRADE_GROWTH_OFFER, dollars, ecommerceLine, growthLine, medicalLine } from './offers';
 import { servicesPublic } from './industryPages';
@@ -116,6 +116,9 @@ ${sold.map(planBlock).join('\n')}
 APPSUMO LIFETIME DEAL
 Bought on AppSumo, redeemed at ${APP}/appsumo: create an account (or sign in) and the code is added. One code is Tier 1; a second and third code on the same account move it up, up to three. AppSumo's own Activate button also works. Every feature is included on every tier; tiers differ only in how much. Allowances marked "a month" start again on the 1st. Refunds are handled by AppSumo under its policy; a refunded code stops counting. More than Tier 3: the monthly plans can be added on top.
 ${deal.map(planBlock).join('\n')}
+
+AI CREDITS (what the "AI credits a month" on every plan means)
+${AI_CREDITS_GUIDE}
 ${services ? `
 MANAGED SERVICES (our team does the work, separate from the software plans, each with written terms)
 - ${ECOMMERCE_OFFER.name}: ${ecommerceLine()}. ${SITE}/ecommerce-management-services

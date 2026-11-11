@@ -77,8 +77,10 @@ export const METERS: Meter[] = [
     counted: 'Workflows in one business workspace, counted per business workspace.' },
   { id: 'sub_accounts', label: 'Client sub-accounts', one: 'sub-account', kind: 'count', group: 'Workspace',
     counted: 'Workspaces you run beyond your own.' },
-  { id: 'ai_requests', label: 'AI requests', one: 'AI request', kind: 'monthly', group: 'AI writing',
-    counted: 'Each time a screen asks the AI to write or read something for you.' },
+  /* Called "AI credits" to customers (the owner's word, 2026-11-11); the id
+     stays ai_requests, since it is stored on every usage row and plan override. */
+  { id: 'ai_requests', label: 'AI credits', one: 'AI credit', kind: 'monthly', group: 'AI writing',
+    counted: 'One AI credit is used each time the AI writes or reads something for you — a Protron reply, a step of the setup wizard, a 12-month plan, or one run of an AI Autopilot agent. Nothing is used when the AI fails.' },
   { id: 'social_posts', label: 'Social posts by AI Autopilot', one: 'social post', kind: 'monthly', group: 'AI writing',
     counted: 'Each post a business workspace’s agent or AI Video Studio writes into the Graphics Designer & Editor.' },
   { id: 'blog_articles', label: 'Blog articles by AI Autopilot', one: 'blog article', kind: 'monthly', group: 'AI writing',
@@ -549,11 +551,30 @@ export function featureLines(p: Pick<PlanDef, 'limits'>): string[] {
     `${n(L.social_posts, 'social post', 'social posts')} and ${n(L.blog_articles, 'blog article', 'blog articles')} written a month`,
     `${n(L.ai_emails, 'AI-written email', 'AI-written emails')} a month`,
     `${n(L.prospects_found, 'prospect', 'prospects')} found for you a month`,
-    `${n(L.ai_requests, 'AI request', 'AI requests')} a month`,
+    `${n(L.ai_requests, 'AI credit', 'AI credits')} a month`,
     isUnlimited(L.sub_accounts) ? 'Unlimited client sub-accounts' : `${num(L.sub_accounts)} client sub-account${L.sub_accounts === 1 ? '' : 's'}`,
     `White-label, with ${n(L.login_addresses, 'branded login address', 'branded login addresses')}`,
   ];
 }
+
+/**
+ * What an AI credit is, in a customer's words — one text, used by the site's
+ * FAQ, the help assistant (lib/houseKnowledge.ts) and anywhere else that
+ * explains it, so they cannot drift apart. The examples follow the code:
+ * one credit per /api/ai.php answer, per aiBudget() on the server (one agent
+ * run, however many posts or emails it writes), a second for a reply spoken
+ * aloud (routes/protron.ts), none for a call that failed (aiRefund).
+ */
+export const AI_CREDITS_GUIDE = [
+  'An AI credit is one piece of work done by the AI for you. One credit is used each time the AI writes or reads something:',
+  '• a reply from Protron, the AI business manager (one more if you have it read the reply aloud);',
+  '• each step of the AI Autopilot setup that reads your business or suggests answers, and writing your 12-month marketing plan;',
+  '• one run of an AI Autopilot agent — a batch of up to six social posts, one blog article, or a whole email campaign;',
+  '• rewriting or improving text in an editor, drafting a reply in your inbox, reading a website or document into your business profile.',
+  'To give you a feel: setting up a business workspace uses about 10–20 credits, and a business workspace that posts every weekday, writes a weekly article and a monthly email campaign uses about 30 a month.',
+  'Not counted: anything where the AI failed, and everything that is not the AI writing — browsing, contacts, sending email you approved, reports. Posts, articles and AI-written emails also have their own monthly counts on your plan.',
+  'Credits start again at the beginning of each calendar month (UTC); unused ones do not carry over. If they run out while something is being made, that piece of work is finished first and you are told afterwards. Your current use is on Plan & billing → Usage.',
+].join('\n');
 
 /* ── The full comparison ─────────────────────────────────────────────────── */
 

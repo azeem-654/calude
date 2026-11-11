@@ -6,6 +6,7 @@
  */
 import type { ReactNode } from 'react';
 import { Plus } from 'lucide-react';
+import { AI_CREDITS_GUIDE } from '../../services/allowances';
 
 export interface FaqItem { q: string; a: string }
 
@@ -28,7 +29,11 @@ const FAQ: FaqItem[] = [
   },
   {
     q: 'Is the AI included?',
-    a: 'Yes — no key of your own, no separate AI subscription. It reads your request, writes the workflows and the content, and every step it makes is shown to you before it runs.',
+    a: 'Yes — no key of your own, no separate AI subscription. It reads your request, writes the workflows and the content, and every step it makes is shown to you before it runs. Each plan includes a monthly number of AI credits.',
+  },
+  {
+    q: 'What is an AI credit?',
+    a: AI_CREDITS_GUIDE,
   },
   {
     q: 'Where do new leads come from?',
@@ -60,7 +65,7 @@ export default function FaqSection({ items = FAQ, title }: { items?: FaqItem[]; 
         {items.map(f => (
           <details key={f.q} className="dc-faq-item">
             <summary><span>{f.q}</span><Plus size={18} aria-hidden="true" /></summary>
-            <p>{f.a}</p>
+            <p style={{ whiteSpace: 'pre-line' }}>{f.a}</p>
           </details>
         ))}
       </div>
