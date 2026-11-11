@@ -81,6 +81,7 @@ jobs:
             exit 1
           fi
           git push origin origin/staging:refs/heads/main
+          echo "PROMOTED_SHA=$(git rev-parse origin/staging)" >> $GITHUB_ENV
 
       # ── Starting the live deploy, explicitly ──────────────────────────────
       #
@@ -101,8 +102,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh workflow run deploy.yml --repo "${{ github.repository }}" --ref main
+          # The commit is named, not left to `--ref main`: the first promotion
+          # dispatched in the instant after the push, GitHub still resolved
+          # main to the old commit, and the deploy it started would have
+          # republished the previous version. deploy.yml checks out exactly
+          # this sha and refuses one that is not on main.
+          gh workflow run deploy.yml --repo "${{ github.repository }}" --ref main -f sha="$PROMOTED_SHA"
           echo "### Promoted" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "main now matches staging, and **Deploy to Cloudflare** has been started on main." >> $GITHUB_STEP_SUMMARY
+          echo "main now matches staging, and **Deploy to Cloudflare** has been started for \`${PROMOTED_SHA:0:7}\`." >> $GITHUB_STEP_SUMMARY
+          echo "Its summary starts \"Deploying ${PROMOTED_SHA:0:7}\" — if it names another commit, cancel it." >> $GITHUB_STEP_SUMMARY
           echo "It is live at <https://app.protectedcentral.com> when that run finishes green — check it under Actions, not here." >> $GITHUB_STEP_SUMMARY

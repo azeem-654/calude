@@ -52,6 +52,14 @@ export interface Env {
    * Stripe will not take a relative return address. Set in wrangler.jsonc.
    */
   APP_ORIGIN?: string;
+  /**
+   * "on" lets AI Autopilot buy domains and mailboxes on the operator's own
+   * registrar ("Buy them for me"). Unset on live by the owner's decision of
+   * 2026-11-11 (OWNER-CHECKLIST #48): managed buying is not charged for yet, so
+   * on live it would spend the registrar balance for free. Staging sets it so
+   * the path can still be rehearsed. Read only by `managedBuyingEnabled`.
+   */
+  MANAGED_BUYING?: string;
   /** The testing site's lock (lib/stagingGate.ts): a committed hash, or a `user:password` secret that wins over it. Live sets neither. */
   STAGING_GATE_HASH?: string;
   STAGING_GATE?: string;

@@ -31,6 +31,7 @@ import { aiBudget, askGeminiParts, extractJson, loadAiKey } from '../lib/ai';
 import { rateLimit } from '../lib/rateLimit';
 import { lookupDomain, lookupDomainOk, lookupSummary } from '../lib/mailLookup';
 import { sendCredsFor } from '../lib/hostedMail';
+import { check as allowanceCheck, record as allowanceRecord } from '../lib/allowanceStore';
 import {
   KNOWN_PROVIDERS, SCREENSHOT_PROMPT, domainOf, knownAsFound, providerForDomain, providerForMx, recordsFromAi,
   type AiMailboxes, type FoundSettings,
@@ -60,6 +61,14 @@ export interface Mailbox {
    */
   hosted?: boolean;
   hostedWhy?: string;
+  /**
+   * A hosted address's daily cap on the platform's key (allowances
+   * `hosted_emails`, audit E-5), carried on the mailbox so `deliver` — which
+   * has no `env` and twenty-odd callers — enforces it for every one of them.
+   * `check` returns why not, or ''; `count` records one send. Absent for every
+   * other mailbox: the customer's own key is theirs to spend.
+   */
+  quota?: { check(): Promise<string>; count(): Promise<void> };
 }
 
 interface Row {
@@ -91,7 +100,18 @@ async function hydrate(env: Env, row: Row): Promise<Mailbox> {
   /* A hosted address never stores a key: the platform's is handed over here, only for its own verified domain. */
   const hosted = row.provider === 'hosted' ? await sendCredsFor(env, row.account_id, row.from_email) : null;
   return {
-    ...(hosted ? { hosted: true, hostedWhy: 'why' in hosted ? hosted.why : '' } : {}),
+    ...(hosted ? {
+      hosted: true, hostedWhy: 'why' in hosted ? hosted.why : '',
+      quota: {
+        check: async () => {
+          const r = await allowanceCheck(env, row.account_id, 'hosted_emails');
+          return r.ok ? '' : r.message;
+        },
+        /* Unique per send: the meter is idempotent on its ref, and two
+           messages to one person are two sends. */
+        count: async () => { await allowanceRecord(env, row.account_id, 'hosted_emails', `send:${crypto.randomUUID()}`); },
+      },
+    } : {}),
     id: row.id,
     accountId: row.account_id,
     label: row.label,

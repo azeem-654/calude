@@ -24,7 +24,20 @@
  * their substance should go back to the lawyer.
  */
 
-export const LEGAL_UPDATED = '26 September 2026';
+export const LEGAL_UPDATED = '11 November 2026';
+/*
+ * The operator's legal identity, as the owner gave it on 2026-11-11
+ * (OWNER-CHECKLIST #46, PUB-2): the name, a Delaware address and United States
+ * law. US contract law is state law, so "the laws of the United States" is
+ * written as Delaware's plus the federal law that applies there — the reading
+ * the Delaware address implies. One place, so the privacy page, the terms and
+ * the footer can never disagree.
+ */
+export const LEGAL_ENTITY = 'Protected Central';
+export const LEGAL_ADDRESS = 'Delaware, United States';
+export const GOVERNING_LAW = 'the laws of the State of Delaware and the federal laws of the United States';
+/* The refund window for subscriptions bought in the app — the owner's decision of 2026-11-11. */
+export const REFUND_WINDOW_DAYS = 14;
 export const PRIVACY_CONTACT = 'privacy@protectedcentral.com';
 
 export interface LegalSection { id: string; title: string; body: string[]; list?: string[] }
@@ -34,7 +47,8 @@ export const PRIVACY: LegalSection[] = [
     id: 'who', title: 'Who we are',
     body: [
       'Protected Central ("we", "us") is a customer-relationship and marketing platform at protectedcentral.com and app.protectedcentral.com. This policy explains what personal information we handle, why, who else processes it, how long we keep it, and the choices you have.',
-      `Questions about privacy: ${PRIVACY_CONTACT}.`,
+      `The service is operated by ${LEGAL_ENTITY}, ${LEGAL_ADDRESS}, which is responsible for your account information.`,
+      `Questions about privacy, or a request to see, correct, export or delete your information: ${PRIVACY_CONTACT}.`,
     ],
   },
   {
@@ -159,7 +173,7 @@ export const TERMS: LegalSection[] = [
   {
     id: 'fees', title: 'Plans and payment',
     body: [
-      'Paid plans are billed in advance through our payment processor at the price shown when you subscribe. You can cancel at any time; the plan stays active until the end of the period already paid for. Refunds are at our discretion unless the law requires otherwise. We will give notice in the app before changing the price of a plan you are on.',
+      `Paid plans are billed in advance through our payment processor at the price shown when you subscribe. You can cancel at any time; the plan stays active until the end of the period already paid for. The first payment of a new subscription is refunded in full if you ask within ${REFUND_WINDOW_DAYS} days of it; renewals are not refunded unless the law requires otherwise. See our Refund Policy (/refund-policy). We will give notice in the app before changing the price of a plan you are on.`,
       'A plan bought through a marketplace such as AppSumo is paid to that marketplace, not to us, and its refunds follow the marketplace\'s own refund policy — see our Refund Policy (/refund-policy).',
     ],
   },
@@ -188,8 +202,14 @@ export const TERMS: LegalSection[] = [
     ],
   },
   {
+    id: 'law', title: 'Governing law',
+    body: [
+      `These terms are between you and ${LEGAL_ENTITY}, ${LEGAL_ADDRESS}. They are governed by ${GOVERNING_LAW}, without regard to conflict-of-law rules. This does not take away any protection the law where you live gives you that cannot be set aside by agreement.`,
+    ],
+  },
+  {
     id: 'contact', title: 'Contact',
-    body: [`Questions about these terms: ${PRIVACY_CONTACT}.`],
+    body: [`${LEGAL_ENTITY}, ${LEGAL_ADDRESS}. Questions about these terms: ${PRIVACY_CONTACT}.`],
   },
 ];
 
@@ -386,10 +406,12 @@ export const GROWTH_TERMS: LegalSection[] = [
  * Both describe only what the software does — which purchase goes through
  * which processor, what a refunded AppSumo licence does to the plan
  * (routes/appsumo.ts `revoke`, appsumoLicense.ts `deactivated`), and the
- * cookies the Worker actually sets (lib/session.ts, lib/googleAuth.ts). They
- * promise no refund window of our own: that is the owner's decision
- * (OWNER-CHECKLIST #46), and a marketplace purchase is refunded by the
- * marketplace on its terms whatever we write. The cookie list is checked
+ * cookies the Worker actually sets (lib/session.ts, lib/googleAuth.ts). The
+ * in-app refund window (REFUND_WINDOW_DAYS) is the owner's decision of
+ * 2026-11-11; it is shorter than the affiliate hold (30 days) on purpose, so a
+ * refunded first payment never has a commission already paid out. A
+ * marketplace purchase is refunded by the marketplace on its terms whatever we
+ * write. The cookie list is checked
  * against every Set-Cookie in worker/src; add a row here when one is added.
  */
 export const REFUNDS_UPDATED = '11 November 2026';
@@ -406,7 +428,8 @@ export const REFUNDS: LegalSection[] = [
   {
     id: 'subscriptions', title: 'Monthly and annual plans bought here',
     body: [
-      'Subscriptions bought in the app are billed in advance by our payment processor. You can cancel at any time in Billing; the plan stays active until the end of the period already paid for and is not charged again. Refunds of a period already paid are at our discretion unless the law where you live requires otherwise — email support@protectedcentral.com and say which payment.',
+      'Subscriptions bought in the app are billed in advance by our payment processor. You can cancel at any time in Billing; the plan stays active until the end of the period already paid for and is not charged again.',
+      `The first payment of a new subscription is refunded in full if you ask within ${REFUND_WINDOW_DAYS} days of the payment — email support@protectedcentral.com from the account's address and say which payment. The refund ends that plan straight away. This applies once per account: a subscription started again after a refund, and renewals, are not refunded unless the law where you live requires otherwise. The 7-day free trial is not charged, so there is nothing to refund for it.`,
     ],
   },
   {

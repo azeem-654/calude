@@ -128,7 +128,12 @@ export default function ProjectInfra({ project, onSaved }: {
                 {([
                   ['byo', 'I have my own registrar', 'AI Autopilot uses the accounts you connected under Settings → Infrastructure. You pay your provider directly and nothing goes through us.'],
                   ['managed', 'Buy them for me', 'We buy on your behalf and bill it on — after this workspace\'s subscription payment has cleared, never before. Only available when this installation has a registrar connected.'],
-                ] as const).map(([id, label, sub]) => (
+                ] as const)
+                  /* "Buy them for me" is off on live until it is charged for
+                     (OWNER-CHECKLIST #48). Still shown to a project already set
+                     to it, so it can be switched back to its own registrar. */
+                  .filter(([id]) => id === 'byo' || !!project.managedBuying || project.purchaseMode === 'managed')
+                  .map(([id, label, sub]) => (
                   <button key={id} onClick={() => setMode(id)} aria-pressed={mode === id}
                     style={{
                       display: 'flex', gap: 10, alignItems: 'flex-start', textAlign: 'left', padding: '11px 12px',

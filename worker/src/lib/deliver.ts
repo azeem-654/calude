@@ -66,9 +66,16 @@ export async function deliver(mb: Mailbox, msg: MessageInput): Promise<Delivered
   if (!canSend(mb)) return { ok: false, error: cannotSendReason(mb), via: sendsViaApi(mb) ? 'api' : 'smtp' };
   const wrongFrom = hostedFromProblem(mb, msg.fromEmail);
   if (wrongFrom) return { ok: false, error: wrongFrom, via: 'api' };
+  /* The hosted daily cap (E-5): checked before, counted only on a send the
+     provider accepted — a refused send spent nothing of the shared key. */
+  if (mb.hosted && mb.quota) {
+    const over = await mb.quota.check();
+    if (over) return { ok: false, error: over, via: 'api' };
+  }
   if (sendsViaApi(mb)) {
     if (!msg.fromEmail) return { ok: false, error: 'This mailbox has no From address. Add one in Settings → Email & SMS.', via: 'api' };
     const r = await sendViaProvider(mb.provider, msg);
+    if (r.ok && mb.hosted && mb.quota) await mb.quota.count().catch(() => undefined);
     return { ok: r.ok, error: r.error, via: 'api', id: r.id };
   }
   const mime = buildMime(msg, mb.smtp.host);

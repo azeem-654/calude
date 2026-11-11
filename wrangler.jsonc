@@ -159,6 +159,10 @@
       "vars": {
         "APP_ORIGIN": "https://testing.protectedcentral.com",
 
+        /* "Buy them for me" stays rehearsable here; live leaves it unset, so
+           it is off there until it is charged for (OWNER-CHECKLIST #48). */
+        "MANAGED_BUYING": "on",
+
         /* The lock's hash — never the password. Change the password with the
            secret STAGING_GATE ("user:password") on crmpro-staging. */
         "STAGING_GATE_HASH": "48fc9bca4043e6ceaa83ac3ba55baa98491a2d9be838cbfa731563b339f7e9e1",

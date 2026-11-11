@@ -35,6 +35,7 @@
  */
 import { body, fail, json, ok } from '../lib/http';
 import { canAccess, installSecret, nowIso, userFromToken, type Env } from '../lib/db';
+import { managedBuyingEnabled } from '../lib/provisioning';
 import { decryptSecret, encryptSecret } from '../lib/crypto';
 
 const SECRET_KEY = 'mailbox_key';
@@ -466,7 +467,9 @@ export async function handleInfra(req: Request, env: Env): Promise<Response> {
        and fail at the moment they press buy. */
     const installed = await env.DB.prepare("SELECT kind FROM crm_install_providers WHERE credentials != ''")
       .all<{ kind: string }>();
-    const kinds = (installed.results ?? []).map(r => r.kind);
+    /* Off on this deployment (Env.MANAGED_BUYING) reads as "no registrar" to
+       the screen, so it never offers what set_mode would refuse. */
+    const kinds = managedBuyingEnabled(env) ? (installed.results ?? []).map(r => r.kind) : [];
     let target: Record<string, number> = {};
     try { target = JSON.parse(row?.pool_target || '{}') as Record<string, number>; } catch { /* empty */ }
     return json({
@@ -485,6 +488,9 @@ export async function handleInfra(req: Request, env: Env): Promise<Response> {
 
   if (action === 'set_mode') {
     const mode = String(d.mode ?? '') === 'managed' ? 'managed' : 'byo';
+    if (mode === 'managed' && !managedBuyingEnabled(env)) {
+      return fail('Managed buying is not offered on this installation. Connect your own registrar under Infrastructure instead.');
+    }
     if (mode === 'managed') {
       const reg = await env.DB.prepare("SELECT 1 AS n FROM crm_install_providers WHERE kind = 'registrar' AND credentials != ''").first();
       /* Refused rather than accepted-and-broken. A workspace set to managed on

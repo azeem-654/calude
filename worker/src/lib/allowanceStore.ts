@@ -27,7 +27,7 @@
 import { nowIso, planFor, resellLimitFor, type Env } from './db';
 import { trialFor, type TrialState } from './trial';
 import {
-  METERS, OWNER_LIMITS, TRIAL_NAME, UNLIMITED, cleanLimit, effectivePlans, isPlanKey, limitsFor, meterOf, periodEnd, periodOf,
+  METERS, OWNER_LIMITS, TRIAL_NAME, UNLIMITED, cleanLimit, effectivePlans, isPlanKey, limitsFor, meterOf, periodEnd, periodFor, periodOf,
   refusalText, upgradeFor, verdict, type Limits, type MeterId, type MeterReading, type Overrides, type PlanDef, type StandingKind,
 } from './allowances';
 
@@ -170,7 +170,7 @@ export async function usedOf(env: Env, st: Standing, accountId: string, meter: M
     case 'video_minutes': return videoMinutes(env, st, accountId, 'source_min');
     case 'render_minutes': return videoMinutes(env, st, accountId, 'render_min');
     case 'video_storage_gb': return storageGb(env, st, accountId);
-    default: return monthly(env, st.subscriber, meter);
+    default: return monthly(env, st.subscriber, meter, periodFor(meterOf(meter)));
   }
 }
 
@@ -206,7 +206,7 @@ export async function check(
   const m = meterOf(meter)!;
   const up = upgradeFor(meter, st, st.plans);
   const upgrade = up ? { id: up.id, name: up.name, limit: up.limits[meter] } : null;
-  const resetsAt = m.kind === 'monthly' ? periodEnd(periodOf()) : '';
+  const resetsAt = m.kind === 'monthly' || m.kind === 'daily' ? periodEnd(periodFor(m)) : '';
   return {
     ok: false, code: 'allowance', meter, used, limit, planId: st.kind === 'plan' ? st.planId : st.kind,
     planName: st.planName, upgrade, resetsAt, standing: st,
@@ -248,7 +248,7 @@ export async function record(
     const r = await env.DB.prepare(
       `INSERT INTO crm_usage (meter, ref, subscriber, account_id, period, units, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(meter, ref) DO NOTHING`,
-    ).bind(meter, `${accountId}:${ref}`.slice(0, 300), subscriber, accountId, periodOf(), units, nowIso()).run();
+    ).bind(meter, `${accountId}:${ref}`.slice(0, 300), subscriber, accountId, periodFor(meterOf(meter)), units, nowIso()).run();
     return (r.meta?.changes ?? 0) > 0;
   } catch { return false; }
 }

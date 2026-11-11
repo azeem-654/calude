@@ -27,6 +27,7 @@ import { verifierState } from './emailVerifier';
 import { registerState } from './companiesHouse';
 import { body, fail, json } from '../lib/http';
 import { userFromToken, type Env, type SessionUser } from '../lib/db';
+import { managedBuyingEnabled } from '../lib/provisioning';
 import { googleCreds } from '../lib/googleAuth';
 import { installPlacesKey, placesUsage } from '../lib/googlePlaces';
 import { PROVIDERS as VOICE_PROVIDERS } from '../lib/voice';
@@ -291,8 +292,10 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
     services.push({
       id: 'managed', name: 'Managed buying for AI Autopilot (Porkbun, Migadu)', optional: true,
       powers: 'AI Autopilot buying sending domains and mailboxes for a customer and adding them to their bill',
-      state: managed.length === 0 ? 'off' : managed.some(m => stateOf(m) === 'error') ? 'error' : managed.every(m => stateOf(m) === 'ok') ? 'ok' : 'unchecked',
-      detail: managed.length
+      state: !managedBuyingEnabled(env) || managed.length === 0 ? 'off' : managed.some(m => stateOf(m) === 'error') ? 'error' : managed.every(m => stateOf(m) === 'ok') ? 'ok' : 'unchecked',
+      detail: !managedBuyingEnabled(env)
+        ? 'Switched off on this deployment (MANAGED_BUYING is not "on") until managed purchases are charged for. Customers buy on their own registrar account.'
+        : managed.length
         ? `Connected: ${managed.map(m => `${m.kind} (${m.provider})`).join(', ')}.`
         : 'Not connected: customers buy domains on their own registrar account, which the app says.',
       checkedAt: null,

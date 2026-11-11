@@ -40,6 +40,8 @@ export interface Project {
   position?: number;
   /** 'byo' — the customer's own registrar — or 'managed', bought for them. */
   purchaseMode: string;
+  /** 1 when this deployment offers "Buy them for me" (MANAGED_BUYING); off on live for now. */
+  managedBuying?: number;
   /** JSON: {domains, mailboxesPerDomain}. '{}' means build nothing. */
   poolTarget: string;
   /** What it is meant to achieve, in numbers. 0 means nobody said. */

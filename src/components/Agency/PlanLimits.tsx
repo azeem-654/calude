@@ -90,7 +90,7 @@ export default function PlanLimits() {
                 {METERS.map(m => (
                   <tr key={m.id} style={{ borderTop: `1px solid ${LINE}` }}>
                     <td style={{ padding: '6px 10px', color: INK, fontWeight: 600 }} title={m.counted}>
-                      {m.label}{m.kind === 'monthly' ? <span style={{ color: MUTED, fontWeight: 500 }}> / month</span> : null}
+                      {m.label}{m.kind === 'monthly' ? <span style={{ color: MUTED, fontWeight: 500 }}> / month</span> : m.kind === 'daily' ? <span style={{ color: MUTED, fontWeight: 500 }}> / day</span> : null}
                     </td>
                     {cols.map(c => (
                       <td key={c.id} style={{ padding: '4px 6px' }}>

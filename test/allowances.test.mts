@@ -151,6 +151,16 @@ ok('re-rendering a Short already counted is free', again.ok);
 /* Last month's use does not count this month. */
 sql.prepare("UPDATE crm_usage SET period = 'm:2000-01' WHERE meter = 'ai_shorts'").run();
 ok('a new month starts empty', (await check(env, 'acct-trial', 'ai_shorts')).ok && (await roomFor(env, 'acct-trial', 'ai_shorts')).left === TRIAL_LIMITS.ai_shorts);
+/* The hosted-mail daily cap (E-5): counted per UTC day, refused by name on the (N+1)th. */
+for (let i = 0; i < TRIAL_LIMITS.hosted_emails; i++) await record(env, 'acct-trial', 'hosted_emails', `send:${i}`);
+const hostedFull = await check(env, 'acct-trial', 'hosted_emails');
+ok('the trial\'s hosted email past its daily cap is refused, naming the cap and midnight UTC', !hostedFull.ok && hostedFull.limit === TRIAL_LIMITS.hosted_emails && /Today’s 50 emails/.test(hostedFull.message) && /midnight UTC/.test(hostedFull.message) && /T00:00:00.000Z$/.test(hostedFull.resetsAt), !hostedFull.ok && hostedFull.message);
+ok('…counted in a day period, not the month', (sql.prepare("SELECT period FROM crm_usage WHERE meter = 'hosted_emails' LIMIT 1").get() as { period: string }).period.startsWith('d:'));
+sql.prepare("UPDATE crm_usage SET period = 'd:2000-01-01' WHERE meter = 'hosted_emails'").run();
+ok('…and a new day starts empty', (await check(env, 'acct-trial', 'hosted_emails')).ok);
+ok('a day period ends at the next UTC midnight', periodEnd('d:2026-12-31') === '2027-01-01T00:00:00.000Z');
+ok('every sold plan caps hosted mail per day', SOLD.every(p => p.limits.hosted_emails > 0) && meterOf('hosted_emails')!.kind === 'daily');
+
 /* The owner: counted, never refused. */
 for (let i = 0; i < 5; i++) await record(env, 'acct-owner', 'blog_articles', `bp-${i}`);
 ok('the owner is counted but never refused', (await check(env, 'acct-owner', 'blog_articles', 1e6)).ok);

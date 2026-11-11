@@ -104,10 +104,21 @@ export async function installCreds(env: Env, kind: Kind) {
  * quietly falling through to the customer's own account and charging them for
  * something they were told was included.
  */
+/**
+ * Whether "Buy them for me" exists on this deployment at all (Env.MANAGED_BUYING).
+ * Checked here and at every place a workspace can choose it, so a project set
+ * to managed before the switch went off buys nothing rather than buying on the
+ * operator's balance.
+ */
+export function managedBuyingEnabled(env: Env): boolean {
+  return String(env.MANAGED_BUYING ?? '').toLowerCase() === 'on';
+}
+
 export async function credsForMode(
   env: Env, accountId: string, kind: Kind, mode: 'byo' | 'managed',
 ): Promise<{ provider: string; creds: Creds; managed: boolean } | null> {
   if (mode === 'managed') {
+    if (!managedBuyingEnabled(env)) return null;
     const c = await installCreds(env, kind);
     return c ? { ...c, managed: true } : null;
   }

@@ -33,7 +33,7 @@ import { audienceOf, focusOf } from './lib/projectBrief';
 import { pageBlocks, pageDesignOf } from './lib/designLayouts';
 import { logoAddress } from './lib/brandLogo';
 import {
-  createMailbox, credsForMode, managedSpendAllowed, poolDomainCandidates, priceDomain,
+  createMailbox, credsForMode, managedBuyingEnabled, managedSpendAllowed, poolDomainCandidates, priceDomain,
   record as recordProvisioned, recordPurchase, registerDomain,
 } from './lib/provisioning';
 import { aiBudget, loadAiKey } from './lib/ai';
@@ -470,7 +470,7 @@ async function poolFor(env: Env, accountId: string, run?: RunRow): Promise<Works
      mode. Managed reads the operator's account; bring-your-own reads the
      customer's own. They are never the same row. */
   const canBuy = mode === 'managed'
-    ? !!(await env.DB.prepare("SELECT 1 AS n FROM crm_install_providers WHERE kind = 'registrar' AND credentials != ''").first())
+    ? managedBuyingEnabled(env) && !!(await env.DB.prepare("SELECT 1 AS n FROM crm_install_providers WHERE kind = 'registrar' AND credentials != ''").first())
     : !!(await env.DB.prepare("SELECT 1 AS n FROM crm_providers WHERE account_id = ? AND kind = 'registrar'").bind(accountId).first());
 
   return { steps: planPool(state, target), mode, canBuy };

@@ -23,6 +23,17 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      sha:
+        # Set by "Promote testing to live". A dispatch otherwise deploys
+        # whatever GitHub resolves `main` to at the moment it queues the run,
+        # and straight after the promote push that was still the old commit:
+        # the first promotion started a deploy of the previous version. Naming
+        # the commit removes the race. Left blank by a person, it means "main
+        # as it is now", as before.
+        description: 'Commit to deploy (blank = the tip of main)'
+        required: false
+        default: ''
 
 # One deploy at a time. Two runs racing would publish in whichever order they
 # happened to finish, which is not necessarily the order they were pushed.
@@ -35,6 +46,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+          # Enough history to prove the commit is on main (below).
+          fetch-depth: 0
+
+      # Only a commit already on main may reach the live Worker. A named sha
+      # is a free-text input, and without this a typo'd or branch-only commit
+      # would deploy untested code to customers.
+      - name: Check the commit is on main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error title=Not on main::$(git rev-parse --short HEAD) is not on main. Nothing was deployed."
+            exit 1
+          fi
+          echo "Deploying $(git log -1 --oneline HEAD)"
+          echo "### Deploying \`$(git rev-parse --short HEAD)\`" >> $GITHUB_STEP_SUMMARY
 
       # Wrangler 4.127 refuses to start on anything below Node 22 — the deploy
       # that pinned 20 built the app, then fell over on the first wrangler

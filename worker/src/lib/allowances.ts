@@ -31,9 +31,12 @@
  *
  * Contacts: they live in the browser's synced records, and the server sees a
  * whole list at a time — there is no single moment a contact is "created"
- * that it could refuse. Email sends: they go through the customer's own
- * mailbox and cost the operator nothing, and the one door (lib/deliver.ts)
- * also carries the install's sign-in codes, which a cap must never stop.
+ * that it could refuse. Email sends from the customer's own mailbox or
+ * provider: they cost the operator nothing. Sends from an address *hosted
+ * here* are the exception (`hosted_emails`, a daily meter): they go out on the
+ * platform's own sending key, so one workspace blasting a list would spend the
+ * reputation every other hosted customer sends on. The install owner is never
+ * capped, so the install's sign-in codes are never stopped by it.
  * Social posts and articles written *in the browser* (Social Creator, Blog)
  * reach the server only as AI requests, so they count there, not as posts.
  */
@@ -45,9 +48,13 @@ export type MeterId =
   | 'ai_requests' | 'social_posts' | 'blog_articles' | 'ai_emails'
   | 'prospects_found'
   | 'long_videos' | 'ai_shorts' | 'video_minutes' | 'render_minutes' | 'video_storage_gb'
-  | 'login_addresses';
+  | 'login_addresses'
+  | 'hosted_emails';
 
-export type MeterKind = 'count' | 'monthly' | 'standing';
+/*   daily      like monthly, per UTC day — only for a cap that protects
+ *              something shared (the platform's sending key), where a month's
+ *              allowance spent in one afternoon is exactly the harm. */
+export type MeterKind = 'count' | 'monthly' | 'standing' | 'daily';
 
 export interface Meter {
   id: MeterId;
@@ -56,7 +63,7 @@ export interface Meter {
   /** One of them, for sentences: "AI Short". */
   one: string;
   kind: MeterKind;
-  group: 'AI Autopilot' | 'AI writing' | 'Prospecting' | 'Video' | 'Workspace';
+  group: 'AI Autopilot' | 'AI writing' | 'Prospecting' | 'Video' | 'Workspace' | 'Email';
   /** Where it is counted — said on the Usage card, so nobody has to guess. */
   counted: string;
   /** Unit after the number, when it is not a count of things. */
@@ -92,6 +99,8 @@ export const METERS: Meter[] = [
     counted: 'Recordings and rendered files kept. Deleting a video project frees it.' },
   { id: 'login_addresses', label: 'Branded login addresses', one: 'login address', kind: 'count', group: 'Workspace',
     counted: 'Addresses your clients sign in at under your brand — a free subdomain or your own domain. Removing one frees its place.' },
+  { id: 'hosted_emails', label: 'Emails a day from your own domain hosted here', one: 'email', kind: 'daily', group: 'Email',
+    counted: 'Each email sent from an address on your domain hosted by Protected Central, per day (UTC). Mail through your own mailbox or provider is not counted.' },
 ];
 
 export const meterOf = (id: string): Meter | undefined => METERS.find(m => m.id === id);
@@ -175,6 +184,7 @@ export const PLAN_DEFS: PlanDef[] = [
       prospects_found: 500,
       long_videos: 5, ai_shorts: 30, video_minutes: 300, render_minutes: 400, video_storage_gb: 25,
       login_addresses: 1,
+      hosted_emails: 300,
     },
   },
   {
@@ -188,6 +198,7 @@ export const PLAN_DEFS: PlanDef[] = [
       prospects_found: 2_000,
       long_videos: 15, ai_shorts: 100, video_minutes: 900, render_minutes: 1_200, video_storage_gb: 100,
       login_addresses: 5,
+      hosted_emails: 500,
     },
   },
   {
@@ -209,6 +220,7 @@ export const PLAN_DEFS: PlanDef[] = [
       prospects_found: 12_000,
       long_videos: 75, ai_shorts: 600, video_minutes: 4_500, render_minutes: 6_000, video_storage_gb: 450,
       login_addresses: 40,
+      hosted_emails: 2_000,
     },
   },
   {
@@ -223,6 +235,7 @@ export const PLAN_DEFS: PlanDef[] = [
       prospects_found: 8_000,
       long_videos: 50, ai_shorts: 400, video_minutes: 3_000, render_minutes: 4_000, video_storage_gb: 300,
       login_addresses: 25,
+      hosted_emails: 1_000,
     },
   },
   {
@@ -238,6 +251,7 @@ export const PLAN_DEFS: PlanDef[] = [
       prospects_found: 20_000,
       long_videos: 100, ai_shorts: 1_000, video_minutes: 6_000, render_minutes: 8_000, video_storage_gb: 750,
       login_addresses: 100,
+      hosted_emails: 2_000,
     },
   },
   {
@@ -252,6 +266,7 @@ export const PLAN_DEFS: PlanDef[] = [
       prospects_found: 20_000,
       long_videos: 100, ai_shorts: 1_000, video_minutes: 6_000, render_minutes: 8_000, video_storage_gb: 750,
       login_addresses: UNLIMITED,
+      hosted_emails: 2_000,
     },
   },
   /*
@@ -278,6 +293,7 @@ export const PLAN_DEFS: PlanDef[] = [
       prospects_found: 300,
       long_videos: 3, ai_shorts: 20, video_minutes: 120, render_minutes: 150, video_storage_gb: 10,
       login_addresses: 1,
+      hosted_emails: 150,
     },
   },
   {
@@ -291,6 +307,7 @@ export const PLAN_DEFS: PlanDef[] = [
       prospects_found: 750,
       long_videos: 6, ai_shorts: 50, video_minutes: 300, render_minutes: 400, video_storage_gb: 25,
       login_addresses: 5,
+      hosted_emails: 300,
     },
   },
   {
@@ -304,6 +321,7 @@ export const PLAN_DEFS: PlanDef[] = [
       prospects_found: 1_500,
       long_videos: 12, ai_shorts: 100, video_minutes: 600, render_minutes: 800, video_storage_gb: 50,
       login_addresses: 15,
+      hosted_emails: 500,
     },
   },
 ];
@@ -355,6 +373,9 @@ export const TRIAL_LIMITS: Limits = {
   prospects_found: 100,
   long_videos: 2, ai_shorts: 10, video_minutes: 90, render_minutes: 120, video_storage_gb: 5,
   login_addresses: 1,
+  /* A trial is a stranger with no card on the platform's sending key: enough
+     to try a sequence, too few to be worth abusing. */
+  hosted_emails: 50,
 };
 export const TRIAL_NAME = 'Free trial';
 
@@ -461,8 +482,16 @@ export function upgradeFor(meter: MeterId, current: { kind: StandingKind; planId
 /** The calendar month in UTC, written as `crm_video_usage` already writes it. */
 export const periodOf = (d = new Date()): string => `m:${d.toISOString().slice(0, 7)}`;
 
+/** The UTC day, for a `daily` meter: `d:2026-11-11`. */
+export const dayOf = (d = new Date()): string => `d:${d.toISOString().slice(0, 10)}`;
+
+/** The period a meter counts in right now. */
+export const periodFor = (m: Pick<Meter, 'kind'> | undefined, d = new Date()): string => m?.kind === 'daily' ? dayOf(d) : periodOf(d);
+
 /** When a month's allowance starts again: the first instant of the next month, UTC. */
 export function periodEnd(period: string): string {
+  const day = /^d:(\d{4})-(\d{2})-(\d{2})$/.exec(period);
+  if (day) return new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3]) + 1)).toISOString();
   const m = /^m:(\d{4})-(\d{2})$/.exec(period);
   if (!m) return '';
   return new Date(Date.UTC(Number(m[1]), Number(m[2]), 1)).toISOString();
@@ -484,7 +513,9 @@ const plural = (n: number, one: string) => {
 
 /** "This month's 30 AI Shorts are used (30 of 30) — they start again on 1 November. Advanced includes 100." */
 export function refusalText(m: Meter, used: number, limit: number, planName: string, upgrade: { name: string; limit: number } | null, resetsAt = ''): string {
-  const what = m.kind === 'monthly'
+  const what = m.kind === 'daily'
+    ? `Today’s ${num(limit)} ${plural(limit, m.one)} from your hosted domain on ${planName} ${limit === 1 ? 'is' : 'are'} used (${num(Math.round(used))} of ${num(limit)})`
+    : m.kind === 'monthly'
     ? `This month’s ${num(limit)} ${plural(limit, m.one)} on ${planName} ${limit === 1 ? 'is' : 'are'} used (${num(Math.round(used))} of ${num(limit)})`
     : m.id === 'workflows_per_project'
       ? `This business workspace already has ${num(used)} of the ${num(limit)} ${plural(limit, m.one)} ${planName} allows in one business workspace`
@@ -493,9 +524,10 @@ export function refusalText(m: Meter, used: number, limit: number, planName: str
         : `${planName} includes ${num(limit)} ${plural(limit, m.one)} and ${num(used)} ${used === 1 ? 'exists' : 'exist'}`;
   const when = m.kind === 'monthly' && resetsAt
     ? ` — ${limit === 1 ? 'it starts' : 'they start'} again on ${new Date(resetsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' })}`
+    : m.kind === 'daily' ? ' — sending starts again at midnight UTC; mail through your own mailbox or provider is not limited by this'
     : m.kind === 'count' ? ' — delete one you no longer need, or choose a larger plan' : '';
   const up = upgrade
-    ? ` ${upgrade.name} includes ${isUnlimited(upgrade.limit) ? 'unlimited' : num(upgrade.limit)}${m.kind === 'monthly' ? ' a month' : ''}.`
+    ? ` ${upgrade.name} includes ${isUnlimited(upgrade.limit) ? 'unlimited' : num(upgrade.limit)}${m.kind === 'monthly' ? ' a month' : m.kind === 'daily' ? ' a day' : ''}.`
     : '';
   return `${what}${when}.${up}`;
 }
@@ -548,7 +580,7 @@ export function comparison(plans: PlanDef[] = CARD_PLANS()): CompareGroup[] {
       values: Object.fromEntries(plans.map(p => [p.id,
         p.kind === 'custom' && !isUnlimited(p.limits[id]) ? 'Set to fit'
           : isUnlimited(p.limits[id]) ? 'Unlimited'
-            : `${formatLimit(p.limits[id], m)}${m.kind === 'monthly' ? ' / mo' : ''}`])),
+            : `${formatLimit(p.limits[id], m)}${m.kind === 'monthly' ? ' / mo' : m.kind === 'daily' ? ' / day' : ''}`])),
     };
   };
   const all = (label: string, note?: string): CompareRow => ({ label, ...(note ? { note } : {}), values: Object.fromEntries(plans.map(p => [p.id, true])) });
@@ -584,6 +616,7 @@ export function comparison(plans: PlanDef[] = CARD_PLANS()): CompareGroup[] {
       all('A shop, paid into your own Stripe or Creem'),
       all('Booking page in your visitors’ time zones'),
       all('Email from your own mailbox or provider'),
+      meter('hosted_emails', 'Emails a day from your domain hosted here'),
     ] },
     { name: 'White-label and reselling', rows: [
       all('Your name, logo and colours on every workspace'),

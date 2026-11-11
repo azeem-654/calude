@@ -20,6 +20,7 @@
  */
 import { body, fail, json } from '../lib/http';
 import { canAccess, foreignId, nowIso, userFromToken, type Env } from '../lib/db';
+import { managedBuyingEnabled } from '../lib/provisioning';
 import { gate as contentGate } from '../lib/contentGate';
 import { askGemini, loadAiKey, aiBudget } from '../lib/ai';
 import { readSite, fetchPage } from '../lib/readSite';
@@ -127,6 +128,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     const { results } = await env.DB.prepare(
       `SELECT j.id, j.portfolio_id AS portfolioId, j.name, j.objective, j.kind, j.status,
               j.guardrails, j.purchase_mode AS purchaseMode, j.pool_target AS poolTarget,
+              ${managedBuyingEnabled(env) ? 1 : 0} AS managedBuying,
               j.revenue_target AS revenueTarget, j.volume_target AS volumeTarget, j.goals,
               j.last_planned_at AS lastPlannedAt, j.last_acted_at AS lastActedAt,
               j.last_error AS lastError, j.created_at AS createdAt, j.position,
@@ -595,6 +597,9 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     const id = String(d.id ?? '').trim();
     const mode = String(d.purchaseMode ?? '') === 'managed' ? 'managed' : 'byo';
 
+    if (mode === 'managed' && !managedBuyingEnabled(env)) {
+      return fail('Buying domains and mailboxes for you is not offered yet. Connect your own registrar under Settings → Infrastructure and choose “I have my own registrar”.');
+    }
     if (mode === 'managed') {
       /* Refused rather than accepted-and-broken, the same way infra.ts does it.
          A project set to managed on an install with nothing to buy through
