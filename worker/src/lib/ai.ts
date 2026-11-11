@@ -17,9 +17,10 @@
 import { decryptSecret } from './crypto';
 import { installSecret, type Env } from './db';
 import { fingerprint, installPool, remember, withFailover, type Attempt } from './aiPool';
-import { isOpenRouterKey, askOpenRouter, verifyOpenRouterKey, adoptOpenRouterBase, CANNOT } from './openrouter';
+import { isOpenRouterKey, askOpenRouter, verifyOpenRouterKey, adoptOpenRouterBase } from './openrouter';
 import { TRIAL_ENDED_MESSAGE, trialForWorkspace } from './trial';
 import { take as takeAllowance } from './allowanceStore';
+import { cleanJob, jobMayFinish, jobTouch } from './aiJobs';
 import { chainFor, guessTask, taskOf, type AiTask } from './aiTasks';
 import { adoptUsageEnv, capRefusal, freeFirst, recordAiUse } from './aiUsage';
 
@@ -116,7 +117,18 @@ export interface AiResult {
   ok: boolean;
   text: string;
   error: string;
+  /** Pages a web-searching answer cited (OpenRouter's web plugin). */
+  sources?: { title: string; uri: string }[];
 }
+
+/**
+ * What a customer reads when every AI key failed for a reason that was the
+ * key's — a spent quota, mostly. Never a provider's name or "add a key": the
+ * keys are the operator's, and the customer was told AI is included
+ * (lib/aiPool.ts `withFailover` `exhausted`). The owner is mailed the real
+ * reason at the same moment.
+ */
+export const AI_BUSY = 'Our AI is at capacity for a few minutes. This is on our side, not yours — please try again shortly; scheduled work retries by itself.';
 
 /** A workspace's AI key, decrypted. Null when none is set up. */
 /**
@@ -262,7 +274,7 @@ export async function askGeminiParts(
   const o = { ...opts, task: opts.task ?? (opts.module ? taskOf(opts.module) : guessTask(parts)) };
   /* On each of the install's keys in turn, while the failure is the key's
      (lib/aiPool.ts). */
-  return withFailover(apiKey, k => askGeminiOnce(k, parts, temperature, o));
+  return withFailover(apiKey, k => askGeminiOnce(k, parts, temperature, o), { exhausted: (): AiResult => ({ ok: false, text: '', error: AI_BUSY }) });
 }
 
 /** A file already uploaded to Google's Files API on the key being asked (askGeminiAboutFile only). */
@@ -295,7 +307,9 @@ async function askGeminiOnce(
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
-          ...(opts.timeoutMs ? { signal: AbortSignal.timeout(opts.timeoutMs) } : {}),
+          /* A default, so no caller can wait on a model forever (the audit
+             found a dozen with none); withFailover bounds the walk. */
+          signal: AbortSignal.timeout(opts.timeoutMs ?? 45_000),
         });
       } catch (e) {
         const timedOut = e instanceof Error && /abort|timeout/i.test(`${e.name} ${e.message}`);
@@ -360,7 +374,7 @@ export async function askGeminiAboutFile(
   apiKey: string, file: FileForAi, prompt: string, temperature = 0.3, opts: AskOpts & { activeWaitMs?: number } = {},
 ): Promise<AiResult> {
   const o = { ...opts, task: opts.task ?? (opts.module ? taskOf(opts.module) : 'reason' as AiTask) };
-  return withFailover(apiKey, k => askAboutFileOnce(k, file, prompt, temperature, o));
+  return withFailover(apiKey, k => askAboutFileOnce(k, file, prompt, temperature, o), { exhausted: (): AiResult => ({ ok: false, text: '', error: AI_BUSY }) });
 }
 
 async function askAboutFileOnce(
@@ -369,7 +383,7 @@ async function askAboutFileOnce(
   const failed = (status: number, raw: string, said?: string): Attempt<AiResult> =>
     ({ ok: false, status, error: raw, value: { ok: false, text: '', error: said ?? friendly(status, raw) } });
   /* No Files API behind an OpenRouter key: the next key, no rest (-2). */
-  if (isOpenRouterKey(apiKey)) return failed(-2, 'not a Gemini key', 'None of this installation\'s AI keys can watch a video file — a Google Gemini key is needed.');
+  if (isOpenRouterKey(apiKey)) return failed(-2, 'not a Gemini key', 'Watching a video file is not available on this installation right now. This is on our side, not yours.');
   const k = encodeURIComponent(apiKey);
   let uploadUrl = '';
   try {
@@ -432,16 +446,13 @@ async function askAboutFileOnce(
 function friendly(status: number, raw: string): string {
   let msg = raw;
   try { msg = (JSON.parse(raw) as { error?: { message?: string } })?.error?.message || raw; } catch { /* not JSON */ }
-  if (status === 429) return 'The AI key has hit its rate limit or quota. Replies will resume when it resets.';
-  if (/API[ _]KEY[ _]INVALID|API key not valid/i.test(raw)) {
-    /* Deliberately does not name a screen. On most installs the key is the
-       operator's, and sending a customer to their own AI Engine tab to fix a
-       key that is not there is a wild goose chase. */
+  /* Every one of these is the operator's key, so none of them names it, a
+     screen or a provider: the customer cannot fix any of it. */
+  if (status === 429) return AI_BUSY;
+  if (/API[ _]KEY[ _]INVALID|API key not valid|SERVICE[ _]DISABLED|API[ _]KEY[ _]SERVICE[ _]BLOCKED|BILLING|PERMISSION[ _]DENIED/i.test(raw)) {
     return 'Writing was refused by the AI provider. This is on us, not you — please try again shortly.';
   }
-  if (/SERVICE[ _]DISABLED|API[ _]KEY[ _]SERVICE[ _]BLOCKED/i.test(raw)) {
-    return 'The Generative Language API is not enabled for this key\'s project.';
-  }
+  if (status >= 500 || status === 0 || status === -1) return AI_BUSY;
   return msg.slice(0, 240) || 'The AI could not be reached.';
 }
 
@@ -479,6 +490,8 @@ export interface WebResult {
   /** The pages Google says the answer was grounded in, whatever the model wrote. */
   sources: { title: string; uri: string }[];
   error: string;
+  /** Every key failed for its own reason (capacity), not because the search found nothing. */
+  busy?: boolean;
 }
 
 /**
@@ -518,14 +531,18 @@ export function extractJson<T>(text: string): T | null {
  * a person reading the draft can check, and every draft stays a draft.
  */
 export async function researchWeb(apiKey: string, question: string, max = 5, who: { module?: string; accountId?: string } = {}): Promise<WebResult> {
-  return withFailover(apiKey, k => researchOnce(k, question, max, who));
+  return withFailover(apiKey, k => researchOnce(k, question, max, who), {
+    exhausted: (): WebResult => ({ ok: false, findings: [], sources: [], error: AI_BUSY, busy: true }),
+  });
 }
 
 async function researchOnce(apiKey: string, question: string, max: number, who: { module?: string; accountId?: string }): Promise<Attempt<WebResult>> {
   const failed = (status: number, raw: string): Attempt<WebResult> =>
     ({ ok: false, status, error: raw, value: { ok: false, findings: [], sources: [], error: friendly(status, raw) } });
   /* Searching the web is Google's grounding; an OpenRouter key passes it on to the next key. */
-  if (isOpenRouterKey(apiKey)) return { ok: false, status: CANNOT, error: 'no web search', value: { ok: false, findings: [], sources: [], error: 'Searching the web needs a Google AI key.' } };
+  /* OpenRouter searches with its web plugin (billed per search: a key with
+     no credit answers 402 and is passed by). */
+  if (isOpenRouterKey(apiKey)) return researchOnOpenRouter(apiKey, question, max, who);
   const prompt = `Search the web for the most recent, genuinely new information on this, and report it.
 
 Question: ${question}
@@ -551,6 +568,7 @@ Reply with JSON only, in exactly this shape:
     try {
       res = await fetch(`${BASE}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        signal: AbortSignal.timeout(45_000),
       });
     } catch (e) {
       return failed(0, `Could not reach Google: ${e instanceof Error ? e.message : String(e)}`);
@@ -596,6 +614,28 @@ Reply with JSON only, in exactly this shape:
   return failed(-1, lastError || 'every model failed');
 }
 
+async function researchOnOpenRouter(apiKey: string, question: string, max: number, who: { module?: string; accountId?: string }): Promise<Attempt<WebResult>> {
+  const r = await askOpenRouter(apiKey, {
+    parts: [{ text: `Search the web for the most recent, genuinely new information on this, and report it.
+
+Question: ${question}
+
+Only things you found in search results; an empty list rather than filling it. One distinct item each. No opinion or marketing language.
+
+Reply with JSON only: {"findings": [{"title": "", "summary": "two or three plain sentences", "link": "the source page"}]}` }],
+    temperature: 0.2, json: true, web: true, timeoutMs: 45_000, task: 'research', module: who.module ?? 'autopilot-research', accountId: who.accountId,
+  });
+  if (!r.ok) return { ok: false, status: r.status, error: r.error, value: { ok: false, findings: [], sources: [], error: r.value.error } };
+  const sources = r.value.sources ?? [];
+  /* As with Google's grounding: no cited page means it answered from memory. */
+  if (!sources.length) return { ok: true, value: { ok: false, findings: [], sources: [], error: 'The search came back with no sources, so nothing was written from it.' } };
+  const parsed = extractJson<{ findings?: Partial<WebFinding>[] }>(r.value.text);
+  const findings = (parsed?.findings ?? [])
+    .map(f => ({ title: String(f.title ?? '').trim().slice(0, 200), summary: String(f.summary ?? '').trim().slice(0, 800), link: String(f.link ?? '').trim().slice(0, 500) }))
+    .filter(f => f.title && f.summary).slice(0, max);
+  return { ok: true, value: { ok: true, findings, sources, error: '' } };
+}
+
 /**
  * Why the operator's AI is closed to this workspace, or null when it is not.
  *
@@ -618,7 +658,7 @@ export async function trialRefusal(env: Env, accountId: string): Promise<string 
  * operator's AI quota down in a loop. `null` means go ahead; otherwise the
  * sentence to show.
  */
-export async function aiBudget(env: Env, accountId: string): Promise<string | null> {
+export async function aiBudget(env: Env, accountId: string, opts: { job?: string } = {}): Promise<string | null> {
   const ended = await trialRefusal(env, accountId);
   if (ended) return ended;
   /* The owner's caps for this workspace (Platform services → AI & cloud usage; lib/aiUsage.ts). */
@@ -626,10 +666,43 @@ export async function aiBudget(env: Env, accountId: string): Promise<string | nu
   if (capped) return capped.message;
   /* The plan's monthly AI requests (lib/allowances.ts). Every server route
      that spends the AI key asks here first, so this is where one is counted:
-     when it is asked for, because the caller makes the call straight after. */
+     when it is asked for, because the caller makes the call straight after.
+     A call that then fails gives it back (aiRefund). */
   const r = await takeAllowance(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`);
-  if (!r.ok) return r.message;
+  const job = cleanJob(opts.job);
+  if (!r.ok) {
+    /* A job that started inside the allowance finishes (lib/aiJobs.ts); the
+       screen says the credits are used up once it is done. */
+    if (await jobMayFinish(env, accountId, job)) { await jobTouch(env, accountId, job); return null; }
+    return r.message;
+  }
+  await jobTouch(env, accountId, job);
   return null;
+}
+
+/**
+ * Give back the AI request counted for a call that then failed.
+ *
+ * Counting happens before the call (aiBudget), so an outage used to spend a
+ * customer's month: form triage and inbox replies retry every five minutes,
+ * each retry another unit, and nothing was ever made. Units are alike, so the
+ * newest one this workspace took in the last ten minutes is the one returned.
+ */
+export async function aiRefund(env: Env, accountId: string): Promise<void> {
+  try {
+    await env.DB.prepare(
+      `DELETE FROM crm_usage WHERE rowid = (
+         SELECT rowid FROM crm_usage WHERE meter = 'ai_requests' AND account_id = ? AND ref LIKE ? AND created_at > ?
+         ORDER BY created_at DESC LIMIT 1)`,
+    ).bind(accountId, `${accountId}:ai-%`, new Date(Date.now() - 10 * 60_000).toISOString()).run();
+  } catch { /* the count is the customer's favour, never their failure */ }
+}
+
+/** A route's answer, with its AI request given back when it is a refusal (`success` not true). */
+export async function refundIfFailed(env: Env, accountId: string, res: Response): Promise<Response> {
+  const body = await res.clone().json<{ success?: boolean }>().catch(() => null);
+  if (body?.success !== true) await aiRefund(env, accountId);
+  return res;
 }
 
 /**
@@ -639,5 +712,12 @@ export async function aiBudget(env: Env, accountId: string): Promise<string | nu
  * then refuses every sentence.
  */
 export async function probeAiKey(apiKey: string): Promise<Attempt<AiResult>> {
-  return askGeminiOnce(apiKey, [{ text: 'Reply with the single word OK.' }], 0, { json: false, fast: true, timeoutMs: 20_000 });
+  const r = await askGeminiOnce(apiKey, [{ text: 'Reply with the single word OK.' }], 0, { json: false, fast: true, timeoutMs: 20_000 });
+  if (r.ok) return r;
+  /* The owner's screen: the provider's own reason, which the customer's
+     sentence (AI_BUSY) deliberately leaves out. */
+  let msg = r.error;
+  try { msg = (JSON.parse(r.error) as { error?: { message?: string } })?.error?.message || r.error; } catch { /* not JSON */ }
+  const why = r.status === 429 ? `The key has hit its rate limit or daily quota: ${msg}` : msg;
+  return { ...r, value: { ...r.value, error: why.slice(0, 300) || r.value.error } };
 }

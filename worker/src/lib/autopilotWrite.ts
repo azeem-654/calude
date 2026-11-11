@@ -536,6 +536,8 @@ export function writeImagePosts(
     style?: string;
     /** The offer layout: ask for a badge and a button as well. */
     offer?: boolean;
+    /** This month's theme from the project's 12-month plan (lib/marketingYear.ts). */
+    theme?: string;
   } = {},
 ): Promise<Written<WrittenImagePosts>> {
   const count = Math.min(Math.max(opts.count ?? 1, 1), 6);
@@ -545,7 +547,7 @@ export function writeImagePosts(
 
 === THE BUSINESS ===
 ${brandBlock(b)}
-${materialBlock(items)}
+${materialBlock(items)}${opts.theme ? `\nThis month's marketing theme — let the posts follow it, without inventing facts to fit it: ${opts.theme.replace(/[`$\\]/g, '').slice(0, 300)}\n` : ''}
 Rules:
 - The headline goes ON the image. Under nine words, no full stop, no hashtags, no emoji. It has to make sense to somebody scrolling who reads nothing else.
 - The caption goes under the image. Two or three sentences, plain, in their tone of voice.

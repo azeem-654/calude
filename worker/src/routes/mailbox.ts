@@ -717,7 +717,7 @@ async function readPicture(env: Env, accountId: string, d: PictureBody): Promise
   if (!ai.ok) {
     /* A pool whose only keys have no model that reads pictures answers with nothing to say. */
     const why = /could not answer:\s*$/.test(ai.error) || !ai.error.trim()
-      ? 'none of the AI keys on this install can read pictures right now.'
+      ? 'the AI cannot read pictures right now — this is on our side, not yours.'
       : ai.error;
     return fail(`The screenshot could not be read: ${why} Paste the settings as text instead.`, 200, { code: 'ai_failed', field: 'mailimport.picture' });
   }

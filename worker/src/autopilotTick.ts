@@ -37,7 +37,7 @@ import {
   createMailbox, credsForMode, managedBuyingEnabled, managedSpendAllowed, poolDomainCandidates, priceDomain,
   record as recordProvisioned, recordPurchase, registerDomain,
 } from './lib/provisioning';
-import { aiBudget, loadAiKey } from './lib/ai';
+import { aiBudget, aiRefund, loadAiKey } from './lib/ai';
 import { createPayLink, storefrontReady } from './routes/storefront';
 import { draftAtSupplier, supplierReady } from './routes/supplier';
 import { canSend, cannotSendReason, deliver, fromAddressOf } from './lib/deliver';
@@ -690,7 +690,12 @@ async function carryOut(
   }
 
   if (effect.type === 'write') {
-    return carryOutWrite(env, accountId, effect.what, run);
+    {
+      /* A write that made nothing gives its AI request back (lib/ai.ts aiRefund). */
+      const w = await carryOutWrite(env, accountId, effect.what, run);
+      if (!w.ok && !/^Nothing was written\./.test(w.detail)) await aiRefund(env, accountId);
+      return w;
+    }
   }
 
   if (effect.type === 'thank_buyers' || effect.type === 'chase_payment') {
@@ -1142,7 +1147,7 @@ async function carryOutWrite(
   /* No key anywhere — the workspace's, the operator's, nor the deployment's.
      That is an operator problem, not something the customer can fix, so it is
      reported as one rather than as homework. */
-  if (!apiKey) return { ok: false, detail: 'Writing is unavailable on this installation at the moment, so nothing could be written. Support has been able to see this.' };
+  if (!apiKey) return { ok: false, detail: 'Writing is unavailable on this installation at the moment, so nothing could be written. This is on our side, not yours — it is tried again on the next run.' };
   const brand = await brandFor(env, accountId, run);
   const now = nowIso();
 

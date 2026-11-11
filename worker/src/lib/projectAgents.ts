@@ -36,7 +36,8 @@
  */
 import { loadFinder, stepFinder } from '../prospectFinderTick';
 import { dataGet, dataPut, nowIso, type Env } from './db';
-import { aiBudget, loadAiKey, researchWeb } from './ai';
+import { aiBudget, aiRefund, loadAiKey, researchWeb } from './ai';
+import { monthThemeOf } from './marketingYear';
 import { record, roomFor } from './allowanceStore';
 import { readSite, urlProblem } from './readSite';
 import { drawSocial, paletteOf } from './designLayouts';
@@ -447,9 +448,25 @@ async function push(env: Env, accountId: string, key: string, row: Record<string
   await dataPut(env.DB, accountId, key, JSON.stringify(list.slice(0, 500)));
 }
 
+/**
+ * One agent step, and the AI request it took given back when nothing came of
+ * it (lib/ai.ts aiRefund): a writer that failed or a search no key could run
+ * was not a request served, and a step retried on every tick of an outage
+ * would otherwise spend the customer's month on nothing.
+ */
 async function runAgentNode(
   env: Env, accountId: string, project: ProjectRow, node: GraphNode, lastRunAt: string | null,
   workflowId: string, force = false,
+): Promise<Produced> {
+  const charge = { taken: false };
+  const r = await runAgentNodeOnce(env, accountId, project, node, lastRunAt, workflowId, force, charge);
+  if (charge.taken && r.outcome !== 'ok') await aiRefund(env, accountId);
+  return r;
+}
+
+async function runAgentNodeOnce(
+  env: Env, accountId: string, project: ProjectRow, node: GraphNode, lastRunAt: string | null,
+  workflowId: string, force: boolean, charge: { taken: boolean },
 ): Promise<Produced> {
   const cfg = node.config ?? {};
   const c = (k: string) => String(cfg[k] ?? '').trim();
@@ -484,13 +501,14 @@ async function runAgentNode(
      the same gate every browser-started AI call passes. */
   const aiNo = await aiBudget(env, accountId);
   if (aiNo) return { outcome: 'skipped', detail: `Nothing was written. ${aiNo}` };
+  charge.taken = true;
 
   const apiKey = await loadAiKey(env, accountId);
   /* The workspace's key, the operator's, then the deployment's. None of the
      three is an operator problem, not something the customer can fix, so it is
      reported as one rather than as homework. */
   if (!apiKey) {
-    return { outcome: 'failed', detail: 'Writing is unavailable on this installation at the moment, so nothing was written. Support has been able to see this.' };
+    return { outcome: 'failed', detail: 'Writing is unavailable on this installation at the moment, so nothing was written. This is on our side, not yours — it runs again on its schedule.' };
   }
 
   const brand = await brandFor(env, accountId, project);
@@ -504,6 +522,12 @@ async function runAgentNode(
   let items: SourceItem[] = [];
   let hash = '';
   const kind = c('source') || 'portfolio';
+  /* Said after what was made, when it was made some other way than asked. */
+  let fallbackNote = '';
+  let topicOverride = '';
+  /* The project's 12-month plan, when it has one: this month's theme steers
+     what is written from the portfolio (lib/marketingYear.ts). */
+  const month = monthThemeOf(c('monthPlan'));
 
   if (kind === 'portfolio') {
     if (portfolioThin(brand)) {
@@ -545,21 +569,30 @@ async function runAgentNode(
     const question = c('sourcePrompt');
     if (question.length < 6) return { outcome: 'failed', detail: 'No question is set for the search.' };
     const found = await researchWeb(apiKey, question, 5, { module: 'autopilot-research', accountId });
-    if (!found.ok) return { outcome: 'failed', detail: found.error };
-    if (!found.findings.length) {
-      return { outcome: 'skipped', detail: 'The search found nothing new worth writing about.' };
+    if (!found.ok && found.busy && !portfolioThin(brand)) {
+      /* No key could search just now (capacity, ours). An SEO article from
+         what the business does, around the same question, is still worth
+         having — and is said to be that, so nobody takes it for this week's
+         research. The next run searches again. */
+      fallbackNote = ' Web research was not available this time, so it was written from the business profile around your topic instead — the next run searches again.';
+      topicOverride = question;
+    } else if (!found.ok) return { outcome: 'failed', detail: found.error };
+    else {
+      if (!found.findings.length) {
+        return { outcome: 'skipped', detail: 'The search found nothing new worth writing about.' };
+      }
+      hash = await fingerprint(found.findings.map(f => f.title).sort().join('|'));
+      if (!force && hash === await lastHash(env, workflowId, node.id)) {
+        return { outcome: 'skipped', detail: `Nothing new since last time \u2014 the same ${found.findings.length} results came back.`, hash };
+      }
+      items = found.findings.map(f => ({
+        title: f.title, summary: f.summary,
+        /* The model's link when it gave one, otherwise the first page Google
+           says it used — so every post can be traced to a source. */
+        link: f.link || found.sources[0]?.uri || '',
+        published: '',
+      }));
     }
-    hash = await fingerprint(found.findings.map(f => f.title).sort().join('|'));
-    if (!force && hash === await lastHash(env, workflowId, node.id)) {
-      return { outcome: 'skipped', detail: `Nothing new since last time \u2014 the same ${found.findings.length} results came back.`, hash };
-    }
-    items = found.findings.map(f => ({
-      title: f.title, summary: f.summary,
-      /* The model's link when it gave one, otherwise the first page Google
-         says it used — so every post can be traced to a source. */
-      link: f.link || found.sources[0]?.uri || '',
-      published: '',
-    }));
   } else if (kind === 'rss' || kind === 'youtube') {
     const raw = c('sourceUrl');
     const resolved = kind === 'youtube' ? youtubeFeed(raw) : { url: raw, problem: raw ? '' : 'No feed address is set.' };
@@ -588,6 +621,7 @@ async function runAgentNode(
     const layout = c('layout');
     const r = await writeImagePosts(apiKey, brand, {
       count, platform: c('platform') || 'instagram', items, style: c('style'),
+      theme: !items.length && month ? `${month.theme} — ${month.focus}` : undefined,
       /* Only the offer layout has a badge and a button to fill. */
       offer: layout === 'offer',
     });
@@ -610,14 +644,15 @@ async function runAgentNode(
     const made = Math.min(posts.length, count);
     return {
       outcome: 'ok',
-      detail: `Made ${made} post${made === 1 ? '' : 's'}${items.length ? ` from ${items.length} new item${items.length === 1 ? '' : 's'}` : ''}. Every one is a draft — nothing is scheduled until you say so.${count < asked ? ` ${asked} were asked for; this month’s allowance had room for ${count}.` : ''}`,
+      detail: `Made ${made} post${made === 1 ? '' : 's'}${items.length ? ` from ${items.length} new item${items.length === 1 ? '' : 's'}` : month ? ` for this month's theme, “${month.theme}”` : ''}. Every one is a draft — nothing is scheduled until you say so.${count < asked ? ` ${asked} were asked for; this month’s allowance had room for ${count}.` : ''}`,
       link: { kind: 'social-post', id: first, label: posts[0].headline.slice(0, 60), route: '/social-creator' },
       hash,
     };
   }
 
   if (produces === 'blog') {
-    const topic = items.length ? `${items[0].title}. ${items[0].summary.slice(0, 400)}` : c('topic');
+    const topic = items.length ? `${items[0].title}. ${items[0].summary.slice(0, 400)}`
+      : topicOverride || [c('topic'), month ? `This month's theme: ${month.theme} — ${month.focus}` : ''].filter(Boolean).join('. ');
     const r = await writeBlogPost(apiKey, brand, topic, c('format'));
     if (!r.ok || !r.value?.title) return { outcome: 'failed', detail: r.error || 'Nothing usable came back from the writer.' };
     const v = r.value;
@@ -629,7 +664,7 @@ async function runAgentNode(
     await record(env, accountId, 'blog_articles', id);
     return {
       outcome: 'ok',
-      detail: `Drafted "${v.title}". Read it before it goes anywhere.`,
+      detail: `Drafted "${v.title}". Read it before it goes anywhere.${fallbackNote}`,
       link: { kind: 'blog-post', id, label: v.title.slice(0, 60), route: '/blog-automation' },
       hash,
     };
@@ -642,7 +677,7 @@ async function runAgentNode(
     const total = Math.min(asked, room);
     if (total < 2) return { outcome: 'skipped', detail: `Nothing was written: a campaign needs at least two emails and this month’s allowance of emails written by AI Autopilot has room for ${total}. It starts again on the 1st, or a larger plan raises it.` };
     const everyDays = Math.min(Math.max(Number(c('everyDays')) || 7, 1), 30);
-    const theme = c('topic') || (items.length ? items[0].title : '');
+    const theme = c('topic') || (items.length ? items[0].title : '') || (month ? `${month.theme} — ${month.focus}` : '');
 
     /* Written a batch at a time. A model asked for fifty-two in one reply
        returns a dozen good ones and then repeats itself, and often enough JSON

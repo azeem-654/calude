@@ -37,7 +37,8 @@
  * the key it is given. A key it has never seen is simply tried alone.
  */
 import { decryptSecret } from './crypto';
-import { installSecret, nowIso, type Env } from './db';
+import { installSecret, metaGet, metaPut, nowIso, type Env } from './db';
+import { nearDailyLimit } from './aiUsage';
 
 export interface PoolKey {
   key: string;
@@ -109,14 +110,25 @@ const lastOkWrite = new Map<string, number>(); // fp → when "worked" was last 
 
 export function forgetPool(): void { cached = null; }
 
-/** Not resting first, in their own order; resting ones after, soonest back first. */
-function order(keys: PoolKey[]): PoolKey[] {
+/**
+ * Not resting first, in their own order — except that a key close to today's
+ * free allowance goes behind the ones that still have room (lib/aiUsage.ts
+ * `nearDailyLimit`). That is the switch made *before* the quota runs out: a
+ * Google key at 90% of its free day hands the next calls to OpenRouter (or
+ * another Google project) while it still answers, rather than every customer
+ * collecting its 429s first. Resting ones after, soonest back first.
+ */
+async function order(env: Env, keys: PoolKey[]): Promise<PoolKey[]> {
   const now = Date.now();
   const live = keys.filter(k => !((cooling.get(k.fp) ?? 0) > now));
+  const near = await Promise.all(live.map(k => nearDailyLimit(env, k.key, k.fp).catch(() => false)));
   const resting = keys.filter(k => (cooling.get(k.fp) ?? 0) > now)
     .sort((a, b) => (cooling.get(a.fp) ?? 0) - (cooling.get(b.fp) ?? 0));
-  return [...live, ...resting];
+  return [...live.filter((_, i) => !near[i]), ...live.filter((_, i) => near[i]), ...resting];
 }
+
+/** Resting now (a recent failure that was the key's). */
+export const isResting = (fp: string): boolean => (cooling.get(fp) ?? 0) > Date.now();
 
 export async function installPool(env: Env): Promise<PoolKey[]> {
   if (!cached || Date.now() - cached.at > CACHE_MS) {
@@ -130,7 +142,7 @@ export async function installPool(env: Env): Promise<PoolKey[]> {
     }
     cached = { at: Date.now(), keys };
   }
-  return order(cached.keys);
+  return order(env, cached.keys);
 }
 
 /* The key a caller holds → the keys to fall back to. Bounded: the oldest
@@ -172,27 +184,87 @@ export type Attempt<T> =
   | { ok: true; value: T }
   | { ok: false; value: T; status: number; error: string };
 
+export interface FailoverOpts<T> {
+  /**
+   * Stop starting new keys after this long (default 100 s). Each key's own
+   * call has its timeout; this bounds the walk, so a customer waits a minute
+   * or two at worst rather than keys × models × timeouts.
+   */
+  budgetMs?: number;
+  /**
+   * What to answer when every key failed for a reason that was the key's.
+   * Without it the *last* key's sentence was shown — with OpenRouter last,
+   * "Searching the web needs a Google AI key" reached a customer whose Google
+   * keys were simply out of quota. The answer should say it is ours to fix.
+   */
+  exhausted?: (first: Attempt<T>) => T;
+}
+
 /**
  * `run` once per key until one works or a failure is not the key's. Returns
- * the working answer, or the last failure's.
+ * the working answer, or the failure's.
+ *
+ * Keys that are resting are passed over while a key that is not resting is
+ * left to try: they failed minutes ago for a reason that was theirs (a spent
+ * quota mostly), and asking them again only adds their wait to the
+ * customer's. When every key is resting, the two soonest back are tried.
  */
-export async function withFailover<T>(apiKey: string, run: (key: string) => Promise<Attempt<T>>): Promise<T> {
+export async function withFailover<T>(apiKey: string, run: (key: string) => Promise<Attempt<T>>, opts: FailoverOpts<T> = {}): Promise<T> {
   const entry = pools.get(apiKey);
-  const keys = entry ? [apiKey, ...entry.keys.map(k => k.key).filter(k => k !== apiKey)] : [apiKey];
+  const all = entry ? [apiKey, ...entry.keys.map(k => k.key).filter(k => k !== apiKey)] : [apiKey];
+  const metaOf = (k: string) => entry?.keys.find(p => p.key === k);
+  const live = all.filter(k => { const m = metaOf(k); return !m || !isResting(m.fp); });
+  const resting = all.filter(k => !live.includes(k));
+  const started = Date.now();
+  const budget = opts.budgetMs ?? 100_000;
+  let first: Attempt<T> | null = null;   // the first failure that was not "cannot do this kind of work"
   let last: Attempt<T> | null = null;
-  for (const k of keys) {
+  let restingTried = 0;
+  for (const k of [...live, ...resting]) {
+    /* A resting key only when no live key made a real attempt — all of them
+       resting, or the live ones could not do this kind of work (OpenRouter
+       and a recording) — and two at most. */
+    if (!live.includes(k) && (first || restingTried++ >= 2)) continue;
+    if (last && Date.now() - started > budget) break;
     const r = await run(k);
-    const meta = entry?.keys.find(p => p.key === k);
+    const meta = metaOf(k);
     if (r.ok) {
       if (entry && meta) await markOk(entry.env, meta);
       return r.value;
     }
     last = r;
+    if (!first && r.status !== -2) first = r;
     const c = classify(r.status, r.error);
     if (!c.keyFault) return r.value;
     if (entry && meta && c.restMs > 0) await markFailed(entry.env, meta, c.restMs, r.status, r.error);
   }
-  return (last as Attempt<T>).value;
+  const failed = (first ?? last) as Attempt<T>;
+  /* Every key failed for its own reason — a capacity problem, ours. Only a
+     run where some key could have done the work counts: "no key here can
+     listen to audio" is a limit, not an outage. */
+  if (first && entry) await notePoolDown(entry.env, first.status, first.error).catch(() => undefined);
+  if (first && opts.exhausted) return opts.exhausted(first);
+  return failed.value;
+}
+
+/**
+ * Tell the owner, at most every six hours, that no AI key answered.
+ *
+ * Before this the failure was written to `crm_ai_key_health` and nowhere
+ * else, while customers were told "Support has been able to see this". The
+ * mail goes through the system mailbox (lib/deliver.ts, the one door); with
+ * none connected it is still stamped, and Platform services shows it.
+ */
+async function notePoolDown(env: Env, status: number, raw: string): Promise<void> {
+  const last = Date.parse((await metaGet(env.DB, 'ai_pool_down_at').catch(() => null)) ?? '') || 0;
+  if (Date.now() - last < 6 * 3_600_000) return;
+  let msg = raw;
+  try { msg = (JSON.parse(raw) as { error?: { message?: string } }).error?.message || raw; } catch { /* not JSON */ }
+  const why = `${status > 0 ? `HTTP ${status}: ` : ''}${msg}`.slice(0, 300);
+  await metaPut(env.DB, 'ai_pool_down_at', nowIso());
+  await metaPut(env.DB, 'ai_pool_down_why', why);
+  const { alertOwnerAiDown } = await import('./aiAlert');
+  await alertOwnerAiDown(env, why);
 }
 
 async function markFailed(env: Env, k: PoolKey, restMs: number, status: number, raw: string): Promise<void> {

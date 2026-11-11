@@ -21,7 +21,7 @@
  * claim than "the word 'multi-location' appeared in your sentence", and a user
  * deciding how much to trust the plan needs to know which one happened.
  */
-import { aiAvailable, aiFetch } from '../lib/gemini';
+import { aiAvailable, aiErrorOf, aiFetch } from '../lib/gemini';
 import type { AIChannel, AIStrategy } from '../types/aiSalesAgent';
 
 /* Named in lib/gemini.ts, not here — a retired id used to mean editing six files. */
@@ -348,7 +348,7 @@ restatement of the plan. Mention the trade-off in any channel you chose.`;
         }),
       }, 'strategy',
     );
-    if (!res.ok) throw new Error(`Gemini returned ${res.status}`);
+    if (!res.ok) throw new Error(await aiErrorOf(res));
     const data = await res.json();
     const raw = JSON.parse(data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}') as RawStrategy;
 

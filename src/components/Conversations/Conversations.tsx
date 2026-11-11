@@ -82,6 +82,7 @@ export default function Conversations() {
   const [drafting, setDrafting] = useState(false);
   const [sending, setSending] = useState(false);
   const [note, setNote] = useState('');
+  const autoFailRef = useRef(false);
   const autoRunRef = useRef<Set<string>>(new Set());
 
   const persist = (list: Mailbox[]) => { setMailboxes(list); saveMailboxes(list); };
@@ -143,11 +144,16 @@ export default function Conversations() {
         if (msg.autoRepliedAt || autoRunRef.current.has(key)) continue;
         const rule = matchAutoReplyRule(mb, msg, isFirst);
         if (!rule) continue;
-        autoRunRef.current.add(key);
         if (!hasGeminiKey()) continue;
+        /* Marked before the draft, so a second pass cannot answer the same
+           message twice; unmarked on a failure, so it is tried again on the
+           next pass — and said once rather than vanishing. */
+        autoRunRef.current.add(key);
+        let sending = false;
         try {
           const drafted = await draftEmailReply(mb.profile, msg, rule.instruction);
           if (rule.mode === 'auto_send' && !drafted.needsHuman) {
+            sending = true;
             await sendReplyRaw(mb, msg, drafted.subject, drafted.body);
             updateMessageState(mb.id, msg.uid, { autoRepliedAt: new Date().toISOString(), status: 'closed' });
             setMessages(prev => prev.map(m => m.mailboxId === mb.id && m.uid === msg.uid ? { ...m, autoRepliedAt: new Date().toISOString(), status: 'closed' } : m));
@@ -162,7 +168,15 @@ export default function Conversations() {
             setMessages(prev => prev.map(m => m.mailboxId === mb.id && m.uid === msg.uid ? { ...m, status: 'pending' } : m));
           }
           persist(mailboxes.map(x => x.id === mb.id ? { ...x, autoReplyRules: x.autoReplyRules.map(r => r.id === rule.id ? { ...r, runs: r.runs + 1 } : r) } : x));
-        } catch { /* AI failed — skip */ }
+        } catch (e) {
+          /* Only a failure before anything was sent is tried again: a send
+             that may have gone out is never repeated. */
+          if (!sending) autoRunRef.current.delete(key);
+          if (!autoFailRef.current) {
+            autoFailRef.current = true;
+            addNotification(`An automatic reply to ${msg.fromName || msg.from} could not be written${e instanceof Error && e.message ? ` — ${e.message.replace(/[.\s]+$/, '')}` : ''}. It will be tried again.`, 'info');
+          }
+        }
       }
     }
   };

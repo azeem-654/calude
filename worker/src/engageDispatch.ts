@@ -15,7 +15,7 @@
  * a failure is retried rather than silently dropped.
  */
 import { nowIso, type Env } from './lib/db';
-import { aiBudget, askGemini, loadAiKey } from './lib/ai';
+import { AI_BUSY, aiBudget, aiRefund, askGemini, loadAiKey } from './lib/ai';
 import { loadMailbox } from './routes/mailbox';
 import { canSend, deliver, fromAddressOf } from './lib/deliver';
 
@@ -79,6 +79,7 @@ async function triage(env: Env, report: DispatchReport): Promise<void> {
     if (!key) {
       /* Left alone rather than stamped. A workspace whose key is fixed tomorrow
          should get today's submissions read, not find them permanently blank. */
+      await aiRefund(env, sub.accountId);
       report.notes.push(`${sub.accountId}: no AI key, submission triage held`);
       continue;
     }
@@ -96,7 +97,15 @@ infer a budget, a timescale or an intention they did not state.
   "quality": "hot | warm | cold | junk"
 }`, 0.2, { module: 'forms', accountId: sub.accountId });
 
-    if (!res.ok || !res.text) { report.notes.push(`triage failed: ${res.error}`); continue; }
+    if (!res.ok || !res.text) {
+      /* Given back: these are asked again every tick until they are read,
+         and an outage must not spend the month on nothing. With every key
+         busy, the rest wait for the next tick rather than each failing too. */
+      await aiRefund(env, sub.accountId);
+      report.notes.push(`triage failed: ${res.error}`);
+      if (res.error === AI_BUSY) break;
+      continue;
+    }
     try {
       const j = JSON.parse(res.text) as Record<string, unknown>;
       await env.DB.prepare(

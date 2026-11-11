@@ -16,7 +16,7 @@ import type { EmailSequence } from '../types/marketing';
 import type { DesignPost, CanvasElement } from '../components/SocialCreator/types';
 import { makeSource } from '../types/provenance';
 import { loadOnboarding, saveOnboarding, auditEntry, sanitizeText } from './onboarding';
-import { generateMonthCampaigns, generateSocialCalendar, hasGeminiKey } from '../lib/gemini';
+import { aiJob, generateMonthCampaigns, generateSocialCalendar, hasGeminiKey } from '../lib/gemini';
 
 type Notify = (msg: string, type?: 'success' | 'error' | 'info') => void;
 
@@ -139,17 +139,25 @@ export function offlineVideoPlan(state: OnboardingState, month: ContentMonth): G
   ];
 }
 
-/** Generate a month's content: Gemini first, offline templates as fallback. */
-export async function generateMonthContent(state: OnboardingState, month: ContentMonth): Promise<{ content: MonthContent; source: 'ai' | 'smart-templates' }> {
+/**
+ * Generate a month's content: the AI first, the ready-made templates for any
+ * part it could not write — and the content says which, and why
+ * (`templateNote`). It used to swallow both failures, call the result ready
+ * for review, and auto-approve it: template emails published under a "via
+ * Gemini AI" line when either half had worked.
+ */
+export async function generateMonthContent(state: OnboardingState, month: ContentMonth): Promise<{ content: MonthContent; source: 'ai' | 'partial' | 'smart-templates' }> {
   const fallback: MonthContent = {
     ...offlineMonthContent(state, month),
     social: offlineSocialCalendar(state, month),
     videos: offlineVideoPlan(state, month),
   };
-  if (!hasGeminiKey()) return { content: fallback, source: 'smart-templates' };
+  if (!hasGeminiKey()) return { content: { ...fallback, templateNote: 'Ready-made template content: sign in again to have the AI write this month for your business.' }, source: 'smart-templates' };
 
   let content: MonthContent = fallback;
   let anyAi = false;
+  const missed: string[] = [];
+  let why = '';
   try {
     const ai = await generateMonthCampaigns({
       company: sanitizeText(state.profile.companyName, 80),
@@ -173,8 +181,11 @@ export async function generateMonthContent(state: OnboardingState, month: Conten
     if (emails.length >= 3) {
       content = { ...content, emails, sms: state.channels.includes('sms') ? (sms.length ? sms : fallback.sms) : [] };
       anyAi = true;
-    }
-  } catch { /* keep template emails/sms */ }
+    } else missed.push('emails and texts');
+  } catch (e) {
+    missed.push('emails and texts');
+    why = why || (e instanceof Error ? e.message : '');
+  }
 
   const platforms = SOCIAL_CHANNELS.filter(c => state.channels.includes(c));
   if (platforms.length || state.channels.includes('video')) {
@@ -209,11 +220,16 @@ export async function generateMonthContent(state: OnboardingState, month: Conten
           videos: videos.length >= 2 ? videos : content.videos,
         };
         anyAi = true;
-      }
-    } catch { /* keep template social/videos */ }
+      } else missed.push('social posts and videos');
+    } catch (e) {
+      missed.push('social posts and videos');
+      why = why || (e instanceof Error ? e.message : '');
+    }
   }
 
-  return { content, source: anyAi ? 'ai' : 'smart-templates' };
+  if (!missed.length) return { content, source: 'ai' };
+  const note = `The ${missed.join(' and the ')} ${missed.length > 1 ? 'are' : 'is'} ready-made template content, not written for your business${why ? ` — ${why.replace(/[.\s]+$/, '')}` : ''}. Regenerate the month to try the AI again, or edit them before you approve.`;
+  return { content: { ...content, templateNote: note }, source: anyAi ? 'partial' : 'smart-templates' };
 }
 
 /* ── Background job runner ── */
@@ -262,25 +278,33 @@ export function startMonthGeneration(index: number, notify: Notify, actor = 'sys
       const state = loadOnboarding();
       const target = state.plan.find(m => m.index === index);
       if (!target) return;
-      const { content, source } = await generateMonthContent(state, target);
+      /* One job (lib/gemini.ts aiJob): a month that started inside the AI
+         allowance finishes, and the customer is told afterwards. */
+      const { value: { content, source }, creditsOut } = await aiJob(() => generateMonthContent(state, target));
       const nSocial = content.social?.length ?? 0;
       const nVideos = content.videos?.length ?? 0;
+      const how = source === 'ai' ? 'by the AI' : source === 'partial' ? 'partly by the AI, the rest from ready-made templates' : 'from ready-made templates — the AI did not write it';
       patchMonth(index, m => ({
         ...m,
         status: 'AWAITING_APPROVAL',
         generated: content,
         generatedAt: new Date().toISOString(),
         counts: { ...m.counts, emails: content.emails.length, sms: content.sms.length, social: nSocial, videos: nVideos },
-        audit: [...m.audit, auditEntry(`Generated ${content.emails.length} emails, ${content.sms.length} SMS, ${nSocial} social posts, ${nVideos} video scripts via ${source === 'ai' ? 'Gemini AI' : 'smart templates'}`, actor)],
+        audit: [...m.audit, auditEntry(`Generated ${content.emails.length} emails, ${content.sms.length} SMS, ${nSocial} social posts, ${nVideos} video scripts ${how}`, actor)],
       }));
       const bits = [`${content.emails.length} emails`, content.sms.length ? `${content.sms.length} SMS` : '', nSocial ? `${nSocial} social posts` : '', nVideos ? `${nVideos} video scripts` : ''].filter(Boolean).join(', ');
-      if (loadOnboarding().autoApprove && publishApiRef) {
+      /* Template content is never auto-approved: nobody chose to publish words
+         that were not written for them. */
+      if (source === 'ai' && loadOnboarding().autoApprove && publishApiRef) {
         const published = publishMonth(index, publishApiRef, 'auto-approve');
         if (published) notify(`${monthShort(index)} generated & auto-approved — ${bits} published`, 'success');
         else notify(`${monthShort(index)} content is ready for review — ${bits}`, 'info');
-      } else {
+      } else if (source === 'ai') {
         notify(`${monthShort(index)} content is ready for review — ${bits}`, 'info');
+      } else {
+        notify(`${monthShort(index)} is ready for review, but ${content.templateNote ?? 'some of it is template content'}`, 'info');
       }
+      if (creditsOut) notify(`${monthShort(index)} was finished. ${creditsOut}`, 'error');
     } catch {
       patchMonth(index, m => ({
         ...m, status: 'PLAN_GENERATED',

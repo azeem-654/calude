@@ -6,6 +6,7 @@
  * many as it likes, and many projects can share one portfolio — a client with
  * three services is described once and pushed three ways.
  */
+import type { MarketingYear } from './marketingYear';
 import { sessionToken } from './auth';
 import { getActiveAccountId } from './tenancy';
 import { API_BASE } from './apiBase';
@@ -88,6 +89,8 @@ export interface ProjectBrief {
   requirements?: string[];
   limits?: string[];
   decided?: { question: string; answer: string }[];
+  /** The 12-Month Marketing Plan's year (worker/src/lib/marketingYear.ts). */
+  year?: MarketingYear;
 }
 
 /** One thing Autopilot did, or is waiting to do, for a project. */
@@ -196,6 +199,9 @@ export const saveProject = (p: {
   /** The approved blueprint. Omitted on an edit, which keeps the stored one. */
   brief?: Record<string, unknown>;
 }) => call('save_project', p);
+
+/** Replace a project's 12-month plan, on its brief and its agents' steps (routes/projects.ts `save_year`). */
+export const saveYear = (id: string, year: MarketingYear) => call('save_year', { id, year }) as Promise<Reply & { year?: MarketingYear; workflows?: number }>;
 /**
  * The order of the workspace's projects, top first — every id, as the board
  * shows them after the move. The server refuses an id that is not this

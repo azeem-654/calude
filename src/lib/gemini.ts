@@ -44,6 +44,44 @@ export function hasGeminiKey() {
  * `module` names the product module (worker/src/lib/aiTasks.ts MODULES): the
  * server picks the best models for its task and counts the call under it.
  */
+/* ── Jobs: once started, a multi-call piece of work finishes ──
+ *
+ * The owner's rule: when something has started generating, let it finish and
+ * then say the AI credits are used up (worker/src/lib/aiJobs.ts). `aiJob`
+ * names the work; every AI call made while it runs carries the name, and the
+ * server lets the later ones through past the month's allowance. What the
+ * server said about the credits is handed back once the work is done, for the
+ * screen to show then — not as a refusal in the middle of it. */
+let currentJob: { id: string; creditsOut: string } | null = null;
+
+export async function aiJob<T>(work: () => Promise<T>): Promise<{ value: T; creditsOut: string }> {
+  const outer = currentJob;
+  const mine = outer ?? { id: `job_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`, creditsOut: '' };
+  currentJob = mine;
+  try {
+    const value = await work();
+    return { value, creditsOut: mine.creditsOut };
+  } finally {
+    currentJob = outer;
+  }
+}
+
+/** The job id an AI call made now should carry, for callers that post to other AI routes (intake.php). */
+export const currentAiJob = (): string => currentJob?.id ?? '';
+/** Called by those callers when the server's answer said the credits ran out mid-job. */
+export function noteCreditsOut(message: string): void { if (currentJob && message) currentJob.creditsOut = message; }
+
+/**
+ * A Gemini generateContent call, made by the server.
+ *
+ * Takes the same request body the callers always built and returns something
+ * shaped like the `fetch` Response they already handled — `ok`, `status`,
+ * `json()`, `text()` — with Gemini's own response inside, so moving the call
+ * off the page did not mean rewriting every parser.
+ *
+ * Bounded at two minutes: the server walks its keys within about 100 s
+ * (lib/aiPool.ts), so a wait past that is a connection that will not answer.
+ */
 export async function aiFetch(init: RequestInit | string, module = 'general'): Promise<Response> {
   const bodyText = typeof init === 'string' ? init : String(init.body ?? '{}');
   let request: unknown = {};
@@ -52,40 +90,44 @@ export async function aiFetch(init: RequestInit | string, module = 'general'): P
   try { session = JSON.parse(localStorage.getItem('crm_session') || 'null'); } catch { session = null; }
   const accountId = (() => { try { return localStorage.getItem('crm_active_account') || ''; } catch { return ''; } })();
   const base = (import.meta.env.DEV ? 'http://localhost:8787' : '');
+  const job = currentJob;
   try {
     const r = await fetch(`${base}/api/ai.php`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'generate', token: session?.token, accountId, module, request }),
+      body: JSON.stringify({ action: 'generate', token: session?.token, accountId, module, request, ...(job ? { job: job.id } : {}) }),
+      signal: AbortSignal.timeout(120_000),
     });
-    const data = await r.json() as { success?: boolean; response?: unknown; error?: string };
+    const data = await r.json() as { success?: boolean; response?: unknown; error?: string; code?: string; creditsOut?: string };
+    if (data.creditsOut && job) job.creditsOut = data.creditsOut;
     if (data.success) return new Response(JSON.stringify(data.response ?? {}), { status: 200, headers: { 'Content-Type': 'application/json' } });
-    return new Response(JSON.stringify({ error: { message: data.error ?? 'The AI could not answer.' } }), { status: r.status >= 400 ? r.status : 502 });
-  } catch {
-    return new Response(JSON.stringify({ error: { message: 'Could not reach the server.' } }), { status: 503 });
+    return new Response(JSON.stringify({ error: { message: data.error ?? 'The AI could not answer.', code: data.code ?? '' } }), { status: r.status >= 400 ? r.status : 502 });
+  } catch (e) {
+    const slow = e instanceof Error && /timeout|abort/i.test(`${e.name} ${e.message}`);
+    return new Response(JSON.stringify({ error: { message: slow ? 'The AI took too long to answer. Please try again.' : 'Could not reach the server.', code: slow ? 'ai_busy' : '' } }), { status: slow ? 504 : 503 });
   }
 }
 
-/** Transient errors worth retrying: rate limit, or Google's servers being overloaded. */
+/** Transient errors worth retrying once: rate limit, or the server's AI being overloaded. */
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
-/** Turn Gemini's verbose JSON error bodies into a short, human-readable message. */
+/**
+ * The server's own sentence, which is already written for a customer
+ * (worker/src/lib/ai.ts `friendly`, `AI_BUSY`): it never names a provider or
+ * a key. This only unwraps it, and keeps one browser-side case.
+ */
 function friendlyGeminiError(status: number, raw: string): string {
   let msg = raw;
   try { msg = (JSON.parse(raw) as { error?: { message?: string } })?.error?.message || raw; } catch { /* raw isn't JSON */ }
-  if (status === 429) {
-    return 'The AI is busy right now (rate limit reached). Wait a minute and try again.';
-  }
-  /* The key is the install's, held by the server — never the customer's to
-     fix, so these say whose it is rather than sending them to Google. */
-  if (/API[ _]KEY[ _]INVALID|API key not valid|API[ _]KEY[ _]SERVICE[ _]BLOCKED|SERVICE_DISABLED/i.test(raw)) {
-    return 'The AI provider refused this installation\'s key. This is on our side, not yours — please try again shortly.';
-  }
   if (status === 400 && /Unsupported MIME type/i.test(msg)) {
-    return "The AI model couldn't read this video source. For YouTube links this can happen on some models — try downloading the video and uploading the file directly.";
+    return "The AI couldn't read this video source. For YouTube links this can happen — try downloading the video and uploading the file directly.";
   }
-  // Trim overly long messages so the UI stays readable.
   const short = msg.length > 300 ? msg.slice(0, 300) + '…' : msg;
-  return `Gemini API error (${status}): ${short}`;
+  return short || 'The AI could not answer. Please try again.';
+}
+
+/** The sentence a failed aiFetch carries, for callers that read the Response themselves. */
+export async function aiErrorOf(res: Response): Promise<string> {
+  return friendlyGeminiError(res.status, await res.text().catch(() => ''));
 }
 
 interface GeminiResponse {
@@ -100,16 +142,19 @@ interface GeminiResponse {
  * here names one. Non-transient errors throw at once.
  */
 async function postGemini(body: unknown, module = 'general'): Promise<GeminiResponse> {
+  /* Twice at most. The server already tries every key and model it has; three
+     browser attempts on top of that were how a failing plan took three and a
+     half minutes to fail. An answer of "every key is busy" is not retried. */
   let lastError = '';
   let lastStatus = 0;
-  const attempts = 3;
-  for (let attempt = 1; attempt <= attempts; attempt++) {
+  for (let attempt = 1; attempt <= 2; attempt++) {
     const res = await aiFetch({ body: JSON.stringify(body) }, module);
     if (res.ok) return await res.json();
     lastError = await res.text().catch(() => `HTTP ${res.status}`);
     lastStatus = res.status;
-    if (!RETRYABLE_STATUS.has(res.status)) throw new Error(friendlyGeminiError(res.status, lastError));
-    if (attempt < attempts) await new Promise(r => setTimeout(r, 1000 * attempt));
+    const busy = /"code":"ai_busy"/.test(lastError);
+    if (busy || !RETRYABLE_STATUS.has(res.status)) throw new Error(friendlyGeminiError(res.status, lastError));
+    if (attempt < 2) await new Promise(r => setTimeout(r, 1500));
   }
   throw new Error(friendlyGeminiError(lastStatus, lastError || 'the AI did not answer'));
 }
@@ -163,7 +208,7 @@ export async function analyzeYoutubeWithGemini(
     generationConfig: { responseMimeType: 'application/json', temperature: 0.3 },
   };
   const data = await postGemini(body, 'video-analysis');
-  if (data.error) throw new Error(data.error.message ?? 'Gemini error');
+  if (data.error) throw new Error(data.error.message ?? 'The AI could not answer.');
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
   return readAnalysis(text, settings.maxClipDuration, knownDuration);
 }
@@ -275,7 +320,7 @@ async function callGemini(prompt: string, temperature = 0.7, module = 'general')
     generationConfig: { responseMimeType: 'application/json', temperature },
   };
   const data = await postGemini(body, module);
-  if (data.error) throw new Error(data.error.message ?? 'Gemini error');
+  if (data.error) throw new Error(data.error.message ?? 'The AI could not answer.');
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
   return text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
 }

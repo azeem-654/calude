@@ -250,7 +250,7 @@ r = await rep('mark_replied', { reviewId: r2.id, text: 'Sorry Bob.' });
 list = (await rep('reviews')).reviews;
 ok('"Mark as replied" records it as posted elsewhere', r.success && list.find(x => x.id === r2.id)?.replyState === 'posted_elsewhere');
 r = await rep('draft_reply', { reviewId: list[0].id });
-ok('with no AI key, drafting says so by name', !r.success && r.code === 'no_ai' && /No AI key/.test(r.error), JSON.stringify(r));
+ok('with no AI key, drafting says so, as ours to fix', !r.success && r.code === 'no_ai' && /AI is not available/.test(r.error), JSON.stringify(r));
 
 /* ── The install key ── */
 r = await api('reputation.php', { token: TB, action: 'save_install_key', apiKey: IKEY });

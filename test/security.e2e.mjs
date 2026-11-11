@@ -375,6 +375,15 @@ const hijackProject = await api('projects.php', {
 const stillA = d1rows(`SELECT name, account_id AS a FROM crm_projects WHERE id = '${pj.data.id}'`)[0];
 check("B cannot overwrite A's project by id", !hijackProject.ok && stillA?.name === 'A project' && stillA?.a === A.acct, JSON.stringify([hijackProject.data, stillA]));
 {
+  /* save_year (the 12-Month Marketing Plan) takes a project id: B cannot
+     write a plan onto A's project from B's workspace, nor from A's. */
+  const months = Array.from({ length: 12 }, (_, i) => ({ month: `2027-${String(i + 1).padStart(2, '0')}`, theme: `Pwned ${i}`, focus: 'Take over their agents', ideas: ['x'] }));
+  const yB = await api('projects.php', { action: 'save_year', token: B.token, accountId: B.acct, id: pj.data.id, year: { months, source: 'ai' } });
+  const yA = await api('projects.php', { action: 'save_year', token: B.token, accountId: A.acct, id: pj.data.id, year: { months, source: 'ai' } });
+  const briefA = d1rows(`SELECT brief FROM crm_projects WHERE id = '${pj.data.id}'`)[0]?.brief ?? '';
+  check("B cannot write a 12-month plan onto A's project", !yB.ok && !yA.ok && !String(briefA).includes('Pwned'), JSON.stringify([yB.data, yA.data]));
+}
+{
   /* The board's order is a list of ids: one of A's in B's list is refused
      whole, and A's project keeps its place. */
   const posBefore = d1rows(`SELECT position FROM crm_projects WHERE id = '${pj.data.id}'`)[0]?.position;

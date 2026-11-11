@@ -21,7 +21,7 @@ import { incomingReady, loadMailboxes, noteIncomingSync, type Mailbox } from './
 import { imapFetch } from './lib/imap';
 import { fetchHosted } from './lib/hostedMail';
 import { deliver, fromAddressOf } from './lib/deliver';
-import { aiBudget, askGemini, loadAiKey } from './lib/ai';
+import { aiBudget, aiRefund, askGemini, loadAiKey } from './lib/ai';
 import { parseDsn, suppress } from './lib/bounces';
 import {
   classify, matchRule, needsEscalation, replyPrompt, shouldRefuse,
@@ -213,7 +213,9 @@ async function doMailbox(
     const ai = await askGemini(apiKey, prompt, 0.5, { module: 'inbox-replies', accountId });
     if (!ai.ok) {
       /* Not marked seen: a key that ran out of quota should answer this message
-         on the next tick, not skip it for ever. */
+         on the next tick, not skip it for ever — and the request is given
+         back, or every tick of an outage would spend another. */
+      await aiRefund(env, accountId);
       report.failed++;
       report.notes.push(`${mb.label || 'mailbox'}: ${ai.error.slice(0, 120)}`);
       return;
@@ -310,8 +312,10 @@ async function doMailbox(
 /**
  * One pass over every workspace that has replying switched on.
  *
- * Driven off crm_ai_config: no key means nothing here can run, and scanning
- * every workspace to discover that would grow the tick with the customer list.
+ * Driven off running projects, not off crm_ai_config. It used to require a
+ * key of the workspace's own, so every customer on the included AI (the
+ * operator's keys, loadAiKey) — almost all of them — never had a reply
+ * drafted. loadAiKey answers for both; 200 running projects bounds the tick.
  */
 export async function runReplies(env: Env): Promise<ReplyReport> {
   const report: ReplyReport = { read: 0, replied: 0, drafted: 0, refused: 0, failed: 0, notes: [] };
@@ -321,9 +325,8 @@ export async function runReplies(env: Env): Promise<ReplyReport> {
        workspace with three of them would otherwise have its inbox polled three
        times a tick — three times the IMAP connections and, worse, three
        chances to answer the same message. */
-    `SELECT DISTINCT a.account_id FROM crm_ai_config a
-     JOIN crm_projects p ON p.account_id = a.account_id
-     WHERE a.api_key != '' AND p.status = 'running' LIMIT 200`,
+    `SELECT DISTINCT p.account_id FROM crm_projects p
+     WHERE p.status = 'running' LIMIT 200`,
   ).all<{ account_id: string }>();
 
   for (const row of results ?? []) {

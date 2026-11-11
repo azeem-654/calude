@@ -29,7 +29,8 @@
 import { findPhi, phiRefusal } from '../lib/phiGuard';
 import { fail, json } from '../lib/http';
 import { canAccess, userFromToken, type Env } from '../lib/db';
-import { aiBase, loadAiKey, modelsFor, trialRefusal } from '../lib/ai';
+import { cleanJob, jobMayFinish, jobTouch } from '../lib/aiJobs';
+import { AI_BUSY, aiBase, loadAiKey, modelsFor, trialRefusal } from '../lib/ai';
 import { capRefusal, recordAiUse } from '../lib/aiUsage';
 import { moduleOf, taskOf } from '../lib/aiTasks';
 import { withFailover } from '../lib/aiPool';
@@ -42,6 +43,8 @@ interface AiReq {
   action?: string;
   /** The product module asking (lib/aiTasks.ts MODULES): picks the models, and is counted under. */
   module?: string;
+  /** A multi-call job's id (lib/aiJobs.ts): once started, it finishes past the month's allowance. */
+  job?: string;
   request?: {
     contents?: unknown;
     generationConfig?: Record<string, unknown>;
@@ -90,7 +93,15 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
   /* The plan's monthly AI requests. Asked here, counted below only once the
      AI has answered — a request Google refused was not a request served. */
   const room = await allowance(env, accountId, 'ai_requests', 1, {});
-  if (!room.ok) return fail(room.message, 402, refusalBody(room));
+  /* A job the screen started inside the allowance finishes past it
+     (lib/aiJobs.ts) and is told afterwards, with `creditsOut`. */
+  const job = cleanJob(d.job);
+  let creditsOut = '';
+  if (!room.ok) {
+    if (!(await jobMayFinish(env, accountId, job))) return fail(room.message, 402, refusalBody(room));
+    creditsOut = room.message;
+  }
+  await jobTouch(env, accountId, job);
 
   const key = await loadAiKey(env, accountId);
   if (!key) return fail('The AI is not available on this install right now.', 200, { code: 'no_ai' });
@@ -112,10 +123,10 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
     if (isOpenRouterKey(k)) {
       const q = fromGeminiRequest(JSON.parse(payload));
       if (!q) return { ok: false, status: -2, error: 'nothing to send', value: fail('There was nothing to ask the AI.') };
-      const r = await askOpenRouter(k, { ...q, timeoutMs: 60_000, task, module, accountId });
+      const r = await askOpenRouter(k, { ...q, timeoutMs: 40_000, task, module, accountId });
       if (r.ok) {
         await record(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`, 1, room.standing);
-        return { ok: true, value: json({ success: true, response: asGeminiResponse(r.value.text) }) };
+        return { ok: true, value: json({ success: true, response: asGeminiResponse(r.value.text), ...(creditsOut ? { creditsOut } : {}) }) };
       }
       return { ok: false, status: r.status, error: r.error, value: fail(r.value.error) };
     }
@@ -124,7 +135,7 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
       let res: Response;
       try {
         res = await fetch(`${aiBase()}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(k)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, signal: AbortSignal.timeout(60_000),
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, signal: AbortSignal.timeout(40_000),
         });
       } catch (e) {
         lastStatus = 0;
@@ -135,7 +146,7 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
         const answer = await res.json() as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number } };
         await recordAiUse({ provider: 'gemini', key: k, model, module, accountId, ok: true, status: 200, tokensIn: answer?.usageMetadata?.promptTokenCount, tokensOut: (answer?.usageMetadata?.candidatesTokenCount ?? 0) + (answer?.usageMetadata?.thoughtsTokenCount ?? 0) });
         await record(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`, 1, room.standing);
-        return { ok: true, value: json({ success: true, response: answer }) };
+        return { ok: true, value: json({ success: true, response: answer, ...(creditsOut ? { creditsOut } : {}) }) };
       }
       lastStatus = res.status;
       lastError = await res.text().catch(() => '');
@@ -148,7 +159,7 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
     try { msg = (JSON.parse(lastError) as { error?: { message?: string } }).error?.message || lastError; } catch { /* not JSON */ }
     return {
       ok: false, status: lastStatus, error: lastError,
-      value: fail(lastStatus === 429 ? 'The AI is busy right now. Try again in a minute.' : `The AI could not answer: ${msg.slice(0, 240) || 'no response'}`),
+      value: fail(lastStatus === 429 ? AI_BUSY : `The AI could not answer: ${msg.slice(0, 240) || 'no response'}`),
     };
-  });
+  }, { exhausted: () => fail(AI_BUSY, 200, { code: 'ai_busy' }) });
 }

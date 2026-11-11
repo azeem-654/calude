@@ -219,6 +219,12 @@ export async function handleProspects(req: Request, env: Env): Promise<Response>
       const own = key.whose === 'install'
         ? ' This search uses the Google Maps key the owner of this app provides — they have been told on their Platform services screen.'
         : '';
+      /* The operator's key over quota is ours, not the customer's to raise in
+         Google Cloud: said as such, and marked for the owner. */
+      if (key.whose === 'install' && r.code === 'quota') {
+        await markInstallKey(env, false, r.error ?? '');
+        return fail('Business search is at capacity for a few minutes. This is on our side, not yours — please try again shortly, or use the free directory search meanwhile.', 200, { code: r.code });
+      }
       return fail(`${r.error ?? 'Google Maps could not search.'}${KEY_FAULT.test(r.code ?? '') ? own : ''}`, 200, { code: r.code });
     }
     await meterPlaces(env, accountId, 'prospects', key.whose);

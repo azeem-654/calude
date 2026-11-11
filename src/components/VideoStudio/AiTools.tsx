@@ -51,7 +51,7 @@ export default function AiTools({ ctx, onCleanup, onStart }: { ctx: EditorCtx; o
   const clip = ctx.activeClip ? doc.clips.find(c => c.id === ctx.activeClip) ?? null : null;
   const kind = clip ? 'short' as const : 'long' as const;
   const ai = ctx.caps?.find(c => c.key === 'ai');
-  const aiOff = ai && ai.status !== 'working' ? `AI is not set up on this install — ${ai.note || 'the owner adds an AI key'}.` : '';
+  const aiOff = ai && ai.status !== 'working' ? 'Our AI is not available right now. This is on our side, not yours — it will be back shortly.' : '';
   const noWords = !words.length ? 'Needs the transcript, which is not ready yet.' : '';
   const faces = view.source.track?.summary?.faces ?? null;
   const motion = motionOf(doc, kind), fx = effectsOf(doc, kind);

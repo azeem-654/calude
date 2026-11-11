@@ -97,6 +97,13 @@ export default function Build({ steps, say, result, reach = [] }: {
         </div>
       )}
 
+      {/* Said once the build is done, never in the middle of it (lib/gemini.ts aiJob). */}
+      {done && result?.creditsOut && (
+        <div role="status" data-testid="credits-out" style={{ padding: '12px 16px', borderRadius: 16, background: '#fff7e6', border: '1px solid #fde3a7', fontSize: 13.5, color: '#7a4b00', lineHeight: 1.55 }}>
+          Everything above was finished, but your AI credits for this month are now used up. {result.creditsOut}
+        </div>
+      )}
+
       {/* A project that finds its own contacts is shown finding them, not told it has nobody to email. */}
       {done && !failed && result!.finder && <FinderLive {...result!.finder} />}
       {done && !failed && !result!.finder && <ContactsCheck flows={reach} />}

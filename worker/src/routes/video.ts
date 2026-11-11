@@ -1077,7 +1077,7 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
       const no = await aiBudget(env, accountId);
       if (no) return fail(no, 402, { code: 'ai_budget' });
       const key = await loadAiKey(env, accountId).catch(() => null);
-      if (!key) return fail('No AI key is set up for this installation yet, so the video cannot be analysed. The owner connects one on Platform services.', 503, { code: 'no_ai' });
+      if (!key) return fail('Our AI is not available right now, so the video could not be analysed. This is on our side, not yours — please try again shortly.', 503, { code: 'no_ai' });
       const settings = cleanQuickSettings(d.quick);
       const vid = env.VIDEO, srcKey = src.key;
       const res = await askGeminiAboutFile(key, {
@@ -1121,7 +1121,7 @@ export async function handleVideo(req: Request, env: Env, ctx: ExecutionContext)
         const out = res.ok ? extractJson<unknown>(res.text) : null;
         if (out) set = mode === 'range' ? fromAiRange(out, ctx, rg![0], rg![1]) : fromAi(out, ctx, ask);
         else notes.push(`The AI did not answer usefully (${(res.error || 'no JSON').slice(0, 120)}), so the passages were chosen by rule.`);
-      } else notes.push(`No AI judged these (${no || 'no AI key is set up'}).`);
+      } else notes.push(`No AI judged these (${no || 'our AI is not available right now'}).`);
       if (!set) set = mode === 'range' ? fromRange(ctx, rg![0], rg![1]) : byRule(ctx, ask);
       /* Asked for a topic and the AI found nothing: the transcript search, said so — or a plain "not in this recording". */
       if (mode === 'topic' && !set.proposals.length) {

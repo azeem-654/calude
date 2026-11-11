@@ -146,7 +146,7 @@ const todayCounts = new Map<string, { at: number; day: string; counts: Record<st
 async function countsFor(env: Env, fp: string): Promise<Record<string, Count>> {
   const hit = todayCounts.get(fp);
   if (hit && hit.day === today() && Date.now() - hit.at < 60_000) return hit.counts;
-  const { results } = await env.DB.prepare("SELECT model, SUM(requests) AS n, SUM(ok) AS ok, SUM(limited) AS l FROM crm_ai_usage WHERE day = ? AND provider = 'gemini' AND key_fp = ? GROUP BY model")
+  const { results } = await env.DB.prepare("SELECT model, SUM(requests) AS n, SUM(ok) AS ok, SUM(limited) AS l FROM crm_ai_usage WHERE day = ? AND key_fp = ? GROUP BY model")
     .bind(today(), fp).all<{ model: string; n: number; ok: number; l: number }>().catch(() => ({ results: [] as { model: string; n: number; ok: number; l: number }[] }));
   const counts = Object.fromEntries((results ?? []).map(r => [r.model, { n: r.n, ok: r.ok, l: r.l }]));
   todayCounts.set(fp, { at: Date.now(), day: today(), counts });
@@ -170,6 +170,34 @@ export async function freeFirst(key: string, models: string[]): Promise<string[]
     const past = (m: string) => { const c = counts[m]; return !!c && (c.n >= lim.gemini[tierOf(m)].rpd || (c.l >= 3 && c.ok === 0)); };
     return [...models.filter(m => !past(m)), ...models.filter(past)];
   } catch { return models; }
+}
+
+/**
+ * Is this install key close to the end of today's free allowance?
+ *
+ * The switch made before the limit, not after it (lib/aiPool.ts `order`):
+ * at 90% of a free day the key goes behind the keys that still have room,
+ * so OpenRouter takes over from a spent Google key — or Google from a spent
+ * OpenRouter one — while the first still answers. A key that has answered
+ * more than the free figure today is paid (or the figures are wrong) and is
+ * never demoted for it; nor is a customer's own key. A key that has refused
+ * five times today without one answer is demoted too: it is spent, whatever
+ * the count says.
+ */
+export async function nearDailyLimit(env: Env, key: string, fp: string): Promise<boolean> {
+  if (poolKeyOf(key)?.source === 'workspace') return false;
+  const [counts, lim] = await Promise.all([countsFor(env, fp), freeLimits(env)]);
+  let total = 0, ok = 0, refused = 0;
+  for (const c of Object.values(counts)) { total += c.n; ok += c.ok; refused += c.l; }
+  if (!total) return false;
+  if (refused >= 5 && ok === 0) return true;
+  if (/^sk-or-/.test(key.trim())) {
+    const day = ok > lim.openrouter.rpd ? lim.openrouter.rpdWithCredit : lim.openrouter.rpd;
+    return total >= 0.9 * day;
+  }
+  /* Google: the two tiers the chains lean on, each with its own free day. */
+  const free = lim.gemini.lite.rpd + lim.gemini.flash.rpd;
+  return total >= 0.9 * free && ok <= free;
 }
 
 /* ── Caps per workspace ──────────────────────────────────────────────────── */

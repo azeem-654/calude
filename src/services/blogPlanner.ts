@@ -20,7 +20,7 @@
  * All three are enforced when the plan is built and re-checked afterwards by
  * `auditPlan`, so a hand-edited plan cannot silently break them either.
  */
-import { aiAvailable, aiFetch } from '../lib/gemini';
+import { aiAvailable, aiErrorOf, aiFetch } from '../lib/gemini';
 import { newId } from './blogAutomation';
 import { inlinePhrase } from './blogWriter';
 import type {
@@ -430,7 +430,7 @@ given you.`;
         }),
       }, 'blog',
     );
-    if (!res.ok) throw new Error(`Gemini returned ${res.status}`);
+    if (!res.ok) throw new Error(await aiErrorOf(res));
     const data = await res.json();
     const raw = JSON.parse(data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}') as { posts?: RawPost[] };
     const byKeyword = new Map<string, RawPost>();

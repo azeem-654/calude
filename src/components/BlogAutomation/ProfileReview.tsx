@@ -104,7 +104,7 @@ export default function ProfileReview({ project, onChange }: Props) {
         <p style={{ margin: 0, fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>
           {project.profileSource === 'ai'
             ? 'Read by the AI from your portfolio, then every number re-checked here.'
-            : 'Read from your portfolio text — no AI key configured, so this is the plain reading.'}
+            : 'Read from your portfolio text without the AI (it was not available when this was made), so this is the plain reading.'}
           {project.profileNote ? ` ${project.profileNote}` : ''}
           {' '}Difficulty is an <strong>estimate from the shape of the phrase</strong> — how long, how
           specific, how commercial. It is not search volume; nothing here queried Google.

@@ -138,7 +138,7 @@ export default function PublishPanel({ ctx }: { ctx: EditorCtx }) {
   const words = useMemo(() => transcript?.words ?? [], [transcript]);
   const fence = useMemo(() => fencedTranscript(words, clip ? clip.s : 0, clip ? clip.e : duration, 16_000).text, [words, clip, duration]);
   const ai = ctx.caps?.find(c => c.key === 'ai');
-  const off = !words.length ? 'Needs the transcript, which is not ready yet.' : ai && ai.status !== 'working' ? `AI is not set up on this install — ${ai.note || 'the owner adds an AI key'}.` : '';
+  const off = !words.length ? 'Needs the transcript, which is not ready yet.' : ai && ai.status !== 'working' ? 'Our AI is not available right now. This is on our side, not yours — it will be back shortly.' : '';
   const who = view.project.autopilotProjectName || '';
   const what = clip ? `a Short (${clock(clip.e - clip.s)}) titled “${clip.title}” cut from the recording “${view.project.name}”` : `the video “${view.project.name}” (${clock(duration)})`;
 
@@ -203,7 +203,7 @@ Answer only JSON: {"text":"…"}`, 0.7);
   const [reshaped, setReshaped] = useState<{ text: string; bad: boolean } | null>(null);
   const [undoN, setUndoN] = useState(0);
   const undo = useRef<{ key: string; outputId: string | null; fields: Record<string, string>; posts: Record<string, string>; meta: Record<string, unknown> }[]>([]);
-  const aiOff = ai && ai.status !== 'working' ? `AI is not set up on this install — ${ai.note || 'the owner adds an AI key'}.` : '';
+  const aiOff = ai && ai.status !== 'working' ? 'Our AI is not available right now. This is on our side, not yours — it will be back shortly.' : '';
   const keyOf = (o: OutputView) => (o.kind === 'long' ? 'long' : o.clipId);
   const saveTo = async (k: string, o: OutputView | undefined, ch: Texts, prev: Texts) => {
     const { fields: f, posts: ps, meta } = split(ch);

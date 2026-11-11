@@ -17,7 +17,7 @@
  * starts with what it has.
  */
 import { extractPhrases, extractSentences } from './campaignAnalysis';
-import { aiAvailable, aiFetch } from '../lib/gemini';
+import { aiAvailable, aiErrorOf, aiFetch } from '../lib/gemini';
 import { newId } from './blogAutomation';
 import type {
   Keyword, MoneyPage, PortfolioItem, SearchIntent, SeoProfile, TopicCluster, VoiceProfile,
@@ -397,7 +397,7 @@ not slogans. Prefer specific long-tail phrases over one-word terms.`;
         }),
       }, 'seo',
     );
-    if (!res.ok) throw new Error(`Gemini returned ${res.status}`);
+    if (!res.ok) throw new Error(await aiErrorOf(res));
     const data = await res.json();
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
     const raw = JSON.parse(text) as RawProfile;

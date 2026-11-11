@@ -654,6 +654,12 @@ export default function ProjectCard({
           {tab === 'overview' && (
             <ProjectOverview
               project={project} flows={flows} runs={runs} assets={assets}
+              business={{
+                companyName: portfolio?.name ?? project.name,
+                description: String(portfolio?.profile?.description ?? project.objective ?? ''),
+                audience: String(portfolio?.profile?.audience ?? ''),
+                offer: String(portfolio?.profile?.offer ?? ''),
+              }}
               onCreateWorkflow={() => setWizard(true)}
               onOpenWorkflows={() => setTab('workflows')}
             />

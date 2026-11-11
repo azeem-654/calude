@@ -102,7 +102,7 @@ const EXAMPLES = [
 
 const pause = (ms: number) => new Promise(r => window.setTimeout(r, ms));
 
-export default function NewProject({ portfolios, onClose, onCreated, presetListId, seed, seedPrompt }: {
+export default function NewProject({ portfolios, onClose, onCreated, presetListId, seed, seedPrompt, presetSolution }: {
   portfolios: Portfolio[];
   onClose: () => void;
   /** Called with the new project's id when the customer goes into it. */
@@ -127,7 +127,15 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
    * read; the wizard starts on the box rather than on Protron's questions.
    */
   seedPrompt?: string;
+  /**
+   * A ready-made solution to start from (`?solution=` — the dashboard's
+   * "Start AI setup" opens the 12-Month Marketing Plan). Its example goes in
+   * the box and it is the picked solution; the customer reads, edits and
+   * continues as with any other.
+   */
+  presetSolution?: string;
 }) {
+  const presetSol = presetSolution ? solutionByKey(presetSolution) ?? null : null;
   const { addNotification, addWebsite, addFunnel } = useApp();
   const [phase, setPhase] = useState<Phase>('describe');
   /* Read once: the lists do not change while the wizard is open, and the
@@ -139,8 +147,8 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
        what they are offering before anything is understood. */
     /* Worded to match Email Outreach without the AI, and with no "to …"
        that the audience reader would take for who the emails are about. */
-    prompt: seedPrompt ? seedPrompt.slice(0, 4000) : preset ? `Email outreach for the businesses on my contact list “${preset.name}”: a short email sequence about our offer that books calls with the interested ones.` : '',
-    picked: '', files: [], links: [], voicePending: false,
+    prompt: seedPrompt ? seedPrompt.slice(0, 4000) : presetSol ? presetSol.example : preset ? `Email outreach for the businesses on my contact list “${preset.name}”: a short email sequence about our offer that books calls with the interested ones.` : '',
+    picked: presetSol?.key ?? '', ...(presetSol ? { pickedKeys: [presetSol.key] } : {}), files: [], links: [], voicePending: false,
   }));
 
   /* ── What the workspace already knows ── */
@@ -160,7 +168,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
      which then goes through Understand like any typed request. A wizard opened
      with something already to say (a list, the site's plan, Protron's own
      hand-off) starts on the box instead. */
-  const intake = useProtronIntake(ws.workspace?.companyName ?? '', seed || preset || seedPrompt ? 'manual' : 'name');
+  const intake = useProtronIntake(ws.workspace?.companyName ?? '', seed || preset || seedPrompt || presetSol ? 'manual' : 'name');
 
   /* ── Understanding ── */
   const [state, setState] = useState<IntakeState | null>(null);
@@ -891,7 +899,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     if (phase === 'describe') {
       if (intake.step === 'prompt') intake.setStep('talk');
       else if (intake.step === 'talk') intake.setStep('solutions');
-      else if (intake.step === 'solutions' || (intake.step === 'manual' && !seed && !preset && !seedPrompt)) intake.setStep('name');
+      else if (intake.step === 'solutions' || (intake.step === 'manual' && !seed && !preset && !seedPrompt && !presetSol)) intake.setStep('name');
       return;
     }
     if (phase === 'understand') setPhase('describe');
@@ -1150,7 +1158,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
 
         <footer className="np-foot">
           {(['understand', 'questions', 'blueprint', 'requirements', 'review'].includes(phase)
-            || (phase === 'describe' && intake.step !== 'name' && !(intake.step === 'manual' && (seed || preset || seedPrompt)))) && (
+            || (phase === 'describe' && intake.step !== 'name' && !(intake.step === 'manual' && (seed || preset || seedPrompt || presetSol)))) && (
             <button type="button" className="np-back" onClick={back} style={{ marginRight: 'auto' }}>
               <ArrowLeft size={15} /> <span className="np-back-label">Back</span>
             </button>

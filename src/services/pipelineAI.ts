@@ -26,7 +26,7 @@
  * silently deleting somebody's opportunities to tidy up a board would be the
  * worst bug this file could have.
  */
-import { aiAvailable, aiFetch } from '../lib/gemini';
+import { aiAvailable, aiErrorOf, aiFetch } from '../lib/gemini';
 import type { Deal, Pipeline, Stage } from '../types';
 
 /* Named in lib/gemini.ts, not here — a retired id used to mean editing six files. */
@@ -287,7 +287,7 @@ Return JSON only:
         }),
       }, 'pipeline',
     );
-    if (!res.ok) throw new Error(`Gemini returned ${res.status}`);
+    if (!res.ok) throw new Error(await aiErrorOf(res));
     const data = await res.json();
     const raw = JSON.parse(data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}') as RawPlan;
     const read = readPlan(raw);

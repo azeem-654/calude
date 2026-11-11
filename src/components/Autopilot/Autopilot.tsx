@@ -78,6 +78,9 @@ export default function Autopilot() {
      Prospecting's "Use this list in a new Autopilot project". Read once, then
      taken out of the address so closing the wizard does not reopen it. */
   const [presetList] = useState(() => (params.get('new') === '1' ? params.get('list') ?? '' : ''));
+  /* `?new=1&solution=<key>`: the wizard opens with that ready-made solution
+     picked — the dashboard's "Start AI setup" sends `marketing-plan`. */
+  const [presetSolution] = useState(() => (params.get('new') === '1' ? params.get('solution') ?? '' : ''));
   /* `?new=1&plan=site`: the plan a visitor made on the public site before
      signing up (services/sitePlan.ts) — the wizard builds it on arrival. */
   const [sitePlan] = useState(() => (params.get('new') === '1' && params.get('plan') === 'site' ? pendingPlan() : null));
@@ -97,7 +100,7 @@ export default function Autopilot() {
       const t = takeHandoff();
       if (t) { setHandoff(t); setHandoffKey(k => k + 1); setCreating(true); }
     }
-    setParams(p => { const n = new URLSearchParams(p); n.delete('new'); n.delete('list'); n.delete('plan'); n.delete('from'); return n; }, { replace: true });
+    setParams(p => { const n = new URLSearchParams(p); n.delete('new'); n.delete('list'); n.delete('plan'); n.delete('from'); n.delete('solution'); return n; }, { replace: true });
   }, [params, setParams]);
 
   const load = useCallback(async () => {
@@ -253,6 +256,7 @@ export default function Autopilot() {
             portfolios={portfolios}
             seedPrompt={handoff || undefined}
             presetListId={presetList || undefined}
+            presetSolution={presetSolution || undefined}
             seed={sitePlan}
             onClose={() => { setCreating(false); setHandoff(''); }}
             onCreated={id => {

@@ -26,7 +26,8 @@ import { geoState } from './geoapify';
 import { verifierState } from './emailVerifier';
 import { registerState } from './companiesHouse';
 import { body, fail, json } from '../lib/http';
-import { userFromToken, type Env, type SessionUser } from '../lib/db';
+import { metaGet, userFromToken, type Env, type SessionUser } from '../lib/db';
+import { describePool } from '../lib/aiPool';
 import { managedBuyingEnabled } from '../lib/provisioning';
 import { googleCreds } from '../lib/googleAuth';
 import { installPlacesKey, placesUsage } from '../lib/googlePlaces';
@@ -89,7 +90,7 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
        ORDER BY (c.last_error = '') DESC, (c.verified_at IS NOT NULL) DESC
        LIMIT 1`,
     ).first<{ verifiedAt: string | null; lastError: string }>().catch(() => null);
-    const env_ = !!(env.AI_API_KEY ?? '').trim();
+    const env_ = !!(env.AI_API_KEY ?? '').trim() || !!(env.OPENROUTER_API_KEY ?? '').trim();
     let s: Pick<Service, 'state' | 'detail' | 'checkedAt' | 'lastError'>;
     if (explicit?.connected) {
       s = { state: stateOf(explicit), detail: 'An installation AI key is stored and used first.', checkedAt: explicit.status === 'ok' ? explicit.updatedAt : null, lastError: explicit.lastError };
@@ -112,8 +113,27 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
         ? { state: 'unchecked', detail: `No main key, but ${backups} backup key${backups === 1 ? '' : 's'} below carr${backups === 1 ? 'ies' : 'y'} every AI call.`, checkedAt: null, lastError: '' }
         : { ...s, detail: `${s.detail} ${backups} backup key${backups === 1 ? '' : 's'} take${backups === 1 ? 's' : ''} over if it fails.` };
     }
+    /* Live health over stored config (lib/aiPool.ts): a key "verified" last
+       week says nothing about the quota it spent this morning. Every key
+       resting means no customer can be answered right now, whatever the
+       row said. */
+    const pool = await describePool(env).catch(() => []);
+    if (pool.length) {
+      const resting = pool.filter(k => k.restingUntil);
+      const downAt = await metaGet(env.DB, 'ai_pool_down_at').catch(() => null);
+      const recentlyDown = downAt && Date.now() - Date.parse(downAt) < 6 * 3_600_000;
+      if (resting.length === pool.length) {
+        s = { state: 'error', detail: `All ${pool.length} AI key${pool.length === 1 ? ' is' : 's are'} resting after failing — customers' AI requests are being told it is on our side. Add a key from another Google Cloud project, or switch billing on.`, checkedAt: null, lastError: resting[0].lastError };
+      } else if (resting.length) {
+        s = { ...s, detail: `${s.detail} ${resting.length} of ${pool.length} keys are resting after a failure (${resting.map(k => k.label).join(', ')}); the others are answering.` };
+      } else if (recentlyDown) {
+        s = { ...s, state: s.state === 'ok' ? 'unchecked' : s.state, detail: `${s.detail} Every key failed at ${downAt} (${(await metaGet(env.DB, 'ai_pool_down_why').catch(() => '')) || 'no reason recorded'}); they have answered since.` };
+      }
+      const or = pool.filter(k => /OpenRouter/i.test(k.label) || k.source === 'env' && /OPENROUTER/.test(k.label)).length;
+      if (or) s = { ...s, detail: `${s.detail} ${or} OpenRouter key${or === 1 ? '' : 's'} in the pool.` };
+    }
     services.push({
-      id: 'ai', name: 'AI (Google Gemini)',
+      id: 'ai', name: 'AI (Google Gemini and OpenRouter)',
       powers: 'AI Autopilot writing, replies, the New business workspace wizard, the microphone, review reply drafts',
       ...s,
       where: { label: 'Below, on this tab — Main AI key' },

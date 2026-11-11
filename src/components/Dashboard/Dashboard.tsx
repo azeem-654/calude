@@ -18,7 +18,6 @@ import { dueReminders, planFollowUps } from '../../services/contactScheduling';
 import { runQueuePass, loadJob } from '../../services/verifyQueue';
 import { runAlertCheck, checkBlacklistAlert } from '../../services/deliverabilityAlerts';
 import { runWarmup } from '../../services/warmup';
-import OnboardingWizard from '../Onboarding/OnboardingWizard';
 import SetupChecklist from '../Onboarding/SetupChecklist';
 import ContentPipelineCard from '../Onboarding/ContentPipelineCard';
 import ProgressBoard from './ProgressBoard';
@@ -559,8 +558,14 @@ export default function Dashboard() {
     return () => window.removeEventListener('resize', apply);
   }, []);
 
-  /* ── AI onboarding wizard (auto-opens for un-configured accounts) ── */
-  const [wizardOpen, setWizardOpen] = useState(false);
+  /* ── AI setup: AI Autopilot's 12-Month Marketing Plan ──
+     "Start AI setup" used to open a dashboard-only wizard whose plan was
+     written in the browser and fell back to templates without a word. The
+     year is planned in AI Autopilot now, as a business workspace whose agents
+     write each month's content (services/projectSolutions.ts
+     `marketing-plan`), so it opens there with that solution picked. */
+  const navigateTo = useNavigate();
+  const startAiSetup = () => navigateTo('/autopilot?new=1&solution=marketing-plan');
   const [obRefresh, setObRefresh] = useState(0);
   useEffect(() => {
     /*
@@ -884,7 +889,7 @@ export default function Dashboard() {
             that cannot send yet has nothing to read in the figures. It removes
             itself once every step is done. */}
         <div className="dash-block">
-          <SetupChecklist onOpenAiWizard={() => setWizardOpen(true)} refreshKey={obRefresh} />
+          <SetupChecklist onOpenAiWizard={startAiSetup} refreshKey={obRefresh} />
         </div>
 
         {/* ── The module that does the work ── the only thing on the page
@@ -990,7 +995,7 @@ export default function Dashboard() {
 
         {/* ── 12-month content pipeline / AI setup ── */}
         <div className="dash-block wide slide-up" style={{ animationDelay: '0.05s' }}>
-          <ContentPipelineCard onSetup={() => setWizardOpen(true)} refreshKey={obRefresh} />
+          <ContentPipelineCard onSetup={startAiSetup} refreshKey={obRefresh} />
         </div>
 
         {/* ── Where the business stands, department by department ── */}
@@ -1070,7 +1075,6 @@ export default function Dashboard() {
 
       </div>
 
-      <OnboardingWizard open={wizardOpen} onClose={() => { setWizardOpen(false); setObRefresh(k => k + 1); }} />
     </div>
   );
 }

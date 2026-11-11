@@ -22,6 +22,7 @@ import type { Project } from '../../services/projects';
 import type { AgentRun, ProjectWorkflow } from '../../services/autopilot';
 import { T } from './theme';
 import ProjectRevenueStrip from './ProjectRevenueStrip';
+import YearPlan from './YearPlan';
 
 export interface OverviewAsset { id: string; name: string; kind: string; route: string; at: string }
 
@@ -45,8 +46,10 @@ function List({ title, icon: Icon, items }: { title: string; icon: typeof Target
   );
 }
 
-export default function ProjectOverview({ project, flows, runs, assets, onCreateWorkflow, onOpenWorkflows }: {
+export default function ProjectOverview({ project, flows, runs, assets, onCreateWorkflow, onOpenWorkflows, business }: {
   project: Project;
+  /** What a tailored 12-month plan is written from (YearPlan's "Write my plan"). */
+  business?: { companyName: string; description: string; audience?: string; offer?: string };
   flows: ProjectWorkflow[];
   runs: AgentRun[];
   assets: OverviewAsset[];
@@ -162,6 +165,10 @@ export default function ProjectOverview({ project, flows, runs, assets, onCreate
             ))}
           </ul>
         </div>
+      )}
+
+      {brief?.year?.months?.length === 12 && (
+        <YearPlan projectId={project.id} year={brief.year} business={business ?? { companyName: project.name, description: project.objective ?? '' }} />
       )}
 
       {brief ? (

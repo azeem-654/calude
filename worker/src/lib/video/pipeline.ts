@@ -617,7 +617,7 @@ async function aiKeyFor(env: Env, accountId: string): Promise<{ key: string | nu
   const no = await aiBudget(env, accountId);
   if (no) return { key: null, why: no };
   const key = await loadAiKey(env, accountId);
-  return { key, why: key ? '' : 'no AI key is available' };
+  return { key, why: key ? '' : 'our AI is not available right now' };
 }
 
 function analysisPrompt(lines: string, count: number, min: number, max: number, wantLong: boolean): string {

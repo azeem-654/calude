@@ -38,7 +38,9 @@ import { saveFinder } from '../../../services/finders';
 import { bookingSlugFor, publishBookingConfig } from '../../../services/booking';
 import { getSession } from '../../../services/auth';
 import type { ScheduleAvailability } from '../../../types';
-import { understand } from '../../../services/intake';
+import { planYear, understand } from '../../../services/intake';
+import { aiJob } from '../../../lib/gemini';
+import type { MarketingYear } from '../../../services/marketingYear';
 import { tailorEmails } from './emailWriter';
 import {
   briefOf, capsOf, kindOf, launchStepsOf, parseCsv, productsFromCsv, imageFor,
@@ -116,6 +118,13 @@ export interface BuildResult {
   problems: string[];
   /** The daily prospect finder this build made — the Build screen runs its first steps in front of the customer. */
   finder?: { projectId: string; finderId: string; perDay: number; trades: string[]; places: string[] };
+  /** The 12-month plan this build made (the 12-Month Marketing Plan solution). */
+  year?: MarketingYear;
+  /**
+   * Said once the build is done, when the AI allowance ran out during it: the
+   * build was let finish (lib/gemini.ts aiJob) rather than cut off half-made.
+   */
+  creditsOut?: string;
 }
 
 const val = (st: IntakeState, id: string) => {
@@ -166,7 +175,9 @@ export function planSteps(inp: BuildInput): BuildStep[] {
         : business === 'upload' ? 'Reading your company profile'
           : 'Saving your business profile',
     state: 'todo', weight: business === 'website' || business === 'upload' ? 3 : 1,
-  }, { key: 'project', label: 'Creating the business workspace', state: 'todo', weight: 2 }];
+  }];
+  if (wantsYear(inp)) steps.push({ key: 'year', label: 'Planning your next 12 months', state: 'todo', weight: 3 });
+  steps.push({ key: 'project', label: 'Creating the business workspace', state: 'todo', weight: 2 });
   for (const w of inp.bp.workflows) {
     steps.push({ key: `wf:${w.key}`, label: `Creating ${w.name}`, state: 'todo', weight: w.origin === 'ai' ? 3 : 1.5 });
   }
@@ -196,6 +207,19 @@ export function percentOf(steps: BuildStep[]): number {
  * Run the build. `update` is called after every change so the screen follows.
  */
 export async function runBuild(
+  inp: BuildInput,
+  update: (steps: BuildStep[], say: string) => void,
+): Promise<BuildResult> {
+  /* One job: a build that started inside the AI allowance finishes, and the
+     customer is told afterwards (lib/gemini.ts aiJob, worker lib/aiJobs.ts). */
+  const { value, creditsOut } = await aiJob(() => runBuildOnce(inp, update));
+  return creditsOut ? { ...value, creditsOut } : value;
+}
+
+/** Does this build plan a year (the 12-Month Marketing Plan solution)? */
+const wantsYear = (inp: BuildInput) => inp.state.solutionKeys.includes('marketing-plan');
+
+async function runBuildOnce(
   inp: BuildInput,
   update: (steps: BuildStep[], say: string) => void,
 ): Promise<BuildResult> {
@@ -305,6 +329,31 @@ export async function runBuild(
     set('profile', { state: 'done', detail }, `I’m using ${companyName}’s profile.`);
   }
 
+  /* ── 1a · The year ──
+   *
+   * One server call with a bounded wait (routes/intake.ts `plan_year`). It
+   * always comes back with twelve months: written for this business, or the
+   * universal plan every business fits — and then the step says so, and why,
+   * rather than labelling a template as AI. The plan goes on the brief (the
+   * Overview shows it) and on each agent's step, which is how the agents
+   * know what this month is about. */
+  let year: MarketingYear | null = null;
+  if (steps.some(st => st.key === 'year')) {
+    set('year', { state: 'now' }, `I’m planning ${companyName || 'the business'}’s next 12 months.`);
+    year = await planYear({
+      companyName: bizProfile.companyName || companyName,
+      description: bizProfile.description || state.prompt.slice(0, 600),
+      audience: bizProfile.audience || val(state, 'audience'),
+      offer: bizProfile.offer || val(state, 'offer'),
+      location: bizProfile.location || val(state, 'location'),
+      goals: val(state, 'marketingGoals'),
+    });
+    result.year = year;
+    set('year', year.source === 'ai'
+      ? { state: 'done', detail: `Starts with “${year.months[0].theme}”, then “${year.months[1].theme}” and “${year.months[2].theme}”.` }
+      : { state: 'warn', detail: `Using the universal 12-month plan. ${year.note}` });
+  }
+
   /* ── 2 · The project ── */
   set('project', { state: 'now' }, 'I’m setting up the business workspace.');
   /* The planner reads the list from the server. One filled in Prospecting a
@@ -330,7 +379,7 @@ export async function runBuild(
     guardrails: guardrailsFor(capsOf(bp)),
     goals: [],
     launchSteps: launchStepsOf(bp),
-    brief: briefOf(bp, state.prompt, bp.audienceListId ? loadLists().find(l => l.id === bp.audienceListId)?.name ?? '' : ''),
+    brief: { ...briefOf(bp, state.prompt, bp.audienceListId ? loadLists().find(l => l.id === bp.audienceListId)?.name ?? '' : ''), ...(year ? { year } : {}) },
   });
   if (!p.success || !p.id) {
     /* A plan-allowance refusal says so, by name — not "could not be saved". */
@@ -341,6 +390,8 @@ export async function runBuild(
   }
   result.projectId = p.id;
   set('project', { state: 'done', detail: bp.name });
+  /* The dashboard's 12-month card points here from now on (ContentPipelineCard). */
+  if (year) { try { localStorage.setItem('crm_year_plan', JSON.stringify({ projectId: p.id, name: bp.name, year })); } catch { /* storage blocked: the card keeps its prompt */ } }
 
   /* ── 3 · The workflows ── */
   const ids: Record<string, string> = {};
@@ -404,6 +455,9 @@ export async function runBuild(
       nodes = t.nodes;
       emailNote = t.note;
     }
+    /* The year's themes ride on every agent step (lib/projectAgents.ts reads
+       `monthPlan`): this month's theme steers what each run writes. */
+    if (year) nodes = nodes.map(n => (n.type === 'ai' ? { ...n, config: { ...n.config, monthPlan: JSON.stringify(year!.months.map(m => ({ month: m.month, theme: m.theme, focus: m.focus }))) } } : n));
     const r = await saveWorkflow(p.id, { name: w.name, description: w.purpose.slice(0, 300), status: 'draft', nodes }, w.templateKey);
     if (r.success && r.id) {
       ids[w.key] = String(r.id);

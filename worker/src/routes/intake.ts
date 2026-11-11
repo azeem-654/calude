@@ -35,7 +35,8 @@
  */
 import { body, fail, json } from '../lib/http';
 import { canAccess, userFromToken, type Env } from '../lib/db';
-import { aiBudget, askGeminiParts, loadAiKey, type AiPart } from '../lib/ai';
+import { aiBudget, aiRefund, askGemini, askGeminiParts, loadAiKey, refundIfFailed, type AiPart } from '../lib/ai';
+import { cleanYear, universalYear, yearPrompt } from '../lib/marketingYear';
 import { readSite } from '../lib/readSite';
 import { rateLimit } from '../lib/rateLimit';
 
@@ -57,6 +58,8 @@ export interface IntakeReq {
   portfolioId?: string;
   catalogue?: Catalogue;
   candidates?: string[];
+  /** A multi-call job's id (lib/aiJobs.ts): a build that started finishes past the allowance. */
+  job?: string;
   /* refine */
   state?: Record<string, unknown>;
   instruction?: string;
@@ -68,7 +71,7 @@ export interface IntakeReq {
   questions?: { id?: string; prompt?: string; help?: string; many?: boolean; options?: string[] }[];
   answers?: Record<string, unknown>;
   /* write_emails */
-  business?: { companyName?: string; description?: string; audience?: string; offer?: string; website?: string; tone?: string };
+  business?: { companyName?: string; description?: string; audience?: string; offer?: string; website?: string; tone?: string; location?: string; goals?: string };
   strategy?: { workflow?: string; purpose?: string; objective?: string; booking?: boolean; instruction?: string };
   projectId?: string;
   emails?: { id?: string; intent?: string; subject?: string; body?: string }[];
@@ -103,7 +106,7 @@ export async function handleIntake(req: Request, env: Env): Promise<Response> {
   if (!(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours.', 403);
 
   const act = String(d.action ?? '');
-  if (!['understand', 'refine', 'transcribe', 'write_emails', 'suggest'].includes(act)) return fail('Unknown action.');
+  if (!['understand', 'refine', 'transcribe', 'write_emails', 'suggest', 'plan_year'].includes(act)) return fail('Unknown action.');
 
   /*
    * Budgets per workspace, per hour.
@@ -123,17 +126,23 @@ export async function handleIntake(req: Request, env: Env): Promise<Response> {
     return fail(`That is a lot of requests in an hour — try again in ${Math.ceil(verdict.retryAfter / 60)} minutes.`, 429, { code: 'rate_limited' });
   }
 
+  /* Always answers with a plan (its own gates inside): the universal one,
+     labelled, when the AI cannot write a tailored one. */
+  if (act === 'plan_year') return planYear(env, accountId, d);
+
   /* The workspace's AI budget (F-3), the same one /api/ai.php asks. */
-  const aiNo = await aiBudget(env, accountId);
+  const aiNo = await aiBudget(env, accountId, { job: d.job });
   if (aiNo) return fail(aiNo, 402, { code: 'ai_budget' });
   const key = await loadAiKey(env, accountId);
-  if (!key) return fail('The AI is not available on this install right now.', 200, { code: 'no_ai' });
+  if (!key) { await aiRefund(env, accountId); return fail('Our AI is not available right now. This is on our side, not yours.', 200, { code: 'no_ai' }); }
 
-  if (act === 'transcribe') return transcribe(key, d);
-  if (act === 'write_emails') return writeEmails(env, key, accountId, d);
-  if (act === 'refine') return refine(key, d);
-  if (act === 'suggest') return suggest(key, d);
-  return understand(env, key, accountId, d);
+  /* Given back when nothing came of it (lib/ai.ts aiRefund). */
+  const done = (r: Promise<Response>) => r.then(res => refundIfFailed(env, accountId, res));
+  if (act === 'transcribe') return done(transcribe(key, d));
+  if (act === 'write_emails') return done(writeEmails(env, key, accountId, d));
+  if (act === 'refine') return done(refine(key, d));
+  if (act === 'suggest') return done(suggest(key, d));
+  return done(understand(env, key, accountId, d));
 }
 
 /* ── write_emails ───────────────────────────────────────────────────────── */
@@ -582,4 +591,43 @@ async function refine(key: string, d: IntakeReq): Promise<Response> {
     },
     reply: clip(raw.reply, 300),
   });
+}
+
+/* ── plan_year ─────────────────────────────────────────────────────────── */
+
+/**
+ * The business's next twelve months of marketing (lib/marketingYear.ts), for
+ * AI Autopilot's 12-Month Marketing Plan.
+ *
+ * ── Never a spinner that ends in a template nobody explains ──
+ *
+ * The old setup wizard retried in the browser for three and a half minutes
+ * and then showed a canned plan under "Smart Templates", saying nothing. Here
+ * it is one server call with a bounded wait (one attempt per key, 40 s each,
+ * the pool skipping keys that are resting), and every way it can fall short
+ * answers with the universal plan *and the reason*, so the wizard can say
+ * "this is the ready-made plan, because…" and offer to try again.
+ */
+async function planYear(env: Env, accountId: string, d: IntakeReq): Promise<Response> {
+  const b = d.business ?? {};
+  const business = {
+    companyName: String(b.companyName ?? '').slice(0, 150), description: String(b.description ?? '').slice(0, 2000),
+    audience: String(b.audience ?? '').slice(0, 400), offer: String(b.offer ?? '').slice(0, 400),
+    location: String(b.location ?? '').slice(0, 150), goals: String(b.goals ?? '').slice(0, 400),
+  };
+  const universal = (note: string, extra: Record<string, unknown> = {}) => json({ success: true, plan: universalYear(new Date(), note), ...extra });
+  if (business.description.trim().length < 12 && business.companyName.trim().length < 2) {
+    return universal('There was not enough about the business to tailor a plan, so this is the ready-made plan every business fits. Add what the business does and press Write my plan to have one written for it.');
+  }
+  const aiNo = await aiBudget(env, accountId, { job: d.job });
+  if (aiNo) return universal(`The AI was not used: ${aiNo} This is the ready-made plan every business fits — it works as it is, and you can edit any month.`, { code: 'ai_budget' });
+  const key = await loadAiKey(env, accountId);
+  if (!key) { await aiRefund(env, accountId); return universal('Our AI is not available right now, so this is the ready-made plan every business fits. Press Write my plan to try again.', { code: 'no_ai' }); }
+  const r = await askGemini(key, yearPrompt(business), 0.6, { module: 'autopilot-plan', accountId, timeoutMs: 40_000 });
+  const months = r.ok ? (() => { try { return cleanYear(JSON.parse(r.text)); } catch { return null; } })() : null;
+  if (!months) {
+    await aiRefund(env, accountId);
+    return universal(`${r.ok ? 'The AI’s plan came back unreadable.' : r.error} Until then this is the ready-made plan every business fits — press Write my plan to try again.`, { code: 'ai_failed' });
+  }
+  return json({ success: true, plan: { months, source: 'ai', note: '', createdAt: new Date().toISOString() } });
 }

@@ -209,6 +209,9 @@ touched; a redemption only writes `crm_plans` with **source `appsumo`**.
   cancelled subscription (billing.ts `applyPlan`) keeps the `appsumo` row and
   re-applies the tier. `revoke` (a refund) recomputes it, down to removing
   only an `appsumo` row.
+- AI requests per month raised 2026-11-11 at the owner's request: 3,000 /
+  6,000 / 12,000 (was 1,000 / 2,500 / 5,000); the listing must match
+  (OWNER-CHECKLIST 53).
 - A typed code survives sign-up in `localStorage` (`pc_appsumo_code`);
   `AppSumoHandoff` (App.tsx) brings the buyer back to `/appsumo`.
 - **Licensing v2 — AppSumo's Activate button** (`routes/appsumoLicense.ts`,

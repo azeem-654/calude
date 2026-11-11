@@ -326,6 +326,12 @@ const Q: Record<string, Question> = {
     placeholder: 'boiler servicing, landlord gas safety, heat pumps',
     help: 'Leave it and AI Autopilot picks from what the business sells and what its customers search for.',
   },
+  marketingGoals: {
+    id: 'marketingGoals', group: 'deliverable', type: 'text', need: 'optional',
+    prompt: 'What should marketing do for the business this year?',
+    placeholder: 'more enquiries in the quiet months, launch our new service in spring',
+    help: 'Leave it and AI Autopilot plans the year around what the business does and the seasons it works in.',
+  },
   blogSource: {
     id: 'blogSource', group: 'deliverable', type: 'single', need: 'required',
     prompt: 'What should each article be written from?',
@@ -1129,6 +1135,40 @@ function socialPart(a: Answers): Partial<Contribution> {
   };
 }
 
+/**
+ * The 12-Month Marketing Plan: a year of themes (planned during the build,
+ * worker/src/lib/marketingYear.ts) and the three agents that write each
+ * month's content around this month's theme — posts, articles, and a short
+ * monthly email campaign. Every one writes drafts; nothing is sent or posted.
+ * The plan is attached to each agent's step as `monthPlan` by the build
+ * (buildRunner.ts), which is how the agents know what month it is about.
+ */
+function yearPart(a: Answers): Partial<Contribution> {
+  const social = socialPart(a);
+  const blog = blogPart({ ...a, blogSource: 'portfolio', blogFrequency: one(a.blogFrequency, 'weekly') });
+  const email: WorkflowSpec = {
+    key: 'year-email',
+    name: 'Monthly Email Campaign',
+    purpose: 'Once a month, a four-email campaign around the month’s theme, one a week, saved as a draft for you to read and send.',
+    origin: 'generated',
+    nodes: agentGraph('monthly', [{ label: 'Write this month’s emails', config: { source: 'portfolio', produces: 'email_campaign', campaignSteps: '4', everyDays: '7' } }]),
+    schedule: 'Once a month',
+    agents: [{ name: 'Email Writer Agent', role: 'Writes four emails around this month’s theme from the business profile — no invented offers, figures or quotes.' }],
+    output: { label: 'Email campaigns', route: '/marketing?tab=sequences' },
+    sends: false,
+    channel: 'email',
+  };
+  return {
+    workflows: [...(social.workflows ?? []), ...(blog.workflows ?? []), email],
+    outputs: ['A 12-month plan: a theme, a focus and content ideas for every month', ...(social.outputs ?? []), ...(blog.outputs ?? []), 'Four emails a month around the theme, as a draft campaign'],
+    destinations: [{ label: 'The business workspace’s Overview — the 12-month plan', route: '/autopilot' }, ...(social.destinations ?? []), ...(blog.destinations ?? []), { label: 'Marketing → Sequences', route: '/marketing?tab=sequences' }],
+    approvals: [...(social.approvals ?? []), ...(blog.approvals ?? []), 'Each month’s emails wait as a draft until you send them'],
+    manual: [...(social.manual ?? []), ...(blog.manual ?? [])],
+    requirements: [...(social.requirements ?? []), ...(blog.requirements ?? [])],
+    limits: [...(social.limits ?? []), 'The plan is a guide: change any month’s theme on the Overview and the next run writes to the new one.'],
+  };
+}
+
 function blogPart(a: Answers): Partial<Contribution> {
   const src = one(a.blogSource, 'portfolio');
   const freq = one(a.blogFrequency, 'weekly');
@@ -1317,6 +1357,16 @@ export const SOLUTIONS: Solution[] = [
       c = merge(c, socialPart(a));
       return c;
     },
+  },
+  {
+    key: 'marketing-plan',
+    label: '12-Month Marketing Plan',
+    blurb: 'A year of marketing planned month by month for your business, and each month’s posts, articles and emails written as it comes.',
+    example: 'Plan the next 12 months of marketing for my business, and write each month’s social posts, blog articles and emails around that month’s theme.',
+    keywords: [['12 month', 4.5], ['12-month', 4.5], ['twelve month', 4.5], ['12 months', 4.5], ['marketing plan', 4], ['year of marketing', 4], ['annual marketing', 3.5], ['yearly plan', 3], ['content plan', 3], ['marketing calendar', 3], ['content calendar', 2.5]],
+    channels: ['social', 'blog', 'email'],
+    questions: ['business', 'website', 'marketingGoals', 'platforms', 'frequency', 'blogFrequency', 'approval'],
+    build: a => merge(empty(), yearPart(a)),
   },
   {
     key: 'blog-seo',

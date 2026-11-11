@@ -1542,11 +1542,14 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
     setBrollBusy(true);
     try {
       let suggestions: { keyword: string; title: string }[] = [];
+      let byAi = false;
+      let why = '';
       if (hasGeminiKey()) {
-        try { suggestions = await suggestBroll(localClip.transcript || localClip.title); } catch { /* fall through */ }
+        try { suggestions = await suggestBroll(localClip.transcript || localClip.title); byAi = suggestions.length > 0; } catch (e) { why = e instanceof Error ? e.message : ''; }
       }
       if (!suggestions.length) {
-        // Offline fallback: longest distinctive words from the transcript
+        /* Without the AI: the longest distinctive words from the transcript —
+           said to be that, so nobody takes them for the AI's picks. */
         const words = (localClip.transcript || localClip.title).toLowerCase().replace(/[^a-z ]/g, '').split(/\s+/).filter(word => word.length > 5);
         suggestions = [...new Set(words)].slice(0, 4).map(word => ({ keyword: word, title: word[0].toUpperCase() + word.slice(1) }));
       }
@@ -1557,11 +1560,13 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
         title: sug.title,
         thumbnail: GRADIENTS[i % GRADIENTS.length],
         duration: 3,
-        source: 'AI · stock image',
+        source: byAi ? 'AI · stock image' : 'Transcript words · stock image',
         imageUrl: `${API_BASE}/api/img-proxy.php?q=${encodeURIComponent(sug.keyword)}&sig=${i + 1}`,
       }));
       set({ broll: [...localClip.broll.filter(b => !b.id.startsWith('ai-br-')), ...items] });
-      addNotification(`${items.length} AI image b-roll cutaways added — they'll be burned into the export.`, 'success');
+      addNotification(byAi
+        ? `${items.length} AI image b-roll cutaways added — they'll be burned into the export.`
+        : `${items.length} b-roll cutaways added from the clip's own words — the AI did not pick these${why ? ` (${why.replace(/[.\s]+$/, '')})` : ''}. Check them before you export.`, byAi ? 'success' : 'info');
     } finally { setBrollBusy(false); }
   };
 
@@ -1572,11 +1577,14 @@ function ClipEditor({ clip, project, onBack, onSave, initialPanel }: { clip: Vid
         const list = await generateHooks({ title: localClip.title, transcript: localClip.transcript, language: localClip.language });
         if (list.length) { setHooks(list); return; }
       }
-      throw new Error('fallback');
-    } catch {
-      // Offline fallback: curated templates, shuffled
+      throw new Error('');
+    } catch (e) {
+      /* Without the AI: the ready-made hooks, and said so — they are not
+         written for this clip. */
       const shuffled = [...HOOK_TEMPLATES].sort(() => Math.random() - 0.5).slice(0, 5);
       setHooks(shuffled);
+      const why = e instanceof Error ? e.message.replace(/[.\s]+$/, '') : '';
+      addNotification(`These are ready-made hooks, not written for this clip${why ? ` — ${why}` : ''}. Try AI Hook again shortly.`, 'info');
     } finally {
       setHooksBusy(false);
     }
@@ -2802,20 +2810,16 @@ function ScriptToVideoModal({ onClose, onCreate }: { onClose: () => void; onCrea
     if (!topic.trim()) { setErr('Enter a topic first.'); return; }
     setBusy('write'); setErr('');
     try {
-      if (!hasGeminiKey()) throw new Error('no-key');
+      if (!hasGeminiKey()) throw new Error('Sign in again to use the AI');
       const r = await generateScript(topic.trim());
       setScript(r.scenes.map(s => s.caption).join('\n'));
-    } catch {
-      // Offline fallback: proven short-form structure filled with the topic
-      setScript([
-        `Stop scrolling — this is about ${topic.trim()}`,
-        `Most people get ${topic.trim()} completely wrong`,
-        "Here's the truth nobody tells you",
-        'Step 1: start smaller than you think',
-        'Step 2: stay consistent for 30 days',
-        'The results speak for themselves',
-        `Follow for more on ${topic.trim()}`,
-      ].join('\n'));
+    } catch (e) {
+      /* No canned script: the old one ("stay consistent for 30 days", "the
+         results speak for themselves") put claims in the customer's mouth
+         that nobody had made. A plain outline, labelled as one, instead. */
+      const t = topic.trim();
+      setScript([`What ${t} is`, `Why it matters to you`, `One thing to do about it`, `Where to find out more`].join('\n'));
+      setErr(`The AI could not write the script${e instanceof Error && e.message ? ` (${e.message.replace(/[.\s]+$/, '')})` : ''}, so this is a plain outline to write over. Try AI write again shortly.`);
     } finally { setBusy(''); }
   };
 
@@ -3134,7 +3138,7 @@ export default function VideoShorts() {
       updateVideoProject(id, {
         status: 'failed',
         progress: 0,
-        processingStep: 'AI key required',
+        processingStep: 'AI not available right now',
         error: AI_KEY_MISSING,
       });
     }

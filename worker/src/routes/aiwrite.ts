@@ -28,7 +28,7 @@
  */
 import { body, fail, json } from '../lib/http';
 import { canAccess, dataGet, userFromToken, type Env } from '../lib/db';
-import { askGemini, loadAiKey, aiBudget } from '../lib/ai';
+import { aiBudget, aiRefund, askGemini, loadAiKey } from '../lib/ai';
 import {
   writeCampaign, writeSequence, writeAutomation,
   AUTOMATION_NODE_TYPES, type Brand,
@@ -139,6 +139,7 @@ export async function handleAiWrite(req: Request, env: Env): Promise<Response> {
   if (overBudget) return fail(overBudget, 429, { code: 'rate_limited' });
   const key = await loadAiKey(env, accountId);
   if (!key) {
+    await aiRefund(env, accountId);
     return fail(
       'Writing is unavailable on this installation at the moment. You do not need a key of your own — this is ours to fix.',
       200, { needsKey: true },

@@ -110,6 +110,13 @@ export interface OrRequest {
   task?: AiTask;
   module?: string;
   accountId?: string;
+  /**
+   * Search the web for this answer (OpenRouter's `web` plugin), returning the
+   * pages it cited. It is billed per search, so a key with no credit answers
+   * 402 and the pool moves on; with credit, it is what keeps a "fresh
+   * research" article possible while Google's keys are spent.
+   */
+  web?: boolean;
 }
 
 /** One call on an OpenRouter key: the free models in turn while one is busy or gone. */
@@ -117,7 +124,7 @@ export async function askOpenRouter(apiKey: string, q: OrRequest): Promise<Attem
   const failed = (status: number, raw: string, sentence: string): Attempt<AiResult> =>
     ({ ok: false, status, error: raw, value: { ok: false, text: '', error: sentence } });
   const chat = toChat(q.parts);
-  if (!chat) return failed(CANNOT, 'audio or video in the request', 'The backup AI (OpenRouter) cannot listen to recordings.');
+  if (!chat) return failed(CANNOT, 'audio or video in the request', 'Listening to recordings is not available right now. This is on our side, not yours.');
   let lastStatus = -1, lastError = '';
   for (const model of await freeModels(chat.vision, q.task ?? (q.module ? taskOf(q.module) : chat.vision ? 'vision' : 'write'))) {
     let res: Response;
@@ -130,7 +137,8 @@ export async function askOpenRouter(apiKey: string, q: OrRequest): Promise<Attem
           messages: [...(q.system ? [{ role: 'system', content: q.system }] : []), { role: 'user', content: chat.content }],
           temperature: q.temperature ?? 0.5,
           ...(q.maxTokens ? { max_tokens: q.maxTokens } : {}),
-          ...(q.json ? { response_format: { type: 'json_object' } } : {}),
+          ...(q.json && !q.web ? { response_format: { type: 'json_object' } } : {}),
+          ...(q.web ? { plugins: [{ id: 'web', max_results: 5 }] } : {}),
         }),
         signal: AbortSignal.timeout(q.timeoutMs ?? 60_000),
       });
@@ -139,7 +147,7 @@ export async function askOpenRouter(apiKey: string, q: OrRequest): Promise<Attem
       continue;
     }
     const raw = await res.text();
-    let data: { choices?: { message?: { content?: string | null } }[]; error?: { code?: number; message?: string }; usage?: { prompt_tokens?: number; completion_tokens?: number } } = {};
+    let data: { choices?: { message?: { content?: string | null; annotations?: { type?: string; url_citation?: { url?: string; title?: string } }[] } }[]; error?: { code?: number; message?: string }; usage?: { prompt_tokens?: number; completion_tokens?: number } } = {};
     try { data = JSON.parse(raw) as typeof data; } catch { /* not JSON */ }
     /* OpenRouter can answer 200 with an error inside (an upstream refused). */
     const text = data.choices?.[0]?.message?.content ?? '';
@@ -148,7 +156,10 @@ export async function askOpenRouter(apiKey: string, q: OrRequest): Promise<Attem
     await recordAiUse({ provider: 'openrouter', key: apiKey, model, module: q.module, accountId: q.accountId, ok: okAnswer, status: okAnswer ? 200 : (res.ok ? (data.error?.code ?? 502) : res.status), tokensIn: data.usage?.prompt_tokens, tokensOut: data.usage?.completion_tokens });
     if (res.ok && !data.error && text) {
       const clean = q.json ? text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim() : text.trim();
-      return { ok: true, value: { ok: true, text: clean, error: '' } };
+      const sources = (data.choices?.[0]?.message?.annotations ?? [])
+        .filter(a => a.type === 'url_citation' && a.url_citation?.url)
+        .map(a => ({ title: String(a.url_citation?.title ?? ''), uri: String(a.url_citation?.url ?? '') }));
+      return { ok: true, value: { ok: true, text: clean, error: '', ...(q.web ? { sources } : {}) } };
     }
     lastStatus = res.ok ? (data.error?.code ?? 502) : res.status;
     lastError = data.error?.message || raw.slice(0, 400) || `HTTP ${res.status}`;
@@ -157,9 +168,11 @@ export async function askOpenRouter(apiKey: string, q: OrRequest): Promise<Attem
     /* This model will not serve this key (403, "only available on …", gone): skip it for a while, try the next. */
     if (lastStatus === 403 || lastStatus === 404 || /only available|not available|no endpoints/i.test(lastError)) refused.set(model, Date.now() + 6 * 3_600_000);
   }
-  const sentence = lastStatus === 429 ? 'The backup AI is busy or out of free requests for today.'
-    : lastStatus === 401 || lastStatus === 403 ? 'The OpenRouter key was refused — check it in AI keys.'
-      : `The backup AI could not answer: ${lastError.slice(0, 200)}`;
+  /* A customer can read these (the last key's sentence, when nothing better
+     was said): none of them names the provider or a key. */
+  const sentence = lastStatus === 429 || lastStatus === 402 || lastStatus === 401 || lastStatus === 403 || lastStatus <= 0 || lastStatus >= 500
+    ? 'Our AI is at capacity for a few minutes. This is on our side, not yours — please try again shortly.'
+    : `The AI could not answer: ${lastError.slice(0, 200)}`;
   return failed(lastStatus, lastError, sentence);
 }
 

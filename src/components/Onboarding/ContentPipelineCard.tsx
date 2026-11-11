@@ -8,6 +8,8 @@
  */
 import { askConfirm } from '../shared/ConfirmDialog';
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import type { MarketingYear } from '../../services/marketingYear';
 import { createPortal } from 'react-dom';
 import { Sparkles, CalendarRange, ChevronDown, ChevronUp, ArrowRight, History, Loader, Mail, MessageSquare, Wand2, CheckCheck, X, Share2, Clapperboard, Copy, Layers, Zap, Undo2, ScrollText } from 'lucide-react';
 import { loadOnboarding, saveOnboarding, statusMeta, auditEntry, sanitizeText } from '../../services/onboarding';
@@ -82,6 +84,11 @@ function MonthReviewModal({ month, onClose, onPublished }: { month: ContentMonth
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {content.templateNote && (
+            <p role="status" style={{ margin: 0, padding: '10px 14px', borderRadius: 12, backgroundColor: '#fff7e6', color: '#7a4b00', fontSize: 12.5, lineHeight: 1.5 }}>
+              {content.templateNote}
+            </p>
+          )}
           <span style={{ fontSize: 11, fontWeight: 800, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.07em', display: 'flex', alignItems: 'center', gap: 6 }}>
             <Mail size={12} /> Email sequence — {content.emails.length} emails
           </span>
@@ -235,6 +242,7 @@ function AuditTrailModal({ onClose }: { onClose: () => void }) {
 }
 
 export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: () => void; refreshKey: number }) {
+  const navigate = useNavigate();
   const { addNotification, addFunnel, addWebsite, updateSchedule, createPipeline, updatePipeline, addSequence, addCampaign, addSocialPost, deleteSequence, deleteCampaign, deleteSocialPosts } = useApp();
   const [bump, setBump] = useState(0);
   // refreshKey/bump bust the memo whenever the wizard closes or a job/publish updates storage.
@@ -246,6 +254,32 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
   const actor = getSession()?.user.email || 'owner';
 
   if (!ob.completed || !ob.plan.length) {
+    /* A year planned in AI Autopilot (buildRunner.ts) is shown here, and
+       opened there — its agents write each month's content. */
+    const auto = (() => { try { return JSON.parse(localStorage.getItem('crm_year_plan') || 'null') as { projectId: string; name: string; year: MarketingYear } | null; } catch { return null; } })();
+    if (auto?.year?.months?.length) {
+      const key = new Date().toISOString().slice(0, 7);
+      const m = auto.year.months.find(x => x.month === key) ?? [...auto.year.months].reverse().find(x => x.month <= key) ?? auto.year.months[0];
+      return (
+        <div style={{ ...CARD, padding: '18px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+            <CalendarRange size={20} color={INK} style={{ flexShrink: 0 }} />
+            <div style={{ minWidth: 0 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 800, margin: 0, color: INK }}>Your 12-month marketing plan is running in AI Autopilot</h3>
+              <p style={{ fontSize: 12.5, color: MUTED, margin: '3px 0 0', lineHeight: 1.5 }}>
+                This month: <b style={{ color: INK }}>{m.theme}</b> — {auto.name}{auto.year.source !== 'ai' ? ' (universal plan)' : ''}
+              </p>
+            </div>
+          </div>
+          <button onClick={() => navigate(`/autopilot?project=${encodeURIComponent(auto.projectId)}`)} style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 999, border: 'none',
+            backgroundColor: INK, color: '#fff', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', flexShrink: 0,
+          }}>
+            Open in AI Autopilot <ArrowRight size={14} strokeWidth={2.5} />
+          </button>
+        </div>
+      );
+    }
     return (
       <div style={{
         backgroundColor: INK, borderRadius: 24, padding: '22px 26px', color: '#fff',
@@ -257,9 +291,9 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
             <Sparkles size={20} color="#c7f441" />
           </div>
           <div>
-            <h3 style={{ fontSize: 16.5, fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>Let AI set up your entire workspace</h3>
+            <h3 style={{ fontSize: 16.5, fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>Plan your next 12 months with AI Autopilot</h3>
             <p style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)', margin: '4px 0 0', lineHeight: 1.5 }}>
-              A 5-minute wizard configures your brand, pipeline, business hours — and plans 12 months of marketing content.
+              AI Autopilot learns your business, plans a year of marketing month by month, and writes each month's posts, articles and emails as it comes.
             </p>
           </div>
         </div>

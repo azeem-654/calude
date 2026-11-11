@@ -28,6 +28,7 @@ import { logoFromPage, fetchImage } from '../lib/brandLogo';
 import { rateLimit } from '../lib/rateLimit';
 import { ensureProjectPipeline } from '../lib/projectPipeline';
 import { sanitiseBrief } from '../lib/projectBrief';
+import { cleanYear } from '../lib/marketingYear';
 import { check as allowance, refusalBody } from '../lib/allowanceStore';
 
 interface Req {
@@ -46,6 +47,8 @@ interface Req {
   launchSteps?: unknown;
   /** The blueprint the customer approved. See lib/projectBrief.ts. */
   brief?: unknown;
+  /** The 12-month plan, for `save_year` (lib/marketingYear.ts). */
+  year?: unknown;
   portfolioId?: string;
   status?: string;
   kind?: string;
@@ -324,7 +327,7 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     if (overBudget) return fail(overBudget, 429, { code: 'rate_limited' });
     const key = await loadAiKey(env, accountId);
     if (!key) {
-      return fail('No AI key is connected to this workspace, so nothing can be read into a portfolio. Fill the client in by hand for now — the AI is not available on this install yet.');
+      return fail('Our AI is not available right now, so nothing could be read into the portfolio. This is on our side, not yours — fill the client in by hand, or try again shortly.');
     }
 
     let title = '';
@@ -624,6 +627,47 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     if (!res.meta.changes) return fail('That business workspace is not one of yours.');
 
     return json({ success: true, projects: await listProjects() });
+  }
+
+  /**
+   * Replace a project's 12-month plan — on its brief, and on every agent step
+   * of its workflows (`monthPlan`, which lib/projectAgents.ts reads).
+   *
+   * Its own action for the reason set_guardrail is: `save_project` takes the
+   * whole record, and the Overview's "Write my plan" should send a plan, not
+   * the project's name, targets and launch steps back over the top. Months are
+   * checked against the plan's own shape; nothing else in the brief moves.
+   */
+  if (act === 'save_year') {
+    const id = String(d.id ?? '').trim();
+    const raw = d.year as { months?: unknown; source?: unknown; note?: unknown } | undefined;
+    const months = cleanYear(raw);
+    if (!months) return fail('That is not a 12-month plan.');
+    const row = await env.DB.prepare('SELECT brief FROM crm_projects WHERE id = ? AND account_id = ?').bind(id, accountId).first<{ brief: string }>();
+    if (!row) return fail('That business workspace is not one of yours.', 403);
+    let brief: Record<string, unknown> = {};
+    try { brief = (JSON.parse(row.brief || '{}') as Record<string, unknown>) ?? {}; } catch { brief = {}; }
+    /* The months keep the calendar they were given (cleanYear renumbers from now). */
+    const given = Array.isArray(raw?.months) ? raw!.months as { month?: unknown }[] : [];
+    const dated = months.map((m, i) => ({ ...m, month: /^\d{4}-\d{2}$/.test(String(given[i]?.month ?? '')) ? String(given[i].month) : m.month }));
+    const year = { months: dated, source: raw?.source === 'ai' ? 'ai' : 'universal', note: String(raw?.note ?? '').slice(0, 600), createdAt: nowIso() };
+    const stored = sanitiseBrief({ ...brief, year });
+    if (!stored) return fail('The plan could not be saved — it was far too large.');
+    await env.DB.prepare('UPDATE crm_projects SET brief = ?, updated_at = ? WHERE id = ? AND account_id = ?').bind(stored, nowIso(), id, accountId).run();
+    const plan = JSON.stringify(dated.map(m => ({ month: m.month, theme: m.theme, focus: m.focus })));
+    const { results } = await env.DB.prepare('SELECT id, nodes FROM crm_project_workflows WHERE account_id = ? AND project_id = ?')
+      .bind(accountId, id).all<{ id: string; nodes: string }>();
+    let updated = 0;
+    for (const w of results ?? []) {
+      let nodes: { type?: string; config?: Record<string, unknown> }[] = [];
+      try { nodes = JSON.parse(w.nodes || '[]'); } catch { continue; }
+      if (!Array.isArray(nodes) || !nodes.some(n => n?.type === 'ai' && n.config && 'monthPlan' in n.config)) continue;
+      const next = nodes.map(n => (n?.type === 'ai' && n.config && 'monthPlan' in n.config ? { ...n, config: { ...n.config, monthPlan: plan } } : n));
+      await env.DB.prepare('UPDATE crm_project_workflows SET nodes = ?, updated_at = ? WHERE id = ? AND account_id = ?')
+        .bind(JSON.stringify(next), nowIso(), w.id, accountId).run();
+      updated++;
+    }
+    return json({ success: true, year, workflows: updated });
   }
 
   if (act === 'set_status') {

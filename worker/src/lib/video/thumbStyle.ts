@@ -277,10 +277,10 @@ export async function readExample(env: Env, accountId: string, bytes: Uint8Array
   const no = await aiBudget(env, accountId);
   if (no) return { ok: false, why: no, called: false };
   const key = await loadAiKey(env, accountId);
-  if (!key) return { ok: false, why: 'no AI key is set up', called: false };
+  if (!key) return { ok: false, why: 'our AI is not available right now', called: false };
   const res = await askGeminiParts(key, [{ text: EXAMPLE_PROMPT }, { inlineData: { mimeType: mime, data: b64(bytes) } }], 0.2, { module: 'thumbnails', accountId, json: true, timeoutMs: 40_000, task: 'vision' });
   /* Every key in the pool refused or could not take a picture: said plainly, not guessed round. */
-  if (!res.ok) return { ok: false, why: res.error ? `no AI key here could read the picture: ${res.error}` : 'no AI key here could read the picture', called: true };
+  if (!res.ok) return { ok: false, why: res.error ? `the AI could not read the picture: ${res.error}` : 'the AI could not read the picture', called: true };
   const raw = extractJson<Record<string, unknown>>(res.text);
   if (!raw || typeof raw !== 'object') return { ok: false, why: 'the AI did not describe the picture', called: true };
   return { ok: true, raw, called: true };

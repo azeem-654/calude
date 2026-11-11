@@ -42,7 +42,7 @@ if (!fs.existsSync('dist/index.html')) { console.log('Build first: VITE_BASE=/ n
 const K = tag => `AIza${tag}${'x'.repeat(35 - tag.length)}`;
 const QUOTA = K('QUOTA'), SPARE = K('SPARE'), DEAD = K('DEAD'), THIRD = K('THIRD'), WRONG = K('WRONG');
 const KNOWN = new Set([QUOTA, SPARE, DEAD, THIRD]);
-const ORK = `sk-or-v1-${'a'.repeat(48)}`, ORBAD = `sk-or-v1-${'b'.repeat(48)}`;
+const ORK = `sk-or-v1-${'a'.repeat(48)}`, ORBAD = `sk-or-v1-${'b'.repeat(48)}`, ORDAY = `sk-or-v1-${'c'.repeat(48)}`;
 const name = k => (k === QUOTA ? 'QUOTA' : k === SPARE ? 'SPARE' : k === DEAD ? 'DEAD' : k === THIRD ? 'THIRD' : 'other');
 let calls = [];
 const send = (res, status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -68,7 +68,7 @@ const mock = http.createServer((req, res) => {
     /* OpenRouter (lib/openrouter.ts) at /or: its key check, its model list, chat completions. */
     if (u.pathname.startsWith('/or/')) {
       const bearer = (req.headers.authorization ?? '').replace(/^Bearer /, '');
-      if (u.pathname === '/or/key') return bearer === ORK ? send(res, 200, { data: { is_free_tier: true, limit_remaining: 50 } }) : send(res, 401, { error: { code: 401, message: 'No auth credentials found' } });
+      if (u.pathname === '/or/key') return bearer === ORK || bearer === ORDAY ? send(res, 200, { data: { is_free_tier: true, limit_remaining: 50 } }) : send(res, 401, { error: { code: 401, message: 'No auth credentials found' } });
       if (u.pathname === '/or/models') return send(res, 200, { data: [
         { id: 'google/gemma-4-26b-a4b-it:free', context_length: 300000, architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'] } },
         { id: 'google/gemma-4-31b-it:free', context_length: 262144, architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'] } },
@@ -78,6 +78,7 @@ const mock = http.createServer((req, res) => {
       if (u.pathname === '/or/chat/completions') {
         const q = JSON.parse(raw || '{}');
         calls.push(`OR:${q.model}`);
+        if (bearer === ORDAY) return send(res, 429, { error: { code: 429, message: 'Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day' } });
         if (bearer !== ORK) return send(res, 401, { error: { code: 401, message: 'User not found.' } });
         if (/26b/.test(q.model)) return send(res, 403, { error: { code: 403, message: `${q.model} is only available on agentic harnesses.` } });
         const pic = JSON.stringify(q.messages).includes('image_url');
@@ -204,7 +205,33 @@ ok('…and no OpenRouter key on any answer', !r.text.includes(ORK) && !r.text.in
 r = await keys(T, 'test', { index: r.d.keys.findIndex(k => k.label === 'OpenRouter') });
 ok('…"Test" on it asks OpenRouter and says it works', r.d.tested?.ok === true, JSON.stringify(r.d.tested));
 await keys(T, 'remove', { id: (await keys(T)).d.keys.find(k => k.label === 'OpenRouter').id });
+
+/* ── What AppSumo's reviewers met (2026-11): every Google key spent, an
+      OpenRouter key last and out of its free day. The customer must read
+      that it is ours and temporary — never "needs a Google AI key" — and a
+      12-month plan must still arrive, labelled as the universal one. ── */
+r = await keys(T, 'add', { apiKey: ORDAY, label: 'OpenRouter free' });
+ok('outage: an OpenRouter key on its free day is added', r.d.success, JSON.stringify(r.d));
+const used = async () => (await api('allowances.php', { token: C.token, accountId: C.acct, action: 'status' })).allowances?.meters?.find(m => m.id === 'ai_requests')?.used ?? -1;
+const before = await used();
+calls = [];
+ai = await apiS('ai.php', { token: C.token, accountId: C.acct, action: 'generate', request: { contents: [{ parts: [{ text: 'hi' }] }] } });
+ok('outage: the customer is told it is ours and temporary, by code', !ai.d.success && ai.d.code === 'ai_busy' && /on our side/.test(ai.d.error), JSON.stringify(ai.d));
+ok('outage: …and nothing names a provider or a key', !/google|gemini|openrouter|\bkey\b/i.test(ai.d.error), ai.d.error);
+ok('outage: the resting Google key was not asked again', !calls.includes('DEAD'), calls.join(' → '));
+const plan = await api('intake.php', { token: C.token, accountId: C.acct, action: 'plan_year', business: { companyName: 'Harbour Plumbing', description: 'Boiler servicing and emergency plumbing for homes in Leeds.' } });
+ok('outage: a 12-month plan still arrives — the universal one, twelve months', plan.success && plan.plan?.source === 'universal' && plan.plan?.months?.length === 12, JSON.stringify(plan).slice(0, 300));
+ok('outage: …said to be the universal plan, with the reason, and no provider named', /ready-made plan/.test(plan.plan?.note ?? '') && !/google|gemini|openrouter/i.test(plan.plan?.note ?? ''), plan.plan?.note);
+ok('outage: the failed calls cost the customer nothing', (await used()) === before, `${before} → ${await used()}`);
+r = await api('platform.php', { token: T, action: 'status' });
+const aiRow = (r.services ?? []).find(x => x.id === 'ai');
+ok('outage: Platform services says every key is resting', aiRow?.state === 'error' && /resting/.test(aiRow.detail), JSON.stringify(aiRow ?? r).slice(0, 300));
+await keys(T, 'remove', { id: (await keys(T)).d.keys.find(k => k.label === 'OpenRouter free').id });
+
 await keys(T, 'add', { apiKey: THIRD, label: 'Fresh project' });
+calls = [];
+const plan2 = await api('intake.php', { token: C.token, accountId: C.acct, action: 'plan_year', business: { companyName: 'Harbour Plumbing', description: 'Boiler servicing and emergency plumbing for homes in Leeds.' } });
+ok('with a key answering, plan_year asks the AI (the mock\'s reply is not a plan, so the universal one comes back with that said)', plan2.success && calls.includes('THIRD') && plan2.plan?.months?.length === 12 && /unreadable/.test(plan2.plan?.note ?? ''), `${calls.join(' → ')} ${JSON.stringify(plan2).slice(0, 300)}`);
 
 /* ── The card ── */
 br = await pw.chromium.launch();

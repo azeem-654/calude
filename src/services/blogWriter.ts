@@ -19,7 +19,7 @@
  * A generator that believes it put the keyword in the first paragraph and did
  * not is exactly the failure the checks exist to catch.
  */
-import { aiAvailable, aiFetch } from '../lib/gemini';
+import { aiAvailable, aiErrorOf, aiFetch } from '../lib/gemini';
 import type {
   Article, ArticleSeo, BlogProject, MonthPlan, PlannedPost, SeoCheck,
 } from '../types/blogAutomation';
@@ -709,7 +709,7 @@ ${page?.url ? `- Include exactly one link to ${page.url}, with anchor text descr
         }),
       }, 'blog',
     );
-    if (!res.ok) throw new Error(`Gemini returned ${res.status}`);
+    if (!res.ok) throw new Error(await aiErrorOf(res));
     const data = await res.json();
     const raw = String(data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '')
       // Models wrap HTML in a fence often enough to be worth handling.

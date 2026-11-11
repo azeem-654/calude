@@ -9,6 +9,8 @@
 import { sessionToken } from './auth';
 import { getActiveAccountId } from './tenancy';
 import { API_BASE } from './apiBase';
+import { currentAiJob } from '../lib/gemini';
+import { universalYear, type MarketingYear } from './marketingYear';
 import { QUESTIONS, SOLUTIONS } from './projectSolutions';
 import { TEMPLATES } from '../components/Autopilot/workflowTemplates';
 import type { Attachment, CustomWorkflow, EditOps, ExtraQuestion } from './projectIntake';
@@ -46,7 +48,10 @@ async function call(action: string, extra: Record<string, unknown>): Promise<Rep
     const r = await fetch(`${API_BASE}/api/intake.php`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: sessionToken(), accountId, action, ...extra }),
+      /* A build's calls carry its job id (lib/gemini.ts aiJob), so a build that
+         started inside the AI allowance finishes past it. */
+      body: JSON.stringify({ token: sessionToken(), accountId, action, ...(currentAiJob() ? { job: currentAiJob() } : {}), ...extra }),
+      signal: AbortSignal.timeout(120_000),
     });
     return await r.json() as Reply;
   } catch (e) {
@@ -169,4 +174,18 @@ export async function suggestAnswers(p: {
   const r = await call('suggest', p);
   if (!r.success) return { ok: false, noAi: r.code === 'no_ai', suggestions: {}, error: r.error ?? 'No suggestions.' };
   return { ok: true, noAi: false, suggestions: (r.suggestions as Record<string, Suggestion>) ?? {}, error: '' };
+}
+
+/**
+ * The business's next twelve months (worker/src/routes/intake.ts `plan_year`).
+ *
+ * Always a plan: the server answers with the universal one and the reason when
+ * the AI could not write a tailored one, and so does this when the server
+ * cannot be reached — `plan.source` and `plan.note` say which it is.
+ */
+export async function planYear(business: { companyName: string; description: string; audience?: string; offer?: string; location?: string; goals?: string }): Promise<MarketingYear> {
+  const r = await call('plan_year', { business });
+  const plan = r.plan as MarketingYear | undefined;
+  if (r.success && plan && Array.isArray(plan.months) && plan.months.length === 12) return plan;
+  return universalYear(new Date(), `${r.error ?? 'The server could not be reached.'} This is the ready-made plan every business fits — press Write my plan to try again.`);
 }

@@ -66,6 +66,46 @@ keep "project"; so does a video project in AI Video Studio, and the nav's
   `scheduled.ts` writes the enrolments as soon as a step advances, so a throw
   later in the run cannot send the same step again next tick.
 
+## AI when the keys run out (2026-11, after AppSumo's review)
+
+- **`withFailover` (lib/aiPool.ts)** skips resting keys while a live key is
+  left (resting ones only when every live key could not do the work, two at
+  most), stops starting keys after ~100 s, and with every key failed answers
+  the caller's `exhausted` value — `AI_BUSY` (lib/ai.ts): "on our side, not
+  yours", never a provider or "add a key". It used to return the *last* key's
+  sentence, so OpenRouter-last showed "Searching the web needs a Google AI
+  key" to a customer whose Google keys were out of quota. The owner is mailed
+  (lib/aiAlert.ts, every 6 h at most) and Platform services' AI row reads live
+  key health.
+- **Switching before the limit**: `nearDailyLimit` (lib/aiUsage.ts) puts a key
+  at 90% of its free day behind the keys with room (Google ↔ OpenRouter); a key
+  that answered past the free figure is paid and never demoted.
+- **No charge for nothing**: `aiRefund` gives back the unit `aiBudget` took when
+  the call failed (agents, Autopilot writes, triage, replies, the wizard).
+  **A job finishes past the allowance**: `aiJob` (src/lib/gemini.ts) /
+  `job` on ai.php and intake.php (lib/aiJobs.ts, 45 min, 80 calls) — the screen
+  says the credits ran out afterwards (`creditsOut`).
+- Web research: OpenRouter's `web` plugin when Google cannot; with no key able
+  to search, a blog step writes from the profile around the question and says
+  so (`fallbackNote`).
+- Inbox replies run for every running project's workspace, not only those
+  with their own key (replyTick.ts).
+
+## The 12-Month Marketing Plan
+
+The dashboard's **Start AI setup** opens `/autopilot?new=1&solution=marketing-plan`
+(the old dashboard OnboardingWizard is no longer mounted). The solution builds
+social, blog and a monthly four-email campaign agent. The build's `year` step
+calls intake.php `plan_year` (one bounded call): a plan written for the
+business, or **`UNIVERSAL_YEAR`** (lib/marketingYear.ts, the ready-made plan
+any business fits, re-exported as services/marketingYear.ts) **labelled with
+the reason** — never passed off as AI. The plan is stored on the brief
+(`brief.year`, shown by `YearPlan` on the Overview with **Write my plan**) and
+on each agent step as `monthPlan`; `monthThemeOf` gives the agents this
+month's theme. `save_year` (projects.php) replaces both at once and is in
+`test:security`. Template content from the legacy monthly pipeline
+(contentGen.ts) carries `templateNote` and is never auto-approved.
+
 ## A project's workflows
 
 `Autopilot/WorkflowCanvas.tsx` draws each workflow as fixed-size boxes and an

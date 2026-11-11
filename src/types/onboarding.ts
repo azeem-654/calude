@@ -49,6 +49,12 @@ export interface MonthContent {
   /** Optional because months generated before Part 4 won't have them. */
   social?: GeneratedSocialPost[];
   videos?: GeneratedVideo[];
+  /**
+   * Set when some or all of it is the ready-made template rather than written
+   * by the AI, with the reason — shown on the month, and it keeps the month
+   * from being auto-approved (services/contentGen.ts).
+   */
+  templateNote?: string;
 }
 
 /** CRM records created when a month is published — kept for rollback. */
