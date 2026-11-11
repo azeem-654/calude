@@ -206,7 +206,14 @@ const MAX_SECONDS = 180;
 const SILENCE_STOP_SECONDS = 12;
 const SPEECH_LEVEL = 0.02;
 
-export function useVoiceInput(locale: string) {
+/**
+ * `silenceStopSeconds` ends the take that long after the speaker goes quiet.
+ * The Autopilot box keeps the patient default (somebody composing a request
+ * thinks mid-sentence); Protron's conversation passes ~1.8 s, the pause that
+ * ends a spoken turn, so the customer does not have to press stop each time.
+ */
+export function useVoiceInput(locale: string, opts: { silenceStopSeconds?: number } = {}) {
+  const silenceStop = opts.silenceStopSeconds ?? SILENCE_STOP_SECONDS;
   const [phase, setPhase] = useState<VoicePhase>('idle');
   const [finalText, setFinalText] = useState('');
   const [level, setLevel] = useState(0);
@@ -465,14 +472,14 @@ export function useVoiceInput(locale: string) {
         const secs = (Date.now() - startedAt.current) / 1000;
         setSeconds(Math.floor(secs));
         const quiet = (Date.now() - lastSound.current) / 1000;
-        if (secs >= MAX_SECONDS || (heard.current && quiet >= SILENCE_STOP_SECONDS)) { void stop(); return; }
+        if (secs >= MAX_SECONDS || (heard.current && quiet >= silenceStop)) { void stop(); return; }
       }
       raf.current = requestAnimationFrame(tick);
     };
     raf.current = requestAnimationFrame(tick);
 
     return new Promise(res => { resolveDone.current = res; });
-  }, [startRecogniser, stop]);
+  }, [startRecogniser, stop, silenceStop]);
 
   const cancel = useCallback(() => {
     teardown();

@@ -81,9 +81,23 @@ export default function Autopilot() {
   /* `?new=1&plan=site`: the plan a visitor made on the public site before
      signing up (services/sitePlan.ts) — the wizard builds it on arrival. */
   const [sitePlan] = useState(() => (params.get('new') === '1' && params.get('plan') === 'site' ? pendingPlan() : null));
+  /* `?new=1&from=protron`: Protron wrote the instruction (services/protron
+     actions.ts `start_autopilot_project`) and left it in this tab's
+     sessionStorage — read once, so a reload does not paste it again. Watched
+     as well as read at mount, because Protron can hand one over while this
+     screen is already open. */
+  const takeHandoff = () => {
+    try { const t = sessionStorage.getItem('pc_protron_handoff') ?? ''; sessionStorage.removeItem('pc_protron_handoff'); return t; } catch { return ''; }
+  };
+  const [handoff, setHandoff] = useState(() => (params.get('new') === '1' && params.get('from') === 'protron' ? takeHandoff() : ''));
+  const [handoffKey, setHandoffKey] = useState(0);
   useEffect(() => {
     if (params.get('new') !== '1') return;
-    setParams(p => { const n = new URLSearchParams(p); n.delete('new'); n.delete('list'); n.delete('plan'); return n; }, { replace: true });
+    if (params.get('from') === 'protron') {
+      const t = takeHandoff();
+      if (t) { setHandoff(t); setHandoffKey(k => k + 1); setCreating(true); }
+    }
+    setParams(p => { const n = new URLSearchParams(p); n.delete('new'); n.delete('list'); n.delete('plan'); n.delete('from'); return n; }, { replace: true });
   }, [params, setParams]);
 
   const load = useCallback(async () => {
@@ -235,12 +249,14 @@ export default function Autopilot() {
 
         {creating && (
           <NewProject
+            key={handoffKey}
             portfolios={portfolios}
+            seedPrompt={handoff || undefined}
             presetListId={presetList || undefined}
             seed={sitePlan}
-            onClose={() => setCreating(false)}
+            onClose={() => { setCreating(false); setHandoff(''); }}
             onCreated={id => {
-              setCreating(false);
+              setCreating(false); setHandoff('');
               refreshAllowances();
               setBoardKey(k => k + 1);
               void load();

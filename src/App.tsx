@@ -28,6 +28,7 @@ import { LogoMark } from './components/shared/Logo';
 import HelpLauncher from './components/shared/HelpLauncher';
 import TrialBar from './components/shared/TrialBar';
 import CornerHelp from './components/shared/CornerHelp';
+import Protron from './components/Protron/Protron';
 import { claimIndustryIfPending } from './services/industrySetup';
 
 /*
@@ -293,6 +294,9 @@ function AppLayout({ isClient }: { isClient: boolean }) {
       <NativeBridge />
       <HelpLauncher />
       <CornerHelp />
+      {/* The AI business manager, on every signed-in screen; its panel is a
+          separate download fetched on first open (Protron.tsx). */}
+      <Protron />
       {/* The 62px is the floating icon rail's width. The rail is hidden below
           760px (see index.css), so on a phone that padding was 62px of nothing
           shoving every screen off-centre to the right; `app-main` takes it back

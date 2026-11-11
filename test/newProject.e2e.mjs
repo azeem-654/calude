@@ -64,6 +64,11 @@ async function open(width, tag, reducedMotion = 'no-preference') {
   }
   const d = p.getByRole('dialog', { name: 'New business workspace' });
   await d.waitFor({ timeout: 8000 });
+  /* The wizard now opens on Protron's questions (company name first); these
+     tests drive the original box, one press away. test/protron.e2e.mjs drives
+     Protron's path. */
+  const manual = d.getByRole('button', { name: /rather describe it myself/ });
+  if (await manual.isVisible().catch(() => false)) await manual.click();
   return { ctx, p, d, errs };
 }
 

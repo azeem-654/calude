@@ -55,6 +55,7 @@ Studio jobs (`VIDEO_CRON`). A scheduled run has no origin: absolute URLs read
 |---|---|
 | The cron, "live in the cloud", what runs without a browser | `docs/claude/architecture.md` |
 | AI Autopilot (planner, guardrails, business workspaces, the wizard, workflows canvas) | `docs/claude/autopilot.md` |
+| Protron, the AI business manager on every screen (action registry, voice, offers of help) and the wizard's Protron first screens | `docs/claude/protron.md` |
 | Payments, plans and allowances, affiliates, revenue, trials, lead-to-revenue and the performance fee (Jobs & revenue, Growth service) | `docs/claude/money.md` |
 | Sending email, Platform services, support widget/live help, phone apps | `docs/claude/platform.md` |
 | Reputation, the booking page, the owner's strategy call | `docs/claude/reputation-booking.md` |

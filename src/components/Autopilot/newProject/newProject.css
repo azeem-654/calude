@@ -428,3 +428,20 @@
 .np-plan-warn a { color: #4c39d1; font-weight: 700; }
 .np-widened { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-radius: 12px; background: #f6f4ff; border: 1px solid #e2ddff; font-size: 13px; color: #3b2fa8; line-height: 1.5; }
 .np-widened span { flex: 1 1 280px; }
+
+/* ── Protron's first screens (ProtronIntake.tsx) ── */
+.np-protron-face { width: 56px; height: 56px; border-radius: 16px; flex-shrink: 0; display: grid; place-items: center; background: radial-gradient(circle at 50% 35%, #26303a 0%, #0c1014 72%); box-shadow: 0 8px 22px -10px rgba(5,10,15,.6); }
+.np-link { justify-self: start; border: 0; background: none; padding: 2px 0; font: inherit; font-size: 13.5px; font-weight: 600; color: #5b46e5; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; display: inline-flex; align-items: center; gap: 5px; }
+.np-link:disabled { color: #a5a9b5; cursor: default; }
+.np-protron-note { margin: 0; display: flex; gap: 7px; align-items: flex-start; font-size: 13px; line-height: 1.5; color: #7c5a10; background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 9px 12px; }
+.np-protron-note svg { flex-shrink: 0; margin-top: 2px; }
+.np-protron-recs { display: grid; gap: 8px; padding: 12px 14px; border-radius: 14px; background: #f5f3ff; border: 1px solid #e2ddff; }
+.np-talk { display: flex; flex-direction: column; gap: 10px; max-height: 340px; overflow-y: auto; padding: 14px; border-radius: 16px; background: #f7f8fa; border: 1px solid #eceef2; }
+.np-talk-bot, .np-talk-you { max-width: 86%; font-size: 14px; line-height: 1.5; padding: 9px 13px; overflow-wrap: anywhere; display: flex; gap: 7px; align-items: center; }
+.np-talk-bot { align-self: flex-start; background: #fff; border: 1px solid #e6e9ee; border-radius: 16px 16px 16px 4px; color: #17191c; }
+.np-talk-you { align-self: flex-end; background: #5b46e5; color: #fff; border-radius: 16px 16px 4px 16px; }
+.np-quick { display: flex; flex-wrap: wrap; gap: 6px; }
+.np-chip-btn { font: inherit; font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 999px; border: 1px solid #e2ddff; background: #f1effe; color: #3b2fa8; cursor: pointer; }
+.np-chip-btn:hover { background: #e7e3ff; }
+.np-instruction { font-size: 14px; line-height: 1.55; min-height: 240px; resize: vertical; }
+@media (max-width: 520px) { .np-protron-face { width: 46px; height: 46px; } .np-talk { max-height: 260px; } }

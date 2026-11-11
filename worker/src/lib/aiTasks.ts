@@ -118,6 +118,13 @@ export const MODULES: Record<string, { label: string; task: AiTask }> = {
   'autopilot-plan': { label: 'AI Autopilot planning', task: 'reason' },
   'autopilot-research': { label: 'AI Autopilot research', task: 'research' },
   'business-wizard': { label: 'Business workspace wizard', task: 'reason' },
+  /* Protron, the in-app assistant (src/services/protron): somebody is waiting
+     on every turn, and the answer is a short sentence plus an action from a
+     fixed list — Flash is fast and follows the JSON shape reliably. The
+     onboarding's written instruction is a plan the customer approves, so it
+     gets the planning tier. */
+  'protron': { label: 'Protron — AI business manager', task: 'write' },
+  'protron-plan': { label: 'Protron — business workspace instruction', task: 'reason' },
   'strategy': { label: 'Marketing strategy & plans', task: 'reason' },
   'workflows': { label: 'Workflow builder', task: 'reason' },
   'pipeline': { label: 'Sales pipeline AI', task: 'reason' },

@@ -318,6 +318,8 @@ const overflow = page => page.evaluate(() => document.documentElement.scrollWidt
   await page.goto(`${B}/autopilot?new=1`, { waitUntil: 'networkidle' });
   const np = page.getByRole('dialog', { name: 'New business workspace' });
   await np.waitFor({ timeout: 10_000 });
+  /* Past Protron's first screen to the original box (protron.e2e.mjs drives Protron's path). */
+  await np.getByRole('button', { name: /rather describe it myself/ }).click();
   await np.getByLabel('What would you like AI Autopilot to do?').fill('I want to sell my dental supplies to dentists in Leeds and find customers by email and SMS.');
   const cta = np.locator('footer .wz-cta');
   await cta.click();

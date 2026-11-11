@@ -39,6 +39,8 @@ export interface DescribeValue {
   links: LinkRef[];
   /** A transcript nobody has confirmed yet. Continue waits for it. */
   voicePending: boolean;
+  /** Several solutions chosen together on Protron's screen; outranks `picked`. */
+  pickedKeys?: string[];
 }
 
 export default function Describe({ value, onChange, onError }: {
@@ -98,7 +100,7 @@ export default function Describe({ value, onChange, onError }: {
     const prompt = key === CUSTOM
       ? (wasExample ? '' : value.prompt)
       : (!value.prompt.trim() || wasExample ? (s?.example ?? '') : value.prompt);
-    set({ picked: value.picked === key ? '' : key, prompt });
+    set({ picked: value.picked === key ? '' : key, prompt, pickedKeys: undefined });
     window.setTimeout(() => box.current?.focus(), 0);
   };
 

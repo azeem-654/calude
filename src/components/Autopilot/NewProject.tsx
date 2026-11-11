@@ -61,6 +61,8 @@ import {
   type Blueprint, type IntakeState, type KnownSource, type WorkspaceFacts, type Attachment,
 } from '../../services/projectIntake';
 import Describe, { type DescribeValue } from './newProject/Describe';
+import ProtronIntake, { useProtronIntake } from './newProject/ProtronIntake';
+import { chosenLabels } from '../../services/protron/intake';
 import Understanding, { type Stage } from './newProject/Understanding';
 import Questions from './newProject/Questions';
 import FirstLeads from './newProject/FirstLeads';
@@ -100,7 +102,7 @@ const EXAMPLES = [
 
 const pause = (ms: number) => new Promise(r => window.setTimeout(r, ms));
 
-export default function NewProject({ portfolios, onClose, onCreated, presetListId, seed }: {
+export default function NewProject({ portfolios, onClose, onCreated, presetListId, seed, seedPrompt }: {
   portfolios: Portfolio[];
   onClose: () => void;
   /** Called with the new project's id when the customer goes into it. */
@@ -119,6 +121,12 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
    * with nothing left the build starts on arrival.
    */
   seed?: SitePlan | null;
+  /**
+   * An instruction Protron wrote elsewhere in the app (its
+   * `start_autopilot_project` action). It goes in the box for the customer to
+   * read; the wizard starts on the box rather than on Protron's questions.
+   */
+  seedPrompt?: string;
 }) {
   const { addNotification, addWebsite, addFunnel } = useApp();
   const [phase, setPhase] = useState<Phase>('describe');
@@ -131,7 +139,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
        what they are offering before anything is understood. */
     /* Worded to match Email Outreach without the AI, and with no "to …"
        that the audience reader would take for who the emails are about. */
-    prompt: preset ? `Email outreach for the businesses on my contact list “${preset.name}”: a short email sequence about our offer that books calls with the interested ones.` : '',
+    prompt: seedPrompt ? seedPrompt.slice(0, 4000) : preset ? `Email outreach for the businesses on my contact list “${preset.name}”: a short email sequence about our offer that books calls with the interested ones.` : '',
     picked: '', files: [], links: [], voicePending: false,
   }));
 
@@ -146,6 +154,13 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
       workspace: real ? { companyName: real.companyName, description: real.description, website: real.website ?? '' } : null,
     };
   }, [portfolios]);
+
+  /* ── Protron's first screens ──
+     Company name → ready-made solutions → a short interview → the instruction,
+     which then goes through Understand like any typed request. A wizard opened
+     with something already to say (a list, the site's plan, Protron's own
+     hand-off) starts on the box instead. */
+  const intake = useProtronIntake(ws.workspace?.companyName ?? '', seed || preset || seedPrompt ? 'manual' : 'name');
 
   /* ── Understanding ── */
   const [state, setState] = useState<IntakeState | null>(null);
@@ -276,8 +291,13 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
   }, [preset]);
 
   /* ── Understand ── */
-  const runUnderstanding = useCallback(async (override?: string) => {
+  const runUnderstanding = useCallback(async (override?: string, pickOverride?: string[]) => {
     const prompt = (override ?? describe.prompt).trim();
+    /* The solutions the customer chose — one card on the box, or any number
+       combined on Protron's screen. A choice made by pressing a card outranks
+       the AI's reading of the words; the AI's extra matches ride along. */
+    const chosen = (pickOverride ?? describe.pickedKeys ?? (describe.picked ? [describe.picked] : []))
+      .filter(k => k !== CUSTOM && solutionByKey(k));
     const urls = [...new Set([...links.map(l => l.url), ...urlsIn(prompt)])];
     const base = initialState(prompt, describe.picked || undefined, ws, files, links);
     const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
@@ -308,7 +328,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
       const u = r.understanding;
       const aiKeys = u.solutionKeys.filter(k => solutionByKey(k));
       let keys = aiKeys.length ? aiKeys : base.solutionKeys;
-      if (describe.picked && describe.picked !== CUSTOM) keys = [describe.picked, ...aiKeys.filter(k => k !== describe.picked)].slice(0, 2);
+      if (chosen.length) keys = [...chosen, ...aiKeys.filter(k => !chosen.includes(k))].slice(0, Math.max(2, chosen.length));
       const known = extractKnown(prompt, keys, ws, files, links);
       const askedIds = new Set(allQuestions({ solutionKeys: keys, extraQuestions: [] }).map(q => q.id));
       for (const [id, v] of Object.entries(u.facts ?? {})) {
@@ -340,7 +360,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
       st = {
         ...base,
         solutionKeys: keys,
-        strength: describe.picked && describe.picked !== CUSTOM ? (keys.length > 1 ? 'partial' : 'strong') : (aiKeys.length ? u.match : base.strength),
+        strength: chosen.length ? (keys.length > 1 ? 'partial' : 'strong') : (aiKeys.length ? u.match : base.strength),
         known,
         extraQuestions: extra,
         customWorkflows: u.customWorkflows ?? [],
@@ -353,6 +373,10 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
       mark('read', { state: 'done', detail: u.summary || undefined });
     } else {
       aiDown.current = r.noAi;
+      /* Matched words, but the cards pressed still decide the solutions. */
+      if (chosen.length) {
+        st = { ...base, solutionKeys: chosen, strength: chosen.length > 1 ? 'partial' : 'strong', known: extractKnown(prompt, chosen, ws, files, links) };
+      }
       mark('read', {
         state: 'warn',
         detail: r.noAi ? 'The AI is not available right now, so I matched your words to our solutions instead.' : `The AI could not be reached (${r.error}), so I matched your words instead.`,
@@ -797,8 +821,25 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
 
   const buyDomains = !!result?.projectId && String(state?.known.mailbox?.value ?? '') === 'buy';
 
+  /* Protron's instruction, approved: into the box, with the chosen solutions,
+     and through the same Understand step a typed request takes. */
+  const approveInstruction = () => {
+    const prompt = intake.instruction.trim().slice(0, 4000);
+    if (prompt.length < 8) return;
+    const keys = intake.keys;
+    setDescribe(d => ({ ...d, prompt, picked: keys[0] ?? '', pickedKeys: keys, voicePending: false }));
+    setPhase('understand');
+    setCorrection(null);
+    void runUnderstanding(prompt, keys);
+  };
+
   /* ── The footer ── */
   const blocker = (() => {
+    if (phase === 'describe' && intake.step !== 'manual') {
+      if (intake.busy === 'writing') return 'Writing your instruction…';
+      if (intake.step === 'prompt' && intake.instruction.trim().length < 8) return 'The instruction is empty';
+      return '';
+    }
     if (phase === 'describe') {
       if (describe.voicePending) return 'Check the transcript first';
       if (describe.prompt.trim().length < 8 && !files.length) return describe.picked ? 'Say a little about what you want' : 'Describe what you want, or pick a solution';
@@ -812,6 +853,10 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
 
   const next = () => {
     if (blocker) return;
+    if (phase === 'describe' && intake.step === 'name') { intake.setStep('solutions'); return; }
+    if (phase === 'describe' && intake.step === 'solutions') { intake.startTalk(); return; }
+    if (phase === 'describe' && intake.step === 'talk') { void intake.write(); return; }
+    if (phase === 'describe' && intake.step === 'prompt') { approveInstruction(); return; }
     if (phase === 'describe') { setPhase('understand'); setCorrection(null); void runUnderstanding(); return; }
     if (phase === 'understand') { startQuestions(); return; }
     if (phase === 'questions') {
@@ -843,6 +888,12 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
   };
 
   const back = () => {
+    if (phase === 'describe') {
+      if (intake.step === 'prompt') intake.setStep('talk');
+      else if (intake.step === 'talk') intake.setStep('solutions');
+      else if (intake.step === 'solutions' || (intake.step === 'manual' && !seed && !preset && !seedPrompt)) intake.setStep('name');
+      return;
+    }
     if (phase === 'understand') setPhase('describe');
     else if (phase === 'questions' && leadsOpen) { setLeadsOpen(false); leadsSeen.current = ''; }
     else if (phase === 'questions') { if (screenIdx > 0) setScreenIdx(i => i - 1); else setPhase('understand'); }
@@ -861,6 +912,10 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
 
   const ctaLabel = (() => {
     if (blocker) return blocker;
+    if (phase === 'describe' && intake.step === 'name') return intake.brief.company.trim() ? 'Continue' : 'Continue without a name';
+    if (phase === 'describe' && intake.step === 'solutions') return intake.keys.length || intake.brief.custom.trim() ? 'Continue with Protron' : 'Not sure — let Protron ask';
+    if (phase === 'describe' && intake.step === 'talk') return 'Write my instruction';
+    if (phase === 'describe' && intake.step === 'prompt') return 'Approve and continue';
     if (phase === 'describe') return 'Continue';
     if (phase === 'understand') return screens.length || (state && allQuestions(state).some(q => applies(q, state.known) && !state.known[q.id])) ? 'Answer a few questions' : 'See the blueprint';
     if (phase === 'questions' && leadsOpen) return screenIdx + 1 < screens.length ? 'These look right — continue' : 'These look right — see the plan';
@@ -892,7 +947,17 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
         </span>
       </div>
 
-      {phase === 'describe' && (
+      {phase === 'describe' && intake.step !== 'manual' && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b7280', letterSpacing: '0.05em' }}>WHAT PROTRON HAS SO FAR</span>
+          <span style={{ fontSize: 13, color: '#334155' }}><b>Business:</b> {intake.brief.company.trim() || '—'}</span>
+          <span style={{ fontSize: 13, color: '#334155' }}><b>Solutions:</b> {chosenLabels(intake.brief).join(', ') || '—'}</span>
+          <span style={{ fontSize: 13, color: '#334155' }}><b>Answers:</b> {intake.brief.talk.filter(t => t.role === 'user').length}</span>
+          <span style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5, marginTop: 6 }}>Nothing is saved until you approve the instruction and build the business workspace.</span>
+        </div>
+      )}
+
+      {phase === 'describe' && intake.step === 'manual' && (
         <div style={{ display: 'grid', gap: 8 }}>
           <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b7280', letterSpacing: '0.05em' }}>A GOOD REQUEST SAYS</span>
           {['The result you want', 'How often, if it repeats', 'Where it should end up', 'Anything I should read — attach it'].map(t => (
@@ -962,7 +1027,10 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
         <div className="np-body">
           <main className="np-main">
             <div key={`${phase}-${screenIdx}-${leadsOpen ? 'leads' : ''}`} className="np-rise">
-              {phase === 'describe' && (
+              {phase === 'describe' && intake.step !== 'manual' && (
+                <ProtronIntake p={intake} onManual={() => intake.setStep('manual')} />
+              )}
+              {phase === 'describe' && intake.step === 'manual' && (
                 <Describe value={describe} onChange={setDescribe} onError={m => addNotification(m, 'error')} />
               )}
               {phase === 'understand' && (
@@ -1081,7 +1149,8 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
         </div>
 
         <footer className="np-foot">
-          {['understand', 'questions', 'blueprint', 'requirements', 'review'].includes(phase) && (
+          {(['understand', 'questions', 'blueprint', 'requirements', 'review'].includes(phase)
+            || (phase === 'describe' && intake.step !== 'name' && !(intake.step === 'manual' && (seed || preset || seedPrompt)))) && (
             <button type="button" className="np-back" onClick={back} style={{ marginRight: 'auto' }}>
               <ArrowLeft size={15} /> <span className="np-back-label">Back</span>
             </button>

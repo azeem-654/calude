@@ -84,7 +84,11 @@ for every template).
 
 ## What a new project decides, and where
 
-The wizard is `src/components/Autopilot/NewProject.tsx`: **describe → understand
+The wizard is `src/components/Autopilot/NewProject.tsx`. Since 2026-11-11 it
+opens on **Protron's screens** (company name → ready-made solutions, several at
+once → a short interview → an instruction the customer approves), which then
+feed the same box and Understand step — see `docs/claude/protron.md`. After
+that: **describe → understand
 → only the questions still missing → blueprint (editable by sentence or voice)
 → connections → review → build**. `docs/AUTOPILOT-NEW-PROJECT.md` has the audit
 of the fixed six-step wizard it replaced and why that one asked every project
