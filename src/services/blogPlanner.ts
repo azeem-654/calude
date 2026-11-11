@@ -400,7 +400,7 @@ interface RawPost {
 export async function enrichPlanWithAI(plan: MonthPlan, project: BlogProject): Promise<MonthPlan> {
   const key = aiAvailable();
   if (!key) {
-    return { ...plan, note: 'No Gemini key configured — titles and outlines written from the keywords. Add a key in Settings → AI for sharper ones.' };
+    return { ...plan, note: 'AI was not reachable from this page, so titles and outlines were written from the keywords. Sign in again and retry for sharper ones.' };
   }
   if (!plan.posts.length) return plan;
 

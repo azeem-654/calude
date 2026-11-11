@@ -61,7 +61,12 @@ const CONNECTS: Brand[] = [
   { id: 'geoapify', name: 'Geoapify', role: 'Business directory search' },
   { id: 'openstreetmap', name: 'OpenStreetMap', role: 'Business directory data' },
   { id: 'companieshouse', name: 'Companies House', role: 'UK company register' },
-  { id: 'googlebusiness', name: 'Google Business Profile', role: 'Every review, and replies posted back' },
+  /* Google Business Profile is off this row until Google grants the install
+     Business Profile API access (OWNER-CHECKLIST #24; PUB-5). Until then no
+     customer can have every review read or a reply posted back, and a
+     reviewer could disprove the claim in a minute. It stays below, where the
+     claim is only that replies are written in that format. Put it back with
+     role 'Every review, and replies posted back' once access is granted. */
   { id: 'gmail', name: 'Gmail', role: 'Send from your own mailbox' },
   { id: 'microsoft365', name: 'Microsoft 365', role: 'Send from your own mailbox' },
   { id: 'activecampaign', name: 'ActiveCampaign', role: 'Email sending' },

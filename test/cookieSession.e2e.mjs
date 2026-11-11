@@ -44,11 +44,22 @@ const b = await pw.chromium.launch();
 
   const me = await p.evaluate(async () => (await fetch('/api/auth.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'me', token: 'cookie' }) })).json());
   ok('an API call with only the placeholder is signed in', me.success && me.user?.email, JSON.stringify(me));
+  const adopt = await p.evaluate(async () => (await fetch('/api/auth.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'adopt_cookie', token: 'cookie' }) })).json());
+  ok('adopt_cookie on the placeholder hands page script no token (W-2)', adopt.success && (adopt.token === undefined || adopt.token === 'cookie'), JSON.stringify(adopt).slice(0, 120));
 
   const out = await p.evaluate(async () => (await fetch('/api/auth.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout', token: 'cookie' }) })).json());
   const after = await p.evaluate(async () => (await fetch('/api/auth.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'me', token: 'cookie' }) })).json());
   ok('logout ends the session and clears the cookie', out.success && !after.success && !(await ctx.cookies()).some(x => x.name === 'pc_session' && x.value), JSON.stringify(after));
   await ctx.close();
+}
+
+/* 1b · Login CSRF (W-1): a foreign page's text/plain post, or a cross-origin
+        JSON one, is refused and gets no session cookie. */
+{
+  const plain = await fetch(`${B}/api/auth.php`, { method: 'POST', headers: { 'Content-Type': 'text/plain', Origin: 'https://evil.example', Connection: 'close' }, body: JSON.stringify({ action: 'login', email, password: pw1 }) });
+  ok('a cross-origin text/plain login is refused with no Set-Cookie', plain.status === 403 && !(plain.headers.get('set-cookie') ?? '').includes('pc_session'), `${plain.status} ${plain.headers.get('set-cookie')}`);
+  const xjson = await fetch(`${B}/api/auth.php`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example', 'Sec-Fetch-Site': 'cross-site', Connection: 'close' }, body: JSON.stringify({ action: 'login', email, password: pw1 }) });
+  ok('…and so is a cross-origin JSON one', xjson.status === 403 && !(xjson.headers.get('set-cookie') ?? '').includes('pc_session'), String(xjson.status));
 }
 
 /* 2 · A browser signed in the old way is moved onto the cookie. */

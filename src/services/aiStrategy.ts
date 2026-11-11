@@ -308,7 +308,7 @@ export async function proposeStrategy(objective: string): Promise<ProposalResult
   const fallback = fallbackStrategy(objective);
   const key = aiAvailable();
   if (!key) {
-    return { strategy: fallback, note: 'Planned without an AI model — no Gemini key is set in Settings. Every number below came from your sentence or from a stated default.' };
+    return { strategy: fallback, note: 'Planned without AI — it was not reachable from this page (sign in again and retry). Every number below came from your sentence or from a stated default.' };
   }
 
   const read = readObjective(objective);

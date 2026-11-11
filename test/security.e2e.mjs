@@ -658,6 +658,19 @@ await fetch(smsUrl, { method: 'POST', headers: { 'Content-Type': 'application/x-
 const outs = d1rows(`SELECT account_id AS a FROM crm_sms_optouts WHERE phone = '${FROM}'`);
 check('a STOP signed with the real owner\'s token is recorded for them, whoever claimed the number first', outs.some(o => o.a === C2.acct) && !outs.some(o => o.a === B2.acct), JSON.stringify(outs));
 
+console.log('\nOnly the number itself lifts a STOP (S-1)');
+const startForm = { ...smsForm, Body: 'START' };
+await fetch(smsUrl, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': signTw('tok-b', startForm), Connection: 'close' }, body: new URLSearchParams(startForm).toString() });
+const stillOut = d1rows(`SELECT account_id AS a FROM crm_sms_optouts WHERE phone = '${FROM}'`);
+check('a START signed with somebody else\'s token lifts nothing', stillOut.some(o => o.a === C2.acct), JSON.stringify(stillOut));
+await fetch(smsUrl, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': signTw('tok-a', startForm), Connection: 'close' }, body: new URLSearchParams(startForm).toString() });
+const lifted = d1rows(`SELECT account_id AS a FROM crm_sms_optouts WHERE phone = '${FROM}'`);
+check('a START from the number, signed by the owner, lifts its STOP', !lifted.some(o => o.a === C2.acct), JSON.stringify(lifted));
+
+console.log('\nThe retired Stripe callback (M-6)');
+const oldHook = await fetch(`${BASE}/api/stripe-webhook.php`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': 't=1,v1=00', Connection: 'close' }, body: JSON.stringify({ type: 'checkout.session.completed', data: { object: { metadata: { accountId: C2.acct } } } }) });
+check('/api/stripe-webhook.php answers 410 and changes nothing', oldHook.status === 410, String(oldHook.status));
+
 console.log(`\n${passes} passed, ${failures} failed.`);
 process.exit(failures ? 1 : 0);
 

@@ -17,7 +17,7 @@ import type { AIGuardrails, LinkKind } from '../types/aiSalesAgent';
 export type AutopilotStatus = 'off' | 'learning' | 'running' | 'paused';
 
 /** pending: planned. awaiting: needs a click. done/failed/skipped: over. */
-export type ActionStatus = 'pending' | 'awaiting' | 'done' | 'failed' | 'skipped';
+export type ActionStatus = 'pending' | 'running' | 'awaiting' | 'done' | 'failed' | 'skipped';
 
 export interface AutopilotLink {
   kind: LinkKind;

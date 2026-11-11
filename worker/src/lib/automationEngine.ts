@@ -551,7 +551,7 @@ export async function runAutomations(env: Env): Promise<AutomationReport> {
           }
           const fromEmail = fromAddressOf(mailbox!);
           const r = await deliver(mailbox!, {
-            fromName: mailbox!.from.name || 'CRM', fromEmail, to, subject, html: withUnsubscribe(await signTrackedLinks(env, html), unsub),
+            fromName: mailbox!.from.name || 'CRM', fromEmail, to, subject, html: withUnsubscribe(await signTrackedLinks(env, html, accountId), unsub),
             replyTo: mailbox!.from.replyTo || undefined,
             unsubscribeUrl: unsub || undefined,
           });

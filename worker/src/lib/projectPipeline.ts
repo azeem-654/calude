@@ -32,7 +32,7 @@
  * pipeline that is already there rather than adding a second one — including
  * when a customer has renamed it, because the marker is the id and not the name.
  */
-import { askGemini } from './ai';
+import { aiBudget, askGemini } from './ai';
 import { loadAiKey } from './ai';
 import { dataGet, dataPut, nowIso, type Env } from './db';
 
@@ -140,7 +140,8 @@ async function writeTasks(
   },
   stages: Array<{ name: string }>,
 ): Promise<{ tasks: string[][]; generated: boolean }> {
-  const key = await loadAiKey(env, accountId);
+  /* Over its AI budget (F-3): the stage-named starter tasks, as with no key. */
+  const key = (await aiBudget(env, accountId)) ? null : await loadAiKey(env, accountId);
   if (!key) return { tasks: fallbackTasks(stages), generated: false };
 
   const prompt = `You are setting up a project board for a marketing agency's client.

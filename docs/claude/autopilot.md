@@ -50,6 +50,22 @@ keep "project"; so does a video project in AI Video Studio, and the nav's
   state — "no projects" and "could not ask" look identical in a zero, and only
   one of them means the customer has nothing set up.
 
+- **An action is claimed before it is carried out** (audit F-1): `UPDATE …
+  SET status='running' WHERE id=? AND status='pending'`, and only the tick
+  whose update changed the row acts. A row left `running` for 20 minutes (a
+  tick that died) is closed as `failed`, never put back to pending — it may
+  already have sent.
+- **Every server AI path asks `aiBudget()` first** (audit F-3): Autopilot's
+  writes (`carryOutWrite`), scheduled agents and Repurpose (`projectAgents.ts`),
+  the board's starter tasks (`projectPipeline.ts`), the wizard (`intake.ts`),
+  inbox replies (per drafted message, not per tick), form triage
+  (`engageDispatch.ts`, a held workspace skipped for the tick) and the public
+  chat (`agentBrain.ts`, whose visitor sees the human fallback, never the
+  budget sentence). Refused work is skipped or held with the reason recorded.
+- **Sequence steps are saved after each send** (audit E-6): `runAccount` in
+  `scheduled.ts` writes the enrolments as soon as a step advances, so a throw
+  later in the run cannot send the same step again next tick.
+
 ## A project's workflows
 
 `Autopilot/WorkflowCanvas.tsx` draws each workflow as fixed-size boxes and an

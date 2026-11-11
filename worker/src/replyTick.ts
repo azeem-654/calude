@@ -21,7 +21,7 @@ import { incomingReady, loadMailboxes, noteIncomingSync, type Mailbox } from './
 import { imapFetch } from './lib/imap';
 import { fetchHosted } from './lib/hostedMail';
 import { deliver, fromAddressOf } from './lib/deliver';
-import { askGemini, loadAiKey } from './lib/ai';
+import { aiBudget, askGemini, loadAiKey } from './lib/ai';
 import {
   classify, matchRule, needsEscalation, replyPrompt, shouldRefuse,
   type AutoReplyRule, type InboundMessage,
@@ -191,6 +191,14 @@ async function doMailbox(
       signature: p.signature ?? '',
     }, msg, rule.instruction);
 
+    /* The workspace's AI budget, asked per message actually drafted (F-3) —
+       not per tick, which would spend an allowance every five minutes on an
+       empty inbox. Refused: left unseen, so it is answered once there is room. */
+    const refused = await aiBudget(env, accountId);
+    if (refused) {
+      report.notes.push(`${mb.label || 'mailbox'}: replies held — ${refused.slice(0, 160)}`);
+      return;
+    }
     const ai = await askGemini(apiKey, prompt, 0.5, { module: 'inbox-replies', accountId });
     if (!ai.ok) {
       /* Not marked seen: a key that ran out of quota should answer this message

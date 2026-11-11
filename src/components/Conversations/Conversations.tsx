@@ -199,7 +199,7 @@ export default function Conversations() {
   /* ── Actions ── */
   const aiDraft = async () => {
     if (!selected || !selectedMb) return;
-    if (!hasGeminiKey()) { addNotification('No Gemini API key configured — add one to draft AI replies.', 'error'); return; }
+    if (!hasGeminiKey()) { addNotification('AI replies are not available on this page — sign in again and retry.', 'error'); return; }
     setDrafting(true);
     try {
       const d = await draftEmailReply(selectedMb.profile, selected, '');

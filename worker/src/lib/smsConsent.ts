@@ -21,6 +21,7 @@
  */
 import { dataGet, dataUpdate, installSecret, nowIso, type Env } from './db';
 import { enrolOnEvent } from './automationEngine';
+import { isOptedOut } from './sms';
 
 const KEY = 'sms_optin';
 export const CONSENT_TAG = 'sms opt-in';
@@ -77,14 +78,19 @@ export async function prospectSmsBlock(env: Env, accountId: string, contact: { s
 }
 
 /** Record their yes: the consent, their number on the contact, the tag, and the workflows that start on it. */
-export async function recordConsent(env: Env, accountId: string, contactId: string, phone: string, ip: string): Promise<{ ok: boolean; name: string }> {
+export async function recordConsent(env: Env, accountId: string, contactId: string, phone: string, ip: string): Promise<{ ok: boolean; name: string; optedOut: boolean }> {
   const at = nowIso();
   await env.DB.prepare(
     `INSERT INTO crm_sms_consents (account_id, phone, contact_id, wording, ip, at) VALUES (?,?,?,?,?,?)
      ON CONFLICT(account_id, phone) DO UPDATE SET contact_id = excluded.contact_id, wording = excluded.wording, ip = excluded.ip, at = excluded.at`,
   ).bind(accountId, phone, contactId, CONSENT_WORDING, ip.slice(0, 64), at).run();
-  /* A yes now outranks an old STOP for this number — it is the newer, explicit answer. */
-  await env.DB.prepare('DELETE FROM crm_sms_optouts WHERE account_id = ? AND phone = ?').bind(accountId, phone).run().catch(() => undefined);
+  /* A web yes never lifts a STOP (S-1). It used to delete the opt-out, so
+     anybody holding the email link could type a stranger's number — or the
+     number of somebody who had texted STOP — and switch texts back on. The
+     consent is kept; the STOP stands until that phone texts START or YES
+     (routes/misc.ts handleSmsInbound), which is also what lifts Twilio's own
+     carrier-level block, so the two can never disagree. */
+  const optedOut = await isOptedOut(env, accountId, phone).catch(() => false);
 
   let name = '';
   let email = '';
@@ -106,5 +112,5 @@ export async function recordConsent(env: Env, accountId: string, contactId: stri
     name = c?.name ?? ''; email = c?.email ?? '';
   }
   await enrolOnEvent(env, accountId, { kind: 'tag_added', ref: CONSENT_TAG, contactId, contactName: name, contactEmail: email, contactPhone: phone });
-  return { ok: true, name };
+  return { ok: true, name, optedOut };
 }

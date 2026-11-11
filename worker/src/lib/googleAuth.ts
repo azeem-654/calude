@@ -152,8 +152,37 @@ export async function checkState(env: Env, state: string): Promise<boolean> {
   return timingSafeEqual(mac, await sign(env, `${ts}.${nonce}`));
 }
 
+/**
+ * The browser that started a sign-in (W-1).
+ *
+ * A signed state proves this server minted it, not that this browser asked
+ * for it: an attacker could start a sign-in, finish it at Google with their
+ * own account, and mail the callback link to somebody — who would land in the
+ * attacker's account. So google_start also sets an HttpOnly cookie holding
+ * the state's nonce, and google_finish refuses a state whose nonce is not in
+ * the cookie of the browser presenting it.
+ */
+export const STATE_COOKIE = 'pc_gstate';
+
+export const stateNonce = (state: string): string => String(state ?? '').split('.')[1] ?? '';
+
+export function stateCookieHeader(state: string, secure: boolean): string {
+  return `${STATE_COOKIE}=${stateNonce(state)}; Path=/api/auth.php; Max-Age=600; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
+}
+
+/** Does this request carry the cookie google_start set for this state? */
+export function stateBoundHere(req: Request, state: string): boolean {
+  const want = stateNonce(state);
+  if (!want) return false;
+  for (const part of (req.headers.get('Cookie') ?? '').split(';')) {
+    const [k, ...v] = part.trim().split('=');
+    if (k === STATE_COOKIE) return timingSafeEqual(v.join('='), want);
+  }
+  return false;
+}
+
 /** The address to send somebody to. Null when Google is not configured. */
-export async function authorizeUrl(env: Env, origin: string, hint = ''): Promise<string | null> {
+export async function authorizeUrl(env: Env, origin: string, hint = '', state?: string): Promise<string | null> {
   const creds = await googleCreds(env);
   if (!creds) return null;
   const params = new URLSearchParams({
@@ -161,7 +190,7 @@ export async function authorizeUrl(env: Env, origin: string, hint = ''): Promise
     redirect_uri: redirectUri(origin),
     response_type: 'code',
     scope: SCOPES,
-    state: await makeState(env),
+    state: state ?? await makeState(env),
   });
   if (/^[^\s@]{1,64}@[^\s@]{1,190}$/.test(hint)) {
     /* "Continue as …": the page named the account, so Google goes straight to

@@ -7,24 +7,32 @@
  * (PolicyPage), with a contents list and anchored sections so a support reply
  * can link to one. The words are in legalText.ts.
  */
-import { AFFILIATE_TERMS, GROWTH_TERMS, GROWTH_TERMS_UPDATED, LEGAL_UPDATED, PRIVACY, PRIVACY_CONTACT, TERMS, type LegalSection } from './legalText';
+import { AFFILIATE_TERMS, COOKIES, GROWTH_TERMS, GROWTH_TERMS_UPDATED, LEGAL_UPDATED, PRIVACY, PRIVACY_CONTACT, REFUNDS, REFUNDS_UPDATED, TERMS, type LegalSection } from './legalText';
 import { usePageTitle } from '../../services/pageTitle';
 
 const INK = '#17191c';
 const MUTED = '#5b6270';
 const LINE = '#e6e9f0';
 
-export default function LegalPage({ doc }: { doc: 'privacy' | 'terms' | 'affiliate' | 'growth' }) {
-  const title = doc === 'privacy' ? 'Privacy Policy' : doc === 'affiliate' ? 'Affiliate Program Terms' : doc === 'growth' ? 'Growth Service Terms' : 'Terms of Service';
+const DOCS = {
+  privacy: { title: 'Privacy Policy', sections: PRIVACY, updated: LEGAL_UPDATED },
+  terms: { title: 'Terms of Service', sections: TERMS, updated: LEGAL_UPDATED },
+  affiliate: { title: 'Affiliate Program Terms', sections: AFFILIATE_TERMS, updated: LEGAL_UPDATED },
+  growth: { title: 'Growth Service Terms', sections: GROWTH_TERMS, updated: GROWTH_TERMS_UPDATED },
+  refunds: { title: 'Refund Policy', sections: REFUNDS, updated: REFUNDS_UPDATED },
+  cookies: { title: 'Cookie Policy', sections: COOKIES, updated: REFUNDS_UPDATED },
+} satisfies Record<string, { title: string; sections: LegalSection[]; updated: string }>;
+
+export default function LegalPage({ doc }: { doc: keyof typeof DOCS }) {
+  const { title, sections, updated } = DOCS[doc];
   usePageTitle(`${title} — Protected Central`);
-  const sections: LegalSection[] = doc === 'privacy' ? PRIVACY : doc === 'affiliate' ? AFFILIATE_TERMS : doc === 'growth' ? GROWTH_TERMS : TERMS;
 
   return (
     <div style={{ minHeight: '100vh', background: '#f4f5f7', padding: 'clamp(20px, 5vw, 52px) clamp(16px, 4vw, 32px)', fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif' }}>
       <article style={{ maxWidth: 760, margin: '0 auto', background: '#fff', border: `1px solid ${LINE}`, borderRadius: 18, padding: 'clamp(22px, 4vw, 42px)' }}>
         <a href="/" style={{ fontSize: 13, color: MUTED, textDecoration: 'none' }}>← Protected Central</a>
         <h1 style={{ margin: '14px 0 0', fontSize: 'clamp(24px, 4vw, 32px)', fontWeight: 800, color: INK, letterSpacing: '-0.025em' }}>{title}</h1>
-        <p style={{ margin: '6px 0 0', fontSize: 12.5, color: MUTED }}>Last updated {doc === 'growth' ? GROWTH_TERMS_UPDATED : LEGAL_UPDATED}</p>
+        <p style={{ margin: '6px 0 0', fontSize: 12.5, color: MUTED }}>Last updated {updated}</p>
 
         <nav aria-label="Contents" style={{ marginTop: 22, padding: '14px 16px', borderRadius: 12, background: '#f8fafc', border: `1px solid ${LINE}` }}>
           <b style={{ fontSize: 12, color: MUTED, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Contents</b>
@@ -52,6 +60,8 @@ export default function LegalPage({ doc }: { doc: 'privacy' | 'terms' | 'affilia
           {' · '}<a href="/privacy" style={{ color: '#4c39d1' }}>Privacy Policy</a>
           {' · '}<a href="/terms-of-service" style={{ color: '#4c39d1' }}>Terms of Service</a>
           {' · '}<a href="/terms" style={{ color: '#4c39d1' }}>Acceptable Use</a>
+          {' · '}<a href="/refund-policy" style={{ color: '#4c39d1' }}>Refund Policy</a>
+          {' · '}<a href="/cookie-policy" style={{ color: '#4c39d1' }}>Cookie Policy</a>
           {' · '}<a href="/security" style={{ color: '#4c39d1' }}>Security</a>
         </p>
       </article>

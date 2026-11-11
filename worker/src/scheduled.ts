@@ -270,7 +270,7 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
           fromEmail: fromAddressOf(mailbox!),
           to: target,
           subject,
-          html: withUnsubscribe(await signTrackedLinks(env, html), unsub),
+          html: withUnsubscribe(await signTrackedLinks(env, html, accountId), unsub),
           replyTo: mailbox!.from.replyTo || undefined,
           unsubscribeUrl: unsub || undefined,
         });
@@ -278,28 +278,7 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
       }
     }
 
-    /*
-     * Written down before anything else happens with the result.
-     *
-     * Every send, whether it worked or not, and with whatever the server said
-     * when it did not. This is the row that answers "did Rita get it", which
-     * the enrolment history could never answer — it is inside a JSON blob
-     * nobody can filter, on a record nobody thinks to open.
-     */
-    await logDelivery(env, accountId, {
-      channel: isSms ? 'sms' : 'email',
-      source: 'sequence',
-      sourceId: seq.id,
-      sourceName: seq.name ?? '',
-      stepIndex: enr.currentStep,
-      contactId: String(contact.id ?? ''),
-      recipient: target,
-      subject: isSms ? '' : subject,
-      status: suppressed ? 'suppressed' : out.ok ? 'sent' : 'failed',
-      detail: out.error ?? '',
-      sentFrom: isSms ? '' : (mailbox?.from.email ?? ''),
-    });
-
+    const stepNo = enr.currentStep;
     /* Advance whether or not the send succeeded.
        Leaving currentStep where it was means the next tick — a minute later —
        tries the same message again, and again, writing a failed row each time.
@@ -320,6 +299,36 @@ async function runAccount(env: Env, accountId: string, report: TickReport): Prom
     }
 
     touched = true;
+    /* Saved now, before anything else can throw (E-6). The enrolments were
+       written once at the end of the run, so an error after the first send —
+       a log write, the history write, the next contact's research — lost
+       every advance and the next tick sent the same steps again. One write
+       per send (at most MAX_SENDS_PER_ACCOUNT) is the price of never
+       mailing somebody twice. */
+    await dataPut(env.DB, accountId, ENROLL_KEY, JSON.stringify(enrolments));
+
+    /*
+     * Written down before anything else happens with the result.
+     *
+     * Every send, whether it worked or not, and with whatever the server said
+     * when it did not. This is the row that answers "did Rita get it", which
+     * the enrolment history could never answer — it is inside a JSON blob
+     * nobody can filter, on a record nobody thinks to open.
+     */
+    await logDelivery(env, accountId, {
+      channel: isSms ? 'sms' : 'email',
+      source: 'sequence',
+      sourceId: seq.id,
+      sourceName: seq.name ?? '',
+      stepIndex: stepNo,
+      contactId: String(contact.id ?? ''),
+      recipient: target,
+      subject: isSms ? '' : subject,
+      status: suppressed ? 'suppressed' : out.ok ? 'sent' : 'failed',
+      detail: out.error ?? '',
+      sentFrom: isSms ? '' : (mailbox?.from.email ?? ''),
+    });
+
     if (out.ok) { report.sent++; sentHere++; }
     else { report.failed++; note(report, accountId, `${target} — ${out.error.slice(0, 140)}`); }
 
@@ -480,7 +489,7 @@ async function runOneOffEmails(env: Env, accountId: string, report: TickReport):
       fromName: mailbox!.from.name || 'CRM',
       fromEmail: fromAddressOf(mailbox!),
       to, subject,
-      html: await signTrackedLinks(env, html),
+      html: await signTrackedLinks(env, html, accountId),
       replyTo: mailbox!.from.replyTo || undefined,
     });
     await logDelivery(env, accountId, {

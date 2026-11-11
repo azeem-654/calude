@@ -35,7 +35,7 @@
  */
 import { body, fail, json } from '../lib/http';
 import { canAccess, userFromToken, type Env } from '../lib/db';
-import { askGeminiParts, loadAiKey, type AiPart } from '../lib/ai';
+import { aiBudget, askGeminiParts, loadAiKey, type AiPart } from '../lib/ai';
 import { readSite } from '../lib/readSite';
 import { rateLimit } from '../lib/rateLimit';
 
@@ -123,6 +123,9 @@ export async function handleIntake(req: Request, env: Env): Promise<Response> {
     return fail(`That is a lot of requests in an hour — try again in ${Math.ceil(verdict.retryAfter / 60)} minutes.`, 429, { code: 'rate_limited' });
   }
 
+  /* The workspace's AI budget (F-3), the same one /api/ai.php asks. */
+  const aiNo = await aiBudget(env, accountId);
+  if (aiNo) return fail(aiNo, 402, { code: 'ai_budget' });
   const key = await loadAiKey(env, accountId);
   if (!key) return fail('The AI is not available on this install right now.', 200, { code: 'no_ai' });
 

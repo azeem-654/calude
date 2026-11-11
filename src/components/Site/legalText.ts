@@ -160,6 +160,7 @@ export const TERMS: LegalSection[] = [
     id: 'fees', title: 'Plans and payment',
     body: [
       'Paid plans are billed in advance through our payment processor at the price shown when you subscribe. You can cancel at any time; the plan stays active until the end of the period already paid for. Refunds are at our discretion unless the law requires otherwise. We will give notice in the app before changing the price of a plan you are on.',
+      'A plan bought through a marketplace such as AppSumo is paid to that marketplace, not to us, and its refunds follow the marketplace\'s own refund policy — see our Refund Policy (/refund-policy).',
     ],
   },
   {
@@ -375,6 +376,80 @@ export const GROWTH_TERMS: LegalSection[] = [
     body: [
       'A change to your agreement must be in writing and accepted by both of us. We may update these terms for agreements signed after the update; an agreement already signed keeps the terms it was signed on.',
       'Your agreement is governed by the law of the state it names. If any part of these terms cannot be enforced, the rest still applies. Notices are sent by email to the addresses in your agreement.',
+    ],
+  },
+];
+
+/*
+ * The Refund Policy and the Cookie Policy (PUB-1).
+ *
+ * Both describe only what the software does — which purchase goes through
+ * which processor, what a refunded AppSumo licence does to the plan
+ * (routes/appsumo.ts `revoke`, appsumoLicense.ts `deactivated`), and the
+ * cookies the Worker actually sets (lib/session.ts, lib/googleAuth.ts). They
+ * promise no refund window of our own: that is the owner's decision
+ * (OWNER-CHECKLIST #46), and a marketplace purchase is refunded by the
+ * marketplace on its terms whatever we write. The cookie list is checked
+ * against every Set-Cookie in worker/src; add a row here when one is added.
+ */
+export const REFUNDS_UPDATED = '11 November 2026';
+
+export const REFUNDS: LegalSection[] = [
+  {
+    id: 'appsumo', title: 'Lifetime plans bought through AppSumo',
+    body: [
+      'If you bought Protected Central through AppSumo, you paid AppSumo, and AppSumo handles your refund under its own refund policy and within its own refund window. Ask for a refund from your AppSumo account; we cannot refund a payment we did not receive.',
+      'When AppSumo refunds or deactivates a licence, it tells us, and the plan that licence or code gave your account is removed. If you hold more than one code, only the refunded code\'s tier is taken away and the rest stay. Your workspace, contacts and content are not deleted by a refund; you can still sign in and choose another plan.',
+      '"Lifetime" means the plan does not expire and is never charged again while the service runs. The plan\'s allowances — for example emails, AI requests or videos processed — are monthly and reset each month, as shown on the plan. Services that bill you directly, such as an SMS provider or ad platform you connect, are not included.',
+    ],
+  },
+  {
+    id: 'subscriptions', title: 'Monthly and annual plans bought here',
+    body: [
+      'Subscriptions bought in the app are billed in advance by our payment processor. You can cancel at any time in Billing; the plan stays active until the end of the period already paid for and is not charged again. Refunds of a period already paid are at our discretion unless the law where you live requires otherwise — email support@protectedcentral.com and say which payment.',
+    ],
+  },
+  {
+    id: 'services', title: 'Done-for-you services',
+    body: [
+      'The Growth service has its own terms: its setup fee is not refundable once setup work has started, and its fees follow the Growth Service Terms (/growth-service-terms).',
+    ],
+  },
+  {
+    id: 'your-customers', title: 'Payments your own customers make to you',
+    body: [
+      'Money your customers pay through your shop, booking page or invoices goes to the payment account you connected, not to us. Refunds of those payments are yours to give, from that account.',
+    ],
+  },
+];
+
+export const COOKIES: LegalSection[] = [
+  {
+    id: 'what', title: 'What we set',
+    body: [
+      'Protected Central uses only cookies that are needed for the service to work. We do not use advertising cookies, and we do not load third-party tracking or analytics cookies on our pages.',
+    ],
+    list: [
+      'pc_session — keeps you signed in. Set when you sign in and removed when you sign out. The session behind it ends after 30 days without use; the browser may keep the cookie itself for up to 400 days, but it signs nobody in once the session has ended. Marked HttpOnly, so scripts on the page cannot read it.',
+      'pc_gstate — set for ten minutes only while you sign in with Google, to prove the sign-in that comes back from Google started in your browser.',
+    ],
+  },
+  {
+    id: 'storage', title: 'Browser storage',
+    body: [
+      'The app keeps workspace preferences in your browser\'s local storage, such as the workspace you last opened and screen settings. After you sign in, that browser also remembers the name and email address of the account you used, so the sign-in screen can offer "Continue as" next time; choose "Not you? Use another account" to remove it. If you arrived through a partner\'s link, the partner code is kept for 60 days so the referral can be credited.',
+    ],
+  },
+  {
+    id: 'email', title: 'Emails sent through the platform',
+    body: [
+      'Emails our customers send through the platform may include open and click tracking for the sender\'s own reports. That tracking uses links and an image in the email, not cookies on your device.',
+    ],
+  },
+  {
+    id: 'control', title: 'Your choices',
+    body: [
+      'Because these cookies are needed to sign in, there is no switch to turn them off inside the app; blocking them in your browser means you cannot stay signed in. You can delete them at any time in your browser\'s settings.',
     ],
   },
 ];

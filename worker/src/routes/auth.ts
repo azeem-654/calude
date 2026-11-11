@@ -18,7 +18,7 @@ import { welcomeNewAccount } from './customers';
 import { CAN_SEND_SQL, canSend, deliver, fromAddressOf } from '../lib/deliver';
 import { loadMailboxById, type Mailbox } from './mailbox';
 import {
-  authorizeUrl, checkState, exchangeCode, googleCreds, saveGoogleCreds, redirectUri, signInOrigin,
+  authorizeUrl, checkState, makeState, stateBoundHere, stateCookieHeader, exchangeCode, googleCreds, saveGoogleCreds, redirectUri, signInOrigin,
 } from '../lib/googleAuth';
 
 const SESSION_DAYS = 30;
@@ -976,9 +976,12 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     if (canonical !== reqOrigin) {
       return fail('Google sign-in is not available on this address. Use your email address instead.');
     }
-    const url = await authorizeUrl(env, canonical, String(d.hint ?? '').trim().slice(0, 254));
+    const state = await makeState(env);
+    const url = await authorizeUrl(env, canonical, String(d.hint ?? '').trim().slice(0, 254), state);
     if (!url) return fail('Google sign-in is not set up on this installation.');
-    return json({ success: true, url });
+    const res = json({ success: true, url });
+    res.headers.append('Set-Cookie', stateCookieHeader(state, new URL(req.url).protocol === 'https:'));
+    return res;
   }
 
   if (action === 'google_finish') {
@@ -988,7 +991,7 @@ export async function handleAuth(req: Request, env: Env): Promise<Response> {
     /* The state first, before anything is spent. It proves this browser started
        the sign-in rather than an attacker's page having started one and fed the
        result to somebody else's session. */
-    if (!(await checkState(env, String(d.state ?? '')))) {
+    if (!(await checkState(env, String(d.state ?? ''))) || !stateBoundHere(req, String(d.state ?? ''))) {
       return fail('That sign-in took too long or did not start here. Try again.', 401);
     }
     const code = String(d.code ?? '').trim();

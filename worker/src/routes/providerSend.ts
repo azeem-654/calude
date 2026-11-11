@@ -36,6 +36,11 @@ export async function handleProviderSend(req: Request, env: Env): Promise<Respon
   if ('denied' in gate) return gate.denied;
   const foreign = await denyForeignWorkspace(env.DB, gate.user, d.accountId);
   if (foreign) return foreign;
+  /* Every send names its workspace (E-4): it is what the content gate, a
+     suspension and the tracked-link signature are all held to. A key typed
+     into Settings is tested on the workspace it is for, never on none — a
+     send without one skipped the gate, so a suspended account kept mailing. */
+  if (!String(d.accountId ?? '').trim()) return fail('Choose the workspace this email is sent for, then try again.');
 
   /*
    * The key comes from the workspace's mailbox, not from the browser.
@@ -88,12 +93,12 @@ export async function handleProviderSend(req: Request, env: Env): Promise<Respon
 
   const fromName = headerSafe(d.fromName ?? 'CRM', 120);
   const subject = headerSafe(d.subject ?? '', 300) || '(no subject)';
-  const html = await signTrackedLinks(env, String(d.html ?? ''));
+  const html = await signTrackedLinks(env, String(d.html ?? ''), String(d.accountId ?? ''));
 
   /* The other email exit. A workspace that sends through Resend or Brevo rather
      than its own SMTP is on the same terms — an exit guarded on one route and
      not its twin is not guarded. */
-  if (d.accountId) {
+  {
     const verdict = await contentGate(env, String(d.accountId), 'email', `${subject}\n\n${html}`);
     if (!verdict.ok) {
       return json({ success: false, held: verdict.verdict === 'review', message: verdict.message, error: verdict.message });

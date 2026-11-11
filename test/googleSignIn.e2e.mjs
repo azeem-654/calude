@@ -148,6 +148,10 @@ let strayUrl = '';
   const r = await api({ action: 'google_start', hint: 'not an address' });
   const u = new URL(r.url);
   ok('a malformed hint is ignored', !u.searchParams.get('login_hint') && u.searchParams.get('prompt') === 'select_account', r.url);
+  /* W-1: a genuine signed state, presented by a client that never got the
+     state cookie from google_start, is refused by the server itself. */
+  const fin = await api({ action: 'google_finish', state: u.searchParams.get('state'), code: 'e2e-fake-code' });
+  ok('the server refuses a state this browser was not given', !fin.success && /did not start here/.test(String(fin.error)), JSON.stringify(fin).slice(0, 160));
 }
 
 await b.close();

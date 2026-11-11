@@ -77,9 +77,15 @@ export function clearCookieHeader(secure: boolean): string {
 /**
  * After an auth.php answer: a response that issued a session sets the cookie;
  * a logout clears it. The JSON still carries the token for API clients and
- * tests; the browser app does not store it (src/services/auth.ts).
+ * tests that sent a real token; the browser app does not store it
+ * (src/services/auth.ts).
+ *
+ * `scrub` (W-2): a request that came in on the cookie (`"token":"cookie"`),
+ * and every adopt_cookie, gets the cookie and a JSON body whose token is the
+ * placeholder again. Echoing the real token there handed page script the very
+ * secret the HttpOnly cookie exists to keep from it.
  */
-export async function withSessionCookie(req: Request, res: Response, action: string): Promise<Response> {
+export async function withSessionCookie(req: Request, res: Response, action: string, scrub = false): Promise<Response> {
   const secure = new URL(req.url).protocol === 'https:';
   if (action === 'logout') {
     const out = new Response(res.body, res);
@@ -90,7 +96,13 @@ export async function withSessionCookie(req: Request, res: Response, action: str
   let data: { success?: boolean; token?: string } = {};
   try { data = await res.clone().json(); } catch { return res; }
   if (!data.success || typeof data.token !== 'string' || !data.token || data.token === 'cookie') return res;
-  const out = new Response(res.body, res);
-  out.headers.append('Set-Cookie', setCookieHeader(data.token, secure));
-  return out;
+  if (!scrub) {
+    const out = new Response(res.body, res);
+    out.headers.append('Set-Cookie', setCookieHeader(data.token, secure));
+    return out;
+  }
+  const headers = new Headers(res.headers);
+  headers.delete('Content-Length');
+  headers.append('Set-Cookie', setCookieHeader(data.token, secure));
+  return new Response(JSON.stringify({ ...data, token: 'cookie' }), { status: res.status, statusText: res.statusText, headers });
 }

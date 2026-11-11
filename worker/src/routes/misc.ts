@@ -18,7 +18,7 @@ import { loadMailbox, loadMailboxById, noteIncomingSync, type Mailbox } from './
 import { smtpVerify } from '../lib/smtp';
 import { encryptSecret } from '../lib/crypto';
 import { installSecret, nowIso } from '../lib/db';
-import { E164, buyNumber, isStopMessage, loadSmsConfig, recordOptOut, numberOnAccount, searchNumbers, sendSms, verifySmsCredentials } from '../lib/sms';
+import { E164, buyNumber, clearOptOut, isStartMessage, isStopMessage, loadSmsConfig, recordOptOut, numberOnAccount, searchNumbers, sendSms, verifySmsCredentials } from '../lib/sms';
 import { inboundOwner, type InboundCandidate } from '../lib/smsInbound';
 import { gate as contentGate } from '../lib/contentGate';
 
@@ -426,6 +426,9 @@ export async function handleSmsInbound(req: Request, env: Env): Promise<Response
 
   if (isStopMessage(text)) {
     await recordOptOut(env, ownerId, from, 'reply');
+  } else if (isStartMessage(text)) {
+    /* The only thing that lifts a STOP: the number itself asking (S-1). */
+    await clearOptOut(env, ownerId, from);
   }
   return twiml();
 }

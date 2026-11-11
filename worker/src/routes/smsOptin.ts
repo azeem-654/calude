@@ -70,6 +70,11 @@ export async function handleSmsOptin(req: Request, env: Env): Promise<Response> 
   const phone = e164(pick('phone'));
   if (pick('agree') !== '1') return form_('Tick the box to agree to texts.', pick('phone'));
   if (!phone) return form_('Write the number with its country code, starting with + (for example +1 804 555 0101).', pick('phone'));
-  await recordConsent(env, a, c, phone, ip);
+  const done = await recordConsent(env, a, c, phone, ip);
+  if (done.optedOut) {
+    const from = await env.DB.prepare('SELECT from_number FROM crm_sms_config WHERE account_id = ?').bind(a).first<{ from_number: string }>().catch(() => null);
+    const num = from?.from_number ? ` to ${esc(from.from_number)}` : ` to the number ${who} texts from`;
+    return page(`<h1>One more step</h1><p>${esc(phone)} replied STOP to ${who} earlier, so texts stay off until that phone says otherwise. Text <strong>START</strong>${num} from ${esc(phone)} to turn them back on.</p>`);
+  }
   return page(`<h1>Thank you</h1><p>${who} can now text you at ${esc(phone)}. Reply STOP to any message to stop them.</p>`);
 }

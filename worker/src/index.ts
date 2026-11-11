@@ -13,7 +13,7 @@
  * with no way to tell which of them broke something. The suffix is a URL, not
  * a language.
  */
-import { withCookieToken, withSessionCookie } from './lib/session';
+import { sameOrigin, withCookieToken, withSessionCookie } from './lib/session';
 import { useWrapKey } from './lib/db';
 import { handleAi } from './routes/ai';
 import { handleHostedMail } from './routes/hostedMail';
@@ -370,9 +370,22 @@ async function serve(req: Request, env: Env, ctx: ExecutionContext, url: URL): P
     const webhook = /webhook|sms-inbound/.test(url.pathname);
     const inbound = webhook ? req : await withCookieToken(req);
     if (url.pathname === '/api/auth.php') {
+      /*
+       * Same-origin JSON only (W-1). This is the route that issues sessions,
+       * and a cross-site page could post a text/plain form to it — no
+       * preflight — signing a visitor into the attacker's account (login
+       * CSRF). JSON forces a preflight, and the origin check closes the
+       * preflight too, since preflight() answers any origin. Elsewhere the
+       * cookie already only stands in for the token on same-origin requests
+       * (withCookieToken), so a foreign page has no session to borrow; this
+       * is the one route where it could be handed one.
+       */
+      if (req.method === 'POST' && !apiCallFromHere(req, url)) {
+        return json({ success: false, error: 'This request must come from this site.', message: 'This request must come from this site.' }, 403);
+      }
       let action = '';
       try { action = String((JSON.parse(await inbound.clone().text()) as { action?: string }).action ?? ''); } catch { action = ''; }
-      return await withSessionCookie(inbound, await handler(inbound, env, ctx), action);
+      return await withSessionCookie(inbound, await handler(inbound, env, ctx), action, inbound !== req || action === 'adopt_cookie');
     }
     return await handler(inbound, env, ctx);
   } catch (e) {
@@ -390,6 +403,18 @@ async function serve(req: Request, env: Env, ctx: ExecutionContext, url: URL): P
       headers: { 'Content-Type': 'application/json', ...corsHeaders() },
     });
   }
+}
+
+/** A JSON POST from this site's own pages, an app shell on it, or no page at all (a server or a test). */
+function apiCallFromHere(req: Request, url: URL): boolean {
+  if (!/application\/json/i.test(req.headers.get('Content-Type') ?? '')) return false;
+  const site = req.headers.get('Sec-Fetch-Site');
+  if (site && site !== 'same-origin' && site !== 'none') {
+    /* Vite's dev server (5173) calling the local Worker (8787) is cross-port, never cross-site in production. */
+    return url.hostname === 'localhost' && /^http:\/\/localhost:\d+$/.test(req.headers.get('Origin') ?? '');
+  }
+  if (sameOrigin(req)) return true;
+  return url.hostname === 'localhost' && /^http:\/\/localhost:\d+$/.test(req.headers.get('Origin') ?? '');
 }
 
 export default {

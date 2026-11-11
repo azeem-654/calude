@@ -15,7 +15,7 @@
  * a failure is retried rather than silently dropped.
  */
 import { nowIso, type Env } from './lib/db';
-import { askGemini, loadAiKey } from './lib/ai';
+import { aiBudget, askGemini, loadAiKey } from './lib/ai';
 import { loadMailbox } from './routes/mailbox';
 import { canSend, deliver, fromAddressOf } from './lib/deliver';
 
@@ -55,10 +55,26 @@ async function triage(env: Env, report: DispatchReport): Promise<void> {
      FROM crm_form_submissions sub
      JOIN crm_forms f ON f.id = sub.form_id AND f.account_id = sub.account_id
      WHERE sub.ai_summary = '' AND f.ai_triage = 1
-     ORDER BY sub.created_at ASC LIMIT 15`,
+     ORDER BY sub.created_at ASC LIMIT 60`,
   ).bind().all<{ id: string; accountId: string; answers: string; formName: string }>();
 
+  /* The workspace's AI budget first (F-3): this runs on the operator's key
+     for a public form anyone can fill in. A refused workspace is held — its
+     submissions stay unread, not stamped — and skipped for the rest of the
+     tick; reading up to 60 and acting on 15 keeps one held workspace's
+     backlog from starving everybody queued behind it. */
+  const held = new Set<string>();
+  let asked = 0;
   for (const sub of results ?? []) {
+    if (asked >= 15) break;
+    if (held.has(sub.accountId)) continue;
+    const refused = await aiBudget(env, sub.accountId);
+    if (refused) {
+      held.add(sub.accountId);
+      report.notes.push(`${sub.accountId}: submission triage held — ${refused.slice(0, 160)}`);
+      continue;
+    }
+    asked++;
     const key = await loadAiKey(env, sub.accountId);
     if (!key) {
       /* Left alone rather than stamped. A workspace whose key is fixed tomorrow

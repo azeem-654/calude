@@ -646,7 +646,7 @@ export function articleFrom(html: string, post: PlannedPost, project: BlogProjec
  */
 function composed(post: PlannedPost, project: BlogProject, prefix = ''): Article {
   const { html, sourced, unsourced } = composeArticleWithStats(post, project);
-  const bits = [prefix || 'No Gemini key configured — written from your portfolio and the outline. Add a key in Settings → AI for a full draft.'];
+  const bits = [prefix || 'AI was not reachable from this page, so this was written from your portfolio and the outline. Sign in again and retry for a full draft.'];
   if (unsourced) {
     bits.push(
       `${unsourced} of ${sourced + unsourced} sections found nothing about "${post.primaryKeyword}" in the portfolio, so they are framing rather than detail — adding writing on this subject to the portfolio is what fills them.`,

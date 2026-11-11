@@ -637,12 +637,18 @@ function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (na
    * after itself, and enabled "Generate AI Shorts". With a real Gemini key
    * configured it would have gone straight into the analysis pipeline.
    */
-  const looksLikeVideo = (f: File) =>
-    f.type.startsWith('video/') || /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(f.name);
+  /* The same formats and the same 2 GB ceiling the Worker holds the upload
+     and the analysis to (routes/video.ts VIDEO_EXT, quick_analyze): said
+     here, before an upload that would be refused at the end. */
+  const looksLikeVideo = (f: File) => /\.(mp4|mov|m4v|webm|mkv)$/i.test(f.name);
 
   const handleFile = (f: File) => {
     if (!looksLikeVideo(f)) {
-      setFileError(`"${f.name}" is not a video. Choose an MP4, MOV, WebM, M4V, AVI or MKV file.`);
+      setFileError(`"${f.name}" is not a video this can read. Choose an MP4, MOV, WebM, M4V or MKV file.`);
+      return;
+    }
+    if (f.size > 2e9) {
+      setFileError(`"${f.name}" is ${(f.size / 1e9).toFixed(1)} GB. Quick Shorts reads videos up to 2 GB — open longer recordings in Video Studio, which takes up to 12 GB.`);
       return;
     }
     setFileError('');
@@ -695,8 +701,8 @@ function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (na
   } as React.CSSProperties);
 
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: '20px' }}>
-      <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '560px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.35)' }}>
+    <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: '20px' }}>
+      <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '560px', maxWidth: 'calc(100vw - 32px)', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.35)' }}>
         {/* Header */}
         <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
@@ -732,11 +738,16 @@ function UploadModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (na
                 <>
                   <Upload size={40} color="#94a3b8" style={{ margin: '0 auto 12px' }} />
                   <p style={{ fontWeight: 700, color: '#374151', margin: '0 0 4px' }}>Drop your video here</p>
-                  <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 8px' }}>MP4, MOV up to 4GB</p>
+                  <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 8px' }}>MP4, MOV, WebM or MKV, up to 2 GB</p>
                   <span style={{ fontSize: '12px', color: '#6366f1', fontWeight: 600 }}>or click to browse</span>
                 </>
               )}
             </div>
+          )}
+          {tab === 'upload' && (
+            <p data-testid="qs-allowance-note" style={{ fontSize: 11.5, color: '#64748b', margin: '-8px 0 16px', lineHeight: 1.5 }}>
+              The file is saved as a Video Studio project, so you can edit it there afterwards. It counts as one of this month's long videos.
+            </p>
           )}
           {tab === 'upload' && fileError && (
             <div style={{ display: 'flex', gap: 8, padding: '10px 12px', marginBottom: '16px', borderRadius: 9, backgroundColor: '#fef2f2', border: '1px solid #fecaca' }}>
@@ -1104,8 +1115,8 @@ function PublishModal({ clip, onClose, onPublish }: { clip: VideoClip; onClose: 
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 600 }}>
-      <div style={{ background: 'white', borderRadius: '16px', width: '520px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.35)' }}>
+    <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 600 }}>
+      <div style={{ background: 'white', borderRadius: '16px', width: '520px', maxWidth: 'calc(100vw - 32px)', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.35)' }}>
         <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <h3 style={{ fontSize: '17px', fontWeight: 800, color: '#0f172a', margin: 0 }}>Publish to Social Media</h3>
@@ -2765,8 +2776,8 @@ function ProjectView({ project, onBack, onEditClip, onRetry, onUseDemo }: { proj
       )}
 
       {deleteConfirm && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500 }}>
-          <div style={{ background: 'white', borderRadius: '12px', padding: '24px', width: '340px' }}>
+        <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500 }}>
+          <div style={{ background: 'white', borderRadius: '12px', padding: '24px', width: '340px', maxWidth: 'calc(100vw - 32px)' }}>
             <h4 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 8px' }}>Delete Permanently?</h4>
             <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px' }}>This clip cannot be recovered.</p>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
@@ -2819,8 +2830,8 @@ function ScriptToVideoModal({ onClose, onCreate }: { onClose: () => void; onCrea
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: '20px' }}>
-      <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '560px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.35)' }}>
+    <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: '20px' }}>
+      <div style={{ backgroundColor: 'white', borderRadius: '16px', width: '560px', maxWidth: 'calc(100vw - 32px)', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.35)' }}>
         <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={18} /> Script to Video</h2>
@@ -3287,8 +3298,8 @@ export default function VideoShorts() {
       {showScript && <ScriptToVideoModal onClose={() => setShowScript(false)} onCreate={handleScriptVideo} />}
 
       {deleteConfirm && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500 }}>
-          <div style={{ background: 'white', borderRadius: '12px', padding: '24px', width: '360px' }}>
+        <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500 }}>
+          <div style={{ background: 'white', borderRadius: '12px', padding: '24px', width: '360px', maxWidth: 'calc(100vw - 32px)' }}>
             <h4 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 8px' }}>Delete Project?</h4>
             <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px' }}>All clips and settings will be permanently deleted. This cannot be undone.</p>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>

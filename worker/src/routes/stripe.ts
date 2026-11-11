@@ -10,8 +10,7 @@
  * something an endpoint will take somebody's word for.
  */
 import { addr, body, fail, json } from '../lib/http';
-import { agencyBucketFor, canAccess, dataGet, dataPut, nowIso, userFromToken, type Env } from '../lib/db';
-import { timingSafeEqual } from '../lib/crypto';
+import { agencyBucketFor, canAccess, dataGet, userFromToken, type Env } from '../lib/db';
 import { providerFor } from '../lib/payments';
 import { billingProcessor } from './billing';
 
@@ -125,66 +124,15 @@ export async function handleStripePortal(req: Request, env: Env): Promise<Respon
 }
 
 /**
- * Stripe's callback.
+ * The retired Stripe callback (M-6).
  *
- * The signature check is the whole security model: without it, anyone who
- * knows the URL can post "subscription paid" for any account. Verified with
- * WebCrypto HMAC and compared in constant time, and the timestamp is checked
- * so a captured-and-replayed event does not stay valid forever.
+ * It wrote `crm_billing_status_*` from any signed event's own `status` field —
+ * no plan check, no currency check, no expired-session rule — beside the real
+ * billing webhook (`/api/billing-webhook.php`, routes/billing.ts) that has all
+ * three. A Stripe endpoint still pointed here could flip a workspace to
+ * "active" on an event the real one would refuse. Nothing is read or written;
+ * the 410 tells Stripe's dashboard the endpoint is gone and to stop retrying.
  */
-export async function handleStripeWebhook(req: Request, env: Env): Promise<Response> {
-  const payload = await req.text();
-  const header = req.headers.get('Stripe-Signature') ?? '';
-  const secret = env.STRIPE_WEBHOOK_SECRET;
-
-  if (!secret) return new Response('webhook secret not configured', { status: 500 });
-
-  const parts = Object.fromEntries(
-    header.split(',').map(p => p.split('=', 2)).filter(p => p.length === 2) as [string, string][],
-  );
-  const timestamp = parts.t ?? '';
-  const given = parts.v1 ?? '';
-  if (!timestamp || !given) return new Response('bad-signature', { status: 400 });
-
-  /* Five minutes, the tolerance Stripe's own libraries use. */
-  const age = Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp));
-  if (!Number.isFinite(age) || age > 300) return new Response('stale-signature', { status: 400 });
-
-  const key = await crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
-  );
-  const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${timestamp}.${payload}`));
-  const expected = [...new Uint8Array(mac)].map(b => b.toString(16).padStart(2, '0')).join('');
-  if (!timingSafeEqual(given, expected)) return new Response('bad-signature', { status: 400 });
-
-  let event: { type?: string; data?: { object?: Record<string, unknown> } };
-  try { event = JSON.parse(payload); } catch { return new Response('bad-json', { status: 400 }); }
-
-  const obj = event.data?.object ?? {};
-  const meta = (obj.metadata ?? {}) as Record<string, string>;
-  const accountId = meta.accountId || String(obj.client_reference_id ?? '');
-
-  if (accountId) {
-    const status =
-      event.type === 'checkout.session.completed' ? 'active'
-        : event.type === 'customer.subscription.deleted' ? 'cancelled'
-          : event.type === 'invoice.payment_failed' ? 'past_due'
-            : String((obj as { status?: string }).status ?? 'active');
-
-    /* Billing state is kept under the agency's own namespace, the same place
-       the dashboard reads it from, so a client cannot rewrite their own. Which
-       agency that is cannot come from the caller here — Stripe is the caller —
-       so it comes from whoever owns the workspace being billed. */
-    await dataPut(env.DB, await agencyBucketFor(env.DB, accountId), `crm_billing_status_${accountId}`, JSON.stringify({
-      status,
-      customerId: obj.customer ?? null,
-      subscriptionId: obj.subscription ?? obj.id ?? null,
-      updatedAt: nowIso(),
-      lastEvent: event.type ?? '',
-    }));
-  }
-
-  /* 200 for anything correctly signed, including events not acted on — a
-     non-2xx makes Stripe retry an event that was never going to matter. */
-  return new Response('ok', { status: 200 });
+export async function handleStripeWebhook(_req: Request, _env: Env): Promise<Response> {
+  return new Response('gone: point Stripe at /api/billing-webhook.php', { status: 410 });
 }

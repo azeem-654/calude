@@ -101,6 +101,33 @@ is the one whose token signed it (`lib/smsInbound.ts`; audit T-2). There is no
 unique index: existing duplicates on live were not inspected, and a failing
 migration would stop the deploy. `test:smsinbound`, `test:security`.
 
+**Only the number itself lifts a STOP** (audit S-1). The web opt-in
+(`routes/smsOptin.ts`, `recordConsent`) records consent but never deletes an
+opt-out; when the number has one, the page asks them to text START to the
+workspace's number. An inbound START, YES or UNSTOP signed by the owner
+(`isStartMessage`, `clearOptOut` in `lib/sms.ts`) is what lifts it — the same
+words that lift Twilio's own carrier block. `test:security`.
+
+**auth.php takes same-origin JSON only** (audit W-1): `apiCallFromHere` in
+`index.ts` refuses a POST that is not `application/json` from this origin
+(`Sec-Fetch-Site` same-origin/none, or a matching or absent `Origin`; `localhost`
+ports allowed for Vite dev), so a foreign page cannot sign a visitor in to
+its own account. Google's `state` is bound to the browser that started it: an
+HttpOnly `pc_gstate` cookie (Path `/api/auth.php`, ten minutes) holding the
+state's nonce, checked in `google_finish` (`stateBoundHere`). Other routes need
+no such check: the cookie only stands in for the token on same-origin requests
+(`withCookieToken`). **A request on the cookie never gets the token back**
+(W-2): `withSessionCookie(…, scrub)` sets the cookie and answers `"token":
+"cookie"` for placeholder requests and every `adopt_cookie`. `test:cookies`,
+`test:google`.
+
+**Tracked links are signed only for the sending workspace** (audit E-3):
+`signTrackedLinks(env, html, accountId)` skips a link or pixel whose `a=` is
+another workspace, so it gets the tracker's "leaving" page; no workspace, no
+signing. **Every real send names its workspace** (E-4): `smtp-send.php` and
+`provider-send.php` refuse a send with no `accountId` (only a sign-in check may
+go without), so the content gate and a suspension always apply.
+
 ## Secrets
 
 Customer credentials — mailbox passwords, registrar and DNS API keys, Stripe

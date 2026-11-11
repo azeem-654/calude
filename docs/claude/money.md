@@ -176,6 +176,11 @@ Reports → **Revenue by project** (`components/Analytics/RevenueByProject.tsx`,
   after it. **Won deals** come from the project's own pipeline (`projectId`),
   shown at the typed value — a deal has no currency, so it never joins revenue.
 
+**`/api/stripe-webhook.php` is retired** (audit M-6): it answers 410 and reads
+nothing. It wrote billing status from any signed event's own `status`, beside
+`/api/billing-webhook.php`, which has the plan, currency and expired-session
+rules. `test:security`.
+
 ## AppSumo lifetime codes — a plan, not a payment
 
 `routes/appsumo.ts` (`/api/appsumo.php`), the page `/appsumo`

@@ -331,8 +331,8 @@ export default function CampaignDashboard({ campaign, onBack, onChange }: Props)
               <p style={{ fontSize: 12.5, color: MUTED, margin: 0, lineHeight: 1.6 }}>
                 Your Reels, Shorts, Stories and TikToks were written and are in the plan above — but nothing
                 could be timed out of the video, so they carry the whole video rather than a cut of it.
-                Cutting needs the video's length: upload the file instead of pasting a link, or add a Gemini
-                key in <strong>Settings → AI</strong> to have the video watched and the strongest moments picked.
+                Cutting needs the video's length: upload the file instead of pasting a link, or sign in again
+                and retry so AI can watch the video and pick the strongest moments.
               </p>
             </div>
           )}

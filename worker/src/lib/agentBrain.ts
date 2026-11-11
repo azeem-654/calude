@@ -23,7 +23,7 @@
  * returning a tool call, and the answer comes from the booking engine that
  * actually owns the diary. See `runTool`.
  */
-import { askGemini, loadAiKey } from './ai';
+import { aiBudget, askGemini, loadAiKey } from './ai';
 import { searchKnowledge, type KbHit } from './engagement';
 import type { Env } from './db';
 
@@ -178,6 +178,18 @@ export async function think(
   const sources = hits.map(h => ({ id: h.id, title: h.title }));
   const open = withinHours(cfg);
 
+  /* The workspace's AI budget (F-3). This answers anonymous visitors on the
+     operator's key, so it is the easiest place to spend somebody else's
+     quota in a loop. Refused, the visitor gets the human fallback — never the
+     budget sentence, which is for the workspace, not its visitors. */
+  const refused = await aiBudget(env, accountId);
+  if (refused) {
+    return {
+      reply: cfg.fallback || DEFAULT_FALLBACK,
+      intent: '', needsHuman: true, sources,
+      unavailable: `ai-budget: ${refused.slice(0, 160)}`,
+    };
+  }
   const key = await loadAiKey(env, accountId);
   if (!key) {
     return {

@@ -86,6 +86,24 @@ export function isStopMessage(body: string): boolean {
 }
 
 /**
+ * The words that turn texts back on — Twilio's own opt-in keywords, so the
+ * carrier-level block and this list are lifted by the same reply (S-1). Only
+ * a text from the number itself proves the number's owner wants them; a web
+ * form proves only that somebody typed the number.
+ */
+const START_WORDS = new Set(['start', 'yes', 'unstop']);
+
+export function isStartMessage(body: string): boolean {
+  return START_WORDS.has((body || '').trim().toLowerCase().replace(/[.!]+$/, ''));
+}
+
+/** Lift an opt-out; true when there was one. Called only for a START text from the number. */
+export async function clearOptOut(env: Env, accountId: string, phone: string): Promise<boolean> {
+  const r = await env.DB.prepare('DELETE FROM crm_sms_optouts WHERE account_id = ? AND phone = ?').bind(accountId, phone).run();
+  return (r.meta?.changes ?? 0) > 0;
+}
+
+/**
  * Send one message.
  *
  * `accountId` is optional only so the settings screen can test credentials that

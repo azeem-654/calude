@@ -33,9 +33,18 @@ async function sig(k: CryptoKey, a: string, c: string, u: string): Promise<strin
 
 const decodeEntities = (s: string) => s.replace(/&amp;/g, '&');
 
-/** Add a signature to every tracked click link in this HTML. */
-export async function signTrackedLinks(env: Env, html: string): Promise<string> {
-  if (!html || !html.includes('/api/track.php?')) return html;
+/**
+ * Add a signature to every tracked click link in this HTML that belongs to
+ * `accountId` (E-3).
+ *
+ * Only the sending workspace's own links. The HTML is the customer's, so
+ * workspace A could paste a link carrying `a=B` and have the server sign it —
+ * a working open redirect on our domain, and clicks written into B's
+ * automations. A foreign link is left unsigned, so the tracker shows its
+ * "you are leaving" page instead of hopping. No workspace, nothing signed.
+ */
+export async function signTrackedLinks(env: Env, html: string, accountId: string): Promise<string> {
+  if (!html || !accountId || !html.includes('/api/track.php?')) return html;
   const k = await key(env);
   const re = /href="([^"]*\/api\/track\.php\?c=[^"]*)"/gi;
   const found = [...html.matchAll(re)];
@@ -48,7 +57,7 @@ export async function signTrackedLinks(env: Env, html: string): Promise<string> 
     const a = url.searchParams.get('a') ?? '';
     const c = url.searchParams.get('c') ?? '';
     const u = url.searchParams.get('u') ?? '';
-    if (!c || !u) continue;
+    if (!c || !u || a !== accountId) continue;
     url.searchParams.set('s', await sig(k, a, c, u));
     out = out.replace(`href="${raw}"`, `href="${url.toString()}"`);
   }
@@ -60,8 +69,8 @@ export async function signTrackedLinks(env: Env, html: string): Promise<string> 
     let url: URL;
     try { url = new URL(decodeEntities(raw)); } catch { continue; }
     const o = url.searchParams.get('o') ?? '';
-    if (!o) continue;
-    url.searchParams.set('s', await sig(k, url.searchParams.get('a') ?? '', `open:${o}`, ''));
+    if (!o || (url.searchParams.get('a') ?? '') !== accountId) continue;
+    url.searchParams.set('s', await sig(k, accountId, `open:${o}`, ''));
     out = out.replace(`src="${raw}"`, `src="${url.toString()}"`);
   }
   return out;

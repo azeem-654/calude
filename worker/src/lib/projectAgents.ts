@@ -36,7 +36,7 @@
  */
 import { loadFinder, stepFinder } from '../prospectFinderTick';
 import { dataGet, dataPut, nowIso, type Env } from './db';
-import { loadAiKey, researchWeb } from './ai';
+import { aiBudget, loadAiKey, researchWeb } from './ai';
 import { record, roomFor } from './allowanceStore';
 import { readSite, urlProblem } from './readSite';
 import { drawSocial, paletteOf } from './designLayouts';
@@ -480,6 +480,11 @@ async function runAgentNode(
     room = r.left;
   }
 
+  /* The workspace's AI budget too (F-3): caps and the monthly AI requests,
+     the same gate every browser-started AI call passes. */
+  const aiNo = await aiBudget(env, accountId);
+  if (aiNo) return { outcome: 'skipped', detail: `Nothing was written. ${aiNo}` };
+
   const apiKey = await loadAiKey(env, accountId);
   /* The workspace's key, the operator's, then the deployment's. None of the
      three is an operator problem, not something the customer can fix, so it is
@@ -873,6 +878,8 @@ export async function repurposeRecording(
   rec: { title: string; text: string; videoProjectId: string; autopilotProjectId?: string | null },
   want: RepurposeWant,
 ): Promise<RepurposeResult> {
+  const aiNo = await aiBudget(env, accountId);
+  if (aiNo) return { links: [], notes: [`Nothing was written. ${aiNo}`] };
   const apiKey = await loadAiKey(env, accountId);
   if (!apiKey) return { links: [], notes: ['Writing is unavailable on this installation at the moment, so nothing was written.'] };
   let project: ProjectRow = { id: '', name: '', portfolio_id: '', objective: '' };

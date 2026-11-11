@@ -358,7 +358,7 @@ export async function distilWithAI(items: PortfolioItem[]): Promise<DistilledPro
   if (!key) {
     return {
       ...distilFromText(items),
-      note: 'No Gemini key configured — read from the text itself. Add a key in Settings → AI for a sharper strategy.',
+      note: 'AI was not reachable from this page, so this was read from the text itself. Sign in again and retry for a sharper strategy.',
     };
   }
   if (corpus.trim().length < 200) {

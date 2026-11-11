@@ -87,6 +87,12 @@ export async function handleSmtpSend(
    * mail server configured was told to go and configure one. The suspension is
    * the thing they need to know, and it is true whatever else is missing.
    */
+  /* Only a sign-in check may go without a workspace (E-4). A real send with
+     explicit credentials and no workspace skipped the gate below, so a
+     suspended account could keep mailing by typing its own server in. */
+  if (!opts.forceVerify && !d.verifyOnly && !String(d.accountId ?? '').trim()) {
+    return fail('Choose the workspace this email is sent for, then try again.');
+  }
   if (d.accountId && !opts.forceVerify && !d.verifyOnly) {
     const verdict = await contentGate(env, String(d.accountId), 'email', `${d.subject ?? ''}\n\n${d.html ?? ''}`);
     if (!verdict.ok) {
@@ -124,7 +130,7 @@ export async function handleSmtpSend(
         fromName: headerSafe(d.fromName ?? mb.from.name ?? 'CRM', 120),
         fromEmail: fromApi, to: toApi,
         subject: headerSafe(d.subject ?? '', 300),
-        html: await signTrackedLinks(env, String(d.html ?? '')),
+        html: await signTrackedLinks(env, String(d.html ?? ''), String(d.accountId ?? '')),
         replyTo: replyApi || undefined,
         unsubscribeUrl: unsubApi || undefined,
       });
@@ -187,7 +193,7 @@ export async function handleSmtpSend(
     fromEmail,
     to,
     subject: headerSafe(d.subject ?? '', 300),
-    html: await signTrackedLinks(env, String(d.html ?? '')),
+    html: await signTrackedLinks(env, String(d.html ?? ''), String(d.accountId ?? '')),
     replyTo: replyToRaw || undefined,
     unsubscribeUrl: unsubscribeUrl || undefined,
   }, host);

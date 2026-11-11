@@ -36,7 +36,7 @@ import {
   createMailbox, credsForMode, managedSpendAllowed, poolDomainCandidates, priceDomain,
   record as recordProvisioned, recordPurchase, registerDomain,
 } from './lib/provisioning';
-import { loadAiKey } from './lib/ai';
+import { aiBudget, loadAiKey } from './lib/ai';
 import { createPayLink, storefrontReady } from './routes/storefront';
 import { draftAtSupplier, supplierReady } from './routes/supplier';
 import { canSend, cannotSendReason, deliver, fromAddressOf } from './lib/deliver';
@@ -912,7 +912,7 @@ async function carryOutBuyerEmail(
     }
 
     const r = await deliver(mb, {
-      fromName: mb.from.name || company, fromEmail, to: o.email, subject, html: await signTrackedLinks(env, html),
+      fromName: mb.from.name || company, fromEmail, to: o.email, subject, html: await signTrackedLinks(env, html, accountId),
       replyTo: mb.from.replyTo || undefined,
     });
     if (!r.ok) { failures.push(`${o.email}: ${r.error.slice(0, 120)}`); continue; }
@@ -1161,6 +1161,10 @@ async function carryOutWrite(
   what: 'landing' | 'website' | 'blog' | 'social' | 'short' | 'sequence',
   run: RunRow,
 ): Promise<{ ok: boolean; detail: string; link?: { kind: string; id: string; label: string; route: string } }> {
+  /* The workspace's AI budget before the key (F-3): caps, an ended trial and
+     the monthly AI requests stop the cron exactly as they stop the page. */
+  const aiNo = await aiBudget(env, accountId);
+  if (aiNo) return { ok: false, detail: `Nothing was written. ${aiNo}` };
   const apiKey = await loadAiKey(env, accountId);
   /* No key anywhere — the workspace's, the operator's, nor the deployment's.
      That is an operator problem, not something the customer can fix, so it is
@@ -1448,6 +1452,14 @@ async function carryOutWrite(
 /** Do what is due, oldest first, within the per-tick ceiling. */
 async function executeFor(env: Env, run: RunRow, report: AutopilotReport): Promise<void> {
   const accountId = run.account_id;
+  /* An action left 'running' by a tick that died part-way (F-1). It is
+     closed as failed, not put back to pending: it may already have sent, and
+     sending twice is the one outcome worse than not sending. */
+  await env.DB.prepare(
+    `UPDATE crm_autopilot_actions SET status = 'failed', detail = 'Stopped part-way through and was not retried, so nothing is sent twice. Check whether it went out.'
+     WHERE account_id = ? AND project_id = ? AND status = 'running' AND acted_at < ?`,
+  ).bind(accountId, run.id, new Date(Date.now() - 20 * 60_000).toISOString()).run();
+
   /* This project's queue only. The per-tick ceiling is per project too, so one
      busy project cannot starve the others in the same workspace. */
   const rows = await env.DB.prepare(
@@ -1458,6 +1470,14 @@ async function executeFor(env: Env, run: RunRow, report: AutopilotReport): Promi
   ).bind(accountId, run.id, nowIso(), MAX_ACTIONS_PER_TICK).all<{ id: string; effect: string }>();
 
   for (const row of rows.results ?? []) {
+    /* Claimed before it is carried out (F-1): two ticks that overlap — a slow
+       one and the next, or a manual run beside the cron — both read the same
+       pending row, and both used to send it. Only the one whose update
+       changed the row goes on. */
+    const claim = await env.DB.prepare(
+      `UPDATE crm_autopilot_actions SET status = 'running', acted_at = ? WHERE id = ? AND status = 'pending'`,
+    ).bind(nowIso(), row.id).run();
+    if ((claim.meta?.changes ?? 0) !== 1) continue;
     const effect = parse<PlannedAction['effect']>(row.effect, { type: 'none' });
     let result: Awaited<ReturnType<typeof carryOut>>;
     try {
