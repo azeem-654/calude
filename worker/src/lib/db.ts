@@ -235,6 +235,40 @@ export async function dataList(db: D1Database, accountId: string): Promise<Recor
   return out;
 }
 
+/** Every key's last-write stamp, for the browser's "what I last saw" (DATA-1). */
+export async function dataStamps(db: D1Database, accountId: string): Promise<Record<string, string>> {
+  const { results } = await db.prepare('SELECT k, updated_at AS at FROM crm_data WHERE account_id = ?')
+    .bind(accountId).all<{ k: string; at: string }>();
+  const out: Record<string, string> = {};
+  for (const r of results ?? []) out[r.k] = r.at;
+  return out;
+}
+
+/**
+ * Write only if the stored document is still the one the writer last saw
+ * (DATA-1). `expected` is its `updated_at`, or '' for "it did not exist".
+ *
+ * Two tabs each saving a whole contact list used to mean the second save
+ * silently replaced the first: both were "successful", one tab's new contact
+ * was gone. Now the second is told, with the current value, and merges.
+ */
+export async function dataPutIf(
+  db: D1Database, accountId: string, key: string, value: string, expected: string,
+): Promise<{ ok: true; updatedAt: string } | { ok: false; value: string | null; updatedAt: string }> {
+  const at = nowIso();
+  const r = expected
+    ? await db.prepare('UPDATE crm_data SET v = ?, updated_at = ? WHERE account_id = ? AND k = ? AND updated_at = ?')
+      .bind(value, at, accountId, key, expected).run()
+    : await db.prepare('INSERT OR IGNORE INTO crm_data (account_id, k, v, updated_at) VALUES (?, ?, ?, ?)')
+      .bind(accountId, key, value, at).run();
+  if (r.meta?.changes) return { ok: true, updatedAt: at };
+  const row = await db.prepare('SELECT v, updated_at AS at FROM crm_data WHERE account_id = ? AND k = ?')
+    .bind(accountId, key).first<{ v: string; at: string }>();
+  /* Expected a row that is now gone: it was deleted elsewhere. Writing it back
+     is the browser's call, with '' as the new expectation. */
+  return { ok: false, value: row?.v ?? null, updatedAt: row?.at ?? '' };
+}
+
 export async function dataDelete(db: D1Database, accountId: string, key: string): Promise<void> {
   await db.prepare('DELETE FROM crm_data WHERE account_id = ? AND k = ?').bind(accountId, key).run();
 }

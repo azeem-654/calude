@@ -8,7 +8,7 @@
  * another workspace's records by naming it.
  */
 import { body, fail, json, ok } from '../lib/http';
-import { workspaceAccess, dataDelete, dataGet, dataList, dataPut, storageWorkspace, userFromToken, type Env } from '../lib/db';
+import { workspaceAccess, dataDelete, dataGet, dataList, dataPut, dataPutIf, dataStamps, storageWorkspace, userFromToken, type Env } from '../lib/db';
 import { cleanDataValue } from '../lib/legacyTwilio';
 
 interface DataBody {
@@ -19,6 +19,15 @@ interface DataBody {
   value?: string;
   /** bulk_set: many keys in one round trip. A null value deletes the key. */
   items?: Record<string, string | null>;
+  /**
+   * bulk_set: for each key, the `updated_at` this browser last saw ('' = it
+   * did not exist). A key named here is written only if that is still true;
+   * otherwise it comes back in `conflicts` with the current value (DATA-1).
+   * A key not named here is written as before, so an older tab still saves.
+   */
+  base?: Record<string, string>;
+  /** put: the same, for one key. */
+  expectedUpdatedAt?: string;
 }
 
 /** Keys are a bounded identifier, not free text — they index a primary key. */
@@ -80,7 +89,7 @@ export async function handleData(req: Request, env: Env): Promise<Response> {
 
     case 'list':
     case 'get_all':
-      return json({ success: true, data: await dataList(env.DB, ws) });
+      return json({ success: true, data: await dataList(env.DB, ws), stamps: await dataStamps(env.DB, ws) });
 
     case 'bulk_set': {
       /* The browser batches a burst of edits into one request. Done key by key
@@ -91,6 +100,9 @@ export async function handleData(req: Request, env: Env): Promise<Response> {
       if (keys.length > 200) return fail('Too many records in one write.');
 
       const rejected: string[] = [];
+      const conflicts: Record<string, { value: string | null; updatedAt: string }> = {};
+      const stamps: Record<string, string> = {};
+      const base = d.base && typeof d.base === 'object' ? d.base : {};
       const enc = new TextEncoder();
       for (const key of keys) {
         if (!KEY_OK.test(key)) { rejected.push(key); continue; }
@@ -103,11 +115,19 @@ export async function handleData(req: Request, env: Env): Promise<Response> {
            the client re-read the key and keep showing its stale copy. */
         const cleaned = await cleanDataValue(env, accountId, key, value);
         if (cleaned === null) { await dataDelete(env.DB, ws, key); continue; }
+        if (typeof base[key] === 'string') {
+          const w = await dataPutIf(env.DB, ws, key, cleaned, base[key]);
+          if (w.ok) stamps[key] = w.updatedAt;
+          else conflicts[key] = { value: w.value, updatedAt: w.updatedAt };
+          continue;
+        }
         await dataPut(env.DB, ws, key, cleaned);
       }
       return json({
         success: true,
         rejected,
+        stamps,
+        ...(Object.keys(conflicts).length ? { conflicts } : {}),
         message: rejected.length ? `${rejected.length} record(s) were too large or misnamed to store.` : undefined,
       });
     }
@@ -126,8 +146,12 @@ export async function handleData(req: Request, env: Env): Promise<Response> {
         return fail('That record is too large to store — it exceeds 2MB.');
       }
       const cleaned = await cleanDataValue(env, accountId, key, value);
-      if (cleaned === null) await dataDelete(env.DB, ws, key);
-      else await dataPut(env.DB, ws, key, cleaned);
+      if (cleaned === null) { await dataDelete(env.DB, ws, key); return ok(); }
+      if (typeof d.expectedUpdatedAt === 'string') {
+        const w = await dataPutIf(env.DB, ws, key, cleaned, d.expectedUpdatedAt);
+        return w.ok ? json({ success: true, updatedAt: w.updatedAt }) : json({ success: true, conflict: true, value: w.value, updatedAt: w.updatedAt });
+      }
+      await dataPut(env.DB, ws, key, cleaned);
       return ok();
     }
 

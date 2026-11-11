@@ -14,6 +14,7 @@ import { getSession } from './auth';
 import { updateBilling } from './billing';
 import type { BillingRecord } from './billing';
 import { API_BASE } from './apiBase';
+import { mergeDoc } from './mergeDoc';
 
 const STATUS_KEY = 'crm_cloud_status';   // global: 'cloud' | 'local'
 
@@ -38,6 +39,17 @@ let pending: Record<string, string | null> = {};
 let flushTimer: number | undefined;
 let pushAccount = '';
 let pushToken = '';
+
+/*
+ * What this browser last saw on the server, per key (DATA-1): the stamp sent
+ * with each save so the server can refuse one made against a stale copy, and
+ * the value, which is the base a conflicting change is merged from. Filled by
+ * every pull and every accepted save; `synced` false until the first pull, so
+ * nothing claims to know the server before it has asked.
+ */
+let stamps = new Map<string, string>();
+let bases = new Map<string, string>();
+let synced = false;
 
 function queue(accountId: string, key: string, value: string | null) {
   if (accountId !== pushAccount) return;
@@ -69,8 +81,43 @@ async function flush() {
   const items = pending;
   pending = {};
   if (Object.keys(items).length === 0) return;
-  const res = await call('bulk_set', { token: pushToken, accountId: pushAccount, items });
-  if (!res) return;   // offline — the next flush will retry
+  const base: Record<string, string> = {};
+  if (synced) for (const k of Object.keys(items)) base[k] = stamps.get(k) ?? '';
+  const res = await call('bulk_set', { token: pushToken, accountId: pushAccount, items, base });
+  if (!res) {
+    /* Offline — put them back so the next flush retries, under anything
+       written since (which is newer). */
+    pending = { ...items, ...pending };
+    return;
+  }
+
+  for (const [k, at] of Object.entries((res.stamps ?? {}) as Record<string, string>)) {
+    stamps.set(k, at);
+    const v = items[k];
+    if (typeof v === 'string') bases.set(k, v);
+  }
+
+  /*
+   * Saved first by another tab, device or the cron: merge this browser's
+   * change into theirs and send that, against their stamp. A newer local
+   * edit still queued for the same key was made on the same stale copy, so it
+   * is merged too, from the same base — merging it from theirs would read
+   * their additions as things this browser deleted.
+   */
+  const conflicts = (res.conflicts ?? {}) as Record<string, { value: string | null; updatedAt: string }>;
+  let changed = false;
+  for (const [k, theirs] of Object.entries(conflicts)) {
+    const was = bases.get(k) ?? null;
+    const mine = k in pending ? pending[k] : items[k];
+    const merged = mergeDoc(was, mine, theirs.value);
+    stamps.set(k, theirs.updatedAt);
+    if (theirs.value === null) bases.delete(k); else bases.set(k, theirs.value);
+    if (merged !== null) rawSetScoped(pushAccount, k, merged);
+    if (merged !== theirs.value) queue(pushAccount, k, merged);
+    else delete pending[k];
+    changed = true;
+  }
+  if (changed) window.dispatchEvent(new CustomEvent(CLOUD_REFRESH_EVENT));
 
   // The server enforces the permission model in api/data.php. When it refuses a
   // change, take its version back rather than leaving the browser showing an
@@ -195,6 +242,14 @@ async function pull(accountId: string, token: string): Promise<boolean> {
 
   for (const [key, value] of Object.entries(payload)) {
     if (typeof value === 'string') rawSetScoped(accountId, key, value);
+  }
+  /* What the server holds now is the base for the next save (DATA-1). A
+     server too old to send stamps leaves `synced` off, and saves go as before. */
+  const st = res.stamps as Record<string, string> | undefined;
+  if (st && typeof st === 'object') {
+    stamps = new Map(Object.entries(st));
+    bases = new Map(Object.entries(payload).filter((e): e is [string, string] => typeof e[1] === 'string'));
+    synced = true;
   }
   return true;
 }
