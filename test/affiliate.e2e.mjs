@@ -139,6 +139,23 @@ ok('a cancelled subscription is cancelled', billing(acct2).status === 'cancelled
 ok('…and its plan removed', !plan('pat@other.test'), JSON.stringify(plan('pat@other.test')));
 sql("UPDATE crm_plans SET plan_id = 'agency', resell_limit = -1, source = 'manual' WHERE owner_email = 'jamie@buyer.test'");
 await stripeEvent(invoicePaid('evt_inv_3', acct, 4900));
+/* M-5: a refunded or disputed payment earns nothing. Matched on the payment
+   intent the invoice named, as a refund's charge carries no subscription metadata. */
+console.log('\nRefunds and disputes');
+const withPi = (ev, pi) => { ev.data.object.payment_intent = pi; return ev; };
+await stripeEvent(withPi(invoicePaid('evt_inv_r1', acct, 4900), 'pi_r1'));
+await stripeEvent(withPi(invoicePaid('evt_inv_r2', acct, 4900), 'pi_r2'));
+await stripeEvent(withPi(invoicePaid('evt_inv_r3', acct, 4900), 'pi_r3'));
+await stripeEvent({ id: 'evt_ref_1', type: 'charge.refunded', data: { object: { id: 'ch_r1', payment_intent: 'pi_r1', amount: 4900, amount_refunded: 4900, refunded: true, currency: 'usd' } } });
+const com = (id) => sql(`SELECT status AS s, amount_cents AS a, void_reason AS w FROM crm_commissions WHERE id = 'stripe:${id}'`)[0];
+ok('a refunded invoice voids its pending commission, saying why', com('evt_inv_r1')?.s === 'void' && /refunded/.test(com('evt_inv_r1')?.w ?? ''), JSON.stringify(com('evt_inv_r1')));
+ok('…and only that one', com('evt_inv_r2')?.s === 'pending' && com('evt_inv_2')?.s !== 'void', JSON.stringify(com('evt_inv_r2')));
+await stripeEvent({ id: 'evt_ref_2', type: 'charge.refunded', data: { object: { id: 'ch_r2', payment_intent: 'pi_r2', amount: 4900, amount_refunded: 2450, refunded: false, currency: 'usd' } } });
+ok('a half refund halves the commission and keeps it', com('evt_inv_r2')?.s === 'pending' && com('evt_inv_r2')?.a === 980, JSON.stringify(com('evt_inv_r2')));
+await stripeEvent({ id: 'evt_dsp_3', type: 'charge.dispute.created', data: { object: { id: 'dp_3', charge: 'ch_r3', payment_intent: 'pi_r3', amount: 4900, currency: 'usd' } } });
+ok('a disputed payment voids its commission', com('evt_inv_r3')?.s === 'void' && /disputed/.test(com('evt_inv_r3')?.w ?? ''), JSON.stringify(com('evt_inv_r3')));
+ok('…and a dispute does not cancel the subscription by itself', billing(acct).status === 'active', JSON.stringify(billing(acct)));
+
 ok('a plan the owner granted by hand is not overwritten by a payment', plan('jamie@buyer.test')?.p === 'agency' && plan('jamie@buyer.test')?.s === 'manual', JSON.stringify(plan('jamie@buyer.test')));
 
 /* M-1: a price is a number and a currency. Scale's 29,700 cents paid as

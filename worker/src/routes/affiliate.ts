@@ -29,6 +29,8 @@ const clip = (v: unknown, n: number) => String(v ?? '').replace(/[\u0000-\u001f]
 interface CommissionRow {
   id: string; code: string; referred_email: string; base_cents: number; rate_pct: number; amount_cents: number;
   currency: string; status: string; payable_at: string; paid_at: string | null; created_at: string;
+  /** Why it was voided or cut, or that it is to be deducted (M-5). Absent before 0092. */
+  void_reason?: string;
 }
 /* 'pending' in the table becomes 'payable' once the hold has passed. */
 const shownStatus = (c: CommissionRow) => c.status === 'pending' && Date.parse(c.payable_at) <= Date.now() ? 'payable' : c.status;
@@ -71,7 +73,7 @@ async function program(env: Env, email: string) {
     referrals: (refs ?? []).map(r => ({ customer: maskEmail(r.e), at: r.at, paying: !!r.paying })),
     commissions: (com ?? []).map(c => ({
       id: c.id, customer: maskEmail(c.referred_email), base: c.base_cents, amount: c.amount_cents, rate: c.rate_pct,
-      currency: c.currency, status: shownStatus(c), createdAt: c.created_at, payableAt: c.payable_at, paidAt: c.paid_at,
+      currency: c.currency, status: shownStatus(c), createdAt: c.created_at, payableAt: c.payable_at, paidAt: c.paid_at, voidReason: c.void_reason ?? '',
     })),
   };
 }
@@ -163,7 +165,7 @@ export async function handleAffiliate(req: Request, env: Env): Promise<Response>
       affiliates: (affs ?? []).map(a => ({ ...a, name: a.name ?? '', totals: totals(byCode.get(a.code) ?? []) })),
       commissions: (com ?? []).map(c => ({
         id: c.id, affiliate: emailOf.get(c.code) ?? c.code, customer: c.referred_email, base: c.base_cents, amount: c.amount_cents,
-        currency: c.currency, status: shownStatus(c), createdAt: c.created_at, payableAt: c.payable_at, paidAt: c.paid_at,
+        currency: c.currency, status: shownStatus(c), createdAt: c.created_at, payableAt: c.payable_at, paidAt: c.paid_at, voidReason: c.void_reason ?? '',
       })),
       totals: totals(com ?? []),
     });

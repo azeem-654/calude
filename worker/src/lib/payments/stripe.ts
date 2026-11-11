@@ -150,6 +150,10 @@ export const stripe: PaymentProvider = {
        docs disagree with themselves about which field survives which flow. */
     params.set('client_reference_id', req.reference);
     params.set('metadata[orderId]', req.reference);
+    /* On the payment intent too, which is what a refund's charge carries:
+       session metadata never reaches `charge.refunded`, so a refunded order
+       could not be found from it (M-5). */
+    params.set('payment_intent_data[metadata][orderId]', req.reference);
 
     const r = await call(key, '/checkout/sessions', params);
     if (!r.ok) {
@@ -252,6 +256,8 @@ export const stripe: PaymentProvider = {
     if (type === 'invoice.paid' || type === 'invoice.payment_succeeded') {
       const inv = obj as {
         id?: string; amount_paid?: number; currency?: string; metadata?: Record<string, string>; customer?: string;
+        payment_intent?: string | null; charge?: string | null;
+        payments?: { data?: { payment?: { payment_intent?: string } }[] };
         subscription_details?: { metadata?: Record<string, string> };
         parent?: { subscription_details?: { metadata?: Record<string, string> } };
       };
@@ -263,6 +269,8 @@ export const stripe: PaymentProvider = {
         amountCents: Number(inv.amount_paid ?? 0), currency: String(inv.currency ?? '').toUpperCase(),
         subscriptionPayment: Number(inv.amount_paid ?? 0) > 0,
         customerId: typeof inv.customer === 'string' ? inv.customer : undefined,
+        /* Older API versions put the intent on the invoice; newer ones in its payments list. */
+        paymentRef: String(inv.payment_intent || inv.payments?.data?.[0]?.payment?.payment_intent || inv.charge || ''),
       };
     }
 
@@ -299,13 +307,34 @@ export const stripe: PaymentProvider = {
      * read as a failure, which set a paying subscriber who opened a plan
      * switch and closed the tab to "past due". It is nothing.
      */
+    /*
+     * A refund or a dispute of an earlier payment (M-5). The charge carries
+     * the payment intent and, for an invoice, the invoice id — not the
+     * session's metadata — so those are what it is matched on. A dispute
+     * changes no order or subscription here (the processor's own dispute
+     * flow decides that); it only stops a commission being paid on it.
+     */
+    if (type === 'charge.refunded' || type === 'charge.dispute.created') {
+      const c = obj as { id?: string; charge?: string; payment_intent?: string | null; invoice?: string | null; amount?: number; amount_refunded?: number; refunded?: boolean; currency?: string };
+      const of = Number(c.amount ?? 0);
+      const reversed = type === 'charge.dispute.created' ? of : (c.refunded ? of : Number(c.amount_refunded ?? 0));
+      return {
+        kind: type === 'charge.refunded' ? 'refunded' : 'other',
+        reference: meta.orderId || '',
+        sessionId: '',
+        eventId: String((event as { id?: string }).id ?? ''),
+        currency: c.currency ? String(c.currency).toUpperCase() : undefined,
+        paymentRef: String(c.payment_intent || c.charge || c.id || ''),
+        reversal: { why: type === 'charge.refunded' ? 'refund' : 'dispute', reversedCents: reversed, ofCents: of, invoiceRef: String(c.invoice || '') },
+      };
+    }
+
     const payStatus = String(obj.payment_status ?? '');
     const kind: PaymentEvent['kind'] =
       type === 'checkout.session.completed' ? (payStatus === 'paid' || payStatus === 'no_payment_required' ? 'paid' : 'other')
         : type === 'checkout.session.async_payment_succeeded' ? 'paid'
           : type === 'checkout.session.async_payment_failed' ? 'failed'
-            : type === 'charge.refunded' ? 'refunded'
-              : 'other';
+            : 'other';
 
     /**
      * The address, if one was collected.
@@ -331,6 +360,7 @@ export const stripe: PaymentProvider = {
       reference: meta.orderId || String(obj.client_reference_id ?? ''),
       sessionId: String(obj.id ?? ''),
       eventId: String((event as { id?: string }).id ?? ''),
+      paymentRef: typeof obj.payment_intent === 'string' ? obj.payment_intent : undefined,
       amountCents: typeof obj.amount_total === 'number' ? obj.amount_total : undefined,
       currency: obj.currency ? String(obj.currency).toUpperCase() : undefined,
       customerId: typeof obj.customer === 'string' ? obj.customer : undefined,

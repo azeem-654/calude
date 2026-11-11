@@ -111,6 +111,13 @@ export interface PaymentEvent {
    *  A subscription checkout completing is *not* one: on Stripe its first
    *  invoice arrives as its own event, and counting both would pay twice. */
   subscriptionPayment?: boolean;
+  /** The processor's id for the money itself (a Stripe payment intent) —
+   *  stored when a payment lands, so a later refund or dispute finds the
+   *  payment it reverses even when it carries none of our metadata (M-5). */
+  paymentRef?: string;
+  /** A refund or a dispute of an earlier payment: how much of how much, and
+   *  the invoice it was for when the processor says. */
+  reversal?: { why: 'refund' | 'dispute'; reversedCents: number; ofCents: number; invoiceRef: string };
   /** The delivery address, when the processor collected one. */
   shipping?: {
     name: string; line1: string; line2: string; city: string;

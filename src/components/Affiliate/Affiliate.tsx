@@ -143,7 +143,8 @@ function CommissionTable({ rows, admin, onMark }: { rows: Commission[]; admin?: 
               <td style={{ padding: '9px 6px' }}>{money(c.base, c.currency)}</td>
               <td style={{ padding: '9px 6px', fontWeight: 750 }}>{money(c.amount, c.currency)}</td>
               <td style={{ padding: '9px 6px' }}><span style={{ padding: '3px 9px', borderRadius: 999, background: bg, color: fg, fontWeight: 750, fontSize: 12 }}>{label}</span>
-                {c.status === 'pending' && <span style={{ color: MUTED, fontSize: 12, marginLeft: 6 }}>until {new Date(c.payableAt).toLocaleDateString()}</span>}</td>
+                {c.status === 'pending' && <span style={{ color: MUTED, fontSize: 12, marginLeft: 6 }}>until {new Date(c.payableAt).toLocaleDateString()}</span>}
+                {c.voidReason && <span style={{ display: 'block', color: MUTED, fontSize: 12, marginTop: 2 }}>{c.voidReason}</span>}</td>
               {admin && <td style={{ padding: '9px 6px', whiteSpace: 'nowrap' }}>
                 {c.status !== 'paid' && c.status !== 'void' && <button type="button" onClick={() => onMark?.(c.id, 'paid')} style={{ marginRight: 6, padding: '5px 10px', borderRadius: 8, border: 0, background: '#16a34a', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Mark paid</button>}
                 {c.status !== 'void' && c.status !== 'paid' && <button type="button" onClick={() => onMark?.(c.id, 'void')} style={{ padding: '5px 10px', borderRadius: 8, border: `1px solid ${LINE}`, background: '#fff', fontWeight: 700, cursor: 'pointer' }}>Void</button>}

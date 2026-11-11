@@ -404,7 +404,8 @@ export const creem: PaymentProvider = {
       object?: {
         id?: string; request_id?: string; metadata?: Record<string, string>; order?: { id?: string; amount?: number; currency?: string };
         customer?: { id?: string; email?: string } | string; product?: { price?: number; currency?: string };
-        last_transaction?: { amount?: number; currency?: string };
+        last_transaction?: { id?: string; amount?: number; currency?: string };
+        transaction?: { id?: string; amount?: number } | string; refund_amount?: number; amount?: number;
       };
     };
     try { ev = JSON.parse(rawBody); } catch { return null; }
@@ -426,6 +427,7 @@ export const creem: PaymentProvider = {
         currency: String(o.last_transaction?.currency ?? o.product?.currency ?? '').toUpperCase(),
         subscriptionPayment: amount > 0,
         customerId,
+        paymentRef: String(o.last_transaction?.id ?? ''),
       };
     }
     /* A subscription that has ended: cancelled now, or at the end of a
@@ -451,8 +453,20 @@ export const creem: PaymentProvider = {
        this app can post a parcel to. So no shipping is claimed — the supplier
        path will say the address is missing, which is true, rather than posting
        to a half-read one. */
+    /* A refund or dispute names the transaction it reverses (M-5); a
+       commission is matched on that, and on nothing looser. */
+    const txn = typeof o.transaction === 'string' ? o.transaction : o.transaction?.id ?? '';
+    const reversal = type === 'refund.created' || type === 'dispute.created'
+      ? {
+        why: type === 'refund.created' ? 'refund' as const : 'dispute' as const,
+        ofCents: Number((typeof o.transaction === 'object' ? o.transaction?.amount : undefined) ?? o.order?.amount ?? 0),
+        reversedCents: Number(o.refund_amount ?? o.amount ?? (typeof o.transaction === 'object' ? o.transaction?.amount : undefined) ?? 0),
+        invoiceRef: '',
+      }
+      : undefined;
     return {
       kind, reference, sessionId, eventId: String(ev.id ?? ''), customerId,
+      ...(reversal ? { reversal, paymentRef: txn } : {}),
       amountCents: typeof o.order?.amount === 'number' ? o.order.amount : undefined,
       currency: o.order?.currency ? String(o.order.currency).toUpperCase() : undefined,
     };

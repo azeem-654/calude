@@ -5,6 +5,8 @@ export type Totals = Record<string, { pending: number; payable: number; paid: nu
 export interface Commission {
   id: string; customer: string; affiliate?: string; base: number; amount: number; rate?: number; currency: string;
   status: 'pending' | 'payable' | 'paid' | 'void'; createdAt: string; payableAt: string; paidAt: string | null;
+  /** Why it was voided or cut by a refund or dispute, or that a paid one is to be deducted. */
+  voidReason?: string;
 }
 export interface Program {
   joined: boolean; rate: number; holdDays: number; termsVersion: string;

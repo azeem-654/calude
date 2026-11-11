@@ -459,9 +459,13 @@ export async function handleStorefrontWebhook(req: Request, env: Env): Promise<R
   /* Matched on the order id the processor gave back, or on the session this
      Worker stored when it made the link. Never on amount or email: the first
      time somebody buys the same thing twice, that marks the wrong order. */
+  /* A refund's charge carries no session, so it is matched on the payment
+     intent stored when the order was paid (M-5). */
   const where = event.reference
     ? { sql: 'id = ? AND account_id = ?', args: [event.reference, accountId] }
-    : { sql: 'stripe_session = ? AND account_id = ?', args: [event.sessionId, accountId] };
+    : !event.sessionId && event.paymentRef
+      ? { sql: "payment_ref = ? AND payment_ref != '' AND account_id = ?", args: [event.paymentRef, accountId] }
+      : { sql: 'stripe_session = ? AND account_id = ?', args: [event.sessionId, accountId] };
 
   if (event.kind === 'paid') {
     /* Only a pending order moves. An order already fulfilled must not be walked
@@ -472,9 +476,9 @@ export async function handleStorefrontWebhook(req: Request, env: Env): Promise<R
     const now = nowIso();
     const moved = await env.DB.prepare(
       `UPDATE crm_orders SET status = 'paid', channel = ?, stripe_session = ?, updated_at = ?,
-              paid_at = COALESCE(paid_at, ?)
+              paid_at = COALESCE(paid_at, ?), payment_ref = COALESCE(NULLIF(?, ''), payment_ref)
        WHERE ${where.sql} AND status = 'pending'`,
-    ).bind(provider.id, event.sessionId, now, now, ...where.args).run();
+    ).bind(provider.id, event.sessionId, now, now, event.paymentRef ?? '', ...where.args).run();
 
     /*
      * A discount code is spent when the money arrives, not when it is typed.
@@ -514,7 +518,8 @@ export async function handleStorefrontWebhook(req: Request, env: Env): Promise<R
         s.country.slice(0, 2), s.phone.slice(0, 40), nowIso(), ...where.args,
       ).run();
     }
-  } else if (event.kind === 'refunded') {
+  } else if (event.kind === 'refunded' && !(event.reversal && event.reversal.ofCents > 0 && event.reversal.reversedCents < event.reversal.ofCents)) {
+    /* A partial refund leaves the order paid: the buyer kept most of it. */
     await env.DB.prepare(
       `UPDATE crm_orders SET status = 'refunded', updated_at = ? WHERE ${where.sql} AND status IN ('paid','fulfilled')`,
     ).bind(nowIso(), ...where.args).run();

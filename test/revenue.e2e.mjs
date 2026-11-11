@@ -281,5 +281,23 @@ if (await strip.count()) {
 ok('no page errors', !errs.length, errs.join(' | '));
 await b.close();
 
+/* M-5: a refund's charge carries the payment intent and none of the session's
+   metadata; it is matched on the intent stored when the order was paid. Last,
+   so the figures above are not moved by it. */
+{
+  const now = new Date().toISOString();
+  sql(`INSERT INTO crm_orders (id, account_id, email, total_cents, currency, status, channel, placed_at, updated_at, stripe_session) VALUES ('ord-pi-1', '${esc(A)}', 'pi@buyer.test', 2000, 'USD', 'pending', 'stripe', '${now}', '${now}', 'cs_pi_1')`);
+  sql(`INSERT INTO crm_orders (id, account_id, email, total_cents, currency, status, channel, placed_at, updated_at, stripe_session) VALUES ('ord-pi-2', '${esc(A)}', 'pi2@buyer.test', 2000, 'USD', 'pending', 'stripe', '${now}', '${now}', 'cs_pi_2')`);
+  for (const n of [1, 2]) await signed(A, 'whsec_ann', { id: `evt_pi_paid_${n}`, type: 'checkout.session.completed', data: { object: { id: `cs_pi_${n}`, client_reference_id: `ord-pi-${n}`, metadata: { orderId: `ord-pi-${n}` }, payment_status: 'paid', payment_intent: `pi_ord_${n}` } } });
+  const ord = (id) => sql(`SELECT status, payment_ref AS pr FROM crm_orders WHERE id = '${id}'`)[0];
+  ok('a paid storefront order keeps its payment intent', ord('ord-pi-1')?.pr === 'pi_ord_1', JSON.stringify(ord('ord-pi-1')));
+  await signed(A, 'whsec_ann', { id: 'evt_pi_ref_1', type: 'charge.refunded', data: { object: { id: 'ch_pi_1', payment_intent: 'pi_ord_1', amount: 2000, amount_refunded: 2000, refunded: true } } });
+  ok('a refund carrying only the payment intent marks that order refunded', ord('ord-pi-1')?.status === 'refunded', JSON.stringify(ord('ord-pi-1')));
+  await signed(A, 'whsec_ann', { id: 'evt_pi_ref_2', type: 'charge.refunded', data: { object: { id: 'ch_pi_2', payment_intent: 'pi_ord_2', amount: 2000, amount_refunded: 500, refunded: false } } });
+  ok('a partial refund leaves the order paid', ord('ord-pi-2')?.status === 'paid', JSON.stringify(ord('ord-pi-2')));
+  await signed(BB, 'whsec_bob', { id: 'evt_pi_ref_x', type: 'charge.refunded', data: { object: { id: 'ch_x', payment_intent: 'pi_ord_2', amount: 2000, refunded: true } } });
+  ok('Bob\'s webhook cannot refund Ann\'s order by its payment intent', ord('ord-pi-2')?.status === 'paid');
+}
+
 console.log(fail ? `\n${fail} failed` : '\nall passed');
 process.exit(fail ? 1 : 0);

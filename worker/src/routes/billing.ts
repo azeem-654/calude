@@ -39,7 +39,7 @@ import {
 } from '../lib/db';
 import { decryptSecret, encryptSecret } from '../lib/crypto';
 import { DEFAULT_PROVIDER, providerChoices, providerFor, type ProviderContext } from '../lib/payments';
-import { recordCommission } from '../lib/affiliate';
+import { recordCommission, reverseCommission } from '../lib/affiliate';
 import { applyAppsumoTier } from './appsumo';
 
 const SECRET_KEY = 'mailbox_key';
@@ -517,7 +517,12 @@ export async function handleBillingWebhook(req: Request, env: Env): Promise<Resp
     await recordCommission(env, {
       accountId, amountCents: event.amountCents ?? 0, currency: event.currency || 'USD',
       eventKey: `${provider.id}:${event.eventId || event.sessionId}`,
+      paymentRef: event.paymentRef, invoiceRef: event.sessionId,
     });
+  }
+  /* A refunded or disputed subscription payment earns nothing (M-5). */
+  if (event.reversal && (event.paymentRef || event.reversal.invoiceRef)) {
+    await reverseCommission(env, { ...event.reversal, paymentRef: event.paymentRef ?? '' });
   }
 
   /* 200 for anything correctly signed, including events not acted on — a
