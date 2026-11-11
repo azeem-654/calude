@@ -167,7 +167,8 @@ export async function freeFirst(key: string, models: string[]): Promise<string[]
     const fp = await keyFp(key);
     if (fp === 'own') return models;
     const [counts, lim] = await Promise.all([countsFor(env, fp), freeLimits(env)]);
-    const past = (m: string) => { const c = counts[m]; return !!c && (c.n >= lim.gemini[tierOf(m)].rpd || (c.l >= 3 && c.ok === 0)); };
+    /* Refusals are not counted towards the day (Google does not count them). */
+    const past = (m: string) => { const c = counts[m]; return !!c && (c.n - c.l >= lim.gemini[tierOf(m)].rpd || (c.l >= 3 && c.ok === 0)); };
     return [...models.filter(m => !past(m)), ...models.filter(past)];
   } catch { return models; }
 }
@@ -188,7 +189,13 @@ export async function nearDailyLimit(env: Env, key: string, fp: string): Promise
   if (poolKeyOf(key)?.source === 'workspace') return false;
   const [counts, lim] = await Promise.all([countsFor(env, fp), freeLimits(env)]);
   let total = 0, ok = 0, refused = 0;
-  for (const c of Object.values(counts)) { total += c.n; ok += c.ok; refused += c.l; }
+  for (const [model, c] of Object.entries(counts)) {
+    /* The voice model has a quota of its own; it says nothing about writing. */
+    if (/tts|audio/i.test(model)) continue;
+    /* A refusal (429) is not a request served, and Google does not count it
+       against the day — counting it here demoted keys that still had room. */
+    total += c.n - c.l; ok += c.ok; refused += c.l;
+  }
   if (!total) return false;
   if (refused >= 5 && ok === 0) return true;
   if (/^sk-or-/.test(key.trim())) {

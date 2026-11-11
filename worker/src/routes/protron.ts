@@ -59,6 +59,9 @@ export function pickSpeechModel(names: string[]): string | null {
   return tts.find(n => /flash/i.test(n)) ?? tts[0] ?? null;
 }
 
+/** Keys whose voice model is out of requests, and until when (per isolate). */
+const voiceRest = new Map<string, number>();
+
 export async function handleProtron(req: Request, env: Env): Promise<Response> {
   let d: Record<string, unknown>;
   try { d = await req.json() as Record<string, unknown>; } catch { return fail('That was not a valid request.'); }
@@ -131,6 +134,11 @@ export async function handleProtron(req: Request, env: Env): Promise<Response> {
 
     return withFailover<Response>(key, async k => {
       if (isOpenRouterKey(k)) return { ok: false, status: -2, error: 'no speech on OpenRouter', value: fail('No AI voice is connected — Protron uses the browser\'s voice.', 200, { code: 'no_voice' }) };
+      /* The voice model has its own, much smaller free day. When it is spent,
+         only the voice rests — never the key: a 429 from the voice used to
+         rest the whole key for an hour (lib/aiPool.ts), so a customer talking
+         to Protron could take every Google key away from all writing. */
+      if ((voiceRest.get(k) ?? 0) > Date.now()) return { ok: false, status: -2, error: 'voice resting', value: fail('The voice is busy right now — Protron uses the browser\'s voice.', 200, { code: 'no_voice' }) };
       const model = pickSpeechModel(await geminiNames(k) ?? []);
       if (!model) return { ok: false, status: -2, error: 'no speech model', value: fail('No AI voice is available on this key — Protron uses the browser\'s voice.', 200, { code: 'no_voice' }) };
       let res: Response;
@@ -147,7 +155,13 @@ export async function handleProtron(req: Request, env: Env): Promise<Response> {
       }
       if (!res.ok) {
         const err = await res.text().catch(() => '');
-        if (res.status === 429) await recordAiUse({ provider: 'gemini', key: k, model, module: 'protron-voice', accountId, ok: false, status: 429 });
+        if (res.status === 429) {
+          await recordAiUse({ provider: 'gemini', key: k, model, module: 'protron-voice', accountId, ok: false, status: 429 });
+          voiceRest.set(k, Date.now() + (/per[ -]?day|PerDay|daily/i.test(err) ? 60 : 2) * 60_000);
+          if (voiceRest.size > 50) voiceRest.delete(voiceRest.keys().next().value as string);
+          /* -2: "not this kind of work right now" — the next key is tried, nothing is rested. */
+          return { ok: false, status: -2, error: err, value: fail('The voice is busy right now — Protron uses the browser\'s voice.', 200, { code: 'no_voice' }) };
+        }
         return { ok: false, status: res.status, error: err, value: fail(res.status === 429 ? 'The voice is busy right now.' : 'The voice could not speak that.', 200, { code: 'voice_failed' }) };
       }
       const body = await res.json() as { candidates?: { content?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] } }[]; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } };
