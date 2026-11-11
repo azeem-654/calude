@@ -117,7 +117,7 @@ Priorities: P0, then P1, then P2, then P3. Within a group, do the tasks in order
 - **Accept:** a workspace with no browser key analyses an uploaded file. No request from the browser goes to `generativelanguage.googleapis.com`.
 - **Tests:** an e2e with the Gemini mock in `test/videoStudioMock.mjs`.
 
-**[FE-1] P1 if the journey shows the crash, otherwise P3 — Hooks order in the post editor.**
+**[FE-1] P3 (latent; not reproduced in the browser) — Hooks order in the post editor.**
 - **File:** `src/components/SocialCreator/PostEditor.tsx` (~L839-881).
 - **Change:** move the `if (!post) return …` below every hook, or split the editor into an outer guard and an inner component.
 - **Accept:** opening `/social-creator/editor/<id>` directly and reloading it renders the editor with no page error. ESLint `react-hooks/rules-of-hooks` reports zero in this file.
@@ -184,7 +184,15 @@ Priorities: P0, then P1, then P2, then P3. Within a group, do the tasks in order
 
 ### 3.7 UI/UX
 
-See the audit's Deliverable E. Each row there is a task with its route and the measured defect.
+- **[UX-1] P2 —** `src/components/Layout/TopNav.tsx` (and every `.rail-btn` / `data-tip` control): add `aria-label` equal to the tooltip text, and show the tooltip on keyboard focus too. **Accept:** an accessibility probe finds no unnamed buttons in the shell at 1280 or 390.
+- **[UX-2] P3 —** one `<h1>` on the dashboard (`/`) and on `/growth`.
+- **[UX-3] P3 —** `/growth` for a non-owner sends them to Jobs & revenue, or shows an empty state linking there.
+- **[UX-4] P3 —** `src/components/Moderation/ReviewQueue.tsx`: no call to `moderation.php` for non-owners.
+- **[UX-5] P3 —** the "Create New Design" window (`SocialCreator.tsx`) uses the shared dialog pattern: `role="dialog"`, `aria-modal`, a focus trap, and Escape to close.
+- **[UX-6] P3 —** label the filter selects and inputs on `/contacts`, `/pipelines`, `/settings` and `/sell`.
+- **[UX-7] P3 —** one label and one form for the rail's "Add contact" and the Contacts screen's "Add Contact".
+- **[UX-8] P3 —** 24 px minimum hit areas on `/` and `/pipelines`.
+- **Regression for 3.7:** re-run the audit's browser probe (29 routes × 1280 and 390: page errors, failed API calls, overflow, unnamed controls, unlabelled fields).
 
 ### 3.8 Performance
 

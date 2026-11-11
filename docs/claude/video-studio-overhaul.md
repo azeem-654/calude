@@ -254,7 +254,7 @@ panel's "kept after a reload". A run on the commit before Phase 1
   until Phase 3's saved themes exist — Phase 3 adds them to step 3
   (`WizardPrefs.thumbnail`) and to `shorts_create`'s thumbnails enqueue.
 
-### Phase 3 — status: BUILT 2026-11-10 (owner asked: phase 3, then live)
+### Phase 3 — status: DONE — all three phases LIVE since 2026-11-11 (commit 10a7581, Promote run 42, deploy run 386)
 
 **What was built** (details word for word in `docs/claude/video-studio.md`
 → "Thumbnails without stray shapes, and design themes"; `graphics.md` →
@@ -281,3 +281,5 @@ panel's "kept after a reload". A run on the commit before Phase 1
   `test:videoe2e` themes section + updated thumbnail-look check.
 
 **Final report**: `docs/VIDEO-STUDIO-OVERHAUL-REPORT.md`.
+
+**Release check (2026-11-11):** `test:videoe2e` on 10a7581: 211 passed, 6 failed. Three are pre-existing stale checks: the noise command now asks for "Maximum", the Audio panel text, and the "a level can be picked" check that follows it, fixed in the same commit by waiting for the save. One is the retry check's timing flake. The designer check failed because the themes section left a "written as is" theme on every Short; it was made case-insensitive. Check 18 failed only because of the noise-level check. The comparison run on f7abd78 (before the overhaul) had the same stale and flaky ones. Staging and live deploys both succeeded; the media engine was rebuilt on staging (bindings step about 2 minutes). Follow-ups are in `docs/audit/OPUS-HANDOFF.md` (VS-1, VS-5, AI-1).

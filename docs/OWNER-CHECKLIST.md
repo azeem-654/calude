@@ -19,6 +19,7 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 
 | # | What | Where | Blocks |
 |---|---|---|---|
+| 46 | **Decide the AppSumo-readiness items only you can decide** (added 2026-11-11 by the readiness audit). The refund policy and how it fits AppSumo's buyer refund window. Your legal entity, address and governing law for the terms and privacy page. Whether the home page's sample prospecting figures stay, and under what label. Whether "Google Business Profile replies" stays before Google grants access. Whether managed domain and mailbox buying stays on before it can bill. The hosted-mail daily cap. Whether the lifetime-deal limits fit real unit costs. The full list with reasons is in `docs/audit/OPUS-HANDOFF.md` §4 | a lawyer for the first two; the app | AppSumo submission |
 | 1 | **Fund the Openprovider balance** and switch on their recurring auto top-up | openprovider.eu → Finance | Every domain sale. Checkout refuses orders while it is short |
 | 3 | **Change the master password** | Settings → Security | Security |
 | 4 | **Reset the testing site's password**, or create its owner account. *Since 2026-10-26 https://testing.protectedcentral.com is locked* (item 37): the browser first asks for the testing site's username and password, then opens on the staging copy of the website; press **Sign in** at the top to reach the testing app. Everything pushed to staging is visible there | testing.protectedcentral.com | Being able to sign in to staging at all. See "The testing site has one account" below |

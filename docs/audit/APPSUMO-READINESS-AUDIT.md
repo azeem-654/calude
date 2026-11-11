@@ -60,8 +60,7 @@ None of this needs re-architecture. Each item is a bounded fix with a clear test
 - **T-2:** a tenant can claim another tenant's SMS number and silently drop its STOP replies.
 - **C-1:** WordPress publishing in Blog Automation never works.
 - **AI-1:** Quick Shorts' file analysis fails for every customer who has not pasted a personal Gemini key.
-- **FE-1:** the free-form post editor breaks a React rule; the browser test result is in Deliverable E.
-- **PUB-1 and PUB-2:** the terms make refunds discretionary, and there is no refund page, no named legal entity and no governing law.
+- **PUB-1:** the terms make refunds discretionary, and there is no refund page. PUB-2, a missing legal entity and governing law, is P2.
 
 ### Most important improvements, in order
 
@@ -69,7 +68,7 @@ None of this needs re-architecture. Each item is a bounded fix with a clear test
 2. **Fix consent and identity:** E-2 (unsubscribe), T-2 and S-1 (SMS opt-outs), A-1 (client pre-registration) and W-1/W-2 (login CSRF, token returned to script).
 3. **Close the shared reserved workspace (T-1)**, and extend the security suite to the 23 routes it does not cover.
 4. **Make the public site true:** sample figures labelled, unproven claims removed, and refund, legal-entity and AppSumo terms decided by the owner.
-5. **Repair the advertised features that do not work:** Blog Automation's WordPress publishing, Quick Shorts' upload, and the post editor crash.
+5. **Repair the advertised features that do not work:** Blog Automation's WordPress publishing and Quick Shorts' upload. Then the accessibility of the shared rail (UX-1).
 6. **Put AI budgets on every server path (F-3)**, and claims and locks on the cron (F-1, F-2), before lifetime-deal volume arrives.
 
 ### AppSumo submission readiness
@@ -111,7 +110,7 @@ Status words: **Verified** (exercised by a test or a browser in this audit), **L
 | Auth | Register, login, logout, codes, Google, 2-step, reset, lockout | Verified, with problems | `test:security` 205/205; journey sign-in (Deliverable E) | W-1, W-2, A-2, A-3 |
 | Accounts | Sub-accounts, client logins, roles | Limited | Code review | A-1, T-1, A-4, T-6 |
 | Tenancy | Id-scoped queries and upserts, signed storage links | Verified for 37 routes | `test:security`; reviewer sweep of every unscoped `WHERE id` | T-1, T-3, T-4; 23 routes untested |
-| CRM | Contacts, companies, deals, pipelines, tags, notes | Limited | Journey (Deliverable E); code review | Data is stored as whole JSON documents per key (DATA-1) |
+| CRM | Contacts, companies, deals, pipelines, tags, notes | Verified (contacts) / Limited | Contact added, reloaded and re-signed-in in the browser; deals not exercised | DATA-1, UX-6, UX-7 |
 | CRM | Import and export | Verified (unit) | `test:leadimport` 70/70 | — |
 | AI Prospecting | Search, sources, lead library, daily finders | Limited | `test:aiprospecting`, `test:sources`, `test:finder`, `test:register` all pass | Needs a Google Maps key (owner checklist #23); C-2; PUB-3 |
 | AI Autopilot | Planner, workflows, actions, cron | Partial | `test:autopilot`, `test:triggers`, `test:agents`, `test:nodes` pass | F-1, F-2, F-3, D-3 |
@@ -122,9 +121,9 @@ Status words: **Verified** (exercised by a test or a browser in this audit), **L
 | AppSumo | Codes, stacking, Licensing v2, reviewer logins | Verified | `test:appsumo` 72/72 (earlier run, 4 Nov); review | M-8 |
 | Affiliates | Links, commissions, payout marking | Limited | Review | M-5: commissions are never voided on refund |
 | Reseller | Clients, their own Stripe or Creem | Limited | Review | M-3 also affects reseller clients |
-| AI Video Studio | Upload, transcription, cleanup, Shorts wizard, framing, captions, effects, preview, render, thumbnails, themes | Verified (self-authored) | `test:video` 381/381, `test:videoanalysis` 9/9, `test:videoe2e` (Deliverable E) | VS-1–VS-6, AI-1 |
+| AI Video Studio | Upload, transcription, cleanup, Shorts wizard, framing, captions, effects, preview, render, thumbnails, themes | Verified (self-authored) | `test:video` 381/381, `test:videoanalysis` 9/9, `test:videoe2e` 211 passed on the released commit; live since 11 Nov | VS-1–VS-6, AI-1 |
 | AI Video Studio | Screen recorder (camera, screen, both) | Unable to verify | Headless browser only; `test:recorder` 47/47 is unit-level | Real-device delay and drift untested |
-| Graphics Designer | Templates, editor, thumbnail themes | Verified, with problems | `test:design` 78/78, `test:socialtemplates` 30/30 | FE-1 in the old post editor |
+| Graphics Designer | Templates, editor, thumbnail themes | Verified | `test:design` 78/78, `test:socialtemplates` 30/30; editor opened and reloaded in the browser | FE-1 (latent), UX-5 |
 | Blog Automation | WordPress connect and publish | Broken | Code: client and route disagree | C-1 |
 | Reputation | Google reviews, replies | Unable to verify | Needs Business Profile API access (owner #24) | PUB-5 |
 | Booking and strategy call | Pages, slots, emails, reviews | Verified | `test:strategycall` 33/33, `test:bookingtz` 53/53 | — |
@@ -154,7 +153,7 @@ The full detail of each issue is in Deliverable D. Each ID has a task in the han
 | T-2 | SMS | Any tenant can save another's number; inbound STOP may be checked against the wrong tenant and dropped | P1 | yes |
 | C-1 | Blog Automation | WordPress connect and publish always fail (field name mismatch) | P1 | yes |
 | AI-1 | Video Studio | Quick Shorts uploads straight to Google with an empty browser key, so Google answers 403 | P1 | yes |
-| FE-1 | Graphics Designer | Post editor calls hooks after an early return | P1/P3 | see Deliverable E |
+| FE-1 | Graphics Designer | Post editor calls hooks after an early return; not reproduced in the browser (latent) | P3 | yes (code); not reproduced |
 | PUB-1 | Legal | No refund or cookie page; terms make refunds discretionary; AppSumo licences not covered | P1 | yes |
 | PUB-2 | Legal | No legal entity, address or governing law | P2 | yes |
 | PUB-3 | Public site | 18 fixed "found / verified" counts shown as real results | P2 | yes |
@@ -183,6 +182,8 @@ The full detail of each issue is in Deliverable D. Each ID has a task in the han
 | DATA-1 | Data | Core CRM lists saved as whole JSON documents; the browser's `put` overwrites without a version check | P2 | yes |
 | VS-1 | Tests | Three stale Video Studio end-to-end checks and one timing flake (fixed on this branch) | P3 | yes |
 | VS-5 | Video Studio | At 390 wide the open side panel covers the breadcrumb, so the composition menu cannot be pressed | P3 | yes |
+| UX-1 | App shell | Rail icon buttons named only by tooltip; unnamed to screen readers on every screen | P2 | yes |
+| UX-2–UX-8 | Various screens | Missing h1, a customer dead end, a 403 on Moderation, a dialog without a role, unlabelled filters, duplicate Add contact, small targets | P3 | yes |
 | PUB-4 | SEO | Unknown URLs return 200 with the home page; one title and description in the HTML shell | P3 | yes |
 | DEV-1 | Tooling | ESLint reads stale agent worktrees (2.4 GB) and video segments: 6,623 errors, 591 in real source | P3 | yes |
 | M-7, M-8, S-3, D-4, A-2, A-3, A-4, T-4, T-5, T-6, W-6, W-7, C-2, F-4, F-5 | various | Minor items (Deliverable D, "P3 items") | P3 | reviewer |
@@ -348,7 +349,40 @@ Each entry gives the facts needed to act. Fix steps and tests are repeated as ta
 
 ## Deliverable E — UI/UX report
 
-<<JOURNEY>>
+**How this was tested.** The production build ran on a local Worker with a fresh, empty database. A new customer was registered and signed in through the real login form. Then 29 app screens were visited at 1280 × 900 and 390 × 844 (58 visits). Each visit recorded page errors, console errors, failed API calls, horizontal overflow, load time and an accessibility probe. The probe counted controls with no accessible name, form fields with no label, images with no alt text, the h1 count, heading skips, and touch targets under 24 px. The public site was rendered live at the same widths. Screenshots are in the audit scratch folder; the routes are named below.
+
+**What held up**
+
+- No page errors and no console errors on any screen at either width. The one exception is Moderation, below.
+- No horizontal scroll at 390 on any app or public screen.
+- Every screen loaded in 1.5–2.7 s locally.
+- **Journey, verified:** sign in through the form, then add a contact through Contacts → Add Contact (name, email, company). The contact was still there after a reload, and after signing out (cookies and storage cleared) and back in.
+- **FE-1, not reproduced.** The free-form post editor (`/social-creator/editor/<id>`) survived a reload of its own address and opened from a second browser profile, because the app loads workspace data before drawing that route. The hooks-order violation is latent, not a crash today: **FE-1 is downgraded to P3**.
+- The Video Studio suite on the released commit passed 211 checks. The 6 failures were 3 pre-existing stale checks and a timing flake, plus 2 caused by its own new themes section and a local Worker restart; the test was corrected.
+
+**Defects by screen**
+
+| ID | Route | Problem | Why it matters | Improvement | Pri |
+|---|---|---|---|---|---|
+| UX-1 | Every app screen (the right-hand rail, `src/components/Layout/TopNav.tsx`, `.rail-btn`) | 10 icon buttons ("Go back", "Copy link to this view", "Contacts", "Email campaigns", "Calendar", …) have their name only in a `data-tip` tooltip, so they are unnamed to screen readers | Fails WCAG 4.1.2 on every screen; keyboard and screen-reader users cannot tell the rail's buttons apart | Give each `aria-label` (the same words as the tooltip); show the tooltip on focus as well as hover | P2 |
+| UX-2 | `/` (dashboard), `/growth` | No `<h1>`. The dashboard's top heading is an h2; Growth has no heading at all | Heading navigation and page titles for assistive technology | One h1 per screen | P3 |
+| UX-3 | `/growth` (a customer) | A dead end: one sentence saying the growth service is the install owner's | A customer who follows an old link lands nowhere | Send customers to Jobs & revenue, or show a proper empty state with that link | P3 |
+| UX-4 | `/moderation` (a customer) | Shows "Not your screen" but still calls the owner-only API, so two 403s appear in the console | Console noise; wasted calls | Do not call the API for non-owners | P3 |
+| UX-5 | `/social-creator` → Blank canvas | The "Create New Design" window has no `role="dialog"` or `aria-modal`, and focus is not trapped | Screen readers do not announce it; Tab escapes behind it | Use the app's shared dialog pattern | P3 |
+| UX-6 | `/contacts` (4), `/pipelines` (3), `/settings` (6), `/sell` (2) | Form fields (mostly the filter `<select>`s) with no label or accessible name | WCAG 1.3.1 and 3.3.2 | Add `aria-label` or visible labels | P3 |
+| UX-7 | `/contacts` | Two "Add contact" controls with different behaviour: the rail's quick action and the screen's "Add Contact" | Inconsistent wording and behaviour | Same label and the same form for both | P3 |
+| UX-8 | `/`, `/pipelines` | 6–8 touch targets under 24 × 24 px | Hard to hit on a phone (WCAG 2.5.8) | Minimum 24 px hit area | P3 |
+| VS-5 | `/video-studio/<id>` at 390 | The open side panel covers the breadcrumb, so the composition menu cannot be pressed | A phone user cannot open the Shorts wizard from the menu | Close the panel when the menu opens, or lift the breadcrumb above it | P3 |
+| PUB-4 | Public site | Unknown URLs show the home page with status 200 | Search engines index junk URLs as the home page | Real 404 | P3 |
+
+**Not tested in the browser:**
+
+- the sign-up form's emailed code (registration was done through the same API the form calls)
+- onboarding wizards beyond the dashboard's "Set up your workspace"
+- pipelines and deals creation, the workflow builder, campaign sending and the websites builder
+- keyboard-only operation of each screen, and colour contrast (no automated checker is installed)
+
+All of these are in the handoff's regression list.
 
 ---
 
@@ -405,7 +439,7 @@ Each entry gives the facts needed to act. Fix steps and tests are repeated as ta
 | Marketing email consent and unsubscribe | **Not met** | E-2 |
 | SMS opt-out reliable | **Not met** | T-2, S-1 |
 | Tenant isolation | Needs improvement | T-1, A-1; 23 routes outside the security suite |
-| Advertised features work | Needs improvement | C-1, AI-1, FE-1, PUB-5 |
+| Advertised features work | Needs improvement | C-1, AI-1, PUB-5 |
 | Public claims supported | Needs improvement | PUB-3, PUB-5 |
 | Refund policy compatible with AppSumo's | **Requires owner approval** | PUB-1 |
 | Legal entity, address, governing law | **Requires owner approval** | PUB-2 |
@@ -413,7 +447,7 @@ Each entry gives the facts needed to act. Fix steps and tests are repeated as ta
 | Owner-only security items (master password, 2-step, wrap key, backups) | **Requires owner approval** | Owner checklist #3, #8, #13, #14 |
 | Google Maps key and Business Profile access | **Requires owner approval** | Owner checklist #23, #24; prospect search and reviews depend on them |
 | Support channel | Verified | In-app chat and tickets, support@ address, strategy call |
-| Onboarding a new customer without help | See Deliverable E | Journey results |
+| Onboarding a new customer without help | Needs improvement | Sign-in and contacts verified; no page errors; UX-1 to UX-8 (Deliverable E) |
 
 AppSumo's private acceptance criteria are not public and are not assumed here. The rows above are publicly visible marketplace expectations (lifetime deals, code or licence redemption, a refund window) plus this audit's own product-readiness judgement.
 
@@ -443,8 +477,9 @@ AppSumo's private acceptance criteria are not public and are not assumed here. T
 - `test:security`: 205/205
 - `test:videoanalysis`: 9/9
 - `test:video`: 381/381
-- `test:videoe2e` on the shipped commit (see Deliverable E)
-- `npm audit`, ESLint, a live-site render, and the browser journey (Deliverable E)
+- `test:videoe2e` on the released commit: 211 passed, 6 failed, every failure explained in Deliverable E
+- `npm audit`, ESLint and a live-site render
+- the browser journey: 58 screen visits plus the contacts and editor journeys (Deliverable E)
 
 **Not executed:**
 
