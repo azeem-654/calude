@@ -13,7 +13,7 @@ const INK = '#0f172a';
 const MUTED = '#64748b';
 const LINE = '#e6e9f0';
 
-interface View { configured: boolean; cfAccountId: string; workerName: string; sendProvider: 'resend' | 'brevo'; hasToken: boolean; tokenFrom: '' | 'saved' | 'secret'; hasSendKey: boolean }
+interface View { configured: boolean; cfAccountId: string; workerName: string; sendProvider: 'resend' | 'brevo'; hasToken: boolean; tokenFrom: '' | 'saved' | 'secret'; hasSendKey: boolean; hasEventsSecret?: boolean; eventsUrl?: string }
 
 async function call(action: string, extra: Record<string, unknown> = {}) {
   const r = await fetch(`${API_BASE}/api/hosted-mail.php`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: sessionToken(), action, ...extra }) });
@@ -25,7 +25,7 @@ const label: React.CSSProperties = { display: 'grid', gap: 4, fontSize: 12, colo
 
 export default function HostedMailSettings() {
   const [v, setV] = useState<View | null>(null);
-  const [f, setF] = useState({ cfToken: '', cfAccountId: '', workerName: '', sendProvider: 'resend', sendKey: '' });
+  const [f, setF] = useState({ cfToken: '', cfAccountId: '', workerName: '', sendProvider: 'resend', sendKey: '', eventsSecret: '' });
   const [msg, setMsg] = useState<{ ok: boolean; text: string; field?: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -39,7 +39,7 @@ export default function HostedMailSettings() {
     setBusy(true); setMsg(null);
     const d = await call('save_config', f).catch(() => ({ success: false, error: 'Could not reach the server.' } as { success?: boolean; error?: string; field?: string; config?: View }));
     setBusy(false);
-    if (d.success && d.config) { setV(d.config); setF(x => ({ ...x, cfToken: '', sendKey: '' })); setMsg({ ok: true, text: 'Saved — the Cloudflare token was checked with Cloudflare.' }); }
+    if (d.success && d.config) { setV(d.config); setF(x => ({ ...x, cfToken: '', sendKey: '', eventsSecret: '' })); setMsg({ ok: true, text: 'Saved — the Cloudflare token was checked with Cloudflare.' }); }
     else setMsg({ ok: false, text: d.error ?? 'Not saved.', field: d.field });
   };
 
@@ -73,7 +73,21 @@ export default function HostedMailSettings() {
           </select></label>
         <label style={label}>{f.sendProvider === 'brevo' ? 'Brevo API key (xkeysib-…)' : 'Resend API key (re_…)'} {v?.hasSendKey && <small>(set — leave blank to keep)</small>}
           <input style={input} type="password" autoComplete="off" value={f.sendKey} onChange={e => setF({ ...f, sendKey: e.target.value })} data-field="hosted.sendKey" /></label>
+        {f.sendProvider === 'resend' && (
+          <label style={label}>Resend webhook signing secret (whsec_…) {v?.hasEventsSecret && <small>(set — leave blank to keep)</small>}
+            <input style={input} type="password" autoComplete="off" value={f.eventsSecret} onChange={e => setF({ ...f, eventsSecret: e.target.value })} data-field="hosted.eventsSecret" /></label>
+        )}
       </div>
+      {/* Bounces and complaints (E-7): until this address is added at the
+          provider, a hard-bounced address keeps being mailed. Said, not hidden. */}
+      {v?.eventsUrl && (
+        <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.55 }}>
+          <strong>Bounces and complaints.</strong> In {f.sendProvider === 'brevo' ? 'Brevo → Transactional → Settings → Webhook' : 'Resend → Webhooks → Add endpoint'}, add this address
+          for {f.sendProvider === 'brevo' ? 'hard bounces, invalid email and spam complaints' : 'email.bounced and email.complained'}. Addresses it reports are added to the sending workspace’s suppression list.
+          {f.sendProvider === 'resend' && ' Then paste the endpoint’s signing secret above.'}
+          <input readOnly value={v.eventsUrl} onFocus={e => e.currentTarget.select()} aria-label="Bounce and complaint webhook address" style={{ ...input, marginTop: 6, fontFamily: 'monospace', fontSize: 11.5 }} />
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <button onClick={() => void save()} disabled={busy} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 9, border: 'none', background: INK, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
           {busy && <Loader size={12} className="spin" />} Save and check

@@ -9,6 +9,7 @@
  * owner's alone and never returned.
  */
 import { body, fail, json } from '../lib/http';
+import { mailWebhookUrl } from '../lib/bounces';
 import { canAccess, userFromToken, type Env, type SessionUser } from '../lib/db';
 import {
   addAddress, addDomain, hostedConfig, hostedConfigView, listAddresses, listDomains, refreshDomain, removeAddress, removeDomain,
@@ -17,7 +18,7 @@ import {
 
 interface Req {
   token?: string; action?: string; accountId?: string; domain?: string; domainId?: string; addressId?: string; local?: string; name?: string;
-  cfToken?: string; cfAccountId?: string; workerName?: string; sendProvider?: string; sendKey?: string;
+  cfToken?: string; cfAccountId?: string; workerName?: string; sendProvider?: string; sendKey?: string; eventsSecret?: string;
 }
 
 const isOwner = (u: SessionUser) => u.role === 'agency' && !u.accountId;
@@ -41,13 +42,21 @@ export async function handleHostedMail(req: Request, env: Env): Promise<Response
   /* The operator's side. */
   if (act === 'config' || act === 'save_config') {
     if (!isOwner(user)) return fail('Only the owner of this installation can change this.', 403, { code: 'not_owner' });
-    if (act === 'config') return json({ success: true, config: await hostedConfigView(env) });
+    /* The bounce-and-complaint address to paste at the provider (E-7). The
+       owner only: the token in it is what lets a post suppress addresses. */
+    const configView = async () => {
+      const v = await hostedConfigView(env);
+      const origin = (env.APP_ORIGIN ?? new URL(req.url).origin).replace(/\/$/, '');
+      return { ...v, eventsUrl: await mailWebhookUrl(env, origin, v.sendProvider === 'brevo' ? 'brevo' : 'resend') };
+    };
+    if (act === 'config') return json({ success: true, config: await configView() });
     const r = await saveHostedConfig(env, {
       cfToken: d.cfToken, cfAccountId: d.cfAccountId, workerName: d.workerName,
       sendProvider: d.sendProvider === 'brevo' ? 'brevo' : d.sendProvider === 'resend' ? 'resend' : undefined, sendKey: d.sendKey,
+      eventsSecret: d.eventsSecret,
     });
     if (!r.ok) return fail(r.error, 200, r.field ? { field: r.field } : {});
-    return json({ success: true, config: await hostedConfigView(env) });
+    return json({ success: true, config: await configView() });
   }
 
   const accountId = String(d.accountId ?? '').trim();

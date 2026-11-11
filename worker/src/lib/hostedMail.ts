@@ -56,6 +56,8 @@ export type SendProvider = 'resend' | 'brevo';
 export interface HostedConfig {
   cfToken: string; cfAccountId: string; workerName: string;
   sendProvider: SendProvider; sendKey: string;
+  /** Resend's webhook signing secret (whsec_…), when the owner saved it (E-7, lib/bounces.ts). */
+  eventsSecret?: string;
 }
 
 /* ── The operator's configuration ────────────────────────────────────────── */
@@ -81,6 +83,7 @@ export async function hostedConfig(env: Env): Promise<HostedConfig | null> {
     workerName: s.workerName || (env.HOSTED_MAIL_WORKER ?? '').trim() || 'crmpro',
     sendProvider: s.sendProvider === 'brevo' ? 'brevo' : 'resend',
     sendKey: s.sendKey || '',
+    eventsSecret: s.eventsSecret || '',
   };
   return c.cfToken && c.cfAccountId ? c : null;
 }
@@ -92,6 +95,7 @@ export async function hostedConfigView(env: Env) {
   return {
     configured: !!c, cfAccountId: c?.cfAccountId ?? '', workerName: c?.workerName ?? '', sendProvider: c?.sendProvider ?? 'resend',
     hasToken: !!c?.cfToken, tokenFrom: s.cfToken ? 'saved' : c?.cfToken ? 'secret' : '', hasSendKey: !!c?.sendKey,
+    hasEventsSecret: !!c?.eventsSecret,
   };
 }
 
@@ -104,7 +108,9 @@ export async function saveHostedConfig(env: Env, patch: Partial<HostedConfig>): 
     workerName: (patch.workerName ?? '').trim() || old?.workerName || 'crmpro',
     sendProvider: patch.sendProvider === 'brevo' ? 'brevo' : patch.sendProvider === 'resend' ? 'resend' : old?.sendProvider ?? 'resend',
     sendKey: (patch.sendKey ?? '').trim() || old?.sendKey || '',
+    eventsSecret: (patch.eventsSecret ?? '').trim() || old?.eventsSecret || '',
   };
+  if (c.eventsSecret && !/^whsec_[A-Za-z0-9+/=]{16,}$/.test(c.eventsSecret)) return { ok: false, error: 'Resend\'s signing secret starts whsec_ (Resend → Webhooks → your endpoint → Signing secret).', field: 'hosted.eventsSecret' };
   if (!c.cfToken) return { ok: false, error: 'Paste a Cloudflare API token.', field: 'hosted.cfToken' };
   if (!/^[0-9a-f]{32}$/i.test(c.cfAccountId)) return { ok: false, error: 'The Cloudflare account ID is 32 letters and numbers (Workers & Pages → Overview, right-hand side).', field: 'hosted.cfAccountId' };
   if (!/^[a-z0-9-]{1,63}$/.test(c.workerName)) return { ok: false, error: 'The Worker name is the one in wrangler.jsonc — "crmpro" for the live site.', field: 'hosted.workerName' };

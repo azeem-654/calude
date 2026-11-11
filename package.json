@@ -95,6 +95,7 @@
     "test:allowances": "npx --yes tsx test/allowances.test.mts",
     "test:storage": "npx --yes tsx test/storageSweep.test.mts",
     "test:merge": "npx --yes tsx test/mergeDoc.test.mts",
+    "test:bounces": "npx --yes tsx test/bounces.test.mts",
     "test:agreements": "npx --yes tsx test/serviceAgreements.test.mts",
     "test:phi": "npx --yes tsx test/phiGuard.test.mts",
     "test:socialtemplates": "npx --yes tsx test/socialTemplates.test.mts",

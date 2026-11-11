@@ -22,6 +22,7 @@ import { imapFetch } from './lib/imap';
 import { fetchHosted } from './lib/hostedMail';
 import { deliver, fromAddressOf } from './lib/deliver';
 import { aiBudget, askGemini, loadAiKey } from './lib/ai';
+import { parseDsn, suppress } from './lib/bounces';
 import {
   classify, matchRule, needsEscalation, replyPrompt, shouldRefuse,
   type AutoReplyRule, type InboundMessage,
@@ -161,6 +162,16 @@ async function doMailbox(
     };
     if (seen.has(`${mb.id}:${msg.uid}`)) continue;
     report.read++;
+
+    /* A bounce is never answered, and what it says failed for good is
+       suppressed (E-7) — mailing it again is how a domain's reputation goes. */
+    const dsn = parseDsn(msg);
+    if (dsn.isDsn) {
+      if (dsn.hard.length) await suppress(env, accountId, dsn.hard, 'bounced', `Bounced: ${msg.subject}`.slice(0, 200));
+      await markSeen(env, accountId, mb.id, msg.uid, 'bounce');
+      report.refused++;
+      continue;
+    }
 
     /* ── Things never to answer ── */
     const refusal = shouldRefuse(msg, {});
