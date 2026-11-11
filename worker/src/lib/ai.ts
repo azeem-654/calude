@@ -563,6 +563,7 @@ Reply with JSON only, in exactly this shape:
   };
 
   let lastError = '';
+  let lastStatus = -1;
   for (const model of await modelsFor(apiKey, 'research')) {
     let res: Response;
     try {
@@ -609,9 +610,18 @@ Reply with JSON only, in exactly this shape:
 
     lastError = await res.text().catch(() => `HTTP ${res.status}`);
     if (res.status === 404 || MODEL_GONE.test(lastError)) continue;
+    /* A refusal of this model is not the key's last word: a free project is
+       refused the newest Flash and answers on Flash-Lite (the AppSumo blog
+       article, 2026-11-11, stopped here at the first 429). Counted, so the
+       next search starts on the model that answers (aiUsage freeFirst). */
+    if (RETRYABLE.has(res.status)) {
+      if (res.status === 429) await recordAiUse({ provider: 'gemini', key: apiKey, model, module: who.module ?? 'autopilot-research', accountId: who.accountId, ok: false, status: 429 });
+      lastStatus = res.status;
+      continue;
+    }
     return failed(res.status, lastError);
   }
-  return failed(-1, lastError || 'every model failed');
+  return failed(lastStatus, lastError || 'every model failed');
 }
 
 async function researchOnOpenRouter(apiKey: string, question: string, max: number, who: { module?: string; accountId?: string }): Promise<Attempt<WebResult>> {

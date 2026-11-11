@@ -40,8 +40,8 @@ if (!fs.existsSync('dist/index.html')) { console.log('Build first: VITE_BASE=/ n
 
 /* ── The Gemini mock ── */
 const K = tag => `AIza${tag}${'x'.repeat(35 - tag.length)}`;
-const QUOTA = K('QUOTA'), SPARE = K('SPARE'), DEAD = K('DEAD'), THIRD = K('THIRD'), WRONG = K('WRONG');
-const KNOWN = new Set([QUOTA, SPARE, DEAD, THIRD]);
+const QUOTA = K('QUOTA'), SPARE = K('SPARE'), DEAD = K('DEAD'), THIRD = K('THIRD'), WRONG = K('WRONG'), LITE = K('LITE');
+const KNOWN = new Set([QUOTA, SPARE, DEAD, THIRD, LITE]);
 const ORK = `sk-or-v1-${'a'.repeat(48)}`, ORBAD = `sk-or-v1-${'b'.repeat(48)}`, ORDAY = `sk-or-v1-${'c'.repeat(48)}`;
 const name = k => (k === QUOTA ? 'QUOTA' : k === SPARE ? 'SPARE' : k === DEAD ? 'DEAD' : k === THIRD ? 'THIRD' : 'other');
 let calls = [];
@@ -54,9 +54,18 @@ const mock = http.createServer((req, res) => {
     const key = u.searchParams.get('key') ?? '';
     if (req.method === 'GET' && u.pathname === '/v1beta/models') {
       if (!KNOWN.has(key)) return send(res, 400, { error: { code: 400, status: 'INVALID_ARGUMENT', message: 'API key not valid. Please pass a valid API key.', details: [{ reason: 'API_KEY_INVALID' }] } });
+      /* LITE: a free project as the live one was (2026-11-11) — the newest
+         Flash listed but refused, Flash-Lite answering. */
+      if (key === LITE) return send(res, 200, { models: ['gemini-3.8-flash', 'gemini-3.5-flash-lite'].map(n => ({ name: `models/${n}`, supportedGenerationMethods: ['generateContent'] })) });
       return send(res, 200, { models: [{ name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] }] });
     }
     if (req.method === 'POST' && /:generateContent$/.test(u.pathname)) {
+      if (key === LITE) {
+        const model = u.pathname.split('/').pop().replace(/:generateContent$/, '');
+        calls.push(`LITE:${model}`);
+        if (!/lite/.test(model)) return send(res, 429, { error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'You exceeded your current quota, please check your plan and billing details. * Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0' } });
+        return send(res, 200, { candidates: [{ content: { parts: [{ text: 'answer from LITE' }] } }] });
+      }
       calls.push(name(key));
       if (key === QUOTA) return send(res, 429, { error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'Quota exceeded for metric: generate_content_free_tier_requests, limit: 250, per day' } });
       if (key === DEAD) return send(res, 403, { error: { code: 403, status: 'PERMISSION_DENIED', message: 'Your API key was reported as leaked. Please use another API key.' } });
@@ -227,6 +236,20 @@ r = await api('platform.php', { token: T, action: 'status' });
 const aiRow = (r.services ?? []).find(x => x.id === 'ai');
 ok('outage: Platform services says every key is resting', aiRow?.state === 'error' && /resting/.test(aiRow.detail), JSON.stringify(aiRow ?? r).slice(0, 300));
 await keys(T, 'remove', { id: (await keys(T)).d.keys.find(k => k.label === 'OpenRouter free').id });
+
+/* ── A free project whose newest Flash is not open to it (the live key,
+      2026-11-11): the answer comes from Flash-Lite on the same key, the key
+      is not rested, and the next call goes to Flash-Lite first. ── */
+r = await keys(T, 'add', { apiKey: LITE, label: 'Free project' });
+calls = [];
+ai = await apiS('ai.php', { token: C.token, accountId: C.acct, action: 'generate', module: 'email-marketing', request: { contents: [{ parts: [{ text: 'Write an email' }] }] } });
+ok('free tier: a refused Flash model falls through to Flash-Lite on the same key', ai.d.success && ai.d.response?.candidates?.[0]?.content?.parts?.[0]?.text === 'answer from LITE', `${calls.join(' → ')} ${JSON.stringify(ai.d).slice(0, 200)}`);
+r = await keys(T);
+ok('free tier: …and the key is not rested for it', !r.d.keys.find(k => k.label === 'Free project')?.restingUntil, JSON.stringify(r.d.keys.find(k => k.label === 'Free project')));
+calls = [];
+ai = await apiS('ai.php', { token: C.token, accountId: C.acct, action: 'generate', module: 'email-marketing', request: { contents: [{ parts: [{ text: 'Another email' }] }] } });
+ok('free tier: the next call goes straight to the model that answers', ai.d.success && /lite/.test(calls[0] ?? '') && calls.length === 1, calls.join(' → '));
+await keys(T, 'remove', { id: (await keys(T)).d.keys.find(k => k.label === 'Free project').id });
 
 await keys(T, 'add', { apiKey: THIRD, label: 'Fresh project' });
 calls = [];

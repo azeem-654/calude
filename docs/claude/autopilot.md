@@ -85,6 +85,11 @@ keep "project"; so does a video project in AI Video Studio, and the nav's
   **A job finishes past the allowance**: `aiJob` (src/lib/gemini.ts) /
   `job` on ai.php and intake.php (lib/aiJobs.ts, 45 min, 80 calls) — the screen
   says the credits ran out afterwards (`creditsOut`).
+- **Models by what the key answers** (`freeFirst`, lib/aiUsage.ts): the live
+  free key was refused (429, "limit: 0") on every newest Flash and answered
+  only on Flash-Lite; chains now put models proven on that key this week
+  first, never-tried next, a proven model from outside the task's chain as a
+  last resort, and refused ones last. `researchOnce` walks on past a 429.
 - Web research: OpenRouter's `web` plugin when Google cannot; with no key able
   to search, a blog step writes from the profile around the question and says
   so (`fallbackNote`).

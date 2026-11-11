@@ -153,23 +153,63 @@ async function countsFor(env: Env, fp: string): Promise<Record<string, Count>> {
   return counts;
 }
 
+/* What each model has done on one install key over the last week, re-read
+   every ten minutes — the memory freeFirst orders by. */
+const weekCounts = new Map<string, { at: number; counts: Record<string, Count> }>();
+async function weekFor(env: Env, fp: string): Promise<Record<string, Count>> {
+  const hit = weekCounts.get(fp);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.counts;
+  const since = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
+  const { results } = await env.DB.prepare('SELECT model, SUM(requests) AS n, SUM(ok) AS ok, SUM(limited) AS l FROM crm_ai_usage WHERE day >= ? AND key_fp = ? GROUP BY model')
+    .bind(since, fp).all<{ model: string; n: number; ok: number; l: number }>().catch(() => ({ results: [] as { model: string; n: number; ok: number; l: number }[] }));
+  const counts = Object.fromEntries((results ?? []).map(r => [r.model, { n: r.n, ok: r.ok, l: r.l }]));
+  weekCounts.set(fp, { at: Date.now(), counts });
+  if (weekCounts.size > 50) weekCounts.delete(weekCounts.keys().next().value as string);
+  return counts;
+}
+
 /**
- * The chain reordered so models already at today's free limit on this key go
- * last (still tried — a paid project has no such limit, and the figures are
- * estimates), as do models that have only refused today (three 429s and no
- * answer: a key with no free quota for Pro says so every time). A customer's
- * own key is left as it is.
+ * The chain, ordered by what this key has actually done.
+ *
+ * ── Why (the AppSumo outage, 2026-11-11, read from the live counts) ──
+ *
+ * The install's one Google key answered on gemini-3.5-flash-lite every time
+ * and was refused (429, "check your plan and billing") on 3.7-flash,
+ * 3.8-flash and flash-latest every time — on the first call of the day, with
+ * a dozen calls a week in all. Not a spent quota: those models are not open
+ * to that free project at all. The chains for writing tasks start with the
+ * newest Flash, so they met nothing but refusals, the key was rested for an
+ * hour as "out of quota", and customers got OpenRouter's free models or an
+ * error while a working model sat on the same key.
+ *
+ * So, for an install key:
+ *  1. models that have answered on it this week, in the chain's own order;
+ *  2. models it has never tried (a new release might work);
+ *  3. a model that answered this week but is not in this task's chain — kept
+ *     as a last resort, so a task never runs out of models the key can use;
+ *  4. models only ever refused this week, and models at today's free limit.
+ * A customer's own key is left as it is.
  */
 export async function freeFirst(key: string, models: string[]): Promise<string[]> {
   const env = ENV;
-  if (!env || models.length < 2) return models;
+  if (!env || !models.length) return models;
   try {
     const fp = await keyFp(key);
     if (fp === 'own') return models;
-    const [counts, lim] = await Promise.all([countsFor(env, fp), freeLimits(env)]);
-    /* Refusals are not counted towards the day (Google does not count them). */
-    const past = (m: string) => { const c = counts[m]; return !!c && (c.n - c.l >= lim.gemini[tierOf(m)].rpd || (c.l >= 3 && c.ok === 0)); };
-    return [...models.filter(m => !past(m)), ...models.filter(past)];
+    const [today, week, lim] = await Promise.all([countsFor(env, fp), weekFor(env, fp), freeLimits(env)]);
+    const past = (m: string) => { const c = today[m]; return !!c && c.n - c.l >= lim.gemini[tierOf(m)].rpd; };
+    /* Refused and never answered: this week's record, or today's (the week is re-read every ten minutes). */
+    const refused = (m: string) => { const w = week[m], t = today[m]; return (!!w && w.l >= 1 && w.ok === 0) || (!!t && t.l >= 1 && t.ok === 0 && !(w && w.ok > 0)); };
+    const proven = (m: string) => (week[m]?.ok ?? 0) > 0 || (today[m]?.ok ?? 0) > 0;
+    const bad = (m: string) => past(m) || refused(m);
+    const extra = Object.entries(week).filter(([m, c]) => c.ok > 0 && !models.includes(m) && /^gemini-/.test(m) && !/tts|audio|image|embedding/i.test(m))
+      .sort((a, b) => b[1].ok - a[1].ok).map(([m]) => m).filter(m => !bad(m));
+    return [
+      ...models.filter(m => proven(m) && !bad(m)),
+      ...models.filter(m => !proven(m) && !bad(m)),
+      ...extra,
+      ...models.filter(bad),
+    ];
   } catch { return models; }
 }
 
@@ -196,7 +236,7 @@ export async function nearDailyLimit(env: Env, key: string, fp: string): Promise
        against the day — counting it here demoted keys that still had room. */
     total += c.n - c.l; ok += c.ok; refused += c.l;
   }
-  if (!total) return false;
+  if (!total && !refused) return false;
   if (refused >= 5 && ok === 0) return true;
   if (/^sk-or-/.test(key.trim())) {
     const day = ok > lim.openrouter.rpd ? lim.openrouter.rpdWithCredit : lim.openrouter.rpd;

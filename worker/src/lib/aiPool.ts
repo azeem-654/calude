@@ -275,7 +275,8 @@ async function markFailed(env: Env, k: PoolKey, restMs: number, status: number, 
   if (k.source === 'workspace') return;
   let msg = raw;
   try { msg = (JSON.parse(raw) as { error?: { message?: string } }).error?.message || raw; } catch { /* not JSON */ }
-  const error = `${status > 0 ? `HTTP ${status}: ` : ''}${msg}`.slice(0, 300);
+  /* Long enough to keep Google's metric and limit ("limit: 0" is the line that says a model is not on this project's tier). */
+  const error = `${status > 0 ? `HTTP ${status}: ` : ''}${msg}`.slice(0, 900);
   await env.DB.prepare(
     `INSERT INTO crm_ai_key_health (fp, last_failed_at, last_error, cooldown_until, fail_count) VALUES (?, ?, ?, ?, 1)
      ON CONFLICT(fp) DO UPDATE SET last_failed_at = excluded.last_failed_at, last_error = excluded.last_error,
