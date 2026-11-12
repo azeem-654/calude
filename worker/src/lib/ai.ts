@@ -277,6 +277,35 @@ export async function askGeminiParts(
   return withFailover(apiKey, k => askGeminiOnce(k, parts, temperature, o), { exhausted: (): AiResult => ({ ok: false, text: '', error: AI_BUSY }) });
 }
 
+/** Gemma on the Gemini API (gemma-4-…-it): the big free reserve, with fewer switches (lib/aiTasks.ts). */
+export const isGemma = (model: string) => /^gemma-/i.test(model);
+
+/**
+ * The JSON in a reply that was asked for JSON without JSON mode (Gemma):
+ * from the first { or [ to the last } or ], fences and chatter dropped. The
+ * whole text when there is none, so the caller's own parse says it failed.
+ */
+export function jsonOnly(text: string): string {
+  const t = text.replace(/```(?:json)?/gi, '');
+  const a = t.search(/[[{]/);
+  const b = Math.max(t.lastIndexOf('}'), t.lastIndexOf(']'));
+  return a >= 0 && b > a ? t.slice(a, b + 1).trim() : t.trim();
+}
+
+/**
+ * A browser request (routes/ai.ts) made fit for Gemma: no JSON mode or schema,
+ * no thinking setting, and the system instruction said as the first words of
+ * the request, since Gemma takes no system role. Untouched for Gemini.
+ */
+export function forGemma(req: { contents?: unknown; generationConfig?: Record<string, unknown>; systemInstruction?: unknown }): typeof req {
+  const { responseMimeType: _m, responseSchema: _s, thinkingConfig: _t, ...gen } = req.generationConfig ?? {};
+  const sys = (req.systemInstruction as { parts?: { text?: string }[] } | undefined)?.parts?.map(p => p.text ?? '').join('\n').trim();
+  const contents = Array.isArray(req.contents) ? [...req.contents] as { role?: string; parts?: unknown[] }[] : [];
+  const lead = [sys, _m === 'application/json' ? 'Reply with JSON only, no other text.' : ''].filter(Boolean).join('\n\n');
+  if (lead && contents.length) contents[0] = { ...contents[0], parts: [{ text: lead }, ...(contents[0].parts ?? [])] };
+  return { contents, ...(Object.keys(gen).length ? { generationConfig: gen } : {}) };
+}
+
 /** A file already uploaded to Google's Files API on the key being asked (askGeminiAboutFile only). */
 type GeminiPart = AiPart | { fileData: { mimeType?: string; fileUri: string } };
 
@@ -295,11 +324,13 @@ async function askGeminiOnce(
   let lastError = '';
   let lastStatus = -1;   // -1: no model answered at all — none of this key's ids exist
   for (const model of await modelsFor(apiKey, opts.task)) {
-    let thinking = !!opts.fast;
+    const gemma = isGemma(model);
+    /* Gemma takes neither JSON mode nor a thinking setting (lib/aiTasks.ts). */
+    let thinking = !!opts.fast && !gemma;
     for (let attempt = 1; attempt <= 2; attempt++) {
       const body = {
         contents: [{ parts }],
-        generationConfig: thinking ? { ...base, thinkingConfig: thinkingFor(model) } : base,
+        generationConfig: gemma ? { temperature } : thinking ? { ...base, thinkingConfig: thinkingFor(model) } : base,
       };
       let res: Response;
       try {
@@ -328,7 +359,7 @@ async function askGeminiOnce(
           ok: true,
           value: {
             ok: true,
-            text: asJson ? text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim() : text.trim(),
+            text: asJson ? (gemma ? jsonOnly(text) : text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()) : text.trim(),
             error: '',
           },
         };
@@ -336,6 +367,9 @@ async function askGeminiOnce(
 
       lastError = await res.text().catch(() => `HTTP ${res.status}`);
       if (res.status === 404 || MODEL_GONE.test(lastError)) break;   // this id is gone; next
+      /* Gemma refusing what Gemini takes (a picture, a long prompt) is Gemma's
+         limit, not the request's: the next model, the status before it kept. */
+      if (gemma && res.status === 400) break;
       lastStatus = res.status;
       /* A refusal is counted too: the 429s are how the dashboard shows a free limit being hit. */
       if (res.status === 429) await use(model, false, 429);
@@ -536,6 +570,21 @@ export async function researchWeb(apiKey: string, question: string, max = 5, who
   });
 }
 
+/**
+ * Models for a grounded search, Gemini 2.x first.
+ *
+ * On the free tier Google Search grounding is 1,500 a day for Gemini 2 and
+ * 2.5 and 0 for "Gemini 3 and newer" (AI Studio, 2026-11-11), so the newest
+ * Flash — first in every other chain — is refused here every time. The 2.x
+ * Flash models the key lists come first; Gemma never (it cannot search).
+ */
+async function researchModels(apiKey: string): Promise<string[]> {
+  const names = (await geminiNames(apiKey)) ?? [];
+  const two = names.filter(n => /^gemini-2(?:\.\d+)?-flash(?:-lite)?$/.test(n)).sort((a, b) => b.localeCompare(a));
+  const rest = (await modelsFor(apiKey, 'research')).filter(m => !isGemma(m));
+  return freeFirst(apiKey, [...new Set([...two, ...rest])]);
+}
+
 async function researchOnce(apiKey: string, question: string, max: number, who: { module?: string; accountId?: string }): Promise<Attempt<WebResult>> {
   const failed = (status: number, raw: string): Attempt<WebResult> =>
     ({ ok: false, status, error: raw, value: { ok: false, findings: [], sources: [], error: friendly(status, raw) } });
@@ -564,7 +613,7 @@ Reply with JSON only, in exactly this shape:
 
   let lastError = '';
   let lastStatus = -1;
-  for (const model of await modelsFor(apiKey, 'research')) {
+  for (const model of await researchModels(apiKey)) {
     let res: Response;
     try {
       res = await fetch(`${BASE}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {

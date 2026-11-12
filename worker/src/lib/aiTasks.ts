@@ -24,7 +24,14 @@
  */
 
 export type AiTask = 'chat' | 'converse' | 'write' | 'reason' | 'vision' | 'extract' | 'code' | 'research';
-export type GeminiTier = 'lite' | 'flash' | 'pro';
+/*
+ * `gemma`: Google's open Gemma models on the same key (gemma-4-26b-…-it,
+ * gemma-4-31b-it). On the free tier each has 14,400 requests a day against
+ * Flash's 20 and Flash-Lite's 500 (AI Studio's rate-limit table, 2026-11-11),
+ * so they are every text task's last resort before OpenRouter. No JSON mode,
+ * no system instruction and no Google Search on them (lib/ai.ts `forGemma`).
+ */
+export type GeminiTier = 'lite' | 'flash' | 'pro' | 'gemma';
 
 export interface TaskProfile {
   label: string;
@@ -40,43 +47,43 @@ export interface TaskProfile {
 export const TASKS: Record<AiTask, TaskProfile> = {
   chat: {
     label: 'Quick replies',
-    gemini: ['lite', 'flash'],
+    gemini: ['lite', 'flash', 'gemma'],
     openrouter: [/gemma-4/i, /llama-4/i, /mistral-small/i, /qwen3/i],
     why: 'A person is waiting: the fastest model that writes a good sentence. Lite has the largest free daily allowance.',
   },
   converse: {
     label: 'Advice in conversation',
-    gemini: ['pro', 'flash', 'lite'],
+    gemini: ['pro', 'flash', 'lite', 'gemma'],
     openrouter: [/llama-4-maverick|llama-3\.3-70b/i, /deepseek-(v3|chat)/i, /qwen3.*(235|max)/i, /gemma-4-31b|gemma-4/i, /mistral-(medium|large)/i],
     why: 'Somebody deciding whether to trust the business, in their own words: the model that understands and advises best. Pro first, then Flash; the chat already paces its replies like a person, so the extra second is not felt.',
   },
   write: {
     label: 'Marketing writing',
-    gemini: ['flash', 'lite'],
+    gemini: ['flash', 'lite', 'gemma'],
     openrouter: [/gemma-4-31b|gemma-4/i, /llama-4-maverick|llama-3\.3-70b|llama-4/i, /mistral-(medium|large)/i, /deepseek-(v3|chat)/i, /qwen3/i],
     why: 'Copy a customer publishes: Flash writes noticeably better than Lite and still has a generous free allowance.',
   },
   reason: {
     label: 'Planning & judgement',
-    gemini: ['pro', 'flash', 'lite'],
+    gemini: ['pro', 'flash', 'lite', 'gemma'],
     openrouter: [/deepseek-r1|deepseek.*reason/i, /qwen3.*(235|thinking|max)/i, /nemotron.*(ultra|super)/i, /kimi/i, /gpt-oss/i, /llama-4-maverick/i],
     why: 'Plans, strategy and scoring are judgement: Pro first while its small free allowance lasts, then Flash.',
   },
   vision: {
     label: 'Reading pictures',
-    gemini: ['pro', 'flash', 'lite'],
+    gemini: ['pro', 'flash', 'lite', 'gemma'],
     openrouter: [/gemma-4/i, /llama-4/i, /qwen.*vl/i, /mistral-small-3/i, /nemotron.*vl/i],
     why: 'Design and layout in a picture: Pro reads composition far better; Flash after its free allowance.',
   },
   extract: {
     label: 'Sorting & extracting',
-    gemini: ['lite', 'flash'],
+    gemini: ['lite', 'flash', 'gemma'],
     openrouter: [/mistral-small/i, /gemma-4/i, /llama-4-scout/i, /qwen3/i],
     why: 'Short structured answers (moderation, fields from text): the cheapest fast model is as accurate here.',
   },
   code: {
     label: 'Pages & code',
-    gemini: ['flash', 'pro', 'lite'],
+    gemini: ['flash', 'pro', 'lite', 'gemma'],
     openrouter: [/qwen3-coder|qwen.*coder/i, /deepseek/i, /kimi/i, /gpt-oss/i],
     code: true,
     why: 'Website and email HTML: Flash is accurate with markup; coder models on OpenRouter.',
@@ -141,13 +148,18 @@ export const taskOf = (m: unknown): AiTask => MODULES[moduleOf(m)].task;
 
 /** One Gemini id's family, from its name: version, tier, preview — or null for anything else (embeddings, image, tts…). */
 export function geminiFamily(name: string): { version: number; tier: GeminiTier; preview: boolean; pinned: boolean } | null {
-  const m = /^gemini-(\d+(?:\.\d+)?)-(flash-lite|flash|pro)(-\d{3})?(-preview(?:-[\w-]+)?)?$/.exec(name.replace(/^models\//, ''));
+  const bare = name.replace(/^models\//, '');
+  /* Gemma: gemma-4-26b-a4b-it, gemma-4-31b-it — the larger model first within a version. */
+  const g = /^gemma-(\d+(?:\.\d+)?)-(\d+)b(?:-a\d+b)?-it$/.exec(bare);
+  if (g) return { version: parseFloat(g[1]) + Number(g[2]) / 10_000, tier: 'gemma', pinned: false, preview: false };
+  const m = /^gemini-(\d+(?:\.\d+)?)-(flash-lite|flash|pro)(-\d{3})?(-preview(?:-[\w-]+)?)?$/.exec(bare);
   if (!m) return null;
   return { version: parseFloat(m[1]), tier: m[2] === 'flash-lite' ? 'lite' : (m[2] as GeminiTier), pinned: !!m[3], preview: !!m[4] };
 }
 
 /** Which tier a model id is, `-latest` aliases included. */
 export function tierOf(model: string): GeminiTier {
+  if (/^gemma-/i.test(model)) return 'gemma';
   if (/flash-lite/i.test(model)) return 'lite';
   if (/pro/i.test(model)) return 'pro';
   return 'flash';
@@ -163,14 +175,30 @@ export function chainFor(names: string[], task: AiTask): string[] {
   const parsed = names.map(n => n.replace(/^models\//, '')).map(n => ({ n, f: geminiFamily(n) }))
     .filter((x): x is { n: string; f: NonNullable<ReturnType<typeof geminiFamily>> } => !!x.f && !x.f.pinned);
   const out: string[] = [];
+  const older: string[] = [];
+  const gemma: string[] = [];
   for (const tier of TASKS[task].gemini) {
     const ofTier = parsed.filter(x => x.f.tier === tier);
     const stable = ofTier.filter(x => !x.f.preview);
     const pool = (stable.length ? stable : ofTier).sort((a, b) => b.f.version - a.f.version);
+    if (tier === 'gemma') { gemma.push(...pool.slice(0, 2).map(x => x.n)); continue; }
     if (pool[0]) out.push(pool[0].n);
+    /* Two older versions of the tier after every tier's newest: on the free
+       tier every model has its own daily allowance (Flash-Lite 3.5 and 3.1
+       have 500 each), so an older version is more capacity — tried after the
+       newest of each tier, never before. lib/aiUsage.ts freeFirst then orders
+       by what the key actually answers. */
+    older.push(...pool.slice(1, 3).map(x => x.n));
   }
-  const alias: Record<GeminiTier, string> = { lite: 'gemini-flash-lite-latest', flash: 'gemini-flash-latest', pro: 'gemini-pro-latest' };
-  for (const tier of TASKS[task].gemini) if (tier !== 'pro' && !out.includes(alias[tier])) out.push(alias[tier]);
+  out.push(...older);
+  /* Gemma last of the key's own models: the largest free allowance, the reserve. */
+  out.push(...gemma);
+  const alias: Partial<Record<GeminiTier, string>> = { lite: 'gemini-flash-lite-latest', flash: 'gemini-flash-latest' };
+  /* The aliases before Gemma: a Flash alias is a better writer, and Gemma's
+     large allowance is the reserve, not the first choice. */
+  const firstGemma = out.findIndex(n => /^gemma-/.test(n));
+  const aliases = TASKS[task].gemini.map(t => alias[t]).filter((a): a is string => !!a && !out.includes(a));
+  if (firstGemma < 0) out.push(...aliases); else out.splice(firstGemma, 0, ...aliases);
   return out;
 }
 

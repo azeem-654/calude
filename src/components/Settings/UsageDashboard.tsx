@@ -18,7 +18,7 @@ const INK = '#0f172a';
 const MUTED = '#64748b';
 const LINE = '#e6e9f0';
 
-type Tier = 'lite' | 'flash' | 'pro';
+type Tier = 'lite' | 'flash' | 'pro' | 'gemma';
 interface Limits { gemini: Record<Tier, { rpm: number; rpd: number; tpm: number }>; openrouter: { rpd: number; rpdWithCredit: number; rpm: number }; source: string }
 interface Cap { hour: number; day: number; tokensDay: number; blocked?: boolean }
 interface Caps extends Cap { overrides: Record<string, Partial<Cap>> }
@@ -237,9 +237,9 @@ export default function UsageDashboard() {
             <summary style={{ fontSize: 12.5, fontWeight: 700, color: INK, cursor: 'pointer' }}>Free-tier figures used above</summary>
             <p style={{ ...small, marginTop: 6 }}>{limits.source}</p>
             <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>
-              {(['lite', 'flash', 'pro'] as Tier[]).map(t => (
+              {(['lite', 'flash', 'pro', 'gemma'] as Tier[]).map(t => (
                 <div key={t} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: MUTED }}>
-                  <span style={{ width: 110, color: INK, fontWeight: 600 }}>Gemini {t === 'lite' ? 'Flash-Lite' : t === 'flash' ? 'Flash' : 'Pro'}</span>
+                  <span style={{ width: 110, color: INK, fontWeight: 600 }}>{t === 'gemma' ? 'Gemma' : `Gemini ${t === 'lite' ? 'Flash-Lite' : t === 'flash' ? 'Flash' : 'Pro'}`}</span>
                   <label>per day <input type="number" min={0} style={num} value={limits.gemini[t].rpd} onChange={e => setLimits({ ...limits, gemini: { ...limits.gemini, [t]: { ...limits.gemini[t], rpd: Number(e.target.value) } } })} /></label>
                   <label>per minute <input type="number" min={0} style={num} value={limits.gemini[t].rpm} onChange={e => setLimits({ ...limits, gemini: { ...limits.gemini, [t]: { ...limits.gemini[t], rpm: Number(e.target.value) } } })} /></label>
                 </div>

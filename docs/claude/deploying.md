@@ -72,7 +72,9 @@ stays shut there (`SELF_SERVE_SIGNUP=off`).
 
 `src/services/hosts.ts` is what makes one build serve both: `isStagingHost()`
 draws the testing banner and `isRehearsal()` decides which features in
-`src/services/features.ts` are switched on. Nothing is baked in at build time,
+`src/services/features.ts` are switched on. **What is held back on purpose is
+listed in `docs/TESTING-ONLY.md`** (today: Protron's floating chat) — read it
+before promoting, and update it when a feature is released. Nothing is baked in at build time,
 so a production bundle cannot be published believing it is staging.
 
 **A Worker has more addresses than the one you gave it.** Cloudflare turns on

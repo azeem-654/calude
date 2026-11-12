@@ -25,7 +25,7 @@ import { isRehearsal } from './hosts';
 
 /**
  * Built, usable on the testing site, and deliberately not offered on the live
- * one yet. Empty today.
+ * one yet. Each entry is listed in docs/TESTING-ONLY.md.
  *
  * `prospects` was here until 2026-10-01: OpenStreetMap alone was too thin in
  * too many towns to be a button every customer presses once and judges the
@@ -33,9 +33,15 @@ import { isRehearsal } from './hosts';
  * with a per-workspace budget and nothing after a trial ends (routes/prospects.ts).
  * The name stays in `Feature` so the next held-back feature has a pattern.
  */
-const REHEARSING = new Set<string>([]);
+const REHEARSING = new Set<string>([
+  /* Protron's floating chat and Talk mode (src/components/Protron): on the
+     testing site only, by the owner's choice (2026-11-12), until they have
+     tested it there. Protron's first screens in the New business workspace
+     wizard are live — they are not gated by this. docs/TESTING-ONLY.md. */
+  'protron',
+]);
 
-export type Feature = 'prospects';
+export type Feature = 'prospects' | 'protron';
 
 /** Whether this visitor, on this hostname, may actually use it. */
 export function featureReady(name: Feature): boolean {

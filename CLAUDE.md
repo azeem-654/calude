@@ -67,7 +67,7 @@ Studio jobs (`VIDEO_CRON`). A scheduled run has no origin: absolute URLs read
 | **AI Video Studio overhaul in progress** (Shorts wizard, intelligent reframing, thumbnail themes, live preview) — phase ledger and plan | `docs/claude/video-studio-overhaul.md` |
 | AI Video Studio | `docs/claude/video-studio.md` |
 | Graphics Designer & Editor: the social template library, its renderer, AI copy rules, Media Center pictures (`/api/media.php`) | `docs/claude/graphics.md` |
-| Commands, deploying, staging and live, the testing site's password lock | `docs/claude/deploying.md` |
+| Commands, deploying, staging and live, the testing site's password lock; what is held back on testing by choice (`docs/TESTING-ONLY.md`) | `docs/claude/deploying.md` |
 | Verifying a change, site reels, test traps | `docs/claude/testing.md` |
 
 Longer owner-facing guides stay in `docs/` (`SECURITY.md`, `PRICING.md`,

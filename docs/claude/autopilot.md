@@ -90,6 +90,14 @@ keep "project"; so does a video project in AI Video Studio, and the nav's
   only on Flash-Lite; chains now put models proven on that key this week
   first, never-tried next, a proven model from outside the task's chain as a
   last resort, and refused ones last. `researchOnce` walks on past a 429.
+- **Every free model on the key** (AI Studio's table, 2026-11-11: Flash 20 a
+  day, Flash-Lite 500 per version, Gemma 4 14,400, Pro none, search
+  grounding only on Gemini 2/2.5): `chainFor` takes each tier's newest, then
+  two older versions, then Gemma (`isGemma`/`forGemma`/`jsonOnly` in lib/ai.ts
+  — no JSON mode or system instruction; a Gemma 400 moves on). Research tries
+  Gemini 2.x first (`researchModels`). The voice rotates over every TTS model
+  (`speechModels`, routes/protron.ts). Free figures per model in `FREE_DEFAULTS`
+  (an owner's saved `ai_free_limits` overrides them).
 - Web research: OpenRouter's `web` plugin when Google cannot; with no key able
   to search, a blog step writes from the profile around the question and says
   so (`fallbackNote`).

@@ -55,11 +55,21 @@ const VOICE_DIRECTION = 'Read this aloud as a calm, noble robot commander: a dee
 
 /** A speech model from the key's own list: Flash before Pro, the newest name first. */
 export function pickSpeechModel(names: string[]): string | null {
-  const tts = names.filter(n => /tts/i.test(n)).sort((a, b) => b.localeCompare(a));
-  return tts.find(n => /flash/i.test(n)) ?? tts[0] ?? null;
+  return speechModels(names)[0] ?? null;
 }
 
-/** Keys whose voice model is out of requests, and until when (per isolate). */
+/**
+ * Every voice model the key lists, Flash ones first, newest first. On the
+ * free tier each has its own 10 a day (3.8 Flash TTS, 3.8 Flash-Lite TTS,
+ * 3.1 Flash TTS, 2.5 Flash TTS — AI Studio, 2026-11-11), so a spent one
+ * hands over to the next rather than ending Protron's voice for the day.
+ */
+export function speechModels(names: string[]): string[] {
+  const tts = names.filter(n => /tts/i.test(n)).sort((a, b) => b.localeCompare(a));
+  return [...tts.filter(n => /flash/i.test(n)), ...tts.filter(n => !/flash/i.test(n))];
+}
+
+/** `key|model` voice models out of requests, and until when (per isolate). */
 const voiceRest = new Map<string, number>();
 
 export async function handleProtron(req: Request, env: Env): Promise<Response> {
@@ -138,31 +148,39 @@ export async function handleProtron(req: Request, env: Env): Promise<Response> {
          only the voice rests — never the key: a 429 from the voice used to
          rest the whole key for an hour (lib/aiPool.ts), so a customer talking
          to Protron could take every Google key away from all writing. */
-      if ((voiceRest.get(k) ?? 0) > Date.now()) return { ok: false, status: -2, error: 'voice resting', value: fail('The voice is busy right now — Protron uses the browser\'s voice.', 200, { code: 'no_voice' }) };
-      const model = pickSpeechModel(await geminiNames(k) ?? []);
-      if (!model) return { ok: false, status: -2, error: 'no speech model', value: fail('No AI voice is available on this key — Protron uses the browser\'s voice.', 200, { code: 'no_voice' }) };
-      let res: Response;
-      try {
-        res = await fetch(`${aiBase()}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(k)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(30_000),
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: `${VOICE_DIRECTION} ${text}` }] }],
-            generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_NAME } } } },
-          }),
-        });
-      } catch (e) {
-        return { ok: false, status: 0, error: e instanceof Error ? e.message : String(e), value: fail('The voice could not be reached.') };
+      /* A voice model resting after its 429 is passed over for the next one (per key and model). */
+      const all = speechModels(await geminiNames(k) ?? []);
+      if (!all.length) return { ok: false, status: -2, error: 'no speech model', value: fail('No AI voice is available on this key — Protron uses the browser\'s voice.', 200, { code: 'no_voice' }) };
+      /* Each voice model in turn while one is resting or answers 429 — each has its own small free day. */
+      let res: Response | null = null;
+      let model = '';
+      for (const m of all) {
+        if ((voiceRest.get(`${k}|${m}`) ?? 0) > Date.now()) continue;
+        model = m;
+        try {
+          res = await fetch(`${aiBase()}/v1beta/models/${m}:generateContent?key=${encodeURIComponent(k)}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(30_000),
+            body: JSON.stringify({
+              contents: [{ role: 'user', parts: [{ text: `${VOICE_DIRECTION} ${text}` }] }],
+              generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_NAME } } } },
+            }),
+          });
+        } catch (e) {
+          return { ok: false, status: 0, error: e instanceof Error ? e.message : String(e), value: fail('The voice could not be reached.') };
+        }
+        if (res.status !== 429) break;
+        const err = await res.text().catch(() => '');
+        await recordAiUse({ provider: 'gemini', key: k, model: m, module: 'protron-voice', accountId, ok: false, status: 429 });
+        voiceRest.set(`${k}|${m}`, Date.now() + (/per[ -]?day|PerDay|daily/i.test(err) ? 60 : 2) * 60_000);
+        if (voiceRest.size > 100) voiceRest.delete(voiceRest.keys().next().value as string);
+        res = null;
       }
+      /* Every voice model resting or refused: -2, "not this kind of work right
+         now" — the next key is tried and nothing is rested (lib/aiPool.ts). */
+      if (!res) return { ok: false, status: -2, error: 'every voice model is resting', value: fail('The voice is busy right now — Protron uses the browser\'s voice.', 200, { code: 'no_voice' }) };
       if (!res.ok) {
         const err = await res.text().catch(() => '');
-        if (res.status === 429) {
-          await recordAiUse({ provider: 'gemini', key: k, model, module: 'protron-voice', accountId, ok: false, status: 429 });
-          voiceRest.set(k, Date.now() + (/per[ -]?day|PerDay|daily/i.test(err) ? 60 : 2) * 60_000);
-          if (voiceRest.size > 50) voiceRest.delete(voiceRest.keys().next().value as string);
-          /* -2: "not this kind of work right now" — the next key is tried, nothing is rested. */
-          return { ok: false, status: -2, error: err, value: fail('The voice is busy right now — Protron uses the browser\'s voice.', 200, { code: 'no_voice' }) };
-        }
-        return { ok: false, status: res.status, error: err, value: fail(res.status === 429 ? 'The voice is busy right now.' : 'The voice could not speak that.', 200, { code: 'voice_failed' }) };
+        return { ok: false, status: res.status, error: err, value: fail('The voice could not speak that.', 200, { code: 'voice_failed' }) };
       }
       const body = await res.json() as { candidates?: { content?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] } }[]; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } };
       const part = (body.candidates?.[0]?.content?.parts ?? []).find(p => p.inlineData?.data);

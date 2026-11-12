@@ -214,9 +214,8 @@ touched; a redemption only writes `crm_plans` with **source `appsumo`**.
   `ai_requests`. What one credit is lives once, in `AI_CREDITS_GUIDE`
   (allowances.ts) — the site FAQ and the help assistant read it; change the
   examples there when what spends a credit changes.
-- AI requests per month raised 2026-11-11 at the owner's request: 3,000 /
-  6,000 / 12,000 (was 1,000 / 2,500 / 5,000); the listing must match
-  (OWNER-CHECKLIST 53).
+- AppSumo AI credits stay 1,000 / 2,500 / 5,000 (owner, 2026-11-12, after a
+  one-day raise): AppSumo's reviewer used 8 in a full test.
 - A typed code survives sign-up in `localStorage` (`pc_appsumo_code`);
   `AppSumoHandoff` (App.tsx) brings the buyer back to `/appsumo`.
 - **Licensing v2 — AppSumo's Activate button** (`routes/appsumoLicense.ts`,

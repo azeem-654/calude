@@ -30,7 +30,7 @@ import { findPhi, phiRefusal } from '../lib/phiGuard';
 import { fail, json } from '../lib/http';
 import { canAccess, userFromToken, type Env } from '../lib/db';
 import { cleanJob, jobMayFinish, jobTouch } from '../lib/aiJobs';
-import { AI_BUSY, aiBase, loadAiKey, modelsFor, trialRefusal } from '../lib/ai';
+import { AI_BUSY, aiBase, forGemma, isGemma, jsonOnly, loadAiKey, modelsFor, trialRefusal } from '../lib/ai';
 import { capRefusal, recordAiUse } from '../lib/aiUsage';
 import { moduleOf, taskOf } from '../lib/aiTasks';
 import { withFailover } from '../lib/aiPool';
@@ -133,9 +133,11 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
     let lastStatus = -1; let lastError = '';
     for (const model of await modelsFor(k, task)) {
       let res: Response;
+      /* Gemma takes the request without JSON mode or a system instruction (lib/ai.ts forGemma). */
+      const gemma = isGemma(model);
       try {
         res = await fetch(`${aiBase()}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(k)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, signal: AbortSignal.timeout(40_000),
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: gemma ? JSON.stringify(forGemma(JSON.parse(payload))) : payload, signal: AbortSignal.timeout(40_000),
         });
       } catch (e) {
         lastStatus = 0;
@@ -144,15 +146,23 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
       }
       if (res.ok) {
         const answer = await res.json() as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number } };
+        /* Asked for JSON without JSON mode: the JSON out of whatever Gemma wrapped it in. */
+        const wantedJson = (d.request?.generationConfig as { responseMimeType?: string } | undefined)?.responseMimeType === 'application/json';
+        if (gemma && wantedJson) {
+          const parts = (answer as { candidates?: { content?: { parts?: { text?: string }[] } }[] }).candidates?.[0]?.content?.parts;
+          if (parts?.length) { const joined = parts.map(p => p.text ?? '').join(''); parts.splice(0, parts.length, { text: jsonOnly(joined) }); }
+        }
         await recordAiUse({ provider: 'gemini', key: k, model, module, accountId, ok: true, status: 200, tokensIn: answer?.usageMetadata?.promptTokenCount, tokensOut: (answer?.usageMetadata?.candidatesTokenCount ?? 0) + (answer?.usageMetadata?.thoughtsTokenCount ?? 0) });
         await record(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`, 1, room.standing);
         return { ok: true, value: json({ success: true, response: answer, ...(creditsOut ? { creditsOut } : {}) }) };
       }
+      const prevStatus = lastStatus;
       lastStatus = res.status;
       lastError = await res.text().catch(() => '');
       if (res.status === 429) await recordAiUse({ provider: 'gemini', key: k, model, module, accountId, ok: false, status: 429 });
       /* The next model on a retired id or a busy one; anything else is the
          request's own fault and another model will say the same. */
+      if (gemma && res.status === 400) { lastStatus = prevStatus; continue; }   // Gemma's own limit (lib/ai.ts isGemma); the next model, the earlier status kept
       if (![404, 429, 500, 502, 503, 504].includes(res.status) && !/no longer available|not found|not supported/i.test(lastError)) break;
     }
     let msg = lastError;

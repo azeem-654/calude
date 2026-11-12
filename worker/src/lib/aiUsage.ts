@@ -100,10 +100,15 @@ export interface FreeLimits {
  * (stored in crm_meta `ai_free_limits`) when AI Studio shows otherwise.
  */
 export const FREE_DEFAULTS: FreeLimits = {
+  /* Per model, not per project: each version has its own day (AI Studio's
+     rate-limit table for the install's free project, 2026-11-11 — Flash 20,
+     Flash-Lite 500, Pro none, Gemma 14,400 at 16k tokens a minute). 0 means
+     "no free figure": such a model is ordered by what it answers, not by count. */
   gemini: {
-    lite: { rpm: 15, rpd: 1000, tpm: 250_000 },
-    flash: { rpm: 10, rpd: 250, tpm: 250_000 },
-    pro: { rpm: 5, rpd: 100, tpm: 250_000 },
+    lite: { rpm: 15, rpd: 500, tpm: 250_000 },
+    flash: { rpm: 5, rpd: 20, tpm: 250_000 },
+    pro: { rpm: 0, rpd: 0, tpm: 0 },
+    gemma: { rpm: 30, rpd: 14_400, tpm: 16_000 },
   },
   openrouter: { rpd: 50, rpdWithCredit: 1000, rpm: 20 },
   source: 'Published free-tier figures (Google AI Studio rate-limit table; OpenRouter free-model limits). Check AI Studio → Usage for your project and correct them here if they differ.',
@@ -127,7 +132,7 @@ function mergeLimits(raw: Partial<FreeLimits>): FreeLimits {
   const tier = (t: GeminiTier) => ({ rpm: n(g[t]?.rpm, FREE_DEFAULTS.gemini[t].rpm), rpd: n(g[t]?.rpd, FREE_DEFAULTS.gemini[t].rpd), tpm: n(g[t]?.tpm, FREE_DEFAULTS.gemini[t].tpm) });
   const o = (raw.openrouter ?? {}) as Partial<FreeLimits['openrouter']>;
   return {
-    gemini: { lite: tier('lite'), flash: tier('flash'), pro: tier('pro') },
+    gemini: { lite: tier('lite'), flash: tier('flash'), pro: tier('pro'), gemma: tier('gemma') },
     openrouter: { rpd: n(o.rpd, FREE_DEFAULTS.openrouter.rpd), rpdWithCredit: n(o.rpdWithCredit, FREE_DEFAULTS.openrouter.rpdWithCredit), rpm: n(o.rpm, FREE_DEFAULTS.openrouter.rpm) },
     source: raw.source === FREE_DEFAULTS.source || !raw.source ? FREE_DEFAULTS.source : 'Set by the owner on this dashboard.',
   };
@@ -197,7 +202,7 @@ export async function freeFirst(key: string, models: string[]): Promise<string[]
     const fp = await keyFp(key);
     if (fp === 'own') return models;
     const [today, week, lim] = await Promise.all([countsFor(env, fp), weekFor(env, fp), freeLimits(env)]);
-    const past = (m: string) => { const c = today[m]; return !!c && c.n - c.l >= lim.gemini[tierOf(m)].rpd; };
+    const past = (m: string) => { const c = today[m]; const rpd = lim.gemini[tierOf(m)].rpd; return rpd > 0 && !!c && c.n - c.l >= rpd; };
     /* Refused and never answered: this week's record, or today's (the week is re-read every ten minutes). */
     const refused = (m: string) => { const w = week[m], t = today[m]; return (!!w && w.l >= 1 && w.ok === 0) || (!!t && t.l >= 1 && t.ok === 0 && !(w && w.ok > 0)); };
     const proven = (m: string) => (week[m]?.ok ?? 0) > 0 || (today[m]?.ok ?? 0) > 0;
@@ -242,9 +247,10 @@ export async function nearDailyLimit(env: Env, key: string, fp: string): Promise
     const day = ok > lim.openrouter.rpd ? lim.openrouter.rpdWithCredit : lim.openrouter.rpd;
     return total >= 0.9 * day;
   }
-  /* Google: the two tiers the chains lean on, each with its own free day. */
-  const free = lim.gemini.lite.rpd + lim.gemini.flash.rpd;
-  return total >= 0.9 * free && ok <= free;
+  /* Google: every model has its own free day and freeFirst steps from one to
+     the next within the key (Flash 20, Flash-Lite 500, Gemma 14,400), so a
+     key's total says little — only a key refusing everything is demoted. */
+  return false;
 }
 
 /* ── Caps per workspace ──────────────────────────────────────────────────── */

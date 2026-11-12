@@ -40,8 +40,8 @@ if (!fs.existsSync('dist/index.html')) { console.log('Build first: VITE_BASE=/ n
 
 /* ── The Gemini mock ── */
 const K = tag => `AIza${tag}${'x'.repeat(35 - tag.length)}`;
-const QUOTA = K('QUOTA'), SPARE = K('SPARE'), DEAD = K('DEAD'), THIRD = K('THIRD'), WRONG = K('WRONG'), LITE = K('LITE');
-const KNOWN = new Set([QUOTA, SPARE, DEAD, THIRD, LITE]);
+const QUOTA = K('QUOTA'), SPARE = K('SPARE'), DEAD = K('DEAD'), THIRD = K('THIRD'), WRONG = K('WRONG'), LITE = K('LITE'), GEMMA = K('GEMMA');
+const KNOWN = new Set([QUOTA, SPARE, DEAD, THIRD, LITE, GEMMA]);
 const ORK = `sk-or-v1-${'a'.repeat(48)}`, ORBAD = `sk-or-v1-${'b'.repeat(48)}`, ORDAY = `sk-or-v1-${'c'.repeat(48)}`;
 const name = k => (k === QUOTA ? 'QUOTA' : k === SPARE ? 'SPARE' : k === DEAD ? 'DEAD' : k === THIRD ? 'THIRD' : 'other');
 let calls = [];
@@ -56,10 +56,21 @@ const mock = http.createServer((req, res) => {
       if (!KNOWN.has(key)) return send(res, 400, { error: { code: 400, status: 'INVALID_ARGUMENT', message: 'API key not valid. Please pass a valid API key.', details: [{ reason: 'API_KEY_INVALID' }] } });
       /* LITE: a free project as the live one was (2026-11-11) — the newest
          Flash listed but refused, Flash-Lite answering. */
+      if (key === GEMMA) return send(res, 200, { models: ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemma-4-31b-it', 'gemma-4-26b-a4b-it'].map(n => ({ name: `models/${n}`, supportedGenerationMethods: ['generateContent'] })) });
       if (key === LITE) return send(res, 200, { models: ['gemini-3.8-flash', 'gemini-3.5-flash-lite'].map(n => ({ name: `models/${n}`, supportedGenerationMethods: ['generateContent'] })) });
       return send(res, 200, { models: [{ name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] }] });
     }
     if (req.method === 'POST' && /:generateContent$/.test(u.pathname)) {
+      if (key === GEMMA) {
+        const model = u.pathname.split('/').pop().replace(/:generateContent$/, '');
+        const q = JSON.parse(raw || '{}');
+        calls.push(`GEMMA:${model}`);
+        if (!/^gemma-/.test(model)) return send(res, 429, { error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'You exceeded your current quota. * Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, per day' } });
+        /* Gemma takes no JSON mode and no system instruction: refused if sent, as Google does. */
+        if (q.systemInstruction || q.generationConfig?.responseMimeType) return send(res, 400, { error: { code: 400, status: 'INVALID_ARGUMENT', message: 'JSON mode is not enabled for this model' } });
+        const said = JSON.stringify(q.contents);
+        return send(res, 200, { candidates: [{ content: { parts: [{ text: `Here you go:\n\`\`\`json\n{"from":"${model}","sys":${/BE BRIEF/.test(said)},"jsonAsked":${/JSON only/.test(said)}}\n\`\`\`` }] } }] });
+      }
       if (key === LITE) {
         const model = u.pathname.split('/').pop().replace(/:generateContent$/, '');
         calls.push(`LITE:${model}`);
@@ -250,6 +261,26 @@ calls = [];
 ai = await apiS('ai.php', { token: C.token, accountId: C.acct, action: 'generate', module: 'email-marketing', request: { contents: [{ parts: [{ text: 'Another email' }] }] } });
 ok('free tier: the next call goes straight to the model that answers', ai.d.success && /lite/.test(calls[0] ?? '') && calls.length === 1, calls.join(' → '));
 await keys(T, 'remove', { id: (await keys(T)).d.keys.find(k => k.label === 'Free project').id });
+
+/* ── Gemma (14,400 a day free) as the reserve when every Gemini model on the
+      key is refused: asked without JSON mode or a system instruction, the
+      instruction said in the request, the JSON taken out of its reply. ── */
+await keys(T, 'add', { apiKey: GEMMA, label: 'Gemma project' });
+calls = [];
+ai = await apiS('ai.php', { token: C.token, accountId: C.acct, action: 'generate', module: 'email-marketing', request: {
+  contents: [{ parts: [{ text: 'Write a subject line' }] }],
+  systemInstruction: { parts: [{ text: 'BE BRIEF' }] },
+  generationConfig: { responseMimeType: 'application/json', temperature: 0.5 },
+} });
+const gtext = ai.d.response?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+let gj = null; try { gj = JSON.parse(gtext); } catch { /* not JSON */ }
+ok('Gemma: with every Gemini model refused, Gemma answers on the same key', ai.d.success && /^gemma-/.test(gj?.from ?? ''), `${calls.join(' → ')} ${JSON.stringify(ai.d).slice(0, 300)}`);
+ok('Gemma: …the reply is clean JSON, the system instruction and "JSON only" carried in the request', gj?.sys === true && gj?.jsonAsked === true, gtext);
+r = await keys(T);
+ok('Gemma: …and the key is not rested', !r.d.keys.find(k => k.label === 'Gemma project')?.restingUntil, JSON.stringify(r.d.keys.find(k => k.label === 'Gemma project')));
+const tr3 = await api('intake.php', { token: C.token, accountId: C.acct, action: 'plan_year', business: { companyName: 'Harbour Plumbing', description: 'Boiler servicing and emergency plumbing for homes in Leeds.' } });
+ok('Gemma: a server-side call (the 12-month plan) reaches Gemma too', calls.some(c => /^GEMMA:gemma-/.test(c)) && tr3.success, `${calls.join(' → ')} ${JSON.stringify(tr3).slice(0, 200)}`);
+await keys(T, 'remove', { id: (await keys(T)).d.keys.find(k => k.label === 'Gemma project').id });
 
 await keys(T, 'add', { apiKey: THIRD, label: 'Fresh project' });
 calls = [];

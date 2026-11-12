@@ -80,7 +80,7 @@ export const METERS: Meter[] = [
   /* Called "AI credits" to customers (the owner's word, 2026-11-11); the id
      stays ai_requests, since it is stored on every usage row and plan override. */
   { id: 'ai_requests', label: 'AI credits', one: 'AI credit', kind: 'monthly', group: 'AI writing',
-    counted: 'One AI credit is used each time the AI writes or reads something for you — a Protron reply, a step of the setup wizard, a 12-month plan, or one run of an AI Autopilot agent. Nothing is used when the AI fails.' },
+    counted: 'One AI credit is used each time the AI writes or reads something for you — a step of the setup wizard, a 12-month plan, or one run of an AI Autopilot agent. Nothing is used when the AI fails.' },
   { id: 'social_posts', label: 'Social posts by AI Autopilot', one: 'social post', kind: 'monthly', group: 'AI writing',
     counted: 'Each post a business workspace’s agent or AI Video Studio writes into the Graphics Designer & Editor.' },
   { id: 'blog_articles', label: 'Blog articles by AI Autopilot', one: 'blog article', kind: 'monthly', group: 'AI writing',
@@ -279,10 +279,11 @@ export const PLAN_DEFS: PlanDef[] = [
    * a share of that once, while every metered unit below is paid by the
    * operator every month for good (docs/PRICING.md, "What a unit costs") — so
    * the AI, prospect and video meters sit well under the monthly plans'.
-   * These are the numbers proposed to the owner on 2026-11-04, with AI requests
-   * raised on 2026-11-11 at the owner's request (1,000/2,500/5,000 →
-   * 3,000/6,000/12,000) after AppSumo's reviewers ran a setup wizard, an
-   * Autopilot build and a blog workflow in one sitting; they must match
+   * These are the numbers proposed to the owner on 2026-11-04. AI credits were
+   * briefly raised on 2026-11-11 and put back the next day by the owner: the
+   * live counts showed AppSumo's reviewer used 8 credits in a full test, so
+   * 1,000 is plenty (the outage was the free Google key's models, not the
+   * allowance — lib/aiUsage.ts freeFirst). They must match
    * the AppSumo listing's Pricing tab, and the owner can change any of them on
    * Plans & allowances without a release. `monthlyCents: 0`: nothing here is
    * ever charged by this app.
@@ -294,7 +295,7 @@ export const PLAN_DEFS: PlanDef[] = [
     support: 'In-app help: chat and tickets',
     limits: {
       autopilot_projects: 3, workflows_per_project: 12, sub_accounts: 1,
-      ai_requests: 3_000, social_posts: 100, blog_articles: 10, ai_emails: 300,
+      ai_requests: 1_000, social_posts: 100, blog_articles: 10, ai_emails: 300,
       prospects_found: 300,
       long_videos: 3, ai_shorts: 20, video_minutes: 120, render_minutes: 150, video_storage_gb: 10,
       login_addresses: 1,
@@ -308,7 +309,7 @@ export const PLAN_DEFS: PlanDef[] = [
     support: 'In-app help: chat and tickets',
     limits: {
       autopilot_projects: 10, workflows_per_project: 20, sub_accounts: 5,
-      ai_requests: 6_000, social_posts: 250, blog_articles: 25, ai_emails: 750,
+      ai_requests: 2_500, social_posts: 250, blog_articles: 25, ai_emails: 750,
       prospects_found: 750,
       long_videos: 6, ai_shorts: 50, video_minutes: 300, render_minutes: 400, video_storage_gb: 25,
       login_addresses: 5,
@@ -322,7 +323,7 @@ export const PLAN_DEFS: PlanDef[] = [
     support: 'In-app help: chat and tickets, and an onboarding call',
     limits: {
       autopilot_projects: 25, workflows_per_project: 35, sub_accounts: 15,
-      ai_requests: 12_000, social_posts: 500, blog_articles: 50, ai_emails: 1_500,
+      ai_requests: 5_000, social_posts: 500, blog_articles: 50, ai_emails: 1_500,
       prospects_found: 1_500,
       long_videos: 12, ai_shorts: 100, video_minutes: 600, render_minutes: 800, video_storage_gb: 50,
       login_addresses: 15,
@@ -567,8 +568,7 @@ export function featureLines(p: Pick<PlanDef, 'limits'>): string[] {
  */
 export const AI_CREDITS_GUIDE = [
   'An AI credit is one piece of work done by the AI for you. One credit is used each time the AI writes or reads something:',
-  '• a reply from Protron, the AI business manager (one more if you have it read the reply aloud);',
-  '• each step of the AI Autopilot setup that reads your business or suggests answers, and writing your 12-month marketing plan;',
+  '• each step of the AI Autopilot setup that reads your business, asks you a question or suggests answers, and writing your 12-month marketing plan;',
   '• one run of an AI Autopilot agent — a batch of up to six social posts, one blog article, or a whole email campaign;',
   '• rewriting or improving text in an editor, drafting a reply in your inbox, reading a website or document into your business profile.',
   'To give you a feel: setting up a business workspace uses about 10–20 credits, and a business workspace that posts every weekday, writes a weekly article and a monthly email campaign uses about 30 a month.',
