@@ -561,3 +561,49 @@ button.day-chip:hover { background: rgba(255, 255, 255, 0.10); border-color: rgb
   .day-chips { width: 100%; }
   .day-clocks > span { flex-wrap: wrap; }
 }
+
+/* ── The hero: ask AI Autopilot, over the hills (DashHero.tsx, HillsCanvas.tsx) ──
+   Up behind the header and out under the rail like .dash itself, so the sky
+   has no seam. The ground's opacity is written by the component as the page
+   scrolls; the veil blends the hills into the dashboard's own ground. */
+.dash-hero {
+  position: relative;
+  isolation: isolate;
+  box-sizing: border-box;
+  margin: calc(var(--dash-bleed) * -1) 0 0 -62px;
+  padding: calc(var(--dash-bleed) + clamp(36px, 8vh, 92px)) clamp(16px, 4vw, 48px) clamp(150px, 24vh, 250px) calc(62px + clamp(16px, 4vw, 48px));
+  min-height: min(88vh, 780px);
+  display: grid;
+  justify-items: center;
+  align-content: start;
+}
+.dash-hero-ground { position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(180deg, #dfeae6, #eef3f1 55%); }
+.dash-hero-canvas, .dash-hero-fallback { display: block; width: 100%; height: 100%; }
+.dash-hero-fallback {
+  background:
+    radial-gradient(120% 60% at 20% 100%, #2f6b3a 0 45%, transparent 46%),
+    radial-gradient(110% 55% at 80% 100%, #3f7d44 0 42%, transparent 43%),
+    radial-gradient(140% 50% at 50% 104%, #275a31 0 48%, transparent 49%),
+    linear-gradient(180deg, #dfeae6, #eef3f1 60%);
+}
+.dash-hero-veil { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(234, 240, 238, 0.35) 0%, rgba(234, 240, 238, 0) 30%, rgba(234, 240, 238, 0) 72%, #e9ecef 100%); }
+.dash-hero-inner { width: min(720px, 100%); display: grid; gap: 14px; justify-items: center; text-align: center; }
+.dash-hero-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 750; letter-spacing: .02em; color: #1f4d33; background: rgba(255, 255, 255, 0.62); border: 1px solid rgba(255, 255, 255, 0.85); padding: 5px 11px; border-radius: 999px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.dash-hero-title { margin: 4px 0 0; font-size: clamp(28px, 4.4vw, 46px); font-weight: 650; letter-spacing: -0.035em; color: #11151a; line-height: 1.08; overflow-wrap: anywhere; }
+.dash-hero-sub { margin: 0; font-size: clamp(14px, 1.6vw, 16.5px); color: #3f4a46; }
+.dash-hero-box { width: 100%; box-sizing: border-box; margin-top: 10px; display: grid; gap: 8px; text-align: left; background: rgba(255, 255, 255, 0.94); border: 1px solid rgba(255, 255, 255, 1); border-radius: 18px; padding: 14px 14px 10px 16px; box-shadow: 0 24px 60px -30px rgba(16, 40, 28, 0.55), 0 2px 6px rgba(16, 40, 28, 0.06); }
+.dash-hero-input { border: 0; outline: 0; resize: none; background: transparent; font: inherit; font-size: 15.5px; line-height: 1.5; color: #17191c; min-height: 52px; width: 100%; }
+.dash-hero-input::placeholder { color: #8a8f98; }
+.dash-hero-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.dash-hero-live { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12.5px; font-weight: 700; color: #1f4d33; background: #eef6f1; border: 1px solid #d6eadc; border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+.dash-hero-live:hover { background: #e3f1e8; }
+.dash-hero-send { width: 38px; height: 38px; border-radius: 50%; border: 0; display: grid; place-items: center; color: #fff; background: #111114; cursor: pointer; box-shadow: 0 8px 18px -8px rgba(0, 0, 0, 0.6); }
+.dash-hero-send:disabled { background: #b9bdc4; box-shadow: none; cursor: default; }
+.dash-hero-send:focus-visible, .dash-hero-live:focus-visible, .dash-hero-chip:focus-visible { outline: 3px solid #86c79a; outline-offset: 2px; }
+.dash-hero-starters { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.dash-hero-chip { font: inherit; font-size: 13px; font-weight: 600; color: #22312a; background: rgba(255, 255, 255, 0.7); border: 1px solid rgba(255, 255, 255, 0.9); border-radius: 999px; padding: 7px 13px; cursor: pointer; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.dash-hero-chip:hover { background: rgba(255, 255, 255, 0.92); }
+@media (max-width: 640px) {
+  .dash-hero { min-height: 0; padding-bottom: 120px; }
+  .dash-hero-chip { font-size: 12.5px; }
+}

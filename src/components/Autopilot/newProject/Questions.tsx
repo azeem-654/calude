@@ -84,6 +84,7 @@ export default function Questions({ screen, state, ws, files, answer, onFiles, o
       companyName: company || String(profile.draft?.companyName ?? ''),
       description: String(profile.draft?.description ?? '') || said('bizWhat') || ws.workspace?.description || '',
       website: said('website') || String(profile.draft?.website ?? ''),
+      locations: String(profile.draft?.locations ?? ''),
     },
     answers: Object.fromEntries(Object.keys(state.known).map(id => [id, said(id)])),
   };
@@ -104,7 +105,7 @@ export default function Questions({ screen, state, ws, files, answer, onFiles, o
         )}
       </div>
       {screen.questions.map(q => (
-        <Field key={q.id} q={q} state={state} ws={ws} files={files} answer={answer} onFiles={onFiles} onLink={onLink} design={design} company={company} ideas={ideas} />
+        <Field key={q.id} q={q} state={state} ws={ws} files={files} answer={answer} onFiles={onFiles} onLink={onLink} design={design} company={company} ideas={ideas} reading={profile.reading} />
       ))}
       {screen.questions.some(q => q.id === 'business') && (
         <ProfileFound state={state} files={files} profile={profile} onProfile={onProfile} onRead={onReadProfile} />
@@ -217,8 +218,10 @@ function ProfileFound({ state, files, profile, onProfile, onRead }: {
   );
 }
 
-function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, ideas }: {
+function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, ideas, reading }: {
   q: Question; state: IntakeState; ws: WorkspaceFacts; files: Attachment[];
+  /** The business's site or profile is being read right now (shown beside the website's tag). */
+  reading?: boolean;
   design: DesignHooks; company?: string; ideas: ScreenIdeas;
   answer: (id: string, value: string | string[] | null, source?: KnownSource) => void;
   onFiles: (atts: Attachment[]) => void;
@@ -234,7 +237,14 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
   const head = (
     <div className="np-q-head">
       <span style={{ fontSize: 17, fontWeight: 750, color: '#17191c', letterSpacing: '-0.01em' }}>{q.prompt}</span>
-      <span className="np-need" data-need={q.need}>{q.need === 'required' ? 'NEEDED' : 'OPTIONAL'}</span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {/* Right beside the tag, where the address was typed (owner, 2026-11-12) —
+            the reading's own panel is further down and was missed. */}
+        {q.id === 'website' && reading && (
+          <span className="np-site-state" role="status"><Loader size={13} className="spin" /> Reading the website…</span>
+        )}
+        <span className="np-need" data-need={q.need}>{q.need === 'required' ? 'NEEDED' : 'OPTIONAL'}</span>
+      </span>
     </div>
   );
   const help = q.help ? <p style={{ margin: '-4px 0 0', fontSize: 13, color: '#6b7280', lineHeight: 1.55 }}>{q.help}</p> : null;
@@ -268,6 +278,9 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
     const opts: { value: string; label: string; hint: string; icon: typeof Globe }[] = [
       ...ws.portfolios.map(p => ({ value: `existing:${p.id}`, label: p.name, hint: 'Already in Protected Central', icon: Building2 })),
       ...(ws.workspace?.companyName ? [{ value: 'workspace', label: `My ${ws.workspace.companyName} profile`, hint: 'From your account setup', icon: UserCircle2 }] : []),
+    ];
+    /* New sources look like actions, not like the businesses above (np-src). */
+    const sources: { value: 'website' | 'upload' | 'manual'; label: string; hint: string; icon: typeof Globe }[] = [
       { value: 'website', label: 'Read my website', hint: 'AI Autopilot reads it now', icon: Globe },
       { value: 'upload', label: 'Upload a company profile', hint: 'A PDF, brochure or document', icon: Upload },
       { value: 'manual', label: 'Type it in', hint: 'Three short lines', icon: PenLine },
@@ -276,6 +289,7 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
     return (
       <div className="np-q">
         {head}{help}
+        {opts.length > 0 && <span className="np-src-group">ALREADY IN PROTECTED CENTRAL</span>}
         <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 220px), 1fr))' }}>
           {opts.map(o => {
             const on = vals[0] === o.value;
@@ -287,6 +301,22 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
                   <span style={{ display: 'block', fontSize: 12, color: '#6b7280', marginTop: 2 }}>{o.hint}</span>
                 </span>
                 {on && <Check size={15} color="#5b46e5" style={{ marginLeft: 'auto', flexShrink: 0 }} />}
+              </button>
+            );
+          })}
+        </div>
+        <span className="np-src-group">{opts.length ? 'OR ADD IT A NEW WAY' : 'HOW SHOULD AI AUTOPILOT LEARN ABOUT THE BUSINESS?'}</span>
+        <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 220px), 1fr))' }}>
+          {sources.map(o => {
+            const on = vals[0] === o.value;
+            return (
+              <button key={o.value} type="button" className="np-src" data-kind={o.value} aria-pressed={on} onClick={() => answer(q.id, o.value, 'you')}>
+                <span className="np-src-icon"><o.icon size={16} /></span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 14, fontWeight: 750, color: '#17191c' }}>{o.label}</span>
+                  <span style={{ display: 'block', fontSize: 12, color: '#475569', marginTop: 2 }}>{o.hint}</span>
+                </span>
+                {on && <Check size={15} style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--src-on)' }} />}
               </button>
             );
           })}

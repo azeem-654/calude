@@ -201,7 +201,13 @@
 
       // Its own bucket and engine, never the live ones (scripts/video-bindings.mjs).
       "r2_buckets": [{ "binding": "VIDEO", "bucket_name": "crmpro-staging-video" }],
-      "services": [{ "binding": "MEDIA", "service": "crmpro-staging-media" }],
+      // MEDIA: its own engine. LIVE_VAULT: the live Worker's AI keys, so a key
+      // added once on live answers here too (lib/liveVault.ts) — an RPC
+      // entrypoint with no URL; only the AI keys cross, never the database.
+      "services": [
+        { "binding": "MEDIA", "service": "crmpro-staging-media" },
+        { "binding": "LIVE_VAULT", "service": "crmpro", "entrypoint": "AiVault" }
+      ],
       "ai": { "binding": "AI" },
 
       "observability": { "enabled": true }

@@ -71,6 +71,11 @@ export interface Env {
   AI_API_KEY?: string;
   /** An OpenRouter key, tried after the Google keys (lib/openrouter.ts). */
   OPENROUTER_API_KEY?: string;
+  /**
+   * Testing only: the live Worker's AI key vault, over a service binding to
+   * its `AiVault` RPC entrypoint (lib/liveVault.ts). Unset on live.
+   */
+  LIVE_VAULT?: { aiKeys(): Promise<{ key: string; label: string }[]> };
   /** Tests only: an OpenRouter stand-in. */
   OPENROUTER_BASE?: string;
   /**

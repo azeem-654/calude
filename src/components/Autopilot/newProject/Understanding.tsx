@@ -39,8 +39,9 @@ const FACT_NAME: Record<string, string> = {
    solution whose own questions are then asked. */
 const ADDONS: { key: string; label: string; hint: string }[] = [
   { key: 'social-growth', label: 'Daily social media posts', hint: 'Image posts in your brand for Instagram, Facebook and LinkedIn, ready to publish' },
-  { key: 'video-content', label: 'AI Shorts from your videos', hint: 'Upload a recording — get cleaned video, Shorts, captions and thumbnails' },
-  { key: 'blog-seo', label: 'SEO blog articles', hint: 'An article every week, written for what your buyers search for' },
+  /* "AI Shorts from your videos" was taken out of the extras by the owner
+     (2026-11-12); the Video Content solution is still in the catalogue. */
+  { key: 'blog-seo', label: 'SEO blog articles', hint: 'An article every week, written for what your buyers search for. You can also connect article sites (a news feed) or a YouTube channel — each new article or video becomes a blog post.' },
 ];
 
 export default function Understanding({ stages, state, finished, questionCount, onChangeSolution, onToggleAddon, onCorrect, correcting = false, correction, portfolios, lists = [], openGroups = [] }: {

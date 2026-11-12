@@ -15,10 +15,13 @@ import AutopilotBot from '../AutopilotBot';
 import { percentOf, type BuildResult, type BuildStep } from './buildRunner';
 import ContactsCheck from './ContactsCheck';
 import FinderLive from './FinderLive';
+import WorkflowStrip from './WorkflowStrip';
 import type { WorkflowNode } from '../../../services/autopilot';
 
-export default function Build({ steps, say, result, reach = [] }: {
+export default function Build({ steps, say, result, reach = [], flows = [] }: {
   steps: BuildStep[];
+  /** Every workflow in the blueprint, so the finished screen shows their steps, not only a count. */
+  flows?: { name: string; nodes?: WorkflowNode[] }[];
   /** The workflows that email or text people — for "who will this reach?". */
   reach?: { name: string; nodes?: WorkflowNode[] }[];
   say: string;
@@ -94,6 +97,18 @@ export default function Build({ steps, say, result, reach = [] }: {
           {result!.created.products ? `, and imported ${result!.created.products} product${result!.created.products === 1 ? '' : 's'}` : ''}.
           {result!.first && <> Your first one is already made. <ArrowRight size={12} style={{ verticalAlign: 'middle' }} /></>}
           {result!.problems.length > 0 && <> {result!.problems.length} step{result!.problems.length === 1 ? '' : 's'} need{result!.problems.length === 1 ? 's' : ''} you — marked above.</>}
+        </div>
+      )}
+
+      {done && !failed && flows.length > 0 && (
+        <div className="np-rise" style={{ display: 'grid', gap: 12 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b7280', letterSpacing: '0.05em' }}>THE WORKFLOWS, STEP BY STEP — SCROLL SIDEWAYS</span>
+          {flows.map(f => (
+            <div key={f.name} className="np-wf">
+              <span style={{ fontSize: 14, fontWeight: 750, color: '#17191c' }}>{f.name}</span>
+              <WorkflowStrip nodes={f.nodes} name={f.name} />
+            </div>
+          ))}
         </div>
       )}
 

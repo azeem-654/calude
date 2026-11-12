@@ -167,7 +167,7 @@ export async function transcribe(audioBase64: string, mime: string, language: st
 export interface Suggestion { options: string[]; pick: string[]; why: string; placeholder: string }
 export async function suggestAnswers(p: {
   prompt: string;
-  business: { companyName?: string; description?: string; website?: string };
+  business: { companyName?: string; description?: string; website?: string; locations?: string; location?: string };
   questions: { id: string; prompt: string; help?: string; many?: boolean; options?: string[] }[];
   answers: Record<string, unknown>;
 }): Promise<{ ok: boolean; noAi: boolean; suggestions: Record<string, Suggestion>; error: string }> {

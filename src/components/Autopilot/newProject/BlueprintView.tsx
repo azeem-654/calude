@@ -20,6 +20,7 @@ import {
 import type { Blueprint } from '../../../services/projectIntake';
 import { REQUIREMENT_INFO } from '../../../services/projectSolutions';
 import VoiceControl from '../voice/VoiceControl';
+import WorkflowStrip from './WorkflowStrip';
 
 export interface EditMessage { who: 'you' | 'ai' | 'bad'; text: string }
 
@@ -97,6 +98,7 @@ export default function BlueprintView({ bp, onRename }: { bp: Blueprint; onRenam
                     {w.sends && <span className="np-badge" data-tone="warn">Waits for you before it sends</span>}
                   </div>
                   <span style={{ fontSize: 13, color: '#475569', lineHeight: 1.5 }}>{w.purpose}</span>
+                  <WorkflowStrip nodes={w.nodes} name={w.name} />
                   <span style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, color: '#6b7280' }}>
                     {w.schedule && <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}><Clock size={12} /> {w.schedule}</span>}
                     {w.output && <span style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}><PackageCheck size={12} /> {w.output.label}</span>}

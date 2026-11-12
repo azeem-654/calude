@@ -24,6 +24,7 @@ import ProgressBoard from './ProgressBoard';
 import { recentActivity, relTime, type Activity } from './activity';
 import DayBoard, { DayBar } from './DayBoard';
 import AutopilotPanel from './AutopilotPanel';
+import DashHero from './DashHero';
 import DueTasks from './DueTasks';
 import SupportWaiting from './SupportWaiting';
 import CloudLive from './CloudLive';
@@ -277,6 +278,8 @@ function JourneyDonut({ label, value, total, color }: { label: string; value: nu
 function StatusChip({ status }: { status: string }) {
   const map: Record<string, { bg: string; color: string }> = {
     executed: { bg: '#e2f5dc', color: GREEN },
+    won: { bg: '#e2f5dc', color: GREEN },
+    lost: { bg: '#fde8e8', color: RED },
     scheduled: { bg: '#fdeeda', color: '#c77414' },
     active: { bg: '#eceff9', color: BLUE },
     pending: { bg: '#f0f1f3', color: MUTED },
@@ -706,7 +709,8 @@ export default function Dashboard() {
 
   const tableRows = allDeals.slice(0, 4).map(d => ({
     subject: d.title,
-    status: d.status === 'won' ? 'executed' : d.status === 'lost' ? 'pending' : 'active',
+    /* A lost deal said "pending" here, which read as still in play. */
+    status: d.status === 'won' ? 'won' : d.status === 'lost' ? 'lost' : 'active',
     start: new Date(d.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
     end: d.expectedClose ? new Date(d.expectedClose).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—',
     user: d.assignedTo || d.contactName || '—',
@@ -820,22 +824,22 @@ export default function Dashboard() {
   });
   if (idleDeals > 0) insights.push({
     kind: 'flaw', title: `${idleDeals} deal${idleDeals > 1 ? 's are' : ' is'} going stale`,
-    desc: `Deals sitting in a stage for 14+ days close 60% less often. Add an idle-deal automation so nothing slips through the cracks.`,
+    desc: 'They have sat in the same stage for 14 days or more. Add an idle-deal automation so nothing slips through the cracks.',
     action: { label: 'Review pipeline', path: '/pipelines' },
   });
   if (winRate < 40 && wonCount + lostCount >= 3) insights.push({
-    kind: 'flaw', title: `Win rate is ${winRate}% — below the 40% benchmark`,
+    kind: 'flaw', title: `Win rate is ${winRate}% across your closed deals`,
     desc: 'Qualify harder before quoting: verify budget, decision maker, and timeline on the first call to cut losses early.',
     action: { label: 'See lost deals', path: '/pipelines' },
   });
   if (unrepliedReviews > 0) insights.push({
     kind: 'flaw', title: `${unrepliedReviews} review${unrepliedReviews > 1 ? 's' : ''} still unanswered`,
-    desc: 'Businesses that reply to every review earn 12% more repeat customers. Even a two-line thank-you moves the needle.',
+    desc: 'A reply shows the next reader you are listening. Even a two-line thank-you helps.',
     action: { label: 'Reply now', path: '/reputation' },
   });
   if (untaggedPct > 50 && contacts.length >= 5) insights.push({
     kind: 'tip', title: `${untaggedPct}% of contacts have no tags`,
-    desc: 'Tagged contacts can be segmented into targeted campaigns — targeted emails get 2-3× the open rate of blasts.',
+    desc: 'Tagged contacts can be segmented into targeted campaigns, which read as written for them rather than sent to everyone.',
     action: { label: 'Tag contacts', path: '/contacts' },
   });
   if (!hasAutomations) insights.push({
@@ -845,23 +849,23 @@ export default function Dashboard() {
   });
   if (draftCampaigns > 0) insights.push({
     kind: 'tip', title: `${draftCampaigns} campaign${draftCampaigns > 1 ? 's' : ''} still in draft`,
-    desc: 'Money loves speed — a finished-but-unsent campaign earns nothing. Review and launch, or schedule it for the best send window (Tue–Thu, 10am).',
+    desc: 'A finished-but-unsent campaign earns nothing. Review and launch it, or schedule it.',
     action: { label: 'Open campaigns', path: '/marketing' },
   });
   insights.push(
     {
       kind: 'growth', title: 'Reply to new leads within 5 minutes',
-      desc: 'Leads contacted within 5 minutes are 21× more likely to convert than after 30 minutes. Watch the Live Activity feed and pounce.',
+      desc: 'The sooner a new lead hears back, the likelier they are to buy. Keep an eye on Conversations, or let AI Autopilot reply for you.',
       action: { label: 'Open conversations', path: '/conversations' },
     },
     {
       kind: 'growth', title: 'Ask every happy customer for a review',
-      desc: 'A steady stream of 5-star reviews compounds: each +0.1 rating lifts conversion ~5%. Automate the ask right after a won deal.',
+      desc: 'Recent reviews are what new customers read first. Automate the ask right after a won deal.',
       action: { label: 'Reputation hub', path: '/reputation' },
     },
     {
       kind: 'growth', title: 'Follow up at least 5 times',
-      desc: '80% of sales need 5+ touches, yet most reps stop after 2. Use a 5-step email sequence with 2-3 day gaps to stay top of mind.',
+      desc: 'Many sales need several touches, and most people stop after one or two. A short email sequence with a few days between steps keeps you in mind.',
       action: { label: 'Build a sequence', path: '/marketing' },
     },
   );
@@ -870,9 +874,12 @@ export default function Dashboard() {
     <div ref={ground} className="dash" style={{ minHeight: '100vh', paddingBottom: 32, overflow: 'hidden' }}>
       <span className="dash-glow" aria-hidden="true" />
       <span className="dash-glow-2" aria-hidden="true" />
-      {/* One slim bar on top — face, greeting and the day — then the blocks. */}
+      {/* The starting point: ask AI Autopilot, over the hills (owner, 2026-11-12). */}
+      <DashHero greeting={greeting} firstName={firstName} />
+      {/* One slim bar — face, greeting and the day — then the blocks. */}
       <div className="dash-stack" style={{ padding: '18px clamp(18px, 3.2vw, 46px) 0', display: 'flex', flexDirection: 'column', gap: 26 }}>
-        <DayBar appointments={appointments} greeting={greeting} firstName={firstName}
+        {/* The hero above says good morning; the bar says what the day holds. */}
+        <DayBar appointments={appointments} greeting="Here’s your day" firstName=""
           line={`${openDeals} deal${openDeals === 1 ? '' : 's'} in motion · ${contacts.length} contact${contacts.length === 1 ? '' : 's'} on the books`} />
         <Toasts />
 

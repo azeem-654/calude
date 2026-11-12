@@ -922,7 +922,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     if (blocker) return blocker;
     if (phase === 'describe' && intake.step === 'name') return intake.brief.company.trim() ? 'Continue' : 'Continue without a name';
     if (phase === 'describe' && intake.step === 'solutions') return intake.keys.length || intake.brief.custom.trim() ? 'Continue with Protron' : 'Not sure — let Protron ask';
-    if (phase === 'describe' && intake.step === 'talk') return 'Write my instruction';
+    if (phase === 'describe' && intake.step === 'talk') return 'Create my smart optimized prompt for AI Autopilot';
     if (phase === 'describe' && intake.step === 'prompt') return 'Approve and continue';
     if (phase === 'describe') return 'Continue';
     if (phase === 'understand') return screens.length || (state && allQuestions(state).some(q => applies(q, state.known) && !state.known[q.id])) ? 'Answer a few questions' : 'See the blueprint';
@@ -959,6 +959,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
         <div style={{ display: 'grid', gap: 8 }}>
           <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b7280', letterSpacing: '0.05em' }}>WHAT PROTRON HAS SO FAR</span>
           <span style={{ fontSize: 13, color: '#334155' }}><b>Business:</b> {intake.brief.company.trim() || '—'}</span>
+          <span style={{ fontSize: 13, color: '#334155', overflowWrap: 'anywhere' }}><b>Website:</b> {intake.brief.website.trim() || (intake.brief.nature.trim() ? 'none — described instead' : '—')}</span>
           <span style={{ fontSize: 13, color: '#334155' }}><b>Solutions:</b> {chosenLabels(intake.brief).join(', ') || '—'}</span>
           <span style={{ fontSize: 13, color: '#334155' }}><b>Answers:</b> {intake.brief.talk.filter(t => t.role === 'user').length}</span>
           <span style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5, marginTop: 6 }}>Nothing is saved until you approve the instruction and build the business workspace.</span>
@@ -1142,7 +1143,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                 <Requirements ids={bp.requirements} ready={ready} mailboxPlan={String(state?.known.mailbox?.value ?? '')} finder={finderSpecOf(bp.workflows)} />
               )}
               {phase === 'review' && bp && <Review bp={bp} />}
-              {phase === 'build' && <Build steps={steps} say={say} result={result} reach={(bp?.workflows ?? []).filter(w => w.sends).map(w => ({ name: w.name, nodes: w.nodes }))} />}
+              {phase === 'build' && <Build steps={steps} say={say} result={result} reach={(bp?.workflows ?? []).filter(w => w.sends).map(w => ({ name: w.name, nodes: w.nodes }))} flows={(bp?.workflows ?? []).map(w => ({ name: w.name, nodes: w.nodes }))} />}
               {phase === 'domains' && result?.projectId && (
                 <DigitalSetupStep
                   companyName={company}

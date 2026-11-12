@@ -47,7 +47,11 @@ function dropAi() {
   if (ai >= 0) src = src.slice(0, src.lastIndexOf('\n', ai) + 1) + src.slice(src.indexOf('\n', ai) + 1);
 }
 const bucketLine = `"r2_buckets": [{ "binding": "VIDEO", "bucket_name": "${bucket}" }],`;
-const engineLine = `"services": [{ "binding": "MEDIA", "service": "${engine}" }],`;
+/* Staging's services list also holds LIVE_VAULT (lib/liveVault.ts), so there
+   MEDIA is its own line inside the array and only that line is dropped. */
+const engineLine = staging
+  ? `{ "binding": "MEDIA", "service": "${engine}" },`
+  : `"services": [{ "binding": "MEDIA", "service": "${engine}" }],`;
 
 /* Safe first: until each piece is proved, this run's file has none of them,
    so a step killed half way (a timeout) leaves a deployable config behind. */

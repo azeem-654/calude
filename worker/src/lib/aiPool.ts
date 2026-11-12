@@ -39,12 +39,13 @@
 import { decryptSecret } from './crypto';
 import { installSecret, metaGet, metaPut, nowIso, type Env } from './db';
 import { nearDailyLimit } from './aiUsage';
+import { liveVaultKeys } from './liveVault';
 
 export interface PoolKey {
   key: string;
   fp: string;
   /** Where it came from — the owner sees this, never the key. */
-  source: 'install' | 'engine' | 'backup' | 'env' | 'workspace';
+  source: 'install' | 'engine' | 'backup' | 'env' | 'workspace' | 'live';
   label: string;
   /** A backup's row id. */
   id?: string;
@@ -61,7 +62,7 @@ export async function fingerprint(key: string): Promise<string> {
  * backups by position, and the AI_API_KEY secret last. A key stored twice is
  * tried once.
  */
-export async function readInstallKeys(env: Env): Promise<PoolKey[]> {
+export async function readInstallKeys(env: Env, opts: { withLive?: boolean } = {}): Promise<PoolKey[]> {
   const secret = await installSecret(env.DB, 'mailbox_key');
   const out: PoolKey[] = [];
   const seen = new Set<string>();
@@ -99,6 +100,11 @@ export async function readInstallKeys(env: Env): Promise<PoolKey[]> {
   await add(env.AI_API_KEY, 'env', 'AI_API_KEY (Cloudflare secret)');
   /* An OpenRouter key (lib/openrouter.ts) as a secret: last, a backup behind Google's keys. */
   await add(env.OPENROUTER_API_KEY, 'env', 'OPENROUTER_API_KEY (Cloudflare secret)');
+  /* The testing site only: the live site's keys, behind any of its own, so a
+     key added once on live answers on both (lib/liveVault.ts). */
+  if (opts.withLive !== false) {
+    for (const k of await liveVaultKeys(env)) await add(k.key, 'live', `Live site — ${k.label}`);
+  }
   return out;
 }
 
@@ -159,6 +165,11 @@ export function remember(env: Env, keys: PoolKey[]): string | null {
 }
 
 /** A key's pool record (its fingerprint and where it came from), if any pool this isolate has seen holds it. */
+/** Every key filed under `key` by `remember`, in order (the key alone when none was filed). */
+export function poolKeysFor(key: string): string[] {
+  return pools.get(key)?.keys.map(k => k.key) ?? [key];
+}
+
 export function poolKeyOf(key: string): PoolKey | undefined {
   for (const { keys } of pools.values()) { const k = keys.find(p => p.key === key); if (k) return k; }
   return undefined;

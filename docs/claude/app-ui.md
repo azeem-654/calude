@@ -49,7 +49,18 @@ checks four widths as the owner, and that 1440 and up is one line.
 
 ## The dashboard
 
-`Dashboard/Dashboard.tsx` opens on **one slim bar** (`DayBar` in
+**The hero comes first** (owner, 2026-11-12): `DashHero.tsx` — the greeting,
+"What should AI Autopilot do for your business today?", one prompt box,
+four starting points — over `HillsCanvas.tsx`, an original WebGL flight over
+rolling green hills (procedural, not the reference footage; drawn at ≤ 0.75
+resolution, stops off screen / hidden / faded; reduced motion = one still
+frame; no WebGL = a painted fallback). The ground's opacity follows the
+scroll and reaches 0 as the next section comes up. Sending hands the words to
+the wizard like Protron does (`pc_protron_handoff`). Headless screenshots
+through the software GPU can show a white strip across the canvas; its real
+pixels have none (read back with `readPixels`) — do not chase it.
+
+Under it `Dashboard/Dashboard.tsx` has **one slim bar** (`DayBar` in
 `DayBoard.tsx`, the owner's call — it replaced a tall welcome band; styled
 after their reference as deep navy glass with a cool edge glow, `.day-top` in
 dashboard.css, one line from 1100px): the
@@ -67,7 +78,12 @@ earlier one; a section that renders nothing leaves an empty block, which is
 hidden. Blocks are not numbered (the owner removed the badges) and keep their
 own height — stretching a block to its neighbour pulled the grids inside it
 apart.
-**No sample figures.** The pipeline board, deal journey, suggested actions,
+**No sample figures** — the 2026-11-12 audit also took the invented
+statistics out of the tips ("21× more likely", "80% of sales…", "a 40%
+benchmark") and stopped Suggested Actions calling a lost deal "pending".
+The dashboard still runs some browser-side work on open (meeting reminders,
+post-meeting follow-ups, warmup, a verification batch, deliverability
+alerts) that the cron does not do; moving it server-side is open work. The pipeline board, deal journey, suggested actions,
 growth chart and Business progress read only this workspace's records; with
 none they say so (they once drew invented deals, "5 executed / 42% win rate",
 a +34% curve and sample department scores, and a new customer took them for

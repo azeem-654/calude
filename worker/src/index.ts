@@ -17,6 +17,7 @@ import { sameOrigin, withCookieToken, withSessionCookie } from './lib/session';
 import { useWrapKey } from './lib/db';
 import { handleAi } from './routes/ai';
 import { handleProtron } from './routes/protron';
+import { handleLive } from './routes/live';
 import { handleHostedMail } from './routes/hostedMail';
 import { receive as receiveHostedMail } from './lib/hostedMail';
 import { handleSecurity } from './routes/security';
@@ -113,6 +114,8 @@ import { handleUserAvatar } from './routes/userAvatar';
 import { PAGE_ALIASES, industryFor, isSiteHost, robotsTxt, servicesPublic, sitemapXml, speaksAsUs } from './lib/industryPages';
 import { NOT_FOUND_HEAD, headFor, isKnownPublicPath, isPublicSiteHost } from './lib/publicPages';
 import { markGated, stagingGate } from './lib/stagingGate';
+import { WorkerEntrypoint } from 'cloudflare:workers';
+import { readInstallKeys } from './lib/aiPool';
 import { rewriteIndustryHead, rewritePageHead } from './lib/industryHead';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
@@ -155,6 +158,7 @@ const ROUTES: Record<string, Handler> = {
   '/api/trial-optout.php': handleTrialOptout,
   '/api/ai.php': handleAi,
   '/api/protron.php': handleProtron,
+  '/api/live.php': handleLive,
   /* Content held for review, and what became of the accounts that produced it.
      Owner-only but for one action, which tells a customer why they cannot
      send. */
@@ -439,6 +443,25 @@ function apiCallFromHere(req: Request, url: URL): boolean {
   }
   if (sameOrigin(req)) return true;
   return url.hostname === 'localhost' && /^http:\/\/localhost:\d+$/.test(req.headers.get('Origin') ?? '');
+}
+
+/**
+ * The live site's AI key vault, for the testing site only (lib/liveVault.ts).
+ *
+ * An RPC entrypoint: callable only through a service binding in this
+ * Cloudflare account (staging's `LIVE_VAULT`), never from a URL. It answers
+ * the install-wide AI keys — never a customer workspace's own key, never any
+ * other credential. A Worker that itself reads a vault (staging) answers
+ * nothing, so the keys only ever flow live → testing.
+ */
+export class AiVault extends WorkerEntrypoint<Env> {
+  async aiKeys(): Promise<{ key: string; label: string }[]> {
+    const env = this.env;
+    if (env.LIVE_VAULT || env.STAGING_GATE_HASH || env.SELF_SERVE_SIGNUP === 'off') return [];
+    await useWrapKey(env);
+    const keys = await readInstallKeys(env, { withLive: false });
+    return keys.filter(k => k.source !== 'workspace' && k.source !== 'live').map(k => ({ key: k.key, label: k.label }));
+  }
 }
 
 export default {

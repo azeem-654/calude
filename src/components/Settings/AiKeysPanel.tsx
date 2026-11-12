@@ -129,6 +129,7 @@ export default function AiKeysPanel() {
                   <button style={{ ...icon, color: '#b42318' }} disabled={!!busy} aria-label="Remove this key" title="Remove" onClick={async () => { if (await askConfirm({ title: `Remove “${k.label}”?`, message: 'This backup key is deleted and no longer tried when another key fails.', confirmLabel: 'Remove key', danger: true })) apply(await removeAiKey(k.id!), 'Removed.'); }}><Trash2 size={13} /></button>
                 </>}
                 {k.source === 'engine' && <span style={{ fontSize: 11.5, color: MUTED, alignSelf: 'center' }}>Change it in “Main AI key” above</span>}
+                {k.source === 'live' && <span style={{ fontSize: 11.5, color: MUTED, alignSelf: 'center' }}>Shared from the live site — change it there</span>}
               </div>
             </div>
           );

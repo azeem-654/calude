@@ -738,6 +738,31 @@ console.log('\nProtron — conversations and the audit trail are per person and 
   check("Protron's site check reads the session's own domain, never one from the request", site.ok && site.data.domain === A.email.split('@')[1] && ['none', 'found', 'personal'].includes(site.data.status), JSON.stringify(site.data).slice(0, 160));
 }
 
+console.log('\nLive voice — /api/live.php is a same-site WebSocket for the session\'s own workspace');
+{
+  const { request } = await import('node:http');
+  /* A raw upgrade: Node's fetch will not send Upgrade, and the status is all that is checked. */
+  const upgrade = (q, headers) => new Promise(done => {
+    const r = request(`${BASE}/api/live.php${q}`, { headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==', ...headers } });
+    r.on('upgrade', (res, socket) => { socket.destroy(); done(res.statusCode); });
+    r.on('response', res => { res.resume(); done(res.statusCode); });
+    r.on('error', () => done(0));
+    r.end();
+  });
+  d1rows('DELETE FROM crm_signup_attempts');
+  const A = await signUp('la');
+  const B = await signUp('lb');
+  const origin = new URL(BASE).origin;
+  const cookie = t => ({ Cookie: `pc_session=${t}` });
+  check('No session, no live voice', await upgrade(`?accountId=${A.acct}`, { Origin: origin }) === 401);
+  check('A page on another site cannot borrow the cookie', await upgrade(`?accountId=${A.acct}`, { Origin: 'https://evil.example', ...cookie(A.token) }) === 403);
+  check('…nor can a request with no Origin', await upgrade(`?accountId=${A.acct}`, cookie(A.token)) === 403);
+  check("B cannot open a live session in A's workspace", await upgrade(`?accountId=${A.acct}`, { Origin: origin, ...cookie(B.token) }) === 403);
+  check('A opens one in its own workspace', await upgrade(`?accountId=${A.acct}`, { Origin: origin, ...cookie(A.token) }) === 101);
+  const plain = await fetch(`${BASE}/api/live.php?accountId=${A.acct}`, { headers: { Connection: 'close' } });
+  check('Without an upgrade it answers 426', plain.status === 426, String(plain.status));
+}
+
 console.log('\nThe retired Stripe callback (M-6)');
 const oldHook = await fetch(`${BASE}/api/stripe-webhook.php`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': 't=1,v1=00', Connection: 'close' }, body: JSON.stringify({ type: 'checkout.session.completed', data: { object: { metadata: { accountId: C2.acct } } } }) });
 check('/api/stripe-webhook.php answers 410 and changes nothing', oldHook.status === 410, String(oldHook.status));

@@ -30,6 +30,8 @@ export interface IdeaContext {
   description?: string;
   /** Answers already given, by question id. */
   answers?: Record<string, string>;
+  /** Where the business works, as its own website says (projects.php read_url `locations`). */
+  locations?: string;
 }
 
 interface Trade {
@@ -189,7 +191,7 @@ const firstClause = (s: string) => (s.split(/(?<=[.!?])\s/)[0] ?? '').trim();
 export function ideasFor(id: string, ctx: IdeaContext): Ideas | null {
   const text = `${ctx.prompt} ${ctx.description ?? ''}`;
   const t = tradeOf(text);
-  const where = (ctx.answers?.location || ctx.answers?.prospectPlaces || '').split(';')[0].trim();
+  const where = (ctx.answers?.location || ctx.answers?.prospectPlaces || ctx.locations || '').split(/[;|]/)[0].trim();
   const named = t.name ? `for a ${t.name}` : 'for your request';
   const local = (s: string) => (where && /nearby|within|local|area/i.test(s) ? `${s.replace(/ nearby| in the area/i, '')} in ${where}` : s);
   switch (id) {
@@ -209,8 +211,12 @@ export function ideasFor(id: string, ctx: IdeaContext): Ideas | null {
       if (!where && !/\b(in|near|around)\s+[A-Z]/.test(ctx.prompt)) return null;
       const place = where || firstClause(ctx.prompt).match(/\b(?:in|near|around)\s+([A-Z][\w .,'-]{2,40})/)?.[1]?.replace(/[.,]+$/, '') || '';
       if (!place) return null;
-      const options = [place, `${place} and 10 miles around`, `${place} and 25 miles around`];
-      return { options, pick: [options[0]], why: 'Where your request says you are — widen it once the first batches come in.', placeholder: `e.g. ${options[1]}` };
+      /* Every place the website names, not only the first — a business in
+         three towns is offered all three. */
+      const named = (ctx.locations ?? '').split(/[;|]|,\s*(?=[A-Z])/).map(x => x.trim()).filter(x => x && x.length <= 60 && x !== place).slice(0, 3);
+      const options = [place, ...named, `${place} and 10 miles around`, `${place} and 25 miles around`];
+      const fromSite = !ctx.answers?.location && !ctx.answers?.prospectPlaces && !!ctx.locations;
+      return { options, pick: [options[0]], why: fromSite ? 'Where your website says you work — widen it once the first batches come in.' : 'Where your request says you are — widen it once the first batches come in.', placeholder: `e.g. ${options[options.length - 2]}` };
     }
     case 'roles':
       return { options: ['Office and admin', 'Warehouse and logistics', 'Sales', 'Healthcare', 'Hospitality', 'Trades and construction'], pick: ['Sales'], why: 'A sector to start with — add the rest once the first ones work.', placeholder: 'e.g. Warehouse and logistics, West Midlands' };

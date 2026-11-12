@@ -59,7 +59,7 @@ const asked = new Map<string, Promise<Record<string, Ideas>>>();
 
 export interface IdeaInputs {
   prompt: string;
-  business: { companyName?: string; description?: string; website?: string };
+  business: { companyName?: string; description?: string; website?: string; locations?: string };
   answers: Record<string, string>;
 }
 
@@ -77,12 +77,12 @@ export function useIdeas(questions: Question[], inputs: IdeaInputs): { ideas: Re
     for (const q of qs) {
       const i = isOpenChoice(q)
         ? choiceIdea(q, `${inputs.prompt} ${inputs.business.description ?? ''}`)
-        : ideasFor(q.id, { prompt: inputs.prompt, description: inputs.business.description, answers: inputs.answers });
+        : ideasFor(q.id, { prompt: inputs.prompt, description: inputs.business.description, answers: inputs.answers, locations: inputs.business.locations });
       if (i) out[q.id] = i;
     }
     return out;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ids, inputs.prompt, inputs.business.description, inputs.answers.location, inputs.answers.prospectPlaces]);
+  }, [ids, inputs.prompt, inputs.business.description, inputs.business.locations, inputs.answers.location, inputs.answers.prospectPlaces]);
   const [ai, setAi] = useState<Record<string, Ideas>>({});
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -92,7 +92,7 @@ export function useIdeas(questions: Question[], inputs: IdeaInputs): { ideas: Re
     if (!p) {
       p = suggestAnswers({
         prompt: inputs.prompt,
-        business: inputs.business,
+        business: { ...inputs.business, location: inputs.business.locations },
         questions: qs.map(q => (isOpenChoice(q)
           ? { id: q.id, prompt: q.prompt, help: q.help, many: q.type === 'multi', options: (q.options ?? []).map(o => o.label) }
           : { id: q.id, prompt: q.prompt, help: q.help, many: true })),

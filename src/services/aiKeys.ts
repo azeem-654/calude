@@ -8,7 +8,7 @@ import { API_BASE } from './apiBase';
 
 export interface AiPoolEntry {
   label: string;
-  source: 'install' | 'engine' | 'backup' | 'env' | 'workspace';
+  source: 'install' | 'engine' | 'backup' | 'env' | 'workspace' | 'live';
   id: string | null;
   lastOkAt: string | null;
   lastFailedAt: string | null;

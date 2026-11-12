@@ -84,6 +84,16 @@ warning bar and the marketing pitch at its root, so `isStagingHost()` matches
 the staging Worker's name on `.workers.dev` too — by name, so the live Worker's
 own preview URL is never mislabelled. `npm run test:hosts` covers all of it.
 
+**One AI key vault for both sites** (owner, 2026-11-12): the staging Worker
+binds `LIVE_VAULT` to the live Worker's `AiVault` RPC entrypoint
+(`index.ts`, `lib/liveVault.ts`) and puts live's install-wide AI keys behind
+its own (`readInstallKeys`). An RPC entrypoint has no URL; only AI keys cross,
+only live → testing; customers' own workspace keys never. Add keys on live
+(Settings → Platform services → AI keys) and testing uses them within a
+minute — they show there as "Live site — …". Testing's use spends the live
+keys' quota. Staging's `services` array holds MEDIA on its own line so
+`scripts/video-bindings.mjs` can drop just that line.
+
 **The two environments must never share a database.** `npm run staging:check`
 asks wrangler what it actually resolved and fails if they do; the staging
 workflow runs it before it builds anything. A staging Worker bound to `crmpro`

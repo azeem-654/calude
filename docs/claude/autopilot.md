@@ -242,7 +242,17 @@ the request's words point to — filler words ignored — and never a contact li
 the workspace does not have). First leads carry what each business says it
 does (`about`, its page description or first real sentence, from
 `findContacts` — never model-written). The understood screen offers add-ons —
-daily social posts, AI Shorts, SEO blog — each adding its solution. The
+daily social posts and SEO blog (whose line says feeds and YouTube channels
+can be connected, each new article or video becoming a post — `blogSource`
+rss/youtube) — each adding its solution. "AI Shorts from your videos" was
+taken out of the add-ons by the owner on 2026-11-12. Every workflow on the
+blueprint and on the finished build shows its **steps, open, in one row that
+scrolls sideways** (`newProject/WorkflowStrip.tsx`, using `lookFor` /
+`nodeDetail` so the strip and the canvas describe a step the same way). On
+the business question, the new sources (Read my website / Upload a company
+profile / Type it in) are `.np-src` — dashed, one colour each — apart from the
+businesses already in Protected Central; while a site is read, the spinner
+sits beside the website box's NEEDED tag. The
 blueprint shows the page at full width (`BlueprintPreviews.tsx`: step tabs,
 scrollable, full screen) and every email whole with sample merge values. The
 plan's allowance is asked on the blueprint (a warning while a workflow can

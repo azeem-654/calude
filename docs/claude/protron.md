@@ -123,10 +123,52 @@ src/components/Autopilot/newProject/ProtronIntake.tsx   the wizard's first scree
   cannot see accounts. The config sends `agent.avatarUrl` = `/protron.svg`
   for the house widget only; widget.js draws that face on `ai` messages
   (`botFace`) — a customer's widget is unchanged.
-- **Not built, on purpose**: a realtime speech-to-speech session (needs a
-  provider and ephemeral tokens — the `Speaker` seam is where it plugs in);
-  sending, activating a workflow, importing, buying — still the customer's
-  buttons.
+- **Not built, on purpose**: sending, activating a workflow, importing,
+  buying — still the customer's buttons. (Realtime speech-to-speech was
+  built on 2026-11-12 for the wizard — below.)
+
+### Real-time speech-to-speech in the wizard (2026-11-12)
+
+`services/protron/live.ts` (browser) ⇄ `/api/live.php` (`routes/live.ts`, a
+WebSocket proxy) ⇄ Gemini Live `BidiGenerateContent`. The mic goes through
+`public/live-mic-worklet.js` (a static file: the CSP allows scripts from
+'self' only, so no Blob worklet) at 16 kHz PCM; 24 kHz PCM comes back and is
+scheduled chunk after chunk; `interrupted` stops every queued chunk
+(barge-in). Captions are the session's own transcriptions; each final one
+becomes a `brief.talk` turn, so the transcript *is* the interview the prompt
+is written from.
+
+- **The proxy owns the session**: key, model (from the key's own list,
+  `bidiGenerateContent`, native audio first — `liveModels`), `LIVE_SYSTEM`
+  and `LIVE_TOOLS` never leave the Worker. `allowedFromClient` passes only
+  `realtimeInput`, `toolResponse` and user-role text `clientContent`; a
+  `setup` or a model turn from the page is dropped.
+- **Who**: session cookie, `Origin` must be this site (cross-site WebSocket
+  hijacking), `canAccess` on `?accountId=`. In `test:security`.
+- **Cost**: `aiBudget` at start and every further 2 minutes; 10 minutes a
+  session; refused or failed = refunded and the reason said. Google keys only;
+  OpenRouter-only installs answer `no_live` and the typed interview carries on.
+- **Tools**: `set_business_details` (name / website / nature — a website is
+  read with projects.php `read_url` and the reading goes back in the tool
+  answer, so Protron suggests where the customers are) and
+  `finish_interview`. `test:live` (pure) covers the filter, the model choice,
+  the instructions and the first screen.
+
+### The first screen and the interview (2026-11-12)
+
+The name step is **"Create a new business workspace"**: company name, company
+website (read as soon as it settles — the state chip sits beside the box's
+tag), and with no website (or one that could not be read) **"what the
+business does"** (`brief.nature`). `Brief` gained `website`, `nature`, `site`
+(the reading: description, audience, offer, industry, locations — never
+model-invented). **Location is its own question**: the website's places are
+offered as quick answers (`placeQuick`, `sitePlaces`), else it is asked
+openly with no invented town; the AI interview is told the same. The talk
+step is drawn as a chat on a slowly drifting lavender ground (`.np-chat`,
+reduced motion = still), and its footer button reads **Create my smart
+optimized prompt for AI Autopilot**; the prompt screen is "Your smart
+optimized prompt for AI Autopilot". The instruction carries `Website:` and
+`Where our potential customers are:` lines.
 
 ### Placement and speaking first
 
