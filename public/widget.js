@@ -290,6 +290,19 @@
     return name || src ? { name: name, src: src } : null;
   }
 
+  /* The assistant's own face and name (Protron on the owner's help button),
+     on its replies only — never on a person's, and only when the server sent
+     one, so a customer's widget draws its AI replies exactly as before. */
+  function botFace() {
+    var a = state.agent || {};
+    if (typeof a.avatarUrl !== 'string' || !a.avatarUrl) return null;
+    try {
+      var u = new URL(a.avatarUrl, ORIGIN);
+      if (u.protocol !== 'https:' && u.origin !== ORIGIN) return null;
+      return { name: typeof a.name === 'string' ? a.name.slice(0, 40) : '', src: u.href };
+    } catch (e) { return null; }
+  }
+
   /* ── The owner's help button talks at a person's pace (cfg.natural) ──
    * Ticks under what the visitor sent: one grey when it left, two grey once
    * the server holds it, two green once it has been read (the assistant or a
@@ -432,7 +445,7 @@
       node.pcTick(tickState || 'read');
       if (tickState && tickState !== 'read') unreadTicks.push(node);
     }
-    var face = role === 'agent' ? agentFace() : null;
+    var face = role === 'agent' ? agentFace() : role === 'ai' ? botFace() : null;
     if (face) {
       /* The face goes on the first of a run of their messages, as a person
          would be introduced once rather than before every sentence. */
@@ -440,7 +453,7 @@
       var pic = el('div', 'width:28px;height:28px;border-radius:50%;flex-shrink:0;overflow:hidden;display:flex;'
         + 'align-items:center;justify-content:center;font-size:12px;font-weight:800;color:' + accent() + ';background:' + accent() + '22;');
       var initial = face.name ? face.name.charAt(0).toUpperCase() : '';
-      if (lastDrawnRole === 'agent') {
+      if (lastDrawnRole === role) {
         pic.style.background = 'transparent';
       } else if (face.src) {
         var im = el('img', 'width:100%;height:100%;object-fit:cover;display:block;');
@@ -451,7 +464,7 @@
         pic.textContent = initial;
       }
       var col = el('div', 'display:flex;flex-direction:column;gap:3px;min-width:0;');
-      if (face.name && lastDrawnRole !== 'agent') col.appendChild(el('div', 'font-size:11.5px;font-weight:700;color:#64748b;padding-left:2px;', face.name));
+      if (face.name && lastDrawnRole !== role) col.appendChild(el('div', 'font-size:11.5px;font-weight:700;color:#64748b;padding-left:2px;', face.name));
       b.style.maxWidth = '100%';
       b.style.alignSelf = 'flex-start';
       col.appendChild(b);
@@ -748,7 +761,7 @@
       var intro = [{ role: 'ai', body: hello }];
       if (state.cfg && state.cfg.consentText && onlyChat()) intro.push({ role: 'note', body: state.cfg.consentText });
       /* Paced like a person, so said once and plainly who answers first. */
-      if (natural()) intro.push({ role: 'note', body: 'Our assistant replies first — ask for a person any time.' });
+      if (natural()) intro.push({ role: 'note', body: (botFace() && state.agent.name ? state.agent.name + ', our AI assistant,' : 'Our assistant') + ' replies first — ask for a person any time.' });
       history = intro.concat(history);
     }
     lastDrawnRole = '';

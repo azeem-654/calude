@@ -38,7 +38,9 @@
  * argument, and a test in test/protron.test.mts.
  */
 import { allModules, type NavItem } from '../../components/Layout/navModel';
-import type { Step } from './memory';
+import { TEMPLATES } from '../../components/Autopilot/workflowTemplates';
+import type { WorkflowNode } from '../autopilot';
+import type { Business, Step } from './memory';
 
 export type Tier = 'read' | 'reversible' | 'confirm' | 'sensitive';
 
@@ -91,7 +93,24 @@ export interface ActionCtx {
   /** The card's steps, as they change. */
   report?: (steps: Step[]) => void;
   wait?: (ms: number) => Promise<void>;
+  /** Moves Protron's pointer to an element (selector) with a few words; resolves when it arrives (cursor.ts). */
+  point?: (target: string, label: string) => Promise<boolean>;
+  /** Waits for an element to appear on screen. */
+  waitForEl?: (selector: string, ms?: number) => Promise<boolean>;
+  /** Waits for AI Prospecting to say its search settled, with what it really found. */
+  waitForSearch?: (ms: number) => Promise<SearchOutcome | null>;
+  /** This workspace's business workspaces (AI Autopilot projects), newest order as the board shows. Null: could not ask. */
+  listProjects?: () => Promise<ProjectSummary[] | null>;
+  /** The business workspace open on screen right now, if any (`/autopilot?project=`). */
+  currentProjectId?: () => string;
+  /** The same save the workflow editor uses (`save_workflow`, a draft). */
+  saveWorkflow?: (projectId: string, rec: { id?: string; name: string; description: string; nodes: WorkflowNode[] }, templateKey?: string) => Promise<{ ok: boolean; id: string; error: string }>;
+  /** Writes to Protron's business profile (Prefs.business, kept on the server with the prefs). */
+  updateBusiness?: (patch: Partial<Business>) => Business;
 }
+
+export interface SearchOutcome { count: number; withEmail: number; error: string; trade: string; place: string }
+export interface ProjectSummary { id: string; name: string; status: string; client: string; workflows?: number }
 
 /** A handler's steps, reported to its card as each starts and ends. */
 function stepsFor(ctx: ActionCtx, labels: string[]) {
@@ -102,6 +121,34 @@ function stepsFor(ctx: ActionCtx, labels: string[]) {
   return { run: (i: number) => set(i, 'running'), ok: (i: number) => set(i, 'done'), bad: (i: number) => set(i, 'failed') };
 }
 const pause = (ctx: ActionCtx, ms: number) => ctx.wait?.(ms) ?? Promise.resolve();
+const point = (ctx: ActionCtx, target: string, label: string) => ctx.point?.(target, label) ?? Promise.resolve(false);
+/** The nav link a person would have clicked for a screen (cursor.ts navLinkFor, kept here to stay pure). */
+const navLink = (path: string) => `nav a[href="${path}"], header a[href="${path}"]`;
+
+/* ── Workflow templates Protron may draft from: the gallery's own, so every one runs on the engine ── */
+const TEMPLATE_KEYS = TEMPLATES.map(t => t.key);
+const TEMPLATE_LIST = TEMPLATES.map(t => `${t.key} (${t.description.replace(/\.$/, '')})`).join('; ');
+
+/**
+ * A template's steps, saved one at a time: the steps added so far, with every
+ * link to a step not yet added cut, so each save is a graph the canvas can
+ * draw and the engine would never follow into nothing. Pure — tested.
+ */
+export function partialGraph(nodes: WorkflowNode[], upto: number): WorkflowNode[] {
+  const kept = nodes.slice(0, upto);
+  const ids = new Set(kept.map(n => n.id));
+  const cut = (id: string | null | undefined) => (id && ids.has(id) ? id : null);
+  return kept.map(n => ({ ...n, config: { ...n.config }, nextId: cut(n.nextId), ...(n.yesId !== undefined ? { yesId: cut(n.yesId) } : {}), ...(n.noId !== undefined ? { noId: cut(n.noId) } : {}) }));
+}
+
+/** What a step is, in the words of a progress line. */
+export function stepPhrase(n: WorkflowNode): string {
+  const what: Record<string, string> = {
+    trigger: 'Set the trigger', send_email: 'Add an email', send_sms: 'Add a text message', wait: 'Add a wait',
+    condition: 'Add a check', add_tag: 'Add a tag step', create_task: 'Add a task', update_status: 'Add a status update', ai: 'Add an AI step',
+  };
+  return `${what[n.type] ?? 'Add a step'}: ${n.label}`;
+}
 
 export interface ActionDef {
   name: string;
@@ -161,8 +208,9 @@ export const ACTIONS: ActionDef[] = [
     module: 'navigation',
     tier: 'read',
     params: { path: { type: 'enum', required: true, values: modulePaths, desc: 'module path' } },
-    run: (a, ctx) => {
+    run: async (a, ctx) => {
       const m = modulesFor(ctx.who).find(x => x.path === a.path);
+      await point(ctx, navLink(String(a.path)), `Opening ${m?.label ?? a.path}`);
       ctx.navigate(String(a.path));
       return { ok: true, message: `Opened ${m?.label ?? a.path}.` };
     },
@@ -183,22 +231,39 @@ export const ACTIONS: ActionDef[] = [
   {
     name: 'find_prospects',
     title: 'Search for prospects',
-    description: 'Run an AI Prospecting search for businesses of a kind in a place, e.g. who="roofing companies", where="Dallas, TX". Uses one prospect search from the plan.',
+    description: 'Run an AI Prospecting search for BUSINESSES of a kind in a place, e.g. who="roofing companies", where="Dallas, TX". It finds businesses (B2B), not private individuals — for consumers, suggest a lead-capture funnel or their existing contacts instead. Uses one prospect search from the plan; the real results open on AI Prospecting and their count comes back to you.',
     module: '/prospecting',
     tier: 'confirm',
+    feedsBack: true,
     params: {
-      who: { type: 'string', required: true, max: 80, desc: 'kind of business or person' },
+      who: { type: 'string', required: true, max: 80, desc: 'kind of business' },
       where: { type: 'string', required: false, max: 80, desc: 'city, region or country' },
     },
-    confirmText: a => `Search AI Prospecting for ${a.who}${a.where ? ` in ${a.where}` : ''}? It uses one search from your plan, and the results open on the AI Prospecting screen.`,
+    confirmText: a => `Search AI Prospecting for ${a.who}${a.where ? ` in ${a.where}` : ''}? It uses one search from your plan. The results open on AI Prospecting for you to review — nothing is added to your contacts until you choose.`,
     run: async (a, ctx) => {
       const q = `${a.who}${a.where ? ` in ${a.where}` : ''}`;
-      const st = stepsFor(ctx, ['Open AI Prospecting', `Search for ${q}`]);
+      const st = stepsFor(ctx, ['Open AI Prospecting', `Search for ${q}`, 'Read the results']);
       st.run(0);
+      await point(ctx, navLink('/prospecting'), 'Opening AI Prospecting');
+      /* Listening before navigating: a search answered from the library can settle in one render. */
+      const settled = ctx.waitForSearch?.(150_000) ?? Promise.resolve(null);
       ctx.navigate(`/prospecting?q=${encodeURIComponent(q)}`);
-      await pause(ctx, 400);
-      st.ok(0); st.run(1); await pause(ctx, 300); st.ok(1);
-      return { ok: true, message: `Started the search for ${q} on AI Prospecting.` };
+      await pause(ctx, 500);
+      st.ok(0); st.run(1);
+      await point(ctx, '#aip-ask-bar, #aip-ask', `Searching for ${q}`);
+      const out = await settled;
+      if (!out) { st.bad(1); return { ok: false, message: `The search for ${q} did not report back in time. It may still be running on AI Prospecting.` }; }
+      if (out.error) { st.bad(1); return { ok: false, message: `The search for ${q} stopped: ${out.error}` }; }
+      st.ok(1); st.run(2);
+      await point(ctx, '.aip-pill', `${out.count} found`);
+      st.ok(2);
+      return {
+        ok: true,
+        message: out.count
+          ? `Found ${out.count} ${out.count === 1 ? 'business' : 'businesses'} for ${q}${out.withEmail ? `, ${out.withEmail} with an email address so far` : ''}. Tick the ones that fit, then press “Save to a contact list” or “Add to AI Autopilot” — nothing is added until you do.`
+          : `The search for ${q} found nobody. Try a nearby place or a broader kind of business.`,
+        data: { found: out.count, withEmail: out.withEmail, search: q },
+      };
     },
   },
   {
@@ -336,6 +401,120 @@ export const ACTIONS: ActionDef[] = [
       st.ok(3);
       undo.push({ key: 'social.aiPrompt', previous: brief.previous });
       return { ok: true, undo, message: 'The brief is in Graphics Designer → Create with AI. Choose the platform and size, then press Generate — that is your button.' };
+    },
+  },
+  {
+    name: 'create_workflow_draft',
+    title: 'Build a workflow draft',
+    description: `Build a workflow in a business workspace from one of the ready-made templates, step by step on screen, saved as a DRAFT that sends nothing until the customer switches it on. \`template\` is a key from: ${TEMPLATE_LIST}. \`project\` is a business workspace id from list_business_workspaces (leave it out to use the one on screen, or the newest). \`name\` optionally renames it for this business.`,
+    module: '/autopilot',
+    tier: 'confirm',
+    params: {
+      template: { type: 'enum', required: true, values: () => TEMPLATE_KEYS, desc: 'workflow template key' },
+      project: { type: 'string', required: false, max: 80, desc: 'business workspace id' },
+      name: { type: 'string', required: false, max: 80, desc: 'workflow name' },
+    },
+    confirmText: a => {
+      const t = TEMPLATES.find(x => x.key === a.template);
+      return `Build “${a.name || t?.name}” (${t?.nodes.length ?? 0} steps) as a draft in your business workspace? It is saved switched off — nothing is sent until you turn it on yourself.${t?.needs.length ? ` It will need: ${t.needs.join(', ').toLowerCase()}.` : ''}`;
+    },
+    run: async (a, ctx) => {
+      const t = TEMPLATES.find(x => x.key === a.template);
+      if (!t) return { ok: false, message: 'That template is not in the library.' };
+      if (!ctx.saveWorkflow || !ctx.listProjects) return { ok: false, message: 'AI Autopilot could not be reached from here.' };
+      const projects = await ctx.listProjects();
+      if (!projects) return { ok: false, message: 'Your business workspaces could not be read just now — nothing was built. Try again in a moment.' };
+      const wanted = String(a.project ?? '') || ctx.currentProjectId?.() || '';
+      const project = projects.find(p => p.id === wanted) ?? (wanted ? null : projects[0]);
+      if (!project) return { ok: false, message: projects.length ? 'That business workspace is not one of yours.' : 'You have no business workspace yet. Start one in AI Autopilot first — I can open it for you.' };
+      const name = String(a.name || t.name);
+      const st = stepsFor(ctx, [`Open “${project.name}”`, ...t.nodes.map(stepPhrase), 'Saved as a draft']);
+      st.run(0);
+      ctx.navigate(`/autopilot?project=${encodeURIComponent(project.id)}&tab=workflows`);
+      await pause(ctx, 700);
+      st.ok(0);
+      let id = '';
+      for (let i = 0; i < t.nodes.length; i++) {
+        st.run(i + 1);
+        /* Each step is a real save of the graph so far — what the screen shows is what is stored. */
+        const r = await ctx.saveWorkflow(project.id, { ...(id ? { id } : {}), name, description: t.description, nodes: partialGraph(t.nodes, i + 1) }, id ? undefined : t.key);
+        if (!r.ok) {
+          st.bad(i + 1);
+          return { ok: false, message: id ? `Stopped after ${i} of ${t.nodes.length} steps: ${r.error} What was saved is a draft in “${project.name}”.` : `The workflow could not be saved: ${r.error}` };
+        }
+        id = r.id;
+        ctx.signal?.('pc-protron-workflow', { projectId: project.id, workflowId: id });
+        await pause(ctx, 350);
+        await point(ctx, `[data-node-id="${t.nodes[i].id}"]`, stepPhrase(t.nodes[i]).split(':')[0]);
+        st.ok(i + 1);
+      }
+      st.run(t.nodes.length + 1); st.ok(t.nodes.length + 1);
+      return {
+        ok: true,
+        message: `“${name}” is built and saved as a draft in “${project.name}” — ${t.nodes.length} steps, switched off. Read each email, then turn it on with its own switch when you are happy.${t.needs.length ? ` It needs ${t.needs.join(' and ').toLowerCase()} to run.` : ''}`,
+      };
+    },
+  },
+  {
+    name: 'list_business_workspaces',
+    title: 'Look at your business workspaces',
+    description: 'List the customer\'s AI Autopilot business workspaces (name, status, id) — to continue one they mention, or to pick where a workflow goes. Returns names and ids only, never their contents.',
+    module: '/autopilot',
+    tier: 'read',
+    feedsBack: true,
+    params: {},
+    run: async (_a, ctx) => {
+      const list = await ctx.listProjects?.();
+      if (!list) return { ok: false, message: 'Your business workspaces could not be read just now.' };
+      const data: Record<string, string | number> = { count: list.length };
+      list.slice(0, 12).forEach((p, i) => { data[`workspace${i + 1}`] = `${p.name} — ${p.status}${p.client ? ` — for ${p.client}` : ''} — id ${p.id}`; });
+      return { ok: true, message: list.length ? `Found ${list.length} business ${list.length === 1 ? 'workspace' : 'workspaces'}.` : 'No business workspaces yet.', data };
+    },
+  },
+  {
+    name: 'open_business_workspace',
+    title: 'Open a business workspace',
+    description: 'Open one of the customer\'s business workspaces in AI Autopilot to carry on with it. `project` is an id from list_business_workspaces; `tab` optionally opens overview, workflows, prospects, assets or activity.',
+    module: '/autopilot',
+    tier: 'read',
+    params: {
+      project: { type: 'string', required: true, max: 80, desc: 'business workspace id' },
+      tab: { type: 'enum', required: false, values: () => ['overview', 'workflows', 'prospects', 'assets', 'activity'], desc: 'tab to open' },
+    },
+    run: async (a, ctx) => {
+      const list = await ctx.listProjects?.();
+      const p = list?.find(x => x.id === a.project);
+      if (!list) return { ok: false, message: 'Your business workspaces could not be read just now.' };
+      if (!p) return { ok: false, message: 'That business workspace is not one of yours.' };
+      await point(ctx, navLink('/autopilot'), `Opening ${p.name}`);
+      ctx.navigate(`/autopilot?project=${encodeURIComponent(p.id)}${a.tab && a.tab !== 'overview' ? `&tab=${a.tab}` : ''}`);
+      return { ok: true, message: `Opened “${p.name}”.` };
+    },
+  },
+  {
+    name: 'update_business_profile',
+    title: 'Remember your business',
+    description: 'Remember facts about the customer\'s business that they told you or agreed to (never a guess, never from the email domain unless they confirmed it), so you never ask again. Any of: name, about (what they sell or do), kind ("own", "agency" or "independent"), website, audience (their customers), places (where they work), goal (what they want most).',
+    module: 'protron',
+    tier: 'reversible',
+    params: {
+      name: { type: 'string', required: false, max: 80, desc: 'business name' },
+      about: { type: 'string', required: false, max: 200, desc: 'what they sell or do' },
+      kind: { type: 'enum', required: false, values: () => ['own', 'agency', 'independent'], desc: 'own business, agency or independent' },
+      website: { type: 'string', required: false, max: 120, desc: 'website address' },
+      audience: { type: 'string', required: false, max: 160, desc: 'who their customers are' },
+      places: { type: 'string', required: false, max: 120, desc: 'where they work' },
+      goal: { type: 'string', required: false, max: 200, desc: 'what they want most right now' },
+    },
+    run: (a, ctx) => {
+      if (!ctx.updateBusiness) return { ok: false, message: 'Your business profile could not be saved here.' };
+      const patch: Partial<Business> = {};
+      for (const k of ['name', 'about', 'website', 'audience', 'places', 'goal'] as const) if (typeof a[k] === 'string') patch[k] = a[k] as string;
+      if (a.kind === 'own' || a.kind === 'agency' || a.kind === 'independent') patch.kind = a.kind;
+      if (!Object.keys(patch).length) return { ok: false, message: 'There was nothing new to remember.' };
+      ctx.updateBusiness(patch);
+      const said = Object.entries(patch).map(([k, v]) => (k === 'kind' ? (v === 'own' ? 'runs their own business' : v === 'agency' ? 'an agency' : 'independent') : v)).join(' · ');
+      return { ok: true, message: `Noted: ${said}. You can change it in my settings.` };
     },
   },
   {

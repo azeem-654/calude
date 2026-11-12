@@ -280,6 +280,24 @@ export default function AiProspecting() {
   const suggested = suggestListName(s.searched?.trade ?? s.trade, s.searched?.place ?? s.place);
   const results = s.results ?? [];
   const target = s.chosen.length ? s.chosen : results;
+
+  /* A search finished (or could not start): said on the window with what it
+     really found, so Protron — which asked for it — reports the true count
+     rather than "started" (services/protron/actions.ts find_prospects). */
+  const wasBusy = useRef(false);
+  useEffect(() => {
+    if (s.busy) { wasBusy.current = true; return; }
+    if (!wasBusy.current) return;
+    wasBusy.current = false;
+    window.dispatchEvent(new CustomEvent('pc-prospecting-results', { detail: {
+      count: results.length, withEmail: results.filter(p => !!s.emailFor(p)).length,
+      error: s.error || '', trade: s.searched?.trade ?? '', place: s.searched?.place ?? '',
+    } }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once per search, when it settles
+  }, [s.busy]);
+  useEffect(() => {
+    if (askError) window.dispatchEvent(new CustomEvent('pc-prospecting-results', { detail: { count: 0, withEmail: 0, error: askError, trade: '', place: '' } }));
+  }, [askError]);
   const unread = target.filter(p => p.website && !p.email && !s.found[p.website]).map(p => p.website);
   const noAddress = target.filter(p => p.website && !s.emailFor(p) && !s.found[p.website]?.people).map(p => p.website);
   const toDeep = [...new Set(target.map(p => s.emailFor(p)).filter(e => e && s.checks[e]?.level !== 'mailbox' && s.checks[e]?.status !== 'invalid'))];

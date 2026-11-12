@@ -65,7 +65,7 @@ for (const width of [390, 1280]) {
   // navigate by app, panel says new screen
   await p.goto(`${B}/video-studio`, { waitUntil: 'domcontentloaded' });
   await p.waitForTimeout(2500);
-  const kept = await p.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('pc_protron_chat')).map(k => JSON.parse(localStorage.getItem(k)).length));
+  const kept = await p.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('pc_protron_chat') && !/_(at|dirty)$/.test(k)).map(k => JSON.parse(localStorage.getItem(k)).length));
   out.push(`${width}: after reload, conversation turns kept=${kept}`);
   await p.getByRole('button', { name: /Open Protron/ }).click();
   const panel2 = p.getByRole('dialog', { name: /Protron, your AI business manager/ });

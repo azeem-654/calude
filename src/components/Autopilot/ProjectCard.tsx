@@ -281,8 +281,18 @@ export default function ProjectCard({
     const tick = () => { if (document.visibilityState === 'visible') void read(); };
     const t = window.setInterval(tick, everyMs);
     document.addEventListener('visibilitychange', tick);
-    return () => { window.clearInterval(t); document.removeEventListener('visibilitychange', tick); };
-  }, [read, everyMs]);
+    /* Protron saved a step of a workflow on this business workspace: show it
+       now, not at the next poll — the customer is watching it being built. */
+    const built = (e: Event) => {
+      const d = (e as CustomEvent<{ projectId?: string; workflowId?: string }>).detail;
+      if (d?.projectId !== project.id) return;
+      if (d.workflowId) setOpen(o => ({ ...o, [d.workflowId as string]: true }));
+      setTab('workflows');
+      void read();
+    };
+    window.addEventListener('pc-protron-workflow', built);
+    return () => { window.clearInterval(t); document.removeEventListener('visibilitychange', tick); window.removeEventListener('pc-protron-workflow', built); };
+  }, [read, everyMs, project.id]);
 
   const activeFlows = flows.filter(f => f.status === 'active').length;
 

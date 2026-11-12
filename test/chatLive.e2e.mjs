@@ -410,6 +410,8 @@ for (const width of [390, 1280]) {
     const res = await r.fetch();
     const j = await res.json();
     j.widget = { ...j.widget, natural: true, online: false };
+    /* What the server sends for the house widget since 2026-11-12: Protron, with its own face. */
+    j.agent = { name: 'Protron', greeting: 'Hi! I\'m Protron, the AI business manager at Protected Central.', avatarUrl: `${B}/protron.svg` };
     return r.fulfill({ response: res, json: j });
   });
   await page3.route('http://acme.localhost:9914/**', r => r.fulfill({
@@ -420,7 +422,8 @@ for (const width of [390, 1280]) {
   await page3.getByRole('button', { name: /Open the chat/ }).click();
   const d3 = page3.getByRole('dialog');
   ok('paced: the header says the chat is online', await d3.locator('[data-pc-online="chat"]').count() === 1);
-  ok('paced: and says plainly that an assistant replies first', (await d3.innerText()).includes('assistant replies first'));
+  ok('paced: and says plainly that an assistant replies first', /assistant,? replies first/.test(await d3.innerText()));
+  ok('paced: the assistant\'s greeting carries its own face and name (Protron)', await d3.locator('img[src$="/protron.svg"]').count() >= 1 && /Protron\s*\n?\s*Hi! I.m Protron/.test(await d3.innerText()), (await d3.innerText()).slice(0, 200));
   await d3.getByPlaceholder('Type a message…').fill(`Paced ${run}`);
   const t0 = Date.now();
   await page3.keyboard.press('Enter');

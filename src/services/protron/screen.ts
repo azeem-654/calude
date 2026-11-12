@@ -26,6 +26,8 @@
  */
 
 /** Fired with the rectangle of the box about to be typed into. */
+import { pointAt } from './cursor';
+
 export const EDITING_EVENT = 'pc-protron-editing';
 
 export interface ScreenField {
@@ -179,6 +181,8 @@ export async function fillField(key: string, value: string): Promise<FillOutcome
   /* The panel steps out of the way if it is over the box (ProtronPanel). */
   const r = el.getBoundingClientRect();
   window.dispatchEvent(new CustomEvent(EDITING_EVENT, { detail: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } }));
+  /* The pointer goes to the box being typed into (cursor.ts). */
+  void pointAt(el, `Typing “${label.slice(0, 40)}”`, false);
   try {
     if (el instanceof HTMLInputElement && el.type === 'checkbox') {
       const want = /^(true|yes|on|1|checked|tick)$/i.test(value.trim());

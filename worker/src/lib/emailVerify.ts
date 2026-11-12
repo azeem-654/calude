@@ -113,6 +113,9 @@ const FREE = new Set([
   'free.fr', 'libero.it', 'qq.com', '163.com', 'rediffmail.com', 'fastmail.com',
 ]);
 
+/** Whether a domain is a consumer mail provider rather than somebody's own. */
+export const isFreeMail = (domain: string): boolean => FREE.has(domain.toLowerCase()) || /^(yahoo|hotmail|outlook|live|gmx|yandex|aol)\.[a-z.]{2,7}$/.test(domain.toLowerCase());
+
 export interface AddressFacts { syntax: boolean; domain: string; local: string; role: boolean; free: boolean; disposable: boolean }
 
 export function addressFacts(email: string): AddressFacts {

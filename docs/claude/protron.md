@@ -2,21 +2,28 @@
 
 ## Protron — the AI business manager
 
-The helmet in the bottom-left corner of every signed-in screen. Built
+The robot face in the bottom-left corner of every signed-in screen. Built
 2026-11-11 from the owner's brief (the brief called it "NEXA"; the owner's
-title and picture name it **Protron**).
+title and picture name it **Protron**); the 2026-11-12 brief (below) gave it
+a new face, a warm voice, business identity, workflow drafts, a pointer and
+the public site.
 
 ```
 src/components/Protron/Protron.tsx        launcher + Talk chip, drag, speaking first (idle/trouble/froze/loop), opens the panel
 src/components/Protron/ProtronPanel.tsx   floating chat, live step cards, Undo, Talk mode, sync, audit — own chunk
-src/components/Protron/ProtronAvatar.tsx  the SVG helmet and its states
+src/components/Protron/ProtronAvatar.tsx  the SVG robot head, its 7 states, the mouth driven by voice loudness
+src/components/Protron/ProtronCursor.tsx  the pointer overlay (services/protron/cursor.ts says where)
+src/services/protron/identity.ts          pure: personal vs business email domain, known facts, what is missing, the first greeting
+src/services/protron/facts.ts             reads session, workspace, Settings profile, onboarding, prefs → identity.ts
+src/services/protron/level.ts             the voice's loudness for the face (no voice code imported by the face)
 src/services/protron/actions.ts           THE registry: every action, its tier, argument specs, permission
 src/services/protron/brain.ts             one turn: /api/ai.php (module 'protron'), JSON reply, offline matcher
 src/services/protron/knowledge.ts         what it knows: derived from navModel.ts + MODULE_NOTES + TROUBLESHOOTING
 src/services/protron/memory.ts            conversation + prefs, per person × workspace (browser copy, sync stamps)
 src/services/protron/sync.ts              /api/protron.php: load/save/clear, audit, speak
 src/services/protron/screen.ts            reads the screen's shape (labels, empty boxes, messages); fills boxes live
-src/services/protron/voice.ts             Speaker seam; commander voice (AI speech + WebAudio robot filter); browser voice
+src/services/protron/voice.ts             Speaker seam; warm voice (default, clean AI speech); commander (robot filter); device voice
+public/protron.svg                        the idle face, generated from ProtronAvatar.tsx, for the public widget
 worker/src/routes/protron.ts              the server side of sync.ts; migration 0094 crm_protron_threads
 src/services/protron/intake.ts            the wizard's cards, interview and instruction writer
 src/components/Autopilot/newProject/ProtronIntake.tsx   the wizard's first screens
@@ -66,6 +73,60 @@ src/components/Autopilot/newProject/ProtronIntake.tsx   the wizard's first scree
 - **Knowledge is derived.** Module list, labels, purposes and visibility come
   from `navModel.ts`. When a module changes what it needs connected, change its
   line in `MODULE_NOTES` in the same commit.
+
+### The 2026-11-12 brief — what was built, and the rules it added
+
+- **The face** is an original humanoid robot head (titanium cranium, crest,
+  lighter face plate, arched brows, round cyan eyes, ear receptors, neck) —
+  film-robot *engineering* as inspiration, no studio's character. The resting
+  mouth is one lit smile; speaking, seven segments follow `level.ts`
+  (measured from the audio playing, or the browser voice's word boundaries) —
+  never a timer. Below 36 px (`lite`) the glow filter and fine seams go.
+  `public/protron.svg` is rendered from the component; regenerate, don't edit.
+- **The voice**: `warm` (default) — prebuilt voice `Achird` with a friendly,
+  conversational direction, played without a filter. `normalisePrefs` moved
+  every stored `commander` with no `v: 2` to warm once (it was the default,
+  not a choice); chosen afterwards it stays. Spoken turns tell the model "one
+  or two sentences, under 35 words"; Talk mode ends a turn after 1.2 s of
+  silence (dictation 1.8 s). Each spoken reply shows **measured** timings
+  (heard / answered / speaking-in) — `Turn.timing`; never estimate them.
+- **Identity**: the model gets a KNOWN block (`describeFacts`). An email
+  domain is a clue: protron.php `site` looks **only at the session's own
+  domain** (never one from the body — it would be an SSRF), through
+  readSite's fence, 8 s, webmail never fetched; a page that answered is
+  offered as "Is that your business?", nothing answering is never "no
+  website", and Gmail is never "no business". Facts land in
+  `Prefs.business` only through `update_business_profile` (what the customer
+  said or agreed to). Sign-up stays three boxes; the missing questions
+  (own business / agency / independent, name, what they do, website) are
+  asked by Protron one at a time. The wizard's first screen prefills a known
+  business name and greets by first name.
+- **New actions**: `create_workflow_draft` (confirm) — a gallery template
+  only, into a business workspace of theirs (`listProjects`; on screen, or
+  the newest), **one real `save_workflow` per step** (`partialGraph` cuts
+  links to steps not yet added), always a draft, refused part-way = reported
+  as partial; the canvas refreshes on `pc-protron-workflow`.
+  `list_business_workspaces` (read, feeds back names/status/ids — the one
+  exception to "counts only", nothing inside them) and
+  `open_business_workspace` resume work instead of starting a duplicate.
+  `update_business_profile` (reversible). `find_prospects` now **waits for
+  AI Prospecting's own `pc-prospecting-results`** and reports the real count;
+  no report = not a success. It finds businesses: the prompt steers consumer
+  requests to funnels/contacts. Importing stays the customer's button.
+- **The pointer** (`cursor.ts`): moves only when an action points at the
+  element it touches (nav link, the box being typed into, the results
+  count, the workflow step just saved via `data-node-id`); never clickable;
+  fades on `pointerDone` (called when every card settles).
+- **Public site**: the house widget's built-in assistant is Protron
+  (`HOUSE_AGENT`, `PROTRON_GREETING`): qualifies one question at a time,
+  points to `app…/signup` or a strategy call, says it is an AI and that it
+  cannot see accounts. The config sends `agent.avatarUrl` = `/protron.svg`
+  for the house widget only; widget.js draws that face on `ai` messages
+  (`botFace`) — a customer's widget is unchanged.
+- **Not built, on purpose**: a realtime speech-to-speech session (needs a
+  provider and ephemeral tokens — the `Speaker` seam is where it plugs in);
+  sending, activating a workflow, importing, buying — still the customer's
+  buttons.
 
 ### Placement and speaking first
 
@@ -136,13 +197,18 @@ Hand-off from the panel: `start_autopilot_project` writes
 
 ### Tests
 
-`npm run test:protron` (pure, 99 checks: registry, permissions, tiers,
+`npm run test:protron` (pure, 141 checks — P11 is the 2026-11-12 brief: registry, permissions, tiers,
 injection, JSON and salvage, offline matching, onboarding, memory and sync
 stamps, context and SCREEN, fill_form/draft_social_post/live pipeline steps,
-speaking first offline). `npm run test:protron:e2e` (needs the build and
+speaking first offline). `npm run test:protron:e2e` — now also
+`protron-brief.e2e.mjs` (the face, the Gmail greeting, the voice menu, a
+workflow draft built into a real business workspace with D1 checked, the
+pointer, 390 and 1280); (needs the build and
 `wrangler dev`; no AI key needed): the original suite, then
 `protron-live.e2e.mjs` — speaks first after 10 s, floats beside a dragged
 helmet, header drag, Talk from the helmet, a social post typed into Graphics
 Designer with 4 steps and Undo, the conversation on a second browser, the
 audit rows, at 390 and 1280. `npm run test:security` covers
-`/api/protron.php` (foreign workspace, no session, size cap, audit actor).
+`/api/protron.php` (foreign workspace, no session, size cap, audit actor, the
+`site` check reading only the session's domain). `test:chatlive` checks the
+widget draws Protron's face on the assistant's greeting.

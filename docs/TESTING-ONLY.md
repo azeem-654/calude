@@ -49,6 +49,18 @@ Held back by the owner on 2026-11-12, to be tested properly first.
      fixed on 2026-11-11.
   4. Reload and sign in on another device: the conversation is still there.
   5. Nothing scrolls sideways at 390 px; no errors in the browser console.
+  6. (2026-11-12 brief) The new robot face looks right on the launcher, the
+     panel and Talk mode; the warm voice sounds friendly and its mouth moves
+     with the words; signed up with a company address, Protron asks whether
+     the site at that domain is yours rather than assuming it.
+  7. Ask it for "an email follow-up workflow" in a business workspace:
+     confirm, watch it build step by step, and check the workflow is a
+     **draft** that sends nothing until you switch it on.
+  8. Ask it to find businesses somewhere: the count it reports matches the
+     AI Prospecting screen, and nothing reaches Contacts until you save it.
+- **Not held back:** the public site's assistant is now named Protron with
+  its face (the owner's help button, `houseKnowledge.ts`). That widget is
+  live on both sites, so promoting this changes the live site's chat too.
 
 ## Released
 

@@ -50,6 +50,42 @@ export interface Turn {
   error?: boolean;
   /** Protron spoke first (the customer paused on a screen); no question came before it. */
   auto?: boolean;
+  /**
+   * How long a spoken exchange really took, measured in this browser (ms):
+   * the take turned into text, the answer written, the first sound of the
+   * reply. Shown under the reply in Talk mode — measured, never estimated.
+   */
+  timing?: { heardMs?: number; thinkMs?: number; voiceMs?: number };
+}
+
+/**
+ * The customer's business, as they told it or Protron confirmed it with them.
+ * Every field is the customer's own words or a value they agreed to — never a
+ * guess from an email domain (identity.ts keeps those apart until confirmed).
+ */
+export interface Business {
+  name: string;
+  /** What they sell or do, e.g. "used car dealership". */
+  about: string;
+  /** own: runs their own business; agency: serves clients; independent: freelancer or consultant. */
+  kind?: '' | 'own' | 'agency' | 'independent';
+  website?: string;
+  /** Who their customers are, e.g. "families buying a first car". */
+  audience?: string;
+  /** Where they work, e.g. "Dallas, TX". */
+  places?: string;
+  /** What they want most right now, in their words. */
+  goal?: string;
+}
+
+/** What the server found at the customer's own email domain (protron.php `site`). */
+export interface SiteCheck {
+  domain: string;
+  /** 'found': a page answered; 'none': nothing answered; 'personal': a webmail address, not looked up. */
+  status: 'found' | 'none' | 'personal';
+  title?: string;
+  about?: string;
+  at: number;
 }
 
 export interface Prefs {
@@ -57,16 +93,27 @@ export interface Prefs {
   speak: boolean;
   /** Where the launcher sits, as a fraction of the window, once moved. */
   dock: { x: number; y: number } | null;
-  /** The customer's business, as they told it — company name and trade. */
-  business: { name: string; about: string };
-  /** commander: the AI voice through the robot filter; natural: the browser's own voice. */
-  voice: 'commander' | 'natural';
+  /** The customer's business, as they told it — company name, trade and the rest. */
+  business: Business;
+  /**
+   * warm: the AI voice, friendly and clear, played as it is (the default since
+   * 2026-11-12); commander: the AI voice through the robot filter; natural:
+   * the browser's own voice.
+   */
+  voice: Voice;
+  /** The site check of their email domain, once made — so it is asked once, not every visit. */
+  siteCheck?: SiteCheck | null;
+  /** Prefs format; 2 moved everybody off the robot voice once. */
+  v?: number;
   /** Seconds of nothing touched before Protron starts a conversation (0 = never). */
   idleSeconds: number;
 }
 
+export type Voice = 'warm' | 'commander' | 'natural';
+export const VOICES: Voice[] = ['warm', 'commander', 'natural'];
+
 const MAX_TURNS = 60;
-export const DEFAULT_PREFS: Prefs = { proactive: true, speak: false, dock: null, business: { name: '', about: '' }, voice: 'commander', idleSeconds: 10 };
+export const DEFAULT_PREFS: Prefs = { proactive: true, speak: false, dock: null, business: { name: '', about: '' }, voice: 'warm', idleSeconds: 10, siteCheck: null, v: 2 };
 export const IDLE_CHOICES = [0, 10, 30, 120];
 
 /** A short, stable id for the signed-in person, so the key does not carry their address. */
@@ -142,7 +189,17 @@ export function loadPrefs(): Prefs {
 /** Prefs from anywhere (this browser, the server, an older version), made whole and in range. */
 export function normalisePrefs(p: Partial<Prefs>): Prefs {
   const out = { ...DEFAULT_PREFS, ...p, business: { ...DEFAULT_PREFS.business, ...(p.business ?? {}) } };
-  if (out.voice !== 'natural') out.voice = 'commander';
+  /* The robot voice was everybody's default until 2026-11-12, so a stored
+     "commander" from before then is the old default, not a choice: moved to
+     the warm voice once. Chosen after that, it stays. */
+  if ((p.v ?? 1) < 2 && out.voice === 'commander') out.voice = 'warm';
+  out.v = 2;
+  if (!VOICES.includes(out.voice)) out.voice = 'warm';
+  for (const k of ['name', 'about', 'website', 'audience', 'places', 'goal'] as const) {
+    const v = out.business[k];
+    if (v !== undefined && typeof v !== 'string') delete out.business[k];
+  }
+  if (out.business.kind && !['own', 'agency', 'independent'].includes(out.business.kind)) out.business.kind = '';
   if (!IDLE_CHOICES.includes(Number(out.idleSeconds))) out.idleSeconds = DEFAULT_PREFS.idleSeconds;
   return out;
 }

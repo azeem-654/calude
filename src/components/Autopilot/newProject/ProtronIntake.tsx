@@ -23,6 +23,7 @@ import {
   Sparkles, Check, Loader, RotateCcw, Plus, ChevronDown, ChevronUp, Info, SkipForward,
 } from 'lucide-react';
 import ProtronAvatar from '../../Protron/ProtronAvatar';
+import { readFacts } from '../../../services/protron/facts';
 import { solutionByKey } from '../../../services/projectSolutions';
 import {
   START_CARDS, MORE_SOLUTIONS, EMPTY_BRIEF, chosenKeys, nextStep, recommendCards, writeInstruction, MAX_INSTRUCTION,
@@ -38,7 +39,9 @@ const CARD_ICON: Record<string, typeof Search> = {
 
 export function useProtronIntake(initialCompany: string, start: IntroStep) {
   const [step, setStep] = useState<IntroStep>(start);
-  const [brief, setBriefState] = useState<Brief>({ ...EMPTY_BRIEF, company: initialCompany });
+  /* A business name already given — at sign-up, on the workspace, in
+     Settings, or to Protron — is not asked for again (the owner's brief). */
+  const [brief, setBriefState] = useState<Brief>(() => ({ ...EMPTY_BRIEF, company: initialCompany || readFacts().businessName }));
   const ref = useRef(brief);
   const setBrief = useCallback((b: Brief) => { ref.current = b; setBriefState(b); }, []);
   const [busy, setBusy] = useState<'' | 'asking' | 'writing' | 'recommending'>('');
@@ -99,6 +102,7 @@ export type ProtronIntakeState = ReturnType<typeof useProtronIntake>;
 
 export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; onManual: () => void }) {
   const { step, brief, setBrief, busy } = p;
+  const [firstName] = useState(() => readFacts().firstName);
   const [more, setMore] = useState(() => brief.more.length > 0);
   const [reply, setReply] = useState('');
   const [extra, setExtra] = useState('');
@@ -125,7 +129,14 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
   if (step === 'name') {
     return (
       <div style={{ display: 'grid', gap: 22 }}>
-        {head(<>What is your company or <span className="wz-accent">business name</span>?</>, "I'm Protron, your AI business manager. I'll ask a few short questions and write the plan for AI Autopilot — you approve it before anything is built.")}
+        {head(
+          brief.company.trim()
+            ? <>{firstName ? `${firstName}, is` : 'Is'} this your <span className="wz-accent">business name</span>?</>
+            : <>{firstName ? `Hi ${firstName} — what` : 'What'} is your company or <span className="wz-accent">business name</span>?</>,
+          brief.company.trim()
+            ? "I'm Protron, your AI business manager. I filled in the name you gave us — change it if this business workspace is for another business. Then a few short questions, and you approve the plan before anything is built."
+            : "I'm Protron, your AI business manager. I'll ask a few short questions and write the plan for AI Autopilot — you approve it before anything is built.",
+        )}
         <input
           ref={nameBox}
           className="np-input"

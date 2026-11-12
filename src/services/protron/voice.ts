@@ -1,9 +1,15 @@
 /**
  * Protron's voice out: reading a reply aloud.
  *
- * ── Two voices ──
+ * ── Three voices ──
  *
- * commander (the default): the reply is spoken by a Gemini speech model on
+ * warm (the default since 2026-11-12, the owner's brief): the same server
+ *   speech model with a friendly, clear prebuilt voice and a conversational
+ *   direction, played exactly as it arrives — no filter. The brief asked for
+ *   a voice that sounds like a confident, friendly business assistant, and a
+ *   robot filter is the opposite of "natural". An analyser on the output
+ *   drives the face's mouth.
+ * commander (a choice in the menu): the reply is spoken by a Gemini speech model on
  *   the server (/api/protron.php `speak` — a deep, slow, resonant direction)
  *   and played here through a robot filter: a touch slower and lower, a ring
  *   modulator for the metal, a short comb delay for the helmet's resonance,
@@ -28,12 +34,16 @@
  * ephemeral token, and would plug in behind the `Speaker` seam below.
  */
 import { fetchSpeech } from './sync';
+import { emitVoiceLevel as emit, onVoiceLevel } from './level';
+import type { Voice } from './memory';
+
+export { onVoiceLevel };
 
 export interface Speaker {
   readonly name: string;
   supported(): boolean;
-  /** Speaks the text; resolves when it finishes or is stopped. */
-  speak(text: string, onBoundary?: () => void): Promise<void>;
+  /** Speaks the text; resolves when it finishes or is stopped. `onStart` fires at the first sound. */
+  speak(text: string, onStart?: () => void): Promise<void>;
   stop(): void;
   speaking(): boolean;
 }
@@ -65,7 +75,7 @@ export const browserSpeaker: Speaker = {
   supported: () => typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined',
   speaking: () => typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis.speaking,
   stop: () => { try { window.speechSynthesis.cancel(); } catch { /* nothing playing */ } },
-  speak(text: string, onBoundary?: () => void): Promise<void> {
+  speak(text: string, onStart?: () => void): Promise<void> {
     return new Promise(resolve => {
       if (!this.supported()) { resolve(); return; }
       const synth = window.speechSynthesis;
@@ -74,22 +84,17 @@ export const browserSpeaker: Speaker = {
       const v = pickVoice(synth);
       if (v) { u.voice = v; u.lang = v.lang; }
       u.rate = 1.03;
-      u.pitch = 0.95;
-      u.onboundary = () => onBoundary?.();
-      u.onend = () => resolve();
-      u.onerror = () => resolve();
+      u.pitch = 1;
+      /* The browser gives no audio to measure, only word boundaries: each
+         word opens the mouth and lets it fall — tied to real speech, not a timer. */
+      u.onstart = () => onStart?.();
+      u.onboundary = () => { emit(0.7); window.setTimeout(() => emit(0.15), 140); };
+      u.onend = () => { emit(0); resolve(); };
+      u.onerror = () => { emit(0); resolve(); };
       synth.speak(u);
     });
   },
 };
-
-/* ── Loudness, for the face ── */
-
-type LevelFn = (level: number) => void;
-const listeners = new Set<LevelFn>();
-/** The voice's loudness, 0–1, about sixty times a second while it speaks. */
-export function onVoiceLevel(fn: LevelFn): () => void { listeners.add(fn); return () => { listeners.delete(fn); }; }
-const emit = (v: number) => listeners.forEach(fn => fn(v));
 
 /* ── The browser's deepest voice ── */
 
@@ -105,7 +110,7 @@ const deepBrowser: Speaker = {
   supported: browserSpeaker.supported,
   speaking: browserSpeaker.speaking,
   stop: browserSpeaker.stop,
-  speak(text: string, onBoundary?: () => void): Promise<void> {
+  speak(text: string, onStart?: () => void): Promise<void> {
     return new Promise(resolve => {
       if (!this.supported()) { resolve(); return; }
       const synth = window.speechSynthesis;
@@ -115,7 +120,8 @@ const deepBrowser: Speaker = {
       if (v) { u.voice = v; u.lang = v.lang; }
       u.rate = 0.9;
       u.pitch = 0.45;
-      u.onboundary = () => { emit(0.8); window.setTimeout(() => emit(0.2), 120); onBoundary?.(); };
+      u.onstart = () => onStart?.();
+      u.onboundary = () => { emit(0.8); window.setTimeout(() => emit(0.2), 120); };
       u.onend = () => { emit(0); resolve(); };
       u.onerror = () => { emit(0); resolve(); };
       synth.speak(u);
@@ -123,12 +129,53 @@ const deepBrowser: Speaker = {
   },
 };
 
-/* ── The commander ── */
+/* ── The AI voices (warm and commander) ── */
 
 let audio: AudioContext | null = null;
-let playing: { src: AudioBufferSourceNode; osc: OscillatorNode; done: () => void } | null = null;
+let playing: { src: AudioBufferSourceNode; osc: OscillatorNode | null; done: () => void } | null = null;
 let fetching: AbortController | null = null;
 let serverVoice: 'unknown' | 'yes' | 'no' = 'unknown';
+
+/** Measures what is playing and hands the loudness to the face; returns the stopper. */
+function meterLoop(meter: AnalyserNode, gain: number): () => void {
+  const data = new Uint8Array(meter.fftSize);
+  let raf = 0;
+  const tick = () => {
+    meter.getByteTimeDomainData(data);
+    let sum = 0;
+    for (const d of data) { const x = (d - 128) / 128; sum += x * x; }
+    emit(Math.min(1, Math.sqrt(sum / data.length) * gain));
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+  return () => cancelAnimationFrame(raf);
+}
+
+/** Plays the PCM as it is, gently compressed, for the warm voice. */
+function playClean(ctx: AudioContext, buffer: AudioBuffer): Promise<void> {
+  return new Promise(resolve => {
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -18; comp.ratio.value = 2.5;
+    const meter = ctx.createAnalyser(); meter.fftSize = 512;
+    src.connect(comp); comp.connect(meter); meter.connect(ctx.destination);
+    let finished = false;
+    const stopMeter = meterLoop(meter, 3.6);
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      stopMeter();
+      window.clearTimeout(guard);
+      emit(0);
+      playing = null;
+      resolve();
+    };
+    const guard = window.setTimeout(done, buffer.duration * 1000 + 1500);
+    src.onended = done;
+    playing = { src, osc: null, done };
+    src.start();
+  });
+}
 
 /** Call from a click or key press: browsers only let sound start from one. */
 export function unlockAudio(): void {
@@ -186,20 +233,12 @@ function playCommander(ctx: AudioContext, buffer: AudioBuffer): Promise<void> {
     src.connect(comb); comb.connect(fb); fb.connect(comb); comb.connect(combOut); combOut.connect(chest);
     chest.connect(air); air.connect(clip); clip.connect(comp); comp.connect(meter); meter.connect(ctx.destination);
 
-    const data = new Uint8Array(meter.fftSize);
-    let raf = 0;
-    const tick = () => {
-      meter.getByteTimeDomainData(data);
-      let sum = 0;
-      for (const d of data) { const x = (d - 128) / 128; sum += x * x; }
-      emit(Math.min(1, Math.sqrt(sum / data.length) * 3.2));
-      raf = requestAnimationFrame(tick);
-    };
+    let stopMeter = () => undefined as void;
     let finished = false;
     const done = () => {
       if (finished) return;
       finished = true;
-      cancelAnimationFrame(raf);
+      stopMeter();
       window.clearTimeout(guard);
       try { osc.stop(); } catch { /* not started */ }
       emit(0);
@@ -212,42 +251,62 @@ function playCommander(ctx: AudioContext, buffer: AudioBuffer): Promise<void> {
     playing = { src, osc, done };
     osc.start();
     src.start();
-    raf = requestAnimationFrame(tick);
+    stopMeter = meterLoop(meter, 3.2);
   });
 }
 
-export const commanderSpeaker: Speaker = {
-  name: 'Commander voice',
-  supported: () => browserSpeaker.supported() || typeof window !== 'undefined' && 'AudioContext' in window,
-  speaking: () => !!playing || !!fetching || browserSpeaker.speaking(),
-  stop: () => {
-    fetching?.abort(); fetching = null;
-    if (playing) { try { playing.src.stop(); } catch { /* ended */ } playing.done(); }
-    browserSpeaker.stop();
-    emit(0);
-  },
-  async speak(text: string, onBoundary?: () => void): Promise<void> {
-    this.stop();
-    const words = speakable(text);
-    if (!words) return;
-    unlockAudio();
-    if (serverVoice !== 'no' && audio) {
-      const ctl = new AbortController();
-      fetching = ctl;
-      const r = await fetchSpeech(words, ctl.signal);
-      if (fetching !== ctl) return; // stopped while it was being made
-      fetching = null;
-      if (r.ok) {
-        serverVoice = 'yes';
-        if (audio.state === 'suspended') await audio.resume().catch(() => undefined);
-        if (audio.state === 'running') { await playCommander(audio, pcmToBuffer(audio, r.pcm, r.rate)); return; }
-      } else if (['no_voice', 'no_ai', 'trial_ended'].includes(r.code)) {
-        serverVoice = 'no';
+/**
+ * An AI voice: the server speaks it, this browser plays it — clean (warm) or
+ * through the robot filter (commander). Falls back to a browser voice when the
+ * server cannot speak, and stops asking for the page's life when the answer
+ * was "there is no voice here".
+ */
+function aiSpeaker(style: 'warm' | 'commander'): Speaker {
+  const fallback = style === 'warm' ? browserSpeaker : deepBrowser;
+  return {
+    name: style === 'warm' ? 'Warm voice' : 'Commander voice',
+    supported: () => browserSpeaker.supported() || typeof window !== 'undefined' && 'AudioContext' in window,
+    speaking: () => !!playing || !!fetching || browserSpeaker.speaking(),
+    stop: () => {
+      fetching?.abort(); fetching = null;
+      if (playing) { try { playing.src.stop(); } catch { /* ended */ } playing.done(); }
+      browserSpeaker.stop();
+      emit(0);
+    },
+    async speak(text: string, onStart?: () => void): Promise<void> {
+      this.stop();
+      const words = speakable(text);
+      if (!words) return;
+      unlockAudio();
+      if (serverVoice !== 'no' && audio) {
+        const ctl = new AbortController();
+        fetching = ctl;
+        const r = await fetchSpeech(words, ctl.signal, style);
+        if (fetching !== ctl) return; // stopped while it was being made
+        fetching = null;
+        if (r.ok) {
+          serverVoice = 'yes';
+          if (audio.state === 'suspended') await audio.resume().catch(() => undefined);
+          if (audio.state === 'running') {
+            const buf = pcmToBuffer(audio, r.pcm, r.rate);
+            onStart?.();
+            await (style === 'warm' ? playClean(audio, buf) : playCommander(audio, buf));
+            return;
+          }
+        } else if (['no_voice', 'no_ai', 'trial_ended'].includes(r.code)) {
+          serverVoice = 'no';
+        }
       }
-    }
-    await deepBrowser.speak(words, onBoundary);
-  },
-};
+      await fallback.speak(words, onStart);
+    },
+  };
+}
+
+export const warmSpeaker: Speaker = aiSpeaker('warm');
+export const commanderSpeaker: Speaker = aiSpeaker('commander');
+
+/** Stops every voice — whichever is playing. */
+export function stopAllVoices(): void { warmSpeaker.stop(); commanderSpeaker.stop(); browserSpeaker.stop(); }
 
 /** The speaker for a preference. */
-export const speakerFor = (voice: 'commander' | 'natural'): Speaker => (voice === 'natural' ? browserSpeaker : commanderSpeaker);
+export const speakerFor = (voice: Voice): Speaker => (voice === 'natural' ? browserSpeaker : voice === 'commander' ? commanderSpeaker : warmSpeaker);

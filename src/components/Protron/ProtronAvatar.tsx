@@ -1,51 +1,68 @@
 /**
- * Protron's face: the gunmetal helmet with the glowing V visor.
+ * Protron's face: a friendly humanoid robot head.
+ *
+ * ── Why this face (owner's brief, 2026-11-12) ──
+ *
+ * The helmet with the V visor read as alien. The brief asked for a premium,
+ * cinematic robot assistant in the spirit of film-robot engineering — an
+ * original design, not any studio's character: a titanium cranium with a crest
+ * and panel seams, a smooth lighter face plate, gently arched brows, round
+ * cyan eyes with a highlight, audio receptors where ears would be, a neck and
+ * collar, and a mouth that is a softly smiling slot of light segments. Nothing
+ * biological, nothing sharp or frowning; the resting face smiles.
  *
  * ── Why SVG and CSS, not a 3D scene ──
  *
- * It sits on every screen of the app. A WebGL helmet would cost a GPU context
- * and tens of kilobytes of engine on every page for a 56-pixel face; this is
- * one inline SVG (~3 KB) whose moving parts are CSS transforms and one colour,
- * and the colour is stepped twelve times a second rather than every frame, so
- * a modest laptop or a phone does not notice it.
+ * It sits on every screen. A WebGL head would cost a GPU context and an engine
+ * download for a 56-pixel face; this is one inline SVG (~4 KB) whose moving
+ * parts are CSS transforms. Below 36 px (`lite`) the glow filter and the fine
+ * seams are left out — they cannot be seen at that size and the filter is the
+ * only costly part.
  *
  * ── What moves, and what each move means ──
  *
- *   eyes colour   drifts slowly through green → cyan → blue → violet and back
- *                 (`pt-hue`, 28 s) — alive, not busy
- *   blink         the visor closes and opens every few seconds, sometimes twice
- *   head          small, unhurried poses — a tilt, a nod, a glance — picked at
- *                 random every 3–7 s, the way somebody listening moves
- *   state         listening: the eyes pulse with attention; thinking: the head
- *                 tilts and the eyes dim and brighten; speaking: a quick
- *                 flicker with the words; working: a fast pulse; done: green;
- *                 error: red, still
+ *   blink        the eyes close and open every few seconds, sometimes twice
+ *   head         small unhurried poses — a tilt, a nod, a glance — every 3–7 s
+ *   mouth        the seven segments follow the voice's real loudness
+ *                (services/protron/level.ts, measured from the audio playing);
+ *                silent, the mouth is one soft lit smile. Never a timer.
+ *   idle         steady cyan eyes
+ *   listening    brighter eyes, the ear rings pulse, the head leans in
+ *   thinking     eyes glance up, the forehead light breathes slowly
+ *   speaking     the mouth follows the voice
+ *   working      the ear rings and forehead light run quickly
+ *   done         green, one bright pop
+ *   error        amber (help needed, not alarm), brows a little raised
  *
  * Every animation is a CSS rule inside `prefers-reduced-motion: no-preference`
- * (protron.css), and the random blinks and poses are not scheduled at all
- * under reduced motion — never an inline `animation`, which no media query can
- * reach (the trap AutopilotBot.tsx records). The head poses are CSS variables
- * the stylesheet turns into a transform, so the transition lives in the
- * stylesheet too.
- *
- * The founder-avatar option (a photo- or video-driven talking head) would
- * replace this component behind the same `state` prop; nothing else in
- * Protron depends on what the face is drawn with.
+ * (protron.css), and blinks and poses are not scheduled at all under reduced
+ * motion — never an inline `animation`, which no media query can reach (the
+ * trap AutopilotBot.tsx records). The mouth's loudness is a CSS variable, so
+ * under reduced motion it is still drawn, just without transition.
  */
 import { useEffect, useId, useRef } from 'react';
+import { onVoiceLevel } from '../../services/protron/level';
 import './protron.css';
 
 export type AvatarState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'working' | 'done' | 'error';
 
 const POSES: { tilt: number; x: number; y: number; look: number }[] = [
   { tilt: 0, x: 0, y: 0, look: 0 },
-  { tilt: -4, x: -1, y: 0, look: -1.2 },
-  { tilt: 3.5, x: 1, y: 0, look: 1.2 },
-  { tilt: -2, x: 0, y: -0.8, look: -0.6 },
-  { tilt: 2.5, x: 0.6, y: 0.5, look: 0.9 },
-  { tilt: 0, x: 0, y: 0, look: 1.7 },
-  { tilt: 0, x: 0, y: 0, look: -1.7 },
+  { tilt: -3.5, x: -0.8, y: 0, look: -1 },
+  { tilt: 3, x: 0.8, y: 0, look: 1 },
+  { tilt: -1.5, x: 0, y: -0.6, look: -0.5 },
+  { tilt: 2, x: 0.5, y: 0.4, look: 0.8 },
+  { tilt: 0, x: 0, y: 0, look: 1.4 },
+  { tilt: 0, x: 0, y: 0, look: -1.4 },
 ];
+
+/* The mouth's segments: where each sits on the smile, and how much of the
+   voice's loudness it shows (the middle ones open most, like a mouth). */
+const BARS = [-8.4, -5.6, -2.8, 0, 2.8, 5.6, 8.4].map(dx => ({
+  x: 50 + dx,
+  y: 71.4 - 1.5 * (dx / 9) ** 2,
+  k: 2.6 - Math.abs(dx) / 4.2,
+}));
 
 const reducedMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -59,6 +76,7 @@ export default function ProtronAvatar({ size = 56, state = 'idle', alive = true,
 }) {
   const root = useRef<SVGSVGElement>(null);
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
+  const lite = size < 36;
 
   /* Blinks and poses: timers, not CSS loops, so they are irregular like a person's. */
   useEffect(() => {
@@ -69,13 +87,13 @@ export default function ProtronAvatar({ size = 56, state = 'idle', alive = true,
     const timers: number[] = [];
     const later = (fn: () => void, ms: number) => { timers.push(window.setTimeout(() => { if (!off) fn(); }, ms)); };
 
-    const blinkOnce = () => { el.dataset.blink = '1'; later(() => { el.dataset.blink = '0'; }, 140); };
+    const blinkOnce = () => { el.dataset.blink = '1'; later(() => { el.dataset.blink = '0'; }, 130); };
     const blink = () => {
       if (document.visibilityState === 'visible') {
         blinkOnce();
-        if (Math.random() < 0.2) later(blinkOnce, 300);
+        if (Math.random() < 0.2) later(blinkOnce, 280);
       }
-      later(blink, 2600 + Math.random() * 3800);
+      later(blink, 2800 + Math.random() * 3800);
     };
     const pose = () => {
       if (document.visibilityState === 'visible') {
@@ -84,9 +102,8 @@ export default function ProtronAvatar({ size = 56, state = 'idle', alive = true,
         el.style.setProperty('--pt-x', `${p.x}px`);
         el.style.setProperty('--pt-y', `${p.y}px`);
         el.style.setProperty('--pt-look', `${p.look}px`);
-        /* A nod is down and back, not a held pose. */
         if (Math.random() < 0.25) {
-          el.style.setProperty('--pt-y', '1.8px');
+          el.style.setProperty('--pt-y', '1.4px');
           later(() => el.style.setProperty('--pt-y', `${p.y}px`), 420);
         }
       }
@@ -97,13 +114,23 @@ export default function ProtronAvatar({ size = 56, state = 'idle', alive = true,
     return () => { off = true; timers.forEach(t => window.clearTimeout(t)); };
   }, [alive]);
 
+  /* The mouth follows the real voice — only while this face is the speaking one. */
+  useEffect(() => {
+    const el = root.current;
+    if (!el || state !== 'speaking') { el?.style.setProperty('--pt-lvl', '0'); return; }
+    const stop = onVoiceLevel(l => el.style.setProperty('--pt-lvl', l.toFixed(3)));
+    return () => { stop(); el.style.setProperty('--pt-lvl', '0'); };
+  }, [state]);
+
   const g = (n: string) => `${n}${uid}`;
+  const glow = lite ? undefined : `url(#${g('glow')})`;
   return (
     <svg
       ref={root}
       className="pt-av"
       data-state={state}
       data-blink="0"
+      data-lite={lite ? '1' : '0'}
       viewBox="0 0 100 100"
       width={size}
       height={size}
@@ -113,64 +140,103 @@ export default function ProtronAvatar({ size = 56, state = 'idle', alive = true,
       focusable="false"
     >
       <defs>
-        <linearGradient id={g('m')} x1="0.2" y1="0" x2="0.8" y2="1">
-          <stop offset="0" stopColor="#c9d0d8" />
-          <stop offset="0.28" stopColor="#7d8791" />
-          <stop offset="0.62" stopColor="#3b434c" />
-          <stop offset="1" stopColor="#15191e" />
+        <linearGradient id={g('m')} x1="0.15" y1="0" x2="0.85" y2="1">
+          <stop offset="0" stopColor="#eef2f6" />
+          <stop offset="0.3" stopColor="#a3aebb" />
+          <stop offset="0.68" stopColor="#4c5864" />
+          <stop offset="1" stopColor="#1b2229" />
+        </linearGradient>
+        <linearGradient id={g('f')} x1="0.3" y1="0" x2="0.7" y2="1">
+          <stop offset="0" stopColor="#e4eaf0" />
+          <stop offset="0.5" stopColor="#b3bec9" />
+          <stop offset="1" stopColor="#66727e" />
         </linearGradient>
         <linearGradient id={g('d')} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#59626c" />
-          <stop offset="1" stopColor="#1a1f25" />
+          <stop offset="0" stopColor="#4a545f" />
+          <stop offset="1" stopColor="#12171c" />
         </linearGradient>
-        <linearGradient id={g('c')} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#dfe4ea" />
-          <stop offset="1" stopColor="#4d5660" />
-        </linearGradient>
-        <filter id={g('glow')} x="-60%" y="-60%" width="220%" height="220%">
-          <feGaussianBlur stdDeviation="1.7" result="b" />
-          <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-        </filter>
+        <radialGradient id={g('s')} cx="0.5" cy="0.45" r="0.6">
+          <stop offset="0" stopColor="#24313f" />
+          <stop offset="1" stopColor="#111922" />
+        </radialGradient>
+        {!lite && (
+          <filter id={g('glow')} x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="1.4" result="b" />
+            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        )}
       </defs>
 
+      {/* Neck and collar, still while the head moves. */}
+      <path d="M40 78 L60 78 L61 92 L39 92 Z" fill={`url(#${g('d')})`} />
+      {!lite && <path d="M43 81 L57 81 M43 85 L57 85 M43 89 L57 89" stroke="#0b0f13" strokeWidth="0.9" />}
+      <path d="M22 100 C24 92 36 88 50 88 C64 88 76 92 78 100 Z" fill={`url(#${g('m')})`} />
+      <path className="pt-light" d="M40 93.5 L60 93.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" filter={glow} />
+
       <g className="pt-head">
-        {/* Ear pods, behind the shell, each with a small light. */}
-        <rect x="5" y="38" width="11" height="25" rx="5.5" fill={`url(#${g('d')})`} />
-        <rect x="84" y="38" width="11" height="25" rx="5.5" fill={`url(#${g('d')})`} />
-        <rect className="pt-light" x="8.5" y="52" width="4" height="6" rx="2" fill="currentColor" filter={`url(#${g('glow')})`} />
-        <rect className="pt-light" x="87.5" y="52" width="4" height="6" rx="2" fill="currentColor" filter={`url(#${g('glow')})`} />
+        {/* Audio receptors where ears would be, each with a light ring. */}
+        <circle cx="15.5" cy="50" r="7.5" fill={`url(#${g('d')})`} />
+        <circle cx="84.5" cy="50" r="7.5" fill={`url(#${g('d')})`} />
+        <circle className="pt-ear" cx="15.5" cy="50" r="4" fill="none" stroke="currentColor" strokeWidth="1.4" filter={glow} />
+        <circle className="pt-ear" cx="84.5" cy="50" r="4" fill="none" stroke="currentColor" strokeWidth="1.4" filter={glow} />
 
-        {/* The shell. */}
-        <path d="M50 5 C72 5 86 20 87 42 C88 60 82 75 71 86 C64 93 57 96 50 96 C43 96 36 93 29 86 C18 75 12 60 13 42 C14 20 28 5 50 5 Z" fill={`url(#${g('m')})`} />
-        <path d="M29 14 C37 9 45 8 49 8 L47.5 30 C39 30 31 32 25 36 C24 27 25 19 29 14 Z" fill="#fff" opacity="0.16" />
-        {/* The crest down the middle. */}
-        <path d="M44 6 L56 6 L58 30 L50 40 L42 30 Z" fill={`url(#${g('c')})`} stroke="#0e1114" strokeWidth="0.8" />
-        <path d="M20 44 C30 38 42 38 50 46 C58 38 70 38 80 44" stroke="#0e1114" strokeWidth="1.2" fill="none" opacity="0.6" />
+        {/* The cranium: brushed titanium, a crest, a highlight. */}
+        <path d="M50 6 C69 6 82 18 83 37 C84 50 82 60 78 68 C74 77 64 85 50 86 C36 85 26 77 22 68 C18 60 16 50 17 37 C18 18 31 6 50 6 Z" fill={`url(#${g('m')})`} />
+        <path d="M46 7 L54 7 L55.5 23 L50 27 L44.5 23 Z" fill={`url(#${g('f')})`} stroke="#20272e" strokeWidth="0.6" />
+        <path d="M32 14 C38 10 43 9 46.5 9 L45.5 21 C39 22 33.5 24 28.5 28 C28.5 22 29.5 17.5 32 14 Z" fill="#fff" opacity="0.2" />
+        {!lite && (
+          <g fill="none" stroke="#1d242b" strokeWidth="0.7" opacity="0.7">
+            <path d="M21 33 C28 29 36 28 43 29.5" />
+            <path d="M79 33 C72 29 64 28 57 29.5" />
+            <path d="M20 58 C22 64 24 68 27 71" />
+            <path d="M80 58 C78 64 76 68 73 71" />
+          </g>
+        )}
 
-        {/* The dark face behind the visor, and the plates that make its V. */}
-        <path d="M17 50 C28 43 41 44 48 52 L50 55 L52 52 C59 44 72 43 83 50 C82 62 78 74 70 84 C64 90 57 93 50 93 C43 93 36 90 30 84 C22 74 18 62 17 50 Z" fill="#07090b" />
-        <path d="M25 61 C29 71 35 80 44 88 L45.5 62 C38 58.5 31 58.5 25 61 Z" fill={`url(#${g('d')})`} />
-        <path d="M75 61 C71 71 65 80 56 88 L54.5 62 C62 58.5 69 58.5 75 61 Z" fill={`url(#${g('d')})`} />
-        <path d="M47.5 57 L52.5 57 L51.6 90 L48.4 90 Z" fill={`url(#${g('d')})`} />
+        {/* The face plate, lighter and smooth. */}
+        <path d="M50 28 C62 28 72 33 74 43 C75 52 73 62 69 69 C65 76 58 81 50 81 C42 81 35 76 31 69 C27 62 25 52 26 43 C28 33 38 28 50 28 Z" fill={`url(#${g('f')})`} />
+        {!lite && (
+          <g fill="none" stroke="#5b6672" strokeWidth="0.6" opacity="0.75">
+            <path d="M30 58 C33.5 64 37.5 68 42 70.5" />
+            <path d="M70 58 C66.5 64 62.5 68 58 70.5" />
+          </g>
+        )}
+        {!lite && <><circle cx="27.5" cy="62" r="1.1" fill="#3a434d" /><circle cx="72.5" cy="62" r="1.1" fill="#3a434d" /></>}
 
-        {/* The glowing seams running down from the eyes. */}
-        <g className="pt-lines" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" filter={`url(#${g('glow')})`}>
-          <path d="M46.2 57.5 L44.8 87" />
-          <path d="M53.8 57.5 L55.2 87" />
-          <path d="M21.5 55.5 C24.5 66 29.5 76 37.5 85" />
-          <path d="M78.5 55.5 C75.5 66 70.5 76 62.5 85" />
+        {/* Forehead light. */}
+        <path className="pt-core-light" d="M50 30.6 L52.6 33.6 L50 36.6 L47.4 33.6 Z" fill="currentColor" filter={glow} />
+
+        {/* Brows: gently arched plates — friendly, never a frown. */}
+        <g className="pt-brows" fill="#3d4651">
+          <path className="pt-brow" d="M28.5 41 C33 37 39.5 36 45.5 38.2 L45 40.6 C39.5 39 34 39.6 29.8 42.6 Z" />
+          <path className="pt-brow" d="M71.5 41 C67 37 60.5 36 54.5 38.2 L55 40.6 C60.5 39 66 39.6 70.2 42.6 Z" />
         </g>
 
-        {/* The eyes: a glow and a hot white core, each blinking on its own centre. */}
+        {/* The eyes: dark sockets, round glowing lenses, a highlight. */}
+        <ellipse cx="37.5" cy="47.5" rx="6.5" ry="5.1" fill={`url(#${g('s')})`} />
+        <ellipse cx="62.5" cy="47.5" rx="6.5" ry="5.1" fill={`url(#${g('s')})`} />
         <g className="pt-eyes">
-          <g className="pt-eye">
-            <path d="M18.5 51 C29 44.5 41 45.5 47 55 C39 57.2 28 57 18.5 51 Z" fill="currentColor" filter={`url(#${g('glow')})`} />
-            <path className="pt-core" d="M23.5 51.6 C31 48 39 49 43.6 54 C37 55.2 29.5 55 23.5 51.6 Z" fill="#f2fff7" />
-          </g>
-          <g className="pt-eye">
-            <path d="M81.5 51 C71 44.5 59 45.5 53 55 C61 57.2 72 57 81.5 51 Z" fill="currentColor" filter={`url(#${g('glow')})`} />
-            <path className="pt-core" d="M76.5 51.6 C69 48 61 49 56.4 54 C63 55.2 70.5 55 76.5 51.6 Z" fill="#f2fff7" />
-          </g>
+          {[37.5, 62.5].map(cx => (
+            <g className="pt-eye" key={cx}>
+              <ellipse cx={cx} cy="47.6" rx="5" ry="4.1" fill="currentColor" filter={glow} />
+              <circle className="pt-core" cx={cx} cy="47.6" r="2.3" fill="#e9fcff" />
+              <circle cx={cx - 1.7} cy="46" r="0.95" fill="#fff" />
+            </g>
+          ))}
+        </g>
+
+        {/* Nose bridge and chin plate. */}
+        <path d="M48.2 50.5 L51.8 50.5 L52.8 60 L50 62 L47.2 60 Z" fill={`url(#${g('m')})`} opacity="0.85" />
+        <path d="M44 77.5 L56 77.5 L54 81 L46 81 Z" fill={`url(#${g('m')})`} opacity="0.8" />
+
+        {/* The mouth: a smiling slot whose segments follow the voice. */}
+        <path d="M39.5 68 C44.5 71.6 55.5 71.6 60.5 68 L59.7 72 C54.8 75 45.2 75 40.3 72 Z" fill="#141c25" />
+        <path className="pt-smile" d="M41.5 70.2 C46 72.6 54 72.6 58.5 70.2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" filter={glow} />
+        <g className="pt-mouth" fill="currentColor" filter={glow}>
+          {BARS.map(b => (
+            <rect key={b.x} className="pt-bar" x={b.x - 0.8} y={b.y - 1.6} width="1.6" height="3.2" rx="0.8"
+              style={{ ['--k' as string]: b.k.toFixed(2) }} />
+          ))}
         </g>
       </g>
     </svg>

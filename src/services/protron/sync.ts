@@ -8,7 +8,7 @@
  * audit helper takes the same view). Nothing here holds a token: the page
  * sends the "cookie" placeholder like every other call.
  */
-import type { Prefs, Turn } from './memory';
+import type { Prefs, SiteCheck, Turn } from './memory';
 
 const base = (): string => (import.meta.env.DEV ? 'http://localhost:8787' : '');
 
@@ -63,9 +63,20 @@ export function audit(name: string, title: string, status: 'done' | 'failed' | '
 
 export type SpeechResult = { ok: true; pcm: string; rate: number } | { ok: false; error: string; code: string };
 
-/** The commander voice for a reply: base64 16-bit PCM, or why not. */
-export async function fetchSpeech(text: string, signal?: AbortSignal): Promise<SpeechResult> {
-  const r = await call<{ audio?: string; rate?: number }>('speak', { text }, signal);
+/** An AI voice for a reply (warm or commander): base64 16-bit PCM, or why not. */
+export async function fetchSpeech(text: string, signal?: AbortSignal, style: 'warm' | 'commander' = 'warm'): Promise<SpeechResult> {
+  const r = await call<{ audio?: string; rate?: number }>('speak', { text, style }, signal);
   if (r?.success && r.audio) return { ok: true, pcm: r.audio, rate: r.rate || 24000 };
   return { ok: false, error: r?.error ?? 'The voice could not be reached.', code: r?.code ?? 'unreachable' };
+}
+
+/**
+ * What answers at this person's own email domain (the server takes the domain
+ * from the session, never from here). Null when it could not be asked — then
+ * nothing is said about their website at all.
+ */
+export async function checkSite(): Promise<SiteCheck | null> {
+  const r = await call<{ domain?: string; status?: string; title?: string; about?: string }>('site');
+  if (!r?.success || !r.domain || !['found', 'none', 'personal'].includes(String(r.status))) return null;
+  return { domain: r.domain, status: r.status as SiteCheck['status'], title: r.title || undefined, about: r.about || undefined, at: Date.now() };
 }

@@ -16,6 +16,10 @@
  *   P9  what the model is told: the screen's name, never its data
  *   P10 2026-11-11 pass: filling forms live, step-by-step cards, the social
  *       draft, salvaged replies, speaking first, prefs and server sync stamps
+ *   P11 2026-11-12 brief: identity from the email domain (a clue, never a
+ *       fact), the warm voice, verified prospect results, workflow drafts
+ *       built step by step, resuming business workspaces, the profile,
+ *       short spoken replies
  */
 const store = new Map<string, string>();
 const ls = {
@@ -37,6 +41,8 @@ const I = await import('../src/services/protron/intake.ts');
 const M = await import('../src/services/protron/memory.ts');
 const S = await import('../src/services/projectSolutions.ts');
 const SC = await import('../src/services/protron/screen.ts');
+const ID = await import('../src/services/protron/identity.ts');
+const WT = await import('../src/components/Autopilot/workflowTemplates.ts');
 
 const out: string[] = [];
 const ok = (n: string, p: boolean, d = '') => out.push(`${p ? 'PASS' : 'FAIL'}  ${n}${p ? '' : ` — ${d}`}`);
@@ -80,13 +86,17 @@ const owner = { isClient: false, isOwner: true };
 {
   const nav: string[] = [];
   const added: unknown[] = [];
-  const ctx = { who: customer, navigate: (p: string) => nav.push(p), addContact: (c: unknown) => added.push(c), createPipeline: () => 'p1', setStages: () => undefined, counts: () => ({ contacts: 3 }) };
+  const ctx = {
+    who: customer, navigate: (p: string) => nav.push(p), addContact: (c: unknown) => added.push(c), createPipeline: () => 'p1', setStages: () => undefined, counts: () => ({ contacts: 3 }),
+    waitForSearch: async () => ({ count: 4, withEmail: 2, error: '', trade: 'roofing companies', place: 'Dallas' }),
+  };
   const find = A.checkCall({ name: 'find_prospects', args: { who: 'roofing companies', where: 'Dallas' } }, customer);
   ok('P3 a prospect search needs confirming', find.ok && A.needsConfirm((find as { def: { tier: string } }).def as never));
   const unconfirmed = find.ok ? await A.runChecked(find, ctx, false) : null;
   ok('P3 an unconfirmed confirm-tier action does nothing', !!unconfirmed && !unconfirmed.ok && nav.length === 0);
   const confirmed = find.ok ? await A.runChecked(find, ctx, true) : null;
   ok('P3 confirmed, it opens AI Prospecting with the search', !!confirmed?.ok && nav[0] === '/prospecting?q=roofing%20companies%20in%20Dallas', nav[0]);
+  ok('P3 and reports what the search really found', confirmed?.data?.found === 4 && /Found 4 businesses/.test(confirmed?.message ?? '') && /nothing is added until you do/.test(confirmed?.message ?? ''), confirmed?.message);
   const contact = A.checkCall({ name: 'create_contact', args: { name: 'Ann Lee', email: 'not-an-email' } }, customer);
   const res = contact.ok ? await A.runChecked(contact, ctx, true) : null;
   ok('P3 a bad email is refused by the handler, nothing added', !!res && !res.ok && added.length === 0);
@@ -268,9 +278,9 @@ const owner = { isClient: false, isOwner: true };
   const froze = B.offlineAhead({ who: customer, path: '/', screen: '' }, 'froze');
   ok('P10 a frozen screen is said as such', /stopped responding/.test(froze.reply));
 
-  ok('P10 prefs default to the commander voice and ten seconds', M.DEFAULT_PREFS.voice === 'commander' && M.DEFAULT_PREFS.idleSeconds === 10);
+  ok('P10 prefs default to the warm voice and ten seconds', M.DEFAULT_PREFS.voice === 'warm' && M.DEFAULT_PREFS.idleSeconds === 10);
   const np = M.normalisePrefs({ voice: 'shouty' as never, idleSeconds: 7 });
-  ok('P10 prefs from elsewhere are put back in range', np.voice === 'commander' && np.idleSeconds === 10 && np.business.name === '');
+  ok('P10 prefs from elsewhere are put back in range', np.voice === 'warm' && np.idleSeconds === 10 && np.business.name === '');
   M.saveTurns([{ id: 'q', role: 'user', text: 'hi', at: 1 }]);
   ok('P10 a new turn is marked for the server', M.isDirty());
   M.markSynced(12345);
@@ -280,6 +290,109 @@ const owner = { isClient: false, isOwner: true };
   const offPost = B.offlineTurn('Draft a social post about our spring roof check sale', { who: customer, path: '/' });
   ok('P10 without the AI, "draft a post about X" still drafts it', offPost.actions[0]?.name === 'draft_social_post' && /spring roof check sale/.test(String(offPost.actions[0]?.args.prompt)) && A.checkCall(offPost.actions[0], customer).ok);
   ok('P10 fill_form and draft_social_post are described to the model', /fill_form\(fields: object of box key → text/.test(A.describeActions(customer)) && /draft_social_post/.test(A.describeActions(customer)));
+}
+
+
+/* ── P11 the 2026-11-12 brief ── */
+{
+  /* Identity: the email domain is a clue, never a fact. */
+  ok('P11 Gmail, Outlook and country Yahoos are personal mail', ID.isPersonalDomain('gmail.com') && ID.isPersonalDomain('outlook.com') && ID.isPersonalDomain('yahoo.co.uk') && ID.isPersonalDomain('hotmail.fr'));
+  ok('P11 a company domain is not personal', !ID.isPersonalDomain('abcmotors.com') && ID.emailDomain('John@ABCMotors.com') === 'abcmotors.com');
+  const gmail = ID.gatherFacts({ name: 'Priya Shah', email: 'priya@gmail.com', accountBusiness: 'My Business' });
+  ok('P11 a placeholder workspace name is not a business name', gmail.businessName === '' && gmail.personal && gmail.firstName === 'Priya');
+  ok('P11 Gmail is never read as "no business"', /never assume they do not/.test(ID.describeFacts(gmail)));
+  const gOpen = ID.openingFor(gmail);
+  ok('P11 a Gmail sign-up is asked own business, agency or independent', /Hi Priya!/.test(gOpen.text) && /own business, managing an agency, or working independently/.test(gOpen.text) && gOpen.suggestions.length === 3, gOpen.text);
+  ok('P11 a Gmail address is never looked up', !ID.needsSiteCheck(gmail));
+  const biz = ID.gatherFacts({ name: 'John Carter', email: 'john@abcmotors.com' });
+  ok('P11 a business domain is looked up once', ID.needsSiteCheck(biz) && !ID.needsSiteCheck(ID.gatherFacts({ name: 'John', email: 'john@abcmotors.com', siteCheck: { domain: 'abcmotors.com', status: 'none', at: 1 } })));
+  const found = ID.gatherFacts({ name: 'John Carter', email: 'john@abcmotors.com', siteCheck: { domain: 'abcmotors.com', status: 'found', title: 'ABC Motors — used cars in Dallas', about: 'Family-run dealership', at: 1 } });
+  const fOpen = ID.openingFor(found);
+  ok('P11 a site found is offered as a question, not assumed', /"ABC Motors — used cars in Dallas"/.test(fOpen.text) && /Is that your business\?/.test(fOpen.text), fOpen.text);
+  ok('P11 and the model is told it is unconfirmed', /Not confirmed as their business/.test(ID.describeFacts(found)));
+  const none = ID.gatherFacts({ name: 'John', email: 'john@abcmotors.com', siteCheck: { domain: 'abcmotors.com', status: 'none', at: 1 } });
+  ok('P11 nothing answering is never "no website"', /Do not say they have no website/.test(ID.describeFacts(none)));
+  const known = ID.gatherFacts({ name: 'John Carter', email: 'john@abcmotors.com', business: { name: 'ABC Motors', about: 'used car dealership', places: 'Dallas, TX' } });
+  const kOpen = ID.openingFor(known);
+  ok('P11 a known business is greeted by name and not asked for it again', /ABC Motors — used car dealership in Dallas, TX/.test(kOpen.text) && !/business name/i.test(kOpen.text), kOpen.text);
+  ok('P11 what is known is not listed as missing', !ID.missingFacts(known).includes('name') && !ID.missingFacts(known).includes('about'));
+
+  /* The voice: everybody moved off the robot once; a later choice stays. */
+  ok('P11 an old stored "commander" becomes the warm voice', M.normalisePrefs({ voice: 'commander' }).voice === 'warm');
+  ok('P11 commander chosen after the change is kept', M.normalisePrefs({ voice: 'commander', v: 2 }).voice === 'commander');
+  ok('P11 the device voice is kept', M.normalisePrefs({ voice: 'natural' }).voice === 'natural');
+
+  /* The prompt: what is known, and short answers when spoken. */
+  const base = { who: customer, path: '/', pageTitle: '', business: { name: '', about: '' }, facts: ID.describeFacts(known) };
+  ok('P11 the model is given what is already known', /KNOWN\nName: John Carter/.test(B.systemPrompt(base)) && /Do not ask for any of the above again|Still unknown/.test(B.systemPrompt(base)));
+  ok('P11 a spoken turn asks for a short spoken answer', /under 35 words/.test(B.systemPrompt({ ...base, spoken: true })) && !/under 35 words/.test(B.systemPrompt(base)));
+  ok('P11 the model is told prospecting finds businesses, not consumers', /finds BUSINESSES/.test(B.systemPrompt(base)));
+
+  /* Prospect search: success is what the screen reported, not "started". */
+  const findCall = A.checkCall({ name: 'find_prospects', args: { who: 'car dealers', where: 'Dallas' } }, customer) as Extract<ReturnType<typeof A.checkCall>, { ok: true }>;
+  const silent = await A.runChecked(findCall, { who: customer, navigate: () => undefined, waitForSearch: async () => null }, true);
+  ok('P11 a search that never reports back is not called a success', !silent.ok && /did not report back/.test(silent.message));
+  const refused = await A.runChecked(findCall, { who: customer, navigate: () => undefined, waitForSearch: async () => ({ count: 0, withEmail: 0, error: 'That place was not recognised.', trade: '', place: '' }) }, true);
+  ok('P11 a refused search says why', !refused.ok && /not recognised/.test(refused.message));
+
+  /* Workflow drafts: real templates, saved step by step, a draft, in a business workspace of theirs. */
+  ok('P11 a workflow draft waits for Confirm', (() => { const c = A.checkCall({ name: 'create_workflow_draft', args: { template: 'speed-to-lead' } }, customer); return c.ok && A.needsConfirm(c.def); })());
+  ok('P11 an invented template is refused', !A.checkCall({ name: 'create_workflow_draft', args: { template: 'send-to-everyone' } }, customer).ok);
+  let dangling = 0;
+  for (const t of WT.TEMPLATES) for (let i = 1; i <= t.nodes.length; i++) {
+    const g = A.partialGraph(t.nodes, i);
+    const ids = new Set(g.map(n => n.id));
+    for (const n of g) for (const l of [n.nextId, n.yesId, n.noId]) if (l && !ids.has(l)) dangling++;
+  }
+  ok('P11 every partial save of every template links only to steps already added', dangling === 0, String(dangling));
+  const saves: { projectId: string; rec: { id?: string; nodes: unknown[]; status?: string }; templateKey?: string }[] = [];
+  const signals: string[] = [];
+  const nav2: string[] = [];
+  const wctx = {
+    who: customer, navigate: (p: string) => nav2.push(p), signal: (e: string) => signals.push(e),
+    listProjects: async () => [{ id: 'p1', name: 'ABC Motors Customer Acquisition', status: 'off', client: 'ABC Motors' }],
+    saveWorkflow: async (projectId: string, rec: { id?: string; nodes: unknown[] }, templateKey?: string) => { saves.push({ projectId, rec, templateKey }); return { ok: true, id: 'w1', error: '' }; },
+  };
+  const tpl = WT.TEMPLATES.find(t => t.key === 'speed-to-lead')!;
+  const wc = A.checkCall({ name: 'create_workflow_draft', args: { template: 'speed-to-lead' } }, customer) as Extract<ReturnType<typeof A.checkCall>, { ok: true }>;
+  const built = await A.runChecked(wc, wctx, true);
+  ok('P11 it opens the business workspace\'s workflows', nav2[0] === '/autopilot?project=p1&tab=workflows', nav2[0]);
+  ok('P11 one real save per step, growing', saves.length === tpl.nodes.length && saves.every((x, i) => x.rec.nodes.length === i + 1), String(saves.length));
+  ok('P11 created once from the template, then updated by id', saves[0].templateKey === 'speed-to-lead' && !saves[0].rec.id && saves.slice(1).every(x => x.rec.id === 'w1' && !x.templateKey));
+  ok('P11 nothing switches it on', saves.every(x => x.rec.status === undefined || x.rec.status === 'draft') && /draft/.test(built.message) && /switched off/.test(built.message));
+  ok('P11 the screen is told after each save', signals.filter(e => e === 'pc-protron-workflow').length === tpl.nodes.length);
+  saves.length = 0;
+  const foreign = A.checkCall({ name: 'create_workflow_draft', args: { template: 'speed-to-lead', project: 'someone-elses' } }, customer) as Extract<ReturnType<typeof A.checkCall>, { ok: true }>;
+  const fr = await A.runChecked(foreign, wctx, true);
+  ok('P11 a business workspace not theirs is refused, nothing saved', !fr.ok && saves.length === 0 && /not one of yours/.test(fr.message));
+  const empty = await A.runChecked(wc, { ...wctx, listProjects: async () => [] }, true);
+  ok('P11 with no business workspace it says so, nothing saved', !empty.ok && saves.length === 0 && /no business workspace yet/.test(empty.message));
+  const unread = await A.runChecked(wc, { ...wctx, listProjects: async () => null }, true);
+  ok('P11 an unreadable board builds nothing', !unread.ok && saves.length === 0);
+  const half = await A.runChecked(wc, { ...wctx, saveWorkflow: async (_p: string, rec: { id?: string }) => (rec.id ? { ok: false, id: '', error: 'The plan allows 3 workflows.' } : { ok: true, id: 'w2', error: '' }) }, true);
+  ok('P11 a save refused part-way is reported as partial', !half.ok && /Stopped after 1 of/.test(half.message) && /allows 3/.test(half.message), half.message);
+
+  /* Resuming a business workspace. */
+  const lc = A.checkCall({ name: 'list_business_workspaces', args: {} }, customer) as Extract<ReturnType<typeof A.checkCall>, { ok: true }>;
+  ok('P11 listing business workspaces is a read that feeds back', lc.ok && lc.def.tier === 'read' && !!lc.def.feedsBack);
+  const listed = await A.runChecked(lc, wctx, false);
+  ok('P11 it returns names and ids, nothing inside them', listed.data?.count === 1 && /ABC Motors Customer Acquisition — off — for ABC Motors — id p1/.test(String(listed.data?.workspace1)));
+  const oc = A.checkCall({ name: 'open_business_workspace', args: { project: 'nope' } }, customer) as Extract<ReturnType<typeof A.checkCall>, { ok: true }>;
+  const opened = await A.runChecked(oc, { ...wctx, navigate: () => nav2.push('x') }, false);
+  ok('P11 opening one that is not theirs is refused', !opened.ok);
+  const resume = B.offlineTurn('Continue working on my dealership customer acquisition project', { who: customer, path: '/' });
+  ok('P11 without the AI, "continue my project" looks them up', resume.actions[0]?.name === 'list_business_workspaces');
+  const exist = B.offlineTurn('Create an email workflow for my existing contacts', { who: customer, path: '/' });
+  ok('P11 without the AI, a workflow for existing contacts is a win-back draft', exist.actions[0]?.name === 'create_workflow_draft' && exist.actions[0]?.args.template === 'dormant-winback' && A.checkCall(exist.actions[0], customer).ok, JSON.stringify(exist.actions));
+
+  /* The profile: what they said, kept. */
+  let kept: Record<string, unknown> = {};
+  const pc = A.checkCall({ name: 'update_business_profile', args: { name: 'ABC Motors', about: 'used car dealership', kind: 'own', places: 'Dallas' } }, customer) as Extract<ReturnType<typeof A.checkCall>, { ok: true }>;
+  ok('P11 remembering the business runs at once (it is Protron\'s own profile)', pc.ok && pc.def.tier === 'reversible');
+  const pr = await A.runChecked(pc, { who: customer, navigate: () => undefined, updateBusiness: (p: Record<string, unknown>) => { kept = p; return p as never; } }, false);
+  ok('P11 it keeps exactly what was said', pr.ok && kept.name === 'ABC Motors' && kept.kind === 'own' && kept.places === 'Dallas');
+  ok('P11 a kind outside the three is refused', !A.checkCall({ name: 'update_business_profile', args: { kind: 'boss' } }, customer).ok);
+  ok('P11 the new actions are described to the model with real template keys', /create_workflow_draft\(template: one of \[.*"speed-to-lead"/.test(A.describeActions(customer)) && /list_business_workspaces/.test(A.describeActions(customer)) && /update_business_profile/.test(A.describeActions(customer)));
 }
 
 console.log(out.join('\n'));

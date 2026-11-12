@@ -84,6 +84,7 @@ function Node({ node, x, y, geo, dim, state, compact, onEdit }: {
   if (compact) {
     return (
       <div
+        data-node-id={node.id}
         onClick={onEdit ? () => onEdit(node.id) : undefined}
         style={{
           position: 'absolute', left: x, top: y, width: geo.w, height: geo.h, boxSizing: 'border-box', overflow: 'hidden',
@@ -110,6 +111,8 @@ function Node({ node, x, y, geo, dim, state, compact, onEdit }: {
    */
   return (
     <div
+      /* Protron's cursor points at the step it has just added (services/protron/cursor.ts). */
+      data-node-id={node.id}
       onClick={onEdit ? () => onEdit(node.id) : undefined}
       className={`ap-step-card ap-glass${state?.waiting ? ' ap-working' : ''}`}
       style={{

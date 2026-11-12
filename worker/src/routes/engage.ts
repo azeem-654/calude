@@ -261,7 +261,8 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
          ticket, and saying so beats a chat box that answers nothing. */
       agent: agent ? { name: agent.name, greeting: agent.greeting, avatarUrl: agent.avatarUrl }
         /* The owner's help button answers with the built-in assistant (houseKnowledge.ts) when no agent is attached. */
-        : isHouse ? { name: HOUSE_AGENT.name, greeting: '', avatarUrl: '' } : null,
+        /* …which is Protron, with its own face (public/protron.svg) and greeting. */
+        : isHouse ? { name: HOUSE_AGENT.name, greeting: HOUSE_AGENT.greeting, avatarUrl: `${new URL(req.url).origin}/protron.svg` } : null,
     }));
   }
 

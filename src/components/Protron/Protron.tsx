@@ -3,7 +3,7 @@
  *
  * ── What this file is ──
  *
- * The launcher (the helmet), its offers of help, and the door to the panel.
+ * The launcher (the robot face), its offers of help, and the door to the panel.
  * It is mounted once in the signed-in shell (App.tsx), so it survives moving
  * between screens and the conversation goes with it. The panel itself —
  * chat, actions, voice — is a separate download (`ProtronPanel.tsx`) fetched
@@ -23,7 +23,7 @@
  *
  * The owner's brief: when somebody stops — nothing touched for ten seconds
  * (the default; 30 s, 2 min or off in the panel's menu) — Protron opens
- * beside its helmet and starts the conversation: it reads the screen's shape
+ * beside the face and starts the conversation: it reads the screen's shape
  * (screen.ts — headings, empty boxes, error messages; never what was typed),
  * says what the person seems to be doing and what may be in the way, and
  * offers ways to help (brain.ts `thinkAhead`). It also speaks up when
@@ -46,6 +46,7 @@ import { loadPrefs, savePrefs, type Prefs } from '../../services/protron/memory'
 import type { Who } from '../../services/protron/actions';
 import { PROTRON_OPEN } from '../../services/protron/open';
 import ProtronAvatar, { type AvatarState } from './ProtronAvatar';
+import ProtronCursor from './ProtronCursor';
 import type { AutoWhy, Seed } from './ProtronPanel';
 import './protron.css';
 
@@ -262,6 +263,7 @@ export default function Protron() {
           />
         </Suspense>
       )}
+      {everOpened && <ProtronCursor />}
     </>
   );
 }

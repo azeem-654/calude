@@ -20,11 +20,25 @@
  * that is not in somebody's browser. Only the action's name, its outcome and
  * a sentence; never the conversation.
  *
- * ── speak: the commander voice ──
+ * ── site: what answers at the customer's own email domain ──
+ *
+ * john@abcmotors.com signs up; Protron would like to say "the site at
+ * abcmotors.com is ABC Motors — is that you?" rather than ask for the
+ * company name. The domain is the *session's* email domain — never one from
+ * the request, so this cannot be pointed at an arbitrary host — fetched
+ * through readSite's fence (every redirect checked, body capped), with a
+ * timeout. A consumer mail domain is not looked up at all. The answer is a
+ * title and a description, or "nothing answered" — reported as that, never
+ * as "you have no website", and the browser asks the customer before treating
+ * it as theirs (services/protron/identity.ts).
+ *
+ * ── speak: Protron's voice ──
  *
  * Text in, 24 kHz 16-bit PCM out, from a Gemini speech model chosen from the
- * key's own model list (nothing names a model id). The browser runs it
- * through its robot filter (services/protron/voice.ts). Each reply spoken is
+ * key's own model list (nothing names a model id). Two styles (`VOICES`):
+ * warm, the default — a friendly, clear voice the browser plays as it is —
+ * and commander, which the browser runs through its robot filter
+ * (services/protron/voice.ts). Each reply spoken is
  * one AI request against the plan and the owner's caps, like any other; an
  * OpenRouter-only install has no speech model, says so, and the browser falls
  * back to its own voice.
@@ -38,20 +52,33 @@ import { withFailover } from '../lib/aiPool';
 import { isOpenRouterKey } from '../lib/openrouter';
 import { findPhi, phiRefusal } from '../lib/phiGuard';
 import { check as allowance, record, refusalBody } from '../lib/allowanceStore';
+import { fetchPage, readable } from '../lib/readSite';
+import { isFreeMail } from '../lib/emailVerify';
 
 const MAX_TURNS_BYTES = 200_000;
 const MAX_PREFS_BYTES = 4_000;
 const MAX_SPEAK = 900;
 const STATUSES = new Set(['done', 'failed', 'cancelled', 'refused']);
 /** Prefs that follow a person. The launcher's spot belongs to the screen it was dragged on. */
-const PREF_KEYS = new Set(['proactive', 'speak', 'voice', 'idleSeconds', 'business']);
+const PREF_KEYS = new Set(['proactive', 'speak', 'voice', 'idleSeconds', 'business', 'siteCheck', 'v']);
 
 /**
- * The voice the model is asked for. A prebuilt voice's name, not a model id;
- * the direction is a style, not anybody's voice.
+ * The voices the model is asked for: a prebuilt voice's name (not a model id)
+ * and a direction (a style, not anybody's voice). Warm is the default since
+ * the owner's brief of 2026-11-12 — friendly, confident, conversational, at a
+ * natural pace; "Achird" is the voice Google lists as friendly. Commander is
+ * the earlier deep robot, still offered in the menu.
  */
-const VOICE_NAME = 'Algenib';
-const VOICE_DIRECTION = 'Read this aloud as a calm, noble robot commander: a deep, slow, resonant voice, warm and certain, every word clear. Read only the text after the colon:';
+export const VOICES: Record<'warm' | 'commander', { name: string; direction: string }> = {
+  warm: {
+    name: 'Achird',
+    direction: 'Say this the way a friendly, confident business advisor talks to a client they like: warm, clear and relaxed, at a natural conversational pace — not slow, not salesy, not robotic. Read only the text after the colon:',
+  },
+  commander: {
+    name: 'Algenib',
+    direction: 'Read this aloud as a calm, noble robot commander: a deep, slow, resonant voice, warm and certain, every word clear. Read only the text after the colon:',
+  },
+};
 
 /** A speech model from the key's own list: Flash before Pro, the newest name first. */
 export function pickSpeechModel(names: string[]): string | null {
@@ -128,9 +155,26 @@ export async function handleProtron(req: Request, env: Env): Promise<Response> {
     return ok();
   }
 
+  if (action === 'site') {
+    const domain = user.email.slice(user.email.lastIndexOf('@') + 1).toLowerCase();
+    if (!domain || isFreeMail(domain)) return ok({ domain, status: 'personal' });
+    const page = await Promise.race([
+      fetchPage(`https://${domain}/`),
+      new Promise<null>(r => setTimeout(() => r(null), 8000)),
+    ]);
+    if (!page || !page.ok) return ok({ domain, status: 'none', reason: page ? page.error.slice(0, 160) : 'It took too long to answer.' });
+    const { title, text } = readable(page.html);
+    const meta = /<meta[^>]+(?:name|property)=["'](?:og:)?description["'][^>]*content=["']([^"']{10,400})["']/i.exec(page.html)?.[1]
+      ?? /<meta[^>]+content=["']([^"']{10,400})["'][^>]*(?:name|property)=["'](?:og:)?description["']/i.exec(page.html)?.[1] ?? '';
+    const decode = (x: string) => x.replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
+    const about = decode(meta) || text.split(/(?<=[.!?])\s/).find(x => x.split(' ').length >= 6)?.slice(0, 200) || '';
+    return ok({ domain, status: 'found', title: decode(title).slice(0, 120), about: about.slice(0, 220) });
+  }
+
   if (action === 'speak') {
     const text = String(d.text ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_SPEAK);
     if (!text) return fail('There was nothing to say.');
+    const voice = VOICES[d.style === 'commander' ? 'commander' : 'warm'];
     const phi = phiRefusal(findPhi(text), 'the voice');
     if (phi) return fail(phi, 200, { code: 'phi' });
     const capped = await capRefusal(env, accountId);
@@ -161,8 +205,8 @@ export async function handleProtron(req: Request, env: Env): Promise<Response> {
           res = await fetch(`${aiBase()}/v1beta/models/${m}:generateContent?key=${encodeURIComponent(k)}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(30_000),
             body: JSON.stringify({
-              contents: [{ role: 'user', parts: [{ text: `${VOICE_DIRECTION} ${text}` }] }],
-              generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: VOICE_NAME } } } },
+              contents: [{ role: 'user', parts: [{ text: `${voice.direction} ${text}` }] }],
+              generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice.name } } } },
             }),
           });
         } catch (e) {
