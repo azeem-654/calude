@@ -285,8 +285,8 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 
 .dc-nav.stuck {
   background: rgba(11, 13, 11, 0.72);
-  backdrop-filter: blur(16px) saturate(1.4);
   -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  backdrop-filter: blur(16px) saturate(1.4);
   border-bottom-color: var(--edge);
 }
 
@@ -690,8 +690,8 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 /* Where the old design had a white card, the sky shows through instead. */
 .dc-paper {
   background: var(--glass);
-  backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   border: 1px solid var(--edge);
   color: var(--text);
 }
@@ -712,8 +712,8 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
   border-radius: 16px;
   border: 1px solid var(--edge);
   background: var(--glass);
-  backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   min-width: 0;
   transition: transform 0.28s ease, border-color 0.28s ease, background 0.28s ease;
 }
@@ -873,8 +873,8 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
   border-radius: 20px;
   border: 1px solid var(--edge);
   background: var(--glass);
-  backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   transition: transform 0.3s ease, box-shadow 0.3s ease,
               border-color 0.3s ease, background 0.3s ease,
               opacity 0.78s cubic-bezier(0.22, 1, 0.36, 1);
@@ -926,8 +926,8 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
   border-radius: 24px;
   border: 1px solid var(--edge);
   background: var(--glass);
-  backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   transition: transform 0.3s ease, box-shadow 0.3s ease,
               border-color 0.3s ease, opacity 0.78s cubic-bezier(0.22, 1, 0.36, 1);
 }

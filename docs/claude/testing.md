@@ -110,3 +110,14 @@ media query could reach.
 and check that a send that fails is reported as failed and leaves its marker
 unset, so it retries. A pass that only proves the happy path proves the one case
 that was never in doubt.
+
+### Trap: glass blur that only exists in the source
+
+Write `-webkit-backdrop-filter` **before** `backdrop-filter` in a rule. In the
+other order the production CSS minifier treats them as one property and keeps
+only the prefixed line, so Chrome gets no blur at all while the source looks
+right (found 2026-11-12: 14 rules, including the header's "no blur over the
+hero" switch). `npm run dev` does not show it — check the built CSS: every
+rule in `dist/assets/*.css` with `-webkit-backdrop-filter` must also carry
+`backdrop-filter`. And keep a blur off anything that sits over moving
+pictures for long: it repaints every frame (why the dashboard hero stuttered).

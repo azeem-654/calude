@@ -1105,8 +1105,8 @@ main section { min-width: 0; }
   border-radius: 20px;
   border: 1px solid rgba(255, 255, 255, 0.6);
   background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
   box-shadow: 0 14px 36px -18px rgba(16, 24, 40, 0.22);
   cursor: pointer;
   text-align: left;

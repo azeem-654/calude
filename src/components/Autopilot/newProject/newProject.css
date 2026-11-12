@@ -481,13 +481,13 @@
 .np-chat-log { display: flex; flex-direction: column; gap: 14px; max-height: 360px; min-height: 140px; overflow-y: auto; padding: 4px 2px; scroll-behavior: smooth; }
 .np-chat-row { display: flex; gap: 10px; align-items: flex-start; max-width: 92%; }
 .np-chat-orb { width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center; color: #fff; background: radial-gradient(circle at 30% 30%, #f0abfc, #8b5cf6 45%, #2563eb 85%); box-shadow: 0 6px 16px -6px rgba(99, 102, 241, .7), inset 0 1px 2px rgba(255,255,255,.6); }
-.np-chat .np-talk-bot { max-width: 100%; background: rgba(255,255,255,.72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.9); border-radius: 18px; color: #3f3d56; padding: 12px 15px; box-shadow: 0 8px 24px -16px rgba(30, 27, 75, .35); }
+.np-chat .np-talk-bot { max-width: 100%; background: rgba(255,255,255,.72); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.9); border-radius: 18px; color: #3f3d56; padding: 12px 15px; box-shadow: 0 8px 24px -16px rgba(30, 27, 75, .35); }
 .np-chat .np-talk-you { position: relative; max-width: 78%; color: #fff; padding: 11px 16px; border-radius: 22px; background: linear-gradient(110deg, #5b6cf9, #8b5cf6); box-shadow: 0 10px 26px -12px rgba(99, 91, 255, .85); margin-right: 6px; }
 .np-chat .np-talk-you::after { content: ''; position: absolute; right: -5px; bottom: -3px; width: 8px; height: 8px; border-radius: 50%; background: #8b5cf6; }
 .np-chat [data-partial='1'] { opacity: .72; }
 .np-chat-thinking { display: inline-flex; gap: 8px; align-items: center; font-size: 14px; color: #4b4a63; padding-top: 6px; }
 .np-chat-empty { margin: auto; font-size: 14px; color: #6b7280; text-align: center; padding: 24px 0; }
-.np-composer { display: grid; gap: 9px; padding: 10px; border-radius: 18px; background: rgba(248,248,251,.82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.95); box-shadow: 0 18px 40px -26px rgba(30, 27, 75, .45); }
+.np-composer { display: grid; gap: 9px; padding: 10px; border-radius: 18px; background: rgba(248,248,251,.82); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.95); box-shadow: 0 18px 40px -26px rgba(30, 27, 75, .45); }
 .np-chat .np-chip-btn { background: #e7e7ee; border-color: #e1e1ea; color: #4b4a63; border-radius: 8px; font-weight: 600; padding: 6px 10px; }
 .np-chat .np-chip-btn:hover { background: #dcdce8; }
 .np-composer-box { display: grid; gap: 6px; background: #fff; border: 1px solid #ececf2; border-radius: 14px; padding: 10px 10px 8px 12px; }
