@@ -11,7 +11,7 @@ the public site.
 ```
 src/components/Protron/Protron.tsx        launcher + Talk chip, drag, speaking first (idle/trouble/froze/loop), opens the panel
 src/components/Protron/ProtronPanel.tsx   floating chat, live step cards, Undo, Talk mode, sync, audit — own chunk
-src/components/Protron/ProtronAvatar.tsx  the SVG robot (white humanoid bust, PC mark on the chest), its 7 states, the mouth driven by voice loudness
+src/components/Protron/ProtronAvatar.tsx  the owner's robot portrait (public/protron/robot-{160,384}.webp, PC mark on the chest), its 7 states as ring / ear light / voice bars
 src/components/Protron/ProtronCursor.tsx  the pointer overlay (services/protron/cursor.ts says where)
 src/services/protron/identity.ts          pure: personal vs business email domain, known facts, what is missing, the first greeting
 src/services/protron/facts.ts             reads session, workspace, Settings profile, onboarding, prefs → identity.ts
@@ -76,20 +76,21 @@ src/components/Autopilot/newProject/ProtronIntake.tsx   the wizard's first scree
 
 ### The 2026-11-12 brief — what was built, and the rules it added
 
-- **The figure** (replaced the same day from the owner's second reference
-  picture): a gloss-white humanoid **bust** — smooth egg head turned a little
-  aside, a dark audio receptor on its side (the state's light ring), cabled
-  neck, broad chest plate between dark shoulder drums, and the **Protected
-  Central mark** (favicon.svg's tile and shield, drawn in place) on the chest.
-  An original drawing of that kind of robot, not the reference photo, which
-  carries another company's mark. The reference head is blank; Protron's has
-  a dark glass visor with two lit eyes and a slim mouth light, because the
-  states must show. Only the head moves (pivot at the neck). Earlier: a
-  titanium head with brows. The resting
-  mouth is one lit smile; speaking, seven segments follow `level.ts`
-  (measured from the audio playing, or the browser voice's word boundaries) —
-  never a timer. Below 36 px (`lite`) the glow filter and fine seams go.
-  `public/protron.svg` is rendered from the component; regenerate, don't edit.
+- **The figure is the owner's own reference picture** (third pass,
+  2026-11-12: "exactly the same" robot, our logo where the example brand's
+  was). Upscaled 2×, the example mark inpainted out of the chest plate (OpenCV
+  Telea), the tile-and-shield mark and "PROTECTED CENTRAL" laid in its place,
+  cropped square to head and chest. The owner said the picture is an example
+  found through a web search, not another company's robot; if its source is
+  ever known to be someone's product photo, replace it. A photo cannot blink
+  or talk, so the states are a **light ring** round the portrait (pulse,
+  breathe, run, green, amber; its glow follows the voice when speaking), the
+  robot's **ear receptor lit** in the state's colour, and seven **voice bars**
+  under the chest mark that open with the real voice level — never a timer.
+  `public/protron.svg` embeds a 160 px JPEG of it (it is used as an `<img>`).
+  Earlier drawn versions: a titanium head, then an SVG bust. The voice level
+  comes from `level.ts` (measured from the audio playing, or the browser
+  voice's word boundaries). Below 36 px (`lite`) the glow filter goes.
 - **The voice**: `warm` (default) — prebuilt voice `Achird` with a friendly,
   conversational direction, played without a filter. `normalisePrefs` moved
   every stored `commander` with no `v: 2` to warm once (it was the default,

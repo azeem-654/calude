@@ -550,11 +550,21 @@ export default function Dashboard() {
     const el = ground.current;
     if (!el) return;
     const header = document.querySelector('.app-header') as HTMLElement | null;
-    const apply = () => el.style.setProperty('--dash-bleed', `${header?.offsetHeight || 68}px`);
+    /* Everything above the dashboard — the menu and, when shown, the trial bar —
+       so the hero's ground starts at the very top of the page and the menu can
+       share it. Where the dashboard would sit without the pull-up is its top
+       now plus the current pull-up. */
+    const apply = () => {
+      const now = parseFloat(getComputedStyle(el).getPropertyValue('--dash-bleed')) || 0;
+      const natural = el.getBoundingClientRect().top + window.scrollY + now;
+      el.style.setProperty('--dash-bleed', `${Math.max(header?.offsetHeight || 68, Math.round(natural))}px`);
+    };
     apply();
     if (header && typeof ResizeObserver !== 'undefined') {
       const ro = new ResizeObserver(apply);
       ro.observe(header);
+      const bar = document.querySelector('.trial-bar');
+      if (bar) ro.observe(bar);
       return () => ro.disconnect();
     }
     window.addEventListener('resize', apply);

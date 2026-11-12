@@ -11,10 +11,9 @@
   background:
     radial-gradient(90% 120% at 100% 0%, rgba(54, 217, 255, 0.14), transparent 55%),
     radial-gradient(70% 90% at 0% 100%, rgba(200, 242, 77, 0.1), transparent 60%),
-    linear-gradient(160deg, rgba(10, 16, 22, 0.94), rgba(14, 24, 33, 0.94));
+    linear-gradient(160deg, rgba(10, 16, 22, 0.96), rgba(14, 24, 33, 0.96));
   border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow: 0 30px 70px -30px rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   outline: none;
 }
 .apf:focus-visible { box-shadow: 0 0 0 3px var(--apf-cyan), 0 30px 70px -30px rgba(0, 0, 0, 0.75); }

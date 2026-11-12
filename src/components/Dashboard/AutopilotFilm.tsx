@@ -441,13 +441,16 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
     if (!playing) return;
     let raf = 0;
     let last = performance.now();
+    let drawn = 0;
     const tick = (now: number) => {
       const dt = Math.min(100, now - last);
       last = now;
       if (visible.current && !document.hidden) {
         tRef.current += dt;
         if (tRef.current >= total) { tRef.current = total - 1; setT(tRef.current); setPlaying(false); return; }
-        setT(tRef.current);
+        /* ~30 renders a second: the scenes are timed in tenths, and a React
+           render of the whole film every frame was frames the page needed. */
+        if (now - drawn >= 32) { drawn = now; setT(tRef.current); }
       }
       raf = requestAnimationFrame(tick);
     };

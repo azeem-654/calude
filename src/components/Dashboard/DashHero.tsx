@@ -5,18 +5,29 @@
  * and people should start everything from it, so the dashboard opens on one
  * prompt box — greeting, a line, the box, a few starting points.
  *
- * ── The ground: real footage, not a drawing ──
+ * ── The ground: a calm office you can lean into ──
  *
- * The first version flew over procedural WebGL hills; the owner found it
- * cartoonish and asked for real, high-quality nature — greenery, then
- * mountains, then the sea. It is now aerial footage (green hills → lush
- * mountains → alpine peaks → a rocky coast → low over the sea), one 37 s loop
- * whose last crossfade returns to its first frame, from five Mixkit clips
- * under their free commercial licence (docs/MEDIA-CREDITS.md). Two encodes:
- * 720p, and 480p for narrow screens; a data-saver connection or reduced
- * motion gets the still poster. It pauses off screen and in a hidden tab. As
- * the page scrolls on, the ground fades (opacity written straight onto the
- * node in a frame callback, so the dashboard does not re-render per tick).
+ * First procedural WebGL hills (cartoonish, said the owner), then aerial
+ * nature footage — which stuttered: a 720p video decoding under blurred glass
+ * repaints the whole hero every frame. The owner then asked for something
+ * light that flows, follows the mouse, and feels like a calm, modern office.
+ * So it is one photograph (a sunlit meeting lounge, CC0 — docs/MEDIA-CREDITS.md;
+ * 49 KB at 1280 wide, 200 KB at 1920) with depth added on the GPU:
+ *
+ *   drift   a very slow push-in and back (CSS, 38 s) so it is never static
+ *   mouse   the photo shifts against the pointer (eased in a frame callback
+ *           that stops as soon as it has caught up) and a soft light follows
+ *           the pointer; touch screens keep the drift alone
+ *   light   a warm patch of sunlight that moves across slowly, and a few
+ *           motes of dust rising in it
+ *
+ * Everything moves by `transform` or `opacity` only, nothing is blurred live,
+ * and all of it pauses once the hero has scrolled away; reduced motion gets
+ * the still photograph. The ground reaches up behind the top menu
+ * (Dashboard.tsx measures how far), and while it is in view the menu turns
+ * see-through (`html[data-hero-top]`, dashboard.css) so both share it. As the
+ * page scrolls on, the ground fades (opacity written straight onto the node in
+ * a frame callback, so the dashboard does not re-render per tick).
  *
  * ── Three ways in, said loudly ──
  *
@@ -41,7 +52,7 @@ import AutopilotFilm from './AutopilotFilm';
 import { useVoiceInput, defaultLocale } from '../Autopilot/voice/useVoiceInput';
 import { motionReduced } from '../../services/motion';
 
-const FOOTAGE = '/media/autopilot/nature';
+const OFFICE = '/media/office/lounge';
 
 const STARTERS = [
   'Find new customers for me every day',
@@ -59,35 +70,55 @@ function scrollerOf(el: HTMLElement | null): HTMLElement | Window {
   return window;
 }
 
-/** Which encode: the small one for a phone-width screen, none at all on data saver. */
-function footageBase(): string | null {
-  try {
-    const c = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
-    if (c?.saveData) return null;
-  } catch { /* no connection info: assume it is fine */ }
-  return `${FOOTAGE}-${window.innerWidth <= 760 ? '480' : '720'}`;
-}
-
-function Footage({ active, still }: { active: boolean; still: boolean }) {
-  const ref = useRef<HTMLVideoElement>(null);
-  const [src] = useState(() => (still ? null : footageBase()));
+/** The office, with depth: drift, the pointer, sunlight and dust. */
+function OfficeGround({ active, still }: { active: boolean; still: boolean }) {
+  const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const v = ref.current;
-    if (!v) return;
-    const sync = () => { if (active && !document.hidden) void v.play().catch(() => { /* autoplay refused: the poster stays */ }); else v.pause(); };
-    sync();
-    document.addEventListener('visibilitychange', sync);
-    return () => document.removeEventListener('visibilitychange', sync);
-  }, [active]);
-  if (!src) return <img className="dash-hero-video" src={`${FOOTAGE}-poster.jpg`} alt="" />;
+    const el = root.current;
+    if (!el || still || !active) return;
+    /* A finger has no hover to follow; touch screens keep the slow drift. */
+    if (!window.matchMedia?.('(hover: hover) and (pointer: fine)').matches) return;
+    const at = { x: 0, y: 0, gx: 0, gy: 0 };
+    const to = { x: 0, y: 0, gx: 0, gy: 0 };
+    let raf = 0;
+    const step = () => {
+      at.x += (to.x - at.x) * 0.06; at.y += (to.y - at.y) * 0.06;
+      at.gx += (to.gx - at.gx) * 0.12; at.gy += (to.gy - at.gy) * 0.12;
+      el.style.setProperty('--px', at.x.toFixed(4));
+      el.style.setProperty('--py', at.y.toFixed(4));
+      el.style.setProperty('--gx', `${at.gx.toFixed(1)}px`);
+      el.style.setProperty('--gy', `${at.gy.toFixed(1)}px`);
+      /* Stops as soon as it has caught up: no frame is drawn for a still mouse. */
+      const left = Math.abs(to.x - at.x) + Math.abs(to.y - at.y) + (Math.abs(to.gx - at.gx) + Math.abs(to.gy - at.gy)) / 400;
+      raf = left > 0.0008 ? requestAnimationFrame(step) : 0;
+    };
+    const move = (e: PointerEvent) => {
+      const r = el.getBoundingClientRect();
+      if (e.clientY > r.bottom) return;
+      to.x = (e.clientX / window.innerWidth) * 2 - 1;
+      to.y = ((e.clientY - r.top) / Math.max(1, r.height)) * 2 - 1;
+      to.gx = e.clientX - r.left;
+      to.gy = e.clientY - r.top;
+      if (el.dataset.pointer !== '1') { el.dataset.pointer = '1'; at.gx = to.gx; at.gy = to.gy; }
+      if (!raf) raf = requestAnimationFrame(step);
+    };
+    window.addEventListener('pointermove', move, { passive: true });
+    return () => { window.removeEventListener('pointermove', move); if (raf) cancelAnimationFrame(raf); };
+  }, [active, still]);
   return (
-    /* H.264 first (every Safari and Chrome); VP9 for a browser built without
-       H.264, such as plain Chromium. */
-    <video ref={ref} className="dash-hero-video" poster={`${FOOTAGE}-poster.jpg`}
-      muted loop playsInline autoPlay preload="auto" disablePictureInPicture aria-hidden="true" tabIndex={-1}>
-      <source src={`${src}.mp4`} type="video/mp4" />
-      <source src={`${src}.webm`} type="video/webm" />
-    </video>
+    <div ref={root} className="dash-office" data-still={still ? '1' : '0'} data-active={active ? '1' : '0'}>
+      <div className="dash-office-drift">
+        <img className="dash-office-img" src={`${OFFICE}-1920.webp`} srcSet={`${OFFICE}-1280.webp 1280w, ${OFFICE}-1920.webp 1920w`}
+          sizes="100vw" alt="" decoding="async" fetchPriority="high" />
+      </div>
+      <span className="dash-office-sun" />
+      <span className="dash-office-glow" />
+      {!still && (
+        <span className="dash-office-motes">
+          {Array.from({ length: 9 }, (_, i) => <i key={i} />)}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -147,6 +178,9 @@ export default function DashHero({ greeting, firstName }: { greeting: string; fi
       const passed = Math.max(0, -rect.top + (scroller === window ? 0 : (scroller as HTMLElement).getBoundingClientRect().top));
       const o = Math.max(0, Math.min(1, 1 - passed / span));
       g.style.opacity = o.toFixed(3);
+      /* The top menu is see-through while it sits over the office. */
+      if (o > 0.35) document.documentElement.dataset.heroTop = '1';
+      else delete document.documentElement.dataset.heroTop;
       const now = o > 0.01;
       if (now !== shown) { shown = now; setVisible(now); }
     };
@@ -158,6 +192,7 @@ export default function DashHero({ greeting, firstName }: { greeting: string; fi
       scroller.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onScroll);
       if (raf) cancelAnimationFrame(raf);
+      delete document.documentElement.dataset.heroTop;
     };
   }, []);
 
@@ -176,7 +211,7 @@ export default function DashHero({ greeting, firstName }: { greeting: string; fi
   return (
     <section ref={hero} className="dash-hero" aria-label="Start with AI Autopilot" data-noinvert="">
       <div ref={ground} className="dash-hero-ground" aria-hidden="true">
-        <Footage active={visible} still={still} />
+        <OfficeGround active={visible} still={still} />
         <span className="dash-hero-veil" />
       </div>
       <div className="dash-hero-inner">

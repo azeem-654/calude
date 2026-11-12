@@ -54,18 +54,23 @@ checks four widths as the owner, and that 1440 and up is one line.
 starting points, then the explainer film. Sending hands the words to the
 wizard like Protron does (`pc_protron_handoff`).
 
-- **The ground is real footage** (the owner found the procedural WebGL hills
-  cartoonish): a 37 s seamless loop — green hills → lush mountains → alpine
-  peaks → rocky coast → low over the sea — cut from five Mixkit clips under
-  their *free* licence (`docs/MEDIA-CREDITS.md`: which clips, how it was
-  built; two candidates under Mixkit's Restricted licence were left out).
-  `public/media/autopilot/nature-{720,480}.{mp4,webm}` + a poster: 480 at
-  ≤ 760 px, H.264 first, VP9 for browsers without H.264 (Playwright's
-  Chromium is one — that is why headless runs pick the .webm). Data saver or
-  reduced motion = the poster only; paused off screen and in a hidden tab.
-  The Worker cuts a full answer to a `Range` request to a 206 for `/media/*`
-  (`rangeOf` in `worker/src/index.ts`) — Safari will not play video without it.
-- The whole hero carries `data-noinvert`: white words on footage and the dark
+- **The ground is a calm office photo with depth** (owner, 2026-11-12, third
+  pass: procedural hills read as cartoonish; aerial footage stuttered —
+  video decoding under live backdrop blur repaints the hero every frame). One
+  CC0 photo, "Casual Meeting Room" (`docs/MEDIA-CREDITS.md`),
+  `public/media/office/lounge-{1280,1920}.webp` (49 / 200 KB), filling the
+  first screen (not the whole hero, which with the film is nearly square and
+  cropped it to bare wall) and fading into a dark floor. CSS adds a 38 s
+  drift, a moving patch of sun and rising dust; on a mouse device the photo
+  shifts against the pointer and a soft light follows it (eased in a frame
+  callback that stops once caught up). Only transform/opacity move, nothing
+  blurs live, all pauses once scrolled away; reduced motion = still photo.
+- **The menu shares it**: Dashboard.tsx sets `--dash-bleed` to everything
+  above the dashboard (menu + trial bar, measured), so the hero starts at the
+  top of the page; while the hero is ≥ 35 % visible DashHero sets
+  `html[data-hero-top]` and the menu turns see-through and the trial bar
+  white glass (dashboard.css); scrolled on, both are solid again.
+- The whole hero carries `data-noinvert`: white words on the photo and the dark
   film look the same in both themes; only `--hero-floor`, the colour it fades
   into, follows the theme.
 - **Three ways in, loudly**: a red **Record** button in the box (the shared

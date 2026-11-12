@@ -2,36 +2,36 @@
    Every animation sits inside `prefers-reduced-motion: no-preference`. */
 
 /* ── The face ── */
-.pt-av { display: block; overflow: visible; color: #36d9ff; --pt-tilt: 0deg; --pt-x: 0px; --pt-y: 0px; --pt-look: 0px; --pt-lvl: 0; }
-.pt-av .pt-head { transform-box: view-box; transform-origin: 48.5% 47%; transform: translate(var(--pt-x), var(--pt-y)) rotate(var(--pt-tilt)); }
-.pt-av .pt-eyes { transform: translateX(var(--pt-look)); }
-.pt-av .pt-eye { transform-box: fill-box; transform-origin: 50% 50%; }
-.pt-av[data-blink="1"] .pt-eye { transform: scaleY(0.12); }
-/* The mouth: silent, a lit smile; speaking, each segment opens with the voice's real loudness. */
-.pt-av .pt-bar { transform-box: fill-box; transform-origin: 50% 50%; transform: scaleY(calc(0.3 + var(--pt-lvl) * var(--k, 1))); opacity: calc(var(--pt-lvl) * 4); }
-.pt-av .pt-smile { opacity: calc(1 - var(--pt-lvl) * 4); }
-.pt-av .pt-ear { opacity: 0.75; }
-.pt-av .pt-core-light { opacity: 0.85; }
-.pt-av .pt-brow { transform-box: fill-box; transform-origin: 50% 100%; }
-.pt-av[data-state="listening"] { color: #6ff3ff; --pt-tilt: 2deg !important; }
-.pt-av[data-state="listening"] .pt-ear { opacity: 1; }
-.pt-av[data-state="thinking"] { color: #8eaaff; --pt-tilt: -3deg !important; --pt-look: -1px !important; }
-.pt-av[data-state="thinking"] .pt-eyes { transform: translate(-0.8px, -0.9px); }
+.pt-av { display: block; overflow: visible; color: #36d9ff; --pt-tilt: 0deg; --pt-x: 0px; --pt-y: 0px; --pt-lvl: 0; }
+.pt-av .pt-photo { transform-box: view-box; transform-origin: 50% 70%; transform: translate(var(--pt-x), var(--pt-y)) rotate(var(--pt-tilt)) scale(1.04); }
+/* The ring: the state at a glance; speaking, its glow follows the voice's real loudness. */
+.pt-av .pt-ring { stroke-width: calc(2.2px + var(--pt-lvl) * 6px); opacity: 0.55; }
+.pt-av[data-lite="1"] .pt-ring { stroke-width: 3px; }
+.pt-av .pt-ear { opacity: 0.85; }
+.pt-av .pt-core-light { opacity: 0.9; }
+/* The voice bars: hidden while silent, each opening with the voice. */
+.pt-av .pt-mouth { opacity: min(1, calc(var(--pt-lvl) * 6)); }
+.pt-av .pt-mouth-bg { opacity: .7; }
+.pt-av .pt-bar { transform-box: fill-box; transform-origin: 50% 50%; transform: scaleY(calc(0.35 + var(--pt-lvl) * var(--k, 1))); }
+.pt-av[data-state="listening"] { color: #6ff3ff; }
+.pt-av[data-state="listening"] .pt-ring, .pt-av[data-state="speaking"] .pt-ring, .pt-av[data-state="working"] .pt-ring { opacity: 1; }
+.pt-av[data-state="thinking"] { color: #8eaaff; }
+.pt-av[data-state="thinking"] .pt-ring { opacity: .9; }
+.pt-av[data-state="working"] .pt-ring { stroke-dasharray: 60 18; }
 .pt-av[data-state="done"] { color: #3ddc97; }
+.pt-av[data-state="done"] .pt-ring { opacity: 1; }
 .pt-av[data-state="error"] { color: #ffb020; }
-.pt-av[data-state="error"] .pt-brow { transform: translateY(-1px); }
+.pt-av[data-state="error"] .pt-ring { opacity: 1; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .pt-av .pt-head { transition: transform 1.3s cubic-bezier(.45, .05, .25, 1); }
-  .pt-av .pt-eyes { transition: transform 0.9s cubic-bezier(.45, .05, .25, 1); }
-  .pt-av .pt-eye { transition: transform 90ms ease-in; }
-  .pt-av .pt-bar, .pt-av .pt-smile { transition: transform 70ms linear, opacity 90ms linear; }
-  .pt-av .pt-brow { transition: transform 0.4s ease; }
+  .pt-av .pt-photo { transition: transform 1.6s cubic-bezier(.45, .05, .25, 1); }
+  .pt-av .pt-bar, .pt-av .pt-mouth, .pt-av .pt-ring { transition: transform 70ms linear, opacity 120ms linear, stroke-width 70ms linear; }
   .pt-av { transition: color 0.5s ease; }
-  .pt-av[data-state="listening"] .pt-ear { animation: pt-pulse 1.1s ease-in-out infinite; }
-  .pt-av[data-state="thinking"] .pt-core-light { animation: pt-pulse 1.8s ease-in-out infinite; }
+  .pt-av[data-state="listening"] .pt-ring, .pt-av[data-state="listening"] .pt-ear { animation: pt-pulse 1.1s ease-in-out infinite; }
+  .pt-av[data-state="thinking"] .pt-ring, .pt-av[data-state="thinking"] .pt-core-light { animation: pt-pulse 1.8s ease-in-out infinite; }
+  .pt-av[data-state="working"] .pt-ring { transform-box: view-box; transform-origin: 50% 50%; animation: pt-spin 1.4s linear infinite; }
   .pt-av[data-state="working"] .pt-ear, .pt-av[data-state="working"] .pt-core-light { animation: pt-pulse 0.6s ease-in-out infinite; }
-  .pt-av[data-state="done"] .pt-eyes { animation: pt-pop 0.7s ease-out 1; }
+  .pt-av[data-state="done"] .pt-ring { animation: pt-pop 0.7s ease-out 1; }
 }
 @keyframes pt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 @keyframes pt-pop { 0% { opacity: 0.4; } 40% { opacity: 1; } 100% { opacity: 1; } }
