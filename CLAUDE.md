@@ -166,8 +166,12 @@ Logos and partner names say only what is true (`shared/WorksWith.tsx`; rules in
 A code knowledge graph lives in `graphify-out/` (not committed). The
 SessionStart hook in `.claude/settings.json` runs
 `.claude/scripts/ensure-graphify.sh`, which installs graphify only if missing
-(cloud sessions only) and builds or incrementally updates the graph in the
-background — AST only, no AI calls. Until it exists, search as usual.
+(cloud sessions only, with the `[sql,watch]` extras so the D1 migrations are
+in it), builds or incrementally updates the graph in the background, then
+leaves `graphify watch` running so edits reach the graph ~40 s after a save —
+AST only, no AI calls. It also installs the `/graphify` command for the owner
+to type; it is marked not model-invocable (its skill file is ~12k tokens).
+Until the graph exists, search as usual.
 
 - When `graphify-out/graph.json` exists, run `graphify query "<question>"`
   before your first grep, search or source-file read for a codebase question,
@@ -176,4 +180,6 @@ background — AST only, no AI calls. Until it exists, search as usual.
   for one concept; add `--budget 800` to keep answers small. Read raw files
   only for lines the graph or an earlier read located.
 - Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review.
-- After modifying code, `graphify update .` keeps it current (no API cost).
+- The watcher keeps it current in cloud sessions; elsewhere, or if
+  `graphify-out/.watch.pid` is not alive, run `graphify update .` after
+  modifying code (no API cost).
