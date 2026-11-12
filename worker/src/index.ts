@@ -293,6 +293,26 @@ const ROUTES: Record<string, Handler> = {
   '/api/install.php': async () => handleInstall(),
 };
 
+/** One `bytes=a-b` range of a full 200 answer, as a 206 (416 when it is past the end). */
+async function rangeOf(req: Request, res: Response): Promise<Response> {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.get('Range') ?? '');
+  if (!m || res.status !== 200 || (!m[1] && !m[2])) return res;
+  const body = await res.arrayBuffer();
+  const size = body.byteLength;
+  const suffix = !m[1]; // `bytes=-500`: the last 500 bytes
+  const start = suffix ? Math.max(0, size - Number(m[2])) : Number(m[1]);
+  const end = !suffix && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+  const headers = new Headers(res.headers);
+  headers.set('Accept-Ranges', 'bytes');
+  if (start >= size || start > end) {
+    headers.set('Content-Range', `bytes */${size}`);
+    return new Response(null, { status: 416, headers });
+  }
+  headers.set('Content-Range', `bytes ${start}-${end}/${size}`);
+  headers.set('Content-Length', String(end - start + 1));
+  return new Response(body.slice(start, end + 1), { status: 206, headers });
+}
+
 async function serve(req: Request, env: Env, ctx: ExecutionContext, url: URL): Promise<Response> {
   /*
    * A client report's link preview.
@@ -376,6 +396,15 @@ async function serve(req: Request, env: Env, ctx: ExecutionContext, url: URL): P
       if ((res.headers.get('content-type') ?? '').includes('text/html')) return rewritePageHead(res, head, url.pathname, !known);
       return res;
     }
+  }
+
+  /* The dashboard hero's footage (public/media/). Safari will not play a
+     video whose server answers a Range request with the whole file, and the
+     asset layer is not guaranteed to answer with 206 itself (local dev does
+     not) — so a full answer to a ranged request is cut to the range here.
+     An answer that is already partial passes through untouched. */
+  if (url.pathname.startsWith('/media/') && req.method === 'GET') {
+    return rangeOf(req, await env.ASSETS.fetch(req));
   }
 
   if (!url.pathname.startsWith('/api/')) {

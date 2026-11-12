@@ -50,15 +50,40 @@ checks four widths as the owner, and that 1440 and up is one line.
 ## The dashboard
 
 **The hero comes first** (owner, 2026-11-12): `DashHero.tsx` — the greeting,
-"What should AI Autopilot do for your business today?", one prompt box,
-four starting points — over `HillsCanvas.tsx`, an original WebGL flight over
-rolling green hills (procedural, not the reference footage; drawn at ≤ 0.75
-resolution, stops off screen / hidden / faded; reduced motion = one still
-frame; no WebGL = a painted fallback). The ground's opacity follows the
-scroll and reaches 0 as the next section comes up. Sending hands the words to
-the wizard like Protron does (`pc_protron_handoff`). Headless screenshots
-through the software GPU can show a white strip across the canvas; its real
-pixels have none (read back with `readPixels`) — do not chase it.
+"What should AI Autopilot do for your business today?", one prompt box, four
+starting points, then the explainer film. Sending hands the words to the
+wizard like Protron does (`pc_protron_handoff`).
+
+- **The ground is real footage** (the owner found the procedural WebGL hills
+  cartoonish): a 37 s seamless loop — green hills → lush mountains → alpine
+  peaks → rocky coast → low over the sea — cut from five Mixkit clips under
+  their *free* licence (`docs/MEDIA-CREDITS.md`: which clips, how it was
+  built; two candidates under Mixkit's Restricted licence were left out).
+  `public/media/autopilot/nature-{720,480}.{mp4,webm}` + a poster: 480 at
+  ≤ 760 px, H.264 first, VP9 for browsers without H.264 (Playwright's
+  Chromium is one — that is why headless runs pick the .webm). Data saver or
+  reduced motion = the poster only; paused off screen and in a hidden tab.
+  The Worker cuts a full answer to a `Range` request to a 206 for `/media/*`
+  (`rangeOf` in `worker/src/index.ts`) — Safari will not play video without it.
+- The whole hero carries `data-noinvert`: white words on footage and the dark
+  film look the same in both themes; only `--hero-floor`, the colour it fades
+  into, follows the theme.
+- **Three ways in, loudly**: a red **Record** button in the box (the shared
+  transcriber, `voice/useVoiceInput.ts`; the words land in the box to be
+  checked, nothing is sent) and a lit **Talk live — one-to-one with Protron**
+  (opens the wizard, where the real-time conversation lives).
+- **`AutopilotFilm.tsx`** ("See AI Autopilot work"), the owner's ask for a
+  video instead of feature buttons: drawn by the page, not an MP4 (real
+  labels, crisp, free, captioned), 3 chapters — what it does (capabilities,
+  the usual way vs Autopilot, a live talk building the workflow as it goes,
+  type / record / talk), six baby steps of setting it up by talking, and 14
+  US example businesses with notifications ending in a payment — then a card
+  with the real Talk live / Record / Type buttons. Play/pause, prev/next,
+  chapter scrubber, clock, optional narration (browser voice, never AI
+  speech). Plays itself only on screen and without reduced motion. **Every
+  result scene says "Example scenario — an illustration, not a customer's
+  results"**; amounts are typical job prices, never totals or percentages.
+  It replaced the panel's capability strip (`DoesStrip`, removed).
 
 Under it `Dashboard/Dashboard.tsx` has **one slim bar** (`DayBar` in
 `DayBoard.tsx`, the owner's call — it replaced a tall welcome band; styled

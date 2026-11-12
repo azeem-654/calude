@@ -3,7 +3,7 @@
 
 /* ── The face ── */
 .pt-av { display: block; overflow: visible; color: #36d9ff; --pt-tilt: 0deg; --pt-x: 0px; --pt-y: 0px; --pt-look: 0px; --pt-lvl: 0; }
-.pt-av .pt-head { transform-box: view-box; transform-origin: 50% 70%; transform: translate(var(--pt-x), var(--pt-y)) rotate(var(--pt-tilt)); }
+.pt-av .pt-head { transform-box: view-box; transform-origin: 48.5% 47%; transform: translate(var(--pt-x), var(--pt-y)) rotate(var(--pt-tilt)); }
 .pt-av .pt-eyes { transform: translateX(var(--pt-look)); }
 .pt-av .pt-eye { transform-box: fill-box; transform-origin: 50% 50%; }
 .pt-av[data-blink="1"] .pt-eye { transform: scaleY(0.12); }

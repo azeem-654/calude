@@ -11,7 +11,7 @@ the public site.
 ```
 src/components/Protron/Protron.tsx        launcher + Talk chip, drag, speaking first (idle/trouble/froze/loop), opens the panel
 src/components/Protron/ProtronPanel.tsx   floating chat, live step cards, Undo, Talk mode, sync, audit — own chunk
-src/components/Protron/ProtronAvatar.tsx  the SVG robot head, its 7 states, the mouth driven by voice loudness
+src/components/Protron/ProtronAvatar.tsx  the SVG robot (white humanoid bust, PC mark on the chest), its 7 states, the mouth driven by voice loudness
 src/components/Protron/ProtronCursor.tsx  the pointer overlay (services/protron/cursor.ts says where)
 src/services/protron/identity.ts          pure: personal vs business email domain, known facts, what is missing, the first greeting
 src/services/protron/facts.ts             reads session, workspace, Settings profile, onboarding, prefs → identity.ts
@@ -76,9 +76,16 @@ src/components/Autopilot/newProject/ProtronIntake.tsx   the wizard's first scree
 
 ### The 2026-11-12 brief — what was built, and the rules it added
 
-- **The face** is an original humanoid robot head (titanium cranium, crest,
-  lighter face plate, arched brows, round cyan eyes, ear receptors, neck) —
-  film-robot *engineering* as inspiration, no studio's character. The resting
+- **The figure** (replaced the same day from the owner's second reference
+  picture): a gloss-white humanoid **bust** — smooth egg head turned a little
+  aside, a dark audio receptor on its side (the state's light ring), cabled
+  neck, broad chest plate between dark shoulder drums, and the **Protected
+  Central mark** (favicon.svg's tile and shield, drawn in place) on the chest.
+  An original drawing of that kind of robot, not the reference photo, which
+  carries another company's mark. The reference head is blank; Protron's has
+  a dark glass visor with two lit eyes and a slim mouth light, because the
+  states must show. Only the head moves (pivot at the neck). Earlier: a
+  titanium head with brows. The resting
   mouth is one lit smile; speaking, seven segments follow `level.ts`
   (measured from the audio playing, or the browser voice's word boundaries) —
   never a timer. Below 36 px (`lite`) the glow filter and fine seams go.
