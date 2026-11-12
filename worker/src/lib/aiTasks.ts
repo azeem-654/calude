@@ -131,7 +131,10 @@ export const MODULES: Record<string, { label: string; task: AiTask }> = {
      onboarding's written instruction is a plan the customer approves, so it
      gets the planning tier. */
   'protron': { label: 'Protron — AI business manager', task: 'write' },
-  'protron-plan': { label: 'Protron — business workspace instruction', task: 'reason' },
+  /* `write`, not `reason` (2026-11-12): on the free keys Pro refuses and the
+     reasoning chain's walk outlasted the page's 120 s wait, so the customer got
+     the offline draft of a live conversation. Flash writes this well. */
+  'protron-plan': { label: 'Protron — business workspace instruction', task: 'write' },
   'protron-voice': { label: 'Protron — spoken replies', task: 'chat' },
   'strategy': { label: 'Marketing strategy & plans', task: 'reason' },
   'workflows': { label: 'Workflow builder', task: 'reason' },

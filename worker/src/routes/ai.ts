@@ -55,7 +55,14 @@ interface AiReq {
 const MAX_BYTES = 6_000_000;
 const CONFIG_KEYS = new Set(['temperature', 'topP', 'topK', 'maxOutputTokens', 'responseMimeType', 'responseSchema', 'candidateCount', 'stopSequences']);
 
+/* The page waits 120 s (src/lib/gemini.ts aiFetch). Stop starting model
+   attempts in time to answer before that, and never let one attempt run past
+   it — otherwise a slow chain ends in the page's own "took too long" with the
+   server still working, and the answer is thrown away. */
+const ANSWER_BY_MS = 105_000;
+
 export async function handleAi(req: Request, env: Env): Promise<Response> {
+  const started = Date.now();
   const raw = await req.text();
   if (raw.length > MAX_BYTES) return fail('That request is too large for the AI.', 413);
   let d: AiReq;
@@ -123,7 +130,9 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
     if (isOpenRouterKey(k)) {
       const q = fromGeminiRequest(JSON.parse(payload));
       if (!q) return { ok: false, status: -2, error: 'nothing to send', value: fail('There was nothing to ask the AI.') };
-      const r = await askOpenRouter(k, { ...q, timeoutMs: 40_000, task, module, accountId });
+      const left = ANSWER_BY_MS - (Date.now() - started);
+      if (left < 8_000) return { ok: false, status: -2, error: 'out of time', value: fail(AI_BUSY, 200, { code: 'ai_busy' }) };
+      const r = await askOpenRouter(k, { ...q, timeoutMs: Math.min(40_000, left), task, module, accountId });
       if (r.ok) {
         await record(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`, 1, room.standing);
         return { ok: true, value: json({ success: true, response: asGeminiResponse(r.value.text), ...(creditsOut ? { creditsOut } : {}) }) };
@@ -132,12 +141,15 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
     }
     let lastStatus = -1; let lastError = '';
     for (const model of await modelsFor(k, task)) {
+      const left = ANSWER_BY_MS - (Date.now() - started);
+      /* -2: not this key's fault — nothing is rested, and the next key stops here too. */
+      if (left < 8_000) return { ok: false, status: -2, error: 'out of time', value: fail(AI_BUSY, 200, { code: 'ai_busy' }) };
       let res: Response;
       /* Gemma takes the request without JSON mode or a system instruction (lib/ai.ts forGemma). */
       const gemma = isGemma(model);
       try {
         res = await fetch(`${aiBase()}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(k)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: gemma ? JSON.stringify(forGemma(JSON.parse(payload))) : payload, signal: AbortSignal.timeout(40_000),
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: gemma ? JSON.stringify(forGemma(JSON.parse(payload))) : payload, signal: AbortSignal.timeout(Math.min(40_000, left)),
         });
       } catch (e) {
         lastStatus = 0;

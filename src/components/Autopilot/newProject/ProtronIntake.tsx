@@ -92,10 +92,19 @@ export function useProtronIntake(initialCompany: string, start: IntroStep) {
     return p;
   }, [setBrief]);
 
-  const appendTalk = useCallback((role: 'protron' | 'user', text: string) => {
+  /* `join`: a live caption from the same side as the last line continues it —
+     a pause split one spoken answer into fragments ("And.") that then read
+     as answers of their own. */
+  const appendTalk = useCallback((role: 'protron' | 'user', text: string, join = false) => {
     const t = text.trim();
     if (!t) return;
-    setBrief({ ...ref.current, talk: [...ref.current.talk, { role, text: t.slice(0, 1200) }] });
+    const talk = ref.current.talk;
+    const last = talk[talk.length - 1];
+    if (join && last?.role === role) {
+      setBrief({ ...ref.current, talk: [...talk.slice(0, -1), { role, text: `${last.text} ${t}`.slice(0, 1800) }] });
+      return;
+    }
+    setBrief({ ...ref.current, talk: [...talk, { role, text: t.slice(0, 1200) }] });
   }, [setBrief]);
 
   const askNext = useCallback(async (b: Brief) => {
@@ -153,7 +162,7 @@ export function useProtronIntake(initialCompany: string, start: IntroStep) {
         }
       },
       onCaption: (role, text, final) => {
-        if (final) { appendTalk(role === 'you' ? 'user' : 'protron', text); setPartial(null); }
+        if (final) { appendTalk(role === 'you' ? 'user' : 'protron', text, true); setPartial(null); }
         else setPartial({ role, text });
       },
       onActivity: (w, level) => setWho({ who: w, level }),

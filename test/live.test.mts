@@ -9,6 +9,9 @@
  *   L4  the first screen: website addresses, places from the website reading
  *   L5  location is its own question, offered the website's places
  *   L6  the instruction carries the website and where the customers are
+ *   L7  a spoken interview (the owner's 2026-11-12 screenshot) drafts cleanly
+ *       when the AI cannot answer: no filler, no fragments, nothing filed
+ *       under a heading it does not answer
  */
 const out: string[] = [];
 const ok = (name: string, pass: boolean, detail = '') => out.push(`${pass ? 'PASS' : 'FAIL'}  ${name}${pass || !detail ? '' : ` — ${detail}`}`);
@@ -86,6 +89,36 @@ const intake = await import('../src/services/protron/intake.ts');
   ok('L6 …and where the customers are, from the answer', /Where our potential customers are: Dallas and Plano/.test(t), t);
   ok('L6 …and what the website said the business does', /Business context: Roof repair and replacement\./.test(t), t);
   ok('L6 the model is told the website reading', /From their website — what they do: Roof repair/.test(intake.briefText(b)));
+}
+
+/* L7 — the transcript from the owner's screenshot, as live captions left it */
+{
+  ok('L7 filler and stammers come out', intake.tidySpoken('Yeah, I I want at least 10 customers, 10 patients a day.') === 'I want at least 10 customers, 10 patients a day.', intake.tidySpoken('Yeah, I I want at least 10 customers, 10 patients a day.'));
+  ok('L7 "Oh dad uh that" keeps its words, loses the uh', !/\buh\b/i.test(intake.tidySpoken("Oh dad uh that I don't have any clients or leads.")));
+  ok('L7 a question about customers is about customers, a location question about places', intake.topicOf('Who are the people you want to reach?') === 'who' && intake.topicOf('Where are your potential customers located?') === 'where' && intake.topicOf('What is your biggest challenge right now?') === 'pain');
+  const b = {
+    ...intake.EMPTY_BRIEF, company: 'ABC company', nature: 'Dental care for patients with teeth problems.',
+    talk: [
+      { role: 'protron' as const, text: 'What does ABC company do?' },
+      { role: 'user' as const, text: 'Uh yeah, for my previous question I mentioned the name of the company is ABC company.' },
+      { role: 'protron' as const, text: 'Who are the customers you want more of?' },
+      { role: 'user' as const, text: 'Uh, yeah, these are the people patients who have some kind of teeth to its problem and they need help and uh I want to reach them and offer them uh free medical test.' },
+      { role: 'protron' as const, text: 'Where are your potential customers located?' },
+      { role: 'user' as const, text: 'And.' },
+      { role: 'protron' as const, text: 'What is your biggest challenge right now?' },
+      { role: 'user' as const, text: "Oh dad uh that I don't have any clients or leads." },
+      { role: 'protron' as const, text: 'What result would make this worth it?' },
+      { role: 'user' as const, text: 'Yeah, I I want at least 10 customers, 10 patients a day.' },
+    ],
+  };
+  const t = intake.draftInstruction(b);
+  ok('L7 no "uh" or stammer survives into the draft', !/\buh\b|\bI I\b/i.test(t), t);
+  ok('L7 "as I said before" is not the business context — what they typed is', /Business context: Dental care for patients/.test(t) && !/previous question/.test(t), t);
+  ok('L7 a stray "And." is not where the customers are', !/Where our potential customers are: And/.test(t), t);
+  ok('L7 the problem and the goal land under their own lines', /Main problem to solve: .*don't have any clients or leads/.test(t) && /Success looks like: I want at least 10 customers/.test(t), t);
+  ok('L7 with no card chosen, solutions are matched from the answers and say so', /Solutions to combine: .*\(matched from my answers\)/.test(t), t);
+  const split = intake.mergeTalk([{ role: 'user', text: 'We are in Dallas' }, { role: 'user', text: 'and Plano.' }, { role: 'protron', text: 'Thanks.' }]);
+  ok('L7 two caption fragments from one speaker become one answer', split.length === 2 && split[0].text === 'We are in Dallas and Plano.', JSON.stringify(split));
 }
 
 console.log(out.join('\n'));

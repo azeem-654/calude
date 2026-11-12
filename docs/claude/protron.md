@@ -170,6 +170,19 @@ optimized prompt for AI Autopilot**; the prompt screen is "Your smart
 optimized prompt for AI Autopilot". The instruction carries `Website:` and
 `Where our potential customers are:` lines.
 
+**After a live conversation** (fixed 2026-11-12, from the owner's screenshot):
+the prompt writer timed out (task `reason` walked refused Pro models past the
+page's 120 s) and the offline draft pasted the raw transcript in — "Uh yeah,
+for my previous question…", "Where our potential customers are: And.". Now
+`protron-plan` is task `write`; `/api/ai.php` answers within 105 s
+(`ANSWER_BY_MS`, an out-of-time key is status −2: next key, never rested);
+live captions from one side are joined (`appendTalk(…, join)`, `mergeTalk`);
+the writer is told it may be reading a transcript; and `draftInstruction`
+tidies speech (`tidySpoken`), files an answer under a heading only when the
+question was about it (`topicOf`), drops fragments and "as I said" answers,
+puts the rest under "Also from our conversation", and with no card chosen
+names the matched solutions as such. `test:live` L7 is that screenshot.
+
 ### Placement and speaking first
 
 The helmet starts bottom left (bottom right is the Help widget and
