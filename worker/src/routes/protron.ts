@@ -54,10 +54,18 @@ import { findPhi, phiRefusal } from '../lib/phiGuard';
 import { check as allowance, record, refusalBody } from '../lib/allowanceStore';
 import { fetchPage, readable } from '../lib/readSite';
 import { isFreeMail } from '../lib/emailVerify';
+/* The film's script is shared with the page that plays it (src/services/filmNarration.ts). */
+import { filmLines } from '../../../src/services/filmNarration';
 
 const MAX_TURNS_BYTES = 200_000;
 const MAX_PREFS_BYTES = 4_000;
 const MAX_SPEAK = 900;
+const FILM_LINES = new Set(filmLines());
+
+async function sha256Hex(t: string): Promise<string> {
+  const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t));
+  return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
 const STATUSES = new Set(['done', 'failed', 'cancelled', 'refused']);
 /** Prefs that follow a person. The launcher's spot belongs to the screen it was dragged on. */
 const PREF_KEYS = new Set(['proactive', 'speak', 'voice', 'idleSeconds', 'business', 'siteCheck', 'v']);
@@ -98,6 +106,69 @@ export function speechModels(names: string[]): string[] {
 
 /** `key|model` voice models out of requests, and until when (per isolate). */
 const voiceRest = new Map<string, number>();
+
+/** Text → the AI voice, as the browser wants it ({ success, audio, rate }), or why not. Metered like any AI request. */
+async function voiceReply(env: Env, accountId: string, text: string, voice: { name: string; direction: string }): Promise<Response> {
+  const phi = phiRefusal(findPhi(text), 'the voice');
+  if (phi) return fail(phi, 200, { code: 'phi' });
+  const capped = await capRefusal(env, accountId);
+  if (capped) return fail(capped.message, 429, { code: capped.code });
+  const ended = await trialRefusal(env, accountId);
+  if (ended) return fail(ended, 402, { code: 'trial_ended' });
+  const room = await allowance(env, accountId, 'ai_requests', 1, {});
+  if (!room.ok) return fail(room.message, 402, refusalBody(room));
+  const key = await loadAiKey(env, accountId);
+  if (!key) return fail('The AI is not available on this install right now.', 200, { code: 'no_ai' });
+
+  return withFailover<Response>(key, async k => {
+    if (isOpenRouterKey(k)) return { ok: false, status: -2, error: 'no speech on OpenRouter', value: fail('No AI voice is connected — Protron uses the browser\'s voice.', 200, { code: 'no_voice' }) };
+    /* The voice model has its own, much smaller free day. When it is spent,
+       only the voice rests — never the key: a 429 from the voice used to
+       rest the whole key for an hour (lib/aiPool.ts), so a customer talking
+       to Protron could take every Google key away from all writing. */
+    /* A voice model resting after its 429 is passed over for the next one (per key and model). */
+    const all = speechModels(await geminiNames(k) ?? []);
+    if (!all.length) return { ok: false, status: -2, error: 'no speech model', value: fail('No AI voice is available on this key — Protron uses the browser\'s voice.', 200, { code: 'no_voice' }) };
+    /* Each voice model in turn while one is resting or answers 429 — each has its own small free day. */
+    let res: Response | null = null;
+    let model = '';
+    for (const m of all) {
+      if ((voiceRest.get(`${k}|${m}`) ?? 0) > Date.now()) continue;
+      model = m;
+      try {
+        res = await fetch(`${aiBase()}/v1beta/models/${m}:generateContent?key=${encodeURIComponent(k)}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(30_000),
+          body: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: `${voice.direction} ${text}` }] }],
+            generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice.name } } } },
+          }),
+        });
+      } catch (e) {
+        return { ok: false, status: 0, error: e instanceof Error ? e.message : String(e), value: fail('The voice could not be reached.') };
+      }
+      if (res.status !== 429) break;
+      const err = await res.text().catch(() => '');
+      await recordAiUse({ provider: 'gemini', key: k, model: m, module: 'protron-voice', accountId, ok: false, status: 429 });
+      voiceRest.set(`${k}|${m}`, Date.now() + (/per[ -]?day|PerDay|daily/i.test(err) ? 60 : 2) * 60_000);
+      if (voiceRest.size > 100) voiceRest.delete(voiceRest.keys().next().value as string);
+      res = null;
+    }
+    /* Every voice model resting or refused: -2, "not this kind of work right
+       now" — the next key is tried and nothing is rested (lib/aiPool.ts). */
+    if (!res) return { ok: false, status: -2, error: 'every voice model is resting', value: fail('The voice is busy right now — Protron uses the browser\'s voice.', 200, { code: 'no_voice' }) };
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      return { ok: false, status: res.status, error: err, value: fail('The voice could not speak that.', 200, { code: 'voice_failed' }) };
+    }
+    const body = await res.json() as { candidates?: { content?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] } }[]; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } };
+    const part = (body.candidates?.[0]?.content?.parts ?? []).find(p => p.inlineData?.data);
+    if (!part?.inlineData?.data) return { ok: false, status: -2, error: 'no audio', value: fail('The voice gave no audio.', 200, { code: 'voice_failed' }) };
+    await recordAiUse({ provider: 'gemini', key: k, model, module: 'protron-voice', accountId, ok: true, status: 200, tokensIn: body.usageMetadata?.promptTokenCount, tokensOut: body.usageMetadata?.candidatesTokenCount });
+    await record(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`, 1, room.standing);
+    const rate = Number(/rate=(\d+)/.exec(part.inlineData.mimeType ?? '')?.[1] ?? 24000);
+    return { ok: true, value: json({ success: true, audio: part.inlineData.data, rate }) };
+  });
+}
 
 export async function handleProtron(req: Request, env: Env): Promise<Response> {
   let d: Record<string, unknown>;
@@ -174,66 +245,27 @@ export async function handleProtron(req: Request, env: Env): Promise<Response> {
   if (action === 'speak') {
     const text = String(d.text ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_SPEAK);
     if (!text) return fail('There was nothing to say.');
-    const voice = VOICES[d.style === 'commander' ? 'commander' : 'warm'];
-    const phi = phiRefusal(findPhi(text), 'the voice');
-    if (phi) return fail(phi, 200, { code: 'phi' });
-    const capped = await capRefusal(env, accountId);
-    if (capped) return fail(capped.message, 429, { code: capped.code });
-    const ended = await trialRefusal(env, accountId);
-    if (ended) return fail(ended, 402, { code: 'trial_ended' });
-    const room = await allowance(env, accountId, 'ai_requests', 1, {});
-    if (!room.ok) return fail(room.message, 402, refusalBody(room));
-    const key = await loadAiKey(env, accountId);
-    if (!key) return fail('The AI is not available on this install right now.', 200, { code: 'no_ai' });
+    return voiceReply(env, accountId, text, VOICES[d.style === 'commander' ? 'commander' : 'warm']);
+  }
 
-    return withFailover<Response>(key, async k => {
-      if (isOpenRouterKey(k)) return { ok: false, status: -2, error: 'no speech on OpenRouter', value: fail('No AI voice is connected — Protron uses the browser\'s voice.', 200, { code: 'no_voice' }) };
-      /* The voice model has its own, much smaller free day. When it is spent,
-         only the voice rests — never the key: a 429 from the voice used to
-         rest the whole key for an hour (lib/aiPool.ts), so a customer talking
-         to Protron could take every Google key away from all writing. */
-      /* A voice model resting after its 429 is passed over for the next one (per key and model). */
-      const all = speechModels(await geminiNames(k) ?? []);
-      if (!all.length) return { ok: false, status: -2, error: 'no speech model', value: fail('No AI voice is available on this key — Protron uses the browser\'s voice.', 200, { code: 'no_voice' }) };
-      /* Each voice model in turn while one is resting or answers 429 — each has its own small free day. */
-      let res: Response | null = null;
-      let model = '';
-      for (const m of all) {
-        if ((voiceRest.get(`${k}|${m}`) ?? 0) > Date.now()) continue;
-        model = m;
-        try {
-          res = await fetch(`${aiBase()}/v1beta/models/${m}:generateContent?key=${encodeURIComponent(k)}`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(30_000),
-            body: JSON.stringify({
-              contents: [{ role: 'user', parts: [{ text: `${voice.direction} ${text}` }] }],
-              generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice.name } } } },
-            }),
-          });
-        } catch (e) {
-          return { ok: false, status: 0, error: e instanceof Error ? e.message : String(e), value: fail('The voice could not be reached.') };
-        }
-        if (res.status !== 429) break;
-        const err = await res.text().catch(() => '');
-        await recordAiUse({ provider: 'gemini', key: k, model: m, module: 'protron-voice', accountId, ok: false, status: 429 });
-        voiceRest.set(`${k}|${m}`, Date.now() + (/per[ -]?day|PerDay|daily/i.test(err) ? 60 : 2) * 60_000);
-        if (voiceRest.size > 100) voiceRest.delete(voiceRest.keys().next().value as string);
-        res = null;
-      }
-      /* Every voice model resting or refused: -2, "not this kind of work right
-         now" — the next key is tried and nothing is rested (lib/aiPool.ts). */
-      if (!res) return { ok: false, status: -2, error: 'every voice model is resting', value: fail('The voice is busy right now — Protron uses the browser\'s voice.', 200, { code: 'no_voice' }) };
-      if (!res.ok) {
-        const err = await res.text().catch(() => '');
-        return { ok: false, status: res.status, error: err, value: fail('The voice could not speak that.', 200, { code: 'voice_failed' }) };
-      }
-      const body = await res.json() as { candidates?: { content?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] } }[]; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } };
-      const part = (body.candidates?.[0]?.content?.parts ?? []).find(p => p.inlineData?.data);
-      if (!part?.inlineData?.data) return { ok: false, status: -2, error: 'no audio', value: fail('The voice gave no audio.', 200, { code: 'voice_failed' }) };
-      await recordAiUse({ provider: 'gemini', key: k, model, module: 'protron-voice', accountId, ok: true, status: 200, tokensIn: body.usageMetadata?.promptTokenCount, tokensOut: body.usageMetadata?.candidatesTokenCount });
-      await record(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`, 1, room.standing);
-      const rate = Number(/rate=(\d+)/.exec(part.inlineData.mimeType ?? '')?.[1] ?? 24000);
-      return { ok: true, value: json({ success: true, audio: part.inlineData.data, rate }) };
-    });
+  /* The dashboard film's narrator, in Protron's warm voice (the owner: "exactly
+     like the live bot's voice"). Only the film's own lines, each made once per
+     install and kept in R2; a line already made costs nothing to hear. */
+  if (action === 'narrate') {
+    const text = String(d.text ?? '').replace(/\s+/g, ' ').trim();
+    if (!FILM_LINES.has(text)) return fail('That is not a line of the film.', 200, { code: 'not_a_line' });
+    const key = `narration/v1/${await sha256Hex(`${VOICES.warm.name}|${text}`)}.json`;
+    const kept = await env.VIDEO?.get(key).catch(() => null);
+    if (kept) {
+      const v = await kept.json<{ audio?: string; rate?: number }>().catch(() => null);
+      if (v?.audio) return json({ success: true, audio: v.audio, rate: v.rate || 24000, kept: true });
+    }
+    const res = await voiceReply(env, accountId, text, VOICES.warm);
+    const body = await res.clone().json<{ success?: boolean; audio?: string; rate?: number }>().catch(() => null);
+    if (body?.success && body.audio && env.VIDEO) {
+      await env.VIDEO.put(key, JSON.stringify({ audio: body.audio, rate: body.rate || 24000 }), { httpMetadata: { contentType: 'application/json' } }).catch(() => undefined);
+    }
+    return res;
   }
 
   return fail('Unknown action.');

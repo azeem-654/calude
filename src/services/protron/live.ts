@@ -1,7 +1,9 @@
 /**
  * Protron's real-time voice — speech in, speech out, over one live session.
  *
- * The wizard's first screens use it (ProtronIntake.tsx → LiveTalk). The
+ * The wizard's first screens use it (ProtronIntake.tsx → LiveTalk, mode
+ * `intake`), and so does the floating Protron's Talk mode (ProtronPanel.tsx,
+ * mode `assist`) — the owner asked for both to be the same bot. The
  * session runs through /api/live.php (worker/src/routes/live.ts), which holds
  * the key, the model and the instructions; this file only moves audio and
  * reports what happened:
@@ -84,8 +86,11 @@ export class LiveVoice {
 
   constructor(h: LiveHandlers) { this.h = h; }
 
-  /** Opens the mic and the session. `context` is the first user turn: what is already known, as data. */
-  async start(context: string): Promise<void> {
+  /**
+   * Opens the mic and the session. `context` is the first user turn: what is
+   * already known, as data. `mode` names which server-side instructions to use.
+   */
+  async start(context: string, mode: 'intake' | 'assist' = 'intake'): Promise<void> {
     this.stopped = false;
     this.h.onState('connecting');
     const accountId = getActiveAccountId();
@@ -122,7 +127,7 @@ export class LiveVoice {
 
     const host = API_BASE ? new URL(API_BASE).host : location.host;
     const secure = API_BASE ? API_BASE.startsWith('https') : location.protocol === 'https:';
-    const ws = new WebSocket(`${secure ? 'wss' : 'ws'}://${host}/api/live.php?accountId=${encodeURIComponent(accountId)}`);
+    const ws = new WebSocket(`${secure ? 'wss' : 'ws'}://${host}/api/live.php?accountId=${encodeURIComponent(accountId)}${mode === 'assist' ? '&mode=assist' : ''}`);
     this.ws = ws;
     let ready = false;
 
@@ -189,6 +194,20 @@ export class LiveVoice {
     this.ws.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: t.slice(0, 2000) }] }], turnComplete: true } }));
     return true;
   }
+
+  /**
+   * Something the model should know without answering now (the customer moved
+   * to another screen): added to the conversation with the turn left open.
+   */
+  sendContext(text: string): boolean {
+    const t = text.trim();
+    if (!t || !this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+    this.ws.send(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: t.slice(0, 3900) }] }], turnComplete: false } }));
+    return true;
+  }
+
+  /** Is a session open and answering? */
+  get active(): boolean { return !this.stopped && !!this.ws && this.ws.readyState === WebSocket.OPEN; }
 
   /** Queue one chunk right after the last, so speech is seamless. */
   private play(pcm: Int16Array) {

@@ -395,6 +395,21 @@ const owner = { isClient: false, isOwner: true };
   ok('P11 the new actions are described to the model with real template keys', /create_workflow_draft\(template: one of \[.*"speed-to-lead"/.test(A.describeActions(customer)) && /list_business_workspaces/.test(A.describeActions(customer)) && /update_business_profile/.test(A.describeActions(customer)));
 }
 
+/* P12 — the 2026-11-12 fourth brief: the pointer presses only what opens, shows or moves. */
+{
+  const S = await import('../src/services/protron/screen.ts');
+  const customer = { isClient: false, isOwner: false };
+  ok('P12 a tab, a section toggle and a link to another screen may be pressed', S.pressSafety('Templates', 'tab') === '' && S.pressSafety('Advanced', 'disclosure') === '' && S.pressSafety('Contacts', 'link') === '');
+  ok('P12 buttons that only open or move may be pressed', ['Open', 'View details', 'Next', 'Back', 'New contact', 'Close'].every(l => S.pressSafety(l, 'button') === ''));
+  ok('P12 anything that saves, sends, spends or removes is never pressed', ['Send', 'Save draft', 'Publish', 'Delete', 'Pay now', 'Generate', 'Connect mailbox', 'Switch on', 'Import 40 leads', 'Confirm'].every(l => S.pressSafety(l, 'button') !== ''));
+  ok('P12 …not even as a tab or a link', S.pressSafety('Delete', 'tab') !== '' && S.pressSafety('Upgrade plan', 'link') !== '');
+  ok('P12 a button with words it does not know is left to the customer', S.pressSafety('Do the thing', 'button') !== '' && S.pressSafety('', 'tab') !== '');
+  const pc = A.checkCall({ name: 'press_button', args: { label: 'Next' } }, customer) as Extract<ReturnType<typeof A.checkCall>, { ok: true }>;
+  ok('P12 press_button is registered, runs at once, and is offered to the model', pc.ok && pc.def.tier === 'reversible' && /press_button\(label: string/.test(A.describeActions(customer)));
+  const res = await A.runChecked(pc, { who: customer, navigate: () => undefined, press: async (l: string) => ({ ok: false, label: l, message: 'refused' }) }, false);
+  ok('P12 a refused press is reported as not done', !res.ok && res.message === 'refused');
+}
+
 console.log(out.join('\n'));
 const failed = out.filter(l => l.startsWith('FAIL'));
 console.log(`\n${out.length - failed.length}/${out.length} passed`);

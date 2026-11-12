@@ -84,6 +84,8 @@ export interface ActionCtx {
   handOffToAutopilot?: (instruction: string) => void;
   /** Types a value into a box on screen (services/protron/screen.ts). */
   fill?: (key: string, value: string) => Promise<{ ok: boolean; label: string; previous: string; message?: string }>;
+  /** Moves the pointer to a control by its name and presses it when it only opens, shows or moves (screen.ts pressControl). */
+  press?: (label: string) => Promise<{ ok: boolean; label: string; message: string }>;
   /** Waits for a box to appear (a dialog still opening). */
   waitFor?: (key: string) => Promise<boolean>;
   /** The label of a box on screen, for the card's steps. */
@@ -368,6 +370,22 @@ export const ACTIONS: ActionDef[] = [
         ok: true, undo,
         message: `Filled ${undo.length} of ${fields.length} boxes.${missed.length ? ` Not filled — ${missed.join('; ')}.` : ''} Check them, then press the screen's own button to save or send.`,
       };
+    },
+  },
+  {
+    name: 'press_button',
+    title: 'Press a button on screen',
+    description: 'Move the pointer to a control on the screen and press it, while the customer watches: a tab, a section that opens, a link to another screen, or a button that only opens, shows or moves (Open, View, Next, Back, Close, New…). `label` is a button name listed under SCREEN. Buttons that save, send, publish, generate, delete, connect or pay are never pressed — the pointer shows the customer which one to press.',
+    module: 'screen',
+    tier: 'reversible',
+    params: { label: { type: 'string', required: true, max: 60, desc: 'the button name, as listed under SCREEN' } },
+    run: async (a, ctx) => {
+      if (!ctx.press) return { ok: false, message: 'There is nothing on this screen I can press from here.' };
+      const st = stepsFor(ctx, [`Press “${String(a.label)}”`]);
+      st.run(0);
+      const out = await ctx.press(String(a.label));
+      if (out.ok) st.ok(0); else st.bad(0);
+      return { ok: out.ok, message: out.message };
     },
   },
   {

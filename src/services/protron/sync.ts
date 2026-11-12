@@ -70,6 +70,13 @@ export async function fetchSpeech(text: string, signal?: AbortSignal, style: 'wa
   return { ok: false, error: r?.error ?? 'The voice could not be reached.', code: r?.code ?? 'unreachable' };
 }
 
+/** One line of the dashboard film, in the warm voice (made once per install, then kept). */
+export async function fetchNarration(text: string, signal?: AbortSignal): Promise<SpeechResult> {
+  const r = await call<{ audio?: string; rate?: number }>('narrate', { text }, signal);
+  if (r?.success && r.audio) return { ok: true, pcm: r.audio, rate: r.rate || 24000 };
+  return { ok: false, error: r?.error ?? 'The voice could not be reached.', code: r?.code ?? 'unreachable' };
+}
+
 /**
  * What answers at this person's own email domain (the server takes the domain
  * from the session, never from here). Null when it could not be asked — then

@@ -2,16 +2,18 @@
  * Protron: the owner's robot — a gloss-white humanoid, head and chest, with
  * the Protected Central mark on its chest plate.
  *
- * ── Why a photograph (owner, 2026-11-12, third brief) ──
+ * ── Why a photograph (owner, 2026-11-12, third and fourth briefs) ──
  *
  * The owner sent a reference picture of a white humanoid robot and asked for
  * Protron to be *exactly* that robot, with our logo where the example brand's
  * logo sat on the chest. A drawing in its style (the version before this) was
  * not what was asked. So this is the owner's picture itself: upscaled 2×, the
- * example brand's mark inpainted out of the chest plate, our tile-and-shield
- * mark and "PROTECTED CENTRAL" laid in its place, cropped square to the head
- * and chest (public/protron/robot-{160,384}.webp — 4 and 12 KB; the bigger one
- * only where the face is drawn large or on a dense screen).
+ * example brand's mark inpainted out of the chest plate and our tile-and-shield
+ * mark laid in its place. Fourth brief: no "PROTECTED CENTRAL" wording under
+ * it — the logo alone, larger (about 1.7× as seen) — and the crop zoomed in
+ * about 1.24× so the head fills more of the circle
+ * (public/protron/robot-{160,384}.webp — 3 and 9 KB; the bigger one only
+ * where the face is drawn large or on a dense screen).
  *
  * ── How a photograph still shows what Protron is doing ──
  *
@@ -24,8 +26,9 @@
  *           green when done, amber when help is needed; while speaking its
  *           glow follows the voice's real loudness (services/protron/level.ts)
  *   ear     the robot's own audio receptor lights up in that colour
- *   voice   seven small bars under the chest mark, opening with the voice —
- *           never a timer; hidden while silent
+ *   voice   seven small bars low on the faceplate, where a mouth would be,
+ *           opening with the voice — never a timer; hidden while silent
+ *           (the zoomed crop left no room under the chest mark)
  *
  * The portrait also makes small unhurried moves (a lean, a settle) every
  * 3–7 s so it reads as present, not as a sticker. Under reduced motion none of
@@ -50,11 +53,12 @@ const POSES: { tilt: number; x: number; y: number }[] = [
   { tilt: 0.7, x: 0.4, y: 0.3 },
 ];
 
-/* The voice bars, under the chest mark: the middle ones open most. */
-const BARS = [-4.5, -3, -1.5, 0, 1.5, 3, 4.5].map(dx => ({ x: 50 + dx, k: 2.6 - Math.abs(dx) / 2.3 }));
+/* The voice bars, low on the faceplate: the middle ones open most. */
+const MOUTH = { x: 38, y: 46 };
+const BARS = [-4.5, -3, -1.5, 0, 1.5, 3, 4.5].map(dx => ({ x: MOUTH.x + dx, k: 2.6 - Math.abs(dx) / 2.3 }));
 
 /* Where the robot's audio receptor is in the portrait (viewBox units). */
-const EAR = { x: 56.5, y: 21 };
+const EAR = { x: 62.6, y: 26.4 };
 
 const reducedMotion = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 const portrait = (size: number) => {
@@ -133,13 +137,13 @@ export default function ProtronAvatar({ size = 56, state = 'idle', alive = true,
         <rect width="100" height="100" fill="#cfd2d6" />
         <image className="pt-photo" href={portrait(size)} x="0" y="0" width="100" height="100" preserveAspectRatio="xMidYMid slice" />
         {/* The robot's own receptor, lit in the state's colour. */}
-        <ellipse className="pt-ear" cx={EAR.x} cy={EAR.y} rx="1.9" ry="2.7" fill="none" stroke="currentColor" strokeWidth="0.9" filter={glow} />
-        <circle className="pt-core-light" cx={EAR.x} cy={EAR.y} r="0.8" fill="currentColor" />
-        {/* The voice, under the chest mark. */}
+        <ellipse className="pt-ear" cx={EAR.x} cy={EAR.y} rx="2.4" ry="3.3" fill="none" stroke="currentColor" strokeWidth="0.9" filter={glow} />
+        <circle className="pt-core-light" cx={EAR.x} cy={EAR.y} r="1" fill="currentColor" />
+        {/* The voice, where a mouth would be. */}
         <g className="pt-mouth" fill="currentColor" filter={glow}>
-          <rect className="pt-mouth-bg" x="42.5" y="87.5" width="15" height="7" rx="3.5" fill="#0c1014" />
+          <rect className="pt-mouth-bg" x={MOUTH.x - 7.5} y={MOUTH.y - 3.5} width="15" height="7" rx="3.5" fill="#0c1014" />
           {BARS.map(b => (
-            <rect key={b.x} className="pt-bar" x={b.x - 0.45} y="89.5" width="0.9" height="3" rx="0.45"
+            <rect key={b.x} className="pt-bar" x={b.x - 0.45} y={MOUTH.y - 1.5} width="0.9" height="3" rx="0.45"
               style={{ ['--k' as string]: b.k.toFixed(2) }} />
           ))}
         </g>

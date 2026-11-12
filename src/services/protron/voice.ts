@@ -33,7 +33,7 @@
  * between turns further; it needs a provider key and a server-minted
  * ephemeral token, and would plug in behind the `Speaker` seam below.
  */
-import { fetchSpeech } from './sync';
+import { fetchNarration, fetchSpeech, type SpeechResult } from './sync';
 import { emitVoiceLevel as emit, onVoiceLevel } from './level';
 import type { Voice } from './memory';
 
@@ -310,3 +310,54 @@ export function stopAllVoices(): void { warmSpeaker.stop(); commanderSpeaker.sto
 
 /** The speaker for a preference. */
 export const speakerFor = (voice: Voice): Speaker => (voice === 'natural' ? browserSpeaker : voice === 'commander' ? commanderSpeaker : warmSpeaker);
+
+/* ── The dashboard film's narrator ──
+ *
+ * The owner: the film's voice must be "exactly like the live bot's voice".
+ * So it is Protron's warm AI voice (the same prebuilt voice the live session
+ * uses), never the browser's own — when the AI voice is not available the
+ * film stays silent with captions and says so, rather than reading in a
+ * voice the owner called odd. Lines are fetched ahead (`prepare`) so one
+ * follows the last without a gap, and kept for the page's life.
+ */
+const lines = new Map<string, Promise<SpeechResult | null>>();
+let narrating: { src: AudioBufferSourceNode } | null = null;
+
+export const narrator = {
+  /** Starts fetching a line so it is ready when its scene comes. */
+  prepare(text: string): Promise<SpeechResult | null> {
+    let p = lines.get(text);
+    if (!p) {
+      p = fetchNarration(text).catch(() => null);
+      lines.set(text, p);
+      /* A refusal is not kept: the next play asks again. */
+      void p.then(r => { if (!r?.ok) lines.delete(text); });
+    }
+    return p;
+  },
+  /** Speaks one line; resolves with '' once it has finished (or was stopped), else why it could not. */
+  async say(text: string): Promise<string> {
+    narrator.stop();
+    unlockAudio();
+    const r = await narrator.prepare(text);
+    if (!r) return 'The narrator could not be reached.';
+    if (!r.ok) return r.error;
+    if (!audio) return 'This browser cannot play the narrator.';
+    if (audio.state === 'suspended') await audio.resume().catch(() => undefined);
+    if (audio.state !== 'running') return 'Press play again to hear the narrator.';
+    const ctx = audio;
+    const buf = pcmToBuffer(ctx, r.pcm, r.rate);
+    await new Promise<void>(resolve => {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      narrating = { src };
+      src.onended = () => { if (narrating?.src === src) narrating = null; resolve(); };
+      src.start();
+    });
+    return '';
+  },
+  stop(): void {
+    if (narrating) { try { narrating.src.stop(); } catch { /* ended */ } narrating = null; }
+  },
+};

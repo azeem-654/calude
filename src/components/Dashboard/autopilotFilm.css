@@ -222,3 +222,5 @@
   .apf-caps { gap: 6px; }
   .apf-cap { font-size: 11.5px; padding: 6px 9px; }
 }
+/* The narrator could not speak: said once, under the captions. */
+.apf-voice-note { margin: 4px 22px 0; font-size: 11.5px; color: #fcd9a8; text-align: center; }

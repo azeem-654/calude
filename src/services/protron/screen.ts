@@ -26,7 +26,7 @@
  */
 
 /** Fired with the rectangle of the box about to be typed into. */
-import { pointAt } from './cursor';
+import { clickAt, pointAt } from './cursor';
 
 export const EDITING_EVENT = 'pc-protron-editing';
 
@@ -238,4 +238,78 @@ export async function restoreFields(list: { key: string; previous: string }[]): 
     n++;
   }
   return n;
+}
+
+/* ── Pressing a button, visibly (owner, 2026-11-12: "the pointer may start clicking") ──
+ *
+ * Protron may press only controls that show or move: a tab, a section that
+ * opens and closes, a link to another screen, and buttons whose words say
+ * they only open, show or move (Open, View, Next, Back, Close, New…).
+ * Anything whose words say it saves, sends, spends or removes is never
+ * pressed — Protron points at it and the customer presses it. Words are a
+ * judgement on what a button says, so the refusals are checked first and
+ * "Save", "Send", "Generate", "Delete", "Pay" and the like win over anything. */
+
+/** Words on a control that change, send or spend something: never pressed by Protron. */
+const PRESS_NEVER = /\b(send|publish|post|delete|remove|erase|pay|charge|refund|buy|purchase|order|checkout|subscribe|upgrade|downgrade|plan|billing|activate|deactivate|launch|go live|switch|turn on|turn off|enable|disable|import|invite|approve|accept|decline|reject|save|submit|confirm|apply|generate|regenerate|run|start|stop|sign ?out|log ?out|connect|disconnect|verify|test|book|schedule|export|download|upload|archive|duplicate|copy|create|finish|complete|reset|clear|restore|transfer|withdraw|merge|assign|unsubscribe|subscription|block|close (my |this )?(account|workspace))\b/i;
+/** Words on a button that only open, show or move. */
+const PRESS_SAFE = /^(open|view|show|hide|see|next|back|previous|prev|close|cancel|more|less|expand|collapse|details|edit|new|filter|sort|browse|explore|preview|menu|help|learn more|overview|all)\b/i;
+
+export type PressKind = 'tab' | 'disclosure' | 'link' | 'button';
+
+/** '' when Protron may press it; otherwise why not, in a sentence. Pure — tested. */
+export function pressSafety(label: string, kind: PressKind): string {
+  const l = label.replace(/\s+/g, ' ').trim();
+  if (!l) return 'That control has no name I can be sure of.';
+  if (PRESS_NEVER.test(l)) return `“${l}” changes, sends or spends something — that one is yours to press.`;
+  if (kind === 'tab' || kind === 'disclosure' || kind === 'link') return '';
+  return PRESS_SAFE.test(l) ? '' : `I only press buttons that open or show things — “${l}” is yours to press.`;
+}
+
+function controlName(el: Element): string {
+  return clean(el.getAttribute('aria-label') || el.textContent, 60);
+}
+
+function kindOfControl(el: Element): PressKind {
+  if (el.getAttribute('role') === 'tab') return 'tab';
+  if (el.hasAttribute('aria-expanded')) return 'disclosure';
+  if (el instanceof HTMLAnchorElement) {
+    const href = el.getAttribute('href') ?? '';
+    /* Only a link to another screen of this app: no downloads, no other sites. */
+    if (href.startsWith('/') && !href.startsWith('//') && !el.hasAttribute('download') && !/^\/api\//.test(href)) return 'link';
+    return 'button';
+  }
+  return 'button';
+}
+
+/** The control on screen with this name: exact first, else the one name that starts with it. */
+export function findControl(label: string): Element | null {
+  const want = label.replace(/\s+/g, ' ').trim().toLowerCase();
+  if (!want || typeof document === 'undefined') return null;
+  const { root } = scope();
+  const all = [...root.querySelectorAll('button, [role="button"], [role="tab"], a[href]')]
+    .filter(el => visible(el) && !(el as HTMLButtonElement).disabled && el.getAttribute('aria-disabled') !== 'true');
+  const exact = all.find(el => controlName(el).toLowerCase() === want);
+  if (exact) return exact;
+  const starts = all.filter(el => controlName(el).toLowerCase().startsWith(want));
+  return starts.length === 1 ? starts[0] : null;
+}
+
+export interface PressOutcome { ok: boolean; label: string; message: string }
+
+/** Moves the pointer to a control and, when it is one Protron may press, clicks it. */
+export async function pressControl(label: string): Promise<PressOutcome> {
+  const el = findControl(label);
+  if (!el) return { ok: false, label, message: `There is no “${label.slice(0, 40)}” on this screen right now.` };
+  const name = controlName(el);
+  const why = pressSafety(name, kindOfControl(el));
+  if (why) {
+    /* Pointed at, so the customer sees which button is theirs. */
+    await pointAt(el, `Press “${name.slice(0, 30)}” yourself`);
+    return { ok: false, label: name, message: why };
+  }
+  await clickAt(el, `Clicking “${name.slice(0, 30)}”`);
+  (el as HTMLElement).click();
+  await sleep(calm() ? 0 : 350);
+  return { ok: true, label: name, message: `Pressed “${name}”.` };
 }

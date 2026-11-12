@@ -5,25 +5,26 @@
  * and people should start everything from it, so the dashboard opens on one
  * prompt box — greeting, a line, the box, a few starting points.
  *
- * ── The ground: a calm office you can lean into ──
+ * ── The ground: colour light, not a picture ──
  *
  * First procedural WebGL hills (cartoonish, said the owner), then aerial
- * nature footage — which stuttered: a 720p video decoding under blurred glass
- * repaints the whole hero every frame. The owner then asked for something
- * light that flows, follows the mouse, and feels like a calm, modern office.
- * So it is one photograph (a sunlit meeting lounge, CC0 — docs/MEDIA-CREDITS.md;
- * 49 KB at 1280 wide, 200 KB at 1920) with depth added on the GPU:
+ * nature footage (it stuttered: a 720p video decoding under blurred glass
+ * repaints the hero every frame), then an office photo, which the owner
+ * replaced (fourth pass, 2026-11-12) with "a more modern background that suits
+ * the app's theme", pointing at a soft lilac–pink–blue gradient as the example.
+ * So the ground is CSS only — no download — in Autopilot's own colours:
  *
- *   drift   a very slow push-in and back (CSS, 38 s) so it is never static
- *   mouse   the photo shifts against the pointer (eased in a frame callback
+ *   colour  four large soft blobs (indigo, violet, pink, a peach glow), each a
+ *           radial gradient drifting on its own slow loop
+ *   silk    two wide bands of light curving across, like the example's sheen
+ *   mouse   the colour shifts against the pointer (eased in a frame callback
  *           that stops as soon as it has caught up) and a soft light follows
- *           the pointer; touch screens keep the drift alone
- *   light   a warm patch of sunlight that moves across slowly, and a few
- *           motes of dust rising in it
+ *           it; touch screens keep the drift alone
+ *   grain   a fixed, faint noise so the gradient does not band
  *
  * Everything moves by `transform` or `opacity` only, nothing is blurred live,
  * and all of it pauses once the hero has scrolled away; reduced motion gets
- * the still photograph. The ground reaches up behind the top menu
+ * the still gradient. The ground reaches up behind the top menu
  * (Dashboard.tsx measures how far), and while it is in view the menu turns
  * see-through (`html[data-hero-top]`, dashboard.css) so both share it. As the
  * page scrolls on, the ground fades (opacity written straight onto the node in
@@ -52,8 +53,6 @@ import AutopilotFilm from './AutopilotFilm';
 import { useVoiceInput, defaultLocale } from '../Autopilot/voice/useVoiceInput';
 import { motionReduced } from '../../services/motion';
 
-const OFFICE = '/media/office/lounge';
-
 const STARTERS = [
   'Find new customers for me every day',
   'Grow my social media with daily posts',
@@ -70,8 +69,14 @@ function scrollerOf(el: HTMLElement | null): HTMLElement | Window {
   return window;
 }
 
-/** The office, with depth: drift, the pointer, sunlight and dust. */
-function OfficeGround({ active, still }: { active: boolean; still: boolean }) {
+/**
+ * The ground: soft colour light in the Autopilot palette — indigo, violet,
+ * pink and a peach glow — drifting slowly, two silk bands of light across it
+ * and a fine grain, with a light that follows the pointer. Drawn entirely by
+ * CSS gradients (no photo, no download): the owner replaced the office photo
+ * with "a more modern background that suits the app's theme" (2026-11-12).
+ */
+function AuroraGround({ active, still }: { active: boolean; still: boolean }) {
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = root.current;
@@ -106,18 +111,15 @@ function OfficeGround({ active, still }: { active: boolean; still: boolean }) {
     return () => { window.removeEventListener('pointermove', move); if (raf) cancelAnimationFrame(raf); };
   }, [active, still]);
   return (
-    <div ref={root} className="dash-office" data-still={still ? '1' : '0'} data-active={active ? '1' : '0'}>
-      <div className="dash-office-drift">
-        <img className="dash-office-img" src={`${OFFICE}-1920.webp`} srcSet={`${OFFICE}-1280.webp 1280w, ${OFFICE}-1920.webp 1920w`}
-          sizes="100vw" alt="" decoding="async" fetchPriority="high" />
-      </div>
-      <span className="dash-office-sun" />
-      <span className="dash-office-glow" />
-      {!still && (
-        <span className="dash-office-motes">
-          {Array.from({ length: 9 }, (_, i) => <i key={i} />)}
-        </span>
-      )}
+    <div ref={root} className="dash-aurora" data-still={still ? '1' : '0'} data-active={active ? '1' : '0'}>
+      <span className="dash-aurora-blob is-a" />
+      <span className="dash-aurora-blob is-b" />
+      <span className="dash-aurora-blob is-c" />
+      <span className="dash-aurora-blob is-d" />
+      <span className="dash-aurora-silk is-1" />
+      <span className="dash-aurora-silk is-2" />
+      <span className="dash-aurora-glow" />
+      <span className="dash-aurora-grain" />
     </div>
   );
 }
@@ -178,7 +180,7 @@ export default function DashHero({ greeting, firstName }: { greeting: string; fi
       const passed = Math.max(0, -rect.top + (scroller === window ? 0 : (scroller as HTMLElement).getBoundingClientRect().top));
       const o = Math.max(0, Math.min(1, 1 - passed / span));
       g.style.opacity = o.toFixed(3);
-      /* The top menu is see-through while it sits over the office. */
+      /* The top menu is see-through while it sits over the ground. */
       if (o > 0.35) document.documentElement.dataset.heroTop = '1';
       else delete document.documentElement.dataset.heroTop;
       const now = o > 0.01;
@@ -211,7 +213,7 @@ export default function DashHero({ greeting, firstName }: { greeting: string; fi
   return (
     <section ref={hero} className="dash-hero" aria-label="Start with AI Autopilot" data-noinvert="">
       <div ref={ground} className="dash-hero-ground" aria-hidden="true">
-        <OfficeGround active={visible} still={still} />
+        <AuroraGround active={visible} still={still} />
         <span className="dash-hero-veil" />
       </div>
       <div className="dash-hero-inner">

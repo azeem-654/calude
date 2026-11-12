@@ -14,7 +14,9 @@
  * running — shows on the action card's steps instead.
  *
  * The overlay never takes a click (pointer-events: none) and, under reduced
- * motion, jumps rather than glides.
+ * motion, jumps rather than glides. When Protron presses a control itself
+ * (`clickAt`, only for controls screen.ts judged safe — tabs, links, Open,
+ * Next…) the pointer shows the press as a ripple before the click.
  */
 
 export const CURSOR_EVENT = 'pc-protron-cursor';
@@ -24,6 +26,8 @@ export interface CursorDetail {
   el?: Element;
   label?: string;
   done?: boolean;
+  /** The pointer presses here: a ripple at its tip (pressControl in screen.ts). */
+  click?: boolean;
 }
 
 const calm = () => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -46,6 +50,18 @@ export async function pointAt(target: Element | string | null | undefined, label
   if (r.bottom < 0 || r.top > window.innerHeight) el.scrollIntoView({ block: 'center', behavior: calm() ? 'auto' : 'smooth' });
   window.dispatchEvent(new CustomEvent<CursorDetail>(CURSOR_EVENT, { detail: { el, label } }));
   if (wait && !calm()) await new Promise(res => window.setTimeout(res, 480));
+  return true;
+}
+
+/**
+ * Points at an element and shows the press — the ripple a mouse click makes —
+ * just before the caller clicks it. Only pressControl (screen.ts) calls this,
+ * for controls it has judged safe to press.
+ */
+export async function clickAt(el: Element, label: string): Promise<boolean> {
+  if (!(await pointAt(el, label))) return false;
+  window.dispatchEvent(new CustomEvent<CursorDetail>(CURSOR_EVENT, { detail: { el, label, click: true } }));
+  if (!calm()) await new Promise(res => window.setTimeout(res, 260));
   return true;
 }
 

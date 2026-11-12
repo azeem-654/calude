@@ -54,23 +54,22 @@ checks four widths as the owner, and that 1440 and up is one line.
 starting points, then the explainer film. Sending hands the words to the
 wizard like Protron does (`pc_protron_handoff`).
 
-- **The ground is a calm office photo with depth** (owner, 2026-11-12, third
-  pass: procedural hills read as cartoonish; aerial footage stuttered —
-  video decoding under live backdrop blur repaints the hero every frame). One
-  CC0 photo, "Casual Meeting Room" (`docs/MEDIA-CREDITS.md`),
-  `public/media/office/lounge-{1280,1920}.webp` (49 / 200 KB), filling the
-  first screen (not the whole hero, which with the film is nearly square and
-  cropped it to bare wall) and fading into a dark floor. CSS adds a 38 s
-  drift, a moving patch of sun and rising dust; on a mouse device the photo
-  shifts against the pointer and a soft light follows it (eased in a frame
-  callback that stops once caught up). Only transform/opacity move, nothing
-  blurs live, all pauses once scrolled away; reduced motion = still photo.
+- **The ground is colour light, not a picture** (owner, 2026-11-12, fourth
+  pass: hills read as cartoonish, footage stuttered, then the office photo
+  gave way to "a more modern background that suits the app's theme"). CSS
+  only (`.dash-aurora*`): a 160° indigo → violet → pink → peach gradient, four
+  soft radial blobs drifting on their own loops, two silk bands of light, a
+  fixed noise grain against banding, the pointer shifting the colour (CSS
+  `translate`, eased in a frame callback) and a soft light following it. It
+  fills the first screen and fades into the floor under the film. Only
+  transform/opacity move, nothing blurs live, all pauses once scrolled away;
+  reduced motion = still gradient. No media files (docs/MEDIA-CREDITS.md).
 - **The menu shares it**: Dashboard.tsx sets `--dash-bleed` to everything
   above the dashboard (menu + trial bar, measured), so the hero starts at the
   top of the page; while the hero is ≥ 35 % visible DashHero sets
   `html[data-hero-top]` and the menu turns see-through and the trial bar
   white glass (dashboard.css); scrolled on, both are solid again.
-- The whole hero carries `data-noinvert`: white words on the photo and the dark
+- The whole hero carries `data-noinvert`: white words on the gradient and the dark
   film look the same in both themes; only `--hero-floor`, the colour it fades
   into, follows the theme.
 - **Three ways in, loudly**: a red **Record** button in the box (the shared
@@ -84,8 +83,9 @@ wizard like Protron does (`pc_protron_handoff`).
   type / record / talk), six baby steps of setting it up by talking, and 14
   US example businesses with notifications ending in a payment — then a card
   with the real Talk live / Record / Type buttons. Play/pause, prev/next,
-  chapter scrubber, clock, optional narration (browser voice, never AI
-  speech). Plays itself only on screen and without reduced motion. **Every
+  chapter scrubber, clock, optional narration — Protron's warm AI voice,
+  the live bot's voice (lines in `services/filmNarration.ts`, made once per
+  install and kept in R2; see protron.md), never the browser's voice. Plays itself only on screen and without reduced motion. **Every
   result scene says "Example scenario — an illustration, not a customer's
   results"**; amounts are typical job prices, never totals or percentages.
   It replaced the panel's capability strip (`DoesStrip`, removed).

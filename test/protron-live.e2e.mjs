@@ -67,7 +67,7 @@ for (const width of [1280, 390]) {
     await p.mouse.up();
     await p.waitForTimeout(300);
     const moved = await orb.boundingBox();
-    ok(`${W} the helmet can be dragged anywhere`, Math.abs(moved.x + 30 - 640) < 6 && Math.abs(moved.y + 30 - 430) < 6, JSON.stringify(moved));
+    ok(`${W} the helmet can be dragged anywhere`, Math.abs(moved.x + 35 - 640) < 6 && Math.abs(moved.y + 35 - 430) < 6, JSON.stringify(moved));
     await orb.click();
     await panelOf(p).waitFor();
     await p.waitForTimeout(500); // the opening animation scales it

@@ -10,6 +10,14 @@
  * the first time somebody opens it: the face costs every page ~3 KB, the rest
  * only the people who use it.
  *
+ * ── How it looks ──
+ *
+ * The owner's example (2026-11-12, fourth pass): a frosted lavender tile
+ * holding a glowing violet orb with the robot's portrait in it, alive — a
+ * turning ring of colour light, a breathing glow tinted by what Protron is
+ * doing, sparks circling (protron.css). The portrait is the same one the
+ * panel and the wizard's live talk show.
+ *
  * ── Where it sits ──
  *
  * Bottom left. The bottom right belongs to the Help widget and the owner's
@@ -178,7 +186,7 @@ export default function Protron() {
   useEffect(() => {
     const place = () => {
       if (!prefs.dock) { setDockPx(null); return; }
-      setDockPx({ left: Math.round(prefs.dock.x * (window.innerWidth - 64)), top: Math.round(prefs.dock.y * (window.innerHeight - 64)) });
+      setDockPx({ left: Math.round(prefs.dock.x * (window.innerWidth - 72)), top: Math.round(prefs.dock.y * (window.innerHeight - 72)) });
     };
     place();
     window.addEventListener('resize', place);
@@ -195,14 +203,14 @@ export default function Protron() {
     if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) return;
     d.moved = true;
     e.currentTarget.dataset.dragging = '1';
-    setDockPx({ left: Math.max(0, Math.min(window.innerWidth - 64, e.clientX - 30)), top: Math.max(0, Math.min(window.innerHeight - 64, e.clientY - 30)) });
+    setDockPx({ left: Math.max(0, Math.min(window.innerWidth - 72, e.clientX - 35)), top: Math.max(0, Math.min(window.innerHeight - 72, e.clientY - 35)) });
   };
   const onPointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
     const d = drag.current;
     drag.current = null;
     e.currentTarget.dataset.dragging = '0';
     if (d?.moved && dockPx) {
-      setPrefs({ ...prefs, dock: { x: dockPx.left / Math.max(1, window.innerWidth - 64), y: dockPx.top / Math.max(1, window.innerHeight - 64) } });
+      setPrefs({ ...prefs, dock: { x: dockPx.left / Math.max(1, window.innerWidth - 72), y: dockPx.top / Math.max(1, window.innerHeight - 72) } });
     } else {
       show();
     }
@@ -224,6 +232,7 @@ export default function Protron() {
           <button
             type="button"
             className="pt-orb"
+            data-state={face}
             aria-label="Open Protron, your AI business manager"
             title="Protron — your AI business manager (drag to move it anywhere)"
             onPointerDown={onPointerDown}
@@ -234,8 +243,10 @@ export default function Protron() {
                where a drag can be told from a tap. */
             onClick={e => { if (e.detail === 0) show(); }}
           >
+            <span className="pt-orb-halo" aria-hidden />
             <span className="pt-orb-glow" aria-hidden />
-            <ProtronAvatar size={aside ? 34 : 50} state={face} />
+            {!aside && <span className="pt-orb-sparks" aria-hidden><i /><i /><i /></span>}
+            <span className="pt-orb-core"><ProtronAvatar size={aside ? 32 : 44} state={face} /></span>
           </button>
           {!aside && (
             <button type="button" className="pt-talk" aria-label="Talk to Protron" title="Talk to Protron, hands-free" onClick={() => show({ talk: true })}>

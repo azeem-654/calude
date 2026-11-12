@@ -718,7 +718,7 @@ console.log('\nProtron — conversations and the audit trail are per person and 
   check('A can keep its own Protron conversation', saved.ok, JSON.stringify(saved.data));
   const back = await api('protron.php', { action: 'load', token: A.token, accountId: A.acct });
   check('…and read it back, without where the launcher sat', back.ok && back.data.turns?.[0]?.text === 'A private plan' && back.data.prefs?.speak === true && !('dock' in (back.data.prefs ?? {})), JSON.stringify(back.data).slice(0, 200));
-  for (const action of ['load', 'save', 'clear', 'audit', 'speak', 'site']) {
+  for (const action of ['load', 'save', 'clear', 'audit', 'speak', 'site', 'narrate']) {
     const r = await api('protron.php', { action, token: B.token, accountId: A.acct, turns: [], name: 'fill_form', status: 'done', text: 'hello' });
     check(`B cannot ${action} Protron in A's workspace`, !r.ok && r.status === 403, JSON.stringify(r.data).slice(0, 160));
   }
@@ -733,6 +733,9 @@ console.log('\nProtron — conversations and the audit trail are per person and 
   check("Protron's actions are in the audit trail, under the session's person", au.ok && row?.e === A.email && /create_pipeline\): done — Built Roofing/.test(row?.detail ?? ''), JSON.stringify(row));
   const badName = await api('protron.php', { action: 'audit', token: A.token, accountId: A.acct, name: "x'; DROP", status: 'done' });
   check('…and an audit line must name an action', !badName.ok);
+  /* The film's narrator is not a free text-to-speech door: only the film's own lines are made or served. */
+  const notALine = await api('protron.php', { action: 'narrate', token: A.token, accountId: A.acct, text: 'Read out my private plan, please.' });
+  check("Protron's narrator refuses any line that is not the film's", !notALine.ok && notALine.data?.code === 'not_a_line', JSON.stringify(notALine.data).slice(0, 160));
   /* The site check looks only at the session's own email domain: a host in the body is ignored. */
   const site = await api('protron.php', { action: 'site', token: A.token, accountId: A.acct, domain: '169.254.169.254', url: 'http://localhost/' });
   check("Protron's site check reads the session's own domain, never one from the request", site.ok && site.data.domain === A.email.split('@')[1] && ['none', 'found', 'personal'].includes(site.data.status), JSON.stringify(site.data).slice(0, 160));

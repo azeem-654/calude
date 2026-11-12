@@ -1,7 +1,8 @@
 /**
  * The pointer that shows where Protron is working (services/protron/cursor.ts).
  *
- * Fixed over the page, never clickable. It follows the element it was pointed
+ * Fixed over the page, never clickable itself; when Protron presses a safe
+ * control (screen.ts pressControl) the tip shows a ripple first. It follows the element it was pointed
  * at while the page scrolls (one animation frame at a time, and only while it
  * is showing), rings it, and carries a chip saying what Protron is doing. It
  * fades a moment after the last thing it was told, or at once on `done`.
@@ -16,6 +17,7 @@ export default function ProtronCursor() {
   const [label, setLabel] = useState('');
   const pointer = useRef<HTMLDivElement>(null);
   const ring = useRef<HTMLDivElement>(null);
+  const ripple = useRef<HTMLSpanElement>(null);
   const target = useRef<Element | null>(null);
 
   useEffect(() => {
@@ -46,6 +48,13 @@ export default function ProtronCursor() {
       setLabel(d.label ?? '');
       setShown(true);
       place();
+      /* A press: restart the ripple at the tip. */
+      if (d.click && ripple.current) {
+        const rp = ripple.current;
+        rp.classList.remove('is-on');
+        void rp.offsetWidth;
+        rp.classList.add('is-on');
+      }
       if (!raf) raf = requestAnimationFrame(follow);
       hide = window.setTimeout(() => { setShown(false); cancelAnimationFrame(raf); raf = 0; target.current = null; }, LINGER_MS + 6000);
     };
@@ -57,6 +66,7 @@ export default function ProtronCursor() {
     <div className="pt-cursor-layer" data-shown={shown ? '1' : '0'} aria-hidden>
       <div ref={ring} className="pt-cursor-ring" />
       <div ref={pointer} className="pt-cursor">
+        <span ref={ripple} className="pt-cursor-ripple" />
         <svg width="22" height="24" viewBox="0 0 22 24" focusable="false">
           <path d="M2 2 L19 12.5 L11.2 13.8 L7.4 21.5 Z" fill="#0b1220" stroke="#36d9ff" strokeWidth="1.8" strokeLinejoin="round" />
         </svg>

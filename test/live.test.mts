@@ -121,6 +121,17 @@ const intake = await import('../src/services/protron/intake.ts');
   ok('L7 two caption fragments from one speaker become one answer', split.length === 2 && split[0].text === 'We are in Dallas and Plano.', JSON.stringify(split));
 }
 
+/* L8 — the floating Protron's live talk (2026-11-12): same voice, its own instructions. */
+{
+  ok('L8 assist mode has its own instructions, kept on the server', /business manager/.test(live.ASSIST_SYSTEM) && /look_at_screen/.test(live.ASSIST_SYSTEM) && /never actions/.test(live.ASSIST_SYSTEM));
+  const names = live.ASSIST_TOOLS[0].functionDeclarations.map((f: { name: string }) => f.name);
+  ok('L8 assist mode has exactly two tools: look at the screen, ask for an action', names.join(',') === 'look_at_screen,do_action', names.join(','));
+  ok('L8 a context turn that leaves the turn open still passes the filter', live.allowedFromClient(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: '[app] The screen is now Contacts.' }] }], turnComplete: false } })) !== null);
+  const film = await import('../src/services/filmNarration.ts');
+  const lines = film.filmLines();
+  ok('L8 the film has one line per scene and the examples are named in order', lines.length === 11 + film.FILM_PEOPLE.length && film.exampleLine(0).startsWith('Here is what that looks like. A plumber in Phoenix'), String(lines.length));
+}
+
 console.log(out.join('\n'));
 const failed = out.filter(l => l.startsWith('FAIL'));
 console.log(`\n${out.length - failed.length}/${out.length} passed`);

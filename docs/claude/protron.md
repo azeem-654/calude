@@ -9,9 +9,9 @@ a new face, a warm voice, business identity, workflow drafts, a pointer and
 the public site.
 
 ```
-src/components/Protron/Protron.tsx        launcher + Talk chip, drag, speaking first (idle/trouble/froze/loop), opens the panel
-src/components/Protron/ProtronPanel.tsx   floating chat, live step cards, Undo, Talk mode, sync, audit — own chunk
-src/components/Protron/ProtronAvatar.tsx  the owner's robot portrait (public/protron/robot-{160,384}.webp, PC mark on the chest), its 7 states as ring / ear light / voice bars
+src/components/Protron/Protron.tsx        launcher (glowing glass tile) + Talk chip, drag, speaking first (idle/trouble/froze/loop), opens the panel
+src/components/Protron/ProtronPanel.tsx   compact see-through chat, live step cards, Undo, Talk mode (live session, else turn by turn), sync, audit — own chunk
+src/components/Protron/ProtronAvatar.tsx  the owner's robot portrait (public/protron/robot-{160,384}.webp, PC logo alone on the chest), its 7 states as ring / ear light / voice bars on the faceplate
 src/components/Protron/ProtronCursor.tsx  the pointer overlay (services/protron/cursor.ts says where)
 src/services/protron/identity.ts          pure: personal vs business email domain, known facts, what is missing, the first greeting
 src/services/protron/facts.ts             reads session, workspace, Settings profile, onboarding, prefs → identity.ts
@@ -21,8 +21,9 @@ src/services/protron/brain.ts             one turn: /api/ai.php (module 'protron
 src/services/protron/knowledge.ts         what it knows: derived from navModel.ts + MODULE_NOTES + TROUBLESHOOTING
 src/services/protron/memory.ts            conversation + prefs, per person × workspace (browser copy, sync stamps)
 src/services/protron/sync.ts              /api/protron.php: load/save/clear, audit, speak
-src/services/protron/screen.ts            reads the screen's shape (labels, empty boxes, messages); fills boxes live
-src/services/protron/voice.ts             Speaker seam; warm voice (default, clean AI speech); commander (robot filter); device voice
+src/services/protron/screen.ts            reads the screen's shape (labels, empty boxes, messages); fills boxes live; presses safe controls (pressSafety)
+src/services/protron/voice.ts             Speaker seam; warm voice (default, clean AI speech); commander (robot filter); device voice; the film's narrator
+src/services/filmNarration.ts             the dashboard film's lines — imported by the film AND routes/protron.ts `narrate`
 public/protron.svg                        the idle face, generated from ProtronAvatar.tsx, for the public widget
 worker/src/routes/protron.ts              the server side of sync.ts; migration 0094 crm_protron_threads
 src/services/protron/intake.ts            the wizard's cards, interview and instruction writer
@@ -212,7 +213,44 @@ propose only `open_module`/`open_settings`. Once per screen per visit, ≥ 45 s
 apart, ≤ 30 a day, tab visible, not over the human-help card; "Don't start
 chats" on the message turns it off. It offers; it never acts on its own.
 
-### Voice — commander voice, Talk mode, turn by turn
+### The 2026-11-12 fourth brief — one bot, a live pointer, a glass window
+
+- **Talk mode is live** — the same real-time session as the wizard's "Talk
+  live with Protron" (the owner: the floating bot must be *that* bot).
+  `/api/live.php?mode=assist`: same model choice, same voice (`Achird`), same
+  metering; server-side `ASSIST_SYSTEM` and two tools, `look_at_screen` (the
+  screen's shape from screen.ts, and the first time `describeActions`) and
+  `do_action {name, args_json}` → `checkCall` → the same cards, tiers,
+  pointer, typing and audit as the typed chat. Confirm-tier answers "waiting
+  for Confirm"; a later Confirm is told to the session (`[app] …`). Moving
+  screen sends `sendContext` (turn left open). Captions become turns.
+  `no_live`/no worklet/no mic → turn-by-turn Talk, saying why. Only the mode's
+  *name* crosses from the page; instructions never do.
+- **`press_button`** (reversible): the pointer moves to a control named under
+  SCREEN, shows a click ripple (`clickAt`) and presses it — only tabs,
+  disclosures, in-app links and buttons whose words only open/show/move
+  (`pressSafety`, test P12). Save/send/publish/generate/delete/connect/pay
+  words are refused first, even on a tab or link, and the pointer points at
+  the button for the customer instead. Still no `sensitive` action.
+- **Portrait**: "PROTECTED CENTRAL" wording inpainted off the chest; the logo
+  alone, about 1.7× as large as seen; crop zoomed ~1.24× on the head. The
+  voice bars moved to the faceplate (no room under the mark).
+- **Launcher**: a frosted lavender tile with a glowing violet orb holding
+  the portrait — turning colour ring, breathing halo tinted by state, three
+  sparks (the owner's example picture). 70 px (62 on a phone).
+- **Window**: 372×540 (large 560×720), the wizard chat's lavender theme,
+  see-through (6 px frost, ~60 % opaque) with near-opaque bubbles. **Build
+  trap**: write `-webkit-backdrop-filter` *before* `backdrop-filter` — in the
+  other order the CSS minifier keeps only the prefixed one and Chrome gets no
+  blur at all.
+- **The dashboard film's narrator** is Protron's warm voice (voice.ts
+  `narrator`), never the browser's. protron.php `narrate` makes only lines in
+  `filmLines()` (else `not_a_line`), keeps each in R2
+  `narration/v1/<sha256>.json`, so each line costs one AI request once per
+  install; the scene waits for its line; without the AI voice the film is
+  captions-only and says so. In `test:security`.
+
+### Voice — commander voice, Talk mode, turn by turn (the fallback)
 
 In: the Autopilot recorder (`useVoiceInput`, 1.8 s silence) → server
 transcriber → sent. Out: `commanderSpeaker` (default) — `/api/protron.php`
@@ -227,7 +265,8 @@ request on the plan. An OpenRouter-only install has no speech model: it says
 `natural` = the browser voice. **Talk mode**: hands-free loop (listen → send
 → speak → listen) with barge-in (an echo-cancelled mic meter while it speaks;
 ~⅓ s of talking stops it). Still turn by turn — a realtime provider would
-plug in behind `Speaker`; do not label it "live".
+plug in behind `Speaker`. This loop is now only the fallback when the live
+session cannot open; label it "turn by turn", never "live".
 
 ### Memory
 
@@ -260,7 +299,7 @@ Hand-off from the panel: `start_autopilot_project` writes
 
 ### Tests
 
-`npm run test:protron` (pure, 141 checks — P11 is the 2026-11-12 brief: registry, permissions, tiers,
+`npm run test:protron` (pure, 148 checks — P12 is the pointer's safe presses; P11 is the 2026-11-12 brief: registry, permissions, tiers,
 injection, JSON and salvage, offline matching, onboarding, memory and sync
 stamps, context and SCREEN, fill_form/draft_social_post/live pipeline steps,
 speaking first offline). `npm run test:protron:e2e` — now also

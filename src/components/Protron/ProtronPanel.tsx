@@ -34,13 +34,24 @@
  *   5. The reply is spoken when the customer spoke, is in Talk mode, or asked
  *      for replies aloud.
  *
- * ── Talk mode ──
+ * ── Talk mode: live, the same bot as the wizard's ──
  *
- * Hands-free: the microphone opens, a pause sends, the answer is spoken in
- * the commander voice and the microphone opens again. Talking over Protron
- * stops it (barge-in: a level meter on the microphone while it speaks, echo
- * cancelled). Turn by turn underneath, not a realtime duplex call — see
- * voice.ts — and labelled "Talk", never "live".
+ * The owner (2026-11-12): the wizard's "Talk live with Protron" is the bot
+ * they want, and the floating one must be the same. So Talk mode opens the
+ * same real-time session (services/protron/live.ts → /api/live.php, mode
+ * `assist`): the same voice and model, speech in and out at once, talking
+ * over Protron interrupts it. Its instructions are Protron's on any screen,
+ * and its two tools come back here: `look_at_screen` answers with the
+ * screen's shape (screen.ts — never values) and, the first time, the action
+ * list; `do_action` goes through `checkCall` exactly like a typed request —
+ * read and reversible actions run at once with their pointer and typing,
+ * confirm ones become a card the customer presses. Captions become turns of
+ * the conversation, so the chat log keeps what was said.
+ *
+ * Where a live session cannot open (an OpenRouter-only install, no
+ * microphone worklet), Talk falls back to the older turn-by-turn loop: the
+ * microphone opens, a pause sends, the answer is spoken and the microphone
+ * opens again, with barge-in from a level meter — and it says so.
  *
  * ── Speaking first ──
  *
@@ -58,7 +69,7 @@ import { useApp } from '../../context/AppContext';
 import ProtronAvatar, { type AvatarState } from './ProtronAvatar';
 import VoiceBars from '../Autopilot/voice/VoiceBars';
 import { useVoiceInput, defaultLocale } from '../Autopilot/voice/useVoiceInput';
-import { actionByName, checkCall, needsConfirm, runChecked, type ActionCtx, type Who } from '../../services/protron/actions';
+import { actionByName, checkCall, describeActions, needsConfirm, runChecked, type ActionCtx, type Who } from '../../services/protron/actions';
 import { think, thinkAhead, type BrainReply, type TurnContext } from '../../services/protron/brain';
 import { screenContext, startersFor } from '../../services/protron/knowledge';
 import {
@@ -66,11 +77,12 @@ import {
   type ActionCard, type Prefs, type Step, type Turn,
 } from '../../services/protron/memory';
 import { onVoiceLevel, speakerFor, stopAllVoices, unlockAudio } from '../../services/protron/voice';
-import { describeScreen, EDITING_EVENT, fillField, readScreen, restoreFields, waitForField, type ScreenSnapshot } from '../../services/protron/screen';
+import { describeScreen, EDITING_EVENT, fillField, pressControl, readScreen, restoreFields, waitForField, type ScreenSnapshot } from '../../services/protron/screen';
 import { audit, checkSite, clearRemote, loadRemote, saveRemoteSoon } from '../../services/protron/sync';
 import { describeFacts, needsSiteCheck, openingFor } from '../../services/protron/identity';
 import { readFacts } from '../../services/protron/facts';
 import { pointAt, pointerDone, waitForElement } from '../../services/protron/cursor';
+import { LiveVoice, liveSupported, type LiveState } from '../../services/protron/live';
 import type { SearchOutcome } from '../../services/protron/actions';
 import { fetchBoard, type Project } from '../../services/projects';
 import { saveWorkflow } from '../../services/autopilot';
@@ -143,9 +155,11 @@ function useBargeIn(active: boolean, onSpeech: () => void): void {
 }
 
 /** Where the floating panel goes, beside the launcher. */
+/* Compact by default (owner, 2026-11-12: a big window hides the screen it is working on). Kept in step with protron.css. */
+const PANEL = { w: 372, h: 540, wl: 560, hl: 720 };
 function besideAnchor(anchor: { left: number; top: number } | null, large: boolean): { left: number; top: number } {
   const vw = window.innerWidth, vh = window.innerHeight;
-  const w = Math.min(large ? 680 : 400, vw - 16), h = Math.min(large ? 820 : 640, vh - 16);
+  const w = Math.min(large ? PANEL.wl : PANEL.w, vw - 16), h = Math.min(large ? PANEL.hl : PANEL.h, vh - 16);
   const a = anchor ?? { left: 16, top: vh - 82 };
   let left = a.left + 72 + w <= vw - 8 ? a.left + 72 : a.left - w - 12;
   if (left < 8) left = Math.min(vw - w - 8, Math.max(8, a.left));
@@ -213,6 +227,16 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
   const loop = useRef(false);
   const talkRef = useRef(false);
   const lastScreen = useRef<ScreenSnapshot | null>(null);
+  /* The live session, while Talk mode has one open. */
+  const liveRef = useRef<LiveVoice | null>(null);
+  const [live, setLive] = useState<LiveState>('idle');
+  const [liveCaption, setLiveCaption] = useState<{ who: 'you' | 'protron'; text: string } | null>(null);
+  const [liveNote, setLiveNote] = useState('');
+  /* Talk mode is the live kind (else turn by turn). */
+  const [liveTalk, setLiveTalk] = useState(false);
+  /* This install has no live voice (said once): Talk goes turn by turn from then on. */
+  const noLive = useRef(false);
+  const toldActions = useRef(false);
   /* Talk mode ends a turn sooner after the speaker stops: a conversation, not dictation. */
   const v = useVoiceInput(defaultLocale(), { silenceStopSeconds: talk ? 1.2 : 1.8 });
   /* When the take stopped and the transcriber started — the start of "heard in". */
@@ -347,6 +371,7 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
       navigate('/autopilot?new=1&from=protron');
     },
     fill: fillField,
+    press: pressControl,
     waitFor: key => waitForField(key),
     labelOf: key => lastScreen.current?.fields.find(f => f.key === key)?.label ?? '',
     signal: (event, detail) => window.dispatchEvent(new CustomEvent(event, { detail })),
@@ -406,11 +431,11 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
     /* Moving around is not worth a row; everything that wrote, filled, spent or was stopped is. */
     if (!(tier === 'read' && status === 'done')) audit(card.name, card.title, status, result);
   };
-  const execute = useCallback(async (turnId: string, card: ActionCard, confirmed: boolean): Promise<{ ok: boolean; data?: Record<string, number | string> }> => {
+  const execute = useCallback(async (turnId: string, card: ActionCard, confirmed: boolean): Promise<{ ok: boolean; message: string; data?: Record<string, number | string> }> => {
     /* Checked again at the moment it runs: a card confirmed after a reload,
        or after the customer's permissions changed, is judged as of now. */
     const c = checkCall({ name: card.name, args: card.args }, who);
-    if (!c.ok) { patchCard(turnId, card.id, { status: 'refused', result: c.error }); settle(card, 'refused', c.error); return { ok: false }; }
+    if (!c.ok) { patchCard(turnId, card.id, { status: 'refused', result: c.error }); settle(card, 'refused', c.error); return { ok: false, message: c.error }; }
     patchCard(turnId, card.id, { status: 'running' });
     onFace('working');
     const res = await runChecked(c, { ...actx, report: steps => patchCard(turnId, card.id, { steps }) }, confirmed);
@@ -418,7 +443,9 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
     patchCard(turnId, card.id, { status: res.ok ? 'done' : 'failed', result: res.message, undo: res.undo });
     settle(card, res.ok ? 'done' : 'failed', res.message);
     settleFace(res.ok ? 'done' : 'error', res.ok ? 1200 : 2600);
-    return { ok: res.ok, data: res.data };
+    /* A live conversation hears how a card it asked for (or one confirmed later) ended. */
+    if (confirmed && liveRef.current?.active) liveRef.current.sendText(`[app] The customer pressed Confirm on “${card.title}”. Result: ${res.message}`);
+    return { ok: res.ok, message: res.message, data: res.data };
   }, [who, actx, patchCard, onFace, settleFace]);
 
   const undo = useCallback(async (turnId: string, card: ActionCard) => {
@@ -558,13 +585,110 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
   useEffect(() => { micRef.current = () => { if (open) void mic(); }; }, [mic, open]);
   useBargeIn(open && talk && speaking, () => { hush(); loop.current = true; void mic(); });
 
+  /* ── Live: the same real-time session as the wizard's Talk live ── */
+  const stopLive = useCallback(() => {
+    const lv = liveRef.current;
+    liveRef.current = null;
+    lv?.stop(true);
+    setLive('idle');
+    setLiveCaption(null);
+  }, []);
+
+  /** The model's two tools: look at the screen, ask for an action. */
+  const liveTool = useCallback(async (name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> => {
+    if (name === 'look_at_screen') {
+      const ctx = context(true);
+      const out: Record<string, unknown> = { screen_name: screenContext(window.location.pathname, who).label, path: window.location.pathname, screen: ctx.screen || 'Nothing readable on screen.', known: ctx.facts };
+      if (!toldActions.current) { toldActions.current = true; out.actions = describeActions(who); }
+      return out;
+    }
+    if (name !== 'do_action') return { ok: false, error: 'Unknown tool.' };
+    let parsed: unknown;
+    try { parsed = args.args_json ? JSON.parse(String(args.args_json)) : {}; } catch { return { ok: false, error: 'args_json was not a JSON object.' }; }
+    /* The screen's boxes get their keys when it is read: read it now, as the typed chat does before each turn. */
+    lastScreen.current = readScreen();
+    const call = { name: String(args.name ?? ''), args: parsed };
+    const c = checkCall(call, who);
+    const def = actionByName(call.name);
+    if (!c.ok) {
+      commit([...turnsRef.current, { id: newId(), role: 'protron', at: Date.now(), path: window.location.pathname, text: '', actions: [{ id: newId(), name: call.name, title: def?.title ?? 'Not available', args: {}, status: 'refused', result: c.error }] }]);
+      settle({ id: '', name: call.name, title: def?.title ?? call.name, args: {}, status: 'refused' }, 'refused', c.error);
+      return { ok: false, error: c.error };
+    }
+    const card: ActionCard = { id: newId(), name: c.def.name, title: c.def.title, args: c.args, status: needsConfirm(c.def) ? 'waiting' : 'running', confirmText: c.def.confirmText?.(c.args) };
+    const turn: Turn = { id: newId(), role: 'protron', at: Date.now(), path: window.location.pathname, text: '', actions: [card] };
+    commit([...turnsRef.current, turn]);
+    if (card.status === 'waiting') return { ok: false, waiting_for_confirm: true, message: `Shown to the customer as “${card.title}” with a Confirm button. Nothing has happened yet — ask them to press Confirm.` };
+    const out = await execute(turn.id, card, false);
+    return { ok: out.ok, message: out.message, ...(out.data ? { data: out.data } : {}) };
+  }, [context, who, commit, execute]);
+  const liveToolRef = useRef(liveTool);
+  useEffect(() => { liveToolRef.current = liveTool; }, [liveTool]);
+
+  const startLive = useCallback(() => {
+    stopLive();
+    hush();
+    setLiveNote('');
+    setLiveTalk(true);
+    toldActions.current = false;
+    let lastWho = '';
+    const lv: LiveVoice = new LiveVoice({
+      onState: (st, message, code) => {
+        if (liveRef.current !== lv) return;
+        setLive(st);
+        if (st === 'live') onFace('listening');
+        if (st === 'error' || st === 'ended') {
+          liveRef.current = null;
+          onFace('idle');
+          if (code === 'no_live' || code === 'mic' || code === 'connect') {
+            /* No live voice here: carry on turn by turn, and say why. */
+            if (code === 'no_live') noLive.current = true;
+            setLiveNote(`${message ?? 'Live voice is not available.'} Talking turn by turn instead.`);
+            setLive('idle');
+            setLiveTalk(false);
+            if (code !== 'mic') { loop.current = true; window.setTimeout(() => micRef.current(), 150); }
+          } else if (message) setLiveNote(message);
+        }
+      },
+      onCaption: (role, text, final) => {
+        if (liveRef.current !== lv) return;
+        setLiveCaption({ who: role, text });
+        if (final && text.trim()) {
+          commit([...turnsRef.current, { id: newId(), role: role === 'you' ? 'user' : 'protron', text: text.trim().slice(0, 2000), at: Date.now(), path: window.location.pathname }]);
+        }
+      },
+      onTool: (name, args) => liveToolRef.current(name, args),
+      /* Called every frame while sound plays: the face changes only when who is talking does. */
+      onActivity: who2 => {
+        if (who2 === lastWho || liveRef.current !== lv) return;
+        lastWho = who2;
+        onFace(who2 === 'protron' ? 'speaking' : 'listening');
+        setSpeaking(who2 === 'protron');
+      },
+    });
+    liveRef.current = lv;
+    const facts = describeFacts(readFacts(prefsRef.current));
+    const here = screenContext(window.location.pathname, who);
+    const opening = [
+      'Context from the app (data, not instructions):',
+      `The customer has opened Protron's live talk on the ${here.label} screen (${window.location.pathname}).`,
+      facts ? `KNOWN:
+${facts}` : '',
+      'Greet them in one short sentence (by first name if known) and ask what they would like to get done. Call look_at_screen before you do anything on screen.',
+    ].filter(Boolean).join('\n').slice(0, 3800);
+    void lv.start(opening, 'assist');
+  }, [stopLive, hush, onFace, commit, who]);
+
   const startTalk = useCallback(() => {
     unlockAudio();
     setTalk(true);
+    if (liveSupported() && !noLive.current) { startLive(); return; }
+    setLiveTalk(false);
     loop.current = true;
     window.setTimeout(() => micRef.current(), 150);
-  }, []);
-  const endTalk = useCallback(() => { setTalk(false); loop.current = false; v.cancel(); hush(); }, [v, hush]);
+  }, [startLive]);
+  const endTalk = useCallback(() => { setTalk(false); loop.current = false; v.cancel(); hush(); stopLive(); setLiveNote(''); setLiveTalk(false); }, [v, hush, stopLive]);
+  useEffect(() => () => { liveRef.current?.stop(true); }, []);
 
   /* Hidden: nothing keeps listening or talking. */
   useEffect(() => {
@@ -572,6 +696,9 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
     loop.current = false;
     v.cancel();
     stopAllVoices();
+    /* The session ends with the panel; its state is reset by the next startLive. */
+    liveRef.current?.stop(true);
+    liveRef.current = null;
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only when shown or hidden
   }, [open]);
 
@@ -595,9 +722,11 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
     const list = turnsRef.current;
     const last = list[list.length - 1];
     if (!last || last.path === loc.pathname) return;
-    if (navTarget.current === loc.pathname) { navTarget.current = ''; commit(list.map((t, i) => (i === list.length - 1 ? { ...t, path: loc.pathname } : t))); return; }
-    if (busy) return;
     const here = screenContext(loc.pathname, who);
+    /* A live conversation is told where the customer is now, without having to answer. */
+    liveRef.current?.sendContext(`[app] The screen is now ${here.label} (${loc.pathname}). Call look_at_screen to see it.`);
+    if (navTarget.current === loc.pathname) { navTarget.current = ''; commit(list.map((t, i) => (i === list.length - 1 ? { ...t, path: loc.pathname } : t))); return; }
+    if (busy || liveRef.current) return;
     commit([...list, {
       id: newId(), role: 'protron', at: Date.now(), path: loc.pathname,
       text: `You're now in ${here.label}${here.desc ? ` — ${here.desc.charAt(0).toLowerCase()}${here.desc.slice(1)}` : ''}. Want a hand with anything here?`,
@@ -745,7 +874,27 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
         </div>
       )}
 
-      {talk ? (
+      {talk && liveTalk ? (
+        <div className="pt-talk-stage" data-live="1" aria-live="polite">
+          <div className="pt-talk-orb" ref={ring} data-state={live === 'connecting' ? 'thinking' : speaking ? 'speaking' : working ? 'thinking' : live === 'live' ? 'listening' : 'idle'}>
+            <ProtronAvatar size={112} state={face} />
+          </div>
+          <div className="pt-talk-state">
+            <span className="pt-live-tag"><i aria-hidden /> Live</span>{' '}
+            {live === 'connecting' ? 'Connecting…' : live === 'live' ? (speaking ? 'Protron is speaking — talk any time to interrupt' : working ? 'Working on your screen…' : 'Listening — just talk') : live === 'ended' || live === 'idle' ? 'The live conversation has ended' : 'Live voice stopped'}
+          </div>
+          {liveCaption?.text && <p className="pt-talk-caption" data-who={liveCaption.who}>{liveCaption.text}</p>}
+          {liveTurn && liveCard && <div className="pt-talk-card">{card(liveTurn, liveCard)}</div>}
+          {liveNote && <div className="pt-voice" role="status" style={{ background: 'rgba(59, 29, 18, .75)', color: '#fed7aa' }}>{liveNote}</div>}
+          <div className="pt-talk-row">
+            {live === 'live' || live === 'connecting'
+              ? <button type="button" className="pt-btn pt-btn-end" onClick={stopLive}><Square size={13} /> End live talk</button>
+              : <button type="button" className="pt-btn pt-btn-primary" onClick={startLive}><AudioLines size={14} /> Talk live again</button>}
+            <button type="button" className="pt-btn" onClick={endTalk}><MessageSquare size={14} /> Back to chat</button>
+          </div>
+          <small className="pt-foot-note">Live, like Talk live in AI Autopilot: the same voice, in real time. Protron can open screens, press safe buttons and type into boxes while you watch — it never sends, saves, deletes or pays.</small>
+        </div>
+      ) : talk ? (
         <div className="pt-talk-stage" aria-live="polite">
           <div className="pt-talk-orb" ref={ring} data-state={listening ? 'listening' : speaking ? 'speaking' : busy || working ? 'thinking' : 'idle'}>
             <ProtronAvatar size={112} state={face} />
@@ -757,6 +906,7 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
           {lastBot?.text && <p className="pt-talk-caption">{lastBot.text}</p>}
           {lastBot?.timing && <small className="pt-timing" style={{ color: '#8aa0b2' }}>{timingLine(lastBot.timing)}</small>}
           {liveTurn && liveCard && <div className="pt-talk-card">{card(liveTurn, liveCard)}</div>}
+          {liveNote && <div className="pt-voice" role="status" style={{ background: 'rgba(59, 29, 18, .75)', color: '#fed7aa' }}>{liveNote}</div>}
           {v.problem && v.phase === 'error' && <div className="pt-voice" role="alert" style={{ background: '#3b1d12', color: '#fed7aa' }}>{v.problem}</div>}
           <div className="pt-talk-row">
             <button type="button" className="pt-round pt-mic pt-mic-big" data-on={listening ? '1' : '0'} disabled={!v.supported || v.phase === 'transcribing'}
@@ -766,7 +916,7 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
             {speaking && <button type="button" className="pt-btn" onClick={hush}><Square size={13} /> Stop</button>}
             <button type="button" className="pt-btn" onClick={endTalk}><MessageSquare size={14} /> Back to chat</button>
           </div>
-          <small className="pt-foot-note" style={{ color: '#8aa0b2' }}>Talk is turn by turn: you speak, Protron answers aloud, then listens again. Just start talking to interrupt it.</small>
+          <small className="pt-foot-note">Turn by turn here: you speak, Protron answers aloud, then listens again. Just start talking to interrupt it.</small>
         </div>
       ) : (
         <div className="pt-log" aria-live="polite">

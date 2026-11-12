@@ -1,14 +1,12 @@
 # Dashboard hero background — where it comes from
 
-`public/media/office/lounge-{1280,1920}.webp` is **"Casual Meeting Room"**, from
-Wikimedia Commons (`File:Casual_Meeting_Room_(Unsplash).jpg`, originally
-published on Unsplash), marked **CC0 / public domain** — free for any use,
-commercial included, no attribution required. Downloaded 2026-11-12 at
-1920×1080 and re-encoded as WebP (q80 at 1920, q78 at 1280); nothing else
-changed. The depth, sunlight and dust are added by CSS (dashboard.css,
-`.dash-office*`).
+Since 2026-11-12 (fourth pass) the hero has **no picture**: its ground is drawn
+by CSS gradients in Autopilot's own colours (dashboard.css, `.dash-aurora*`),
+the owner's ask for "a more modern background that suits the app's theme".
+Nothing needs crediting.
 
-Before this the hero used a 37-second aerial nature loop cut from five Mixkit
-clips (free licence); it was removed on 2026-11-12 because video under the
-hero stuttered. To swap the picture, keep it under a licence that allows
-commercial use without permission and record it here.
+Earlier, all removed: a CC0 office photo ("Casual Meeting Room", Wikimedia
+Commons), and before that a 37-second aerial nature loop cut from five Mixkit
+clips (it stuttered under the hero). To bring a picture or footage back, keep
+it under a licence that allows commercial use without permission and record
+it here.

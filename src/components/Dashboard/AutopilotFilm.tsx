@@ -33,10 +33,15 @@
  * progress (0..1), so seeking anywhere draws the right frame. It plays by
  * itself only when it is on screen and the person has not asked their device
  * for less motion; under reduced motion it waits for Play and the CSS
- * transitions are off (autopilotFilm.css). Narration is the browser's own
- * voice (speechSynthesis), off until asked for — no AI voice is spent on it.
+ * transitions are off (autopilotFilm.css). Narration is off until asked for,
+ * and is Protron's warm AI voice — the owner found the browser's voice odd
+ * and asked for "exactly the live bot's voice" (2026-11-12). Its lines live in
+ * services/filmNarration.ts; the server makes each once per install and keeps
+ * it (protron.php `narrate`), so a line heard before costs nothing.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { exampleLine, FILM_PEOPLE, FILM_SAY } from '../../services/filmNarration';
+import { narrator, unlockAudio } from '../../services/protron/voice';
 import {
   AirVent, AudioLines, Briefcase, CalendarCheck, Check, CircleDollarSign, GraduationCap, Hammer, House,
   Keyboard, LayoutTemplate, Mail, Megaphone, MessageSquare, Mic, Pause, Play, Presentation, Receipt, Scale,
@@ -151,47 +156,50 @@ function StepFrame({ n, p, children }: { n: number; p: number; children: ReactNo
 
 type Example = { icon: Icon; who: string; where: string; said: string; did: [string, string, string]; notes: [string, string, string] };
 
+/* Who and where come from the narration script, so what is said is what is shown. */
+const person = (i: number) => ({ who: FILM_PEOPLE[i][0], where: FILM_PEOPLE[i][1] });
+
 const EXAMPLES: Example[] = [
-  { icon: Wrench, who: 'Plumber', where: 'Phoenix, AZ', said: 'More water-heater installs, less time on the phone.',
+  { icon: Wrench, ...person(0), said: 'More water-heater installs, less time on the phone.',
     did: ['Finds homeowners asking for water-heater help nearby', 'Texts and emails a quote offer', 'Books the visit into the calendar'],
     notes: ['New enquiry — tankless water heater', 'Booked — Thu 9:00 am, Scottsdale', 'Paid — water-heater install · $1,850'] },
-  { icon: Zap, who: 'Electrician', where: 'Dallas, TX', said: 'Panel upgrades from homeowners.',
+  { icon: Zap, ...person(1), said: 'Panel upgrades from homeowners.',
     did: ['Finds older homes in Plano and Frisco', 'Offers a free safety inspection', 'Follows up until the visit is booked'],
     notes: ['Reply — “Can you come this week?”', 'Booked — inspection Tue 1:00 pm', 'Paid — panel upgrade · $2,400'] },
-  { icon: House, who: 'Real estate agent', where: 'Miami, FL', said: 'Seller leads in Coral Gables.',
+  { icon: House, ...person(2), said: 'Seller leads in Coral Gables.',
     did: ['Finds owners likely to sell', 'Sends a free home-value report', 'Books listing appointments'],
     notes: ['New lead — 3-bed home valuation', 'Booked — listing appointment Sat 11:00', 'Commission received · $11,400'] },
-  { icon: Megaphone, who: 'Digital marketing agency', where: 'Austin, TX', said: 'New retainer clients this quarter.',
+  { icon: Megaphone, ...person(3), said: 'New retainer clients this quarter.',
     did: ['Finds local businesses with weak websites', 'Sends each a personal audit', 'Books discovery calls'],
     notes: ['Reply — “Send me the audit”', 'Booked — discovery call Tue 2:00 pm', 'Retainer signed · $2,500 / month'] },
-  { icon: ShoppingBag, who: 'Solo entrepreneur, online store', where: 'Denver, CO', said: 'Bring past customers back.',
+  { icon: ShoppingBag, ...person(4), said: 'Bring past customers back.',
     did: ['Writes a win-back email series', 'Posts on social every day', 'Recovers abandoned carts'],
     notes: ['Cart recovered — 2 items', 'New order from a returning customer', 'Paid · $186'] },
-  { icon: Users, who: 'Business coach', where: 'Atlanta, GA', said: 'Fill my one-to-one coaching programme.',
+  { icon: Users, ...person(5), said: 'Fill my one-to-one coaching programme.',
     did: ['Publishes a free-guide page', 'Nurtures every sign-up by email', 'Books strategy calls'],
     notes: ['New sign-up — free guide', 'Booked — strategy call Wed 4:00 pm', 'Paid — coaching package · $1,500'] },
-  { icon: GraduationCap, who: 'Educator & tutor', where: 'Boston, MA', said: 'Enrol students in my SAT prep course.',
+  { icon: GraduationCap, ...person(6), said: 'Enrol students in my SAT prep course.',
     did: ['Builds the course page', 'Emails every parent who asked', 'Sends reminders before the start date'],
     notes: ['Enquiry — SAT prep, grade 11', 'Enrolled — spring cohort', 'Paid — course fee · $480'] },
-  { icon: Presentation, who: 'Corporate trainer', where: 'Chicago, IL', said: 'Leadership workshops with HR teams.',
+  { icon: Presentation, ...person(7), said: 'Leadership workshops with HR teams.',
     did: ['Finds HR leads at mid-size firms', 'Sends a workshop outline', 'Books intro calls'],
     notes: ['Reply — “Can you do March?”', 'Booked — intro call Mon 10:00 am', 'Invoice paid — workshop · $6,500'] },
-  { icon: Briefcase, who: 'Corporate consultant', where: 'New York, NY', said: 'Win operations projects.',
+  { icon: Briefcase, ...person(8), said: 'Win operations projects.',
     did: ['Finds COOs at growing companies', 'Sends a short case study', 'Follows up until a call is booked'],
     notes: ['Reply — “Interested, let’s talk”', 'Booked — discovery call Thu 3:00 pm', 'Proposal accepted · $12,000'] },
-  { icon: AirVent, who: 'HVAC contractor', where: 'Houston, TX', said: 'Sell AC maintenance plans before summer.',
+  { icon: AirVent, ...person(9), said: 'Sell AC maintenance plans before summer.',
     did: ['Emails past customers a tune-up offer', 'Texts reminders to book', 'Takes the payment online'],
     notes: ['New booking — AC tune-up', 'Booked — Fri 8:00 am', 'Paid — maintenance plan · $189'] },
-  { icon: Smile, who: 'Dental practice', where: 'San Diego, CA', said: 'More implant consultations.',
+  { icon: Smile, ...person(10), said: 'More implant consultations.',
     did: ['Publishes an implant landing page', 'Answers questions by email', 'Books consultations'],
     notes: ['Enquiry — implant consultation', 'Booked — Mon 9:30 am', 'Deposit paid · $500'] },
-  { icon: Hammer, who: 'Roofing company', where: 'Charlotte, NC', said: 'Storm-damage inspections.',
+  { icon: Hammer, ...person(11), said: 'Storm-damage inspections.',
     did: ['Finds homeowners in affected areas', 'Offers a free roof inspection', 'Books the inspection'],
     notes: ['Reply — “Yes, please inspect”', 'Booked — inspection Sat 10:00 am', 'Deposit paid — new roof · $4,200'] },
-  { icon: Scale, who: 'Estate-planning attorney', where: 'Orlando, FL', said: 'More consultations from families.',
+  { icon: Scale, ...person(12), said: 'More consultations from families.',
     did: ['Publishes a plain-English guide', 'Follows up with every download', 'Books consultations'],
     notes: ['New download — wills & trusts guide', 'Booked — consultation Wed 11:00 am', 'Paid — estate plan · $1,200'] },
-  { icon: SprayCan, who: 'Cleaning company', where: 'Seattle, WA', said: 'Recurring home-cleaning clients.',
+  { icon: SprayCan, ...person(13), said: 'Recurring home-cleaning clients.',
     did: ['Finds new movers nearby', 'Sends a first-clean offer', 'Turns one-offs into weekly plans'],
     notes: ['New enquiry — 2-bed apartment', 'Booked — first clean Tue', 'Paid — weekly plan · $160'] },
 ];
@@ -237,7 +245,7 @@ function buildScenes(): Scene[] {
   const add = (ch: Scene['ch'], ms: number, say: string, draw: Scene['draw']) => s.push({ ch, ms: fit(ms, say), say, draw });
 
   /* ── Part one ── */
-  add(0, 6500, 'This is AI Autopilot. Tell it what you want, and it finds customers, follows up, books the work and gets you paid.', p => (
+  add(0, 6500, FILM_SAY.intro, p => (
     <div className="apf-title">
       <span className="apf-kicker">AI Autopilot</span>
       <h3>Your business, on AI Autopilot</h3>
@@ -249,7 +257,7 @@ function buildScenes(): Scene[] {
       </div>
     </div>
   ));
-  add(0, 7000, 'The usual way is a dozen jobs done by hand. With Autopilot you say it once, and it runs every step, asking you before anything important goes out.', p => (
+  add(0, 7000, FILM_SAY.usual, p => (
     <div className="apf-vs">
       <div className="apf-vs-col">
         <span className="apf-vs-h">The usual way</span>
@@ -263,7 +271,7 @@ function buildScenes(): Scene[] {
       </div>
     </div>
   ));
-  add(0, 10000, 'Talk to it live, one to one. While you are still speaking, Protron is already building the workflow.', p => {
+  add(0, 10000, FILM_SAY.live, p => {
     const speaking = TALK.find(l => p >= l.a && p <= l.b);
     return (
       <div className="apf-live">
@@ -286,7 +294,7 @@ function buildScenes(): Scene[] {
       </div>
     );
   });
-  add(0, 5500, 'Type it, record it, or just talk. Whichever is easiest for you.', p => {
+  add(0, 5500, FILM_SAY.ways, p => {
     const ways = [
       { icon: Keyboard, h: 'Type it', t: 'One line is enough to start.' },
       { icon: Mic, h: 'Record it', t: 'Press record, say it, check the words.' },
@@ -307,7 +315,7 @@ function buildScenes(): Scene[] {
   });
 
   /* ── Part two: six baby steps ── */
-  add(1, 5500, 'Step one. Open AI Autopilot and press Talk live — or Record, or simply type.', p => (
+  add(1, 5500, FILM_SAY.step1, p => (
     <StepFrame n={0} p={p}>
       <div className="apf-box">
         <span className="apf-box-ph">Describe a result…</span>
@@ -319,7 +327,7 @@ function buildScenes(): Scene[] {
       </div>
     </StepFrame>
   ));
-  add(1, 6000, 'Step two. Say what your business does and what you want from it.', p => (
+  add(1, 6000, FILM_SAY.step2, p => (
     <StepFrame n={1} p={p}>
       <div className="apf-talkline">
         <Wave live={p < 0.9} bars={24} />
@@ -327,7 +335,7 @@ function buildScenes(): Scene[] {
       </div>
     </StepFrame>
   ));
-  add(1, 6000, 'Step three. Protron asks a few short questions — where your customers are, your offer, your website.', p => (
+  add(1, 6000, FILM_SAY.step3, p => (
     <StepFrame n={2} p={p}>
       <div className="apf-qa">
         {[
@@ -343,7 +351,7 @@ function buildScenes(): Scene[] {
       </div>
     </StepFrame>
   ));
-  add(1, 5500, 'Step four. It writes your smart prompt and the plan, in plain words you can change.', p => (
+  add(1, 5500, FILM_SAY.step4, p => (
     <StepFrame n={3} p={p}>
       <div className="apf-prompt">
         <b>Your smart optimized prompt for AI Autopilot</b>
@@ -354,7 +362,7 @@ function buildScenes(): Scene[] {
       </div>
     </StepFrame>
   ));
-  add(1, 6000, 'Step five. It builds the workflow, one step at a time, and you can watch every step.', p => (
+  add(1, 6000, FILM_SAY.step5, p => (
     <StepFrame n={4} p={p}>
       <div className="apf-flow">
         {[
@@ -367,7 +375,7 @@ function buildScenes(): Scene[] {
       </div>
     </StepFrame>
   ));
-  add(1, 6500, 'Step six. Choose what needs your OK, then switch it on. It runs in the cloud every few minutes, even with this tab closed.', p => (
+  add(1, 6500, FILM_SAY.step6, p => (
     <StepFrame n={5} p={p}>
       <div className="apf-guards">
         {['Ask me before any email or text is sent', 'Ask me before booking a time', 'Tell me when money comes in'].map((g, i) => (
@@ -386,8 +394,7 @@ function buildScenes(): Scene[] {
 
   /* ── Part three: example businesses ── */
   EXAMPLES.forEach((e, i) => {
-    const article = /^[AEIOU]/i.test(e.who) ? 'An' : 'A';
-    add(2, 3900, i === 0 ? `Here is what that looks like. ${article} ${e.who.toLowerCase()} in ${e.where.split(',')[0]}.` : `${article} ${e.who.toLowerCase()} in ${e.where.split(',')[0]}.`,
+    add(2, 3900, exampleLine(i),
       p => <ExampleScene e={e} i={i} p={p} />);
   });
 
@@ -402,7 +409,7 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
   const scenes = useMemo(() => {
     const list = buildScenes();
     /* The last scene is where the film hands over to the real buttons. */
-    list.push({ ch: 2, ms: 7000, say: 'Ready? Press Talk live, record your prompt, or type it — and put your business on AI Autopilot.', draw: () => (
+    list.push({ ch: 2, ms: 7000, say: FILM_SAY.end, draw: () => (
       <div className="apf-end">
         <h3>Type it. Record it. Or just talk.</h3>
         <p>Protron sets AI Autopilot up with you, one small step at a time.</p>
@@ -429,6 +436,7 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
   const visible = useRef(false);
   const chosen = useRef(false); // the person pressed play/pause — autoplay stops deciding
   const still = useRef(motionReduced());
+  const holdAt = useRef<number | null>(null);
 
   const idx = Math.max(0, starts.findIndex((st, i) => t >= st && t < st + scenes[i].ms));
   const scene = scenes[idx] ?? scenes[0];
@@ -446,7 +454,9 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
       const dt = Math.min(100, now - last);
       last = now;
       if (visible.current && !document.hidden) {
-        tRef.current += dt;
+        /* While the narrator is still saying this scene's line, the scene waits for it. */
+        const hold = holdAt.current;
+        tRef.current = hold !== null && tRef.current + dt > hold ? Math.max(tRef.current, hold) : tRef.current + dt;
         if (tRef.current >= total) { tRef.current = total - 1; setT(tRef.current); setPlaying(false); return; }
         /* ~30 renders a second: the scenes are timed in tenths, and a React
            render of the whole film every frame was frames the page needed. */
@@ -470,18 +480,25 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
     return () => io.disconnect();
   }, []);
 
-  /* Narration: the browser's voice reads each caption as its scene starts. */
+  /* Narration: Protron's warm AI voice — the live bot's voice — reads each
+     caption as its scene starts; the next line is fetched while this one
+     plays. Without the AI voice the film stays silent and says why. */
+  const [voiceNote, setVoiceNote] = useState('');
   useEffect(() => {
-    const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined;
-    if (!synth) return;
-    if (!voice || !playing) { synth.cancel(); return; }
-    synth.cancel();
-    const u = new SpeechSynthesisUtterance(scene.say);
-    u.rate = 1.05;
-    u.lang = 'en-US';
-    synth.speak(u);
-  }, [idx, voice, playing, scene.say]);
-  useEffect(() => () => { window.speechSynthesis?.cancel(); }, []);
+    if (!voice || !playing) { narrator.stop(); holdAt.current = null; return; }
+    let gone = false;
+    const next = scenes[idx + 1];
+    holdAt.current = starts[idx] + scene.ms - 40;
+    void narrator.say(scene.say).then(why => {
+      if (gone) return;
+      holdAt.current = null;
+      setVoiceNote(why);
+    });
+    if (next) void narrator.prepare(next.say);
+    return () => { gone = true; holdAt.current = null; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once per scene; starts and scene follow idx
+  }, [idx, voice, playing]);
+  useEffect(() => () => { narrator.stop(); }, []);
 
   const toggle = () => {
     chosen.current = true;
@@ -514,6 +531,7 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
         {scene.draw(p)}
       </div>
       <p className="apf-subs" aria-live={playing ? 'off' : 'polite'}>{scene.say}</p>
+      {voice && voiceNote && <p className="apf-voice-note" role="status">Narrator unavailable — captions only. {voiceNote}</p>}
       <div className="apf-bar">
         <button type="button" className="apf-ctl" onClick={() => jump(-1)} aria-label="Previous scene"><SkipBack size={15} /></button>
         <button type="button" className="apf-ctl is-play" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}>
@@ -546,8 +564,8 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
           })}
         </div>
         <span className="apf-time">{mmss(t)} / {mmss(total)}</span>
-        {typeof window !== 'undefined' && 'speechSynthesis' in window && (
-          <button type="button" className={`apf-ctl${voice ? ' is-on' : ''}`} onClick={() => setVoice(v => !v)} aria-pressed={voice}
+        {typeof window !== 'undefined' && 'AudioContext' in window && (
+          <button type="button" className={`apf-ctl${voice ? ' is-on' : ''}`} onClick={() => { unlockAudio(); setVoiceNote(''); if (!voice) { chosen.current = true; setPlaying(true); } setVoice(v => !v); }} aria-pressed={voice}
             aria-label={voice ? 'Turn narration off' : 'Turn narration on'} title={voice ? 'Narration on' : 'Narration off'}>
             {voice ? <Volume2 size={15} /> : <VolumeX size={15} />}
           </button>
