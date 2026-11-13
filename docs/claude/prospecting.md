@@ -99,6 +99,17 @@ returned, insights computed from the rows, and a type breakdown. The side panel
 becomes a drawer there. Nothing on either screen is an invented figure: no
 phone "validity", no "best time to reach", no source that was not asked.
 
+**"See how AI Prospecting works"** (`Prospecting/ProspectingDemo.tsx`,
+2026-11-13) is the first thing under the New search screen's hairline — never
+above the sentence box. A fold-out card (folded state in localStorage
+`pc_prospecting_demo_folded`, per browser) holding a drawn film on the shared
+player (`shared/DemoFilm.tsx`): one sentence → the live search's three steps →
+results marked **Contact checked** (never "verified": most installs have no
+mailbox verifier) → Connect to AI Autopilot → the daily finder adding new
+businesses each run day, skipping Contacts and unsubscribes → the sequence,
+cold prospects in a small batch waiting for approval. Example values only, no
+counts, "Illustration · example values" in the frame.
+
 **"Live" is a property of the requests, not a label.** The page runs
 `useProspectSearch({ live: true })`, which sends `fresh: true`: the directory,
 register and Google searches, the website reads (`findContacts` — which reads

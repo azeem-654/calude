@@ -1,0 +1,162 @@
+/* ── "See how AI Prospecting works" (ProspectingDemo.tsx) ──
+   The fold-out card on the New search screen, and the film's own scenes.
+   The player, pointer and bar are shared/demoFilm.css. The card uses the
+   page's own --aip-* palette (both themes); the film inside it is a picture
+   of the app in its light palette, like a video, in both themes. */
+
+.psd { width: 100%; max-width: 760px; display: grid; gap: 10px; text-align: left; }
+.psd-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 14px;
+  border-radius: 14px;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: var(--aip-ink);
+  background: var(--aip-card);
+  border: 1px solid var(--aip-line);
+}
+.psd-head > svg { flex: none; color: var(--aip-violet, #7c3aed); }
+.psd-head-t { flex: 1; min-width: 0; }
+.psd-head-t b { display: block; font-size: 13.5px; font-weight: 750; }
+.psd-head-t small { display: block; font-size: 12px; color: var(--aip-muted); }
+.psd-head-x { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 700; color: var(--aip-muted); }
+.psd-head-x svg { transition: transform 0.2s ease; transform: rotate(180deg); }
+.psd[data-folded="1"] .psd-head-x svg { transform: none; }
+.psd-head:focus-visible { outline: 2px solid var(--aip-violet, #7c3aed); outline-offset: 2px; }
+
+/* Five steps fit under the widest player; the narrower ones show numbers. */
+.psd-film .apd-cap { font-size: 13.5px; }
+
+.psd-foot { display: flex; align-items: center; justify-content: flex-end; gap: 0.6em; margin-top: 0.9em; }
+.psd-foot .apd-st { margin-right: auto; }
+
+/* ── 1 · One sentence ── */
+.psd-s1 { justify-items: center; align-content: center; gap: 1em; }
+.psd-hero { font-size: 1.7em; font-weight: 850; letter-spacing: -0.03em; }
+.psd-box {
+  width: min(100%, 36em);
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  padding: 0.6em 0.6em 0.6em 1.1em;
+  border-radius: 1.2em;
+  background-image: linear-gradient(#fff, #fff), linear-gradient(100deg, #f97316, #ec4899, #8b5cf6);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  border: 1.5px solid transparent;
+  box-shadow: 0 12px 30px -16px rgba(249, 115, 22, 0.55);
+}
+.psd-q { position: relative; flex: 1; min-width: 0; font-size: 1em; white-space: nowrap; overflow: hidden; }
+.psd-ph { position: absolute; left: 0; top: 0; color: #9aa3b2; transition: opacity 0.2s ease; }
+.psd-box.is-clicked .psd-ph { opacity: 0; }
+.psd-go { flex: none; width: 2.5em; height: 2.5em; border-radius: 0.8em; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, #f97316, #ec4899); }
+.psd-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5em; }
+.psd-uchip { display: inline-flex; align-items: center; gap: 0.35em; padding: 0.35em 0.8em; border-radius: 999px; font-size: 0.8em; font-weight: 650; color: #374151; background: #fff; border: 1px solid #e6e9f0; }
+.psd-uchip.is-want { color: #7c3aed; background: #faf5ff; border-color: #e9d5ff; }
+
+/* ── 2 · The live search ── */
+.psd-s2 { grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.9fr); align-items: center; }
+.psd-line { display: flex; align-items: center; gap: 0.6em; padding: 0.55em 0.1em; border-top: 1px solid #f0f2f7; font-size: 0.86em; color: #9aa3b2; transition: color 0.3s ease; }
+.psd-line.is-on { color: #17191c; }
+.psd-found-h { display: block; font-size: 0.9em; font-weight: 750; margin-bottom: 0.5em; }
+.psd-pin { display: flex; align-items: center; gap: 0.45em; padding: 0.45em 0.2em; font-size: 0.84em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.psd-pin svg { flex: none; color: #f97316; }
+.psd-found > .apd-st { margin-top: 0.6em; }
+
+/* ── 3 · Results ── */
+.psd-s3 { align-content: center; }
+.psd-res-h { display: flex; align-items: center; gap: 0.5em; margin-bottom: 0.6em; }
+.psd-res-h b { font-size: 0.95em; margin-right: 0.4em; }
+.psd-cn { margin-left: auto; }
+.psd-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 8.6em;
+  align-items: center;
+  gap: 0.9em;
+  padding: 0.6em 0.2em;
+  border-top: 1px solid #f0f2f7;
+  font-size: 0.86em;
+}
+.psd-row > .apd-st { justify-self: end; }
+.psd-row b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.psd-mail { color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── 4 · Connect ── */
+.psd-s4 { align-content: center; justify-items: center; }
+.psd-conn { width: min(100%, 38em); }
+.psd-set { display: grid; grid-template-columns: auto 9em minmax(0, 1fr); align-items: center; gap: 0.6em; padding: 0.6em 0.1em; border-top: 1px solid #f0f2f7; font-size: 0.86em; }
+.psd-set svg { color: #7c3aed; }
+.psd-set span { color: #6b7280; }
+.psd-set b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── 5 · Day by day ── */
+.psd-s5 { align-content: center; gap: 1em; }
+.psd-cal-h { display: flex; align-items: center; gap: 0.45em; font-size: 0.9em; color: #374151; }
+.psd-cal-h svg { color: #7c3aed; }
+.psd-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.5em; }
+.psd-day {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  min-height: 9em;
+  padding: 0.6em;
+  border-radius: 0.8em;
+  background: #fff;
+  border: 1px solid #e6e9f0;
+}
+.psd-day.is-off { background: #f9fafc; border-style: dashed; }
+.psd-day-h { font-size: 0.72em; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #7c3aed; }
+.psd-day.is-off .psd-day-h { color: #9aa3b2; }
+.psd-new { padding: 0.35em 0.45em; border-radius: 0.5em; font-size: 0.7em; font-weight: 650; line-height: 1.3; color: #15803d; background: #f0fdf4; border: 1px solid #bbf7d0; }
+.psd-none { font-size: 0.72em; color: #9aa3b2; }
+.psd-skips { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5em; }
+
+/* ── 6 · The sequence ── */
+.psd-s6 { grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr); align-items: center; }
+.psd-nodes { display: flex; flex-direction: column; }
+.psd-node-w { display: flex; flex-direction: column; }
+.psd-edge { display: block; width: 2px; height: 0.9em; margin-left: 1.4em; background: #c7d2fe; transform: scaleY(0); transform-origin: 50% 0; transition: transform 0.35s ease; }
+.psd-edge.is-on { transform: none; }
+.psd-node { display: flex; align-items: center; gap: 0.55em; padding: 0.55em 0.8em; border-radius: 0.75em; font-size: 0.86em; font-weight: 650; background: #eef2ff; border: 1px solid #c7d2fe; }
+.psd-node svg { color: #4f46e5; }
+.psd-batch-h { display: flex; align-items: center; gap: 0.45em; color: #15803d; }
+.psd-batch-h b { font-size: 0.9em; color: #17191c; }
+.psd-sent { margin-top: 0.7em; }
+.psd-batch-t { display: block; margin-top: 0.4em; font-size: 0.82em; color: #6b7280; }
+
+/* ── A narrow player ── */
+.apd.is-compact .psd-hero { font-size: 1.15em; }
+.apd.is-compact .psd-s1 { gap: 0.6em; }
+.apd.is-compact .psd-box { padding: 0.4em 0.4em 0.4em 0.8em; }
+.apd.is-compact .psd-q { font-size: 0.86em; }
+.apd.is-compact .psd-go { width: 2em; height: 2em; }
+.apd.is-compact .psd-s2,
+.apd.is-compact .psd-s6 { gap: 0.6em; }
+.apd.is-compact .psd-line,
+.apd.is-compact .psd-set,
+.apd.is-compact .psd-node { font-size: 0.74em; padding-top: 0.4em; padding-bottom: 0.4em; }
+.apd.is-compact .psd-pin { font-size: 0.72em; }
+.apd.is-compact .psd-res-h .apd-st { display: none; }
+.apd.is-compact .psd-row { grid-template-columns: minmax(0, 1fr) 8.6em; font-size: 0.76em; padding: 0.45em 0.1em; }
+.apd.is-compact .psd-mail { display: none; }
+.apd.is-compact .psd-set { grid-template-columns: auto 6.5em minmax(0, 1fr); }
+.apd.is-compact .psd-week { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.35em; }
+.apd.is-compact .psd-day { min-height: 6.5em; padding: 0.4em; }
+.apd.is-compact .psd-new { font-size: 0.6em; }
+.apd.is-compact .psd-cal-h { font-size: 0.76em; }
+.apd.is-compact .psd-s5 { gap: 0.6em; }
+.apd.is-compact .psd-batch-h b { font-size: 0.8em; }
+.apd.is-compact .psd-batch-t { font-size: 0.72em; }
+.apd.is-compact .psd-foot { margin-top: 0.6em; }
+
+@media (max-width: 760px) {
+  .psd-head-t small { display: none; }
+}
+
+/* Room for the longest caption, so the card does not change height as it plays. */
+.apd.psd-film.is-compact .apd-cap { min-height: 5.8em; }
