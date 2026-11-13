@@ -296,8 +296,8 @@ function AppLayout({ isClient }: { isClient: boolean }) {
       <HelpLauncher />
       <CornerHelp />
       {/* The AI business manager, on every signed-in screen; its panel is a
-          separate download fetched on first open (Protron.tsx). Testing site
-          only for now (services/features.ts, docs/TESTING-ONLY.md). */}
+          separate download fetched on first open (Protron.tsx). Live on both
+          sites since 2026-11-13; the switch stays (services/features.ts). */}
       {featureReady('protron') && <Protron />}
       {/* The 62px is the floating icon rail's width. The rail is hidden below
           760px (see index.css), so on a phone that padding was 62px of nothing

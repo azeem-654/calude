@@ -34,11 +34,8 @@ import { isRehearsal } from './hosts';
  * The name stays in `Feature` so the next held-back feature has a pattern.
  */
 const REHEARSING = new Set<string>([
-  /* Protron's floating chat and Talk mode (src/components/Protron): on the
-     testing site only, by the owner's choice (2026-11-12), until they have
-     tested it there. Protron's first screens in the New business workspace
-     wizard are live — they are not gated by this. docs/TESTING-ONLY.md. */
-  'protron',
+  /* `protron` (the floating chat and live talk) was here from 2026-11-12 and
+     was released to live by the owner on 2026-11-13 — docs/TESTING-ONLY.md. */
 ]);
 
 export type Feature = 'prospects' | 'protron';
