@@ -259,7 +259,11 @@ export default function Autopilot() {
         {/* One interface. A project *is* its workflows, its agents, its content
             and its numbers, and splitting them across a second top-level tab
             asked somebody to hold two mental models of the same thing. */}
-        <ProjectBoard key={boardKey} onNewProject={() => setCreating(true)} />
+        {/* Keys named apart: the board and the wizard below are siblings, and
+            both counted from 0 — two children keyed "0", which made React
+            leave old boards on the page after a build (the owner's screenshot,
+            2026-11-13: an empty board above copies of the new one). */}
+        <ProjectBoard key={`board-${boardKey}`} onNewProject={() => setCreating(true)} />
 
         {/* Below the board, because it is what somebody does *after* looking at
             the work rather than instead of it. Collapsed by default so it costs
@@ -268,7 +272,7 @@ export default function Autopilot() {
 
         {creating && (
           <NewProject
-            key={handoffKey}
+            key={`wizard-${handoffKey}`}
             portfolios={portfolios}
             seedPrompt={handoff || undefined}
             autoDrive={autoDrive && !!handoff}
