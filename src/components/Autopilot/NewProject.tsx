@@ -909,7 +909,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
   const [driveNote, setDriveNote] = useState('');
   const footRef = useRef<HTMLElement>(null);
   const nextRef = useRef(next);
-  nextRef.current = next;
+  useEffect(() => { nextRef.current = next; });
   useEffect(() => {
     if (!driving) return;
     if (result) { setDriving(false); setDriveNote(''); pointerDone(); return; }

@@ -97,16 +97,26 @@ export default function Autopilot() {
   const takeAuto = () => {
     try { const a = sessionStorage.getItem('pc_protron_autodrive') === '1'; sessionStorage.removeItem('pc_protron_autodrive'); return a; } catch { return false; }
   };
-  const [handoff, setHandoff] = useState(() => (params.get('new') === '1' && params.get('from') === 'protron' ? takeHandoff() : ''));
-  const [autoDrive, setAutoDrive] = useState(() => !!handoff && takeAuto());
+  /* Peeked at during render and taken in the effect below: a render that is
+     thrown away (the screen mounting twice on a full page load) used to take
+     the hand-off with it, and the wizard opened empty. */
+  const peek = (k: string) => { try { return sessionStorage.getItem(k) ?? ''; } catch { return ''; } };
+  const [handoff, setHandoff] = useState(() => (params.get('new') === '1' && params.get('from') === 'protron' ? peek('pc_protron_handoff') : ''));
+  const [autoDrive, setAutoDrive] = useState(() => !!handoff && peek('pc_protron_autodrive') === '1');
   const [handoffKey, setHandoffKey] = useState(0);
   useEffect(() => {
     if (params.get('new') !== '1') return;
     if (params.get('from') === 'protron') {
       const t = takeHandoff();
-      if (t) { setHandoff(t); setAutoDrive(takeAuto()); setHandoffKey(k => k + 1); setCreating(true); }
+      if (t) {
+        const auto = takeAuto();
+        /* The same hand-off this screen already opened with keeps its wizard. */
+        if (t !== handoff) setHandoffKey(k => k + 1);
+        setHandoff(t); setAutoDrive(auto); setCreating(true);
+      }
     }
     setParams(p => { const n = new URLSearchParams(p); n.delete('new'); n.delete('list'); n.delete('plan'); n.delete('from'); n.delete('solution'); return n; }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `handoff` is compared, not followed
   }, [params, setParams]);
 
   const load = useCallback(async () => {
