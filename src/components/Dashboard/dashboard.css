@@ -580,9 +580,10 @@ html[data-hero-top="1"] .trial-bar { background: rgba(255, 255, 255, 0.78) !impo
 .dash-hero-starters { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .dash-hero-chip { font: inherit; font-size: 13px; font-weight: 600; color: #fff; background: rgba(20, 22, 28, 0.32); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 999px; padding: 7px 13px; cursor: pointer; }
 .dash-hero-chip:hover { background: rgba(255, 255, 255, 0.26); }
-/* The film is 16:9 at the column's width (AutopilotFilm.tsx); its picture is
-   never taller than 78% of the window, so the width gives way first. */
-.dash-hero-film { width: min(1280px, 100%, 138.6vh); }
+/* The film is 16:9 (AutopilotFilm.tsx). Its picture is never taller than
+   56% of the window or 560px — the owner found it too tall at 78% — so on a
+   desktop the width gives way first; a phone keeps the column's width. */
+.dash-hero-film { width: min(996px, 100%, 99.5vh); }
 @media (prefers-reduced-motion: no-preference) {
   .dash-hero-live-dot { animation: dash-live 1.6s ease-in-out infinite; }
   .dash-hero-rec.is-on { transition: box-shadow 90ms linear; }

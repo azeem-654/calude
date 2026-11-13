@@ -63,11 +63,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { exampleLine, FILM_PEOPLE, FILM_SAY } from '../../services/filmNarration';
 import { narrator, unlockAudio } from '../../services/protron/voice';
 import {
-  AirVent, ArrowRight, AudioLines, BarChart3, Briefcase, CalendarCheck, Check, CircleDollarSign, Clock, FlaskConical,
-  GraduationCap, Hammer, House, Keyboard, LayoutDashboard, LayoutTemplate, Link2, Loader, Mail, Megaphone, MessageSquare,
-  Mic, Pause, Play, Plus, Presentation, Receipt, RefreshCw, Scale, Search, Send, Share2, ShieldCheck, ShoppingBag,
-  SkipBack, SkipForward, Smile, Sparkles, SprayCan, Square, SquareCheck, Star, Trophy, UserPlus, Users, Volume2,
-  VolumeX, Wrench, Zap,
+  AirVent, ArrowRight, AudioLines, BarChart3, BellRing, CalendarCheck, Check, CircleDollarSign, Clock, FileText,
+  FlaskConical, GripVertical, Hammer, House, Kanban, Keyboard, LayoutDashboard, LayoutTemplate, Link2, ListTodo,
+  Loader, Mail, Megaphone, MessageSquare, Mic, Pause, Play, Plus, Receipt, RefreshCw, Search, Send, Share2,
+  ShieldCheck, ShoppingBag, SkipBack, SkipForward, Sparkles, Square, SquareCheck, Star, TrendingUp, Trophy, UserPlus,
+  Users, Volume2, VolumeX, Wrench, Zap,
 } from 'lucide-react';
 import ProtronAvatar from '../Protron/ProtronAvatar';
 import { LogoMark } from '../shared/Logo';
@@ -78,15 +78,18 @@ type Icon = typeof Mail;
 /**
  * Where the pointer goes in a scene: from progress `at`, to the element marked
  * `data-k={k}`; a click at `click`; `say` is the label beside it, naming what
- * it is doing, the way an AI agent's cursor does.
+ * it is doing, the way an AI agent's cursor does; `follow` keeps the pointer
+ * on a target that is itself moving (a deal being dragged).
  */
-type Aim = { at: number; k: string; click?: number; say?: string };
+type Aim = { at: number; k: string; click?: number; say?: string; follow?: boolean };
 type Scene = { ch: number; ms: number; say: string; draw: (p: number) => ReactNode; aim?: Aim[] };
 
 /* The owner, 2026-11-13: the main story is Protron using the app itself —
    opening modules, writing the prompt, building and launching the campaign —
    then watching it, A/B testing, rewriting and reporting back. */
-const CHAPTERS = ['What it does', 'Set it up', 'Runs your app', 'Watches & improves', 'Results'];
+/* Owner, later the same day: Protron in every module, "going here and there
+   and solving things for you" — chapter four hops through them. */
+const CHAPTERS = ['What it does', 'Set it up', 'Runs the app', 'Every module', 'Improves', 'Results'];
 
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 /** Progress of a sub-span of a scene: 0 before `a`, 1 after `b`. */
@@ -216,13 +219,16 @@ function StepFrame({ n, p, children }: { n: number; p: number; children: ReactNo
  * two), and every frame says it is an example: the counts, rates and
  * prospects in it are an illustration, never a customer's results. */
 
-type NavKey = 'dashboard' | 'autopilot' | 'contacts' | 'campaigns' | 'booking' | 'reports';
+type NavKey = 'dashboard' | 'autopilot' | 'contacts' | 'pipelines' | 'tasks' | 'campaigns' | 'booking' | 'invoices' | 'reports';
 const NAV: { k: NavKey; icon: Icon; label: string }[] = [
   { k: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { k: 'autopilot', icon: Sparkles, label: 'AI Autopilot' },
   { k: 'contacts', icon: Users, label: 'Contacts' },
+  { k: 'pipelines', icon: Kanban, label: 'Pipelines' },
+  { k: 'tasks', icon: ListTodo, label: 'Tasks' },
   { k: 'campaigns', icon: Mail, label: 'Email campaigns' },
   { k: 'booking', icon: CalendarCheck, label: 'Booking pages' },
+  { k: 'invoices', icon: FileText, label: 'Invoices' },
   { k: 'reports', icon: BarChart3, label: 'Reports' },
 ];
 
@@ -282,10 +288,34 @@ const FEED: [Icon, string][] = [
 
 const PLAN: [Icon, string][] = [[Search, 'Find homeowners'], [Mail, 'Email campaign'], [CalendarCheck, 'Booking page'], [RefreshCw, 'Follow-ups']];
 
+const WF: { icon: Icon; tab: string; t: string }[] = [
+  { icon: Zap, tab: 'Trigger', t: 'A new enquiry arrives' },
+  { icon: Sparkles, tab: 'AI step', t: 'Write a personal reply' },
+  { icon: Clock, tab: 'Wait', t: '2 days, if no reply' },
+  { icon: Mail, tab: 'Email', t: 'Send the follow-up' },
+  { icon: CalendarCheck, tab: 'Book', t: 'Offer a time to visit' },
+];
+
+type Deal = { k?: string; t: string; v: string };
+const STAGES: { h: string; deals: Deal[] }[] = [
+  { h: 'New lead', deals: [{ t: 'Outlet repair — Dallas', v: '$180' }] },
+  { h: 'Quoted', deals: [{ t: 'Rewire — Garland', v: '$3,900' }, { k: 'pl-drag', t: 'EV charger — Frisco', v: '$1,350' }] },
+  { h: 'Booked', deals: [{ t: 'Panel upgrade — Richardson', v: '$2,400' }] },
+  { h: 'Won', deals: [{ t: 'Lighting — Plano', v: '$640' }] },
+];
+
+const FOLLOWS: { k: string; icon: Icon; t: string; s: string; btn: string; done: string; at: number }[] = [
+  { k: 'fu-deal', icon: Kanban, t: 'Rewire — Garland', s: 'Quoted 5 days ago, no reply', btn: 'Follow up', done: 'Follow-up sent', at: 0.2 },
+  { k: 'fu-mail', icon: Mail, t: 'Homeowner — Richardson', s: 'Opened the email twice, didn’t reply', btn: 'Follow up', done: 'Follow-up sent', at: 0.46 },
+  { k: 'fu-task', icon: BellRing, t: 'Call the Plano homeowner back', s: 'Asked for a call about an EV charger', btn: 'Add reminder', done: 'Reminder · Thu 2:00 pm', at: 0.72 },
+];
+
+const BARS = [3, 9, 4, 3, 2, 1, 1];
+
 /** A count that rises with the scene — tabular figures in a fixed box, so the digits never shift the layout. */
 const upTo = (n: number, p: number) => Math.round(n * clamp(p));
 
-/* ── Part five: example businesses ── */
+/* ── Part six: example businesses ── */
 
 type Example = { icon: Icon; who: string; where: string; said: string; did: [string, string, string]; notes: [string, string, string] };
 
@@ -311,30 +341,12 @@ const EXAMPLES: Example[] = [
   { icon: Users, ...person(5), said: 'Fill my one-to-one coaching programme.',
     did: ['Publishes a free-guide page', 'Nurtures every sign-up by email', 'Books strategy calls'],
     notes: ['New sign-up — free guide', 'Booked — strategy call Wed 4:00 pm', 'Paid — coaching package · $1,500'] },
-  { icon: GraduationCap, ...person(6), said: 'Enrol students in my SAT prep course.',
-    did: ['Builds the course page', 'Emails every parent who asked', 'Sends reminders before the start date'],
-    notes: ['Enquiry — SAT prep, grade 11', 'Enrolled — spring cohort', 'Paid — course fee · $480'] },
-  { icon: Presentation, ...person(7), said: 'Leadership workshops with HR teams.',
-    did: ['Finds HR leads at mid-size firms', 'Sends a workshop outline', 'Books intro calls'],
-    notes: ['Reply — “Can you do March?”', 'Booked — intro call Mon 10:00 am', 'Invoice paid — workshop · $6,500'] },
-  { icon: Briefcase, ...person(8), said: 'Win operations projects.',
-    did: ['Finds COOs at growing companies', 'Sends a short case study', 'Follows up until a call is booked'],
-    notes: ['Reply — “Interested, let’s talk”', 'Booked — discovery call Thu 3:00 pm', 'Proposal accepted · $12,000'] },
-  { icon: AirVent, ...person(9), said: 'Sell AC maintenance plans before summer.',
+  { icon: AirVent, ...person(6), said: 'Sell AC maintenance plans before summer.',
     did: ['Emails past customers a tune-up offer', 'Texts reminders to book', 'Takes the payment online'],
     notes: ['New booking — AC tune-up', 'Booked — Fri 8:00 am', 'Paid — maintenance plan · $189'] },
-  { icon: Smile, ...person(10), said: 'More implant consultations.',
-    did: ['Publishes an implant landing page', 'Answers questions by email', 'Books consultations'],
-    notes: ['Enquiry — implant consultation', 'Booked — Mon 9:30 am', 'Deposit paid · $500'] },
-  { icon: Hammer, ...person(11), said: 'Storm-damage inspections.',
+  { icon: Hammer, ...person(7), said: 'Storm-damage inspections.',
     did: ['Finds homeowners in affected areas', 'Offers a free roof inspection', 'Books the inspection'],
     notes: ['Reply — “Yes, please inspect”', 'Booked — inspection Sat 10:00 am', 'Deposit paid — new roof · $4,200'] },
-  { icon: Scale, ...person(12), said: 'More consultations from families.',
-    did: ['Publishes a plain-English guide', 'Follows up with every download', 'Books consultations'],
-    notes: ['New download — wills & trusts guide', 'Booked — consultation Wed 11:00 am', 'Paid — estate plan · $1,200'] },
-  { icon: SprayCan, ...person(13), said: 'Recurring home-cleaning clients.',
-    did: ['Finds new movers nearby', 'Sends a first-clean offer', 'Turns one-offs into weekly plans'],
-    notes: ['New enquiry — 2-bed apartment', 'Booked — first clean Tue', 'Paid — weekly plan · $160'] },
 ];
 
 function ExampleScene({ e, i, p }: { e: Example; i: number; p: number }) {
@@ -668,8 +680,143 @@ function buildScenes(): Scene[] {
     { at: 0.5, k: 'bk-link', click: 0.62, say: 'Adding the link to the email' },
   ]);
 
-  /* ── Part four: watching and improving ── */
-  add(3, 10000, FILM_SAY.watch1, p => (
+  /* ── Part four: every module, one quick job in each ── */
+  add(3, 8500, FILM_SAY.flow, p => (
+    <AppFrame nav="autopilot" crumb="AI Autopilot · Workflows · New enquiry follow-up">
+      <div className="apf-wf">
+        {WF.map((w, i) => {
+          const at = i === 0 ? 0 : 0.12 + i * 0.17;
+          return (
+            <div key={w.tab} className="apf-wf-slot" data-k={`wf${i}`}>
+              {i > 0 && <span className={`apf-wf-thread${on(p, at)}`} aria-hidden="true" />}
+              <span className={`apf-wf-add${p >= at ? '' : ' is-on'}`} aria-hidden="true"><Plus size={16} /></span>
+              <div className={`apf-wf-card${on(p, at)}`}>
+                <span className="apf-wf-tab"><w.icon size={13} /> {w.tab}</span>
+                <b>{w.t}</b>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </AppFrame>
+  ), [
+    { at: 0.04, k: 'wf1', click: 0.28, say: 'Adding the AI reply' },
+    { at: 0.32, k: 'wf2', click: 0.45, say: 'Adding a 2-day wait' },
+    { at: 0.49, k: 'wf3', click: 0.62, say: 'Adding the follow-up email' },
+    { at: 0.66, k: 'wf4', click: 0.79, say: 'Adding the booking step' },
+  ]);
+  add(3, 9000, FILM_SAY.pipe, p => {
+    const drag = span(p, 0.5, 0.72);
+    const ease = drag * drag * (3 - 2 * drag);
+    return (
+      <AppFrame nav="pipelines" crumb="Pipelines · Jobs">
+        <div className="apf-pl">
+          <div className="apf-pl-head"><b>Jobs</b><span className={`apf-btn${on(p, 0.13)}`} data-k="pl-new"><Plus size={13} /> New deal</span></div>
+          <div className="apf-pl-cols">
+            {STAGES.map((st, ci) => (
+              <div key={st.h} className="apf-pl-col">
+                <span className="apf-pl-h">{st.h}</span>
+                {st.deals.map(d => (
+                  <div key={d.t} className={`apf-pl-deal${d.k ? ' is-drag' : ''}${d.k && drag > 0 && drag < 1 ? ' is-held' : ''}`} data-k={d.k}
+                    style={d.k ? { transform: `translate3d(calc((100% + 1.6em) * ${ease.toFixed(4)}), 0, 0)` } : undefined}>
+                    <GripVertical size={13} className="apf-pl-grip" /><span><b>{d.t}</b><i>{d.v}</i></span>
+                  </div>
+                ))}
+                {ci === 0 && (
+                  <div className={`apf-pl-deal is-new${on(p, 0.15)}`}>
+                    <Sparkles size={13} className="apf-pl-grip" /><span><b><Typed text="Panel upgrade — Plano" p={span(p, 0.17, 0.32)} /></b><i>$2,400</i></span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </AppFrame>
+    );
+  }, [
+    { at: 0.02, k: 'pl-new', click: 0.12, say: 'Creating the deal' },
+    { at: 0.36, k: 'pl-drag', click: 0.48, say: 'Picking up the deal' },
+    { at: 0.5, k: 'pl-drag', follow: true, say: 'Moving it to Booked' },
+  ]);
+  add(3, 9500, FILM_SAY.follow, p => (
+    <AppFrame nav="tasks" crumb="Tasks · Follow-ups">
+      <div className="apf-fu">
+        <div className="apf-fu-h"><ListTodo size={16} /> <b>Follow-ups due today</b></div>
+        {FOLLOWS.map(f => (
+          <div key={f.k} className={`apf-fu-row${on(p, f.at + 0.04)}`}>
+            <span className="apf-fu-ic"><f.icon size={15} /></span>
+            <span className="apf-fu-t"><b>{f.t}</b><span>{f.s}</span></span>
+            <span className={`apf-btn is-go apf-fu-btn${on(p, f.at + 0.04)}`} data-k={f.k}>
+              <span className="apf-go-a">{f.btn}</span>
+              <span className="apf-go-b"><Check size={13} strokeWidth={3} /> {f.done}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </AppFrame>
+  ), FOLLOWS.map((f, i) => ({ at: i === 0 ? 0.04 : f.at - 0.14, k: f.k, click: f.at, say: ['Following up on the deal', 'Following up on the email', 'Setting a reminder'][i] })));
+  add(3, 9000, FILM_SAY.invoice, p => (
+    <AppFrame nav="invoices" crumb="Invoices">
+      <div className="apf-iv">
+        {[
+          { n: 'INV-1041', who: 'Lighting — Plano', v: '$640', st: 'Paid', tone: 'paid' },
+          { n: 'INV-1042', who: 'Panel upgrade — Richardson', v: '$2,400', st: '7 days overdue', tone: 'late', k: 'iv-chase' },
+          { n: 'INV-1043', who: 'Outlet repair — Dallas', v: '$180', st: 'Due in 3 days', tone: 'due' },
+        ].map(r => (
+          <div key={r.n} className={`apf-iv-row is-${r.tone}${r.k && p >= 0.4 ? ' is-chased' : ''}${r.k && p >= 0.8 ? ' is-paid' : ''}`}>
+            <span className="apf-iv-n">{r.n}</span>
+            <b>{r.who}</b>
+            <span className="apf-iv-v">{r.v}</span>
+            <span className="apf-iv-st">
+              <span className="apf-iv-s-a">{r.st}</span>
+              {r.k && <span className="apf-iv-s-b">Reminder sent</span>}
+              {r.k && <span className="apf-iv-s-c">Paid · today</span>}
+            </span>
+            {r.k
+              ? <span className={`apf-btn is-go${on(p, 0.4)}`} data-k={r.k}><span className="apf-go-a"><Send size={13} /> Send reminder</span><span className="apf-go-b"><Check size={13} strokeWidth={3} /> Sent</span></span>
+              : <span className="apf-iv-spacer" />}
+          </div>
+        ))}
+        <div className={`apf-iv-mail${on(p, 0.42)}`}><Mail size={14} /> “A friendly reminder: invoice INV-1042 is due. You can pay in one click here.” <span className="apf-iv-pay">Pay now</span></div>
+      </div>
+    </AppFrame>
+  ), [{ at: 0.1, k: 'iv-chase', click: 0.38, say: 'Chasing the unpaid invoice' }]);
+  add(3, 10000, FILM_SAY.report, p => (
+    <AppFrame nav="reports" crumb="Reports · Replies by day">
+      <div className="apf-rt">
+        <div className="apf-rt-chart">
+          <span className="apf-rt-h"><TrendingUp size={14} /> Replies by day of the week</span>
+          <div className="apf-rt-bars">
+            {BARS.map((b, i) => (
+              <span key={i} className="apf-rt-col" data-k={i === 1 ? 'rt-tue' : undefined}>
+                <i style={{ transform: `scaleY(${(b / 9 * span(p, 0.05 + i * 0.03, 0.35 + i * 0.03)).toFixed(4)})` }} className={i === 1 ? 'is-top' : undefined} />
+                <small>{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i]}</small>
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="apf-rt-notes">
+          {[
+            { k: 'rt-a1', t: 'Most replies come on Tuesday mornings.', fix: 'Move sends to Tue 9:00 am', done: 'Sends moved to Tue 9:00 am', at: 0.55 },
+            { k: 'rt-a2', t: 'Quotes older than 3 days rarely close.', fix: 'Follow up on day 2', done: 'Follow-ups now on day 2', at: 0.8 },
+          ].map(x => (
+            <div key={x.k} className={`apf-rt-note${on(p, x.at - 0.2)}`}>
+              <span className="apf-rt-who"><Sparkles size={13} /> Protron noticed</span>
+              <b>{x.t}</b>
+              <span className={`apf-btn is-go${on(p, x.at)}`} data-k={x.k}><span className="apf-go-a">{x.fix}</span><span className="apf-go-b"><Check size={13} strokeWidth={3} /> {x.done}</span></span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </AppFrame>
+  ), [
+    { at: 0.12, k: 'rt-tue', say: 'Reading the report' },
+    { at: 0.42, k: 'rt-a1', click: 0.54, say: 'Moving sends to Tuesday' },
+    { at: 0.66, k: 'rt-a2', click: 0.79, say: 'Following up sooner' },
+  ]);
+
+  /* ── Part five: watching and improving ── */
+  add(4, 10000, FILM_SAY.watch1, p => (
     <AppFrame nav="campaigns" crumb="Email campaigns · Running">
       <div className="apf-wt">
         <div className={`apf-wt-row${p >= 0.14 ? ' is-picked' : ''}`} data-k="wt-row">
@@ -698,7 +845,7 @@ function buildScenes(): Scene[] {
     { at: 0.62, k: 'st-replies', say: 'Reading the replies' },
     { at: 0.8, k: 'st-booked', say: 'Counting appointments' },
   ]);
-  add(3, 10000, FILM_SAY.watch2, p => {
+  add(4, 10000, FILM_SAY.watch2, p => {
     const a = 4.1 * span(p, 0.12, 0.5), b = 7.8 * span(p, 0.12, 0.55);
     return (
       <AppFrame nav="campaigns" crumb="Email campaigns · A/B test">
@@ -727,7 +874,7 @@ function buildScenes(): Scene[] {
     { at: 0.15, k: 'ab-rate-b', say: 'Comparing A and B' },
     { at: 0.6, k: 'ab-use', click: 0.76, say: 'Sending B to everyone new' },
   ]);
-  add(3, 10500, FILM_SAY.watch3, p => (
+  add(4, 10500, FILM_SAY.watch3, p => (
     <AppFrame nav="campaigns" crumb="Email campaigns · Email 2 · Follow-up">
       <div className="apf-rw">
         <div className="apf-rw-note"><BarChart3 size={14} /> Email 2 is getting fewer replies than email 1</div>
@@ -746,7 +893,7 @@ function buildScenes(): Scene[] {
     { at: 0.08, k: 'rw-edit', click: 0.2, say: 'Rewriting the follow-up' },
     { at: 0.66, k: 'rw-launch', click: 0.79, say: 'Relaunching' },
   ]);
-  add(3, 11000, FILM_SAY.watch4, p => (
+  add(4, 11000, FILM_SAY.watch4, p => (
     <AppFrame nav="dashboard" crumb="Dashboard">
       <div className="apf-rp">
         <div className="apf-rp-h">
@@ -761,9 +908,9 @@ function buildScenes(): Scene[] {
     </AppFrame>
   ), [{ at: 0.82, k: 'rp-ok', say: 'Waiting for your OK' }]);
 
-  /* ── Part five: example businesses ── */
+  /* ── Part six: example businesses ── */
   EXAMPLES.forEach((e, i) => {
-    add(4, 4200, exampleLine(i),
+    add(5, 4200, exampleLine(i),
       p => <ExampleScene e={e} i={i} p={p} />);
   });
 
@@ -788,8 +935,6 @@ function boxIn(el: HTMLElement, root: HTMLElement) {
   while (n && n !== root) { x += n.offsetLeft; y += n.offsetTop; n = n.offsetParent as HTMLElement | null; }
   return { x, y, w: el.offsetWidth, h: el.offsetHeight, ok: n === root };
 }
-/** Minimum-jerk easing: velocity and acceleration are zero at both ends, as in a hand's reach. */
-const reach = (s: number) => s * s * s * (10 - 15 * s + 6 * s * s);
 
 export default function AutopilotFilm({ onTalk, onRecord, onType }: {
   onTalk: () => void;
@@ -799,7 +944,7 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
   const scenes = useMemo(() => {
     const list = buildScenes();
     /* The last scene is where the film hands over to the real buttons. */
-    list.push({ ch: 4, ms: 7000, say: FILM_SAY.end, draw: () => (
+    list.push({ ch: 5, ms: 7000, say: FILM_SAY.end, draw: () => (
       <div className="apf-end">
         <span className="apf-kicker">Your turn</span>
         <h3>Type it. Record it. Or just talk.</h3>
@@ -913,31 +1058,53 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
     if (still.current) return;
     const ptr = pointer.current, cv = canvas.current;
     if (!ptr || !cv) return;
+    /*
+     * One loop, one stable target, one spring.
+     *
+     * The first engine ran a fresh eased segment for every target; a target
+     * that changed mid-flight (a new aim, a new scene, a seek) restarted the
+     * ease from rest — a visible hitch. Now the pointer is a critically
+     * damped spring chasing whatever the current target is: its velocity
+     * carries over every change, it never overshoots, and a speed cap keeps a
+     * long reach at the same steady pace as a short one. The target is
+     * measured once per aim (layout offsets, which ignore the reveal
+     * transforms), except for an aim that `follow`s a moving element, which
+     * is read every frame from its painted box.
+     */
     let pos: { x: number; y: number } | null = null;
+    const vel = { x: 0, y: 0 };
+    let target: { x: number; y: number } | null = null;
     let goal = '';
-    let move: { at: number; ms: number; x0: number; y0: number; cx: number; cy: number; x1: number; y1: number } | null = null;
+    let last = 0;
     let shown = false;
+    let flip: { left: boolean; up: boolean } | null = null;
     const clicked = new Set<string>();
     const put = (x: number, y: number) => { pos = { x, y }; ptr.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`; };
     const show = (v: boolean) => { if (v !== shown) { shown = v; ptr.style.opacity = v ? '1' : '0'; } };
     const label = ptr.querySelector<HTMLElement>('.apf-ptr-say');
-    /* The label names what it is doing; near the right or bottom edge it flips to the other side so it never leaves the frame. */
-    const tell = (text: string | undefined, x: number, y: number) => {
-      if (!label) return;
-      if (text) label.textContent = text;
-      label.classList.toggle('is-on', !!text);
-      label.classList.toggle('is-left', x > cv.offsetWidth * 0.66);
-      label.classList.toggle('is-up', y > cv.offsetHeight * 0.76);
+    /* The label's side flips near the right or bottom edge — only while the
+       pointer is still, never mid-flight, so it does not jump about. */
+    const setSide = (f: { left: boolean; up: boolean }) => {
+      label?.classList.toggle('is-left', f.left);
+      label?.classList.toggle('is-up', f.up);
+    };
+    const pointFor = (b: { x: number; y: number; w: number; h: number }) => ({ x: b.x + Math.min(b.w * 0.5, 110), y: b.y + b.h * 0.58 });
+    const painted = (el: HTMLElement) => {
+      const r = el.getBoundingClientRect(), c = cv.getBoundingClientRect();
+      const k = c.width / (cv.offsetWidth || 1);
+      return { x: (r.left - c.left) / k, y: (r.top - c.top) / k, w: r.width / k, h: r.height / k };
     };
     let raf = 0;
     const frame = (time: number) => {
       raf = requestAnimationFrame(frame);
+      const dt = last ? Math.min(34, time - last) : 16;
+      last = time;
       if (!visible.current || document.hidden) return;
       const { idx: si, p: sp, aim } = now.current;
       const ai = aim ? aim.reduce((best, a, i) => (sp >= a.at ? i : best), -1) : -1;
       /* A seek back: clicks not yet reached may happen again. */
-      for (const key of clicked) { const [s, i] = key.split(':').map(Number); const c = s === si ? aim?.[i]?.click : undefined; if (s !== si || c === undefined || sp < c) clicked.delete(key); }
-      if (ai < 0 || !aim) { show(false); goal = ''; move = null; return; }
+      for (const key of clicked) { const [sc, i] = key.split(':').map(Number); const c = sc === si ? aim?.[i]?.click : undefined; if (sc !== si || c === undefined || sp < c) clicked.delete(key); }
+      if (ai < 0 || !aim) { show(false); goal = ''; target = null; vel.x = 0; vel.y = 0; return; }
       const a = aim[ai];
       const key = `${si}:${ai}`;
       const el = layer.current?.querySelector<HTMLElement>(`[data-k="${a.k}"]`);
@@ -945,34 +1112,44 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
       if (!el || !el.offsetParent) return;
       if (goal !== key) {
         goal = key;
-        const b = boxIn(el, cv);
+        const b = a.follow ? { ...painted(el), ok: true } : boxIn(el, cv);
         if (!b.ok || (!b.w && !b.h)) return;
-        const x1 = b.x + Math.min(b.w * 0.5, 110), y1 = b.y + b.h * 0.58;
-        tell(a.say, x1, y1);
-        /* The first time, it comes in from low on the right, already moving — never out of nowhere onto the target. */
+        target = pointFor(b);
+        /* The first time, it comes in from low on the right — never out of nowhere onto the target. */
         if (!pos) put(cv.offsetWidth * 0.78, cv.offsetHeight * 0.86);
-        const { x: x0, y: y0 } = pos ?? { x: x1, y: y1 };
-        const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1;
-        /* A gentle arc that bows upward, the way a wrist swings. */
-        let nx = -dy / len, ny = dx / len;
-        if (ny > 0) { nx = -nx; ny = -ny; }
-        const bow = Math.min(80, len * 0.15);
-        move = { at: time, ms: Math.min(1300, 420 + len * 0.8), x0, y0, x1, y1, cx: (x0 + x1) / 2 + nx * bow, cy: (y0 + y1) / 2 + ny * bow };
+        if (label) {
+          if (a.say) label.textContent = a.say;
+          label.classList.toggle('is-on', !!a.say);
+        }
+        flip = { left: target.x > cv.offsetWidth * 0.66, up: target.y > cv.offsetHeight * 0.76 };
+      } else if (a.follow) {
+        target = pointFor(painted(el));
       }
+      if (!target || !pos) return;
       show(true);
-      if (move) {
-        const s = reach(clamp((time - move.at) / move.ms)), u = 1 - s;
-        put(u * u * move.x0 + 2 * u * s * move.cx + s * s * move.x1, u * u * move.y0 + 2 * u * s * move.cy + s * s * move.y1);
-        if (s >= 1) move = null;
+      /* Critically damped: settles in about half a second, a little stiffer while carrying something. */
+      const w = a.follow ? 0.02 : 0.0085, K = w * w, C = 2 * w, VMAX = 1.05;
+      let { x, y } = pos as { x: number; y: number };
+      for (let left = dt; left > 0; left -= 4) {
+        const h = Math.min(4, left);
+        vel.x += (K * (target.x - x) - C * vel.x) * h;
+        vel.y += (K * (target.y - y) - C * vel.y) * h;
+        const sp2 = Math.hypot(vel.x, vel.y);
+        if (sp2 > VMAX) { vel.x *= VMAX / sp2; vel.y *= VMAX / sp2; }
+        x += vel.x * h; y += vel.y * h;
       }
+      put(x, y);
+      const dist = Math.hypot(target.x - x, target.y - y);
+      /* Arrived and at rest: only now may the label change sides. */
+      if (flip && dist < 1.2 && Math.hypot(vel.x, vel.y) < 0.012) { setSide(flip); flip = null; }
       /* The click: only once the pointer is there, and only near its moment
          (after a long seek past it, the state already shows it happened). */
-      if (a.click !== undefined && !move && sp >= a.click && !clicked.has(key)) {
+      if (a.click !== undefined && dist < 6 && sp >= a.click && !clicked.has(key)) {
         clicked.add(key);
-        if (sp - a.click < 0.2 && pos) {
+        if (sp - a.click < 0.2) {
           const at = rippleAt.current, r = ripple.current, g = ring.current;
           if (at && r) {
-            at.style.transform = `translate3d(${pos.x.toFixed(2)}px, ${pos.y.toFixed(2)}px, 0)`;
+            at.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`;
             r.animate?.([{ transform: 'scale(0.2)', opacity: 0.9 }, { transform: 'scale(1)', opacity: 0 }], { duration: 620, easing: 'cubic-bezier(.2,.7,.3,1)' });
           }
           if (g) {

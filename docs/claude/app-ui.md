@@ -125,6 +125,17 @@ wizard like Protron does (`pc_protron_handoff`).
   example business's. The pointer is coral (#D97757) with a white edge, a
   soft glow and a pill naming what it is doing (`aim.say`) — the site demo
   (`Site/AutopilotDemo.tsx`) uses the same look.
+  **Fourth pass (owner, 2026-11-13):** the picture is capped at 56% of the
+  window and 560px (`.dash-hero-film`), so a desktop gets the 960 design
+  size. A sixth chapter, **Every module**, hops through the app: the
+  workflow canvas built card by card (workflowGlass's frosted cards and blue
+  threads), a deal created and dragged across Pipelines, follow-ups and a
+  reminder in Tasks, an overdue invoice chased in Invoices, and Reports read
+  and acted on. Examples cut to eight (`FILM_PEOPLE`); `test:live` L8 expects
+  24 lines plus the people. The pointer is now one critically damped spring
+  chasing a stable target (speed-capped, velocity carried across every
+  re-target, scene change and seek), `follow` aims track a dragged element,
+  and the label changes sides only once the pointer is at rest.
 
 Under it `Dashboard/Dashboard.tsx` has **one slim bar** (`DayBar` in
 `DayBoard.tsx`, the owner's call — it replaced a tall welcome band; styled
