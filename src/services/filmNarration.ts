@@ -28,6 +28,11 @@ export const FILM_SAY = {
   run2: 'It opens Contacts and adds new prospects who fit, each one marked as found by Autopilot.',
   run3: 'It builds the email campaign: the subject, the email and the schedule, then launches it from your own mailbox.',
   run4: 'It turns on your booking page and puts the link in the email, so anyone who replies can book a time.',
+  flow: 'In AI Autopilot it builds the workflow on the canvas, one step at a time, each joined to the next.',
+  pipe: 'In Pipelines it creates the deal, and moves it along as the customer says yes.',
+  follow: 'It follows up for you: a deal that went quiet, an email nobody answered, and a reminder so nothing slips.',
+  invoice: 'In Invoices it chases what is unpaid, with a polite reminder and a payment link.',
+  report: 'And in Reports it reads how the business is doing, and fixes what is holding it back.',
   watch1: 'Then it keeps watching: who replied, which appointments were booked, and which sales came in.',
   watch2: 'It tests two subject lines against each other. When one wins, everyone new gets the winner.',
   watch3: 'When an email falls behind, it rewrites it and launches the new version.',
@@ -43,14 +48,8 @@ export const FILM_PEOPLE: readonly (readonly [string, string])[] = [
   ['Digital marketing agency', 'Austin, TX'],
   ['Solo entrepreneur, online store', 'Denver, CO'],
   ['Business coach', 'Atlanta, GA'],
-  ['Educator & tutor', 'Boston, MA'],
-  ['Corporate trainer', 'Chicago, IL'],
-  ['Corporate consultant', 'New York, NY'],
   ['HVAC contractor', 'Houston, TX'],
-  ['Dental practice', 'San Diego, CA'],
   ['Roofing company', 'Charlotte, NC'],
-  ['Estate-planning attorney', 'Orlando, FL'],
-  ['Cleaning company', 'Seattle, WA'],
 ];
 
 /** The line spoken over an example business. */
