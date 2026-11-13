@@ -123,7 +123,7 @@ const intake = await import('../src/services/protron/intake.ts');
 
 /* L8 — the floating Protron's live talk (2026-11-12): same voice, its own instructions. */
 {
-  ok('L8 assist mode has its own instructions, kept on the server', /business manager/.test(live.ASSIST_SYSTEM) && /look_at_screen/.test(live.ASSIST_SYSTEM) && /never actions/.test(live.ASSIST_SYSTEM));
+  ok('L8 assist mode has its own instructions, kept on the server', /business manager/.test(live.ASSIST_SYSTEM) && /look_at_screen/.test(live.ASSIST_SYSTEM) && /are not actions/.test(live.ASSIST_SYSTEM) && /propose_setup_plan/.test(live.ASSIST_SYSTEM));
   const names = live.ASSIST_TOOLS[0].functionDeclarations.map((f: { name: string }) => f.name);
   ok('L8 assist mode has exactly two tools: look at the screen, ask for an action', names.join(',') === 'look_at_screen,do_action', names.join(','));
   ok('L8 a context turn that leaves the turn open still passes the filter', live.allowedFromClient(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: '[app] The screen is now Contacts.' }] }], turnComplete: false } })) !== null);
