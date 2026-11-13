@@ -42,6 +42,8 @@
     "test:templates": "npx --yes tsx test/templates.test.mts",
     "test:gallery": "node test/templateGallery.e2e.mjs",
     "test:agents": "npx --yes tsx worker/test/projectAgents.test.mts",
+    "test:firstarticle": "npx --yes tsx test/firstArticle.test.mts",
+    "test:ai-keys": "npx --yes tsx test/aiTools.test.mts",
     "test:triggers": "npx --yes tsx worker/test/triggers.test.mts",
     "test:studio": "node test/projectStudio.e2e.mjs",
     "test:intake": "npx --yes tsx test/projectIntake.test.mts",

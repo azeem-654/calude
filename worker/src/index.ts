@@ -70,6 +70,7 @@ import { handleFinders } from './routes/finders';
 import { handlePush } from './routes/push';
 import { handleSmsOptin } from './routes/smsOptin';
 import { handlePlatform } from './routes/platform';
+import { handleAiHealth } from './routes/aiHealth';
 import { handleAllowances } from './routes/allowances';
 import { handleAppsumo } from './routes/appsumo';
 import { handleAppsumoOauth, handleAppsumoWebhook } from './routes/appsumoLicense';
@@ -107,6 +108,7 @@ import { runProjectAgents } from './lib/projectAgents';
 import { runProspectFinders } from './prospectFinderTick';
 import { runHousekeeping } from './lib/housekeeping';
 import { runStoragePurges, sweepOrphans } from './lib/storageSweep';
+import { runAiHealth } from './lib/aiHealth';
 import { handleMailWebhook } from './lib/bounces';
 import { handleCustomerView } from './routes/customerView';
 import { handleLogo } from './lib/brandLogo';
@@ -128,6 +130,8 @@ const ROUTES: Record<string, Handler> = {
   '/api/system-mail.php': handleSystemMail,
   /* The owner's keys for everybody, in one read. Owner only. */
   '/api/platform.php': handlePlatform,
+  /* Every AI tool's key, failures and quota (lib/aiHealth.ts). Owner only. */
+  '/api/ai-health.php': handleAiHealth,
   '/api/hosted-mail.php': handleHostedMail,
   '/api/allowances.php': handleAllowances,
   /* AppSumo lifetime-deal codes: redeem (customer), make and revoke (owner). */
@@ -670,6 +674,11 @@ export default {
          page of the daily orphan pass (W-5). Both bounded, both silent. */
       const purged = await runStoragePurges(env);
       const orphans = await sweepOrphans(env);
+      /* The owner's AI health check (lib/aiHealth.ts): last, because it
+         reports on what this tick's AI calls left behind, and nothing waits
+         on it. It gates itself to once an hour and makes no AI call. */
+      const aiHealth = await runAiHealth(env).catch(e => ({ ran: true, due: 0, sent: false, detail: String(e) }));
+      if (aiHealth.due) console.log(`[cron] ai health: ${aiHealth.detail}`);
 
       const ms = Date.now() - started;
 

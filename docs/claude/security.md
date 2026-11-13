@@ -40,6 +40,10 @@ id. The rules that closed those holes:
   `src/lib/gemini.ts`), never to Google directly; every server route that
   spends the AI key calls `aiBudget()` first. Models are chosen by
   `modelsFor()` from what the key lists — never hard-code a model id.
+  Every file that calls an AI provider is listed in `worker/src/lib/aiTools.ts`
+  `AI_CALLERS` with its gate; `npm run test:ai-keys` (in CI) fails on an
+  unlisted caller, one listed as `aiBudget` that never calls it, or an
+  exemption with no reason (audit F-3).
 - **Install secrets are wrapped** by `CREDENTIAL_WRAP_KEY` when it is set
   (`installSecret` in lib/db.ts). Never make it regenerate on a failed
   unwrap: that would orphan every stored credential.

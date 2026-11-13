@@ -191,6 +191,15 @@ jobs:
       - name: Test plan allowances
         run: npm run test:allowances
 
+      # Every AI caller is listed in lib/aiTools.ts and asks aiBudget() (F-3);
+      # the AI health monitor's alerts, dedupe and owner-only route.
+      - name: Test AI keys and the AI health monitor
+        run: npm run test:ai-keys
+
+      # The AppSumo first article: made on included AI whatever web research does.
+      - name: Test the first article on included AI
+        run: npm run test:firstarticle
+
       # Industry snapshots: every snapshot passes its checks and names real
       # templates, and an install only ever adds (worker/src/lib/snapshots.ts).
       - name: Test industry snapshots

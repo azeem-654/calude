@@ -23,7 +23,7 @@
  * returning a tool call, and the answer comes from the booking engine that
  * actually owns the diary. See `runTool`.
  */
-import { aiBudget, askGemini, loadAiKey } from './ai';
+import { aiBudget, aiRefund, askGemini, loadAiKey } from './ai';
 import { searchKnowledge, type KbHit } from './engagement';
 import type { Env } from './db';
 
@@ -192,6 +192,8 @@ export async function think(
   }
   const key = await loadAiKey(env, accountId);
   if (!key) {
+    /* Nothing was asked, so the request counted above is given back. */
+    await aiRefund(env, accountId);
     return {
       reply: cfg.fallback || DEFAULT_FALLBACK,
       intent: '', needsHuman: true, sources,
@@ -201,6 +203,9 @@ export async function think(
 
   const res = await askGemini(key, buildPrompt(cfg, turns, hits, open, facts, opts.style ?? ''), opts.temperature ?? 0.35, { module: opts.module ?? 'support-chat', accountId });
   if (!res.ok || !res.text) {
+    /* An answer nobody got is not a request served (lib/ai.ts aiRefund): a
+       busy pool must not spend the workspace's month on visitors' retries. */
+    await aiRefund(env, accountId);
     return {
       reply: cfg.fallback || DEFAULT_FALLBACK,
       intent: '', needsHuman: true, sources,

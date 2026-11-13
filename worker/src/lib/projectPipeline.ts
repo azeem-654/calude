@@ -32,8 +32,7 @@
  * pipeline that is already there rather than adding a second one — including
  * when a customer has renamed it, because the marker is the id and not the name.
  */
-import { aiBudget, askGemini } from './ai';
-import { loadAiKey } from './ai';
+import { aiBudget, aiRefund, askGemini, loadAiKey } from './ai';
 import { dataGet, dataPut, nowIso, type Env } from './db';
 
 const rid = (p: string) => `${p}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -140,9 +139,12 @@ async function writeTasks(
   },
   stages: Array<{ name: string }>,
 ): Promise<{ tasks: string[][]; generated: boolean }> {
-  /* Over its AI budget (F-3): the stage-named starter tasks, as with no key. */
-  const key = (await aiBudget(env, accountId)) ? null : await loadAiKey(env, accountId);
-  if (!key) return { tasks: fallbackTasks(stages), generated: false };
+  /* Over its AI budget (F-3): the stage-named starter tasks, as with no key —
+     `generated: false` is what tells the board they are starters. A request
+     counted and then not served is given back (aiRefund). */
+  if (await aiBudget(env, accountId)) return { tasks: fallbackTasks(stages), generated: false };
+  const key = await loadAiKey(env, accountId);
+  if (!key) { await aiRefund(env, accountId); return { tasks: fallbackTasks(stages), generated: false }; }
 
   const prompt = `You are setting up a project board for a marketing agency's client.
 
@@ -171,11 +173,12 @@ Reply with only JSON, in this exact shape:
 {"stages":[{"name":"<stage name>","tasks":["...","..."]}]}`;
 
   const r = await askGemini(key, prompt, 0.4, { module: 'autopilot-plan', accountId });
-  if (!r.ok) return { tasks: fallbackTasks(stages), generated: false };
+  if (!r.ok) { await aiRefund(env, accountId); return { tasks: fallbackTasks(stages), generated: false }; }
 
   const out = parse<{ stages?: Array<{ name?: string; tasks?: unknown }> }>(r.text, {});
   const rows = out.stages;
   if (!Array.isArray(rows) || rows.length !== stages.length) {
+    await aiRefund(env, accountId);
     return { tasks: fallbackTasks(stages), generated: false };
   }
 
