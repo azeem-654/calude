@@ -89,6 +89,17 @@ wizard like Protron does (`pc_protron_handoff`).
   result scene says "Example scenario — an illustration, not a customer's
   results"**; amounts are typical job prices, never totals or percentages.
   It replaced the panel's capability strip (`DoesStrip`, removed).
+  **Second pass (owner, 2026-11-13: "glitchy… a full-width YouTube kind of
+  video"):** the picture is 16:9 at the hero column's width, never taller
+  than 78% of the window (`.dash-hero-film`); scenes are laid out once at a
+  fixed design size (1200/960/640 wide by frame width, `.apf-canvas`) and
+  scaled by one transform, typed text is laid out in full and only revealed,
+  scenes cross-fade by opacity. The pointer is the site demo's engine: a
+  scene lists `aim` targets (`data-k`) with when to reach and click them; it
+  measures the element, travels from where it was (arc, minimum-jerk), clicks
+  only once there (ripple + ring), and carries on across scenes and seeks.
+  Changing a scene's words means changing `FILM_SAY` (and `test:live` L8's
+  count of 11 lines plus the 14 people).
 
 Under it `Dashboard/Dashboard.tsx` has **one slim bar** (`DayBar` in
 `DayBoard.tsx`, the owner's call — it replaced a tall welcome band; styled

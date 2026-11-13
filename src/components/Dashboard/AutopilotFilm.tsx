@@ -1,21 +1,41 @@
 /**
- * "See AI Autopilot work" — a short explainer film on the dashboard hero.
+ * "See AI Autopilot work" — the explainer film on the dashboard hero.
  *
  * ── Why a film, and why drawn rather than recorded ──
  *
  * The owner's brief (2026-11-12): instead of describing Autopilot's features
- * as a row of buttons, show them — a full-width, low film in three parts:
- * what it does and how it works (live talk, solving while you speak), the
- * baby steps of setting it up by talking / recording / typing, and results
- * across many kinds of US business.
+ * as a row of buttons, show them — a film in three parts: what it does and
+ * how it works (live talk, solving while you speak), the baby steps of
+ * setting it up by talking / recording / typing, and results across many
+ * kinds of US business.
  *
  * It is drawn by the page, scene by scene, rather than shipped as an MP4:
  * the words are the product's real words and buttons (a recorded screen goes
- * stale the day a label changes), it is crisp at every width and in both
- * themes, it costs no download, it can be paused, scrubbed and read by a
- * screen reader, and its captions are text. It behaves like a video — play,
- * pause, chapters, a scrubber, a clock, narration — because that is what
- * the owner asked for and what people know how to use.
+ * stale the day a label changes), it is crisp at every width, it costs no
+ * download, it can be paused, scrubbed and read by a screen reader, and its
+ * captions are text. It behaves like a video — play, pause, chapters, a
+ * scrubber, a clock, narration — because that is what people know how to use.
+ *
+ * ── The second pass (owner, 2026-11-13) ──
+ *
+ * The first version was a 300px strip with a cursor that swooped in from a
+ * fixed offset, scenes that popped in, and text that reflowed as it typed;
+ * the owner found it glitchy and hard to follow and asked for a full-width,
+ * YouTube-shaped film. So:
+ *
+ *  - The picture is 16:9 at the hero column's width (capped to the window's
+ *    height, dashboard.css). Every scene is laid out once at a fixed design
+ *    size — 1200, 960 or 640 wide, chosen by the frame's width so the text
+ *    stays readable on a phone — and scaled with one transform. Nothing in a
+ *    scene changes size while it plays: typed words are laid out in full and
+ *    only revealed, bubbles and rows hold their place before they show.
+ *  - Scenes cross-fade (opacity only) instead of remounting with a jump.
+ *  - The pointer is the site demo's (Site/AutopilotDemo.tsx): each scene
+ *    names its targets (`data-k`) and when to reach them; the pointer measures
+ *    the real element, travels there from wherever it is on a slight arc with
+ *    a minimum-jerk profile (longer reaches take longer), and a click shows a
+ *    ripple and a ring on the target. It runs on its own clock, so a seek or
+ *    a new scene sends it on from where it was — it never teleports.
  *
  * ── Honesty ──
  *
@@ -32,40 +52,52 @@
  * on screen and the tab visible. Every scene is a pure function of its own
  * progress (0..1), so seeking anywhere draws the right frame. It plays by
  * itself only when it is on screen and the person has not asked their device
- * for less motion; under reduced motion it waits for Play and the CSS
- * transitions are off (autopilotFilm.css). Narration is off until asked for,
- * and is Protron's warm AI voice — the owner found the browser's voice odd
- * and asked for "exactly the live bot's voice" (2026-11-12). Its lines live in
- * services/filmNarration.ts; the server makes each once per install and keeps
- * it (protron.php `narrate`), so a line heard before costs nothing.
+ * for less motion; under reduced motion it waits for Play, the CSS
+ * transitions are off and there is no pointer (autopilotFilm.css).
+ * Narration is off until asked for, and is Protron's warm AI voice — the
+ * owner asked for "exactly the live bot's voice" (2026-11-12). Its lines live
+ * in services/filmNarration.ts; the server makes each once per install and
+ * keeps it (protron.php `narrate`), so a line heard before costs nothing.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { exampleLine, FILM_PEOPLE, FILM_SAY } from '../../services/filmNarration';
 import { narrator, unlockAudio } from '../../services/protron/voice';
 import {
-  AirVent, AudioLines, Briefcase, CalendarCheck, Check, CircleDollarSign, GraduationCap, Hammer, House,
-  Keyboard, LayoutTemplate, Mail, Megaphone, MessageSquare, Mic, Pause, Play, Presentation, Receipt, Scale,
-  Search, Share2, ShieldCheck, ShoppingBag, SkipBack, SkipForward, Smile, SprayCan, Star, Users, Volume2,
-  VolumeX, Wrench, Zap,
+  AirVent, ArrowRight, AudioLines, Briefcase, CalendarCheck, Check, CircleDollarSign, Clock, GraduationCap, Hammer,
+  House, Keyboard, LayoutTemplate, Loader, Mail, Megaphone, MessageSquare, Mic, Pause, Play, Presentation, Receipt,
+  Scale, Search, Share2, ShieldCheck, ShoppingBag, SkipBack, SkipForward, Smile, Sparkles, SprayCan, Star, Users,
+  Volume2, VolumeX, Wrench, Zap,
 } from 'lucide-react';
 import ProtronAvatar from '../Protron/ProtronAvatar';
 import { motionReduced } from '../../services/motion';
 import './autopilotFilm.css';
 
 type Icon = typeof Mail;
-type Scene = { ch: 0 | 1 | 2; ms: number; say: string; draw: (p: number) => ReactNode };
+/** Where the pointer goes in a scene: from progress `at`, to the element marked `data-k={k}`; a click at `click`. */
+type Aim = { at: number; k: string; click?: number };
+type Scene = { ch: 0 | 1 | 2; ms: number; say: string; draw: (p: number) => ReactNode; aim?: Aim[] };
 
 const CHAPTERS = ['What it does', 'Set it up by talking', 'Results'];
 
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 /** Progress of a sub-span of a scene: 0 before `a`, 1 after `b`. */
 const span = (p: number, a: number, b: number) => clamp((p - a) / Math.max(0.0001, b - a));
-const typed = (text: string, p: number) => text.slice(0, Math.round(text.length * clamp(p)));
 const on = (p: number, at: number) => (p >= at ? ' is-on' : '');
 const mmss = (ms: number) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
 /** Long enough to read (and for the narrator to say) the caption. */
 const fit = (ms: number, say: string) => Math.max(ms, say.split(/\s+/).length * 360 + 900);
+
+/** Text that types itself without moving anything: every character is laid out from the start and only shown. */
+function Typed({ text, p }: { text: string; p: number }) {
+  const chars = Array.from(text);
+  const n = Math.round(chars.length * clamp(p));
+  return (
+    <span className="apf-typed" aria-label={text}>
+      {chars.map((c, i) => <span key={i} aria-hidden="true" className={i < n ? (i === n - 1 && n < chars.length ? 'is-on is-caret' : 'is-on') : undefined}>{c}</span>)}
+    </span>
+  );
+}
 
 function Wave({ live, bars = 18 }: { live: boolean; bars?: number }) {
   return (
@@ -75,27 +107,30 @@ function Wave({ live, bars = 18 }: { live: boolean; bars?: number }) {
   );
 }
 
-function FlowNode({ icon: I, label, shown, last }: { icon: Icon; label: string; shown: boolean; last?: boolean }) {
+function FlowNode({ icon: I, label, sub, shown, last, k }: { icon: Icon; label: string; sub?: string; shown: boolean; last?: boolean; k?: string }) {
   return (
-    <div className={`apf-node${shown ? ' is-on' : ''}`}>
-      <span className="apf-node-ic"><I size={14} /></span>
-      <span className="apf-node-tx">{label}</span>
-      {!last && <span className="apf-node-link" aria-hidden="true" />}
+    <div className="apf-node-wrap">
+      <div className={`apf-node${shown ? ' is-on' : ''}`} data-k={k}>
+        <span className="apf-node-ic"><I size={15} /></span>
+        <span className="apf-node-tx"><b>{label}</b>{sub && <small>{sub}</small>}</span>
+        <Check size={14} className="apf-node-ok" />
+      </div>
+      {!last && <span className={`apf-node-link${shown ? ' is-on' : ''}`} aria-hidden="true" />}
     </div>
   );
 }
 
 /* ── Part one: what it does ── */
 
-const CAPS: { icon: Icon; label: string }[] = [
-  { icon: Search, label: 'Finds customers' },
-  { icon: Mail, label: 'Writes & sends emails' },
-  { icon: MessageSquare, label: 'Answers replies' },
-  { icon: Share2, label: 'Posts to social' },
-  { icon: LayoutTemplate, label: 'Builds pages & funnels' },
-  { icon: CalendarCheck, label: 'Books appointments' },
-  { icon: Receipt, label: 'Invoices & chases payment' },
-  { icon: Star, label: 'Asks for reviews' },
+const CAPS: { icon: Icon; label: string; t: string }[] = [
+  { icon: Search, label: 'Finds customers', t: 'Searches for the kind of customer you describe' },
+  { icon: Mail, label: 'Writes & sends emails', t: 'From your own mailbox, in your voice' },
+  { icon: MessageSquare, label: 'Answers replies', t: 'Drafts an answer to every reply' },
+  { icon: Share2, label: 'Posts to social', t: 'On the days your plan says' },
+  { icon: LayoutTemplate, label: 'Builds pages & funnels', t: 'Pages and forms that capture leads' },
+  { icon: CalendarCheck, label: 'Books appointments', t: 'Straight into your calendar' },
+  { icon: Receipt, label: 'Invoices & chases payment', t: 'With a payment link, then a reminder' },
+  { icon: Star, label: 'Asks for reviews', t: 'Once the job is done' },
 ];
 
 const MANUAL = [
@@ -107,18 +142,26 @@ const MANUAL = [
   'Post on social when you remember',
 ];
 
+const RUNS: { icon: Icon; label: string }[] = [
+  { icon: Search, label: 'Finds homeowners who need a water heater' },
+  { icon: Mail, label: 'Writes and sends the first email' },
+  { icon: MessageSquare, label: 'Follows up, answers replies' },
+  { icon: CalendarCheck, label: 'Books the visit' },
+  { icon: Receipt, label: 'Sends the invoice' },
+];
+
 const TALK: { who: 'you' | 'pt'; text: string; a: number; b: number }[] = [
   { who: 'you', text: 'I’m a plumber in Phoenix. I want more water-heater jobs.', a: 0.02, b: 0.3 },
   { who: 'pt', text: 'Got it. Which neighbourhoods, and do you text or email quotes?', a: 0.34, b: 0.56 },
   { who: 'you', text: 'Scottsdale and Tempe. Both — text first.', a: 0.6, b: 0.78 },
 ];
 
-const BUILD: { icon: Icon; label: string; at: number }[] = [
-  { icon: Search, label: 'Find homeowners · Scottsdale, Tempe', at: 0.22 },
-  { icon: MessageSquare, label: 'Text, then email a quote offer', at: 0.46 },
-  { icon: Mail, label: 'Follow up after 2 days', at: 0.66 },
-  { icon: CalendarCheck, label: 'Book the visit', at: 0.8 },
-  { icon: Receipt, label: 'Invoice with a payment link', at: 0.9 },
+const BUILD: { icon: Icon; label: string; sub: string; at: number }[] = [
+  { icon: Search, label: 'Find homeowners', sub: 'Scottsdale, Tempe', at: 0.22 },
+  { icon: MessageSquare, label: 'Text, then email a quote offer', sub: 'Waits for your OK', at: 0.46 },
+  { icon: Mail, label: 'Follow up after 2 days', sub: 'If there is no reply', at: 0.66 },
+  { icon: CalendarCheck, label: 'Book the visit', sub: 'Into your calendar', at: 0.8 },
+  { icon: Receipt, label: 'Invoice with a payment link', sub: 'When the job is done', at: 0.9 },
 ];
 
 /* ── Part two: the baby steps ── */
@@ -138,15 +181,19 @@ function StepFrame({ n, p, children }: { n: number; p: number; children: ReactNo
       <ol className="apf-rail">
         {STEPS.map((s, i) => (
           <li key={s} className={i < n ? 'is-done' : i === n ? 'is-now' : ''}>
-            <span className="apf-rail-n">{i < n ? <Check size={11} /> : i + 1}</span>
+            <span className="apf-rail-n">{i < n ? <Check size={12} /> : i + 1}</span>
             <span className="apf-rail-tx">{s}</span>
           </li>
         ))}
       </ol>
       <div className="apf-mock">
-        <span className="apf-mock-step">Step {n + 1} of {STEPS.length}</span>
-        {children}
-        <span className="apf-mock-bar" style={{ transform: `scaleX(${p.toFixed(3)})` }} aria-hidden="true" />
+        <div className="apf-mock-h">
+          <span className="apf-mock-ic"><Sparkles size={14} /></span>
+          <b>AI Autopilot</b>
+          <span className="apf-mock-step">Step {n + 1} of {STEPS.length}</span>
+        </div>
+        <div className="apf-mock-body">{children}</div>
+        <span className="apf-mock-bar" style={{ transform: `scaleX(${p.toFixed(4)})` }} aria-hidden="true" />
       </div>
     </div>
   );
@@ -207,34 +254,38 @@ const EXAMPLES: Example[] = [
 function ExampleScene({ e, i, p }: { e: Example; i: number; p: number }) {
   return (
     <div className="apf-ex">
-      <span className="apf-tag">Example scenario — an illustration, not a customer’s results</span>
-      <div className="apf-ex-who">
-        <span className="apf-ex-ic"><e.icon size={20} /></span>
-        <span>
-          <b>{e.who}</b>
-          <span className="apf-ex-where">{e.where}</span>
-        </span>
+      <div className="apf-ex-top">
+        <div className="apf-ex-who">
+          <span className="apf-ex-ic"><e.icon size={22} /></span>
+          <span>
+            <b>{e.who}</b>
+            <span className="apf-ex-where">{e.where}</span>
+          </span>
+        </div>
+        <span className="apf-tag">Example scenario — an illustration, not a customer’s results</span>
       </div>
       <div className="apf-ex-body">
         <div className="apf-ex-left">
-          <p className="apf-ex-said"><Mic size={13} /> “{e.said}”</p>
+          <p className="apf-ex-said"><Mic size={15} /> <span>“{e.said}”</span></p>
+          <span className="apf-ex-h">What AI Autopilot does</span>
           <ul className="apf-ex-did">
             {e.did.map((d, k) => (
-              <li key={d} className={on(p, 0.12 + k * 0.14).trim()}><Check size={12} /> {d}</li>
+              <li key={d} className={on(p, 0.1 + k * 0.13).trim() || undefined}><span className="apf-ex-tick"><Check size={11} strokeWidth={3} /></span> {d}</li>
             ))}
           </ul>
         </div>
         <div className="apf-phone" aria-label="Notifications">
+          <span className="apf-phone-h">Notifications</span>
           {e.notes.map((n, k) => (
-            <div key={n} className={`apf-note${k === 2 ? ' is-money' : ''}${on(p, 0.3 + k * 0.2)}`}>
-              <span className="apf-note-ic">{k === 2 ? <CircleDollarSign size={14} /> : k === 1 ? <CalendarCheck size={14} /> : <MessageSquare size={14} />}</span>
+            <div key={n} className={`apf-note${k === 2 ? ' is-money' : ''}${on(p, 0.3 + k * 0.18)}`}>
+              <span className="apf-note-ic">{k === 2 ? <CircleDollarSign size={15} /> : k === 1 ? <CalendarCheck size={15} /> : <MessageSquare size={15} />}</span>
               <span>{n}</span>
             </div>
           ))}
         </div>
       </div>
       <div className="apf-ex-dots" aria-hidden="true">
-        {EXAMPLES.map((x, k) => <i key={x.who} className={k === i ? 'is-on' : ''} />)}
+        {EXAMPLES.map((x, k) => <i key={x.who} className={k === i ? 'is-on' : undefined} />)}
       </div>
     </div>
   );
@@ -242,7 +293,7 @@ function ExampleScene({ e, i, p }: { e: Example; i: number; p: number }) {
 
 function buildScenes(): Scene[] {
   const s: Scene[] = [];
-  const add = (ch: Scene['ch'], ms: number, say: string, draw: Scene['draw']) => s.push({ ch, ms: fit(ms, say), say, draw });
+  const add = (ch: Scene['ch'], ms: number, say: string, draw: Scene['draw'], aim?: Aim[]) => s.push({ ch, ms: fit(ms, say), say, draw, aim });
 
   /* ── Part one ── */
   add(0, 6500, FILM_SAY.intro, p => (
@@ -252,7 +303,10 @@ function buildScenes(): Scene[] {
       <p>Talk to it like a business manager. It does the work in this app for you — every day, in the cloud.</p>
       <div className="apf-caps">
         {CAPS.map((c, i) => (
-          <span key={c.label} className={`apf-cap${on(p, 0.08 + i * 0.09)}`}><c.icon size={14} /> {c.label}</span>
+          <div key={c.label} className={`apf-cap${on(p, 0.08 + i * 0.09)}`}>
+            <span className="apf-cap-ic"><c.icon size={16} /></span>
+            <span><b>{c.label}</b><small>{c.t}</small></span>
+          </div>
         ))}
       </div>
     </div>
@@ -261,13 +315,17 @@ function buildScenes(): Scene[] {
     <div className="apf-vs">
       <div className="apf-vs-col">
         <span className="apf-vs-h">The usual way</span>
-        <ul>{MANUAL.map((m, i) => <li key={m} className={on(p, 0.1 + i * 0.08).trim()}>{m}</li>)}</ul>
+        <ul className="apf-vs-list">{MANUAL.map((m, i) => <li key={m} className={on(p, 0.1 + i * 0.07).trim() || undefined}><Clock size={14} /> <span>{m}</span></li>)}</ul>
       </div>
-      <div className={`apf-vs-col is-auto${on(p, 0.55)}`}>
+      <div className={`apf-vs-col is-auto${on(p, 0.52)}`}>
         <span className="apf-vs-h">On AI Autopilot</span>
-        <div className="apf-say"><AudioLines size={15} /> “Find me water-heater jobs in Phoenix.”</div>
-        <p>It plans every step and runs it each day — finding, writing, following up, booking, invoicing.</p>
-        <p className="apf-guard"><ShieldCheck size={14} /> It asks you before anything important goes out.</p>
+        <div className="apf-say"><AudioLines size={16} /> “Find me water-heater jobs in Phoenix.”</div>
+        <ul className="apf-runs">
+          {RUNS.map((r, i) => (
+            <li key={r.label} className={on(p, 0.6 + i * 0.065).trim() || undefined}><span className="apf-runs-ic"><r.icon size={14} /></span> {r.label} <Check size={14} className="apf-runs-ok" /></li>
+          ))}
+        </ul>
+        <p className="apf-guard"><ShieldCheck size={15} /> It asks you before anything important goes out.</p>
       </div>
     </div>
   ));
@@ -277,24 +335,24 @@ function buildScenes(): Scene[] {
       <div className="apf-live">
         <div className="apf-call">
           <div className="apf-call-head">
-            <ProtronAvatar size={46} state={speaking?.who === 'pt' ? 'speaking' : speaking ? 'listening' : 'working'} alive={false} />
+            <ProtronAvatar size={48} state={speaking?.who === 'pt' ? 'speaking' : speaking ? 'listening' : 'working'} alive={false} />
             <span><b>Live with Protron</b><span className="apf-rec"><i /> {mmss(p * 28000)}</span></span>
           </div>
           <div className="apf-log">
-            {TALK.map(l => p >= l.a && (
-              <div key={l.text} className={`apf-bub is-${l.who}`}>{typed(l.text, span(p, l.a, l.b))}</div>
+            {TALK.map(l => (
+              <div key={l.text} className={`apf-bub is-${l.who}${on(p, l.a)}`}><Typed text={l.text} p={span(p, l.a, l.b)} /></div>
             ))}
           </div>
-          <Wave live={!!speaking} />
+          <Wave live={!!speaking} bars={28} />
         </div>
         <div className="apf-build">
-          <span className="apf-build-h"><Zap size={13} /> Building while you talk</span>
-          {BUILD.map((b, i) => <FlowNode key={b.label} icon={b.icon} label={b.label} shown={p >= b.at} last={i === BUILD.length - 1} />)}
+          <span className="apf-build-h"><Zap size={14} /> Building while you talk</span>
+          {BUILD.map((b, i) => <FlowNode key={b.label} icon={b.icon} label={b.label} sub={b.sub} shown={p >= b.at} last={i === BUILD.length - 1} />)}
         </div>
       </div>
     );
   });
-  add(0, 5500, FILM_SAY.ways, p => {
+  add(0, 6500, FILM_SAY.ways, p => {
     const ways = [
       { icon: Keyboard, h: 'Type it', t: 'One line is enough to start.' },
       { icon: Mic, h: 'Record it', t: 'Press record, say it, check the words.' },
@@ -304,34 +362,36 @@ function buildScenes(): Scene[] {
     return (
       <div className="apf-ways">
         {ways.map((w, i) => (
-          <div key={w.h} className={`apf-way${i === lit ? ' is-lit' : ''}${i === 2 ? ' is-live' : ''}`}>
-            <span className="apf-way-ic"><w.icon size={20} /></span>
+          <div key={w.h} data-k={`way${i}`} className={`apf-way${i === lit ? ' is-lit' : ''}${i === 2 ? ' is-live' : ''}`}>
+            <span className="apf-way-ic"><w.icon size={24} /></span>
             <b>{w.h}</b>
             <span>{w.t}</span>
           </div>
         ))}
       </div>
     );
-  });
+  }, [{ at: 0, k: 'way0' }, { at: 0.27, k: 'way1' }, { at: 0.58, k: 'way2', click: 0.75 }]);
 
   /* ── Part two: six baby steps ── */
   add(1, 5500, FILM_SAY.step1, p => (
     <StepFrame n={0} p={p}>
       <div className="apf-box">
-        <span className="apf-box-ph">Describe a result…</span>
+        <span className="apf-box-ph">Describe a result — e.g. find 20 dentists in Austin every day and email them about our offer…</span>
         <div className="apf-box-bar">
-          <span className="apf-btn is-rec"><Mic size={13} /> Record</span>
-          <span className={`apf-btn is-live${on(p, 0.55)}`}><AudioLines size={13} /> Talk live</span>
+          <span className="apf-btn is-rec"><Mic size={14} /> Record</span>
+          <span className={`apf-btn is-live${on(p, 0.55)}`} data-k="live"><AudioLines size={14} /> Talk live</span>
+          <span className="apf-box-send"><ArrowRight size={16} /></span>
         </div>
-        <span className="apf-cursor" style={{ transform: `translate(${(1 - span(p, 0.1, 0.55)) * -120}px, ${(1 - span(p, 0.1, 0.55)) * -50}px)` }} aria-hidden="true" />
       </div>
+      <div className={`apf-listen${on(p, 0.62)}`}><Wave live={p >= 0.62} bars={16} /> <b>Live</b> — Protron is listening</div>
     </StepFrame>
-  ));
+  ), [{ at: 0.06, k: 'live', click: 0.52 }]);
   add(1, 6000, FILM_SAY.step2, p => (
     <StepFrame n={1} p={p}>
       <div className="apf-talkline">
-        <Wave live={p < 0.9} bars={24} />
-        <p className="apf-said">{typed('We’re an electrical contractor in Dallas. I want more panel-upgrade jobs from homeowners.', span(p, 0.05, 0.85))}</p>
+        <span className="apf-talk-h"><Wave live={p < 0.88} bars={22} /> You, speaking</span>
+        <p className="apf-said"><Typed text="We’re an electrical contractor in Dallas. I want more panel-upgrade jobs from homeowners." p={span(p, 0.05, 0.82)} /></p>
+        <div className={`apf-heard${on(p, 0.88)}`}><ProtronAvatar size={22} alive={false} /> Got it — panel upgrades for homeowners in Dallas.</div>
       </div>
     </StepFrame>
   ));
@@ -343,63 +403,102 @@ function buildScenes(): Scene[] {
           ['What’s your offer?', 'A free safety inspection with any upgrade'],
           ['Do you have a website?', 'Yes — Protron reads it for you'],
         ].map(([q, a], i) => (
-          <div key={q} className={`apf-qa-row${on(p, 0.08 + i * 0.28)}`}>
-            <span className="apf-q"><ProtronAvatar size={20} alive={false} /> {q}</span>
-            <span className={`apf-a${on(p, 0.2 + i * 0.28)}`}>{a}</span>
+          <div key={q} className={`apf-qa-row${on(p, 0.06 + i * 0.28)}`}>
+            <span className="apf-q"><ProtronAvatar size={22} alive={false} /> {q}</span>
+            <span className={`apf-a${on(p, 0.18 + i * 0.28)}`}>{a}</span>
           </div>
         ))}
       </div>
     </StepFrame>
   ));
-  add(1, 5500, FILM_SAY.step4, p => (
+  add(1, 6500, FILM_SAY.step4, p => (
     <StepFrame n={3} p={p}>
       <div className="apf-prompt">
         <b>Your smart optimized prompt for AI Autopilot</b>
-        <p>{typed('Find homeowners in Dallas, Plano and Frisco with older electrical panels. Offer a free safety inspection with any upgrade. Text first, then email. Follow up twice. Book visits into my calendar and send an invoice when the job is done.', span(p, 0.05, 0.75))}</p>
+        <p><Typed text="Find homeowners in Dallas, Plano and Frisco with older electrical panels. Offer a free safety inspection with any upgrade. Text first, then email. Follow up twice. Book visits into my calendar and send an invoice when the job is done." p={span(p, 0.04, 0.62)} /></p>
         <div className="apf-chips">
-          {['Find', 'Text & email', 'Follow up', 'Book', 'Invoice'].map((c, i) => <span key={c} className={`apf-chip${on(p, 0.72 + i * 0.05)}`}>{c}</span>)}
+          {['Find', 'Text & email', 'Follow up', 'Book', 'Invoice'].map((c, i) => <span key={c} className={`apf-chip${on(p, 0.64 + i * 0.04)}`}>{c}</span>)}
+        </div>
+        <div className="apf-prompt-foot">
+          <span className="apf-btn">Change something</span>
+          <span className={`apf-btn is-go${on(p, 0.88)}`} data-k="build">
+            <span className="apf-go-a"><Sparkles size={14} /> Build it</span>
+            <span className="apf-go-b"><Loader size={14} className="apf-spin" /> Building…</span>
+          </span>
         </div>
       </div>
     </StepFrame>
-  ));
-  add(1, 6000, FILM_SAY.step5, p => (
+  ), [{ at: 0.7, k: 'build', click: 0.86 }]);
+  add(1, 7000, FILM_SAY.step5, p => (
     <StepFrame n={4} p={p}>
-      <div className="apf-flow">
-        {[
-          { icon: Search, label: 'Find homeowners' },
-          { icon: MessageSquare, label: 'Text the offer' },
-          { icon: Mail, label: 'Email follow-up' },
-          { icon: CalendarCheck, label: 'Book the visit' },
-          { icon: Receipt, label: 'Invoice & get paid' },
-        ].map((n, i, all) => <FlowNode key={n.label} icon={n.icon} label={n.label} shown={p >= 0.08 + i * 0.16} last={i === all.length - 1} />)}
+      <div className="apf-flow-wrap">
+        <div className="apf-flow">
+          {[
+            { icon: Search, label: 'Find homeowners', sub: 'Dallas, Plano, Frisco' },
+            { icon: MessageSquare, label: 'Text the offer', sub: 'Waits for your OK' },
+            { icon: Mail, label: 'Email follow-up', sub: 'After 2 days, if no reply' },
+            { icon: CalendarCheck, label: 'Book the visit', sub: 'Into your calendar' },
+            { icon: Receipt, label: 'Invoice & get paid', sub: 'Payment link' },
+          ].map((n, i, all) => <FlowNode key={n.label} k={`n${i}`} icon={n.icon} label={n.label} sub={n.sub} shown={p >= 0.05 + i * 0.12} last={i === all.length - 1} />)}
+        </div>
+        <div className={`apf-peek${on(p, 0.8)}`}>
+          <span className="apf-peek-h"><Mail size={14} /> Email follow-up</span>
+          <span className="apf-peek-s">Subject: Your free safety inspection</span>
+          <span className="apf-peek-b">Hi — just following up on the free safety inspection with any panel upgrade. Reply with a day that suits you and we will book it in.</span>
+          <span className="apf-peek-f"><ShieldCheck size={13} /> Sends only after your OK</span>
+        </div>
       </div>
     </StepFrame>
-  ));
-  add(1, 6500, FILM_SAY.step6, p => (
+  ), [{ at: 0.64, k: 'n2', click: 0.78 }]);
+  add(1, 7500, FILM_SAY.step6, p => (
     <StepFrame n={5} p={p}>
       <div className="apf-guards">
         {['Ask me before any email or text is sent', 'Ask me before booking a time', 'Tell me when money comes in'].map((g, i) => (
           <div key={g} className="apf-guard-row">
             <span>{g}</span>
-            <span className={`apf-toggle${on(p, 0.12 + i * 0.14)}`} aria-hidden="true"><i /></span>
+            <span className={`apf-toggle${on(p, 0.12 + i * 0.14)}`} data-k={`g${i}`} aria-hidden="true"><i /></span>
           </div>
         ))}
         <div className={`apf-power${on(p, 0.62)}`}>
-          <span className="apf-power-sw" aria-hidden="true"><i /></span>
-          <span><b>{p >= 0.62 ? 'AI Autopilot is ON' : 'Switch AI Autopilot on'}</b><span>{p >= 0.62 ? 'Running in the cloud every 5 minutes' : 'Nothing runs until you say so'}</span></span>
+          <span className="apf-power-sw" data-k="power" aria-hidden="true"><i /></span>
+          <span className="apf-power-tx">
+            <span className={`apf-pw-a${p >= 0.62 ? '' : ' is-on'}`}><b>Switch AI Autopilot on</b><span>Nothing runs until you say so</span></span>
+            <span className={`apf-pw-b${on(p, 0.62)}`}><b>AI Autopilot is ON</b><span>Running in the cloud every 5 minutes</span></span>
+          </span>
         </div>
       </div>
     </StepFrame>
-  ));
+  ), [{ at: 0, k: 'g0', click: 0.11 }, { at: 0.13, k: 'g1', click: 0.25 }, { at: 0.27, k: 'g2', click: 0.39 }, { at: 0.44, k: 'power', click: 0.6 }]);
 
   /* ── Part three: example businesses ── */
   EXAMPLES.forEach((e, i) => {
-    add(2, 3900, exampleLine(i),
+    add(2, 4200, exampleLine(i),
       p => <ExampleScene e={e} i={i} p={p} />);
   });
 
   return s;
 }
+
+/* ── Layout: three design sizes, one transform ── */
+
+type Fit = { w: number; h: number; k: number; tier: 'big' | 'mid' | 'compact' };
+
+/** The design size for a frame `c` px wide: whichever keeps the scene's text readable once scaled. */
+function fitFor(c: number): Fit {
+  if (c < 620) return { w: 640, h: 360, k: c / 640, tier: 'compact' };
+  if (c < 900) return { w: 960, h: 540, k: c / 960, tier: 'mid' };
+  return { w: 1200, h: 675, k: c / 1200, tier: 'big' };
+}
+
+/** Where an element sits inside the canvas, from layout offsets — the reveal transforms and the scale do not count. */
+function boxIn(el: HTMLElement, root: HTMLElement) {
+  let x = 0, y = 0;
+  let n: HTMLElement | null = el;
+  while (n && n !== root) { x += n.offsetLeft; y += n.offsetTop; n = n.offsetParent as HTMLElement | null; }
+  return { x, y, w: el.offsetWidth, h: el.offsetHeight, ok: n === root };
+}
+/** Minimum-jerk easing: velocity and acceleration are zero at both ends, as in a hand's reach. */
+const reach = (s: number) => s * s * s * (10 - 15 * s + 6 * s * s);
 
 export default function AutopilotFilm({ onTalk, onRecord, onType }: {
   onTalk: () => void;
@@ -411,15 +510,16 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
     /* The last scene is where the film hands over to the real buttons. */
     list.push({ ch: 2, ms: 7000, say: FILM_SAY.end, draw: () => (
       <div className="apf-end">
+        <span className="apf-kicker">Your turn</span>
         <h3>Type it. Record it. Or just talk.</h3>
         <p>Protron sets AI Autopilot up with you, one small step at a time.</p>
         <div className="apf-end-row">
-          <button type="button" className="apf-end-btn is-live" onClick={onTalk}><AudioLines size={16} /> Talk live with Protron</button>
+          <button type="button" className="apf-end-btn is-live" data-k="end-live" onClick={onTalk}><AudioLines size={16} /> Talk live with Protron</button>
           <button type="button" className="apf-end-btn is-rec" onClick={onRecord}><Mic size={16} /> Record my prompt</button>
           <button type="button" className="apf-end-btn" onClick={onType}><Keyboard size={16} /> Type it</button>
         </div>
       </div>
-    ) });
+    ), aim: [{ at: 0.2, k: 'end-live' }] });
     return list;
   }, [onTalk, onRecord, onType]);
 
@@ -432,11 +532,19 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
   const [playing, setPlaying] = useState(false);
   const [voice, setVoice] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const screen = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLDivElement>(null);
+  const layer = useRef<HTMLDivElement>(null);
+  const pointer = useRef<HTMLDivElement>(null);
+  const rippleAt = useRef<HTMLDivElement>(null);
+  const ripple = useRef<HTMLSpanElement>(null);
+  const ring = useRef<HTMLSpanElement>(null);
   const tRef = useRef(0);
   const visible = useRef(false);
   const chosen = useRef(false); // the person pressed play/pause — autoplay stops deciding
   const still = useRef(motionReduced());
   const holdAt = useRef<number | null>(null);
+  const [fitNow, setFit] = useState<Fit>(() => fitFor(1120));
 
   const idx = Math.max(0, starts.findIndex((st, i) => t >= st && t < st + scenes[i].ms));
   const scene = scenes[idx] ?? scenes[0];
@@ -444,23 +552,50 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
 
   const seek = useCallback((ms: number) => { tRef.current = Math.max(0, Math.min(total - 1, ms)); setT(tRef.current); }, [total]);
 
+  /* ── Size: measured on resize, never per frame ── */
+  useLayoutEffect(() => {
+    const el = screen.current;
+    if (!el) return;
+    const size = () => {
+      const next = fitFor(el.clientWidth || 1120);
+      setFit(f => (f.w === next.w && Math.abs(f.k - next.k) < 0.0005 ? f : next));
+    };
+    size();
+    const ro = new ResizeObserver(size);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  /* ── The outgoing scene stays a moment and fades, so a new one never pops ── */
+  const [leaving, setLeaving] = useState<number | null>(null);
+  const lastIdx = useRef(idx);
+  useEffect(() => {
+    if (lastIdx.current === idx) return;
+    const was = lastIdx.current;
+    lastIdx.current = idx;
+    if (still.current) return;
+    setLeaving(was);
+    const id = window.setTimeout(() => setLeaving(null), 260);
+    return () => window.clearTimeout(id);
+  }, [idx]);
+
   /* The clock. */
   useEffect(() => {
     if (!playing) return;
     let raf = 0;
     let last = performance.now();
-    let drawn = 0;
     const tick = (now: number) => {
-      const dt = Math.min(100, now - last);
+      const dt = Math.min(64, now - last);
       last = now;
       if (visible.current && !document.hidden) {
         /* While the narrator is still saying this scene's line, the scene waits for it. */
         const hold = holdAt.current;
         tRef.current = hold !== null && tRef.current + dt > hold ? Math.max(tRef.current, hold) : tRef.current + dt;
         if (tRef.current >= total) { tRef.current = total - 1; setT(tRef.current); setPlaying(false); return; }
-        /* ~30 renders a second: the scenes are timed in tenths, and a React
-           render of the whole film every frame was frames the page needed. */
-        if (now - drawn >= 32) { drawn = now; setT(tRef.current); }
+        /* Every frame: the scenes only switch classes and reveal laid-out
+           text, so a render is cheap, and a 30-a-second clock made the
+           progress bars and the typing step visibly. */
+        setT(tRef.current);
       }
       raf = requestAnimationFrame(tick);
     };
@@ -479,6 +614,80 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
     io.observe(el);
     return () => io.disconnect();
   }, []);
+
+  /* ── The pointer: its own clock, chasing the scene's current target ── */
+  const now = useRef({ idx, p, aim: scene.aim });
+  useLayoutEffect(() => { now.current = { idx, p, aim: scene.aim }; });
+  useEffect(() => {
+    if (still.current) return;
+    const ptr = pointer.current, cv = canvas.current;
+    if (!ptr || !cv) return;
+    let pos: { x: number; y: number } | null = null;
+    let goal = '';
+    let move: { at: number; ms: number; x0: number; y0: number; cx: number; cy: number; x1: number; y1: number } | null = null;
+    let shown = false;
+    const clicked = new Set<string>();
+    const put = (x: number, y: number) => { pos = { x, y }; ptr.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`; };
+    const show = (v: boolean) => { if (v !== shown) { shown = v; ptr.style.opacity = v ? '1' : '0'; } };
+    let raf = 0;
+    const frame = (time: number) => {
+      raf = requestAnimationFrame(frame);
+      if (!visible.current || document.hidden) return;
+      const { idx: si, p: sp, aim } = now.current;
+      const ai = aim ? aim.reduce((best, a, i) => (sp >= a.at ? i : best), -1) : -1;
+      /* A seek back: clicks not yet reached may happen again. */
+      for (const key of clicked) { const [s, i] = key.split(':').map(Number); const c = s === si ? aim?.[i]?.click : undefined; if (s !== si || c === undefined || sp < c) clicked.delete(key); }
+      if (ai < 0 || !aim) { show(false); goal = ''; move = null; return; }
+      const a = aim[ai];
+      const key = `${si}:${ai}`;
+      const el = layer.current?.querySelector<HTMLElement>(`[data-k="${a.k}"]`);
+      if (!el) return;
+      if (goal !== key) {
+        goal = key;
+        const b = boxIn(el, cv);
+        if (!b.ok || (!b.w && !b.h)) return;
+        const x1 = b.x + Math.min(b.w * 0.5, 110), y1 = b.y + b.h * 0.58;
+        /* The first time, it comes in from low on the right, already moving — never out of nowhere onto the target. */
+        if (!pos) put(cv.offsetWidth * 0.78, cv.offsetHeight * 0.86);
+        const { x: x0, y: y0 } = pos ?? { x: x1, y: y1 };
+        const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1;
+        /* A gentle arc that bows upward, the way a wrist swings. */
+        let nx = -dy / len, ny = dx / len;
+        if (ny > 0) { nx = -nx; ny = -ny; }
+        const bow = Math.min(80, len * 0.15);
+        move = { at: time, ms: Math.min(1300, 420 + len * 0.8), x0, y0, x1, y1, cx: (x0 + x1) / 2 + nx * bow, cy: (y0 + y1) / 2 + ny * bow };
+      }
+      show(true);
+      if (move) {
+        const s = reach(clamp((time - move.at) / move.ms)), u = 1 - s;
+        put(u * u * move.x0 + 2 * u * s * move.cx + s * s * move.x1, u * u * move.y0 + 2 * u * s * move.cy + s * s * move.y1);
+        if (s >= 1) move = null;
+      }
+      /* The click: only once the pointer is there, and only near its moment
+         (after a long seek past it, the state already shows it happened). */
+      if (a.click !== undefined && !move && sp >= a.click && !clicked.has(key)) {
+        clicked.add(key);
+        if (sp - a.click < 0.2 && pos) {
+          const at = rippleAt.current, r = ripple.current, g = ring.current;
+          if (at && r) {
+            at.style.transform = `translate3d(${pos.x.toFixed(2)}px, ${pos.y.toFixed(2)}px, 0)`;
+            r.animate?.([{ transform: 'scale(0.2)', opacity: 0.9 }, { transform: 'scale(1)', opacity: 0 }], { duration: 620, easing: 'cubic-bezier(.2,.7,.3,1)' });
+          }
+          if (g) {
+            const b = boxIn(el, cv);
+            g.style.width = `${b.w + 10}px`; g.style.height = `${b.h + 10}px`;
+            g.style.transform = `translate3d(${b.x - 5}px, ${b.y - 5}px, 0)`;
+            g.style.borderRadius = getComputedStyle(el).borderRadius;
+            g.animate?.([{ opacity: 0 }, { opacity: 1, offset: 0.2 }, { opacity: 1, offset: 0.6 }, { opacity: 0 }], { duration: 900, easing: 'ease-out' });
+          }
+          ptr.animate?.([{ scale: '1' }, { scale: '0.86' }, { scale: '1' }], { duration: 240, easing: 'ease-out' });
+        }
+      }
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  // Restart on a new design size: the old coordinates mean nothing in the new one.
+  }, [fitNow.w]);
 
   /* Narration: Protron's warm AI voice — the live bot's voice — reads each
      caption as its scene starts; the next line is fetched while this one
@@ -515,7 +724,7 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
   return (
     <div
       ref={root}
-      className="apf"
+      className={`apf is-${fitNow.tier}${still.current ? ' is-still' : ''}`}
       role="region"
       aria-roledescription="video"
       aria-label="See AI Autopilot work"
@@ -527,8 +736,18 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
         <span className="apf-head-ch">{scene.ch + 1}/3 · {CHAPTERS[scene.ch]}</span>
         <span className="apf-head-title">See AI Autopilot work</span>
       </div>
-      <div className="apf-stage" key={idx} aria-hidden="false">
-        {scene.draw(p)}
+      <div className="apf-screen" ref={screen}>
+        <div className="apf-canvas" ref={canvas} style={{ width: fitNow.w, height: fitNow.h, transform: `scale(${fitNow.k})` }}>
+          {leaving !== null && leaving !== idx && scenes[leaving] && (
+            <div className="apf-layer is-leaving" key={`out-${leaving}`} aria-hidden="true">{scenes[leaving].draw(1)}</div>
+          )}
+          <div className="apf-layer is-now" key={idx} ref={layer}>{scene.draw(p)}</div>
+          <span className="apf-ring" ref={ring} aria-hidden="true" />
+          <div className="apf-ripple-at" ref={rippleAt} aria-hidden="true"><span className="apf-ripple" ref={ripple} /></div>
+          <div className="apf-ptr" ref={pointer} aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="26" height="26"><path d="M4 2.5 L4 19.5 L8.6 15.4 L11.5 21.8 L14.6 20.4 L11.8 14.2 L18 14.2 Z" fill="#0f1115" stroke="#fff" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+          </div>
+        </div>
       </div>
       <p className="apf-subs" aria-live={playing ? 'off' : 'polite'}>{scene.say}</p>
       {voice && voiceNote && <p className="apf-voice-note" role="status">Narrator unavailable — captions only. {voiceNote}</p>}
