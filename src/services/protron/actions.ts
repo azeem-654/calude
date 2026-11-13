@@ -81,7 +81,8 @@ export interface ActionCtx {
   setStages?: (id: string, stages: string[]) => void;
   counts?: () => Record<string, number>;
   setProactive?: (on: boolean) => void;
-  handOffToAutopilot?: (instruction: string) => void;
+  /** `auto`: the customer approved Protron's plan, so the wizard drives itself (NewProject `autoDrive`). */
+  handOffToAutopilot?: (instruction: string, opts?: { auto?: boolean }) => void;
   /** Types a value into a box on screen (services/protron/screen.ts). */
   fill?: (key: string, value: string) => Promise<{ ok: boolean; label: string; previous: string; message?: string }>;
   /** Moves the pointer to a control by its name and presses it when it only opens, shows or moves (screen.ts pressControl). */
@@ -284,6 +285,38 @@ export const ACTIONS: ActionDef[] = [
       await pause(ctx, 350); st.ok(1); st.run(2);
       await pause(ctx, 300); st.ok(2);
       return { ok: true, message: 'Opened the New business workspace wizard with your instruction in the box. Nothing is saved until you build it.' };
+    },
+  },
+  {
+    /*
+     * The owner's brief (2026-11-13): "I'm a dentist in Virginia and I have no
+     * clients" gets a plan in bullets, and once approved Protron does the whole
+     * AI Autopilot setup itself, on screen. The approval is this card's
+     * Confirm; what it starts is the wizard with `autoDrive`, which presses
+     * the wizard's own buttons — so every save still goes through the same
+     * routes, allowances and workspace checks as a person's click, and the
+     * wizard stops and asks wherever an answer only the customer has is
+     * missing. Nothing here sends, pays or deletes on its own authority.
+     */
+    name: 'propose_setup_plan',
+    title: 'Set this up in AI Autopilot',
+    description: 'When the customer wants an outcome set up (no clients yet, automated email campaigns, a blog, bookings): propose a plan as 3 to 8 short bullets of what you will build in AI Autopilot (business workspace, workflows and their emails, blog articles, social posts, booking page, follow-ups), plus the full instruction for the AI Autopilot wizard. After they approve, you open the wizard and build it step by step on screen, stopping to ask only what you do not know.',
+    module: '/autopilot',
+    tier: 'confirm',
+    params: {
+      bullets: { type: 'list', required: true, maxItems: 8, maxEach: 160, desc: 'what you will set up, one short bullet each, in the order you will do it' },
+      instruction: { type: 'string', required: true, max: 4000, desc: 'the full instruction for the AI Autopilot wizard, written as the customer would say it, with every fact they gave (business, place, offer, goal)' },
+    },
+    confirmText: a => `Here is my plan:\n${(a.bullets as string[]).map(b => `• ${b.trim()}`).join('\n')}\n\nApprove it and I will build it in AI Autopilot now, step by step on your screen. I stop and ask wherever I need an answer only you have.`,
+    run: async (a, ctx) => {
+      if (!ctx.handOffToAutopilot) return { ok: false, message: 'AI Autopilot could not be opened from here.' };
+      const st = stepsFor(ctx, ['Open AI Autopilot', 'Start a new business workspace with your plan', 'Build it step by step']);
+      st.run(0);
+      ctx.handOffToAutopilot(String(a.instruction), { auto: true });
+      await pause(ctx, 400); st.ok(0); st.run(1);
+      await pause(ctx, 400); st.ok(1); st.run(2);
+      await pause(ctx, 300); st.ok(2);
+      return { ok: true, message: 'Approved — I am building it in AI Autopilot now. Watch the wizard: I press each step myself and stop only where I need your answer.' };
     },
   },
   {

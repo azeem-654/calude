@@ -116,6 +116,21 @@ export default function Protron() {
     if (s && (s.message || s.intro || s.talk || s.auto)) setSeed(prev => ({ ...s, n: (prev?.n ?? 0) + 1 }));
   }, []);
 
+  /* Arriving from Protron's campaign alert (lib/protronWatch.ts): the email's
+     button opens the app with `?protron=optimise&campaign=<name>`, and the
+     request is written for the customer here. Only letters, digits and a few
+     marks of the name are kept, and it goes in as the customer's message —
+     Protron then proposes the change and waits for their approval, so a
+     crafted link can at most put a sentence in their box. */
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('protron') !== 'optimise') return;
+    const name = (q.get('campaign') ?? '').replace(/[^\p{L}\p{N} '&.,:-]/gu, '').trim().slice(0, 80);
+    q.delete('protron'); q.delete('campaign');
+    window.history.replaceState(null, '', `${window.location.pathname}${q.toString() ? `?${q}` : ''}${window.location.hash}`);
+    show({ message: `You told me replies on ${name ? `“${name}”` : 'one of my campaigns'} are lower than expected. Yes — show me what you would change to get more responses, and I'll approve it.` });
+  }, [show]);
+
   /* Opened from elsewhere in the app (the wizard's "Plan it with Protron", a link). */
   useEffect(() => {
     const on = (e: Event) => show({ message: (e as CustomEvent<{ message?: string }>).detail?.message });
@@ -254,6 +269,8 @@ export default function Protron() {
             </button>
           )}
           <span className="pt-name">Protron</span>
+          {/* The owner's words for what it is, always on show under the tile. */}
+          {!aside && <span className="pt-caption" aria-hidden>AI Live Business Manager</span>}
         </div>
       )}
 

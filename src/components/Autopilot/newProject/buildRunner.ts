@@ -390,8 +390,8 @@ async function runBuildOnce(
   }
   result.projectId = p.id;
   set('project', { state: 'done', detail: bp.name });
-  /* The dashboard's 12-month card points here from now on (ContentPipelineCard). */
-  if (year) { try { localStorage.setItem('crm_year_plan', JSON.stringify({ projectId: p.id, name: bp.name, year })); } catch { /* storage blocked: the card keeps its prompt */ } }
+  /* The dashboard's 12-month card reads the plan back from this workspace's
+     brief (ContentPipelineCard), so deleting the workspace removes it there too. */
 
   /* ── 3 · The workflows ── */
   const ids: Record<string, string> = {};

@@ -45,7 +45,7 @@
     "test:triggers": "npx --yes tsx worker/test/triggers.test.mts",
     "test:studio": "node test/projectStudio.e2e.mjs",
     "test:intake": "npx --yes tsx test/projectIntake.test.mts",
-    "test:protron": "npx --yes tsx test/protron.test.mts",
+    "test:protron": "npx --yes tsx test/protron.test.mts && npx --yes tsx test/protronWatch.test.mts",
     "test:live": "npx --yes tsx test/live.test.mts",
     "test:protron:e2e": "node test/protron.e2e.mjs && node test/protron-live.e2e.mjs && node test/protron-brief.e2e.mjs",
     "test:emailstyle": "npx --yes tsx test/emailStyle.test.mts",

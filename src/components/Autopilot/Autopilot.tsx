@@ -92,13 +92,19 @@ export default function Autopilot() {
   const takeHandoff = () => {
     try { const t = sessionStorage.getItem('pc_protron_handoff') ?? ''; sessionStorage.removeItem('pc_protron_handoff'); return t; } catch { return ''; }
   };
+  /* Set with the hand-off when the customer approved Protron's plan
+     (`propose_setup_plan`): the wizard then presses its own buttons. */
+  const takeAuto = () => {
+    try { const a = sessionStorage.getItem('pc_protron_autodrive') === '1'; sessionStorage.removeItem('pc_protron_autodrive'); return a; } catch { return false; }
+  };
   const [handoff, setHandoff] = useState(() => (params.get('new') === '1' && params.get('from') === 'protron' ? takeHandoff() : ''));
+  const [autoDrive, setAutoDrive] = useState(() => !!handoff && takeAuto());
   const [handoffKey, setHandoffKey] = useState(0);
   useEffect(() => {
     if (params.get('new') !== '1') return;
     if (params.get('from') === 'protron') {
       const t = takeHandoff();
-      if (t) { setHandoff(t); setHandoffKey(k => k + 1); setCreating(true); }
+      if (t) { setHandoff(t); setAutoDrive(takeAuto()); setHandoffKey(k => k + 1); setCreating(true); }
     }
     setParams(p => { const n = new URLSearchParams(p); n.delete('new'); n.delete('list'); n.delete('plan'); n.delete('from'); n.delete('solution'); return n; }, { replace: true });
   }, [params, setParams]);
@@ -255,12 +261,13 @@ export default function Autopilot() {
             key={handoffKey}
             portfolios={portfolios}
             seedPrompt={handoff || undefined}
+            autoDrive={autoDrive && !!handoff}
             presetListId={presetList || undefined}
             presetSolution={presetSolution || undefined}
             seed={sitePlan}
-            onClose={() => { setCreating(false); setHandoff(''); }}
+            onClose={() => { setCreating(false); setHandoff(''); setAutoDrive(false); }}
             onCreated={id => {
-              setCreating(false); setHandoff('');
+              setCreating(false); setHandoff(''); setAutoDrive(false);
               refreshAllowances();
               setBoardKey(k => k + 1);
               void load();

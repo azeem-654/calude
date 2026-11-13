@@ -70,6 +70,13 @@ const owner = { isClient: false, isOwner: true };
   ok('P1 every action has a tier and a description', A.ACTIONS.every(a => a.tier && a.description.length > 10));
   ok('P1 every confirm action has confirm text', A.ACTIONS.filter(a => a.tier === 'confirm').every(a => typeof a.confirmText === 'function'));
   ok('P1 no sensitive action is registered (sending, deleting, billing stay the customer\'s)', !A.ACTIONS.some(a => a.tier === 'sensitive'));
+  {
+    /* The owner's 2026-11-13 brief: a plan in bullets, then Protron builds it
+       — but only after the customer approves, so it must be confirm tier. */
+    const plan = A.ACTIONS.find(a => a.name === 'propose_setup_plan');
+    ok('P1b the setup plan waits for the customer\'s approval', plan?.tier === 'confirm' && typeof plan.confirmText === 'function'
+      && plan.confirmText({ bullets: ['Make a business workspace'], instruction: 'x' }).includes('• Make a business workspace'));
+  }
 }
 
 /* ── P2 permissions ── */

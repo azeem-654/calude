@@ -55,8 +55,10 @@ export async function pointAt(target: Element | string | null | undefined, label
 
 /**
  * Points at an element and shows the press — the ripple a mouse click makes —
- * just before the caller clicks it. Only pressControl (screen.ts) calls this,
- * for controls it has judged safe to press.
+ * just before the caller clicks it. pressControl (screen.ts) calls this for
+ * controls it has judged safe to press, and the AI Autopilot wizard for its
+ * own Next button while it builds a plan the customer approved (NewProject
+ * `autoDrive`).
  */
 export async function clickAt(el: Element, label: string): Promise<boolean> {
   if (!(await pointAt(el, label))) return false;

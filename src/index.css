@@ -1675,6 +1675,17 @@ main section { min-width: 0; }
   background: #2a2a31; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.14);
 }
 .nav-me img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* The corner's Protected Central shield (TopNav): the logo with a small
+   green lock, and a slow glow so it reads as "on guard" rather than decoration. */
+.nav-me.nav-shield { position: relative; overflow: visible; display: grid; place-items: center; background: #111318; }
+.nav-shield-lock {
+  position: absolute; right: -3px; bottom: -3px; width: 16px; height: 16px; border-radius: 999px;
+  display: grid; place-items: center; background: #16a34a; color: #fff; border: 2px solid #1c1c22;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .nav-me.nav-shield { animation: nav-guard 3.2s ease-in-out infinite; }
+}
+@keyframes nav-guard { 50% { box-shadow: 0 0 0 2px rgba(74, 222, 128, .35), 0 0 14px rgba(74, 222, 128, .35); } }
 /* The cloud key sits inside the pill at the pill's own height. */
 .nav-corner .cb-key { width: 36px; height: 36px; border-radius: 11px; }
 .nav-corner .cb-cap { inset: 3px 3px 5px; border-radius: 9px; }

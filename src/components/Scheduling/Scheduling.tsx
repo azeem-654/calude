@@ -16,7 +16,7 @@ import { fetchSmsState, saveSmsConfig, type SmsStatus } from '../../services/sms
 const ET_COLORS = ['#17191c', '#6366f1', '#22c55e', '#f59e0b', '#ec4899', '#0ea5e9'];
 
 const DEFAULT_AUTOMATIONS: SchedulingAutomations = {
-  confirmEmail: true, ownerNotify: false, ownerEmail: '',
+  confirmEmail: true, ownerNotify: true, ownerEmail: '',
   reminderEmail: true, reminderMinutes: 60,
   followupEmail: false, followupText: '',
 };
@@ -424,7 +424,7 @@ export default function Scheduling() {
                   </button>
                 </div>
                 {auto.ownerNotify && (
-                  <input value={auto.ownerEmail} onChange={e => setAuto({ ownerEmail: e.target.value })} placeholder="you@yourbusiness.com" style={{ ...INPUT, maxWidth: 320 }} />
+                  <input value={auto.ownerEmail} onChange={e => setAuto({ ownerEmail: e.target.value })} placeholder="Blank = your account email" style={{ ...INPUT, maxWidth: 320 }} />
                 )}
               </div>
 

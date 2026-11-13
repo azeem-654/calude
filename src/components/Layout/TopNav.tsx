@@ -2,12 +2,13 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import TaskBadge from './TaskBadge';
 import SupportBadge from './SupportBadge';
 import CloudBadge from './CloudBadge';
+import AppointmentsBadge from './AppointmentsBadge';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Search, Mail, Bell, ChevronDown, ChevronLeft,
   Share2, Star, Plus, Phone, Calendar as CalIcon, Send, TriangleAlert, Moon,
   Settings as SettingsIcon, Building2, Check, ArrowLeftRight, LogOut, CreditCard, Sun,
-  CheckCircle, XCircle, Info, BellOff, Crosshair, Sparkles, Users,
+  CheckCircle, XCircle, Info, BellOff, Crosshair, Sparkles, Users, Lock, ShieldCheck,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import CommandPalette from './CommandPalette';
@@ -511,6 +512,7 @@ export default function TopNav() {
         </button>
 
         <TaskBadge style={circleBtn} />
+        <AppointmentsBadge style={circleBtn} />
         <SupportBadge style={circleBtn} />
 
         {/* The bell used to carry a hardcoded red dot and open nothing at all —
@@ -576,15 +578,35 @@ export default function TopNav() {
           )}
         </div>
         <div ref={userRef} style={{ position: 'relative', flexShrink: 0 }}>
-          <button onClick={() => setUserOpen(v => !v)} className="nav-me" aria-label="Your account" title={session?.user.name || 'Your account'}>
-            <UserFace size={38} />
+          {/* The Protected Central shield in the corner (owner's brief,
+              2026-11-13), opening onto how the workspace is protected and the
+              account menu. Only claims docs/SECURITY.md §7 allows — never
+              "end-to-end", "unhackable" or "all data encrypted at rest". */}
+          <button onClick={() => setUserOpen(v => !v)} className="nav-me nav-shield" aria-label="Your account and security" title="Protected by Protected Central — your account">
+            <LogoMark size={34} />
+            <span className="nav-shield-lock" aria-hidden><Lock size={10} strokeWidth={3} /></span>
           </button>
           {userOpen && (
-            <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#fff', borderRadius: 16, padding: 6, minWidth: 220, zIndex: 300, boxShadow: '0 16px 40px -8px rgba(23,25,28,0.2)' }}>
-              <div style={{ padding: '10px 12px' }}>
+            <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, background: '#fff', borderRadius: 16, padding: 6, minWidth: 220, width: 300, maxWidth: 'calc(100vw - 24px)', zIndex: 300, boxShadow: '0 16px 40px -8px rgba(23,25,28,0.2)' }}>
+              <div style={{ margin: 4, padding: '12px 12px 10px', borderRadius: 12, background: 'linear-gradient(135deg, #0f172a, #1e1b4b)', color: '#e2e8f0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 800, color: '#fff' }}>
+                  <ShieldCheck size={16} color="#4ade80" /> Protected by Protected Central
+                </div>
+                <ul style={{ margin: '8px 0 6px', paddingLeft: 18, fontSize: 11.5, lineHeight: 1.55, display: 'grid', gap: 2 }}>
+                  <li>Everything you send and receive here travels over HTTPS.</li>
+                  <li>Your contacts and data are walled off from every other workspace, checked on our server.</li>
+                  <li>Connected passwords and API keys are encrypted (AES-256-GCM) and never shown back.</li>
+                  <li>Your session sits in a cookie page scripts cannot read; optional 2-step sign-in.</li>
+                </ul>
+                <NavLink to="/security" onClick={() => setUserOpen(false)} style={{ fontSize: 11.5, fontWeight: 700, color: '#a5b4fc', textDecoration: 'none' }}>How we protect you →</NavLink>
+              </div>
+              <div style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <UserFace size={32} />
+                <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: '#17191c' }}>{session?.user.name || 'User'}</div>
                 <div style={{ fontSize: 11.5, color: '#8a8f98', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session?.user.email}</div>
                 <span style={{ display: 'inline-block', marginTop: 6, fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999, background: isClient ? '#eceff9' : '#e9f4e6', color: isClient ? '#3e63dd' : '#3f9142', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{isClient ? 'Client' : 'Agency'}</span>
+                </div>
               </div>
               <NavLink to="/billing" onClick={() => setUserOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '9px 12px', borderRadius: 10, textDecoration: 'none', color: '#374151', fontSize: 13, fontWeight: 500 }}>
                 <CreditCard size={14} /> Billing & subscription

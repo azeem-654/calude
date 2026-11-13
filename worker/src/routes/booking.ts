@@ -22,6 +22,7 @@ import { newToken, timingSafeEqual } from '../lib/crypto';
 import { meetingForBooking } from './calendar';
 import { recordEvent, upsertPerson } from '../lib/engagement';
 import { canSend, deliver, fromAddressOf } from '../lib/deliver';
+import { ownerEmailOf } from '../lib/allowanceStore';
 import { loadMailbox } from './mailbox';
 import { adoptLegacyTwilio, takeLegacyTwilio } from '../lib/legacyTwilio';
 import { clockLabel, isZone, slotProblem, slugProblem, utcToWall, videoEmbedOf, wallToUtc, type Busy, type SlotRules } from '../lib/bookingTime';
@@ -193,7 +194,10 @@ async function bookingMail(
       guest = r.ok;
     }
 
-    const ownerTo = auto.ownerNotify ? addr(auto.ownerEmail) : null;
+    /* On unless switched off (the owner's brief, 2026-11-13: a booking is the
+       news a customer most wants), to the address they gave or else to the
+       workspace's owner. A page saved with the switch off keeps it off. */
+    const ownerTo = auto.ownerNotify === false ? null : (addr(auto.ownerEmail) ?? addr(await ownerEmailOf(env, accountId)));
     if (ownerTo) {
       const verb = what === 'cancelled' ? 'cancelled' : what === 'rescheduled' ? 'moved' : 'booked';
       const html = `<p>${esc(b.guestName)} (${esc(b.guestEmail)}) ${verb} <strong>${esc(title)}</strong> — ${esc(when)}${tz ? ` (${esc(tz)})` : ''}.</p>`

@@ -47,6 +47,19 @@ when unreadable; the words are kept for screen readers. The lit parts carry
 `data-noinvert`, so dark mode does not turn them inside out. `test:isolation`
 checks four widths as the owner, and that 1440 and up is one line.
 
+**2026-11-13**: the account button at the end of the corner is the Protected
+Central shield (`LogoMark` + green lock, `.nav-shield`); its menu opens on
+"Protected by Protected Central" — only claims `docs/SECURITY.md` §7 allows
+(HTTPS, server-checked workspace separation, AES-256-GCM for connected
+credentials, HttpOnly session, optional 2-step) and links `/security`; never
+"end-to-end", "all data encrypted at rest" or "unhackable". **Appointments**
+(`Layout/AppointmentsBadge.tsx`) is a tray of its own beside Tasks: real
+bookings from booking.php `list`, green count of those booked since the tray
+was last opened (browser-local stamp), polled every 2 min while visible,
+hidden with no bookings. The booking email to the owner is now on by default
+and goes to the workspace owner when no address is given (booking.ts
+`bookingMail`; a page saved with it off stays off).
+
 ## The dashboard
 
 **The hero comes first** (owner, 2026-11-12): `DashHero.tsx` — the greeting,

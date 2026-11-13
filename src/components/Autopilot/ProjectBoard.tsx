@@ -369,6 +369,15 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
     return <p style={{ fontSize: 13, color: MUTED, padding: '20px 0' }}>Loading your business workspaces…</p>;
   }
 
+  /* A link naming a workspace that has since been deleted (an old dashboard
+     card, a bookmark) says so instead of landing on a board that looks empty
+     for no reason. */
+  const gone = !!focusId && !projects.some(p => p.id === focusId) ? (
+    <p role="status" style={{ margin: 0, fontSize: 12.5, color: INK, background: T.raised, border: `1px solid ${LINE}`, borderRadius: 12, padding: '10px 14px', lineHeight: 1.5 }}>
+      That business workspace has been deleted, and its plan went with it. Start a new one below — you can run one for each of your businesses.
+    </p>
+  ) : null;
+
   if (!projects.length) {
     return (
       <div style={{
@@ -379,6 +388,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
            empty state ran 226px off a phone screen. */
         gridTemplateColumns: 'minmax(0, 1fr)',
       }}>
+        {gone}
         <AutopilotBot size={62} awake />
         <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: INK, letterSpacing: '-0.02em' }}>
           No business workspaces yet
@@ -457,6 +467,7 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
    */
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {gone}
       <span role="status" aria-live="polite" style={{
         position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap',
       }}>{moved}</span>

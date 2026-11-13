@@ -143,10 +143,18 @@ export function useProtronIntake(initialCompany: string, start: IntroStep) {
       chosenLabels(b).length ? `Chosen starting points: ${chosenLabels(b).join(', ')}` : '',
       b.custom.trim() ? `Their own instructions: ${b.custom.trim().slice(0, 600)}` : '',
       b.talk.length ? `Already answered:\n${b.talk.map(t => `${t.role === 'protron' ? 'Protron' : 'Customer'}: ${t.text.slice(0, 300)}`).join('\n')}` : '',
-      'Begin now: a short warm greeting by first name if known, then your first question.',
+      b.company.trim() || b.website.trim()
+        ? 'Begin now: a short warm greeting by first name if known, then your first question.'
+        : 'Begin now: a short warm greeting by first name if known, then ask, in about these words: "To get things going smoothly, can you tell me the name of your company or business, or its website?"',
     ].filter(Boolean).join('\n');
   }, []);
 
+  /* Started by the wizard itself on the company step (owner's brief,
+     2026-11-13), rather than by a press: if the voice cannot start — no
+     microphone, permission refused — the customer is put back on the typed
+     company step instead of an interview that never asked their name. */
+  const auto = useRef(false);
+  const autoTried = useRef(false);
   const startLive = useCallback(() => {
     if (live.current) return;
     setStepState('talk');
@@ -157,8 +165,13 @@ export function useProtronIntake(initialCompany: string, start: IntroStep) {
         if (message) setLiveMsg(message);
         if (s === 'ended' || s === 'error' || s === 'idle') {
           live.current = null; setPartial(null); setWho({ who: 'none', level: 0 });
-          /* No live voice after all: the typed interview takes over where it stands. */
-          if (s === 'error' && !ref.current.talk.length) void askNext(ref.current);
+          /* No live voice after all: the typed interview takes over where it
+             stands — or, when it started on its own, the typed company step. */
+          if (s === 'error' && !ref.current.talk.length) {
+            if (auto.current && !ref.current.company.trim()) setStepState('name');
+            else void askNext(ref.current);
+          }
+          auto.current = false;
         }
       },
       onCaption: (role, text, final) => {
@@ -186,6 +199,17 @@ export function useProtronIntake(initialCompany: string, start: IntroStep) {
     live.current = v;
     void v.start(liveContext());
   }, [appendTalk, askNext, liveContext, readWebsite, setBrief]);
+
+  /** Once per wizard: start talking live on the company step. Not in an
+   *  automated browser (navigator.webdriver) — it has no microphone, and the
+   *  e2e suites drive the typed company step. */
+  const autoStart = useCallback(() => {
+    if (autoTried.current || live.current || !liveSupported() || navigator.webdriver) return;
+    if (ref.current.company.trim() || ref.current.website.trim()) return;
+    autoTried.current = true;
+    auto.current = true;
+    startLive();
+  }, [startLive]);
 
   /* Leaving the interview ends the call. */
   const setStep = useCallback((s: IntroStep) => { if (s !== 'talk') stopLive(); setStepState(s); }, [stopLive]);
@@ -226,7 +250,7 @@ export function useProtronIntake(initialCompany: string, start: IntroStep) {
   return {
     step, setStep, brief, setBrief, busy, note, recs, setRecs, cardWhy, instruction, setInstruction, talkDone, startTalk, answer, write, recommend,
     keys: chosenKeys(brief), site, readWebsite,
-    live: { state: liveState, message: liveMsg, partial, who, start: startLive, stop: stopLive, supported: liveSupported() },
+    live: { state: liveState, message: liveMsg, partial, who, start: startLive, stop: stopLive, supported: liveSupported(), autoStart },
   };
 }
 
@@ -252,6 +276,10 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
   const replyBox = useRef<HTMLTextAreaElement>(null);
   const logBox = useRef<HTMLDivElement>(null);
   useEffect(() => { if (step === 'name') nameBox.current?.focus(); if (step === 'talk' && live.state !== 'live') replyBox.current?.focus(); }, [step, live.state]);
+  /* The company step opens straight into a live talk with Protron, which asks
+     for the name or website and fills these boxes as the customer answers. */
+  const { autoStart } = live;
+  useEffect(() => { if (step === 'name') autoStart(); }, [step, autoStart]);
   useEffect(() => { const el = logBox.current; if (el) el.scrollTop = el.scrollHeight; }, [brief.talk.length, busy, live.partial?.text]);
 
   /* Read the website once the address has settled — not on every keystroke. */
@@ -441,6 +469,11 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
         {head(<>Tell Protron about <span className="wz-accent">{brief.company.trim() || 'your business'}</span></>, liveOn
           ? 'Talk normally — interrupt any time. Protron writes down what matters as you go.'
           : "Only what changes the plan. Skip anything — I'll choose a sensible default and say so.")}
+        {!brief.company.trim() && (
+          <button type="button" className="np-link" style={{ justifySelf: 'start' }} onClick={() => p.setStep('name')}>
+            No microphone? Type it instead
+          </button>
+        )}
 
         <div className="np-chat">
           <div className="np-chat-log" ref={logBox} aria-live="polite">

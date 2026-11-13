@@ -66,7 +66,7 @@ export async function trialLimits(env: Env): Promise<Limits> {
 
 /* ── Whose allowance ── */
 
-async function ownerEmailOf(env: Env, accountId: string): Promise<string | null> {
+export async function ownerEmailOf(env: Env, accountId: string): Promise<string | null> {
   const ws = await env.DB.prepare('SELECT owner_email AS e FROM crm_workspaces WHERE account_id = ?')
     .bind(accountId).first<{ e: string }>().catch(() => null);
   if (ws?.e) return ws.e;

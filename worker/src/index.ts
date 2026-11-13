@@ -100,6 +100,7 @@ import { runAutopilot } from './autopilotTick';
 import { runPendingSetups } from './lib/setupRun';
 import { runReplies } from './replyTick';
 import { runDigests } from './autopilotDigest';
+import { runProtronWatch } from './lib/protronWatch';
 import { runEngageDispatch } from './engageDispatch';
 import { applyContactChangesInCloud, runAutomations } from './lib/automationEngine';
 import { runProjectAgents } from './lib/projectAgents';
@@ -592,6 +593,12 @@ export default {
        * a few milliseconds away.
        */
       const digest = await runDigests(env);
+
+      /* Protron's campaign watch: after the sends and the digest it reads
+         from, hourly, telling a customer when a campaign is doing badly and
+         asking to fix it (lib/protronWatch.ts). Never throws. */
+      const watch = await runProtronWatch(env);
+      for (const n of watch.notes.slice(0, 5)) report.notes.push({ accountId: '', text: n, kind: 'problem' });
 
       /*
        * The install owner's own mail about their trial customers: the day 1, 3

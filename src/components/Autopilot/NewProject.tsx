@@ -42,6 +42,7 @@ import { DEFAULT_THEME, resolveTheme } from '../../services/designOptions';
 import { TEMPLATE_CATALOG } from '../shared/pageTemplates';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Loader, Sparkles, Hammer, Mail } from 'lucide-react';
+import { clickAt, pointerDone } from '../../services/protron/cursor';
 import { useApp } from '../../context/AppContext';
 import { getSession } from '../../services/auth';
 import { loadOnboarding } from '../../services/onboarding';
@@ -102,7 +103,7 @@ const EXAMPLES = [
 
 const pause = (ms: number) => new Promise(r => window.setTimeout(r, ms));
 
-export default function NewProject({ portfolios, onClose, onCreated, presetListId, seed, seedPrompt, presetSolution }: {
+export default function NewProject({ portfolios, onClose, onCreated, presetListId, seed, seedPrompt, presetSolution, autoDrive }: {
   portfolios: Portfolio[];
   onClose: () => void;
   /** Called with the new project's id when the customer goes into it. */
@@ -134,6 +135,14 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
    * continues as with any other.
    */
   presetSolution?: string;
+  /**
+   * The customer approved Protron's plan (`propose_setup_plan`), so Protron
+   * presses this wizard's own buttons, one screen at a time, with its pointer
+   * — every save goes through exactly the routes a click would. It stops at
+   * the first screen that needs an answer only the customer has, and carries
+   * on once they press the button themselves.
+   */
+  autoDrive?: boolean;
 }) {
   const presetSol = presetSolution ? solutionByKey(presetSolution) ?? null : null;
   const { addNotification, addWebsite, addFunnel } = useApp();
@@ -895,6 +904,41 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     }
   };
 
+  /* ── Protron driving an approved plan ── */
+  const [driving, setDriving] = useState(!!autoDrive);
+  const [driveNote, setDriveNote] = useState('');
+  const footRef = useRef<HTMLElement>(null);
+  const nextRef = useRef(next);
+  nextRef.current = next;
+  useEffect(() => {
+    if (!driving) return;
+    if (result) { setDriving(false); setDriveNote(''); pointerDone(); return; }
+    if (building || phase === 'build' || phase === 'domains') return;
+    if (blocker) {
+      /* Waiting on the AI is waiting; a missing answer is the customer's. */
+      const thinking = phase === 'understand' || (phase === 'describe' && intake.busy === 'writing');
+      if (!thinking) {
+        setDriving(false);
+        setDriveNote(`I need you for this one: ${blocker.replace(/\.$/, '')}. Answer it and press the button — I carry on from there.`);
+        pointerDone();
+      }
+      return;
+    }
+    const t = window.setTimeout(() => {
+      void (async () => {
+        const btn = footRef.current?.querySelector('button.wz-cta:not(:disabled)');
+        if (btn) await clickAt(btn, 'Next step');
+        nextRef.current();
+      })();
+    }, 1500);
+    return () => window.clearTimeout(t);
+  }, [driving, phase, screenIdx, blocker, building, result, leadsOpen, intake.step, intake.busy]);
+  /* The customer pressing the button after a pause hands the wheel back. */
+  const pressNext = () => {
+    if (autoDrive && !driving && driveNote) { setDriveNote(''); setDriving(true); }
+    next();
+  };
+
   const back = () => {
     if (phase === 'describe') {
       if (intake.step === 'prompt') intake.setStep('talk');
@@ -1157,7 +1201,14 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
           {side}
         </div>
 
-        <footer className="np-foot">
+        {autoDrive && (driving || driveNote) && (
+          <div className="np-drive" role="status" aria-live="polite">
+            <Sparkles size={14} />
+            <span>{driving ? 'Protron is building your approved plan, step by step.' : driveNote}</span>
+            {driving && <button type="button" className="np-back" onClick={() => { setDriving(false); setDriveNote('Stopped — carry on yourself whenever you like, or press the button to let me continue.'); pointerDone(); }}>Stop</button>}
+          </div>
+        )}
+        <footer className="np-foot" ref={footRef}>
           {(['understand', 'questions', 'blueprint', 'requirements', 'review'].includes(phase)
             || (phase === 'describe' && intake.step !== 'name' && !(intake.step === 'manual' && (seed || preset || seedPrompt || presetSol)))) && (
             <button type="button" className="np-back" onClick={back} style={{ marginRight: 'auto' }}>
@@ -1184,7 +1235,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
             <button type="button" className="np-back" onClick={() => onCreated(result?.projectId)}>Skip for now — open the business workspace</button>
           ) : (
             <WizardCta
-              onClick={next}
+              onClick={pressNext}
               disabled={!!blocker}
               title={blocker || undefined}
               label={ctaLabel}

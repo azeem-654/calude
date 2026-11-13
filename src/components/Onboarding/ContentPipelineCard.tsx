@@ -7,7 +7,8 @@
  * with the theme, focus, holidays, ideas and audit trail.
  */
 import { askConfirm } from '../shared/ConfirmDialog';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { fetchBoard } from '../../services/projects';
 import { useNavigate } from 'react-router-dom';
 import type { MarketingYear } from '../../services/marketingYear';
 import { createPortal } from 'react-dom';
@@ -252,31 +253,68 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
   const [reviewMonth, setReviewMonth] = useState<number | null>(null);
   const [showFullAudit, setShowFullAudit] = useState(false);
   const actor = getSession()?.user.email || 'owner';
+  /* Plans live on the business workspaces (brief.year); see below. */
+  const [plans, setPlans] = useState<{ id: string; name: string; business: string; year: MarketingYear }[]>([]);
+  useEffect(() => {
+    let live = true;
+    try { localStorage.removeItem('crm_year_plan'); } catch { /* the old single slot; nothing reads it now */ }
+    fetchBoard().then(b => {
+      if (!live) return;
+      setPlans(b.projects
+        .filter(p => !!p.brief?.year?.months?.length)
+        .map(p => ({ id: p.id, name: p.name, business: p.portfolioName || p.name, year: p.brief!.year! })));
+    }).catch(() => { /* unreachable: the ready-made prompt stays, never an empty card */ });
+    return () => { live = false; };
+  }, [refreshKey, bump]);
 
   if (!ob.completed || !ob.plan.length) {
-    /* A year planned in AI Autopilot (buildRunner.ts) is shown here, and
-       opened there — its agents write each month's content. */
-    const auto = (() => { try { return JSON.parse(localStorage.getItem('crm_year_plan') || 'null') as { projectId: string; name: string; year: MarketingYear } | null; } catch { return null; } })();
-    if (auto?.year?.months?.length) {
-      const key = new Date().toISOString().slice(0, 7);
-      const m = auto.year.months.find(x => x.month === key) ?? [...auto.year.months].reverse().find(x => x.month <= key) ?? auto.year.months[0];
+    /* Years planned in AI Autopilot are read from the business workspaces
+       themselves (`brief.year`, routes/projects.ts), one row per workspace.
+       This used to read a single browser slot written by the build — which
+       kept pointing at a workspace after it was deleted, so "Open in AI
+       Autopilot" landed on an empty board, and a second company's plan
+       replaced the first. The server's list is the only thing that knows a
+       workspace is gone. */
+    const key = new Date().toISOString().slice(0, 7);
+    const monthOf = (y: MarketingYear) => y.months.find(x => x.month === key) ?? [...y.months].reverse().find(x => x.month <= key) ?? y.months[0];
+    if (plans.length) {
       return (
-        <div style={{ ...CARD, padding: '18px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
-            <CalendarRange size={20} color={INK} style={{ flexShrink: 0 }} />
-            <div style={{ minWidth: 0 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 800, margin: 0, color: INK }}>Your 12-month marketing plan is running in AI Autopilot</h3>
-              <p style={{ fontSize: 12.5, color: MUTED, margin: '3px 0 0', lineHeight: 1.5 }}>
-                This month: <b style={{ color: INK }}>{m.theme}</b> — {auto.name}{auto.year.source !== 'ai' ? ' (universal plan)' : ''}
-              </p>
+        <div style={{ ...CARD, padding: '18px 22px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+              <CalendarRange size={20} color={INK} style={{ flexShrink: 0 }} />
+              <div style={{ minWidth: 0 }}>
+                <h3 style={{ fontSize: 15, fontWeight: 800, margin: 0, color: INK }}>
+                  {plans.length === 1 ? 'Your 12-month marketing plan is running in AI Autopilot' : `${plans.length} 12-month marketing plans are running in AI Autopilot`}
+                </h3>
+                <p style={{ fontSize: 12.5, color: MUTED, margin: '3px 0 0', lineHeight: 1.5 }}>One plan per business workspace — add another for any of your businesses.</p>
+              </div>
             </div>
+            <button onClick={onSetup} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', borderRadius: 999, border: `1.5px solid ${INK}`,
+              backgroundColor: '#fff', color: INK, fontSize: 12.5, fontWeight: 800, cursor: 'pointer', flexShrink: 0,
+            }}>
+              <Sparkles size={14} /> Plan another business
+            </button>
           </div>
-          <button onClick={() => navigate(`/autopilot?project=${encodeURIComponent(auto.projectId)}`)} style={{
-            display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 999, border: 'none',
-            backgroundColor: INK, color: '#fff', fontSize: 12.5, fontWeight: 800, cursor: 'pointer', flexShrink: 0,
-          }}>
-            Open in AI Autopilot <ArrowRight size={14} strokeWidth={2.5} />
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {plans.map(pl => {
+              const m = monthOf(pl.year);
+              return (
+                <div key={pl.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 12px', borderRadius: 12, backgroundColor: '#f6f7f8', flexWrap: 'wrap' }}>
+                  <p style={{ fontSize: 12.5, color: MUTED, margin: 0, lineHeight: 1.5, minWidth: 0, flex: '1 1 200px' }}>
+                    <b style={{ color: INK }}>{pl.business}</b>{pl.business !== pl.name ? ` · ${pl.name}` : ''} — this month: <b style={{ color: INK }}>{m.theme}</b>{pl.year.source !== 'ai' ? ' (universal plan)' : ''}
+                  </p>
+                  <button onClick={() => navigate(`/autopilot?project=${encodeURIComponent(pl.id)}`)} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 999, border: 'none',
+                    backgroundColor: INK, color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer', flexShrink: 0,
+                  }}>
+                    Open <ArrowRight size={13} strokeWidth={2.5} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       );
     }
@@ -291,9 +329,9 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
             <Sparkles size={20} color="#c7f441" />
           </div>
           <div>
-            <h3 style={{ fontSize: 16.5, fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>Plan your next 12 months with AI Autopilot</h3>
+            <h3 style={{ fontSize: 16.5, fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>Build a 12-month marketing plan for any of your businesses</h3>
             <p style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)', margin: '4px 0 0', lineHeight: 1.5 }}>
-              AI Autopilot learns your business, plans a year of marketing month by month, and writes each month's posts, articles and emails as it comes.
+              Pick the company, and AI Autopilot learns it, plans a year of marketing month by month, and writes each month's posts, articles and emails as it comes. Run one for each business you own.
             </p>
           </div>
         </div>

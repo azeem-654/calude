@@ -250,6 +250,44 @@ chats" on the message turns it off. It offers; it never acts on its own.
   install; the scene waits for its line; without the AI voice the film is
   captions-only and says so. In `test:security`.
 
+### The 2026-11-13 brief — plan, approve, build; watching campaigns
+
+- **Plan → Approve → build.** `propose_setup_plan` (confirm tier, test P1b):
+  3–8 bullets + the wizard instruction; the card's button reads **Approve the
+  plan**. Approving hands off with `pc_protron_autodrive`, and `NewProject`
+  `autoDrive` presses the wizard's own Next button with the pointer
+  (`clickAt`) every 1.5 s — so every save is the same route a click takes.
+  It stops on the first screen with a missing answer (`blocker`, not while the
+  AI is thinking), says what it needs, and resumes when the customer presses
+  the button; **Stop** hands it back. Both system prompts (brain.ts RULES,
+  live.ts `ASSIST_SYSTEM`) were told to use it. Still no `sensitive` action:
+  outside an approved plan Protron points at send/publish/delete/pay buttons.
+- The "Protron can be wrong. It never sends…" line is gone (the owner: it
+  can act); it now reads "Protron proposes a plan, and acts once you approve it."
+- **Panel**: a first row with the pointer docked on its charging pad
+  (`PointerDock`, SVG, still under reduced motion) and a lit **Talk live**
+  button; the tile carries "AI Live Business Manager" (`.pt-caption`). Live
+  talk is see-through: the panel's own blur rises to 22 px while talking
+  (`.pt-panel[data-talk="1"]` — a child's backdrop-filter only sees the
+  panel) and the stage is a light tint with text shadow.
+- **Wizard company step starts live** (`autoStart` in ProtronIntake.tsx):
+  once per wizard, not under `navigator.webdriver` (no mic; the e2e suites
+  type), opening with "To get things going smoothly, can you tell me the name
+  of your company or business, or its website?"; `set_business_details`
+  fills the boxes. A failed start goes back to the typed step; "No
+  microphone? Type it instead" is on the talk step.
+- **Campaign watch** (`lib/protronWatch.ts`, pure part `lib/protronJudge.ts`,
+  `test/protronWatch.test.mts` in `test:protron`): hourly, after the digest.
+  Per campaign (`crm_delivery_log.source_id`, 14 days): ≥30 attempts with
+  ≥10 % failed → *failing_sends*, named. Replies are only known per workspace
+  (`crm_reply_seen` replied/held), so ≥40 sent with replies under 1 % →
+  *low_replies*, naming the biggest sender and giving the workspace's totals.
+  A `crm_notices` row (the corner card) and an email from the workspace's own
+  mailbox via `deliver`; once a week per finding (`crm_protron_alerts`,
+  migration 0096). The button opens `?protron=optimise&campaign=` signed in;
+  Protron.tsx writes the request (name stripped to letters/digits) and
+  proposes the change there — the link itself approves nothing.
+
 ### Voice — commander voice, Talk mode, turn by turn (the fallback)
 
 In: the Autopilot recorder (`useVoiceInput`, 1.8 s silence) → server

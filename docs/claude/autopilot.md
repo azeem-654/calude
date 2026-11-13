@@ -116,7 +116,13 @@ the reason** — never passed off as AI. The plan is stored on the brief
 (`brief.year`, shown by `YearPlan` on the Overview with **Write my plan**) and
 on each agent step as `monthPlan`; `monthThemeOf` gives the agents this
 month's theme. `save_year` (projects.php) replaces both at once and is in
-`test:security`. Template content from the legacy monthly pipeline
+`test:security`. **The dashboard card reads plans from the business
+workspaces** (`fetchBoard`, `brief.year`), one row each with its own Open —
+it used to read one browser slot (`crm_year_plan`, now removed on load) that
+outlived a deleted workspace and was overwritten by a second company's plan.
+With none it is the ready-made prompt "Build a 12-month marketing plan for any
+of your businesses"; the wizard asks which company. A `?project=` link to a
+deleted workspace says so on the board (ProjectBoard `gone`). Template content from the legacy monthly pipeline
 (contentGen.ts) carries `templateNote` and is never auto-approved.
 
 ## A project's workflows

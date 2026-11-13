@@ -365,8 +365,11 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
       conversations: app.conversations.length,
     }),
     setProactive: on => onPrefs({ ...prefsRef.current, proactive: on }),
-    handOffToAutopilot: text => {
-      try { sessionStorage.setItem('pc_protron_handoff', text); } catch { /* the wizard opens with an empty box instead */ }
+    handOffToAutopilot: (text, opts) => {
+      try {
+        sessionStorage.setItem('pc_protron_handoff', text);
+        if (opts?.auto) sessionStorage.setItem('pc_protron_autodrive', '1'); else sessionStorage.removeItem('pc_protron_autodrive');
+      } catch { /* the wizard opens with an empty box instead */ }
       navTarget.current = '/autopilot';
       navigate('/autopilot?new=1&from=protron');
     },
@@ -780,12 +783,12 @@ ${facts}` : '',
           {a.status === 'waiting' ? 'Needs your OK' : a.status === 'running' ? 'Working' : a.status === 'done' ? 'Done' : a.status === 'failed' ? 'Did not work' : a.status === 'refused' ? 'Not allowed' : 'Cancelled'}
         </span>
       </div>
-      {a.status === 'waiting' && a.confirmText && <p>{a.confirmText}</p>}
+      {a.status === 'waiting' && a.confirmText && <p style={{ whiteSpace: 'pre-line' }}>{a.confirmText}</p>}
       {a.steps && a.steps.length > 0 && <StepList steps={a.steps} />}
       {a.result && <p>{a.result}</p>}
       {a.status === 'waiting' && (
         <div className="pt-card-row">
-          <button type="button" className="pt-btn pt-btn-primary" onClick={() => { unlockAudio(); void execute(t.id, a, true); }}><Check size={14} /> Confirm</button>
+          <button type="button" className="pt-btn pt-btn-primary" onClick={() => { unlockAudio(); void execute(t.id, a, true); }}><Check size={14} /> {a.name === 'propose_setup_plan' ? 'Approve the plan' : 'Confirm'}</button>
           <button type="button" className="pt-btn" onClick={() => { patchCard(t.id, a.id, { status: 'cancelled', result: 'Cancelled — nothing was changed.' }); settle(a, 'cancelled', 'Cancelled by the customer'); }}>Cancel</button>
         </div>
       )}
@@ -892,7 +895,7 @@ ${facts}` : '',
               : <button type="button" className="pt-btn pt-btn-primary" onClick={startLive}><AudioLines size={14} /> Talk live again</button>}
             <button type="button" className="pt-btn" onClick={endTalk}><MessageSquare size={14} /> Back to chat</button>
           </div>
-          <small className="pt-foot-note">Live, like Talk live in AI Autopilot: the same voice, in real time. Protron can open screens, press safe buttons and type into boxes while you watch — it never sends, saves, deletes or pays.</small>
+          <small className="pt-foot-note">Live, like Talk live in AI Autopilot: the same voice, in real time. Protron proposes a plan, and once you approve it, builds it on your screen while you watch.</small>
         </div>
       ) : talk ? (
         <div className="pt-talk-stage" aria-live="polite">
@@ -920,13 +923,26 @@ ${facts}` : '',
         </div>
       ) : (
         <div className="pt-log" aria-live="polite">
+          {/* Live talk is the headline: the first thing in the window, lit,
+              beside Protron's pointer resting on its charging dock — the
+              pointer it moves around the app when it works for you. */}
+          <div className="pt-hero">
+            <PointerDock />
+            <div className="pt-hero-copy">
+              <b>AI Live Business Manager</b>
+              <span>Talk to me like a colleague — I plan it, you approve, I build it on your screen.</span>
+            </div>
+            <button type="button" className="pt-btn pt-live-cta" onClick={() => { unlockAudio(); startTalk(); }}>
+              <AudioLines size={15} /> Talk live
+            </button>
+          </div>
           {!turns.length && (
             <div style={{ display: 'grid', gap: 12, justifyItems: 'start' }}>
               <div className="pt-msg pt-msg-bot">
                 <span className="pt-mini"><ProtronAvatar size={22} state="idle" alive={false} /></span>
                 <span className="pt-bubble-text">
                   {greeting.text}
-                  {'\n\n'}I build things in front of you — searches, workflows, pipelines, forms. Anything that sends, publishes, deletes or charges stays your button to press.
+                  {'\n\n'}Tell me what you want — “I'm a dentist in Virginia and need clients”, or “set up automated email campaigns”. I'll show you the plan in a few bullets, and once you approve it I set it all up in AI Autopilot while you watch.
                 </span>
               </div>
               <div className="pt-sugs">
@@ -1020,9 +1036,34 @@ ${facts}` : '',
             </button>
             <button type="button" className="pt-round pt-send" disabled={!input.trim() || busy} aria-label="Send" onClick={() => void send(input)}><Send size={17} /></button>
           </div>
-          <div className="pt-foot-note">Protron can be wrong. It never sends, publishes, deletes or charges for you.</div>
+          <div className="pt-foot-note">Protron proposes a plan, and acts once you approve it.</div>
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Protron's pointer, resting on its charging dock: the pointer gives off
+ * "active" signal arcs while the dock's bolt charges it. Pure SVG + CSS
+ * (protron.css `.pt-dock`), still under reduced motion. Decorative.
+ */
+function PointerDock() {
+  return (
+    <svg className="pt-dock" viewBox="0 0 64 56" width="64" height="56" aria-hidden focusable="false">
+      <defs>
+        <linearGradient id="pt-dock-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#8b5cf6" /><stop offset="1" stopColor="#22d3ee" /></linearGradient>
+      </defs>
+      {/* the dock */}
+      <rect x="8" y="42" width="48" height="10" rx="5" fill="#1e1b4b" />
+      <rect className="pt-dock-charge" x="11" y="45" width="42" height="4" rx="2" fill="url(#pt-dock-g)" />
+      <path d="M33 38 l-5 7 h4 l-2 6 6-8 h-4 z" fill="#facc15" stroke="#1e1b4b" strokeWidth=".8" className="pt-dock-bolt" />
+      {/* signal arcs */}
+      <g className="pt-dock-wifi" fill="none" stroke="#22d3ee" strokeWidth="2" strokeLinecap="round">
+        <path d="M39 12 a8 8 0 0 1 8 8" /><path d="M39 6 a14 14 0 0 1 14 14" />
+      </g>
+      {/* the pointer */}
+      <path className="pt-dock-pointer" d="M24 8 L24 36 L31 29 L36 40 L40 38 L35 27 L45 27 Z" fill="#fff" stroke="#1e1b4b" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
   );
 }
