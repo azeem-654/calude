@@ -220,3 +220,23 @@ path check. `npm run test:industry` fails if a menu entry leaves the site;
   these pages needs `.dc .x { margin: … auto }`, or it sits left.
 - **The microsites' module sections still show the sample agency**; the
   trade- and practice-specific pictures are the "See it working" ones above.
+
+## The closing demonstration — AutopilotDemo
+
+The home page's last section ("Tell it what you want. Watch it get built.")
+plays `Site/AutopilotDemo.tsx` (2026-11-13, replacing a reel of the
+dashboard that showed a whole page shrunk into a short, tall strip): a 16:9,
+page-drawn film of AI Autopilot in five captioned steps — business details →
+12-month marketing plan → workflows and their emails → posts scheduled →
+replies held for your OK. It is an illustration with one example business
+(said in the frame) and carries **no figures**: the results step says what
+happens ("Replies arrive in your inbox"), never how many. Scenes are laid out
+once at a fixed design size and scaled by one transform (640, 960 or 1200
+wide, chosen by the frame's width so the text stays readable); while it
+plays only classes and the pointer's transform change. The pointer's targets
+are measured from the elements (`data-k`), it moves on an arc with a
+minimum-jerk profile, a click waits for it to arrive, and it never jumps.
+It runs only while on screen with the tab visible; reduced motion gets still
+finished frames and Previous/Next. No narration: Protron's voice needs a
+signed-in workspace — the captions carry it. New wording must name only real
+features and stay figure-free.

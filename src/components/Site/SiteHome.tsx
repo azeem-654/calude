@@ -45,6 +45,7 @@ import { AiOrb, EventChips, TypedPrompt } from '../shared/AutopilotScene';
 import { REELS } from './reels';
 import HelpLauncher from '../shared/HelpLauncher';
 import LaunchFilm from './LaunchFilm';
+import AutopilotDemo from './AutopilotDemo';
 import ProspectingShowcase from './ProspectingShowcase';
 import FeatureStage from './FeatureStage';
 import CloudSection from './CloudSection';
@@ -424,7 +425,6 @@ export default function SiteHome() {
   const foot = useRevealGroup<HTMLDivElement>(':scope > div');
   const source = useReveal<HTMLDivElement>();
   const flow = useReveal<HTMLDivElement>();
-  const ctaShot = useReveal<HTMLDivElement>();
 
   /* Whether the chips beside the hero's picture have room to sit beside it.
      Measured, not guessed from a breakpoint: the picture's width depends on
@@ -780,8 +780,12 @@ export default function SiteHome() {
           <button type="button" className="dc-btn dc-btn-outline-light dc-btn-lg" onClick={() => openWizard()}>Find my solution</button>
           <a className="dc-btn dc-btn-outline-light dc-btn-lg" href={strategyCallHref('main')}>Book a Strategy Call</a>
         </div>
-        <div className="dc-cta-shot reveal" ref={ctaShot}>
-          <ShotReel shots={REELS.dashboard} label="The product" chrome={false} />
+        {/* What the heading promises, shown: AI Autopilot building a business's
+            plan, workflows, posts and replies, step by step (AutopilotDemo.tsx).
+            It replaced a reel of the dashboard that showed a whole page shrunk
+            into a short, tall strip and nothing being built. */}
+        <div className="dc-cta-demo">
+          <AutopilotDemo />
         </div>
       </section>
 

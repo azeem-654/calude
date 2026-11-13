@@ -1008,7 +1008,10 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
   position: relative;
   overflow: hidden;
   text-align: center;
-  padding: clamp(66px, 9vw, 112px) var(--sec-pad) 0;
+  /* Tighter than the other sections: the owner found the gap between the
+     call and the demonstration under it too wide. The demo is a whole card
+     now, so the section closes under it instead of running it off the edge. */
+  padding: clamp(48px, 6.5vw, 84px) var(--sec-pad) clamp(28px, 4vw, 52px);
   background: linear-gradient(160deg, var(--lime-lt), var(--lime) 46%, var(--mint));
   background-size: 200% 200%;
   color: var(--ink);
@@ -1039,13 +1042,13 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 .dc-cta p { position: relative; margin-top: 15px; font-size: 15.5px; color: rgba(15, 18, 16, 0.76); }
 .dc-cta .dc-hero-cta { position: relative; }
 
-.dc-cta-shot {
+/* AI Autopilot, step by step (AutopilotDemo.tsx): the column's full width at
+   16:9, but never so wide that the frame and its caption bar (about 90px)
+   are taller than the window under the nav. */
+.dc-cta-demo {
   position: relative;
-  max-width: 1000px;
-  margin: clamp(40px, 5vw, 60px) auto 0;
-  border-radius: 16px 16px 0 0;
-  overflow: hidden;
-  box-shadow: 0 -1px 0 rgba(15, 18, 16, 0.14), 0 -30px 70px -30px rgba(0, 0, 0, 0.5);
+  max-width: min(1180px, calc((var(--dc-vh) - var(--dc-nav-h) - 110px) * 16 / 9));
+  margin: clamp(22px, 3vw, 34px) auto 0;
 }
 
 /* ── Footer ─────────────────────────────────────────────────────────────── */
@@ -1484,8 +1487,6 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 .dc-flow-shot .dc-reel-frame,
 .dc-own-shot .dc-reel-frame { border: 0; border-radius: 0; box-shadow: none; }
 
-.dc-cta-shot .dc-reel-frame { border-radius: 16px 16px 0 0; border: 0; }
-.dc-cta-shot .dc-reel-caption { display: none; }
 
 @media (max-width: 1000px) {
   .dc-show { grid-template-columns: 1fr; }
@@ -2571,8 +2572,7 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 @media (min-width: 761px) {
   .dc-stage-show,
   .dc-flow-shot,
-  .dc-own-shot,
-  .dc-cta-shot {
+  .dc-own-shot {
     --bleed-gut: clamp(16px, 2.4vw, 40px);
     width: auto;
     max-width: none;
@@ -2588,8 +2588,7 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
   @supports (width: 1cqw) {
     .dc-stage-show .dc-reel.strip .dc-reel-stage,
     .dc-flow-shot .dc-reel.strip .dc-reel-stage,
-    .dc-own-shot .dc-reel.strip .dc-reel-stage,
-    .dc-cta-shot .dc-reel.strip .dc-reel-stage {
+    .dc-own-shot .dc-reel.strip .dc-reel-stage {
       aspect-ratio: auto;
       width: 100%;
       max-height: none;
