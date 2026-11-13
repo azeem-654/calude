@@ -65,7 +65,7 @@ import './autopilotDemo.css';
 type Cue =
   | { at: number; do: 'on'; k: string }
   | { at: number; do: 'type'; k: string; ms: number }
-  | { at: number; do: 'move'; k: string; ms: number }
+  | { at: number; do: 'move'; k: string; ms: number; say?: string }
   | { at: number; do: 'click'; k: string };
 
 type Rail = 'autopilot' | 'marketing' | 'conversations';
@@ -74,7 +74,8 @@ type Step = { title: string; caption: string; crumb: string; rail: Rail; ms: num
 
 const on = (at: number, k: string): Cue => ({ at, do: 'on', k });
 const type = (at: number, k: string, ms: number): Cue => ({ at, do: 'type', k, ms });
-const move = (at: number, k: string, ms: number): Cue => ({ at, do: 'move', k, ms });
+/** `say` is the label beside the pointer, naming what it is doing, the way an AI agent's cursor does. */
+const move = (at: number, k: string, ms: number, say?: string): Cue => ({ at, do: 'move', k, ms, say });
 const click = (at: number, k: string): Cue => ({ at, do: 'click', k });
 
 const MONTHS: [string, string][] = [
@@ -92,11 +93,11 @@ const STEPS: Step[] = [
     rail: 'autopilot',
     ms: 9400,
     cues: [
-      move(200, 'f1', 750), click(1000, 'f1'), type(1050, 'f1t', 850), on(1900, 'w1'),
-      move(2050, 'f2', 650), click(2750, 'f2'), type(2800, 'f2t', 1300), on(3900, 'w2'),
-      move(4250, 'f3', 600), click(4900, 'f3'), type(4950, 'f3t', 1000), on(5700, 'w3'),
-      move(6050, 'f4', 550), click(6650, 'f4'), type(6700, 'f4t', 850), on(7300, 'w4'),
-      move(7650, 'go', 750), click(8450, 'go'),
+      move(200, 'f1', 750, 'Typing the business name'), click(1000, 'f1'), type(1050, 'f1t', 850), on(1900, 'w1'),
+      move(2050, 'f2', 650, 'What it sells'), click(2750, 'f2'), type(2800, 'f2t', 1300), on(3900, 'w2'),
+      move(4250, 'f3', 600, 'Who it serves'), click(4900, 'f3'), type(4950, 'f3t', 1000), on(5700, 'w3'),
+      move(6050, 'f4', 550, 'The website'), click(6650, 'f4'), type(6700, 'f4t', 850), on(7300, 'w4'),
+      move(7650, 'go', 750, 'Building the plan'), click(8450, 'go'),
     ],
   },
   {
@@ -108,7 +109,7 @@ const STEPS: Step[] = [
     cues: [
       on(150, 'plan'),
       ...MONTHS.map((_, i) => on(350 + i * 120, `m${i}`)),
-      move(2100, 'm6', 900), click(3100, 'm6'), on(3200, 'detail'),
+      move(2100, 'm6', 900, 'Opening July'), click(3100, 'm6'), on(3200, 'detail'),
       on(3600, 'd1'), on(3850, 'd2'), on(4100, 'd3'),
     ],
   },
@@ -120,7 +121,7 @@ const STEPS: Step[] = [
     ms: 8600,
     cues: [
       on(150, 'n0'), on(450, 'e0'), on(600, 'n1'), on(900, 'e1'), on(1050, 'n2'), on(1350, 'e2'), on(1500, 'n3'), on(1800, 'e3'), on(1950, 'n4'),
-      move(2200, 'n4', 850), click(3150, 'n4'), on(3250, 'mail'),
+      move(2200, 'n4', 850, 'Writing the email'), click(3150, 'n4'), on(3250, 'mail'),
       type(3500, 'subj', 750), type(4350, 'body', 2500), on(7000, 'hold'),
     ],
   },
@@ -132,7 +133,7 @@ const STEPS: Step[] = [
     ms: 7000,
     cues: [
       on(250, 'p0'), on(600, 'p1'), on(950, 'p2'), on(1300, 'p3'), on(1650, 'p4'),
-      move(2100, 'sched', 900), click(3100, 'sched'), on(3150, 'week'),
+      move(2100, 'sched', 900, 'Scheduling the posts'), click(3100, 'sched'), on(3150, 'week'),
     ],
   },
   {
@@ -143,9 +144,9 @@ const STEPS: Step[] = [
     ms: 9600,
     cues: [
       on(250, 'r0'), on(650, 'r1'), on(1050, 'r2'),
-      move(1500, 'r0', 850), click(2450, 'r0'), on(2550, 'reply'),
+      move(1500, 'r0', 850, 'Reading the reply'), click(2450, 'r0'), on(2550, 'reply'),
       type(2900, 'draft', 1900),
-      move(5000, 'send', 800), click(5900, 'send'), on(6000, 'sent'),
+      move(5000, 'send', 800, 'Sending once you say yes'), click(5900, 'send'), on(6000, 'sent'),
       on(6700, 'b1'), on(7100, 'b2'),
     ],
   },
@@ -339,6 +340,14 @@ export default function AutopilotDemo() {
        screen at the loop was a blur nobody's eye could follow. */
     const ms = Math.max(cue.ms, 350 + len * 0.85);
     travel.current = { at: now, ms, x0, y0, x1, y1, cx: (x0 + x1) / 2 + nx * bow, cy: (y0 + y1) / 2 + ny * bow };
+    const label = pointer.current?.querySelector<HTMLElement>('.apd-ptr-say');
+    if (label) {
+      if (cue.say) label.textContent = cue.say;
+      label.classList.toggle('is-on', !!cue.say);
+      /* Near the right or bottom edge it flips to the other side, so it never leaves the frame. */
+      label.classList.toggle('is-left', x1 > cv.offsetWidth * 0.66);
+      label.classList.toggle('is-up', y1 > cv.offsetHeight * 0.76);
+    }
   };
 
   /** Advances the step's drawing to time `now` (ms into the step). */
@@ -380,6 +389,8 @@ export default function AutopilotDemo() {
     sc.classList.add('apd-reset');
     sc.querySelectorAll('.is-on, .is-clicked, .is-hit, .is-caret').forEach(e => e.classList.remove('is-on', 'is-clicked', 'is-hit', 'is-caret'));
     t.current = 0; fired.current = 0; typing.current = []; travel.current = null; hits.current = [];
+    /* A new step says nothing until its first move names what it is doing. */
+    pointer.current?.querySelector('.apd-ptr-say')?.classList.remove('is-on');
     fills.current.forEach((f, i) => { if (f) f.style.transform = i < step ? 'scaleX(1)' : 'scaleX(0)'; });
     if (reduced) {
       STEPS[step].cues.forEach(c => fire(c, c.at, true));
@@ -587,7 +598,8 @@ export default function AutopilotDemo() {
           </div>
           <div className="apd-ripple-at" ref={rippleAt}><span className="apd-ripple" ref={ripple} /></div>
           <div className="apd-ptr" ref={pointer}>
-            <svg viewBox="0 0 24 24" width="26" height="26"><path d="M4 2.5 L4 19.5 L8.6 15.4 L11.5 21.8 L14.6 20.4 L11.8 14.2 L18 14.2 Z" fill="#0f1115" stroke="#fff" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+            <svg viewBox="0 0 24 24" width="26" height="26"><path d="M4 2.5 L4 19.5 L8.6 15.4 L11.5 21.8 L14.6 20.4 L11.8 14.2 L18 14.2 Z" fill="#D97757" stroke="#fff" strokeWidth="1.7" strokeLinejoin="round" /></svg>
+            <span className="apd-ptr-say" />
           </div>
         </div>
       </div>

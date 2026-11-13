@@ -112,7 +112,19 @@ wizard like Protron does (`pc_protron_handoff`).
   measures the element, travels from where it was (arc, minimum-jerk), clicks
   only once there (ripple + ring), and carries on across scenes and seeks.
   Changing a scene's words means changing `FILM_SAY` (and `test:live` L8's
-  count of 11 lines plus the 14 people).
+  count of 19 lines plus the 14 people).
+  **Third pass (owner, 2026-11-13: "show it using your app inside your
+  app"):** five chapters — What it does, Set it up, **Runs your app**,
+  **Watches & improves**, Results. Chapters three and four put the app on
+  screen (`AppFrame`: Dashboard, AI Autopilot, Contacts, Email campaigns,
+  Booking pages, Reports) and Protron's pointer opens modules, writes the
+  prompt, adds prospects, builds, schedules and launches a campaign, turns on
+  a booking page; then reads a running campaign's figures, runs an A/B test,
+  rewrites and relaunches the weaker email, and reports what it did. Every
+  app frame carries the "Example scenario" label; all figures are one
+  example business's. The pointer is coral (#D97757) with a white edge, a
+  soft glow and a pill naming what it is doing (`aim.say`) — the site demo
+  (`Site/AutopilotDemo.tsx`) uses the same look.
 
 Under it `Dashboard/Dashboard.tsx` has **one slim bar** (`DayBar` in
 `DayBoard.tsx`, the owner's call — it replaced a tall welcome band; styled

@@ -151,7 +151,7 @@
   position: absolute;
   inset: -5px;
   border-radius: inherit;
-  box-shadow: 0 0 0 2.5px rgba(91, 70, 229, 0.8), 0 0 0 8px rgba(91, 70, 229, 0.16);
+  box-shadow: 0 0 0 2.5px rgba(217, 119, 87, 0.9), 0 0 0 8px rgba(217, 119, 87, 0.18);
   opacity: 0;
   transition: opacity 0.45s ease;
   pointer-events: none;
@@ -486,8 +486,19 @@
   width: 26px;
   height: 26px;
   transform-origin: 4.3px 2.7px;
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+  filter: drop-shadow(0 0 5px rgba(217, 119, 87, 0.65)) drop-shadow(0 2px 2px rgba(0, 0, 0, 0.3));
 }
+/* The look of an AI agent's cursor (owner, 2026-11-13), as in the dashboard
+   film: coral arrow, white edge, a soft coral glow, and a pill naming what it
+   is doing. */
+.apd-ptr::before { content: ''; position: absolute; left: -22px; top: -22px; width: 44px; height: 44px; border-radius: 50%; background: radial-gradient(circle, rgba(217, 119, 87, 0.36), rgba(217, 119, 87, 0) 68%); }
+.apd-ptr-say { position: absolute; left: 22px; top: 24px; white-space: nowrap; font-size: .72em; font-weight: 700; line-height: 1; color: #fff; background: #D97757; padding: .45em .75em; border-radius: 999px; box-shadow: 0 4px 14px -4px rgba(217, 119, 87, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.4); opacity: 0; transform: translateY(3px); transition: opacity .3s ease, transform .3s ease; }
+.apd-ptr-say.is-on { opacity: 1; transform: none; }
+.apd-ptr-say.is-left { left: auto; right: 10px; }
+.apd-ptr-say.is-up { top: auto; bottom: 12px; }
+.apd.is-compact .apd-ptr-say { font-size: .8em; left: 28px; top: 30px; }
+.apd.is-compact .apd-ptr-say.is-left { left: auto; right: 12px; }
+.apd.is-compact .apd-ptr-say.is-up { top: auto; bottom: 14px; }
 .apd.is-compact .apd-ptr svg { left: -5.7px; top: -3.5px; width: 34px; height: 34px; transform-origin: 5.7px 3.5px; }
 .apd-ripple-at { position: absolute; left: 0; top: 0; z-index: 4; width: 0; height: 0; pointer-events: none; }
 .apd-ripple {
@@ -497,8 +508,8 @@
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  border: 2.5px solid rgba(91, 70, 229, 0.85);
-  background: rgba(91, 70, 229, 0.14);
+  border: 2.5px solid rgba(217, 119, 87, 0.95);
+  background: rgba(217, 119, 87, 0.16);
   opacity: 0;
 }
 .apd.is-still .apd-ptr,

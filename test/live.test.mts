@@ -129,7 +129,7 @@ const intake = await import('../src/services/protron/intake.ts');
   ok('L8 a context turn that leaves the turn open still passes the filter', live.allowedFromClient(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: '[app] The screen is now Contacts.' }] }], turnComplete: false } })) !== null);
   const film = await import('../src/services/filmNarration.ts');
   const lines = film.filmLines();
-  ok('L8 the film has one line per scene and the examples are named in order', lines.length === 11 + film.FILM_PEOPLE.length && film.exampleLine(0).startsWith('Here is what that looks like. A plumber in Phoenix'), String(lines.length));
+  ok('L8 the film has one line per scene and the examples are named in order', lines.length === 19 + film.FILM_PEOPLE.length && film.exampleLine(0).startsWith('Here is what that looks like. A plumber in Phoenix'), String(lines.length));
 }
 
 console.log(out.join('\n'));

@@ -24,6 +24,14 @@ export const FILM_SAY = {
   step4: 'Step four. It writes your smart prompt and the plan, in plain words you can change.',
   step5: 'Step five. It builds the workflow, one step at a time, and you can watch every step.',
   step6: 'Step six. Choose what needs your OK, then switch it on. It runs in the cloud every few minutes, even with this tab closed.',
+  run1: 'Now watch Protron use the app for you. It opens AI Autopilot and writes the prompt itself.',
+  run2: 'It opens Contacts and adds new prospects who fit, each one marked as found by Autopilot.',
+  run3: 'It builds the email campaign: the subject, the email and the schedule, then launches it from your own mailbox.',
+  run4: 'It turns on your booking page and puts the link in the email, so anyone who replies can book a time.',
+  watch1: 'Then it keeps watching: who replied, which appointments were booked, and which sales came in.',
+  watch2: 'It tests two subject lines against each other. When one wins, everyone new gets the winner.',
+  watch3: 'When an email falls behind, it rewrites it and launches the new version.',
+  watch4: 'And it tells you what it did, in plain words: what it improved, and which campaigns got new prospects.',
   end: 'Ready? Press Talk live, record your prompt, or type it — and put your business on AI Autopilot.',
 } as const;
 
