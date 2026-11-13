@@ -359,7 +359,7 @@ Answer with JSON only: {"verdict":"allow|review|block","category":"adult|violenc
  * that lets everything through by answering `allow` to a question nobody
  * checked.
  */
-export async function aiReview(apiKey: string, text: string): Promise<AiRuling> {
+export async function aiReview(apiKey: string, text: string, accountId = ''): Promise<AiRuling> {
   const fail: AiRuling = { verdict: 'review', category: 'none', reason: '', ran: false };
   if (!apiKey) return fail;
 
@@ -367,7 +367,7 @@ export async function aiReview(apiKey: string, text: string): Promise<AiRuling> 
     const { askGemini } = await import('./ai');
     /* Temperature 0: this is a ruling, not a piece of writing, and the same
        text must not be cleared on Monday and held on Tuesday. */
-    const r = await askGemini(apiKey, `${AI_PROMPT}\n\n---\n${text.slice(0, 6000)}`, 0, { module: 'moderation' });
+    const r = await askGemini(apiKey, `${AI_PROMPT}\n\n---\n${text.slice(0, 6000)}`, 0, { module: 'moderation', accountId });
     if (!r.ok || !r.text) return fail;
 
     const m = r.text.match(/\{[\s\S]*\}/);

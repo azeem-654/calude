@@ -166,9 +166,19 @@ export async function gate(
    * lexicon got wrong. An `allow` here is written down as approved so the same
    * copy is never paid for twice.
    */
+  /*
+   * Not aiBudget: this check is the operator's, made on copy the customer is
+   * trying to send, so it takes none of their monthly AI requests — charging
+   * them for being moderated would be a bill for our safety. The owner's
+   * per-workspace caps still bind (a loop of flagged sends cannot run the
+   * pool down), and a capped or keyless check simply does not run: the copy
+   * stays held for a person, which is the safe side (lib/aiTools.ts).
+   */
   const { loadAiKey } = await import('./ai');
-  const key = await loadAiKey(env, accountId);
-  const ai = await aiReview(key ?? '', text);
+  const { capRefusal } = await import('./aiUsage');
+  const capped = await capRefusal(env, accountId).catch(() => null);
+  const key = capped ? null : await loadAiKey(env, accountId);
+  const ai = await aiReview(key ?? '', text, accountId);
 
   if (ai.ran && ai.verdict === 'allow') {
     const id = rid();
