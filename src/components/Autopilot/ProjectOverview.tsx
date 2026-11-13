@@ -46,7 +46,7 @@ function List({ title, icon: Icon, items }: { title: string; icon: typeof Target
   );
 }
 
-export default function ProjectOverview({ project, flows, runs, assets, onCreateWorkflow, onOpenWorkflows, business }: {
+export default function ProjectOverview({ project, flows, runs, assets, onCreateWorkflow, workflows, business }: {
   project: Project;
   /** What a tailored 12-month plan is written from (YearPlan's "Write my plan"). */
   business?: { companyName: string; description: string; audience?: string; offer?: string };
@@ -54,7 +54,8 @@ export default function ProjectOverview({ project, flows, runs, assets, onCreate
   runs: AgentRun[];
   assets: OverviewAsset[];
   onCreateWorkflow: () => void;
-  onOpenWorkflows: () => void;
+  /** The workflows in full (ProjectCard's panel: create, build, connect, each drawn as its canvas). */
+  workflows: React.ReactNode;
 }) {
   const navigate = useNavigate();
   const brief = project.brief ?? null;
@@ -86,36 +87,13 @@ export default function ProjectOverview({ project, flows, runs, assets, onCreate
           a project to answer. */}
       <ProjectRevenueStrip projectId={project.id} />
 
-      {/* Workflows first, with the button always here — a new project must be
-          able to add one before it has any. */}
+      {/* Workflows first, in full — create, build from scratch, connect a
+          search, and every workflow drawn as its diagram. They used to be
+          one-line rows here pointing at a separate Workflows tab, which is
+          gone (owner's brief, 2026-11-13). */}
       <div style={box}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-          <h4 style={{ ...h, margin: 0, flex: 1 }}><WorkflowIcon size={12} /> Workflows</h4>
-          <button onClick={onCreateWorkflow} className="press" style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 11px', borderRadius: 9,
-            border: 'none', background: T.accent, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-          }}><Plus size={12} /> Create workflow</button>
-        </div>
-        {flows.length ? (
-          <div style={{ display: 'grid', gap: 6 }}>
-            {flows.map(f => (
-              <button key={f.id} onClick={onOpenWorkflows} className="press" style={{
-                display: 'flex', gap: 8, alignItems: 'center', textAlign: 'left', padding: '8px 10px', borderRadius: 10,
-                border: `1px solid ${T.lineSoft}`, background: T.raised, cursor: 'pointer', fontFamily: 'inherit', minWidth: 0,
-              }}>
-                <span style={{ width: 7, height: 7, borderRadius: 99, flexShrink: 0, background: f.status === 'active' ? T.good : T.faint }} />
-                <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: T.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                <span style={{ fontSize: 11, color: f.status === 'active' ? T.good : T.muted, fontWeight: 700, flexShrink: 0 }}>
-                  {f.status === 'active' ? 'On' : f.status === 'paused' ? 'Paused' : 'Draft'}
-                </span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p style={{ margin: 0, fontSize: 12.5, color: T.muted, lineHeight: 1.55 }}>
-            None yet. Create one with AI, from a template, or from scratch.
-          </p>
-        )}
+        <h4 style={{ ...h, marginBottom: 10 }}><WorkflowIcon size={12} /> Workflows{flows.length ? ` (${flows.length})` : ''}</h4>
+        {workflows}
       </div>
 
       {/* What it made — every tile a real record, every one clickable. */}

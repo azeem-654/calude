@@ -127,6 +127,16 @@ deleted workspace says so on the board (ProjectBoard `gone`). Template content f
 
 ## A project's workflows
 
+**No Workflows tab (2026-11-13).** The Overview carries the workflows in full
+— Create workflow, Build from scratch, Connect Prospect Search and each
+workflow drawn as its canvas (`workflowsPanel` in ProjectCard.tsx, passed to
+ProjectOverview as `workflows`). `?tab=workflows` and every old
+`setTab('workflows')` land on the Overview. **Board and wizard keys are
+`board-N` / `wizard-N`**: both were plain counters from 0 on sibling
+elements, and the duplicate key "0" left stale boards on the page after a
+build (the owner's screenshot); keep keyed siblings in distinct namespaces.
+
+
 `Autopilot/WorkflowCanvas.tsx` draws each workflow as fixed-size boxes and an
 SVG layer of links, in the owner's reference video's look
 (`workflowGlass.css`): cards of stacked frosted glass (the sheets are stepped

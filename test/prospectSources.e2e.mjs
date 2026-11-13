@@ -290,7 +290,7 @@ for (const width of [1280, 390]) {
     await page.getByRole('tab', { name: /Overview/ }).click();
     await page.getByTestId('prospecting-today').waitFor({ timeout: 10_000 }).catch(() => {});
     ok('@1280: the Overview says how today\'s prospecting stands', /Prospecting today/i.test(await page.getByTestId('prospecting-today').innerText().catch(() => '')));
-    await page.getByRole('tab', { name: /Workflows/ }).click();
+    /* The workflows are on the Overview now (no Workflows tab, 2026-11-13). */
     await page.getByTestId('source-flow').first().waitFor({ timeout: 10_000 }).catch(() => {});
     const flow = await page.getByTestId('source-flow').first().innerText().catch(() => '');
     ok('@1280: the workflow is drawn as what it does, naming its source', /SOURCE: AI Prospecting/.test(flow) && /Duplicate check/i.test(flow) && /Confidence condition/i.test(flow) && /Find replacement/i.test(flow), flow.slice(0, 400));

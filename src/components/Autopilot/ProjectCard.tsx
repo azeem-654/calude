@@ -95,7 +95,7 @@ const ACCENT = T.accent;
  * One tab now, with a view switch inside it. Same list, two ways of looking at
  * it, one source.
  */
-type Tab = 'overview' | 'workflows' | 'prospects' | 'agents' | 'activity' | 'assets' | 'schedule' | 'analytics' | 'settings';
+type Tab = 'overview' | 'prospects' | 'agents' | 'activity' | 'assets' | 'schedule' | 'analytics' | 'settings';
 
 /*
  * Overview first. It is the blueprint the customer approved and the latest
@@ -106,7 +106,6 @@ type Tab = 'overview' | 'workflows' | 'prospects' | 'agents' | 'activity' | 'ass
  */
 const TABS: { id: Tab; label: string; icon: typeof Bot }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'workflows', label: 'Workflows', icon: WorkflowIcon },
   /* Beside the workflows: the people the project is finding, day by day. */
   { id: 'prospects', label: 'Prospects', icon: Target },
   { id: 'agents', label: 'AI Agents', icon: Bot },
@@ -174,18 +173,18 @@ export default function ProjectCard({
      already holds them rather than fetched again — the Assets tab is a view of
      work that exists, not a second source of it. */
   const { socialPosts } = useApp();
-  /* Overview for a project built from a blueprint, or one somebody was just
-     sent to; Workflows, as it always was, for projects older than blueprints —
-     their Overview has little to say and their owners know where they work. */
+  /* Every business workspace opens on its Overview, which now carries the
+     workflows in full (an old `?tab=workflows` link lands there too). */
   /* `?tab=prospects` — the finder's step links here — opens that tab on the project it names; Video Studio links to `assets` and `activity`. */
   const asked = (): Tab | null => {
     const t = focused ? new URLSearchParams(window.location.search).get('tab') : null;
-    return t === 'prospects' || t === 'workflows' || t === 'assets' || t === 'activity' ? t : null;
+    if (t === 'workflows') return 'overview';
+    return t === 'prospects' || t === 'assets' || t === 'activity' ? t : null;
   };
   /* `&source=<id>` — a connection named by AI Prospecting or the wizard — is scrolled to on the Prospects tab. */
   const [sourceFocus, setSourceFocus] = useState(() => (focused ? new URLSearchParams(window.location.search).get('source') ?? '' : ''));
   const [connecting, setConnecting] = useState(false);
-  const [tab, setTab] = useState<Tab>(() => asked() ?? (focused || project.brief ? 'overview' : 'workflows'));
+  const [tab, setTab] = useState<Tab>(() => asked() ?? 'overview');
   /* Sent here after the card was already on screen: open the Overview then too.
      Adjusted during render rather than in an effect, which would draw the old
      tab for a frame first. */
@@ -287,7 +286,7 @@ export default function ProjectCard({
       const d = (e as CustomEvent<{ projectId?: string; workflowId?: string }>).detail;
       if (d?.projectId !== project.id) return;
       if (d.workflowId) setOpen(o => ({ ...o, [d.workflowId as string]: true }));
-      setTab('workflows');
+      setTab('overview');
       void read();
     };
     window.addEventListener('pc-protron-workflow', built);
@@ -528,164 +527,15 @@ export default function ProjectCard({
        would have opened a *new empty* one, which is worse than either. */
   }
 
-  return (
-    <section style={{
-      display: 'grid', gap: 14, gridTemplateColumns: 'minmax(0, 1fr) 272px', alignItems: 'start',
-      ...(focused ? { outline: `2px solid ${T.accent}55`, outlineOffset: 6, borderRadius: 20 } : {}),
-    }} className="ap-project">
-      {/* ── The project ── */}
-      <div style={{
-        background: T.panel, border: `1px solid ${LINE}`, borderRadius: 18, overflow: 'hidden', minWidth: 0,
-      }}>
-        {/* Identity */}
-        <header style={{
-          display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', flexWrap: 'wrap',
-          background: 'linear-gradient(180deg, rgba(91,124,250,0.07), transparent)',
-          borderBottom: `1px solid ${LINE}`,
-        }}>
-          {/* The client's own mark. This is the spot somebody scanning a stack
-              of six projects uses to find their place, so it belongs to the
-              client rather than to the system — the bot lives beside the AI
-              column, where what it says about the system is the subject. */}
-          <ProjectLogo
-            portfolio={portfolio}
-            projectName={project.name}
-            onSaved={() => { onChanged(); void read(); }}
-            onError={setError}
-          />
 
-          <span style={{ minWidth: 0, flex: '1 1 240px' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 16.5, fontWeight: 800, color: INK, letterSpacing: '-0.02em' }}>
-                {project.name}
-              </span>
-              <button
-                role="switch"
-                aria-checked={live}
-                aria-label={`${live ? 'Pause' : 'Resume'} ${project.name}`}
-                onClick={() => onToggle(project)}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 9px 3px 4px',
-                  borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                  background: live ? T.goodSoft : T.lineSoft,
-                }}>
-                <span style={{
-                  width: 26, height: 15, borderRadius: 999, position: 'relative', flexShrink: 0,
-                  background: live ? T.good : T.line, transition: 'background 0.15s',
-                }}>
-                  <span style={{
-                    position: 'absolute', top: 2, left: live ? 13 : 2, width: 11, height: 11,
-                    borderRadius: 999, background: '#fff', transition: 'left 0.15s',
-                  }} />
-                </span>
-                <span style={{ fontSize: 10.5, fontWeight: 800, color: live ? T.good : MUTED }}>
-                  {live ? 'Active' : 'Paused'}
-                </span>
-              </button>
-            </span>
-            <span style={{ display: 'block', fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.45 }}>
-              {project.objective || `${KIND_LABEL[project.kind] ?? project.kind} for ${project.portfolioName || 'this client'}`}
-            </span>
-          </span>
-
-          <span style={{ display: 'flex', alignItems: 'center', gap: 13, flexWrap: 'wrap' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: MUTED }}>
-              <Calendar size={11} />
-              Created {project.createdAt ? new Date(project.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
-            </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: MUTED }}>
-              <BarChart3 size={11} />
-              {activeFlows} workflow{activeFlows === 1 ? '' : 's'} active
-            </span>
-            <button onClick={() => setMenu(m => !m)} aria-label={`More for ${project.name}`} style={{
-              border: 'none', background: 'none', padding: 3, cursor: 'pointer', color: MUTED, display: 'flex',
-            }}><MoreHorizontal size={16} /></button>
-          </span>
-
-          {menu && (
-            <div style={{ display: 'flex', gap: 7, width: '100%', paddingTop: 2 }}>
-              <button onClick={() => { setMenu(false); setTab('settings'); }} className="press" style={ghost()}>
-                Settings
-              </button>
-              <button onClick={() => { setMenu(false); onDelete(project); }} className="press"
-                style={{ ...ghost(), color: '#b42318' }}>
-                <Trash2 size={11} /> Delete business workspace
-              </button>
-            </div>
-          )}
-        </header>
-
-        {/* Its own tabs */}
-        <div role="tablist" aria-label={`${project.name} sections`} style={{
-          display: 'flex', gap: 2, padding: '0 12px', borderBottom: `1px solid ${LINE}`,
-          overflowX: 'auto', background: T.panel,
-        }}>
-          {TABS.map(({ id, label, icon: Ic }) => {
-            const on = tab === id;
-            return (
-              <button key={id} role="tab" aria-selected={on} onClick={() => setTab(id)} style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 12px',
-                border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                fontSize: 12.5, fontWeight: on ? 800 : 600, whiteSpace: 'nowrap',
-                color: on ? T.accent : MUTED,
-                borderBottom: `2px solid ${on ? T.accent : 'transparent'}`, marginBottom: -1,
-              }}>
-                <Ic size={12} />
-                {label}
-                {id === 'workflows' && flows.length > 0 && ` (${flows.length})`}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* ── What it has actually made ──
-            Under the tabs rather than inside one, because "is this doing
-            anything" is the question somebody has on every tab, and answering
-            it only inside Assets means they have to already believe the answer
-            is yes in order to go and look. */}
-        <ProducedRail items={assets.slice(0, 12).map(a => ({
-          id: a.id, kind: a.kind.replace(/ /g, '-'), label: a.name, route: a.route, at: a.at,
-        }))} />
-
-        <div style={{ padding: 14 }}>
-          {error && (
-            <p style={{
-              margin: '0 0 12px', padding: '10px 13px', borderRadius: 10, background: '#fdf3f3',
-              border: `1px solid ${T.bad}55`, color: T.bad, fontSize: 12.5,
-            }}>{error}</p>
-          )}
-
-          {/* ── Overview ── */}
-          {tab === 'overview' && (
-            <div style={{ marginBottom: 12 }}>
-              <ProspectingToday project={project} onOpen={id => { setSourceFocus(id); setTab('prospects'); }} />
-            </div>
-          )}
-          {tab === 'overview' && (
-            <ProjectOverview
-              project={project} flows={flows} runs={runs} assets={assets}
-              business={{
-                companyName: portfolio?.name ?? project.name,
-                description: String(portfolio?.profile?.description ?? project.objective ?? ''),
-                audience: String(portfolio?.profile?.audience ?? ''),
-                offer: String(portfolio?.profile?.offer ?? ''),
-              }}
-              onCreateWorkflow={() => setWizard(true)}
-              onOpenWorkflows={() => setTab('workflows')}
-            />
-          )}
-
-          {tab === 'schedule' && <ProjectSchedule flows={flows} runs={runs} />}
-
-          {tab === 'prospects' && <ProjectLeads project={project} focus={sourceFocus} />}
-
-          {/* ── Workflows ──
-              "Create workflow" sits above both states, always. It used to live
-              inside the empty state *and* in a row that only appeared once a
-              workflow existed — so on a brand-new project it was under a tall
-              "getting ready" panel, and customers reported there was no way to
-              add the first one. */}
-          {tab === 'workflows' && (
+  /*
+   * The workflows, drawn in full on the Overview (owner's brief 2026-11-13):
+   * there is no Workflows tab any more — the Overview used to show them as
+   * one-line rows that sent you to that tab, which was one click between a
+   * customer and the thing their business workspace actually runs.
+   */
+  const workflowsPanel = (
+    <div>
             <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
               <button onClick={() => setWizard(true)} className="press ap-btn"
                 style={{ ...primaryBtn, padding: '9px 16px' }}>
@@ -698,13 +548,7 @@ export default function ProjectCard({
                 <Plus size={13} /> Connect Prospect Search
               </button>
             </div>
-          )}
-          {connecting && (
-            <ConnectAutopilot projectId={project.id} onClose={() => setConnecting(false)}
-              onDone={() => { void read(); }} />
-          )}
-          {tab === 'workflows' && (
-            !flows.length ? (
+      {!flows.length ? (
               <div style={{ padding: '18px 6px' }}>
                 {preparing && (
                   /*
@@ -926,9 +770,170 @@ export default function ProjectCard({
                   );
                 })}
               </div>
-            )
+            )}
+    </div>
+  );
+
+  return (
+    <section style={{
+      display: 'grid', gap: 14, gridTemplateColumns: 'minmax(0, 1fr) 272px', alignItems: 'start',
+      ...(focused ? { outline: `2px solid ${T.accent}55`, outlineOffset: 6, borderRadius: 20 } : {}),
+    }} className="ap-project">
+      {/* ── The project ── */}
+      <div style={{
+        background: T.panel, border: `1px solid ${LINE}`, borderRadius: 18, overflow: 'hidden', minWidth: 0,
+      }}>
+        {/* Identity */}
+        <header style={{
+          display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', flexWrap: 'wrap',
+          background: 'linear-gradient(180deg, rgba(91,124,250,0.07), transparent)',
+          borderBottom: `1px solid ${LINE}`,
+        }}>
+          {/* The client's own mark. This is the spot somebody scanning a stack
+              of six projects uses to find their place, so it belongs to the
+              client rather than to the system — the bot lives beside the AI
+              column, where what it says about the system is the subject. */}
+          <ProjectLogo
+            portfolio={portfolio}
+            projectName={project.name}
+            onSaved={() => { onChanged(); void read(); }}
+            onError={setError}
+          />
+
+          <span style={{ minWidth: 0, flex: '1 1 240px' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 16.5, fontWeight: 800, color: INK, letterSpacing: '-0.02em' }}>
+                {project.name}
+              </span>
+              <button
+                role="switch"
+                aria-checked={live}
+                aria-label={`${live ? 'Pause' : 'Resume'} ${project.name}`}
+                onClick={() => onToggle(project)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 9px 3px 4px',
+                  borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                  background: live ? T.goodSoft : T.lineSoft,
+                }}>
+                <span style={{
+                  width: 26, height: 15, borderRadius: 999, position: 'relative', flexShrink: 0,
+                  background: live ? T.good : T.line, transition: 'background 0.15s',
+                }}>
+                  <span style={{
+                    position: 'absolute', top: 2, left: live ? 13 : 2, width: 11, height: 11,
+                    borderRadius: 999, background: '#fff', transition: 'left 0.15s',
+                  }} />
+                </span>
+                <span style={{ fontSize: 10.5, fontWeight: 800, color: live ? T.good : MUTED }}>
+                  {live ? 'Active' : 'Paused'}
+                </span>
+              </button>
+            </span>
+            <span style={{ display: 'block', fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.45 }}>
+              {project.objective || `${KIND_LABEL[project.kind] ?? project.kind} for ${project.portfolioName || 'this client'}`}
+            </span>
+          </span>
+
+          <span style={{ display: 'flex', alignItems: 'center', gap: 13, flexWrap: 'wrap' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: MUTED }}>
+              <Calendar size={11} />
+              Created {project.createdAt ? new Date(project.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: MUTED }}>
+              <BarChart3 size={11} />
+              {activeFlows} workflow{activeFlows === 1 ? '' : 's'} active
+            </span>
+            <button onClick={() => setMenu(m => !m)} aria-label={`More for ${project.name}`} style={{
+              border: 'none', background: 'none', padding: 3, cursor: 'pointer', color: MUTED, display: 'flex',
+            }}><MoreHorizontal size={16} /></button>
+          </span>
+
+          {menu && (
+            <div style={{ display: 'flex', gap: 7, width: '100%', paddingTop: 2 }}>
+              <button onClick={() => { setMenu(false); setTab('settings'); }} className="press" style={ghost()}>
+                Settings
+              </button>
+              <button onClick={() => { setMenu(false); onDelete(project); }} className="press"
+                style={{ ...ghost(), color: '#b42318' }}>
+                <Trash2 size={11} /> Delete business workspace
+              </button>
+            </div>
+          )}
+        </header>
+
+        {/* Its own tabs */}
+        <div role="tablist" aria-label={`${project.name} sections`} style={{
+          display: 'flex', gap: 2, padding: '0 12px', borderBottom: `1px solid ${LINE}`,
+          overflowX: 'auto', background: T.panel,
+        }}>
+          {TABS.map(({ id, label, icon: Ic }) => {
+            const on = tab === id;
+            return (
+              <button key={id} role="tab" aria-selected={on} onClick={() => setTab(id)} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 12px',
+                border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                fontSize: 12.5, fontWeight: on ? 800 : 600, whiteSpace: 'nowrap',
+                color: on ? T.accent : MUTED,
+                borderBottom: `2px solid ${on ? T.accent : 'transparent'}`, marginBottom: -1,
+              }}>
+                <Ic size={12} />
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ── What it has actually made ──
+            Under the tabs rather than inside one, because "is this doing
+            anything" is the question somebody has on every tab, and answering
+            it only inside Assets means they have to already believe the answer
+            is yes in order to go and look. */}
+        <ProducedRail items={assets.slice(0, 12).map(a => ({
+          id: a.id, kind: a.kind.replace(/ /g, '-'), label: a.name, route: a.route, at: a.at,
+        }))} />
+
+        <div style={{ padding: 14 }}>
+          {error && (
+            <p style={{
+              margin: '0 0 12px', padding: '10px 13px', borderRadius: 10, background: '#fdf3f3',
+              border: `1px solid ${T.bad}55`, color: T.bad, fontSize: 12.5,
+            }}>{error}</p>
           )}
 
+          {/* ── Overview ── */}
+          {tab === 'overview' && (
+            <div style={{ marginBottom: 12 }}>
+              <ProspectingToday project={project} onOpen={id => { setSourceFocus(id); setTab('prospects'); }} />
+            </div>
+          )}
+          {tab === 'overview' && (
+            <ProjectOverview
+              project={project} flows={flows} runs={runs} assets={assets}
+              business={{
+                companyName: portfolio?.name ?? project.name,
+                description: String(portfolio?.profile?.description ?? project.objective ?? ''),
+                audience: String(portfolio?.profile?.audience ?? ''),
+                offer: String(portfolio?.profile?.offer ?? ''),
+              }}
+              onCreateWorkflow={() => setWizard(true)}
+              workflows={workflowsPanel}
+            />
+          )}
+
+          {tab === 'schedule' && <ProjectSchedule flows={flows} runs={runs} />}
+
+          {tab === 'prospects' && <ProjectLeads project={project} focus={sourceFocus} />}
+
+          {/* ── Workflows ──
+              "Create workflow" sits above both states, always. It used to live
+              inside the empty state *and* in a row that only appeared once a
+              workflow existed — so on a brand-new project it was under a tall
+              "getting ready" panel, and customers reported there was no way to
+              add the first one. */}
+          {connecting && (
+            <ConnectAutopilot projectId={project.id} onClose={() => setConnecting(false)}
+              onDone={() => { void read(); }} />
+          )}
           {/* ── AI Agents: what this project's AI may do, and what it is doing ── */}
           {tab === 'agents' && (
             <div style={{ display: 'grid', gap: 15 }}>
@@ -1546,7 +1551,7 @@ export default function ProjectCard({
              sentence is two places to keep in step. */
           onDescribe={() => {
             setWizard(false);
-            setTab('workflows');
+            setTab('overview');
             window.setTimeout(() => {
               document.getElementById(`ap-prompt-${project.id}`)?.focus();
             }, 60);

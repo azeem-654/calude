@@ -90,7 +90,8 @@ for (const width of [390, 1280]) {
     /Created/.test(t) && /workflow.? active/.test(t), (t.match(/Created[^·]{0,40}/) ?? ['not found'])[0]);
 
   /* Its own tab bar — the five sections of a project. */
-  for (const tab of ['Workflows', 'AI Agents', 'Assets', 'Activity', 'Analytics', 'Project Settings']) {
+  /* Workflows live on the Overview now (2026-11-13), not a tab of their own. */
+  for (const tab of ['Overview', 'AI Agents', 'Assets', 'Activity', 'Analytics', 'Project Settings']) {
     ok(`${width}px · it has a ${tab} tab`, await p.getByRole('tab', { name: new RegExp(tab) }).first().isVisible());
   }
 
