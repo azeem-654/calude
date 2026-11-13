@@ -1,0 +1,225 @@
+/* ── "Meet Protron" and "What's new" (ProtronSection.tsx) ──
+   On the site's dark ground, in its glass and lime, with Protron's own
+   violet ring and the coral of its pointer as the only new colours. */
+
+/* ── Meet Protron ── */
+.ptn-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: clamp(22px, 4vw, 52px);
+  align-items: stretch;
+  text-align: left;
+}
+.ptn-grid > .reveal { display: flex; }
+
+.ptn-stage {
+  position: relative;
+  min-height: 430px;
+  padding: 26px;
+  border-radius: 26px;
+  background:
+    radial-gradient(120% 90% at 18% 20%, rgba(139, 92, 246, 0.26), transparent 60%),
+    radial-gradient(90% 80% at 90% 90%, rgba(217, 119, 87, 0.2), transparent 60%),
+    var(--glass);
+  border: 1px solid var(--edge);
+  overflow: hidden;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+/* The picture, centred in a stage as tall as the list beside it. */
+.ptn-in { position: relative; }
+
+.ptn-portrait { position: absolute; left: 0; top: 0; width: 48%; max-width: 290px; }
+.ptn-approve-w { position: relative; display: inline-block; }
+.ptn-portrait img {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid rgba(255, 255, 255, 0.85);
+  background: #e9e6ff;
+}
+.ptn-ring {
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  background: conic-gradient(from 210deg, #8b5cf6, #d97757, #c4b5fd, #8b5cf6);
+  box-shadow: 0 0 46px rgba(139, 92, 246, 0.45);
+}
+.ptn-tag {
+  position: absolute;
+  left: 0;
+  bottom: -16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #17191c;
+  background: #fff;
+  box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.5);
+}
+.ptn-tag svg { color: #8b5cf6; }
+
+/* The live-talk window, in the app's see-through lavender. */
+.ptn-window {
+  position: relative;
+  margin-left: auto;
+  width: 64%;
+  margin-top: clamp(90px, 13vw, 150px);
+  padding: 14px;
+  z-index: 1;
+  border-radius: 18px;
+  color: #17191c;
+  background: rgba(246, 243, 255, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 30px 60px -28px rgba(0, 0, 0, 0.7);
+}
+.ptn-win-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ptn-win-h b { font-size: 14px; font-weight: 800; }
+.ptn-live { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; color: #fff; background: #d97757; }
+.ptn-live i { width: 6px; height: 6px; border-radius: 50%; background: #fff; }
+.ptn-voice { display: flex; align-items: center; gap: 3px; height: 22px; margin: 8px 0 2px; }
+.ptn-voice i { width: 3px; height: 100%; border-radius: 3px; background: #a78bfa; transform: scaleY(0.3); }
+.dc .ptn-bub { margin: 8px 0 0; padding: 8px 11px; border-radius: 13px; font-size: 12.5px; line-height: 1.45; max-width: 92%; }
+.ptn-bub.is-you { margin-left: auto !important; color: #fff; background: #5b46e5; border-bottom-right-radius: 4px; }
+.ptn-bub.is-bot { background: #fff; border: 1px solid #e9d5ff; border-bottom-left-radius: 4px; }
+.ptn-plan { margin-top: 10px; padding: 11px 12px; border-radius: 13px; background: #fff; border: 1px solid #e6e9f0; }
+.ptn-plan b { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 800; }
+.ptn-plan b svg { color: #9333ea; }
+.ptn-plan ul { display: grid; gap: 4px; margin: 8px 0 10px; padding: 0; list-style: none; }
+.ptn-plan li { display: flex; align-items: flex-start; gap: 6px; font-size: 11.5px; line-height: 1.4; color: #374151; }
+.ptn-plan li svg { flex: none; margin-top: 2px; color: #16a34a; }
+.ptn-approve {
+  position: relative;
+  display: inline-flex;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  background: #5b46e5;
+  box-shadow: 0 8px 18px -8px rgba(91, 70, 229, 0.8);
+}
+
+/* Protron's pointer, resting on "Approve the plan": coral arrow, white edge,
+   a soft coral glow and a coral label pill — the app's look. */
+.ptn-ptr {
+  position: absolute;
+  z-index: 2;
+  left: 62%;
+  top: 58%;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  filter: drop-shadow(0 0 10px rgba(217, 119, 87, 0.55)) drop-shadow(0 3px 5px rgba(20, 10, 5, 0.35));
+}
+.ptn-chip {
+  margin-top: 18px;
+  white-space: nowrap;
+  font: 600 12px/1.2 system-ui, sans-serif;
+  color: #fff;
+  background: #d97757;
+  border: 1.5px solid #fff;
+  padding: 5px 10px;
+  border-radius: 999px;
+}
+.ptn-ripple { position: absolute; left: -12px; top: -12px; width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgba(217, 119, 87, 0.95); opacity: 0; }
+
+.ptn-points { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.ptn-points li {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--glass);
+  border: 1px solid var(--edge);
+}
+.ptn-points .dc-tile-icon { background: rgba(200, 242, 77, 0.14); color: var(--lime); }
+.ptn-points b { display: block; font-size: 15px; font-weight: 800; letter-spacing: -0.015em; }
+.ptn-points small { display: block; margin-top: 4px; font-size: 13.5px; line-height: 1.58; color: var(--muted); }
+.dc .ptn-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: clamp(22px, 3vw, 34px) auto 0;
+  max-width: 720px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.ptn-note svg { flex: none; color: var(--lime); }
+
+/* The platform film, under Protron: as wide as the column, never taller than the window. */
+.ptn-film { padding-top: 0; }
+.ptn-film-frame {
+  max-width: min(1180px, calc((var(--dc-vh) - var(--dc-nav-h) - 110px) * 16 / 9));
+  margin: 0 auto;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ptn-stage.is-live .ptn-voice i { animation: ptn-voice 0.95s ease-in-out infinite; animation-delay: calc(var(--i) * -0.09s); }
+  .ptn-stage.is-live .ptn-ring { animation: ptn-turn 9s linear infinite; }
+  .ptn-stage.is-live.has-agent .ptn-ptr { animation: ptn-reach 5.2s cubic-bezier(0.3, 0.7, 0.25, 1) infinite; }
+  .ptn-stage.is-live.has-agent .ptn-ripple { animation: ptn-tap 5.2s ease-out infinite; }
+  .ptn-stage.is-live.has-agent .ptn-approve { animation: ptn-press 5.2s ease infinite; }
+}
+@keyframes ptn-voice { 0%, 100% { transform: scaleY(0.25); } 50% { transform: scaleY(1); } }
+@keyframes ptn-turn { to { transform: rotate(360deg); } }
+/* Comes in from the right, rests on the button, taps it, waits, goes again. */
+@keyframes ptn-reach {
+  0% { transform: translate3d(90px, 70px, 0); opacity: 0; }
+  12% { opacity: 1; }
+  40%, 82% { transform: none; opacity: 1; }
+  96%, 100% { transform: translate3d(90px, 70px, 0); opacity: 0; }
+}
+@keyframes ptn-tap { 0%, 44% { transform: scale(0.2); opacity: 0; } 46% { opacity: 0.95; } 60%, 100% { transform: scale(1.4); opacity: 0; } }
+@keyframes ptn-press { 0%, 44% { transform: none; } 47% { transform: scale(0.94); } 52%, 100% { transform: none; } }
+
+@media (max-width: 900px) {
+  .ptn-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .ptn-stage { min-height: 0; padding: 18px 16px 20px; }
+  .ptn-portrait { position: relative; left: auto; top: auto; width: 46%; margin: 0 auto 26px; }
+  .ptn-window { width: 100%; margin-top: 0; }
+  .ptn-tag { left: 50%; transform: translateX(-50%); }
+  .ptn-points li { text-align: left; }
+}
+
+/* ── What's new ── */
+.ptn-new { padding-top: clamp(40px, 6vw, 80px); padding-bottom: clamp(40px, 6vw, 80px); }
+.ptn-new-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; text-align: left; }
+.ptn-new-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 18px 20px;
+  border-radius: 18px;
+  background: var(--glass);
+  border: 1px solid var(--edge);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.25s ease, background-color 0.25s ease;
+}
+a.ptn-new-card:hover { border-color: rgba(200, 242, 77, 0.4); background: var(--glass-2); }
+.ptn-new-top { display: flex; align-items: center; gap: 10px; }
+.ptn-new-top .dc-tile-icon { background: rgba(200, 242, 77, 0.14); color: var(--lime); }
+.ptn-new-top i { font-style: normal; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.ptn-new-card b { font-size: 15.5px; font-weight: 800; letter-spacing: -0.015em; }
+.ptn-new-card small { font-size: 13.5px; line-height: 1.58; color: var(--muted); }
+.ptn-new-more { display: inline-flex; align-items: center; gap: 5px; margin-top: auto; padding-top: 4px; font-size: 13px; font-weight: 700; color: var(--lime); }
+.dc .ptn-new-foot { margin: 18px 0 0; text-align: center; font-size: 13.5px; }
+.ptn-new-foot a { display: inline-flex; align-items: center; gap: 5px; color: var(--lime); font-weight: 700; text-decoration: none; }
+
+@media (max-width: 900px) { .ptn-new-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .ptn-new-grid { grid-template-columns: 1fr; } }

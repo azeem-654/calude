@@ -240,3 +240,37 @@ It runs only while on screen with the tab visible; reduced motion gets still
 finished frames and Previous/Next. No narration: Protron's voice needs a
 signed-in workspace — the captions carry it. New wording must name only real
 features and stay figure-free.
+
+## Protron, the platform film and What's new (2026-11-13)
+
+The owner's brief: proper sections for the new features. On the home page,
+after the recipes and the services strip: **Meet Protron** (`ProtronSection`, `#protron`, in the nav)
+— the owner's portrait (`/protron/robot-384.webp`) in a violet ring, a
+live-talk window with the plan card and Protron's coral pointer (#D97757
+arrow, white edge, coral pill — drawn again here, the app's Protron files are
+not imported) — then **the whole platform film** (`#platform-film`,
+`Site/PlatformDemo.tsx`): Protron's live talk → AI Autopilot builds →
+AI Prospecting and the daily finder → campaign and replies → booking page and
+the Appointments tray → deals → a payment reminder → the morning digest and
+the campaign watch. One example business (Brightside Plumbing, `.example`
+addresses), "Illustration · example business" in the frame, **no figures**,
+addresses "Contact checked" (never "verified"). Then **What's new**
+(`WhatsNew`, `#whats-new`, six cards, a link to `/changelog`) — below the
+film, not above the recipes, so Find my solution keeps its place.
+
+- **One player for all three films**: `shared/DemoFilm.tsx` +
+  `shared/demoFilm.css` (the clock, design sizes, measured `data-k` targets,
+  the minimum-jerk pointer, the bar). AutopilotDemo, PlatformDemo and the
+  in-app ProspectingDemo are each only their steps and scenes. Pressing the
+  chip of the step that is playing restarts it (`take`).
+- **Only what this host's app does**: Protron on every screen is held back to
+  the testing site (`featureReady('protron')`, docs/TESTING-ONLY.md), so the
+  three sections take `agent`. Off (the live site today): Protron is the
+  live talk that starts a business workspace and writes the plan ("Build My
+  AI Autopilot"), the campaign watch is a notice and an email, no pointer.
+  On (testing, localhost): plan → approve → it builds with its pointer, and
+  offers to improve a weak campaign. Releasing Protron changes the site with
+  no edit. Appointments tray, 12-month plans, AI health ("we check every AI
+  tool each hour"), the security shield (only SECURITY.md §7 claims) are
+  live everywhere.
+- `#film` is LaunchFilm's id; the platform film is `#platform-film`.
