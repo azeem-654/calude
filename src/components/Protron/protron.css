@@ -415,14 +415,16 @@
 /* ── 2026-11-13 brief ── */
 /* The caption under the tile: what Protron is, always on show. */
 .pt-caption {
-  position: absolute; top: calc(100% + 3px); left: 35px; transform: translateX(-50%);
+  /* From the tile's left edge, not centred under it: the tile sits 12–16px
+     from the window's edge, and a centred caption ran off the screen. */
+  position: absolute; top: calc(100% - 9px); left: 0; z-index: 1;
   white-space: nowrap; pointer-events: none;
   font-size: 10px; font-weight: 800; letter-spacing: .02em; color: #3b2a8f;
   padding: 2px 8px; border-radius: 999px;
   background: rgba(255, 255, 255, .82); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   box-shadow: 0 4px 12px -6px rgba(59, 42, 143, .5);
 }
-@media (max-width: 760px) { .pt-caption { left: 31px; font-size: 9.5px; } }
+@media (max-width: 760px) { .pt-caption { font-size: 9.5px; } }
 
 /* The window's first row: the pointer on its dock, and Live talk lit. */
 .pt-hero {
