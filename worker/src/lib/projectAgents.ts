@@ -569,12 +569,28 @@ async function runAgentNodeOnce(
     const question = c('sourcePrompt');
     if (question.length < 6) return { outcome: 'failed', detail: 'No question is set for the search.' };
     const found = await researchWeb(apiKey, question, 5, { module: 'autopilot-research', accountId });
-    if (!found.ok && found.busy && !portfolioThin(brand)) {
-      /* No key could search just now (capacity, ours). An SEO article from
-         what the business does, around the same question, is still worth
-         having — and is said to be that, so nobody takes it for this week's
-         research. The next run searches again. */
-      fallbackNote = ' Web research was not available this time, so it was written from the business profile around your topic instead — the next run searches again.';
+    /*
+     * Research that gave nothing to write from. Only `busy` (every key spent)
+     * used to fall back, so a search answered with no sources — the model
+     * not grounding, or the provider refusing the search tool for its own
+     * reason — failed the step outright, and the wizard's "first article" on
+     * included AI read "Not made yet" (AppSumo review, 2026-11). A customer
+     * on the included AI is owed the article: written from the business
+     * profile around the same question, and said to be that, so nobody takes
+     * it for this week's research. The next run searches again.
+     *
+     * A scheduled run whose search worked and found nothing new still skips:
+     * a weekly article restating the profile because the news was quiet is
+     * not what was asked for. "Run now" and the wizard's first article
+     * (`force`) write it anyway — the button is for seeing it work.
+     */
+    const nothingFound = found.ok && !found.findings.length;
+    if ((!found.ok || (nothingFound && force)) && !portfolioThin(brand)) {
+      fallbackNote = found.busy
+        ? ' Web research was not available this time, so it was written from the business profile around your topic instead — the next run searches again.'
+        : nothingFound
+          ? ' The web search found nothing recent on your topic, so it was written from the business profile around it instead — the next run searches again.'
+          : ' The web search did not return pages it could be checked against this time, so it was written from the business profile around your topic instead — the next run searches again.';
       topicOverride = question;
     } else if (!found.ok) return { outcome: 'failed', detail: found.error };
     else {
@@ -621,7 +637,8 @@ async function runAgentNodeOnce(
     const layout = c('layout');
     const r = await writeImagePosts(apiKey, brand, {
       count, platform: c('platform') || 'instagram', items, style: c('style'),
-      theme: !items.length && month ? `${month.theme} — ${month.focus}` : undefined,
+      /* Research that fell back writes around the question asked (above). */
+      theme: !items.length ? (topicOverride || (month ? `${month.theme} — ${month.focus}` : undefined)) : undefined,
       /* Only the offer layout has a badge and a button to fill. */
       offer: layout === 'offer',
     });
@@ -644,7 +661,7 @@ async function runAgentNodeOnce(
     const made = Math.min(posts.length, count);
     return {
       outcome: 'ok',
-      detail: `Made ${made} post${made === 1 ? '' : 's'}${items.length ? ` from ${items.length} new item${items.length === 1 ? '' : 's'}` : month ? ` for this month's theme, “${month.theme}”` : ''}. Every one is a draft — nothing is scheduled until you say so.${count < asked ? ` ${asked} were asked for; this month’s allowance had room for ${count}.` : ''}`,
+      detail: `Made ${made} post${made === 1 ? '' : 's'}${items.length ? ` from ${items.length} new item${items.length === 1 ? '' : 's'}` : month && !topicOverride ? ` for this month's theme, “${month.theme}”` : ''}. Every one is a draft — nothing is scheduled until you say so.${count < asked ? ` ${asked} were asked for; this month’s allowance had room for ${count}.` : ''}${fallbackNote}`,
       link: { kind: 'social-post', id: first, label: posts[0].headline.slice(0, 60), route: '/social-creator' },
       hash,
     };
@@ -677,7 +694,7 @@ async function runAgentNodeOnce(
     const total = Math.min(asked, room);
     if (total < 2) return { outcome: 'skipped', detail: `Nothing was written: a campaign needs at least two emails and this month’s allowance of emails written by AI Autopilot has room for ${total}. It starts again on the 1st, or a larger plan raises it.` };
     const everyDays = Math.min(Math.max(Number(c('everyDays')) || 7, 1), 30);
-    const theme = c('topic') || (items.length ? items[0].title : '') || (month ? `${month.theme} — ${month.focus}` : '');
+    const theme = c('topic') || (items.length ? items[0].title : '') || topicOverride || (month ? `${month.theme} — ${month.focus}` : '');
 
     /* Written a batch at a time. A model asked for fifty-two in one reply
        returns a dozen good ones and then repeats itself, and often enough JSON
@@ -727,7 +744,7 @@ async function runAgentNodeOnce(
       detail: (steps.length < total
         ? `Wrote ${steps.length} of the ${total} emails${stopped ? ` — it stopped because ${stopped}` : ''}. The ones it did write are there and readable; run it again to finish the rest.`
         : `Wrote all ${steps.length} emails, one every ${everyDays} days. Nobody is enrolled — read them first.`)
-        + (total < asked ? ` ${asked} were asked for; this month’s allowance of emails written by AI Autopilot had room for ${total}.` : ''),
+        + (total < asked ? ` ${asked} were asked for; this month’s allowance of emails written by AI Autopilot had room for ${total}.` : '') + fallbackNote,
       link: { kind: 'sequence', id, label: (name || 'Campaign').slice(0, 60), route: '/marketing?tab=sequences' },
       hash,
     };
