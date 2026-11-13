@@ -42,6 +42,7 @@ import {
 import type { ProspectSearch } from './useProspectSearch';
 import MicButton from './MicButton';
 import { SOURCE_LABEL, askProblem, chooseSource, readAsk, type AskSource } from '../../services/aiProspecting';
+import ProspectingDemo from './ProspectingDemo';
 
 /** An icon for a trade, for the chips and the recent searches. A guess at a picture, never at data. */
 export function tradeIcon(trade: string): typeof Building2 {
@@ -236,6 +237,8 @@ export function StartScreen({ s, text, setText, onGo, error, onExample, verifier
       )}
 
       <div className="aip-start-more">
+        {/* Below the hairline, so the sentence box stays first on screen. */}
+        <ProspectingDemo />
         <div className="aip-live-promise" role="note">
           <span className="aip-live-dot" aria-hidden="true" />
           <span>

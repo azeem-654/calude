@@ -46,6 +46,8 @@ import { REELS } from './reels';
 import HelpLauncher from '../shared/HelpLauncher';
 import LaunchFilm from './LaunchFilm';
 import AutopilotDemo from './AutopilotDemo';
+import PlatformDemo from './PlatformDemo';
+import { ProtronSection, WhatsNew } from './ProtronSection';
 import ProspectingShowcase from './ProspectingShowcase';
 import FeatureStage from './FeatureStage';
 import CloudSection from './CloudSection';
@@ -348,6 +350,9 @@ export default function SiteHome() {
   /* Campaign tags this visit arrived with, for the strategy call's source. */
   useEffect(() => { rememberArrival(); }, []);
   const services = servicesPublic(window.location.hostname);
+  /* Protron on every screen is held back to the testing site (features.ts);
+     the Protron, film and What's new sections say only what this host's app does. */
+  const agent = featureReady('protron');
   const [stuck, setStuck] = useState(false);
   const [tab, setTab] = useState(0);
 
@@ -470,6 +475,7 @@ export default function SiteHome() {
         </a>
         <nav className="dc-links" aria-label="Sections">
           <a href="#solutions">Solutions</a>
+          <a href="#protron">Protron</a>
           <a href="#autopilot">How it works</a>
           {featureReady('prospects') && <a href="#prospecting">AI Prospecting</a>}
           <a href="#scale">Agencies</a>
@@ -614,6 +620,30 @@ export default function SiteHome() {
           </a>
         </div>
       </section>}
+
+      {/* ── Protron, then the whole platform working ──
+             Before the AI Autopilot tour, because Protron is now how most
+             people start: they talk to it, and it hands the plan to Autopilot.
+             The film is drawn (PlatformDemo.tsx), an illustration with one
+             example business and no figures. ── */}
+      <ProtronSection agent={agent} />
+      <section className="dc-process ptn-film" id="platform-film" aria-label="The whole platform, step by step">
+        <div className="dc-chapter-head">
+          <span className="dc-eyebrow">See it work</span>
+          <h2>The whole platform, <em>start to finish.</em></h2>
+          <p>
+            One example business, from a conversation with Protron to a payment followed up: AI Autopilot,
+            AI Prospecting, campaigns, the booking page, deals and reports. An illustration — the names
+            and addresses are made up.
+          </p>
+        </div>
+        <div className="ptn-film-frame"><PlatformDemo agent={agent} /></div>
+      </section>
+
+      {/* ── What's new: the features built this month, each only as true as
+             this host's app makes it (ProtronSection.tsx). After the film, not
+             above the recipes: Find my solution stays where the funnel put it. ── */}
+      <WhatsNew agent={agent} />
 
       {/* ── AI Autopilot ──
              First, because it is what the rest is now driven by, and because

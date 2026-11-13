@@ -1,0 +1,311 @@
+/* ── "See the whole platform work" — the platform film's scenes (PlatformDemo.tsx) ──
+   The player, the pointer, the bar and the shared parts are shared/demoFilm.css.
+   Sizes are in em of the canvas, so the three design sizes share these rules;
+   `.apd.is-compact` (a phone) drops the parts marked apd-wide-only. */
+
+/* Eight steps: numbers only under the chips below the widest player. */
+.pfd.is-big .apd-chip-l { font-size: 12px; }
+
+.pfd-h { display: block; font-size: 0.95em; font-weight: 750; margin-bottom: 0.7em; }
+.pfd-foot { display: flex; align-items: center; justify-content: flex-end; gap: 0.6em; margin-top: 0.9em; }
+.pfd-foot .apd-st { margin-right: auto; }
+
+/* Protron's face: the owner's portrait in a violet ring with a coral glow while live. */
+.pfd-face {
+  position: relative;
+  flex: none;
+  width: 3.4em;
+  height: 3.4em;
+  border-radius: 50%;
+  padding: 0.18em;
+  background: conic-gradient(from 200deg, #8b5cf6, #d97757, #c4b5fd, #8b5cf6);
+}
+.pfd-face img { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; background: #eef0ff; border: 2px solid #fff; }
+.pfd-face.is-live { box-shadow: 0 0 0 0.3em rgba(217, 119, 87, 0.14), 0 0 1.4em rgba(217, 119, 87, 0.35); }
+.pfd-who { display: flex; align-items: center; gap: 0.75em; }
+.pfd-who-t b { display: block; font-size: 1em; font-weight: 800; letter-spacing: -0.01em; }
+.pfd-who-t small { display: block; font-size: 0.76em; color: #6b7280; font-weight: 600; }
+.pfd-live {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.3em 0.75em;
+  border-radius: 999px;
+  font-size: 0.74em;
+  font-weight: 800;
+  color: #fff;
+  background: #d97757;
+}
+.pfd-live i { width: 0.5em; height: 0.5em; border-radius: 50%; background: #fff; }
+
+/* ── 1 · Talk to Protron ── */
+.pfd-s1 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
+.pfd-talk { background: linear-gradient(160deg, #ffffff, #f6f3ff); }
+.pfd-bars { display: flex; align-items: center; gap: 0.25em; height: 1.8em; margin: 0.8em 0 0.4em 0.3em; }
+.pfd-bars i { display: block; width: 0.28em; height: 100%; border-radius: 1em; background: #c4b5fd; transform: scaleY(0.3); }
+.pfd-bub {
+  max-width: 92%;
+  margin-top: 0.6em;
+  padding: 0.65em 0.85em;
+  border-radius: 1em;
+  font-size: 0.88em;
+  line-height: 1.45;
+}
+.pfd-bub.is-you { margin-left: auto; color: #fff; background: #5b46e5; border-bottom-right-radius: 0.3em; }
+.pfd-bub.is-bot { background: #fff; border: 1px solid #e9d5ff; border-bottom-left-radius: 0.3em; }
+.pfd-bub.is-you .apd-c.is-caret::after { background: #fff; }
+.pfd-list { display: grid; gap: 0.5em; margin: 0; padding: 0; list-style: none; }
+.pfd-list li { display: flex; align-items: flex-start; gap: 0.55em; font-size: 0.86em; line-height: 1.4; color: #374151; }
+.pfd-list svg { flex: none; margin-top: 0.15em; color: #16a34a; }
+
+/* ── 2 · AI Autopilot builds ── */
+.pfd-s2 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
+.pfd-stepper { display: flex; gap: 0.5em; margin: 0 0 1em; padding: 0; list-style: none; }
+.pfd-stp { flex: 1; display: grid; gap: 0.35em; justify-items: start; font-size: 0.78em; font-weight: 700; color: #9aa3b2; }
+.pfd-stp i {
+  font-style: normal;
+  width: 1.9em;
+  height: 1.9em;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid #d6dae3;
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+.pfd-stp.is-on { color: #17191c; }
+.pfd-stp.is-on i { color: #fff; background: #5b46e5; border-color: #5b46e5; }
+.pfd-sum { display: grid; gap: 0.45em; }
+.pfd-sum span { font-size: 0.86em; color: #374151; padding: 0.55em 0.75em; border-radius: 0.6em; background: #f9fafc; border: 1px solid #f0f2f7; }
+.pfd-sum b { display: inline-block; width: 5em; color: #9aa3b2; font-weight: 650; }
+.pfd-nx { display: inline-grid; padding: 0; }
+.pfd-nx-a, .pfd-nx-b { grid-area: 1 / 1; display: inline-flex; align-items: center; justify-content: center; gap: 0.4em; padding: 0.62em 1.15em; transition: opacity 0.25s ease; }
+.pfd-nx-b { opacity: 0; }
+.pfd-nx-b.is-on { opacity: 1; }
+.pfd-nx:has(.pfd-nx-b.is-on) .pfd-nx-a { opacity: 0; }
+.pfd-build { opacity: 0.55; transition: opacity 0.4s ease; }
+.pfd-build.is-on { opacity: 1; }
+.pfd-checks { display: grid; gap: 0.5em; margin: 0; padding: 0; list-style: none; }
+.pfd-check { display: flex; align-items: center; gap: 0.6em; font-size: 0.86em; color: #374151; }
+.pfd-months { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 0.3em; margin: 0.9em 0 0.8em; }
+.pfd-months span { text-align: center; padding: 0.4em 0; border-radius: 0.45em; font-size: 0.74em; font-weight: 800; color: #5b46e5; background: #eef0ff; }
+
+/* ── 3 · AI Prospecting ── */
+.pfd-s3 { align-content: center; gap: 0.9em; }
+.pfd-cmp {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  padding: 0.55em 0.6em 0.55em 1em;
+  border-radius: 1.1em;
+  background: #fff;
+  border: 1.5px solid transparent;
+  background-image: linear-gradient(#fff, #fff), linear-gradient(100deg, #f97316, #ec4899, #8b5cf6);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  box-shadow: 0 10px 26px -14px rgba(249, 115, 22, 0.45);
+  color: #f97316;
+}
+.pfd-cmp-q { position: relative; flex: 1; min-width: 0; font-size: 0.95em; color: #17191c; white-space: nowrap; overflow: hidden; }
+.pfd-ph { position: absolute; left: 0; top: 0; color: #9aa3b2; transition: opacity 0.2s ease; }
+.pfd-cmp.is-clicked .pfd-ph { opacity: 0; }
+.pfd-res { padding-top: 0.8em; padding-bottom: 0.6em; }
+.pfd-res-h { display: flex; align-items: center; gap: 0.5em; margin-bottom: 0.5em; }
+.pfd-res-h b { font-size: 0.92em; margin-right: auto; }
+.pfd-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.9fr) minmax(0, 1.2fr) auto;
+  align-items: center;
+  gap: 0.8em;
+  padding: 0.5em 0.2em;
+  border-top: 1px solid #f0f2f7;
+  font-size: 0.84em;
+}
+.pfd-row b { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pfd-cat, .pfd-mail { color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pfd-daily { display: flex; align-items: center; gap: 1em; padding: 0.7em 0.9em; border-radius: 0.9em; background: #17191c; color: #fff; }
+.pfd-daily-h { flex: none; display: inline-flex; align-items: center; gap: 0.45em; font-size: 0.84em; font-weight: 750; }
+.pfd-daily-h svg { color: #c8f24d; }
+.pfd-days { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.45em; }
+.pfd-day { display: grid; gap: 0.1em; padding: 0.4em 0.55em; border-radius: 0.6em; background: rgba(255, 255, 255, 0.08); min-width: 0; }
+.pfd-day b { font-size: 0.72em; letter-spacing: 0.06em; text-transform: uppercase; color: #c8f24d; }
+.pfd-day small { font-size: 0.72em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #e8edf2; }
+
+/* ── 4 · Campaigns and replies ── */
+.pfd-s4 { grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); align-items: center; }
+.pfd-seq { display: flex; align-items: center; gap: 0.6em; padding: 0.6em 0.2em; border-top: 1px solid #f0f2f7; font-size: 0.86em; color: #374151; }
+.pfd-seq > svg { flex: none; color: #5b46e5; }
+.pfd-seq > span:not(.pfd-swap) { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pfd-swap { display: inline-grid; justify-items: end; flex: none; }
+.pfd-sa, .pfd-sb { grid-area: 1 / 1; transition: opacity 0.3s ease; }
+.pfd-sb { opacity: 0; }
+.pfd-camp.is-on .pfd-seq.is-first .pfd-sa,
+.pfd-swap.is-on .pfd-sa { opacity: 0; }
+.pfd-camp.is-on .pfd-seq.is-first .pfd-sb,
+.pfd-swap.is-on .pfd-sb { opacity: 1; }
+.pfd-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65em;
+  padding: 0.7em 0.75em;
+  margin-bottom: 0.55em;
+  border-radius: 0.75em;
+  border: 1px solid #f0f2f7;
+  transition: opacity 0.45s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1), background-color 0.3s ease, border-color 0.3s ease;
+}
+.pfd-msg.apd-r { transform: translate3d(1em, 0, 0); }
+.pfd-msg.apd-r.is-on { transform: none; }
+.pfd-msg.is-clicked { background: #eef0ff; border-color: #c7d2fe; }
+.pfd-msg b { display: block; font-size: 0.82em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pfd-msg small { display: block; margin-top: 0.15em; font-size: 0.8em; color: #6b7280; }
+.pfd-msg > span:last-child { min-width: 0; }
+.pfd-dot { flex: none; width: 0.55em; height: 0.55em; margin-top: 0.4em; border-radius: 50%; background: #5b46e5; }
+
+/* ── 5 · The booking page and the Appointments tray ── */
+.pfd-s5 { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); align-items: center; }
+.pfd-week { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.45em; }
+.pfd-wd, .pfd-slot {
+  text-align: center;
+  padding: 0.6em 0.3em;
+  border-radius: 0.65em;
+  font-size: 0.84em;
+  font-weight: 700;
+  background: #f9fafc;
+  border: 1px solid #e6e9f0;
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+}
+.pfd-wd.is-clicked, .pfd-slot.is-clicked { color: #fff; background: #5b46e5; border-color: #5b46e5; }
+.pfd-slots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.45em; margin-top: 0.7em; }
+.pfd-slot { font-weight: 650; color: #5b46e5; background: #fff; border-color: #c7d2fe; }
+.pfd-tray-h { display: flex; align-items: center; gap: 0.6em; margin-bottom: 0.8em; }
+.pfd-tray-h b { font-size: 0.95em; font-weight: 750; }
+.pfd-bell { position: relative; width: 2.1em; height: 2.1em; border-radius: 0.65em; display: grid; place-items: center; color: #5b46e5; background: #eef0ff; }
+.pfd-bell i { position: absolute; top: -0.2em; right: -0.2em; width: 0.75em; height: 0.75em; border-radius: 50%; background: #16a34a; border: 2px solid #fff; }
+.pfd-bell i.apd-r { transform: scale(0.3); }
+.pfd-bell i.apd-r.is-on { transform: none; }
+.pfd-appt { display: flex; align-items: center; gap: 0.7em; padding: 0.65em 0.7em; margin-bottom: 0.7em; border-radius: 0.75em; background: #f0fdf4; border: 1px solid #bbf7d0; }
+.pfd-appt > span:nth-child(2) { flex: 1; min-width: 0; }
+.pfd-appt b { display: block; font-size: 0.86em; }
+.pfd-appt small { display: block; font-size: 0.76em; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pfd-appt-d { flex: none; display: grid; justify-items: center; width: 3em; padding: 0.3em 0; border-radius: 0.55em; background: #fff; border: 1px solid #bbf7d0; }
+.pfd-appt-d b { font-size: 0.72em; color: #15803d; text-transform: uppercase; }
+.pfd-appt-d small { font-size: 0.82em; color: #17191c; font-weight: 750; }
+
+/* ── 6 · Deals on the pipeline ── */
+.pfd-s6 { align-content: center; justify-items: center; gap: 1em; }
+.pfd-board { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.7em; }
+.pfd-col { position: relative; display: flex; flex-direction: column; gap: 0.5em; min-height: 15em; padding: 0.7em; border-radius: 0.9em; background: #eef0f6; }
+.pfd-col-h { font-size: 0.74em; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: #6b7280; }
+.pfd-deal {
+  display: grid;
+  gap: 0.25em;
+  padding: 0.65em 0.7em;
+  border-radius: 0.7em;
+  background: #fff;
+  border: 1px solid #e6e9f0;
+  box-shadow: 0 4px 12px -8px rgba(16, 24, 40, 0.3);
+  transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.pfd-deal b { font-size: 0.8em; line-height: 1.3; }
+.pfd-deal small { display: inline-flex; align-items: center; gap: 0.3em; font-size: 0.7em; color: #6b7280; font-weight: 600; }
+.pfd-deal.is-clicked { border-color: #a5b4fc; transform: translate3d(0, -0.2em, 0) rotate(-1.5deg); }
+.pfd-land { display: grid; border-radius: 0.7em; }
+.pfd-drop, .pfd-dst { grid-area: 1 / 1; }
+.pfd-drop { min-height: 3.6em; border-radius: 0.7em; border: 1.5px dashed #c7d2fe; transition: opacity 0.3s ease; }
+.pfd-dst { opacity: 0; transform: translate3d(-1.2em, 0, 0); border-color: #a5b4fc; }
+.pfd-board.is-on .pfd-src { opacity: 0; transform: translate3d(1.2em, 0, 0); }
+.pfd-board.is-on .pfd-dst { opacity: 1; transform: none; }
+.pfd-board.is-on .pfd-drop { opacity: 0; }
+
+/* ── 7 · Payments followed up ── */
+.pfd-s7 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
+.pfd-pay {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  padding: 0.65em 0.6em;
+  border-radius: 0.7em;
+  border-top: 1px solid #f0f2f7;
+  transition: opacity 0.45s cubic-bezier(0.2, 0.7, 0.2, 1), transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1), background-color 0.3s ease;
+}
+.pfd-pay > span:first-child { flex: 1; min-width: 0; }
+.pfd-pay b { display: block; font-size: 0.86em; }
+.pfd-pay small { display: block; font-size: 0.76em; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pfd-pay.is-clicked { background: #eef0ff; }
+.pfd-rem-h { display: flex; align-items: center; gap: 0.5em; color: #5b46e5; }
+.pfd-rem-h b { font-size: 0.95em; color: #17191c; }
+.pfd-rem-row { display: flex; gap: 0.7em; padding: 0.7em 0; border-bottom: 1px solid #f0f2f7; font-size: 0.86em; font-weight: 650; }
+.pfd-rem-row > span:first-child { flex: none; width: 4.4em; color: #9aa3b2; font-weight: 600; }
+.apd .pfd-rem-body { margin: 0.7em 0 0.8em; min-height: 4.4em; font-size: 0.88em; line-height: 1.5; color: #374151; }
+
+/* ── 8 · Reports and the campaign watch ── */
+.pfd-s8 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
+.pfd-dg { display: flex; align-items: center; gap: 0.6em; padding: 0.6em 0.2em; border-top: 1px solid #f0f2f7; font-size: 0.86em; color: #374151; }
+.pfd-dg svg { flex: none; color: #5b46e5; }
+.pfd-alert { border-color: rgba(217, 119, 87, 0.45); box-shadow: 0 0 0 4px rgba(217, 119, 87, 0.08), 0 16px 34px -18px rgba(217, 119, 87, 0.55); }
+.apd .pfd-alert-t { margin: 0.8em 0 0; font-size: 0.9em; line-height: 1.5; color: #374151; }
+.pfd-alert-t b { color: #17191c; }
+.pfd-warn { background: #fffbeb; color: #b45309; }
+.pfd-alert > .apd-st { margin-top: 0.8em; white-space: normal; line-height: 1.3; }
+
+/* ── A narrow player: one design size down ── */
+.apd.is-compact .pfd-who-t small,
+.apd.is-compact .pfd-bars,
+.apd.is-compact .pfd-sum,
+.apd.is-compact .pfd-cat,
+.apd.is-compact .pfd-mail,
+.apd.is-compact .pfd-res-h .apd-st,
+.apd.is-compact .pfd-months { display: none; }
+.apd.is-compact .pfd-face { width: 2.4em; height: 2.4em; }
+.apd.is-compact .pfd-bub { font-size: 0.74em; margin-top: 0.45em; padding: 0.5em 0.65em; }
+.apd.is-compact .pfd-list { gap: 0.35em; }
+.apd.is-compact .pfd-list li { font-size: 0.74em; }
+.apd.is-compact .pfd-foot { margin-top: 0.6em; }
+.apd.is-compact .pfd-s1,
+.apd.is-compact .pfd-s2,
+.apd.is-compact .pfd-s4,
+.apd.is-compact .pfd-s5,
+.apd.is-compact .pfd-s7,
+.apd.is-compact .pfd-s8 { gap: 0.6em; }
+.apd.is-compact .pfd-stepper { margin-bottom: 0.4em; }
+.apd.is-compact .pfd-stp { font-size: 0.66em; }
+.apd.is-compact .pfd-check { font-size: 0.74em; }
+.apd.is-compact .pfd-checks { gap: 0.4em; margin-bottom: 0.6em; }
+.apd.is-compact .pfd-h { font-size: 0.82em; margin-bottom: 0.5em; }
+.apd.is-compact .pfd-s3 { gap: 0.55em; }
+.apd.is-compact .pfd-cmp { padding: 0.4em 0.45em 0.4em 0.7em; }
+.apd.is-compact .pfd-cmp-q { font-size: 0.8em; }
+.apd.is-compact .pfd-row { grid-template-columns: minmax(0, 1fr) auto; font-size: 0.76em; padding: 0.35em 0.1em; }
+.apd.is-compact .pfd-res { padding: 0.55em 0.75em 0.4em; }
+.apd.is-compact .pfd-daily { gap: 0.6em; padding: 0.5em 0.6em; }
+.apd.is-compact .pfd-daily-h { font-size: 0.72em; }
+.apd.is-compact .pfd-days { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.apd.is-compact .pfd-seq,
+.apd.is-compact .pfd-dg { font-size: 0.74em; padding: 0.4em 0.1em; }
+.apd.is-compact .pfd-msg { padding: 0.5em 0.55em; }
+.apd.is-compact .pfd-msg b { font-size: 0.7em; }
+.apd.is-compact .pfd-msg small { font-size: 0.68em; }
+.apd.is-compact .pfd-wd,
+.apd.is-compact .pfd-slot { font-size: 0.72em; padding: 0.45em 0.2em; }
+.apd.is-compact .pfd-slots { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 0.5em; }
+.apd.is-compact .pfd-appt { padding: 0.45em 0.5em; margin-bottom: 0.5em; }
+.apd.is-compact .pfd-col { min-height: 10em; padding: 0.5em; gap: 0.35em; }
+.apd.is-compact .pfd-col-h { font-size: 0.6em; }
+.apd.is-compact .pfd-deal { padding: 0.45em 0.5em; }
+.apd.is-compact .pfd-deal b { font-size: 0.68em; }
+.apd.is-compact .pfd-deal small { display: none; }
+.apd.is-compact .pfd-drop { min-height: 2.2em; }
+.apd.is-compact .pfd-pay { padding: 0.45em 0.4em; }
+.apd.is-compact .pfd-rem-row { font-size: 0.74em; padding: 0.45em 0; }
+.apd.is-compact .pfd-rem-body { font-size: 0.74em; min-height: 3.8em; margin: 0.45em 0 0.5em; }
+.apd.is-compact .pfd-alert-t { font-size: 0.78em; margin-top: 0.5em; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .apd-scene.is-now .pfd-talk:has(.pfd-live.is-on) .pfd-bars i { animation: pfd-voice 0.9s ease-in-out infinite; animation-delay: calc(var(--i) * -0.11s); }
+}
+/* Transform only: a bar's height would lay the card out again every frame. */
+@keyframes pfd-voice { 0%, 100% { transform: scaleY(0.25); } 50% { transform: scaleY(0.95); } }
+
+/* Four lines of room under a phone frame: the longest caption takes four at
+   358px, and a bar that changes height pushes the page as it plays. */
+.apd.pfd.is-compact .apd-cap { min-height: 5.8em; }
