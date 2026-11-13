@@ -67,8 +67,8 @@ export default function ProtronCursor() {
       <div ref={ring} className="pt-cursor-ring" />
       <div ref={pointer} className="pt-cursor">
         <span ref={ripple} className="pt-cursor-ripple" />
-        <svg width="22" height="24" viewBox="0 0 22 24" focusable="false">
-          <path d="M2 2 L19 12.5 L11.2 13.8 L7.4 21.5 Z" fill="#0b1220" stroke="#36d9ff" strokeWidth="1.8" strokeLinejoin="round" />
+        <svg width="24" height="26" viewBox="0 0 24 26" focusable="false">
+          <path d="M3 2.5 L3 21 L8.2 16.4 L11.6 23.6 L15 22 L11.7 15 L19.2 14.6 Z" fill="#d97757" stroke="#fff" strokeWidth="2" strokeLinejoin="round" />
         </svg>
         {label && <span className="pt-cursor-chip">{label}</span>}
       </div>

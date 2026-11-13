@@ -299,7 +299,7 @@ export const ACTIONS: ActionDef[] = [
      * missing. Nothing here sends, pays or deletes on its own authority.
      */
     name: 'propose_setup_plan',
-    title: 'Set this up in AI Autopilot',
+    title: 'Your setup plan',
     description: 'When the customer wants an outcome set up (no clients yet, automated email campaigns, a blog, bookings): propose a plan as 3 to 8 short bullets of what you will build in AI Autopilot (business workspace, workflows and their emails, blog articles, social posts, booking page, follow-ups), plus the full instruction for the AI Autopilot wizard. After they approve, you open the wizard and build it step by step on screen, stopping to ask only what you do not know.',
     module: '/autopilot',
     tier: 'confirm',

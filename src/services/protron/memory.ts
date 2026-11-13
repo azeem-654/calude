@@ -96,9 +96,10 @@ export interface Prefs {
   /** The customer's business, as they told it — company name, trade and the rest. */
   business: Business;
   /**
-   * warm: the AI voice, friendly and clear, played as it is (the default since
-   * 2026-11-12); commander: the AI voice through the robot filter; natural:
-   * the browser's own voice.
+   * warm: the AI voice, friendly and clear — the same voice as live talk;
+   * natural: the browser's own voice, only if somebody chooses it. The robot
+   * "commander" voice was removed on 2026-11-13 (the owner heard it take over
+   * from the friendly one mid-conversation: "no double bots").
    */
   voice: Voice;
   /** The site check of their email domain, once made — so it is asked once, not every visit. */
@@ -109,11 +110,11 @@ export interface Prefs {
   idleSeconds: number;
 }
 
-export type Voice = 'warm' | 'commander' | 'natural';
-export const VOICES: Voice[] = ['warm', 'commander', 'natural'];
+export type Voice = 'warm' | 'natural';
+export const VOICES: Voice[] = ['warm', 'natural'];
 
 const MAX_TURNS = 60;
-export const DEFAULT_PREFS: Prefs = { proactive: true, speak: false, dock: null, business: { name: '', about: '' }, voice: 'warm', idleSeconds: 10, siteCheck: null, v: 2 };
+export const DEFAULT_PREFS: Prefs = { proactive: true, speak: false, dock: null, business: { name: '', about: '' }, voice: 'warm', idleSeconds: 10, siteCheck: null, v: 3 };
 export const IDLE_CHOICES = [0, 10, 30, 120];
 
 /** A short, stable id for the signed-in person, so the key does not carry their address. */
@@ -189,11 +190,9 @@ export function loadPrefs(): Prefs {
 /** Prefs from anywhere (this browser, the server, an older version), made whole and in range. */
 export function normalisePrefs(p: Partial<Prefs>): Prefs {
   const out = { ...DEFAULT_PREFS, ...p, business: { ...DEFAULT_PREFS.business, ...(p.business ?? {}) } };
-  /* The robot voice was everybody's default until 2026-11-12, so a stored
-     "commander" from before then is the old default, not a choice: moved to
-     the warm voice once. Chosen after that, it stays. */
-  if ((p.v ?? 1) < 2 && out.voice === 'commander') out.voice = 'warm';
-  out.v = 2;
+  /* A stored "commander" (the robot voice, removed 2026-11-13) — or anything
+     else unknown — becomes the warm voice below. */
+  out.v = 3;
   if (!VOICES.includes(out.voice)) out.voice = 'warm';
   for (const k of ['name', 'about', 'website', 'audience', 'places', 'goal'] as const) {
     const v = out.business[k];

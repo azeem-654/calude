@@ -325,8 +325,8 @@ const owner = { isClient: false, isOwner: true };
   ok('P11 what is known is not listed as missing', !ID.missingFacts(known).includes('name') && !ID.missingFacts(known).includes('about'));
 
   /* The voice: everybody moved off the robot once; a later choice stays. */
-  ok('P11 an old stored "commander" becomes the warm voice', M.normalisePrefs({ voice: 'commander' }).voice === 'warm');
-  ok('P11 commander chosen after the change is kept', M.normalisePrefs({ voice: 'commander', v: 2 }).voice === 'commander');
+  ok('P11 an old stored "commander" becomes the warm voice', M.normalisePrefs({ voice: 'commander' as never }).voice === 'warm');
+  ok('P11 the robot voice is gone even when it was chosen (one Protron voice, 2026-11-13)', M.normalisePrefs({ voice: 'commander' as never, v: 2 }).voice === 'warm');
   ok('P11 the device voice is kept', M.normalisePrefs({ voice: 'natural' }).voice === 'natural');
 
   /* The prompt: what is known, and short answers when spoken. */

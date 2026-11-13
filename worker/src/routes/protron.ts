@@ -35,10 +35,10 @@
  * ── speak: Protron's voice ──
  *
  * Text in, 24 kHz 16-bit PCM out, from a Gemini speech model chosen from the
- * key's own model list (nothing names a model id). Two styles (`VOICES`):
- * warm, the default — a friendly, clear voice the browser plays as it is —
- * and commander, which the browser runs through its robot filter
- * (services/protron/voice.ts). Each reply spoken is
+ * key's own model list (nothing names a model id). One voice (`VOICES.warm`,
+ * the same prebuilt voice live talk uses), played as it is (services/protron/
+ * voice.ts); the robot "commander" style was removed 2026-11-13 — the owner
+ * heard it take over from the friendly voice. Each reply spoken is
  * one AI request against the plan and the owner's caps, like any other; an
  * OpenRouter-only install has no speech model, says so, and the browser falls
  * back to its own voice.
@@ -74,17 +74,13 @@ const PREF_KEYS = new Set(['proactive', 'speak', 'voice', 'idleSeconds', 'busine
  * The voices the model is asked for: a prebuilt voice's name (not a model id)
  * and a direction (a style, not anybody's voice). Warm is the default since
  * the owner's brief of 2026-11-12 — friendly, confident, conversational, at a
- * natural pace; "Achird" is the voice Google lists as friendly. Commander is
- * the earlier deep robot, still offered in the menu.
+ * natural pace; "Achird" is the voice Google lists as friendly, and the one
+ * live talk speaks in (routes/live.ts VOICE) — so there is one Protron voice.
  */
-export const VOICES: Record<'warm' | 'commander', { name: string; direction: string }> = {
+export const VOICES: Record<'warm', { name: string; direction: string }> = {
   warm: {
     name: 'Achird',
     direction: 'Say this the way a friendly, confident business advisor talks to a client they like: warm, clear and relaxed, at a natural conversational pace — not slow, not salesy, not robotic. Read only the text after the colon:',
-  },
-  commander: {
-    name: 'Algenib',
-    direction: 'Read this aloud as a calm, noble robot commander: a deep, slow, resonant voice, warm and certain, every word clear. Read only the text after the colon:',
   },
 };
 
@@ -245,7 +241,7 @@ export async function handleProtron(req: Request, env: Env): Promise<Response> {
   if (action === 'speak') {
     const text = String(d.text ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_SPEAK);
     if (!text) return fail('There was nothing to say.');
-    return voiceReply(env, accountId, text, VOICES[d.style === 'commander' ? 'commander' : 'warm']);
+    return voiceReply(env, accountId, text, VOICES.warm);
   }
 
   /* The dashboard film's narrator, in Protron's warm voice (the owner: "exactly

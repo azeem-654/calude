@@ -1,28 +1,19 @@
 /**
  * Protron's voice out: reading a reply aloud.
  *
- * ── Three voices ──
+ * ── One voice ──
  *
- * warm (the default since 2026-11-12, the owner's brief): the same server
- *   speech model with a friendly, clear prebuilt voice and a conversational
- *   direction, played exactly as it arrives — no filter. The brief asked for
- *   a voice that sounds like a confident, friendly business assistant, and a
- *   robot filter is the opposite of "natural". An analyser on the output
- *   drives the face's mouth.
- * commander (a choice in the menu): the reply is spoken by a Gemini speech model on
- *   the server (/api/protron.php `speak` — a deep, slow, resonant direction)
- *   and played here through a robot filter: a touch slower and lower, a ring
- *   modulator for the metal, a short comb delay for the helmet's resonance,
- *   chest boosted, gently clipped and compressed. A heroic giant-robot
- *   leader's voice in the spirit of the brief — its own, not a copy of any
- *   actor's or character's. Each reply spoken is one AI request on the plan.
- * natural: the browser's own speech engine, free and on the device.
+ * warm: the server's speech model with the same prebuilt voice as live talk
+ *   (Achird, routes/protron.ts VOICES), played exactly as it arrives — no
+ *   filter. An analyser on the output drives the face's mouth.
+ * natural: the browser's own speech engine, only when chosen in the menu.
  *
- * When the AI voice cannot speak (no Google key — OpenRouter has no speech —
- * an allowance, a busy model, the browser blocking sound) the commander falls
- * back to the browser's deepest voice, pitched down, rather than going
- * silent, and stops asking the server for the rest of the page's life when
- * the answer was "there is no voice here".
+ * The robot "commander" voice and the pitched-down browser fallback were
+ * removed on 2026-11-13: the owner heard the friendly voice turn into a heavy
+ * robot one mid-conversation, with a buzz at the end, and asked for one bot.
+ * So when the AI voice cannot speak (no Google key, an allowance, a busy
+ * model, sound blocked), the reply is not read in another voice: it stays on
+ * screen and `VOICE_PROBLEM_EVENT` tells the panel why.
  *
  * ── Turn by turn, with barge-in ──
  *
@@ -98,41 +89,10 @@ export const browserSpeaker: Speaker = {
 
 /* ── The browser's deepest voice ── */
 
-function deepVoice(synth: SpeechSynthesis): SpeechSynthesisVoice | null {
-  const lang = (navigator.language || 'en-US').slice(0, 2).toLowerCase();
-  const voices = synth.getVoices().filter(v => v.lang.toLowerCase().startsWith(lang));
-  return voices.find(v => /\b(male|david|daniel|alex|fred|george|guy|james|mark|aaron|arthur|google uk english male)\b/i.test(v.name))
-    ?? voices.find(v => /google|natural|neural/i.test(v.name)) ?? voices[0] ?? null;
-}
-
-const deepBrowser: Speaker = {
-  name: 'Browser voice, deep',
-  supported: browserSpeaker.supported,
-  speaking: browserSpeaker.speaking,
-  stop: browserSpeaker.stop,
-  speak(text: string, onStart?: () => void): Promise<void> {
-    return new Promise(resolve => {
-      if (!this.supported()) { resolve(); return; }
-      const synth = window.speechSynthesis;
-      synth.cancel();
-      const u = new SpeechSynthesisUtterance(speakable(text));
-      const v = deepVoice(synth);
-      if (v) { u.voice = v; u.lang = v.lang; }
-      u.rate = 0.9;
-      u.pitch = 0.45;
-      u.onstart = () => onStart?.();
-      u.onboundary = () => { emit(0.8); window.setTimeout(() => emit(0.2), 120); };
-      u.onend = () => { emit(0); resolve(); };
-      u.onerror = () => { emit(0); resolve(); };
-      synth.speak(u);
-    });
-  },
-};
-
-/* ── The AI voices (warm and commander) ── */
+/* ── Protron's voice ── */
 
 let audio: AudioContext | null = null;
-let playing: { src: AudioBufferSourceNode; osc: OscillatorNode | null; done: () => void } | null = null;
+let playing: { src: AudioBufferSourceNode; done: () => void } | null = null;
 let fetching: AbortController | null = null;
 let serverVoice: 'unknown' | 'yes' | 'no' = 'unknown';
 
@@ -172,7 +132,7 @@ function playClean(ctx: AudioContext, buffer: AudioBuffer): Promise<void> {
     };
     const guard = window.setTimeout(done, buffer.duration * 1000 + 1500);
     src.onended = done;
-    playing = { src, osc: null, done };
+    playing = { src, done };
     src.start();
   });
 }
@@ -200,77 +160,23 @@ function pcmToBuffer(ctx: AudioContext, b64: string, rate: number): AudioBuffer 
   return buf;
 }
 
-function softClip(amount: number): Float32Array<ArrayBuffer> {
-  const c = new Float32Array(1024);
-  for (let i = 0; i < c.length; i++) { const x = (i / (c.length - 1)) * 2 - 1; c[i] = Math.tanh(amount * x) / Math.tanh(amount); }
-  return c;
-}
-
-/** Plays the PCM through the robot filter. Resolves when it ends or is stopped. */
-function playCommander(ctx: AudioContext, buffer: AudioBuffer): Promise<void> {
-  return new Promise(resolve => {
-    const src = ctx.createBufferSource();
-    src.buffer = buffer;
-    src.playbackRate.value = 0.94;
-
-    const dry = ctx.createGain(); dry.gain.value = 0.78;
-    /* Ring modulation: the voice multiplied by a low sine — the metal. */
-    const ring = ctx.createGain(); ring.gain.value = 0;
-    const osc = ctx.createOscillator(); osc.frequency.value = 52; osc.connect(ring.gain);
-    const ringOut = ctx.createGain(); ringOut.gain.value = 0.32;
-    /* A short comb delay with feedback: the resonance inside a helmet. */
-    const comb = ctx.createDelay(0.05); comb.delayTime.value = 0.0085;
-    const fb = ctx.createGain(); fb.gain.value = 0.42;
-    const combOut = ctx.createGain(); combOut.gain.value = 0.3;
-    const chest = ctx.createBiquadFilter(); chest.type = 'lowshelf'; chest.frequency.value = 190; chest.gain.value = 7;
-    const air = ctx.createBiquadFilter(); air.type = 'highshelf'; air.frequency.value = 5200; air.gain.value = -4;
-    const clip = ctx.createWaveShaper(); clip.curve = softClip(1.6); clip.oversample = '2x';
-    const comp = ctx.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 4;
-    const meter = ctx.createAnalyser(); meter.fftSize = 512;
-
-    src.connect(dry); dry.connect(chest);
-    src.connect(ring); ring.connect(ringOut); ringOut.connect(chest);
-    src.connect(comb); comb.connect(fb); fb.connect(comb); comb.connect(combOut); combOut.connect(chest);
-    chest.connect(air); air.connect(clip); clip.connect(comp); comp.connect(meter); meter.connect(ctx.destination);
-
-    let stopMeter = () => undefined as void;
-    let finished = false;
-    const done = () => {
-      if (finished) return;
-      finished = true;
-      stopMeter();
-      window.clearTimeout(guard);
-      try { osc.stop(); } catch { /* not started */ }
-      emit(0);
-      playing = null;
-      resolve();
-    };
-    /* A context the browser keeps suspended never fires onended: never hang on it. */
-    const guard = window.setTimeout(done, (buffer.duration / 0.94) * 1000 + 1500);
-    src.onended = done;
-    playing = { src, osc, done };
-    osc.start();
-    src.start();
-    stopMeter = meterLoop(meter, 3.2);
-  });
-}
+/** Said to the panel when the AI voice could not speak a reply (and why). */
+export const VOICE_PROBLEM_EVENT = 'pc-protron-voice-problem';
+const problem = (why: string) => { try { window.dispatchEvent(new CustomEvent(VOICE_PROBLEM_EVENT, { detail: why })); } catch { /* no window */ } };
 
 /**
- * An AI voice: the server speaks it, this browser plays it — clean (warm) or
- * through the robot filter (commander). Falls back to a browser voice when the
- * server cannot speak, and stops asking for the page's life when the answer
- * was "there is no voice here".
+ * Protron's voice: the server speaks it, this browser plays it clean. When it
+ * cannot, nothing else speaks instead — the panel is told why — and it stops
+ * asking for the page's life when the answer was "there is no voice here".
  */
-function aiSpeaker(style: 'warm' | 'commander'): Speaker {
-  const fallback = style === 'warm' ? browserSpeaker : deepBrowser;
+function aiSpeaker(): Speaker {
   return {
-    name: style === 'warm' ? 'Warm voice' : 'Commander voice',
-    supported: () => browserSpeaker.supported() || typeof window !== 'undefined' && 'AudioContext' in window,
-    speaking: () => !!playing || !!fetching || browserSpeaker.speaking(),
+    name: 'Protron voice',
+    supported: () => typeof window !== 'undefined' && 'AudioContext' in window,
+    speaking: () => !!playing || !!fetching,
     stop: () => {
       fetching?.abort(); fetching = null;
       if (playing) { try { playing.src.stop(); } catch { /* ended */ } playing.done(); }
-      browserSpeaker.stop();
       emit(0);
     },
     async speak(text: string, onStart?: () => void): Promise<void> {
@@ -278,38 +184,35 @@ function aiSpeaker(style: 'warm' | 'commander'): Speaker {
       const words = speakable(text);
       if (!words) return;
       unlockAudio();
-      if (serverVoice !== 'no' && audio) {
-        const ctl = new AbortController();
-        fetching = ctl;
-        const r = await fetchSpeech(words, ctl.signal, style);
-        if (fetching !== ctl) return; // stopped while it was being made
-        fetching = null;
-        if (r.ok) {
-          serverVoice = 'yes';
-          if (audio.state === 'suspended') await audio.resume().catch(() => undefined);
-          if (audio.state === 'running') {
-            const buf = pcmToBuffer(audio, r.pcm, r.rate);
-            onStart?.();
-            await (style === 'warm' ? playClean(audio, buf) : playCommander(audio, buf));
-            return;
-          }
-        } else if (['no_voice', 'no_ai', 'trial_ended'].includes(r.code)) {
-          serverVoice = 'no';
+      if (serverVoice === 'no' || !audio) { problem('Protron’s voice is not available here, so replies are shown on screen.'); return; }
+      const ctl = new AbortController();
+      fetching = ctl;
+      const r = await fetchSpeech(words, ctl.signal);
+      if (fetching !== ctl) return; // stopped while it was being made
+      fetching = null;
+      if (r.ok) {
+        serverVoice = 'yes';
+        if (audio.state === 'suspended') await audio.resume().catch(() => undefined);
+        if (audio.state === 'running') {
+          onStart?.();
+          await playClean(audio, pcmToBuffer(audio, r.pcm, r.rate));
+          return;
         }
+        problem('Your browser kept the sound off — press anywhere in the page, then ask again.');
+        return;
       }
-      await fallback.speak(words, onStart);
+      if (['no_voice', 'no_ai', 'trial_ended'].includes(r.code)) serverVoice = 'no';
+      problem('Protron’s voice could not answer just now, so this reply is shown on screen.');
     },
   };
 }
 
-export const warmSpeaker: Speaker = aiSpeaker('warm');
-export const commanderSpeaker: Speaker = aiSpeaker('commander');
+export const warmSpeaker: Speaker = aiSpeaker();
 
-/** Stops every voice — whichever is playing. */
-export function stopAllVoices(): void { warmSpeaker.stop(); commanderSpeaker.stop(); browserSpeaker.stop(); }
+/** Everything that can make a sound stops. */
+export function stopAllVoices(): void { warmSpeaker.stop(); browserSpeaker.stop(); }
 
-/** The speaker for a preference. */
-export const speakerFor = (voice: Voice): Speaker => (voice === 'natural' ? browserSpeaker : voice === 'commander' ? commanderSpeaker : warmSpeaker);
+export const speakerFor = (voice: Voice): Speaker => (voice === 'natural' ? browserSpeaker : warmSpeaker);
 
 /* ── The dashboard film's narrator ──
  *

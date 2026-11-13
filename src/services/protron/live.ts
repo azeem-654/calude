@@ -67,6 +67,8 @@ interface LiveMessage {
     modelTurn?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] };
   };
   toolCall?: { functionCalls?: { id: string; name: string; args?: Record<string, unknown> }[] };
+  /** Calls the model gave up on — the customer spoke while one was running. */
+  toolCallCancellation?: { ids?: string[] };
   goAway?: unknown;
 }
 
@@ -77,6 +79,7 @@ export class LiveVoice {
   private outCtx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private playing = new Set<AudioBufferSourceNode>();
+  private cancelled = new Set<string>();
   private nextAt = 0;
   private raf = 0;
   private youText = '';
@@ -171,13 +174,20 @@ export class LiveVoice {
           if (this.botText) { this.h.onCaption('protron', this.botText.trim(), true); this.botText = ''; }
         }
       }
+      /* Answering a call the model has cancelled is an error that ends the
+         whole session ("Requested entity was not found") — the owner's
+         2026-11-13 test: they spoke while Protron was working on screen. The
+         work itself carries on; only the stale answer is not sent. */
+      for (const id of m.toolCallCancellation?.ids ?? []) this.cancelled.add(id);
       if (m.toolCall?.functionCalls?.length) {
         const responses = await Promise.all(m.toolCall.functionCalls.map(async c => {
           let response: Record<string, unknown>;
           try { response = await this.h.onTool(c.name, c.args ?? {}); } catch (e) { response = { ok: false, error: String(e) }; }
           return { id: c.id, name: c.name, response };
         }));
-        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ toolResponse: { functionResponses: responses } }));
+        const live = responses.filter(r => !this.cancelled.has(r.id));
+        for (const r of responses) this.cancelled.delete(r.id);
+        if (live.length && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ toolResponse: { functionResponses: live } }));
       }
       if (m.goAway) this.h.onState('ended', 'The live conversation is ending — press Talk live to carry on.');
     };

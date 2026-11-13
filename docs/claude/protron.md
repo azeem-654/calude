@@ -288,7 +288,29 @@ chats" on the message turns it off. It offers; it never acts on its own.
   Protron.tsx writes the request (name stripped to letters/digits) and
   proposes the change there — the link itself approves nothing.
 
-### Voice — commander voice, Talk mode, turn by turn (the fallback)
+### The 2026-11-13 follow-up — one voice, a live session that survives, a coral pointer
+
+- **One voice.** The robot "commander" voice, its filter (a 52 Hz ring
+  modulator — the buzz the owner heard) and the pitched-down browser fallback
+  are gone; `Voice` is `warm | natural`, a stored `commander` becomes warm
+  (test P11). Replies use `VOICES.warm` (Achird), the voice live talk speaks
+  in. When it cannot speak, no other voice reads the reply:
+  `VOICE_PROBLEM_EVENT` puts the reason in the panel. `speak()` is silent
+  while a live session is open — the session does the talking.
+- **"Requested entity was not found".** Gemini Live cancels a tool call when
+  the customer talks over it (`toolCallCancellation`); answering it anyway
+  ends the session. live.ts now drops answers for cancelled ids. A drop
+  mid-conversation is said in the chat in plain words and reconnected once
+  (at most every 2 min); the provider's raw text is never shown.
+- **The plan card inside live talk** has its own light buttons
+  (`.pt-talk-card .pt-btn`) — the stage's see-through white-on-glass made
+  "Approve the plan" invisible; the chip reads "Approve below" and both system
+  prompts say the button is in this window. Card title: "Your setup plan".
+- **Pointer**: an AI-agent pointer — coral (#d97757) arrow, white edge, soft
+  coral glow, coral label pill, coral ring and ripple. The panel glass is a
+  notch more see-through (~.40–.46, live stage ~.12–.26).
+
+### Voice — Talk mode, turn by turn (the fallback)
 
 In: the Autopilot recorder (`useVoiceInput`, 1.8 s silence) → server
 transcriber → sent. Out: `commanderSpeaker` (default) — `/api/protron.php`

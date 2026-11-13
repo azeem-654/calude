@@ -76,7 +76,7 @@ import {
   adoptTurns, clearTurns, IDLE_CHOICES, isDirty, loadTurns, localStamp, markSynced, newId, normalisePrefs, saveTurns,
   type ActionCard, type Prefs, type Step, type Turn,
 } from '../../services/protron/memory';
-import { onVoiceLevel, speakerFor, stopAllVoices, unlockAudio } from '../../services/protron/voice';
+import { onVoiceLevel, speakerFor, stopAllVoices, unlockAudio, VOICE_PROBLEM_EVENT } from '../../services/protron/voice';
 import { describeScreen, EDITING_EVENT, fillField, pressControl, readScreen, restoreFields, waitForField, type ScreenSnapshot } from '../../services/protron/screen';
 import { audit, checkSite, clearRemote, loadRemote, saveRemoteSoon } from '../../services/protron/sync';
 import { describeFacts, needsSiteCheck, openingFor } from '../../services/protron/identity';
@@ -212,6 +212,12 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
   const [phase, setPhase] = useState('');
   const [input, setInput] = useState('');
   const [voiceNote, setVoiceNote] = useState('');
+  /* The voice could not read a reply: say why rather than a second voice reading it. */
+  useEffect(() => {
+    const on = (e: Event) => setVoiceNote(String((e as CustomEvent<string>).detail ?? ''));
+    window.addEventListener(VOICE_PROBLEM_EVENT, on);
+    return () => window.removeEventListener(VOICE_PROBLEM_EVENT, on);
+  }, []);
   const [menu, setMenu] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [aiDown, setAiDown] = useState('');
@@ -413,7 +419,8 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
   /* ── Speaking ── */
   const micRef = useRef<() => void>(() => undefined);
   const speak = useCallback(async (text: string, turnId?: string, from?: number) => {
-    if (!speaker.supported() || !text.trim()) return;
+    /* One voice at a time: while a live session is open it does the talking. */
+    if (!speaker.supported() || !text.trim() || liveRef.current?.active) return;
     setSpeaking(true);
     onFace('speaking');
     await speaker.speak(text, () => {
@@ -628,6 +635,8 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
   const liveToolRef = useRef(liveTool);
   useEffect(() => { liveToolRef.current = liveTool; }, [liveTool]);
 
+  const reconnectAt = useRef(0);
+  const restartLive = useRef<() => void>(() => undefined);
   const startLive = useCallback(() => {
     stopLive();
     hush();
@@ -650,7 +659,24 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
             setLive('idle');
             setLiveTalk(false);
             if (code !== 'mic') { loop.current = true; window.setTimeout(() => micRef.current(), 150); }
-          } else if (message) setLiveNote(message);
+          } else if (message) {
+            /* The voice service dropping mid-conversation (owner's test,
+               2026-11-13: "Requested entity was not found") is said in the
+               chat in plain words, and reconnected once by itself; the raw
+               provider text is never the customer's message. */
+            const dropped = /live voice stopped/i.test(message);
+            const say = (text: string) => commit([...turnsRef.current, { id: newId(), role: 'protron', text, at: Date.now(), path: window.location.pathname }]);
+            if (dropped && Date.now() - reconnectAt.current > 120_000) {
+              reconnectAt.current = Date.now();
+              say('My voice connection dropped for a moment — reconnecting now. Anything I was doing on your screen carries on, and a plan waiting for your OK is still here.');
+              setLiveNote('Reconnecting…');
+              window.setTimeout(() => restartLive.current(), 500);
+              return;
+            }
+            const plain = dropped ? 'My live voice connection dropped again. Press “Talk live again” to carry on, or type below — nothing you approved is lost.' : message;
+            setLiveNote(plain);
+            if (dropped) say(plain);
+          }
         }
       },
       onCaption: (role, text, final) => {
@@ -681,6 +707,8 @@ ${facts}` : '',
     ].filter(Boolean).join('\n').slice(0, 3800);
     void lv.start(opening, 'assist');
   }, [stopLive, hush, onFace, commit, who]);
+
+  useEffect(() => { restartLive.current = startLive; }, [startLive]);
 
   const startTalk = useCallback(() => {
     unlockAudio();
@@ -780,7 +808,7 @@ ${facts}` : '',
                 : a.status === 'cancelled' ? <X size={15} color="#64748b" /> : <Clock size={15} color="#b45309" />}
         <span>{a.title}</span>
         <span className="pt-chip" data-s={a.status}>
-          {a.status === 'waiting' ? 'Needs your OK' : a.status === 'running' ? 'Working' : a.status === 'done' ? 'Done' : a.status === 'failed' ? 'Did not work' : a.status === 'refused' ? 'Not allowed' : 'Cancelled'}
+          {a.status === 'waiting' ? (a.name === 'propose_setup_plan' ? 'Approve below' : 'Confirm below') : a.status === 'running' ? 'Working' : a.status === 'done' ? 'Done' : a.status === 'failed' ? 'Did not work' : a.status === 'refused' ? 'Not allowed' : 'Cancelled'}
         </span>
       </div>
       {a.status === 'waiting' && a.confirmText && <p style={{ whiteSpace: 'pre-line' }}>{a.confirmText}</p>}
@@ -848,9 +876,8 @@ ${facts}` : '',
           </label>
           <label style={{ cursor: 'default' }}>
             <span style={{ flex: 1 }}>Voice</span>
-            <select data-field="protron.voice" className="pt-select" value={prefs.voice} onChange={e => { stopAllVoices(); onPrefs({ ...prefs, voice: e.target.value === 'natural' ? 'natural' : e.target.value === 'commander' ? 'commander' : 'warm' }); }}>
-              <option value="warm">Warm — friendly and clear (AI voice)</option>
-              <option value="commander">Commander — deep robot (AI voice)</option>
+            <select data-field="protron.voice" className="pt-select" value={prefs.voice} onChange={e => { stopAllVoices(); onPrefs({ ...prefs, voice: e.target.value === 'natural' ? 'natural' : 'warm' }); }}>
+              <option value="warm">Protron — the same voice as live talk (AI voice)</option>
               <option value="natural">Device — this browser&rsquo;s own voice (free)</option>
             </select>
           </label>
@@ -1063,7 +1090,7 @@ function PointerDock() {
         <path d="M39 12 a8 8 0 0 1 8 8" /><path d="M39 6 a14 14 0 0 1 14 14" />
       </g>
       {/* the pointer */}
-      <path className="pt-dock-pointer" d="M24 8 L24 36 L31 29 L36 40 L40 38 L35 27 L45 27 Z" fill="#fff" stroke="#1e1b4b" strokeWidth="2" strokeLinejoin="round" />
+      <path className="pt-dock-pointer" d="M24 8 L24 36 L31 29 L36 40 L40 38 L35 27 L45 27 Z" fill="#d97757" stroke="#fff" strokeWidth="2" strokeLinejoin="round" />
     </svg>
   );
 }
