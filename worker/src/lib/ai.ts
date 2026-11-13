@@ -23,6 +23,10 @@ import { take as takeAllowance } from './allowanceStore';
 import { cleanJob, jobMayFinish, jobTouch } from './aiJobs';
 import { chainFor, guessTask, taskOf, type AiTask } from './aiTasks';
 import { adoptUsageEnv, capRefusal, freeFirst, recordAiUse } from './aiUsage';
+import { noteTool } from './aiToolHealth';
+
+/** The provider's reason for a failed attempt, for the owner's record (never shown to a customer). */
+const failureOf = (a: Attempt<unknown>): string => (a.ok ? '' : `${a.status}: ${a.error}`);
 
 const GOOGLE = 'https://generativelanguage.googleapis.com';
 /* `GEMINI_BASE` points every call at a stand-in, for tests only — set from
@@ -274,7 +278,17 @@ export async function askGeminiParts(
   const o = { ...opts, task: opts.task ?? (opts.module ? taskOf(opts.module) : guessTask(parts)) };
   /* On each of the install's keys in turn, while the failure is the key's
      (lib/aiPool.ts). */
-  return withFailover(apiKey, k => askGeminiOnce(k, parts, temperature, o), { exhausted: (): AiResult => ({ ok: false, text: '', error: AI_BUSY }) });
+  let down = '';
+  const r = await withFailover(apiKey, k => askGeminiOnce(k, parts, temperature, o), {
+    exhausted: (first): AiResult => { down = failureOf(first); return { ok: false, text: '', error: AI_BUSY }; },
+  });
+  /* The tool's health for the owner's monitor (lib/aiToolHealth.ts): a
+     success, or every key failing for its own reason — never a request
+     refused for its content. */
+  const tool = o.task === 'vision' ? 'vision' : 'text';
+  if (r.ok) await noteTool(tool, true);
+  else if (down) await noteTool(tool, false, down);
+  return r;
 }
 
 /** Gemma on the Gemini API (gemma-4-…-it): the big free reserve, with fewer switches (lib/aiTasks.ts). */
@@ -408,7 +422,13 @@ export async function askGeminiAboutFile(
   apiKey: string, file: FileForAi, prompt: string, temperature = 0.3, opts: AskOpts & { activeWaitMs?: number } = {},
 ): Promise<AiResult> {
   const o = { ...opts, task: opts.task ?? (opts.module ? taskOf(opts.module) : 'reason' as AiTask) };
-  return withFailover(apiKey, k => askAboutFileOnce(k, file, prompt, temperature, o), { exhausted: (): AiResult => ({ ok: false, text: '', error: AI_BUSY }) });
+  let down = '';
+  const r = await withFailover(apiKey, k => askAboutFileOnce(k, file, prompt, temperature, o), {
+    exhausted: (first): AiResult => { down = failureOf(first); return { ok: false, text: '', error: AI_BUSY }; },
+  });
+  if (r.ok) await noteTool('video_watch', true);
+  else if (down) await noteTool('video_watch', false, down);
+  return r;
 }
 
 async function askAboutFileOnce(
@@ -565,9 +585,16 @@ export function extractJson<T>(text: string): T | null {
  * a person reading the draft can check, and every draft stays a draft.
  */
 export async function researchWeb(apiKey: string, question: string, max = 5, who: { module?: string; accountId?: string } = {}): Promise<WebResult> {
-  return withFailover(apiKey, k => researchOnce(k, question, max, who), {
-    exhausted: (): WebResult => ({ ok: false, findings: [], sources: [], error: AI_BUSY, busy: true }),
+  let down = '';
+  const r = await withFailover(apiKey, k => researchOnce(k, question, max, who), {
+    exhausted: (first): WebResult => { down = failureOf(first); return { ok: false, findings: [], sources: [], error: AI_BUSY, busy: true }; },
   });
+  /* Unlike writing, a search that answered with nothing to cite is the
+     tool not working (the model did not ground), so it is counted against
+     it: three in a row is what the owner is mailed about (lib/aiHealth.ts). */
+  if (r.ok) await noteTool('search', true);
+  else await noteTool('search', false, down || r.error);
+  return r;
 }
 
 /**

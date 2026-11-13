@@ -190,6 +190,28 @@ vision and reasoning, whose free allowance is small) and OpenRouter families
 writing, or vision if it carries a picture. A new AI caller names its module;
 a new module goes in `MODULES`.
 
+**AI health** (2026-11-13, `AiHealthPanel.tsx` under the usage dashboard,
+owner-only `/api/ai-health.php`, `lib/aiHealth.ts`). `lib/aiTools.ts` is the
+one list of tools that spend an AI or Maps key — writing, web research
+(grounding / OpenRouter's web plugin), vision, watching recordings (Google
+only), live voice, spoken replies, Workers AI transcription, Places — with
+the key each needs, and `AI_CALLERS`, every file in `worker/src` that calls
+one and how it is gated. Per tool the monitor reports *ok* / *missing_key* /
+*failing* / *near_quota* from the install's keys only, `crm_ai_tool_health`
+(migration 0097: last ok, last error, failures in a row — written by
+`lib/aiToolHealth.ts` `noteTool` from `askGeminiParts`, `askGeminiAboutFile`
+and `researchWeb` only when every key failed for its own reason, or a search
+cited nothing), `crm_ai_usage` and today's free figures (`freeLimits`; paid
+keys left out). The 5-minute cron runs it last, gated hourly; alerts (no key,
+failing, 80%, 95%) go through `deliver` from support@ (else the system
+mailbox, said in the mail) to the owner **and a second copy** to the other
+address — deliver has no Cc — once a day per tool and condition
+(`crm_ai_alerts`); with no validated mailbox it records `not_sent` and leaves
+`sent_at` empty so the next hour retries. Errors are scrubbed of anything
+key-shaped before they are stored. **A new AI caller** gets an `AI_CALLERS`
+entry and `aiBudget()`, or `npm run test:ai-keys` fails (static scan, plus
+the monitor and the route on SQLite).
+
 ## Support — the help button, tickets and live help
 
 Protected Central answers its own customers with its own Customer Engagement

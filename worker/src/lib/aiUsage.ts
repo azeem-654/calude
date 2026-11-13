@@ -37,6 +37,8 @@ import { tierOf, type GeminiTier } from './aiTasks';
 let ENV: Env | null = null;
 /** Set from the first env this isolate sees (lib/ai.ts adoptAiBase), as the key-only callers have none. */
 export function adoptUsageEnv(env: Env): void { ENV = env; }
+/** That env, for the other key-only recorder (lib/aiToolHealth.ts). */
+export const usageEnv = (): Env | null => ENV;
 
 const fpCache = new Map<string, string>();
 async function keyFp(key: string): Promise<string> {
