@@ -63,21 +63,30 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { exampleLine, FILM_PEOPLE, FILM_SAY } from '../../services/filmNarration';
 import { narrator, unlockAudio } from '../../services/protron/voice';
 import {
-  AirVent, ArrowRight, AudioLines, Briefcase, CalendarCheck, Check, CircleDollarSign, Clock, GraduationCap, Hammer,
-  House, Keyboard, LayoutTemplate, Loader, Mail, Megaphone, MessageSquare, Mic, Pause, Play, Presentation, Receipt,
-  Scale, Search, Share2, ShieldCheck, ShoppingBag, SkipBack, SkipForward, Smile, Sparkles, SprayCan, Star, Users,
-  Volume2, VolumeX, Wrench, Zap,
+  AirVent, ArrowRight, AudioLines, BarChart3, Briefcase, CalendarCheck, Check, CircleDollarSign, Clock, FlaskConical,
+  GraduationCap, Hammer, House, Keyboard, LayoutDashboard, LayoutTemplate, Link2, Loader, Mail, Megaphone, MessageSquare,
+  Mic, Pause, Play, Plus, Presentation, Receipt, RefreshCw, Scale, Search, Send, Share2, ShieldCheck, ShoppingBag,
+  SkipBack, SkipForward, Smile, Sparkles, SprayCan, Square, SquareCheck, Star, Trophy, UserPlus, Users, Volume2,
+  VolumeX, Wrench, Zap,
 } from 'lucide-react';
 import ProtronAvatar from '../Protron/ProtronAvatar';
+import { LogoMark } from '../shared/Logo';
 import { motionReduced } from '../../services/motion';
 import './autopilotFilm.css';
 
 type Icon = typeof Mail;
-/** Where the pointer goes in a scene: from progress `at`, to the element marked `data-k={k}`; a click at `click`. */
-type Aim = { at: number; k: string; click?: number };
-type Scene = { ch: 0 | 1 | 2; ms: number; say: string; draw: (p: number) => ReactNode; aim?: Aim[] };
+/**
+ * Where the pointer goes in a scene: from progress `at`, to the element marked
+ * `data-k={k}`; a click at `click`; `say` is the label beside it, naming what
+ * it is doing, the way an AI agent's cursor does.
+ */
+type Aim = { at: number; k: string; click?: number; say?: string };
+type Scene = { ch: number; ms: number; say: string; draw: (p: number) => ReactNode; aim?: Aim[] };
 
-const CHAPTERS = ['What it does', 'Set it up by talking', 'Results'];
+/* The owner, 2026-11-13: the main story is Protron using the app itself —
+   opening modules, writing the prompt, building and launching the campaign —
+   then watching it, A/B testing, rewriting and reporting back. */
+const CHAPTERS = ['What it does', 'Set it up', 'Runs your app', 'Watches & improves', 'Results'];
 
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 /** Progress of a sub-span of a scene: 0 before `a`, 1 after `b`. */
@@ -199,7 +208,84 @@ function StepFrame({ n, p, children }: { n: number; p: number; children: ReactNo
   );
 }
 
-/* ── Part three: example businesses ── */
+/* ── Parts three and four: Protron in the app ──
+ *
+ * The app itself on screen — its modules down the side, as in the real
+ * sidebar — with Protron's pointer opening them and doing the work. One
+ * example business throughout (the electrician in Dallas set up in part
+ * two), and every frame says it is an example: the counts, rates and
+ * prospects in it are an illustration, never a customer's results. */
+
+type NavKey = 'dashboard' | 'autopilot' | 'contacts' | 'campaigns' | 'booking' | 'reports';
+const NAV: { k: NavKey; icon: Icon; label: string }[] = [
+  { k: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { k: 'autopilot', icon: Sparkles, label: 'AI Autopilot' },
+  { k: 'contacts', icon: Users, label: 'Contacts' },
+  { k: 'campaigns', icon: Mail, label: 'Email campaigns' },
+  { k: 'booking', icon: CalendarCheck, label: 'Booking pages' },
+  { k: 'reports', icon: BarChart3, label: 'Reports' },
+];
+
+/** The app's window: sidebar, a breadcrumb, the honesty label, and the module's view. `open` false shows a dimmed placeholder until the module is opened. */
+function AppFrame({ nav, crumb, open = true, children }: { nav: NavKey; crumb: string; open?: boolean; children: ReactNode }) {
+  return (
+    <div className="apf-app">
+      <div className="apf-app-top">
+        <LogoMark size={20} />
+        <b className="apf-app-brand">Protected Central</b>
+        <span className="apf-app-crumb">{crumb}</span>
+        <span className="apf-tag">Example scenario — an illustration, not a customer’s results</span>
+      </div>
+      <div className="apf-app-body">
+        <nav className="apf-app-nav">
+          {NAV.map(n => (
+            <span key={n.k} data-k={`nav-${n.k}`} className={`apf-app-nav-i${n.k === nav ? ' is-now' : ''}`}><n.icon size={15} /><i>{n.label}</i></span>
+          ))}
+        </nav>
+        <div className="apf-app-main">
+          <div className={`apf-app-skel${open ? '' : ' is-on'}`} aria-hidden="true"><i /><i /><i /><i /></div>
+          <div className={`apf-app-view${open ? ' is-on' : ''}`}>{children}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const PROSPECTS: [string, string][] = [
+  ['Homeowner — Plano, TX', 'House built 1994'],
+  ['Homeowner — Frisco, TX', 'Asked about an EV charger'],
+  ['Homeowner — Dallas, TX', 'House built 1988'],
+  ['Homeowner — Richardson, TX', 'Asked about a panel upgrade'],
+  ['Homeowner — Garland, TX', 'House built 1979'],
+  ['Homeowner — Plano, TX', 'Moved in last month'],
+];
+
+const STATS: { k: string; icon: Icon; label: string; n: number }[] = [
+  { k: 'st-sent', icon: Send, label: 'Sent', n: 240 },
+  { k: 'st-replies', icon: MessageSquare, label: 'Replies', n: 19 },
+  { k: 'st-booked', icon: CalendarCheck, label: 'Appointments booked', n: 6 },
+  { k: 'st-sales', icon: CircleDollarSign, label: 'Sales', n: 3 },
+];
+
+const REPORT: { icon: Icon; text: ReactNode }[] = [
+  { icon: RefreshCw, text: <>I <b>improved the follow-up email</b> — replies were slow, so I moved the offer to the first line and made it shorter.</> },
+  { icon: FlaskConical, text: <><b>Subject B won the A/B test</b>, so every new prospect now gets B.</> },
+  { icon: UserPlus, text: <>I <b>added 24 new prospects</b> to <i>Panel upgrades — Dallas</i> and <b>12</b> to <i>Spring tune-up — Plano</i>.</> },
+  { icon: CalendarCheck, text: <><b>3 appointments</b> were booked this week. They’re on your calendar.</> },
+];
+
+const FEED: [Icon, string][] = [
+  [MessageSquare, 'Reply from a homeowner in Plano — “Is Thursday free?”'],
+  [CalendarCheck, 'Appointment booked — Thu 10:00 am, Plano'],
+  [CircleDollarSign, 'Sale — panel upgrade · $2,400'],
+];
+
+const PLAN: [Icon, string][] = [[Search, 'Find homeowners'], [Mail, 'Email campaign'], [CalendarCheck, 'Booking page'], [RefreshCw, 'Follow-ups']];
+
+/** A count that rises with the scene — tabular figures in a fixed box, so the digits never shift the layout. */
+const upTo = (n: number, p: number) => Math.round(n * clamp(p));
+
+/* ── Part five: example businesses ── */
 
 type Example = { icon: Icon; who: string; where: string; said: string; did: [string, string, string]; notes: [string, string, string] };
 
@@ -370,7 +456,7 @@ function buildScenes(): Scene[] {
         ))}
       </div>
     );
-  }, [{ at: 0, k: 'way0' }, { at: 0.27, k: 'way1' }, { at: 0.58, k: 'way2', click: 0.75 }]);
+  }, [{ at: 0, k: 'way0', say: 'Type it' }, { at: 0.27, k: 'way1', say: 'Record it' }, { at: 0.58, k: 'way2', click: 0.75, say: 'Or talk live' }]);
 
   /* ── Part two: six baby steps ── */
   add(1, 5500, FILM_SAY.step1, p => (
@@ -385,7 +471,7 @@ function buildScenes(): Scene[] {
       </div>
       <div className={`apf-listen${on(p, 0.62)}`}><Wave live={p >= 0.62} bars={16} /> <b>Live</b> — Protron is listening</div>
     </StepFrame>
-  ), [{ at: 0.06, k: 'live', click: 0.52 }]);
+  ), [{ at: 0.06, k: 'live', click: 0.52, say: 'Pressing Talk live' }]);
   add(1, 6000, FILM_SAY.step2, p => (
     <StepFrame n={1} p={p}>
       <div className="apf-talkline">
@@ -428,7 +514,7 @@ function buildScenes(): Scene[] {
         </div>
       </div>
     </StepFrame>
-  ), [{ at: 0.7, k: 'build', click: 0.86 }]);
+  ), [{ at: 0.7, k: 'build', click: 0.86, say: 'Building it' }]);
   add(1, 7000, FILM_SAY.step5, p => (
     <StepFrame n={4} p={p}>
       <div className="apf-flow-wrap">
@@ -449,7 +535,7 @@ function buildScenes(): Scene[] {
         </div>
       </div>
     </StepFrame>
-  ), [{ at: 0.64, k: 'n2', click: 0.78 }]);
+  ), [{ at: 0.64, k: 'n2', click: 0.78, say: 'Opening the email' }]);
   add(1, 7500, FILM_SAY.step6, p => (
     <StepFrame n={5} p={p}>
       <div className="apf-guards">
@@ -468,11 +554,216 @@ function buildScenes(): Scene[] {
         </div>
       </div>
     </StepFrame>
-  ), [{ at: 0, k: 'g0', click: 0.11 }, { at: 0.13, k: 'g1', click: 0.25 }, { at: 0.27, k: 'g2', click: 0.39 }, { at: 0.44, k: 'power', click: 0.6 }]);
+  ), [{ at: 0, k: 'g0', click: 0.11, say: 'Asking you first' }, { at: 0.13, k: 'g1', click: 0.25, say: 'Asking you first' }, { at: 0.27, k: 'g2', click: 0.39, say: 'Telling you about money' }, { at: 0.44, k: 'power', click: 0.6, say: 'Switching it on' }]);
 
-  /* ── Part three: example businesses ── */
+  /* ── Part three: Protron runs the app ── */
+  add(2, 9500, FILM_SAY.run1, p => (
+    <AppFrame nav={p >= 0.1 ? 'autopilot' : 'dashboard'} crumb={p >= 0.1 ? 'AI Autopilot' : 'Dashboard'} open={p >= 0.1}>
+      <div className="apf-ap">
+        <div className="apf-ap-box" data-k="ap-box">
+          <span className={`apf-ap-ph${p >= 0.3 ? '' : ' is-on'}`}>Describe a result — e.g. find 20 dentists in Austin every day and email them about our offer…</span>
+          <p><Typed text="Find homeowners in Dallas with older electrical panels. Email them a free safety inspection offer, follow up twice, and book visits on my booking page." p={span(p, 0.3, 0.68)} /></p>
+          <div className="apf-ap-bar">
+            <span className="apf-btn is-rec"><Mic size={13} /> Record</span>
+            <span className="apf-btn is-live"><AudioLines size={13} /> Talk live</span>
+            <span className={`apf-btn is-go${on(p, 0.84)}`} data-k="ap-build">
+              <span className="apf-go-a"><Sparkles size={13} /> Build it</span>
+              <span className="apf-go-b"><Loader size={13} className="apf-spin" /> Building…</span>
+            </span>
+          </div>
+        </div>
+        <div className="apf-ap-plan">
+          {PLAN.map(([I, l], i) => <span key={l} className={`apf-ap-step${on(p, 0.87 + i * 0.03)}`}><I size={14} /> {l} <Check size={13} className="apf-ap-ok" /></span>)}
+        </div>
+      </div>
+    </AppFrame>
+  ), [
+    { at: 0, k: 'nav-autopilot', click: 0.09, say: 'Opening AI Autopilot' },
+    { at: 0.17, k: 'ap-box', click: 0.26, say: 'Writing the prompt' },
+    { at: 0.72, k: 'ap-build', click: 0.83, say: 'Building the plan' },
+  ]);
+  add(2, 9000, FILM_SAY.run2, p => (
+    <AppFrame nav={p >= 0.1 ? 'contacts' : 'autopilot'} crumb={p >= 0.1 ? 'Contacts · New prospects' : 'AI Autopilot'} open={p >= 0.1}>
+      <div className="apf-ct">
+        <div className="apf-ct-head">
+          <span className={`apf-ct-check${on(p, 0.6)}`} data-k="ct-all">{p >= 0.6 ? <SquareCheck size={16} /> : <Square size={16} />}</span>
+          <b>New prospects</b>
+          <span className="apf-ct-src"><Sparkles size={12} /> Found by AI Autopilot</span>
+          <span className="apf-btn is-go apf-ct-add" data-k="ct-add"><span className="apf-go-a"><Plus size={13} /> Add to campaign</span></span>
+        </div>
+        <div className="apf-ct-rows">
+          {PROSPECTS.map(([who, why], i) => (
+            <div key={who + why} className={`apf-ct-row${on(p, 0.16 + i * 0.06)}${p >= 0.6 ? ' is-picked' : ''}`}>
+              <span className="apf-ct-box">{p >= 0.6 ? <SquareCheck size={15} /> : <Square size={15} />}</span>
+              <b>{who}</b>
+              <span>{why}</span>
+              <span className="apf-ct-tag">Panel upgrade</span>
+            </div>
+          ))}
+        </div>
+        <div className={`apf-toast${on(p, 0.8)}`}><Check size={14} strokeWidth={3} /> 6 prospects added to <b>Panel upgrades — Dallas</b></div>
+      </div>
+    </AppFrame>
+  ), [
+    { at: 0, k: 'nav-contacts', click: 0.09, say: 'Opening Contacts' },
+    { at: 0.5, k: 'ct-all', click: 0.59, say: 'Choosing new prospects' },
+    { at: 0.66, k: 'ct-add', click: 0.78, say: 'Adding them to the campaign' },
+  ]);
+  add(2, 11500, FILM_SAY.run3, p => (
+    <AppFrame nav={p >= 0.07 ? 'campaigns' : 'contacts'} crumb={p >= 0.07 ? 'Email campaigns · New campaign' : 'Contacts'} open={p >= 0.07}>
+      <div className="apf-cp">
+        <div className="apf-cp-head">
+          <b>Panel upgrades — Dallas</b>
+          <span className={`apf-cp-status${on(p, 0.88)}`}>
+            <span className="apf-cp-st-a">Draft</span>
+            <span className="apf-cp-st-b"><i /> Live · sending from your mailbox</span>
+          </span>
+          <span className="apf-btn apf-cp-new" data-k="cp-new"><Plus size={13} /> New campaign</span>
+        </div>
+        <div className={`apf-cp-form${on(p, 0.17)}`}>
+          <div className="apf-cp-field" data-k="cp-subj"><span>Subject</span><b><Typed text="Is your electrical panel older than 25 years?" p={span(p, 0.25, 0.36)} /></b></div>
+          <div className="apf-cp-field is-body" data-k="cp-body"><span>Email</span>
+            <p><Typed text="Hi there — older panels can struggle with today’s appliances and EV chargers. We’re offering a free safety inspection with any panel upgrade in Dallas this month. Reply here or pick a time on our booking page." p={span(p, 0.43, 0.66)} /></p>
+          </div>
+          <div className="apf-cp-foot">
+            <span className="apf-cp-to"><Users size={13} /> To: 6 new prospects</span>
+            <span className={`apf-cp-when${on(p, 0.74)}`} data-k="cp-when"><Clock size={13} /> <span className="apf-cp-w-a">Choose a time</span><span className="apf-cp-w-b">Tue 9:00 am</span></span>
+            <span className={`apf-btn is-go${on(p, 0.88)}`} data-k="cp-launch">
+              <span className="apf-go-a"><Send size={13} /> Launch</span>
+              <span className="apf-go-b"><Check size={13} strokeWidth={3} /> Launched</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </AppFrame>
+  ), [
+    { at: 0, k: 'nav-campaigns', click: 0.06, say: 'Opening Email campaigns' },
+    { at: 0.09, k: 'cp-new', click: 0.15, say: 'Starting a campaign' },
+    { at: 0.19, k: 'cp-subj', click: 0.24, say: 'Writing the subject' },
+    { at: 0.37, k: 'cp-body', click: 0.42, say: 'Writing the email' },
+    { at: 0.67, k: 'cp-when', click: 0.73, say: 'Scheduling it' },
+    { at: 0.78, k: 'cp-launch', click: 0.87, say: 'Launching' },
+  ]);
+  add(2, 9000, FILM_SAY.run4, p => (
+    <AppFrame nav={p >= 0.09 ? 'booking' : 'campaigns'} crumb={p >= 0.09 ? 'Booking pages' : 'Email campaigns'} open={p >= 0.09}>
+      <div className="apf-bk">
+        <div className="apf-bk-card">
+          <span className="apf-bk-ic"><CalendarCheck size={18} /></span>
+          <span className="apf-bk-tx"><b>Free safety inspection</b><span>30 minutes · weekdays 8 am – 5 pm</span></span>
+          <span className={`apf-toggle${on(p, 0.33)}`} data-k="bk-on" aria-hidden="true"><i /></span>
+        </div>
+        <div className={`apf-bk-mail${on(p, 0.42)}`}>
+          <span className="apf-bk-mh"><Mail size={14} /> Panel upgrades — Dallas · the email</span>
+          <span className="apf-bk-body">… Reply here or pick a time on our booking page.</span>
+          <span className="apf-bk-row">
+            <span className="apf-btn apf-bk-link" data-k="bk-link"><Link2 size={13} /> Insert booking link</span>
+            <span className={`apf-bk-cta${on(p, 0.64)}`}><CalendarCheck size={14} /> Book your free inspection</span>
+          </span>
+        </div>
+      </div>
+    </AppFrame>
+  ), [
+    { at: 0, k: 'nav-booking', click: 0.08, say: 'Opening Booking pages' },
+    { at: 0.22, k: 'bk-on', click: 0.32, say: 'Turning the page on' },
+    { at: 0.5, k: 'bk-link', click: 0.62, say: 'Adding the link to the email' },
+  ]);
+
+  /* ── Part four: watching and improving ── */
+  add(3, 10000, FILM_SAY.watch1, p => (
+    <AppFrame nav="campaigns" crumb="Email campaigns · Running">
+      <div className="apf-wt">
+        <div className={`apf-wt-row${p >= 0.14 ? ' is-picked' : ''}`} data-k="wt-row">
+          <span className="apf-wt-live"><i /> Live</span>
+          <b>Panel upgrades — Dallas</b>
+          <span>Started 9 days ago</span>
+        </div>
+        <div className={`apf-wt-panel${on(p, 0.16)}`}>
+          <div className="apf-wt-stats">
+            {STATS.map(st => (
+              <div key={st.k} className="apf-wt-stat" data-k={st.k}>
+                <span className="apf-wt-ic"><st.icon size={15} /></span>
+                <b>{upTo(st.n, span(p, 0.2, 0.6))}</b>
+                <span>{st.label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="apf-wt-feed">
+            {FEED.map(([I, t], i) => <span key={t} className={`apf-wt-ev${on(p, 0.4 + i * 0.14)}`}><I size={14} /> {t}</span>)}
+          </div>
+        </div>
+      </div>
+    </AppFrame>
+  ), [
+    { at: 0.02, k: 'wt-row', click: 0.13, say: 'Checking running campaigns' },
+    { at: 0.62, k: 'st-replies', say: 'Reading the replies' },
+    { at: 0.8, k: 'st-booked', say: 'Counting appointments' },
+  ]);
+  add(3, 10000, FILM_SAY.watch2, p => {
+    const a = 4.1 * span(p, 0.12, 0.5), b = 7.8 * span(p, 0.12, 0.55);
+    return (
+      <AppFrame nav="campaigns" crumb="Email campaigns · A/B test">
+        <div className="apf-ab">
+          <div className="apf-ab-h"><FlaskConical size={16} /> <b>A/B test · email 1 subject</b><span>Half of new prospects get each version</span></div>
+          {[
+            { v: 'A', subj: 'Your free safety inspection', rate: a },
+            { v: 'B', subj: 'Is your electrical panel older than 25 years?', rate: b },
+          ].map(r => (
+            <div key={r.v} className={`apf-ab-row${r.v === 'B' && p >= 0.58 ? ' is-win' : ''}`}>
+              <span className="apf-ab-v">{r.v}</span>
+              <span className="apf-ab-subj">{r.subj}</span>
+              <span className="apf-ab-bar"><i style={{ transform: `scaleX(${(r.rate / 10).toFixed(4)})` }} /></span>
+              <span className="apf-ab-rate" data-k={r.v === 'B' ? 'ab-rate-b' : undefined}>{r.rate.toFixed(1)}% replied</span>
+              <span className={`apf-ab-win${r.v === 'B' ? on(p, 0.58) : ''}`}><Trophy size={13} /> Winning</span>
+            </div>
+          ))}
+          <div className="apf-ab-foot">
+            <span className={`apf-ab-done${on(p, 0.78)}`}><Check size={14} strokeWidth={3} /> B is now the subject for every new prospect</span>
+            <span className={`apf-btn is-go${on(p, 0.77)}`} data-k="ab-use"><span className="apf-go-a">Use B for everyone</span><span className="apf-go-b"><Check size={13} strokeWidth={3} /> Done</span></span>
+          </div>
+        </div>
+      </AppFrame>
+    );
+  }, [
+    { at: 0.15, k: 'ab-rate-b', say: 'Comparing A and B' },
+    { at: 0.6, k: 'ab-use', click: 0.76, say: 'Sending B to everyone new' },
+  ]);
+  add(3, 10500, FILM_SAY.watch3, p => (
+    <AppFrame nav="campaigns" crumb="Email campaigns · Email 2 · Follow-up">
+      <div className="apf-rw">
+        <div className="apf-rw-note"><BarChart3 size={14} /> Email 2 is getting fewer replies than email 1</div>
+        <div className="apf-rw-card">
+          <div className="apf-rw-h"><b>Follow-up · after 2 days</b><span className={`apf-btn${on(p, 0.2)}`} data-k="rw-edit"><Sparkles size={13} /> Rewrite with AI</span></div>
+          <p className={`apf-rw-old${on(p, 0.22)}`}>Just checking you saw our last email about panel upgrades. We have some availability this month if you are interested in learning more.</p>
+          <p className="apf-rw-new"><Typed text="Free safety inspection this week — reply with a day that suits you, or book a time in one click. It takes 30 minutes and there is no obligation." p={span(p, 0.3, 0.62)} /></p>
+          <div className="apf-rw-foot">
+            <span className={`apf-rw-live${on(p, 0.8)}`}><Check size={14} strokeWidth={3} /> Relaunched — the new version is live</span>
+            <span className={`apf-btn is-go${on(p, 0.8)}`} data-k="rw-launch"><span className="apf-go-a"><RefreshCw size={13} /> Relaunch</span><span className="apf-go-b"><Check size={13} strokeWidth={3} /> Live</span></span>
+          </div>
+        </div>
+      </div>
+    </AppFrame>
+  ), [
+    { at: 0.08, k: 'rw-edit', click: 0.2, say: 'Rewriting the follow-up' },
+    { at: 0.66, k: 'rw-launch', click: 0.79, say: 'Relaunching' },
+  ]);
+  add(3, 11000, FILM_SAY.watch4, p => (
+    <AppFrame nav="dashboard" crumb="Dashboard">
+      <div className="apf-rp">
+        <div className="apf-rp-h">
+          <ProtronAvatar size={34} alive={false} />
+          <span><b>Protron · this week’s report</b><span>Panel upgrades — Dallas and Spring tune-up — Plano</span></span>
+        </div>
+        {REPORT.map((r, i) => (
+          <div key={i} className={`apf-rp-i${on(p, 0.1 + i * 0.17)}`}><span className="apf-rp-ic"><r.icon size={15} /></span><span>{r.text}</span></div>
+        ))}
+        <div className="apf-rp-foot"><span className="apf-btn">See the details</span><span className="apf-btn is-go" data-k="rp-ok"><span className="apf-go-a">Looks good</span></span></div>
+      </div>
+    </AppFrame>
+  ), [{ at: 0.82, k: 'rp-ok', say: 'Waiting for your OK' }]);
+
+  /* ── Part five: example businesses ── */
   EXAMPLES.forEach((e, i) => {
-    add(2, 4200, exampleLine(i),
+    add(4, 4200, exampleLine(i),
       p => <ExampleScene e={e} i={i} p={p} />);
   });
 
@@ -508,7 +799,7 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
   const scenes = useMemo(() => {
     const list = buildScenes();
     /* The last scene is where the film hands over to the real buttons. */
-    list.push({ ch: 2, ms: 7000, say: FILM_SAY.end, draw: () => (
+    list.push({ ch: 4, ms: 7000, say: FILM_SAY.end, draw: () => (
       <div className="apf-end">
         <span className="apf-kicker">Your turn</span>
         <h3>Type it. Record it. Or just talk.</h3>
@@ -519,14 +810,14 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
           <button type="button" className="apf-end-btn" onClick={onType}><Keyboard size={16} /> Type it</button>
         </div>
       </div>
-    ), aim: [{ at: 0.2, k: 'end-live' }] });
+    ), aim: [{ at: 0.2, k: 'end-live', say: 'Your turn' }] });
     return list;
   }, [onTalk, onRecord, onType]);
 
   const starts = useMemo(() => { let a = 0; return scenes.map(s => { const at = a; a += s.ms; return at; }); }, [scenes]);
   const total = starts[starts.length - 1] + scenes[scenes.length - 1].ms;
   const chapterAt = (c: number) => starts[scenes.findIndex(s => s.ch === c)];
-  const chapterEnd = (c: number) => (c < 2 ? chapterAt(c + 1) : total);
+  const chapterEnd = (c: number) => (c < CHAPTERS.length - 1 ? chapterAt(c + 1) : total);
 
   const [t, setT] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -629,6 +920,15 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
     const clicked = new Set<string>();
     const put = (x: number, y: number) => { pos = { x, y }; ptr.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`; };
     const show = (v: boolean) => { if (v !== shown) { shown = v; ptr.style.opacity = v ? '1' : '0'; } };
+    const label = ptr.querySelector<HTMLElement>('.apf-ptr-say');
+    /* The label names what it is doing; near the right or bottom edge it flips to the other side so it never leaves the frame. */
+    const tell = (text: string | undefined, x: number, y: number) => {
+      if (!label) return;
+      if (text) label.textContent = text;
+      label.classList.toggle('is-on', !!text);
+      label.classList.toggle('is-left', x > cv.offsetWidth * 0.66);
+      label.classList.toggle('is-up', y > cv.offsetHeight * 0.76);
+    };
     let raf = 0;
     const frame = (time: number) => {
       raf = requestAnimationFrame(frame);
@@ -641,12 +941,14 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
       const a = aim[ai];
       const key = `${si}:${ai}`;
       const el = layer.current?.querySelector<HTMLElement>(`[data-k="${a.k}"]`);
-      if (!el) return;
+      /* Not drawn at this size (a part a phone's layout leaves out): no trip, and no click on nothing. */
+      if (!el || !el.offsetParent) return;
       if (goal !== key) {
         goal = key;
         const b = boxIn(el, cv);
         if (!b.ok || (!b.w && !b.h)) return;
         const x1 = b.x + Math.min(b.w * 0.5, 110), y1 = b.y + b.h * 0.58;
+        tell(a.say, x1, y1);
         /* The first time, it comes in from low on the right, already moving — never out of nowhere onto the target. */
         if (!pos) put(cv.offsetWidth * 0.78, cv.offsetHeight * 0.86);
         const { x: x0, y: y0 } = pos ?? { x: x1, y: y1 };
@@ -733,7 +1035,7 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
       tabIndex={0}
     >
       <div className="apf-head">
-        <span className="apf-head-ch">{scene.ch + 1}/3 · {CHAPTERS[scene.ch]}</span>
+        <span className="apf-head-ch">{scene.ch + 1}/{CHAPTERS.length} · {CHAPTERS[scene.ch]}</span>
         <span className="apf-head-title">See AI Autopilot work</span>
       </div>
       <div className="apf-screen" ref={screen}>
@@ -745,7 +1047,8 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
           <span className="apf-ring" ref={ring} aria-hidden="true" />
           <div className="apf-ripple-at" ref={rippleAt} aria-hidden="true"><span className="apf-ripple" ref={ripple} /></div>
           <div className="apf-ptr" ref={pointer} aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="26" height="26"><path d="M4 2.5 L4 19.5 L8.6 15.4 L11.5 21.8 L14.6 20.4 L11.8 14.2 L18 14.2 Z" fill="#0f1115" stroke="#fff" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+            <svg viewBox="0 0 24 24" width="26" height="26"><path d="M4 2.5 L4 19.5 L8.6 15.4 L11.5 21.8 L14.6 20.4 L11.8 14.2 L18 14.2 Z" fill="#D97757" stroke="#fff" strokeWidth="1.7" strokeLinejoin="round" /></svg>
+            <span className="apf-ptr-say" />
           </div>
         </div>
       </div>
