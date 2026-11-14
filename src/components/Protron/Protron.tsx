@@ -98,6 +98,7 @@ function markAuto(): void {
    hostname does not change under a running page. */
 const LIVE_TALK = featureReady('protron-live');
 const HANDS = featureReady('protron-hands');
+const ACTS = featureReady('protron-acts');
 const SPEAKS_FIRST = featureReady('protron-speaks-first');
 
 export default function Protron() {
@@ -106,6 +107,7 @@ export default function Protron() {
     isClient: session?.user.role === 'client',
     isOwner: !!session && session.user.accountId == null && session.user.role === 'agency',
     hands: HANDS,
+    acts: ACTS,
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the two fields are what decide it; the session object is new on every read
   }), [session?.user.role, session?.user.accountId]);
   const loc = useLocation();
@@ -252,7 +254,7 @@ export default function Protron() {
   return (
     <>
       {!open && (
-        <div className="pt-launch" data-aside={aside ? '1' : '0'} style={launcherStyle}>
+        <div className="pt-launch" data-no-shot data-aside={aside ? '1' : '0'} style={launcherStyle}>
           <button
             type="button"
             className="pt-orb"

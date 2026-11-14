@@ -36,16 +36,25 @@ import {
 import NewVideoProject from './NewVideoProject';
 import { GoalGrid, GoalOptions, defaultResult, type GoalKey, type WizardResult } from './WelcomeWizard';
 import VideoEditor from './VideoEditor';
-import { MediaLibrary, ExportsList, ReadyToPublish } from './VideoLibrary';
+import { MediaLibrary, ExportsList, ReadyToPublish, PicturesOnly } from './VideoLibrary';
 import BrandKit from './BrandKit';
 import StudioHome from './StudioHome';
+import { featureReady } from '../../services/features';
 import './videoStudio.css';
+
+/* The incubator (docs/INCUBATOR.md, `video-studio`): editing and Shorts are
+   on the testing site only — the owner found problems to fix before
+   customers meet them (2026-11-14). On live this page is the Media Library
+   alone, because Graphics Designer saves pictures there and other screens
+   link to it; every other address under /video-studio (the editor, a new
+   project, Quick Shorts, Repurpose) says it is coming soon. */
+const EDITING = featureReady('video-studio');
 
 const QuickShorts = lazy(() => import('../VideoShorts/VideoShorts'));
 const Repurposing = lazy(() => import('../SocialAutomation/SocialAutomation'));
 
 type Tab = 'projects' | 'quick-shorts' | 'repurpose' | 'media' | 'brand' | 'exports' | 'publish' | 'templates';
-const TABS: { key: Tab; label: string; icon: typeof Film }[] = [
+const ALL_TABS: { key: Tab; label: string; icon: typeof Film }[] = [
   { key: 'projects', label: 'Projects', icon: Film },
   { key: 'quick-shorts', label: 'Quick Shorts', icon: Link2 },
   { key: 'repurpose', label: 'Repurpose', icon: Rocket },
@@ -55,6 +64,19 @@ const TABS: { key: Tab; label: string; icon: typeof Film }[] = [
   { key: 'publish', label: 'Ready to Publish', icon: CalendarDays },
   { key: 'templates', label: 'Templates', icon: LayoutTemplate },
 ];
+const TABS = EDITING ? ALL_TABS : ALL_TABS.filter(t => t.key === 'media');
+
+/** What any other address under /video-studio shows on live. */
+function ComingSoon() {
+  const navigate = useNavigate();
+  return (
+    <div className="vs-note" data-testid="vs-coming-soon" style={{ marginBottom: 14 }}>
+      <Clapperboard size={16} />
+      <span><b>Video editing and AI Shorts are coming soon.</b> They are being tested and are not open yet. Your Media Library is here in the meantime.{' '}
+        <button type="button" className="vs-btn ghost sm" onClick={() => navigate('/video-studio?tab=media', { replace: true })}>Open the Media Library</button></span>
+    </div>
+  );
+}
 
 export function CapabilityPanel({ caps, usage, onClose }: { caps: Capability[]; usage: Usage | null; onClose: () => void }) {
   const word: Record<string, string> = { working: 'Working', needs_configuration: 'Needs configuration', unavailable: 'Unavailable', planned: 'Planned' };
@@ -105,7 +127,8 @@ export default function VideoStudio() {
   const { id } = useParams();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<Tab>((params.get('tab') as Tab) || 'projects');
+  const asked = params.get('tab') as Tab | null;
+  const [tab, setTab] = useState<Tab>(EDITING ? asked || 'projects' : 'media');
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [error, setError] = useState('');
   const [caps, setCaps] = useState<Capability[]>([]);
@@ -114,11 +137,13 @@ export default function VideoStudio() {
   const [template, setTemplate] = useState<Template | null>(null);
   const [plan, setPlan] = useState<WizardResult | null>(null);
   const [goal, setGoal] = useState<GoalKey | null>(null);
-  const creating = params.get('new') === '1';
+  const creating = EDITING && params.get('new') === '1';
+  /* Somebody followed a link to a part that is not open on live. */
+  const held = !EDITING && (!!id || params.get('new') === '1' || (!!asked && asked !== 'media'));
   useEffect(() => { const t = params.get('tab') as Tab | null; if (t && TABS.some(x => x.key === t)) setTab(t); }, [params]);
 
   useEffect(() => {
-    if (id) return;
+    if (id || !EDITING) return;
     let alive = true;
     void listVideoProjects().then(r => { if (!alive) return; if (r.success) setProjects(r.projects ?? []); else setError(r.error ?? 'Could not load projects.'); });
     void videoCapabilities().then(r => { if (alive && r.success) { setCaps(r.capabilities); setUsage(r.usage); } });
@@ -128,7 +153,7 @@ export default function VideoStudio() {
 
   const missing = useMemo(() => caps.filter(c => ['storage', 'engine', 'transcription'].includes(c.key) && c.status !== 'working'), [caps]);
 
-  if (id) return <div className="vs vs-editing"><VideoEditor id={id} /></div>;
+  if (id && EDITING) return <div className="vs vs-editing"><VideoEditor id={id} /></div>;
 
   const go = (t: Tab) => { setTab(t); setPlan(null); setGoal(null); setTemplate(null); setParams(t === 'projects' ? {} : { tab: t }, { replace: true }); };
   const startNew = (t: Template | null = null) => { setTemplate(t); setPlan(null); setGoal(null); setParams({ new: '1', ...(params.get('project') ? { project: params.get('project')! } : {}) }); };
@@ -136,7 +161,7 @@ export default function VideoStudio() {
   /* A goal goes straight to the upload screen with its defaults. */
   const pickGoal = (g: GoalKey) => { setGoal(g); setPlan(defaultResult(g)); setTemplate(null); setParams({ new: '1', ...(params.get('project') ? { project: params.get('project')! } : {}) }); };
   const transcription = caps.find(c => c.key === 'transcription') ?? null;
-  const embedded = !creating && (tab === 'quick-shorts' || tab === 'repurpose');
+  const embedded = EDITING && !creating && (tab === 'quick-shorts' || tab === 'repurpose');
 
   const fallback = <p style={{ padding: 30, display: 'flex', gap: 8, alignItems: 'center', color: '#6b7280' }}><Loader size={16} className="spin" /> Opening…</p>;
   return (
@@ -145,13 +170,16 @@ export default function VideoStudio() {
       <div className="vs-head">
         <span className="vs-mark"><Clapperboard size={22} /></span>
         <div className="vs-grow">
-          <h1>AI Video Studio</h1>
-          <p>Upload a recording: get it cleaned, its noise reduced, music under it, distinct Shorts, captions, thumbnails, posts and a quiz — saved to your content and your AI Autopilot business workspaces.</p>
+          <h1>{EDITING ? 'AI Video Studio' : 'Media Library'}</h1>
+          <p>{EDITING
+            ? 'Upload a recording: get it cleaned, its noise reduced, music under it, distinct Shorts, captions, thumbnails, posts and a quiz — saved to your content and your AI Autopilot business workspaces.'
+            : 'Your pictures, kept for your posts, pages and emails.'}</p>
         </div>
-        <button type="button" className="vs-btn" onClick={() => setShowCaps(true)}><ShieldCheck size={15} /> What works</button>
-        {!creating && <button type="button" className="vs-btn ai" onClick={() => startNew()} data-testid="vs-new"><Plus size={16} /> New video project</button>}
+        {EDITING && <button type="button" className="vs-btn" onClick={() => setShowCaps(true)}><ShieldCheck size={15} /> What works</button>}
+        {EDITING && !creating && <button type="button" className="vs-btn ai" onClick={() => startNew()} data-testid="vs-new"><Plus size={16} /> New video project</button>}
       </div>
 
+      {held && <ComingSoon />}
       {missing.length > 0 && (
         <div className="vs-note warn" style={{ marginBottom: 14 }} data-testid="vs-missing">
           <ShieldCheck size={16} />
@@ -196,7 +224,8 @@ export default function VideoStudio() {
           )}
           {tab === 'quick-shorts' && <div className="vs-note" data-testid="vs-quick-note"><Link2 size={15} /> <span><b>Quick Shorts</b> makes a Short from a topic, a link or a script — no recording needed. To cut Shorts from a recording you made, start a <button type="button" className="vs-btn ghost sm" onClick={() => startNew()}>new video project</button>.</span></div>}
           {tab === 'repurpose' && <div className="vs-note" data-testid="vs-repurpose-note"><Rocket size={15} /> <span><b>Repurpose</b> turns one video idea into a campaign across channels. To write posts, an article and emails from a recording, open its project and use <b>Reuse</b>, or choose “Repurpose into posts, emails and a blog” when you start one.</span></div>}
-          {tab === 'media' && <MediaLibrary record={params.get('record') === '1'} onRecord={o => setParams(o ? { tab: 'media', record: '1' } : { tab: 'media' }, { replace: true })} />}
+          {tab === 'media' && !EDITING && <PicturesOnly />}
+          {tab === 'media' && EDITING && <MediaLibrary record={params.get('record') === '1'} onRecord={o => setParams(o ? { tab: 'media', record: '1' } : { tab: 'media' }, { replace: true })} />}
           {tab === 'brand' && <BrandKit />}
           {tab === 'exports' && <ExportsList />}
           {tab === 'publish' && <ReadyToPublish />}

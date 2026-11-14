@@ -40,6 +40,12 @@ import type { WorkflowNode } from './autopilot';
 import { TEMPLATES } from '../components/Autopilot/workflowTemplates';
 import { LAYOUTS, THEMES, DEFAULT_LAYOUT, DEFAULT_THEME } from './designOptions';
 import { splitTradePlace } from './aiProspecting';
+import { featureReady } from './features';
+
+/* The incubator (docs/INCUBATOR.md): AI Video Studio's editing and Shorts are
+   on the testing site only, so on live the Video Content solution offers just
+   the YouTube channel → articles and posts, which needs neither. */
+const VIDEO_STUDIO = featureReady('video-studio');
 
 /* ── Vocabulary ────────────────────────────────────────────────────────────── */
 
@@ -374,12 +380,14 @@ const Q: Record<string, Question> = {
   videoSource: {
     id: 'videoSource', group: 'deliverable', type: 'single', need: 'required',
     prompt: 'Where do the videos come from?',
-    options: [
+    options: VIDEO_STUDIO ? [
       { value: 'uploads', label: 'Recordings I upload', hint: 'Podcasts, webinars, trainings — cleaned and cut into Shorts in AI Video Studio' },
       { value: 'youtube', label: 'My YouTube channel', hint: 'New uploads become posts and articles' },
       { value: 'scripts', label: 'I need scripts to film', hint: 'Short-video scripts, written for you' },
+    ] : [
+      { value: 'youtube', label: 'My YouTube channel', hint: 'New uploads become posts and articles' },
     ],
-    aiDecides: 'uploads',
+    aiDecides: VIDEO_STUDIO ? 'uploads' : 'youtube',
   },
   videoShorts: {
     id: 'videoShorts', group: 'deliverable', type: 'single', need: 'optional',
@@ -1691,14 +1699,15 @@ export const SOLUTIONS: Solution[] = [
   {
     key: 'video-content',
     label: 'Video Content',
-    blurb: 'Short-video scripts to film, or your videos turned into posts and articles.',
+    blurb: VIDEO_STUDIO ? 'Short-video scripts to film, or your videos turned into posts and articles.' : 'Your YouTube videos turned into posts and articles.',
     example: 'Turn every new YouTube video into a blog post and social posts.',
     keywords: [['video', 3.5], ['videos', 3.5], ['youtube', 4], ['shorts', 3.5], ['reels', 3.5], ['tiktok', 2.5], ['script', 2.5], ['scripts', 2.5],
       ['podcast', 3.5], ['webinar', 3.5], ['recording', 3], ['recordings', 3], ['captions', 2], ['subtitles', 2], ['thumbnails', 1.5]],
     channels: ['video', 'blog', 'social'],
     questions: ['business', 'videoSource', 'videoShorts', 'videoLong', 'channelId', 'frequency', 'platforms'],
     build: a => {
-      const src = one(a.videoSource, 'uploads');
+      /* An answer given on the testing site (or before the incubator) still builds the YouTube path on live. */
+      const src = VIDEO_STUDIO ? one(a.videoSource, 'uploads') : 'youtube';
       if (src === 'uploads') {
         /* Each recording uploaded into the project goes through AI Video
            Studio with these settings (routes/video.ts reads them off the

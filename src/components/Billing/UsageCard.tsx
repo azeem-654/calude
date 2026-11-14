@@ -16,6 +16,7 @@ import { Link } from 'react-router-dom';
 import {
   METERS, fetchAllowances, fill, formatLimit, isUnlimited, meterOf, onAllowances, type AllowanceView, type MeterId, type MeterReading,
 } from '../../services/allowances';
+import { featureReady } from '../../services/features';
 
 const INK = '#17191c';
 const MUTED = '#6b7280';
@@ -67,7 +68,8 @@ function Row({ r }: { r: MeterReading }) {
 export default function UsageCard() {
   const v = useAllowances();
   const resets = v?.resetsAt ? new Date(v.resetsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' }) : '';
-  const groups = [...new Set(METERS.map(m => m.group))];
+  /* Video is in the incubator (`video-studio`): its meters are shown only where it is switched on. */
+  const groups = [...new Set(METERS.map(m => m.group))].filter(g => g !== 'Video' || featureReady('video-studio'));
 
   return (
     <section aria-labelledby="usage-h" data-usage-card style={{ background: '#fff', borderRadius: 18, padding: 'clamp(18px, 4vw, 28px)', marginBottom: 18 }}>

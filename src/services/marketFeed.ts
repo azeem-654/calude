@@ -19,6 +19,7 @@
 import type { Appointment, Campaign, Contact, Conversation, Deal, Funnel, Pipeline, Review, VideoProject, Website } from '../types';
 import type { DesignPost } from '../components/SocialCreator/types';
 import { loadEmails } from './contactEmail';
+import { featureReady } from './features';
 
 /* ── Shapes ── */
 
@@ -134,7 +135,7 @@ export const INDEX: Module = {
   comps: [],
 };
 
-export const MODULES: Module[] = [
+const EVERY_MODULE: Module[] = [
   {
     symbol: 'CRM', name: 'Contacts & CRM', dept: 'Customer data', category: 'Customer',
     route: '/contacts', dest: 'Contacts',
@@ -262,6 +263,10 @@ export const MODULES: Module[] = [
   },
 ];
 
+/* AI Shorts is in the incubator (`video-studio`, docs/INCUBATOR.md): on live
+   it is neither a tile nor part of the index — a score for a module the
+   customer cannot open would only pull their number down. */
+export const MODULES: Module[] = featureReady('video-studio') ? EVERY_MODULE : EVERY_MODULE.filter(m => m.symbol !== 'SHORTS');
 export const ALL_INSTRUMENTS: Module[] = [INDEX, ...MODULES];
 const BY_SYMBOL = new Map(ALL_INSTRUMENTS.map(m => [m.symbol, m]));
 

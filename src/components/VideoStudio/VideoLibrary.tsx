@@ -61,6 +61,11 @@ function SourcePlayer({ s, onClose }: { s: LibrarySource; onClose: () => void })
   );
 }
 
+/** The pictures alone: what the Media Library is on live, where recording and editing video are in the incubator (VideoStudio.tsx `EDITING`). */
+export function PicturesOnly() {
+  return <div className="vs-col" style={{ gap: 16 }}><MediaGraphics /></div>;
+}
+
 export function MediaLibrary({ record = false, onRecord }: { record?: boolean; onRecord?: (open: boolean) => void }) {
   const [nonce, setNonce] = useState(0);
   const { data, error } = useLibrary(nonce);

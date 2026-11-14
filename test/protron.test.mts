@@ -149,7 +149,8 @@ const owner = { isClient: false, isOwner: true };
   const f = t('Find roofing companies in Dallas');
   ok('P6 "find X in Y" proposes a prospect search', f.actions[0]?.name === 'find_prospects' && f.actions[0].args.who === 'roofing companies' && f.actions[0].args.where === 'Dallas', JSON.stringify(f.actions));
   ok('P6 "where do I configure my email settings" opens Email & SMS', t('Where do I configure my email settings?').actions[0]?.args.tab === 'email-sms');
-  ok('P6 "open the video studio" opens AI Video Studio', t('Open the video studio').actions[0]?.args.path === '/video-studio', JSON.stringify(t('Open the video studio').actions));
+  /* This file runs as the live app (window.location above), where AI Video Studio is the Media Library (the incubator). */
+  ok('P6 "open the media library" opens it', t('Open the media library').actions[0]?.args.path === '/video-studio', JSON.stringify(t('Open the media library').actions));
   ok('P6 "take me to deals" opens Deals', t('take me to deals').actions[0]?.args.path === '/pipelines');
   ok('P6 a customer asking for content review is not taken there', t('open content review').actions.every(a => A.checkCall(a, customer).ok));
   ok('P6 something unknown proposes nothing and says so', t('what is the meaning of life').actions.length === 0);
@@ -217,7 +218,7 @@ const owner = { isClient: false, isOwner: true };
 {
   const sys = B.systemPrompt({ who: customer, path: '/prospecting', pageTitle: 'AI Prospecting', business: { name: '', about: '' } });
   ok('P9 the model is told which screen the customer is on', /on: AI Prospecting/.test(sys));
-  ok('P9 a nested path resolves to its module', K.screenContext('/video-studio/abc', customer).label === 'AI Video Studio');
+  ok('P9 a nested path resolves to its module', K.screenContext('/video-studio/abc', customer).label === 'Media Library');
   ok('P9 starters exist for the main screens', ['/', '/autopilot', '/prospecting'].every(p => K.startersFor(p).length >= 2));
   const hist = B.historyOf([
     { id: 'a', role: 'protron', text: 'Hello', at: 1 },
@@ -432,6 +433,24 @@ const owner = { isClient: false, isOwner: true };
   ok('P13 …and not offered to the model', !/press_button|fill_form|draft_social_post/.test(A.describeActions(live)));
   ok('P13 everything else still is', /propose_setup_plan/.test(A.describeActions(live)) && /create_contact/.test(A.describeActions(live)));
   ok('P13 with hands absent (the testing site), they are offered', /press_button/.test(A.describeActions(customer)));
+}
+
+/* P14 — the incubator (2026-11-14, later): with `acts` off the floating Protron is support only */
+{
+  const support = { isClient: false, isOwner: false, hands: false, acts: false };
+  const builders = ['find_prospects', 'start_autopilot_project', 'propose_setup_plan', 'create_contact', 'create_pipeline', 'create_workflow_draft', 'update_business_profile'];
+  ok('P14 with acts off, every builder is refused', builders.every(n => !A.checkCall({ name: n, args: {} }, support).ok));
+  ok('P14 …even with good arguments', !A.checkCall({ name: 'create_contact', args: { name: 'Ann Lee', email: 'ann@example.com' } }, support).ok);
+  ok('P14 …and none is offered to the model', !new RegExp(builders.join('|')).test(A.describeActions(support)), A.describeActions(support));
+  ok('P14 opening a screen and reading counts stay', /open_module/.test(A.describeActions(support)) && A.checkCall({ name: 'open_module', args: { path: '/contacts' } }, support).ok);
+  const sys = B.systemPrompt({ who: support, path: '/contacts', pageTitle: 'Contacts', business: { name: '', about: '' } });
+  ok('P14 the model is told it is the support assistant and about the report button', /support assistant/.test(sys) && /Report a problem/.test(sys) && !/propose_setup_plan/.test(sys));
+  const off = (x: string) => B.offlineTurn(x, { who: support, path: '/' });
+  ok('P14 offline, "find X in Y" proposes no search', !off('Find roofing companies in Dallas').actions.some(a => a.name === 'find_prospects'));
+  ok('P14 offline, a set-up request does not start a business workspace', !off('Set up a business workspace that brings in new patients for my dental clinic').actions.some(a => a.name === 'start_autopilot_project'));
+  ok('P14 offline, a problem points at Report a problem', /Report a problem/.test(off('The save button is not working').reply));
+  ok('P14 starters are questions plus the report chip', K.startersFor('/', true).at(-1) === 'Report a problem' && !K.startersFor('/', true).some(s => /^Find /.test(s)), JSON.stringify(K.startersFor('/', true)));
+  ok('P14 with acts absent (the testing site), the builders are offered', /create_contact/.test(A.describeActions(customer)));
 }
 
 console.log(out.join('\n'));

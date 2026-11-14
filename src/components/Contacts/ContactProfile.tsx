@@ -16,6 +16,7 @@ import DealsTab from './DealsTab';
 import SchedulingTab from './SchedulingTab';
 import type { Contact, ContactActivity } from '../../types';
 import { sendEmail, loadEmailConfig } from '../../services/emailService';
+import { featureReady } from '../../services/features';
 
 const ACTIVITY_ICONS: Record<ContactActivity['type'], string> = {
   email_sent: '📧', email_opened: '👁', note: '📝', task_completed: '✅',
@@ -273,7 +274,8 @@ export default function ContactProfile({ contact, onClose }: Props) {
             { id: 'email', label: 'Email', icon: <Send size={14} /> },
             { id: 'deals', label: `Deals (${contactDeals.length})`, icon: <Briefcase size={14} /> },
             { id: 'meetings', label: `Meetings (${contactAppts.length})`, icon: <Calendar size={14} /> },
-            { id: 'videos', label: `AI Shorts (${contactClips.length})`, icon: <ExternalLink size={14} /> },
+            /* AI Shorts are in the incubator (`video-studio`): the tab is on the testing site only. */
+            ...(featureReady('video-studio') ? [{ id: 'videos', label: `AI Shorts (${contactClips.length})`, icon: <ExternalLink size={14} /> }] : []),
           ] as { id: typeof tab; label: string; icon: React.ReactNode }[]).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '12px 16px', border: 'none', borderBottom: `2px solid ${tab === t.id ? '#17191c' : 'transparent'}`, backgroundColor: 'transparent', color: tab === t.id ? '#17191c' : '#64748b', fontSize: 13, fontWeight: tab === t.id ? 700 : 500, letterSpacing: '-0.01em', cursor: 'pointer', whiteSpace: 'nowrap' }}>

@@ -56,10 +56,34 @@ export interface Who {
    * pure tests see the whole registry.
    */
   hands?: boolean;
+  /**
+   * Whether Protron may build things — create records, search, draft
+   * workflows, plan and start a business workspace (`protron-acts`, in the
+   * incubator; docs/INCUBATOR.md). Off on live: the floating Protron is the
+   * customer's support desk there (owner, 2026-11-14: "just keep the floating
+   * Protron for the customer support and not for establishing and executing
+   * things"). Absent means yes, as for `hands`.
+   */
+  acts?: boolean;
 }
 
 /** Refuses an action that works the screen itself while `hands` is off. */
 const needsHands = (who: Who): string => (who.hands === false ? 'I can’t work the screen for you here yet — I’ll tell you which box or button to use instead.' : '');
+
+/**
+ * The executor: everything that creates, spends or plans. Named here once,
+ * not as a `refusal` on each entry, so an action added later is support-safe
+ * only by being left out of this list on purpose. Reading, counting and
+ * opening a screen stay — that is how support shows somebody where to go.
+ */
+const EXECUTES = new Set([
+  'find_prospects', 'start_autopilot_project', 'propose_setup_plan', 'create_contact',
+  'create_pipeline', 'create_workflow_draft', 'update_business_profile',
+  'fill_form', 'press_button', 'draft_social_post',
+]);
+const SUPPORT_ONLY = 'Here I’m your support assistant, so I don’t build things myself — I’ll show you the screen and the button to press.';
+const refusalOf = (def: ActionDef, who: Who): string =>
+  (who.acts === false && EXECUTES.has(def.name) ? SUPPORT_ONLY : '') || (def.refusal?.(who) ?? '');
 
 export type ParamSpec =
   | { type: 'string'; required?: boolean; max: number; desc: string }
@@ -632,7 +656,7 @@ export function checkCall(call: unknown, who: Who): Checked {
   const def = typeof name === 'string' ? actionByName(name) : undefined;
   if (!def) return { ok: false, error: `“${String(name).slice(0, 40)}” is not something I can do from here.` };
   if (def.tier === 'sensitive') return { ok: false, error: `${def.title} has to be done by you on its own screen.` };
-  const why = def.refusal?.(who) ?? '';
+  const why = refusalOf(def, who);
   if (why) return { ok: false, error: why };
   const raw = (args && typeof args === 'object' && !Array.isArray(args) ? args : {}) as Record<string, unknown>;
   for (const k of Object.keys(raw)) if (!def.params[k]) return { ok: false, error: `${def.title}: “${k.slice(0, 30)}” is not one of its settings.` };
@@ -707,7 +731,7 @@ export async function runChecked(c: Extract<Checked, { ok: true }>, ctx: ActionC
 
 /** The registry as the model reads it: names, what each does, its arguments and allowed values. */
 export function describeActions(who: Who): string {
-  return ACTIONS.filter(a => a.tier !== 'sensitive' && !(a.refusal?.(who))).map(a => {
+  return ACTIONS.filter(a => a.tier !== 'sensitive' && !refusalOf(a, who)).map(a => {
     const params = Object.entries(a.params).map(([k, s]) => {
       const kind = s.type === 'enum' ? `one of ${JSON.stringify(s.values(who))}` : s.type === 'list' ? 'list of text' : s.type === 'map' ? 'object of box key → text' : s.type;
       return `${k}${s.required ? '' : '?'}: ${kind} — ${s.desc}`;

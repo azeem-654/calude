@@ -221,7 +221,8 @@ export async function lastMail(env: Env): Promise<MailState | null> {
   try { return JSON.parse((await metaGet(env.DB, MAIL_KEY)) ?? 'null') as MailState | null; } catch { return null; }
 }
 
-async function alertMailbox(env: Env) {
+/** The mailbox owner-bound mail goes from: support@ when validated, else the system mailbox. Shared with routes/supportReport.ts. */
+export async function alertMailbox(env: Env) {
   const { systemCandidates, installMailbox } = await import('../routes/auth');
   const { loadMailboxById } = await import('../routes/mailbox');
   const support = (await systemCandidates(env).catch(() => []))

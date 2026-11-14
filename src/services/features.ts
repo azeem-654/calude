@@ -41,6 +41,12 @@ const REHEARSING = new Set<string>([
      complex", and the AppSumo review must not meet them half-finished): */
   'protron-live',    // real-time speech-to-speech (wizard and panel) and hands-free Talk mode
   'protron-hands',   // Protron working the screen: pointer, pressing buttons, typing into forms, driving the wizard; the site's film of it
+  /* 2026-11-14, later the same day — owner: "just keep the floating Protron
+     for the customer support and not for establishing and executing things". */
+  'protron-acts',    // the floating Protron's executor: creating records, searches, workflow drafts, set-up plans. Off: Protron is support
+  /* 2026-11-14 — owner: "hide the features of video editing and creating
+     shorts from the live site … several problems there need fixing". */
+  'video-studio',    // AI Video Studio's editing and Shorts (projects, editor, Quick Shorts, Repurpose). Off: only its Media Library is open
 ]);
 
 /**
@@ -51,7 +57,7 @@ const PARKED = new Set<string>([
   'protron-speaks-first',  // the panel opening by itself (idle, errors, a frozen page) — owner, 2026-11-14: "only when it's clicked"
 ]);
 
-export type Feature = 'prospects' | 'protron' | 'protron-live' | 'protron-hands' | 'protron-speaks-first';
+export type Feature = 'prospects' | 'protron' | 'protron-live' | 'protron-hands' | 'protron-acts' | 'protron-speaks-first' | 'video-studio';
 
 /** Whether this visitor, on this hostname, may actually use it. */
 export function featureReady(name: Feature): boolean {

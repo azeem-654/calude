@@ -5,6 +5,7 @@ import {
   PanelLeftClose, PanelLeftOpen, Menu, Scissors, Palette,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { featureReady } from '../../services/features';
 import { LogoMark } from '../shared/Logo';
 import { activeBranding } from '../../services/tenancy';
 
@@ -30,7 +31,8 @@ const navGroups = [
   {
     label: 'Studio',
     items: [
-      { path: '/video-studio',   icon: Scissors, label: 'AI Video Studio' },
+      /* The incubator (`video-studio`): editing and Shorts are on the testing site only. */
+      { path: '/video-studio',   icon: Scissors, label: featureReady('video-studio') ? 'AI Video Studio' : 'Media Library' },
       { path: '/social-creator', icon: Palette,  label: 'Graphics Designer & Editor' },
     ],
   },

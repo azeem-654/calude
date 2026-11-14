@@ -63,8 +63,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Maximize2, Minimize2, Minus, Mic, Square, Send, Volume2, VolumeX, Settings2, RotateCcw,
-  Check, X, Loader, Ban, CircleCheck, CircleAlert, Clock, AudioLines, MessageSquare, Undo2, Circle,
+  Check, X, Loader, Ban, CircleCheck, CircleAlert, Clock, AudioLines, MessageSquare, Undo2, Circle, Camera,
 } from 'lucide-react';
+import ReportProblem from './ReportProblem';
 import { useApp } from '../../context/AppContext';
 import ProtronAvatar, { type AvatarState } from './ProtronAvatar';
 import VoiceBars from '../Autopilot/voice/VoiceBars';
@@ -92,6 +93,8 @@ import ThinkingLines from './ThinkingLines';
 const LIVE_TALK = featureReady('protron-live');
 const HANDS = featureReady('protron-hands');
 const SPEAKS_FIRST = featureReady('protron-speaks-first');
+/* The suggestion chip that opens the report sheet instead of being sent. */
+const REPORT_CHIP = 'Report a problem';
 import type { SearchOutcome } from '../../services/protron/actions';
 import { fetchBoard, type Project } from '../../services/projects';
 import { saveWorkflow } from '../../services/autopilot';
@@ -228,6 +231,9 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
     return () => window.removeEventListener(VOICE_PROBLEM_EVENT, on);
   }, []);
   const [menu, setMenu] = useState(false);
+  /* Support only on live (`protron-acts` off): Protron explains, opens screens and reports problems. */
+  const support = who.acts === false;
+  const [report, setReport] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [aiDown, setAiDown] = useState('');
   const [online, setOnline] = useState(() => navigator.onLine);
@@ -760,7 +766,7 @@ ${facts}` : '',
     if (!seed || seed.n === seen.current) return;
     seen.current = seed.n;
     if (seed.intro) {
-      commit([...turnsRef.current, { id: newId(), role: 'protron', at: Date.now(), path: loc.pathname, text: seed.intro, suggestions: startersFor(loc.pathname) }]);
+      commit([...turnsRef.current, { id: newId(), role: 'protron', at: Date.now(), path: loc.pathname, text: seed.intro, suggestions: startersFor(loc.pathname, support) }]);
     }
     if (seed.message) { lastSend.current = 0; void send(seed.message); }
     if (seed.talk && LIVE_TALK) startTalk();
@@ -782,7 +788,7 @@ ${facts}` : '',
     commit([...list, {
       id: newId(), role: 'protron', at: Date.now(), path: loc.pathname,
       text: `You're now in ${here.label}${here.desc ? ` — ${here.desc.charAt(0).toLowerCase()}${here.desc.slice(1)}` : ''}. Want a hand with anything here?`,
-      suggestions: startersFor(loc.pathname),
+      suggestions: startersFor(loc.pathname, support),
     }]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- on a move only
   }, [loc.pathname, open, who, commit]);
@@ -798,6 +804,9 @@ ${facts}` : '',
     setMenu(false);
   };
 
+  /* A chip either opens the report sheet or is said, as typed. */
+  const chip = (s: string) => { if (s === REPORT_CHIP) setReport(true); else void send(s); };
+  const supportGreeting = 'Hi — I\'m Protron, here to help you use Protected Central. Ask me how anything works or where to find it, and I\'ll walk you through it. If something isn\'t working, press “Report a problem”: I\'ll send what you describe and a screenshot of your screen to our support team.';
   const here = screenContext(loc.pathname, who);
   /* The first words, from what is known — recomputed when the profile or site check changes. */
   const greeting = useMemo(() => openingFor(readFacts(prefs)), [prefs]);
@@ -850,6 +859,7 @@ ${facts}` : '',
   return (
     <section
       className="pt-panel"
+      data-no-shot
       role="dialog"
       aria-label="Protron, your AI Live Business Manager"
       data-size={size}
@@ -929,7 +939,19 @@ ${facts}` : '',
         </div>
       )}
 
-      {talk && liveTalk ? (
+      {report ? (
+        <ReportProblem
+          initial={[...turns].reverse().find(t => t.role === 'user')?.text.slice(0, 1000) ?? ''}
+          onClose={() => setReport(false)}
+          onSent={(message, withShot) => {
+            setReport(false);
+            commit([...turnsRef.current, {
+              id: newId(), role: 'protron', at: Date.now(), path: loc.pathname,
+              text: `${message} ${withShot ? 'Your screenshot went with it. ' : ''}They'll answer at the email address you sign in with.`,
+            }]);
+          }}
+        />
+      ) : talk && liveTalk ? (
         <div className="pt-talk-stage" data-live="1" aria-live="polite">
           <div className="pt-talk-orb" ref={ring} data-state={live === 'connecting' ? 'thinking' : speaking ? 'speaking' : working ? 'thinking' : live === 'live' ? 'listening' : 'idle'}>
             <ProtronAvatar size={112} state={face} />
@@ -981,11 +1003,16 @@ ${facts}` : '',
           <div className="pt-hero">
             {HANDS && <PointerDock />}
             <div className="pt-hero-copy">
-              <b>{LIVE_TALK ? 'AI Live Business Manager' : 'AI Business Manager'}</b>
-              <span>{HANDS
-                ? 'Talk to me like a colleague — I plan it, you approve, I build it on your screen.'
-                : 'Type, or press the microphone to send a voice message. I plan it, you approve, AI Autopilot builds it.'}</span>
+              <b>{support ? 'Help & support' : LIVE_TALK ? 'AI Live Business Manager' : 'AI Business Manager'}</b>
+              <span>{support
+                ? 'Ask how anything works, or press Report a problem to send us a screenshot of what went wrong.'
+                : HANDS
+                  ? 'Talk to me like a colleague — I plan it, you approve, I build it on your screen.'
+                  : 'Type, or press the microphone to send a voice message. I plan it, you approve, AI Autopilot builds it.'}</span>
             </div>
+            <button type="button" className="pt-btn pt-report-cta" onClick={() => setReport(true)} data-testid="protron-report-open">
+              <Camera size={15} /> Report a problem
+            </button>
             {LIVE_TALK && (
               <button type="button" className="pt-btn pt-live-cta" onClick={() => { unlockAudio(); startTalk(); }}>
                 <AudioLines size={15} /> Talk live
@@ -997,12 +1024,12 @@ ${facts}` : '',
               <div className="pt-msg pt-msg-bot">
                 <span className="pt-mini"><ProtronAvatar size={22} state="idle" alive={false} /></span>
                 <span className="pt-bubble-text">
-                  {greeting.text}
-                  {'\n\n'}Tell me what you want — “I'm a dentist in Virginia and need clients”, or “set up automated email campaigns”. I'll show you the plan in a few bullets, and once you approve it {HANDS ? 'I set it all up in AI Autopilot while you watch' : 'AI Autopilot sets it all up'}.
+                  {support ? supportGreeting : greeting.text}
+                  {!support && <>{'\n\n'}Tell me what you want — “I'm a dentist in Virginia and need clients”, or “set up automated email campaigns”. I'll show you the plan in a few bullets, and once you approve it {HANDS ? 'I set it all up in AI Autopilot while you watch' : 'AI Autopilot sets it all up'}.</>}
                 </span>
               </div>
               <div className="pt-sugs">
-                {greeting.suggestions.map(s => <button key={s} type="button" className="pt-sug" onClick={() => void send(s)}>{s}</button>)}
+                {(support ? startersFor(loc.pathname, true) : greeting.suggestions).map(s => <button key={s} type="button" className="pt-sug" onClick={() => chip(s)}>{s}</button>)}
                 {LIVE_TALK && <button type="button" className="pt-sug" onClick={startTalk}><AudioLines size={13} style={{ verticalAlign: '-2px' }} /> Talk to me</button>}
               </div>
             </div>
@@ -1032,7 +1059,7 @@ ${facts}` : '',
                 </div>
                 {t === lastTurn && t.suggestions && !busy && (
                   <div className="pt-sugs" style={{ paddingLeft: 34 }}>
-                    {t.suggestions.map(s => <button key={s} type="button" className="pt-sug" onClick={() => void send(s)}>{s}</button>)}
+                    {t.suggestions.map(s => <button key={s} type="button" className="pt-sug" onClick={() => chip(s)}>{s}</button>)}
                   </div>
                 )}
               </div>
@@ -1049,7 +1076,7 @@ ${facts}` : '',
         </div>
       )}
 
-      {!talk && (
+      {!talk && !report && (
         <div className="pt-compose">
           {(listening || v.phase === 'transcribing') && (
             <div className="pt-voice">

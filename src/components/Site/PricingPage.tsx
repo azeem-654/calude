@@ -22,6 +22,7 @@ import { BillingToggle, ComparisonTable, PlanCards, usePlanTable } from './Prici
 import { BILLING_CLAUSE, hasYearly } from './pricingTerms';
 import { servicesPublic } from '../../../worker/src/lib/industryPages';
 import './site.css';
+import { featureReady } from '../../services/features';
 
 const cross = (href: string) => (isCrossOrigin(href) ? { rel: 'noopener' as const } : {});
 
@@ -49,7 +50,7 @@ export default function PricingPage() {
   }, []);
 
   const faq: { q: string; a: string }[] = [
-    { q: 'Is there a free trial?', a: `Yes — 7 days, and no card is asked for. The trial has its own allowance (${table.trial.limits.autopilot_projects} AI Autopilot business workspaces, ${table.trial.limits.ai_shorts} AI Shorts, ${table.trial.limits.social_posts} social posts, ${table.trial.limits.prospects_found} prospects found), enough to build a real project and see it work.` },
+    { q: 'Is there a free trial?', a: `Yes — 7 days, and no card is asked for. The trial has its own allowance (${table.trial.limits.autopilot_projects} AI Autopilot business workspaces, ${featureReady('video-studio') ? `${table.trial.limits.ai_shorts} AI Shorts, ` : ''}${table.trial.limits.social_posts} social posts, ${table.trial.limits.prospects_found} prospects found), enough to build a real project and see it work.` },
     { q: 'What happens when the trial ends?', a: 'The AI and the automations stop until you choose a plan. Everything you made stays in your workspace, and you can download all of it from Settings at any time.' },
     { q: 'How am I billed?', a: `Monthly, in US dollars: ${sold.map(p => `${p.name} $${(p.monthlyCents / 100).toLocaleString('en-US')} a month`).join(', ')}. The first charge is at the end of the 7-day trial, when you choose a plan in Plan & billing, and the plan renews each month until you cancel. Taxes, if any apply, are shown at checkout.` },
     { q: 'I already subscribe on an older plan. Does anything change?', a: 'No. If you are on Starter, Pro, Agency or a yearly plan, you keep your price and your allowance for as long as you stay subscribed. The new prices apply to new subscriptions.' },

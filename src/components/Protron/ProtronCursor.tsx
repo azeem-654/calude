@@ -63,7 +63,7 @@ export default function ProtronCursor() {
   }, []);
 
   return (
-    <div className="pt-cursor-layer" data-shown={shown ? '1' : '0'} aria-hidden>
+    <div className="pt-cursor-layer" data-no-shot data-shown={shown ? '1' : '0'} aria-hidden>
       <div ref={ring} className="pt-cursor-ring" />
       <div ref={pointer} className="pt-cursor">
         <span ref={ripple} className="pt-cursor-ripple" />

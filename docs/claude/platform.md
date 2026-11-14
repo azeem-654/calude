@@ -214,6 +214,12 @@ the monitor and the route on SQLite).
 
 ## Support — the help button, tickets and live help
 
+**Report a problem** (2026-11-14) is the one exception to "one support
+system": the owner asked for it by email. Protron's button sends the
+customer's words and a screenshot to support@ with a copy to azeem654@gmail.com
+as attachments through `deliver` — details in `docs/claude/protron.md`. It
+stores nothing; with no mailbox it says so and points at the ticket.
+
 Protected Central answers its own customers with its own Customer Engagement
 module; there is no second support system. The round button in the app's
 corner (`shared/HelpLauncher.tsx`) is `public/widget.js` pointed at the install

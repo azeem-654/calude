@@ -23,6 +23,7 @@
  * to split it by module and send only the current screen's part.
  */
 import { modulesFor, SETTINGS_TABS, settingsTabsFor, type Who } from './actions';
+import { featureReady } from '../features';
 
 /** Per module: what it needs and what usually goes wrong. Keyed by path. */
 export const MODULE_NOTES: Record<string, string> = {
@@ -33,7 +34,10 @@ export const MODULE_NOTES: Record<string, string> = {
   '/marketing': 'Email campaigns and sequences. Sending needs a connected mailbox or provider (Settings → Email & SMS). Every email carries an unsubscribe link; bounced addresses are skipped.',
   '/conversations': 'Unified Inbox: every connected mailbox plus SMS and chat in one thread list. Nothing arrives until a mailbox is connected in Settings → Email & SMS.',
   '/engagement': 'Customer Engagement: an AI chat assistant, forms, tickets and a widget you paste on any website. Voice calls need a voice provider chosen by the install owner.',
-  '/video-studio': 'Upload or record a video; edit, clean the sound, cut Shorts with captions, music and thumbnails, and repurpose it into posts and articles.',
+  /* The incubator (`video-studio`): on live the page is the Media Library alone. */
+  '/video-studio': featureReady('video-studio')
+    ? 'Upload or record a video; edit, clean the sound, cut Shorts with captions, music and thumbnails, and repurpose it into posts and articles.'
+    : 'The Media Library: the pictures saved for posts, pages and emails. Video editing and AI Shorts are coming soon and are not open yet.',
   '/social-creator': 'Graphics Designer & Editor: design social posts and thumbnails from templates, with AI-written copy.',
   '/websites': 'Build a website from a template, edit it, and publish it on your own domain.',
   '/funnels': 'Landing pages built to capture a lead; connect every form block to a list before launch.',
@@ -66,13 +70,19 @@ export const STARTERS: Record<string, string[]> = {
   '/contacts': ['Add a contact', 'How do I import a CSV?', 'How many contacts do I have?'],
   '/pipelines': ['Create a sales pipeline for real estate', 'How do stage checklists work?'],
   '/marketing': ['Where do I connect my email?', 'Write a follow-up email for estimates'],
-  '/video-studio': ['How do I make Shorts from a video?', 'Write a hook for a roofing video'],
+  '/video-studio': featureReady('video-studio') ? ['How do I make Shorts from a video?', 'Write a hook for a roofing video'] : ['Where do my saved pictures go?'],
   '/social-creator': ['Draft a post about our spring offer', 'How do I change the template colours?'],
   '/settings': ['Where do I connect my email?', 'How do I turn on 2-step sign-in?'],
 };
 
-export function startersFor(path: string): string[] {
-  return STARTERS[path] ?? ['What can you do here?', 'Where do I configure my email settings?', 'Find prospects for my business'];
+export function startersFor(path: string, support = false): string[] {
+  const all = STARTERS[path] ?? ['What can you do here?', 'Where do I configure my email settings?', 'Find prospects for my business'];
+  if (!support) return all;
+  /* Support only (`protron-acts` off, the live app): a starter that asks
+     Protron to build something would be answered "I don't do that here", so
+     only the questions are offered, and the way to report a fault. */
+  const asks = all.filter(q => /^(how|where|what|why|which|is|can i|do i)\b/i.test(q));
+  return [...(asks.length ? asks : ['How does this screen work?']).slice(0, 2), 'Report a problem'];
 }
 
 /** The screen somebody is on, by its module: label and purpose. Its shape (boxes, messages) is screen.ts. */

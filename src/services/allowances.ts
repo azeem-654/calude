@@ -16,9 +16,26 @@ import { sessionToken } from './auth';
 import { getActiveAccountId } from './tenancy';
 import {
   INCLUDED, PLAN_DEFS, TRIAL_LIMITS, type Limits, type MeterId, type MeterReading, type PlanDef, type StandingKind,
+  featureLines as everyLine, comparison as everyGroup, type CompareGroup,
 } from '../../worker/src/lib/allowances';
+import { featureReady } from './features';
 
 export * from '../../worker/src/lib/allowances';
+
+/* The incubator (`video-studio`, docs/INCUBATOR.md): while video editing and
+   AI Shorts are on the testing site only, the live site's price cards and
+   comparison do not list them. Display only — the plan table and its meters
+   are unchanged, so nothing is re-priced and nothing needs putting back.
+   These two shadow the star export above (a module's own export wins). */
+const VIDEO_STUDIO = featureReady('video-studio');
+export function featureLines(p: Pick<PlanDef, 'limits'>): string[] {
+  const lines = everyLine(p);
+  return VIDEO_STUDIO ? lines : lines.filter(l => !/AI Shorts?\b/.test(l));
+}
+export function comparison(plans?: PlanDef[]): CompareGroup[] {
+  const groups = everyGroup(plans);
+  return VIDEO_STUDIO ? groups : groups.filter(g => g.name !== 'AI Video Studio');
+}
 
 type Answer<T> = T & { success?: boolean; error?: string; message?: string; field?: string; code?: string };
 

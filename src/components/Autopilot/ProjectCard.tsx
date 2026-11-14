@@ -28,6 +28,7 @@
  */
 import { askConfirm } from '../shared/ConfirmDialog';
 import ProjectVideos from './ProjectVideos';
+import { featureReady } from '../../services/features';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -1164,7 +1165,8 @@ export default function ProjectCard({
               Its own tab because "where is the thing it made" is a different
               question from "what did it do", and answering it with a log entry
               means opening five cards to find one image. */}
-          {tab === 'assets' && <ProjectVideos projectId={project.id} />}
+          {/* Videos are in the incubator (`video-studio`): testing site only. */}
+          {tab === 'assets' && featureReady('video-studio') && <ProjectVideos projectId={project.id} />}
           {tab === 'assets' && (
             !assets.length ? (
               <div style={{ padding: '26px 10px', textAlign: 'center' }}>

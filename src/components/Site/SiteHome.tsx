@@ -263,7 +263,8 @@ const CAPABILITIES: { group: string; icon: typeof Send; items: string[] }[] = [
   }] : []),
   { group: 'Convert', icon: MousePointerClick, items: ['Funnels', 'Websites', 'Forms & surveys', 'Booking pages', 'Online shop & checkout'] },
   { group: 'Manage', icon: Users, items: ['Contacts', 'Pipelines', 'Conversations', 'Calendar', 'Support tickets'] },
-  { group: 'Create', icon: Sparkles, items: ['Graphics Designer & Editor', 'Blog automation', 'AI Shorts', 'Content library', 'Brand overlays'] },
+  /* AI Shorts is in the incubator (`video-studio`): named only where it is switched on. */
+  { group: 'Create', icon: Sparkles, items: ['Graphics Designer & Editor', 'Blog automation', ...(featureReady('video-studio') ? ['AI Shorts'] : []), 'Content library', 'Brand overlays'] },
   { group: 'Run it as an agency', icon: Building2, items: ['Sub-accounts', 'White-label branding', 'Per-client billing', 'Role-based access', 'Isolated data'] },
 ];
 

@@ -741,6 +741,24 @@ console.log('\nProtron — conversations and the audit trail are per person and 
   check("Protron's site check reads the session's own domain, never one from the request", site.ok && site.data.domain === A.email.split('@')[1] && ['none', 'found', 'personal'].includes(site.data.status), JSON.stringify(site.data).slice(0, 160));
 }
 
+console.log('\nReport a problem — /api/support-report.php sends as the session, for its own workspace');
+{
+  d1rows('DELETE FROM crm_signup_attempts');
+  const A = await signUp('ra');
+  const B = await signUp('rb');
+  const foreign = await api('support-report.php', { token: B.token, accountId: A.acct, description: 'Something broke on my screen' });
+  check("B cannot report a problem as A's workspace", !foreign.ok && foreign.status === 403, JSON.stringify(foreign.data).slice(0, 160));
+  const noSession = await api('support-report.php', { accountId: A.acct, description: 'Something broke on my screen' });
+  check('No session, no report', !noSession.ok && noSession.status === 401);
+  const empty = await api('support-report.php', { token: A.token, accountId: A.acct, description: '' });
+  check('An empty report names its box', !empty.ok && empty.data?.field === 'report.description', JSON.stringify(empty.data).slice(0, 160));
+  /* A "picture" is decided by its bytes: an SVG (a document that can carry script) is not one. */
+  const svg = await api('support-report.php', { token: A.token, accountId: A.acct, description: 'Something broke on my screen', screenshot: `data:image/png;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>').toString('base64')}` });
+  check('A screenshot that is not a picture is refused', !svg.ok && /Only pictures/.test(svg.data?.error ?? ''), JSON.stringify(svg.data).slice(0, 160));
+  const many = await api('support-report.php', { token: A.token, accountId: A.acct, description: 'Something broke on my screen', pictures: Array(6).fill('x') });
+  check('More than four pictures are refused', !many.ok && many.data?.field === 'report.pictures', JSON.stringify(many.data).slice(0, 160));
+}
+
 console.log('\nLive voice — /api/live.php is a same-site WebSocket for the session\'s own workspace');
 {
   const { request } = await import('node:http');

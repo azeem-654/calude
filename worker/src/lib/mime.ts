@@ -18,7 +18,17 @@ export interface MessageInput {
    *  mail since 2024; without it a campaign is filtered before anybody gets
    *  to decide whether they wanted it. */
   unsubscribeUrl?: string;
+  /** Files sent with the message (a problem report's screenshots). Only
+   *  routes/supportReport.ts uses them; bulk mail never carries any. */
+  attachments?: MailAttachment[];
 }
+
+/** One attached file: its name, type and bytes as plain (unwrapped) base64. */
+export interface MailAttachment { filename: string; mime: string; base64: string }
+
+/** A filename safe in a header and in every provider's JSON. */
+export const attachmentName = (n: string): string =>
+  (n.replace(/[^\w.\- ]+/g, '_').trim().slice(0, 80) || 'file');
 
 const enc = new TextEncoder();
 
@@ -60,13 +70,30 @@ export function buildMime(msg: MessageInput, helloHost: string): string {
     head += 'List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n';
   }
 
-  head +=
-    'MIME-Version: 1.0\r\n' +
-    'Content-Type: text/html; charset=UTF-8\r\n' +
-    'Content-Transfer-Encoding: base64\r\n' +
-    '\r\n';
-
-  const body = chunk(b64(msg.html));
+  head += 'MIME-Version: 1.0\r\n';
+  const files = msg.attachments ?? [];
+  let body: string;
+  if (!files.length) {
+    head +=
+      'Content-Type: text/html; charset=UTF-8\r\n' +
+      'Content-Transfer-Encoding: base64\r\n' +
+      '\r\n';
+    body = chunk(b64(msg.html));
+  } else {
+    /* multipart/mixed: the HTML first, then each file. The boundary is random
+       so no byte of a base64 body can collide with it. */
+    const boundary = `pc_${crypto.randomUUID().replace(/-/g, '')}`;
+    head += `Content-Type: multipart/mixed; boundary="${boundary}"\r\n\r\n`;
+    const parts = [
+      `--${boundary}\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${chunk(b64(msg.html))}`,
+      ...files.map(f => {
+        const name = attachmentName(f.filename);
+        const type = /^[\w.+-]+\/[\w.+-]+$/.test(f.mime) ? f.mime : 'application/octet-stream';
+        return `--${boundary}\r\nContent-Type: ${type}; name="${name}"\r\nContent-Disposition: attachment; filename="${name}"\r\nContent-Transfer-Encoding: base64\r\n\r\n${chunk(f.base64.replace(/\s+/g, ''))}`;
+      }),
+    ];
+    body = `${parts.join('\r\n')}\r\n--${boundary}--`;
+  }
 
   /* Dot-stuffing: a line consisting of a single dot ends the DATA block, so a
      body that happens to contain one has to be escaped or the message is

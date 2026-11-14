@@ -17,6 +17,7 @@ import { sameOrigin, withCookieToken, withSessionCookie } from './lib/session';
 import { useWrapKey } from './lib/db';
 import { handleAi } from './routes/ai';
 import { handleProtron } from './routes/protron';
+import { handleSupportReport } from './routes/supportReport';
 import { handleLive } from './routes/live';
 import { handleHostedMail } from './routes/hostedMail';
 import { receive as receiveHostedMail } from './lib/hostedMail';
@@ -163,6 +164,7 @@ const ROUTES: Record<string, Handler> = {
   '/api/trial-optout.php': handleTrialOptout,
   '/api/ai.php': handleAi,
   '/api/protron.php': handleProtron,
+  '/api/support-report.php': handleSupportReport,
   '/api/live.php': handleLive,
   /* Content held for review, and what became of the accounts that produced it.
      Owner-only but for one action, which tells a customer why they cannot

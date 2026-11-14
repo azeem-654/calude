@@ -7,6 +7,7 @@
  * shop must never be asked about posting schedules. The old wizard asked every
  * project about sending, and it looked perfectly reasonable doing it.
  */
+import './asTestingSite.mts';
 import {
   applyOps, buildBlueprint, initialState, parseCsv, parseEdit, pendingQuestions,
   productsFromCsv, imageFor, screensOf, capsOf, kindOf, briefOf, validValue, allQuestions, applies,

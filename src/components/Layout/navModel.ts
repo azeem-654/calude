@@ -15,12 +15,16 @@
  * The labels are the ones a customer would use. "Scheduling" and "Calendar"
  * side by side told nobody which was which; "Booking pages" and "Calendar" do.
  */
+import { featureReady } from '../../services/features';
 import {
   MessageSquare,
   BarChart3, Building2, Calendar, CalendarClock, CreditCard,
   Globe, Inbox, LayoutDashboard, LayoutTemplate, Newspaper, Palette, Rocket,
   Send, Settings as SettingsIcon, ShieldAlert, Star, TrendingUp, Users,
   type LucideIcon, Package, UserPlus, BadgePercent, Crosshair, BookUser, Clapperboard, Receipt, Handshake, Layers, Stethoscope } from 'lucide-react';
+
+/* The incubator (docs/INCUBATOR.md): AI Video Studio's editing and Shorts are on the testing site only. */
+const VIDEO_STUDIO = featureReady('video-studio');
 
 export interface NavItem {
   path: string;
@@ -127,7 +131,10 @@ export const NAV_GROUPS: NavGroup[] = [
     id: 'content',
     label: 'Content',
     items: [
-      { path: '/video-studio', label: 'AI Video Studio', desc: 'Edit and clean a recording, make Shorts, captions, music, posts and quizzes — AI Shorts and Repurposing included', icon: Clapperboard, aka: ['video', 'video editor', 'shorts', 'ai shorts', 'reels', 'tiktok', 'clips', 'podcast', 'webinar', 'captions', 'subtitles', 'thumbnails', 'transcript', 'repurpose', 'repurposing', 'social automation', 'noise', 'music', 'quiz'] },
+      /* The incubator (`video-studio`): on live this is the Media Library alone — editing and Shorts are held back. */
+      VIDEO_STUDIO
+        ? { path: '/video-studio', label: 'AI Video Studio', desc: 'Edit and clean a recording, make Shorts, captions, music, posts and quizzes — AI Shorts and Repurposing included', icon: Clapperboard, aka: ['video', 'video editor', 'shorts', 'ai shorts', 'reels', 'tiktok', 'clips', 'podcast', 'webinar', 'captions', 'subtitles', 'thumbnails', 'transcript', 'repurpose', 'repurposing', 'social automation', 'noise', 'music', 'quiz'] }
+        : { path: '/video-studio', label: 'Media Library', desc: 'Your pictures, kept for posts, pages and emails', icon: Clapperboard, aka: ['media', 'media center', 'pictures', 'images', 'uploads', 'photos'] },
       { path: '/social-creator', label: 'Graphics Designer & Editor', desc: 'Design and edit social posts, graphics and video thumbnails', icon: Palette, aka: ['post designer', 'social creator', 'graphics', 'graphic designer', 'image editor', 'thumbnail editor', 'canva'] },
     ],
   },

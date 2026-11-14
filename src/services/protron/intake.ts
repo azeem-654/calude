@@ -31,6 +31,7 @@ import { aiFetch } from '../../lib/gemini';
 import { SOLUTIONS, CUSTOM, solutionByKey } from '../projectSolutions';
 import { matchSolutions } from '../projectIntake';
 import { tidySpoken } from '../spoken';
+import { featureReady } from '../features';
 import { interviewKnowledge, gapNote } from './knowledge';
 
 export { tidySpoken };
@@ -99,7 +100,10 @@ export const YEAR_BULLETS = [
   'Reply-rate monitoring — I watch every campaign and propose changes when replies drop',
   'Blog articles and social posts written as each month comes',
   'A booking page so customers can book you directly',
-  'If you want: YouTube Shorts and Reels cut from your videos, and any website, page or source you connect for me to learn from',
+  /* Shorts are in the incubator (`video-studio`): promised only where they are switched on. */
+  featureReady('video-studio')
+    ? 'If you want: YouTube Shorts and Reels cut from your videos, and any website, page or source you connect for me to learn from'
+    : 'If you want: any website, page or source you connect for me to learn from',
 ];
 
 /** What the business's own website said (projects.php `read_url`) — never model-invented: empty when the page did not say. */

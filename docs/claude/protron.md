@@ -479,3 +479,31 @@ audit rows, at 390 and 1280. `npm run test:security` covers
 `/api/protron.php` (foreign workspace, no session, size cap, audit actor, the
 `site` check reading only the session's domain). `test:chatlive` checks the
 widget draws Protron's face on the assistant's greeting.
+
+### The 2026-11-14 support brief — support on live, Report a problem
+
+- **The floating Protron is support on live** (`protron-acts` in the
+  incubator; docs/INCUBATOR.md). `Who.acts === false` → `EXECUTES` refused in
+  `checkCall` and hidden from `describeActions` (one list, so a new action is
+  support-safe only by being left out of it on purpose); `systemPrompt`
+  switches to a support job (explain, steps, troubleshoot, open the screen,
+  "press Report a problem"); `offlineTurn` builds nothing; `startersFor(path,
+  true)` keeps questions and adds the `Report a problem` chip, which opens the
+  sheet rather than being sent (`REPORT_CHIP`). Tests P14.
+- **Report a problem** (both sites): the button in the panel's hero opens
+  `ReportProblem.tsx`, which takes a screenshot at once
+  (`services/supportReport.ts` `captureScreen`: modern-screenshot, lazy, the
+  viewport only, anything `data-no-shot` — the panel, launcher and pointer —
+  left out; JPEG ≤ 1.5 MB via `chatImage.shrinkImage`). The customer sees it,
+  can retake or not send it, describes the problem (prefilled with their last
+  message), and adds up to 3 pictures of their own (chosen or pasted).
+  `/api/support-report.php` (`routes/supportReport.ts`): session + canAccess,
+  pictures sniffed by bytes, ≤ 4, description through `redactPhi`, 5 an hour
+  per person; mailed through `deliver` from `alertMailbox` (support@ when
+  validated, else the system mailbox, said in the mail) to
+  **support@protectedcentral.com** and a second send to **azeem654@gmail.com**
+  (deliver has no Cc), Reply-To the customer, screenshots as **attachments**
+  (`MessageInput.attachments`: SMTP multipart/mixed and every provider;
+  ActiveCampaign refuses rather than drop them). No mailbox → 503 telling the
+  customer to use the Help button's ticket; one copy failing → "partial".
+  The Gmail copy's address is never shown to the customer.

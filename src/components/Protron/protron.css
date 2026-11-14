@@ -486,3 +486,29 @@
 @media (max-width: 760px) {
   .pt-panel[data-talk="1"] { background: rgba(40, 28, 110, .55); -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5); }
 }
+
+/* "Report a problem" (ReportProblem.tsx): in the hero, and the sheet that
+   replaces the chat while a report is written. Solid, not glass — it shows a
+   screenshot that has to be readable. */
+.pt-btn.pt-report-cta { flex-shrink: 0; font-size: 12px; padding: 7px 10px; color: #3b2a8f; border-color: rgba(139, 92, 246, .35); }
+.pt-report { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 14px; display: flex; flex-direction: column; gap: 10px; background: #f7f8fa; color: #111827; }
+.pt-report-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pt-report-head b { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.pt-report-head .pt-icon { color: #374151; }
+.pt-report-sub { margin: 0; font-size: 12px; line-height: 1.45; color: #4b5563; }
+.pt-report-shot { display: grid; gap: 8px; padding: 8px; border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; }
+.pt-report-shot img { width: 100%; max-height: 190px; object-fit: contain; object-position: top; border-radius: 8px; background: #eef0f4; }
+.pt-report-wait { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #4b5563; min-height: 40px; }
+.pt-report-shot-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.pt-report-shot-actions .pt-btn, .pt-report-own .pt-btn { font-size: 12px; padding: 6px 10px; }
+.pt-report-label { font-size: 12px; font-weight: 700; color: #1f2937; }
+.pt-report-text { width: 100%; box-sizing: border-box; resize: vertical; min-height: 84px; font: inherit; font-size: 13px; padding: 9px 10px; border: 1px solid #d1d5db; border-radius: 10px; background: #fff; color: #111827; }
+.pt-report-text[aria-invalid] { border-color: #dc2626; }
+.pt-report-own { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pt-report-thumb { position: relative; width: 56px; height: 56px; }
+.pt-report-thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; }
+.pt-report-thumb button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; border: 0; display: grid; place-items: center; background: #111827; color: #fff; cursor: pointer; padding: 0; }
+.pt-report-note { font-size: 11px; color: #6b7280; }
+.pt-report-error { margin: 0; font-size: 12px; color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 10px; }
+.pt-report-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: auto; padding-top: 4px; }
+@media (max-width: 420px) { .pt-btn.pt-report-cta { padding: 6px 8px; font-size: 11.5px; } }

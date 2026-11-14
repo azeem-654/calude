@@ -73,7 +73,7 @@ stays shut there (`SELF_SERVE_SIGNUP=off`).
 `src/services/hosts.ts` is what makes one build serve both: `isStagingHost()`
 draws the testing banner and `isRehearsal()` decides which features in
 `src/services/features.ts` are switched on. **What is held back on purpose is
-listed in `docs/INCUBATOR.md`** (the incubator; today: Protron's live talk and its screen driving) — read it
+listed in `docs/INCUBATOR.md`** (the incubator; today: Protron's live talk, its screen driving, the floating Protron as a builder, and AI Video Studio's editing and Shorts) — read it
 before promoting, and update it when a feature is released. Nothing is baked in at build time,
 so a production bundle cannot be published believing it is staging.
 

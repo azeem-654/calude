@@ -67,6 +67,51 @@ Before release: the pointer and autodrive e2e (`protron-brief.e2e.mjs`,
 `protron-live.e2e.mjs`) green at 390 and 1280 on the testing site, and the
 film checked against what the app really does.
 
+### `protron-acts` — the floating Protron as a builder (since 2026-11-14)
+
+Owner, 2026-11-14: "just keep the floating Protron for the customer support
+and not for establishing and executing things … keep that executor in the
+incubator." With it off (live), `Who.acts === false`: `checkCall` refuses and
+`describeActions` hides every action in `EXECUTES` (`actions.ts` — create a
+contact or pipeline, a prospect search, a workflow draft, a set-up plan,
+starting a business workspace, the business profile, and the hands actions);
+`brain.ts` gives the model a support job instead of the builder's
+(`support`); the offline matcher never offers to build and points a fault at
+**Report a problem**; starters are questions plus the report chip; the panel
+says **Help & support** and greets as the support assistant. Opening a
+screen, counts and listing business workspaces stay — that is how support
+shows somebody where to go. The wizard's Protron (New business workspace) is
+not the floating panel and is unchanged.
+
+**Report a problem** is *not* incubated — it is on both sites (see
+`docs/claude/protron.md`).
+
+Before release: the owner decides Protron should build again on live; the
+pure tests P14 (support) and P13 (hands) still pass.
+
+### `video-studio` — AI Video Studio's editing and Shorts (since 2026-11-14)
+
+Owner, 2026-11-14: "hide the features of video editing and creating shorts
+from the live site and keep it in the incubator, because I saw several
+problems there which needs to be fixed before it goes live." With it off
+(live): `/video-studio` is the **Media Library** with only its pictures
+(`PicturesOnly` — no recorder, recordings, projects, Quick Shorts, Repurpose,
+Brand Kit, Exports, Publish or Templates tabs); the editor, `?new=1` and any
+other tab show "Video editing and AI Shorts are coming soon"; the sidebar and
+search say **Media Library**; the contact's AI Shorts tab, the business
+workspace's Videos box, the dashboard's AI Shorts tile, the Usage card's Video
+meters, the price cards' and comparison's video lines, the home page's "AI
+Shorts", the trial FAQ's Shorts count, the 12-month plan's Shorts bullet and
+the help button's mention of AI Video Studio (`houseKnowledge.ts`, by
+`APP_ORIGIN`) are gone; Autopilot's Video Content solution offers only the
+YouTube channel → articles and posts. The plan table and its meters are
+unchanged (display only), the Worker's video routes and `VIDEO_CRON` still
+run, and an existing video project keeps processing.
+
+Before release: the owner's list of Video Studio problems fixed
+(`docs/claude/video-studio-overhaul.md`), `test:studio` and the Video Studio
+e2e green at 390 and 1280 on the testing site.
+
 ## Parked (off on both sites)
 
 - **`protron-speaks-first`** — the panel opening by itself after 10 s idle,

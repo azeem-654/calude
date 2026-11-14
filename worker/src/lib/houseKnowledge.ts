@@ -89,11 +89,11 @@ export const HOUSE_STYLE = `- Sound like a sharp, experienced growth consultant 
 
 const money = (cents: number) => dollars(cents);
 
-function planBlock(p: PlanDef): string {
+function planBlock(p: PlanDef, video: boolean): string {
   const price = p.kind === 'self'
     ? `${money(p.monthlyCents)} a month${p.annualCents ? `, or ${money(p.annualCents)} a year (two months free)` : ''}`
     : p.kind === 'custom' ? 'priced with you on a strategy call' : 'a one-time purchase on AppSumo';
-  const lines = p.kind === 'custom' ? [] : featureLines(p);
+  const lines = (p.kind === 'custom' ? [] : featureLines(p)).filter(l => video || !/AI Shorts?\b/.test(l));
   return [`${p.name} — ${price}. ${p.tagline}`, ...lines.map(l => `  - ${l}`), `  - Support: ${p.support}`].join('\n');
 }
 
@@ -104,6 +104,11 @@ export async function houseFacts(env: Env): Promise<string> {
   const deal = plans.filter(p => p.kind === 'deal');
   const host = (() => { try { return new URL(env.APP_ORIGIN ?? APP).hostname; } catch { return 'app.protectedcentral.com'; } })();
   const services = servicesPublic(host);
+  /* AI Video Studio's editing and Shorts are in the incubator (src/services/
+     features.ts, docs/INCUBATOR.md): on for the testing site and a
+     developer's machine, off on live — so the live help button does not
+     sell them. The same hosts as isRehearsal() in src/services/hosts.ts. */
+  const video = /^(testing\.|localhost$|127\.0\.0\.1$)|\.workers\.dev$/.test(host);
 
   return `WHAT IT IS
 Protected Central is a CRM and marketing-automation platform where you describe the result you want and AI builds the system to get it. It is our own software, written and run by us, not a rebranded platform. Website: ${SITE}. Sign in: ${APP}.
@@ -114,7 +119,7 @@ MAIN FEATURES
 - CRM and pipeline: contacts, lists, deals and a pipeline board; import and de-duplicate contacts.
 - Email and SMS: campaigns and sequences sent from your own mailbox and domain (Gmail, Microsoft 365, or a sending service such as Brevo, Resend, SendGrid, Mailgun, Mailjet or Postmark), stopping when someone replies; Twilio for texts; a Unified Inbox for every mailbox, SMS and chat.
 - Nothing sends unasked: every email or text starts as a draft until you approve it, and you choose what each business workspace may do on its own.
-- Content: social posts with images in your brand colours (Facebook, Instagram, LinkedIn, X, TikTok, Pinterest, YouTube) and SEO blog articles published to WordPress on a schedule, each waiting for approval. AI Video Studio for short videos and editing recordings by their transcript.
+- Content: social posts with images in your brand colours (Facebook, Instagram, LinkedIn, X, TikTok, Pinterest, YouTube) and SEO blog articles published to WordPress on a schedule, each waiting for approval.${video ? ' AI Video Studio for short videos and editing recordings by their transcript.' : ''}
 - Booking pages with reminders and rebooking for no-shows; a calendar.
 - Websites and funnels whose forms put leads straight into the CRM; an online shop.
 - Reviews: keep track of what people say about you on Google.
@@ -124,11 +129,11 @@ MAIN FEATURES
 
 PLANS (self-serve software)
 Every new account starts with a 7-day free trial, no card required. Plans are billed monthly or yearly in US dollars and renew until cancelled. Plans are changed in the app under Workspace → Plan & billing. Full comparison: ${SITE}/pricing.
-${sold.map(planBlock).join('\n')}
+${sold.map(p => planBlock(p, video)).join('\n')}
 
 APPSUMO LIFETIME DEAL
 Bought on AppSumo, redeemed at ${APP}/appsumo: create an account (or sign in) and the code is added. One code is Tier 1; a second and third code on the same account move it up, up to three. AppSumo's own Activate button also works. Every feature is included on every tier; tiers differ only in how much. Allowances marked "a month" start again on the 1st. Refunds are handled by AppSumo under its policy; a refunded code stops counting. More than Tier 3: the monthly plans can be added on top.
-${deal.map(planBlock).join('\n')}
+${deal.map(p => planBlock(p, video)).join('\n')}
 
 AI CREDITS (what the "AI credits a month" on every plan means)
 ${AI_CREDITS_GUIDE}

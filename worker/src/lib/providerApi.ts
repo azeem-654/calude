@@ -18,7 +18,7 @@
  * one it will send from — the refusal people otherwise meet on the first real
  * send. Nothing is sent, the same as validating an SMTP login sends nothing.
  */
-import type { MessageInput } from './mime';
+import { attachmentName, type MessageInput } from './mime';
 
 export interface ProviderCreds { name: string; key: string; secret: string; domain: string; url: string }
 
@@ -141,6 +141,9 @@ export async function sendViaProvider(p: ProviderCreds, m: MessageInput): Promis
   const reply = m.replyTo || fromEmail;
   const fromHeader = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
   const unsub = m.unsubscribeUrl || '';
+  /* Attachments, in each provider's own shape (only a problem report sends any). */
+  const files = (m.attachments ?? []).map(f => ({ ...f, filename: attachmentName(f.filename), base64: f.base64.replace(/\s+/g, '') }));
+  const has = files.length > 0;
   const unsubHeaders: Record<string, string> = unsub
     ? { 'List-Unsubscribe': `<${unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' }
     : {};
@@ -156,6 +159,7 @@ export async function sendViaProvider(p: ProviderCreds, m: MessageInput): Promis
           sender: { name: fromName, email: fromEmail },
           to: [{ email: to }], subject, htmlContent: html, replyTo: { email: reply },
           ...(unsub ? { headers: unsubHeaders } : {}),
+          ...(has ? { attachment: files.map(f => ({ name: f.filename, content: f.base64 })) } : {}),
         }));
       break;
 
@@ -164,7 +168,10 @@ export async function sendViaProvider(p: ProviderCreds, m: MessageInput): Promis
     case 'resend':
       r = await call('POST', 'https://api.resend.com/emails',
         { ...JSON_H, Authorization: `Bearer ${apiKey}` },
-        JSON.stringify({ from: fromHeader, to: [to], subject, html, reply_to: reply, ...(unsub ? { headers: unsubHeaders } : {}) }));
+        JSON.stringify({
+          from: fromHeader, to: [to], subject, html, reply_to: reply, ...(unsub ? { headers: unsubHeaders } : {}),
+          ...(has ? { attachments: files.map(f => ({ filename: f.filename, content: f.base64 })) } : {}),
+        }));
       break;
 
     /* Mailjet authenticates with a key and a secret; a missing secret otherwise
@@ -176,6 +183,7 @@ export async function sendViaProvider(p: ProviderCreds, m: MessageInput): Promis
         To: [{ Email: to }], Subject: subject, HTMLPart: html, ReplyTo: { Email: reply },
       };
       if (unsub) msg.Headers = unsubHeaders;
+      if (has) msg.Attachments = files.map(f => ({ ContentType: f.mime, Filename: f.filename, Base64Content: f.base64 }));
       r = await call('POST', 'https://api.mailjet.com/v3.1/send', JSON_H, JSON.stringify({ Messages: [msg] }), `${apiKey}:${apiSecret}`);
       break;
     }
@@ -184,7 +192,10 @@ export async function sendViaProvider(p: ProviderCreds, m: MessageInput): Promis
       const custom = [{ header: 'Reply-To', value: reply },
         ...Object.entries(unsubHeaders).map(([header, value]) => ({ header, value }))];
       r = await call('POST', 'https://api.smtp2go.com/v3/email/send', JSON_H,
-        JSON.stringify({ api_key: apiKey, sender: fromHeader, to: [to], subject, html_body: html, custom_headers: custom }));
+        JSON.stringify({
+          api_key: apiKey, sender: fromHeader, to: [to], subject, html_body: html, custom_headers: custom,
+          ...(has ? { attachments: files.map(f => ({ filename: f.filename, fileblob: f.base64, mimetype: f.mime })) } : {}),
+        }));
       break;
     }
 
@@ -197,6 +208,7 @@ export async function sendViaProvider(p: ProviderCreds, m: MessageInput): Promis
           reply_to: { email: reply }, subject,
           content: [{ type: 'text/html', value: html }],
           ...(unsub ? { headers: unsubHeaders } : {}),
+          ...(has ? { attachments: files.map(f => ({ content: f.base64, filename: f.filename, type: f.mime, disposition: 'attachment' })) } : {}),
         }));
       break;
 
@@ -205,6 +217,7 @@ export async function sendViaProvider(p: ProviderCreds, m: MessageInput): Promis
         From: fromHeader, To: to, Subject: subject, HtmlBody: html, ReplyTo: reply, MessageStream: 'outbound',
       };
       if (unsub) payload.Headers = Object.entries(unsubHeaders).map(([Name, Value]) => ({ Name, Value }));
+      if (has) payload.Attachments = files.map(f => ({ Name: f.filename, Content: f.base64, ContentType: f.mime }));
       r = await call('POST', 'https://api.postmarkapp.com/email',
         { ...JSON_H, 'X-Postmark-Server-Token': apiKey, Accept: 'application/json' }, JSON.stringify(payload));
       break;
@@ -215,8 +228,21 @@ export async function sendViaProvider(p: ProviderCreds, m: MessageInput): Promis
     case 'mailgun': {
       if (!domain) return bad('Mailgun needs the sending domain from your Mailgun dashboard as well as the API key.');
       if (!/^[a-z0-9.\-]+$/i.test(domain)) return bad(`"${domain}" is not a valid Mailgun domain.`);
-      const form = new URLSearchParams({ from: fromHeader, to, subject, html, 'h:Reply-To': reply });
-      for (const [k, v] of Object.entries(unsubHeaders)) form.set(`h:${k}`, v);
+      /* Files need multipart; plain mail keeps the form encoding it always had. */
+      const fields: Record<string, string> = { from: fromHeader, to, subject, html, 'h:Reply-To': reply };
+      for (const [k, v] of Object.entries(unsubHeaders)) fields[`h:${k}`] = v;
+      let form: URLSearchParams | FormData;
+      if (has) {
+        const fd = new FormData();
+        for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+        for (const f of files) {
+          const bin = atob(f.base64);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          fd.append('attachment', new Blob([bytes], { type: f.mime }), f.filename);
+        }
+        form = fd;
+      } else form = new URLSearchParams(fields);
       r = await call('POST', `${mailgunBase(domain)}/v3/${domain}/messages`, {}, form, `api:${apiKey}`);
       break;
     }
@@ -226,10 +252,16 @@ export async function sendViaProvider(p: ProviderCreds, m: MessageInput): Promis
     case 'mailtrap':
       r = await call('POST', 'https://send.api.mailtrap.io/api/send',
         { ...JSON_H, Authorization: `Bearer ${apiKey}` },
-        JSON.stringify({ from: { email: fromEmail, name: fromName }, to: [{ email: to }], subject, html, ...(unsub ? { headers: unsubHeaders } : {}) }));
+        JSON.stringify({
+          from: { email: fromEmail, name: fromName }, to: [{ email: to }], subject, html, ...(unsub ? { headers: unsubHeaders } : {}),
+          ...(has ? { attachments: files.map(f => ({ content: f.base64, filename: f.filename, type: f.mime, disposition: 'attachment' })) } : {}),
+        }));
       break;
 
     case 'activecampaign': {
+      /* Its transactional send takes no files; refusing says so, where
+         dropping them would report a send that lost the screenshots. */
+      if (has) return bad('ActiveCampaign cannot send attachments from here.');
       const acUrl = activeCampaignUrl(p.url);
       if (typeof acUrl !== 'string') return bad(acUrl.error);
       r = await call('POST', `${acUrl}/api/3/sendEmail`, { ...JSON_H, 'Api-Token': apiKey },
