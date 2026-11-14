@@ -253,7 +253,14 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
   const noLive = useRef(false);
   const toldActions = useRef(false);
   /* Talk mode ends a turn sooner after the speaker stops: a conversation, not dictation. */
-  const v = useVoiceInput(defaultLocale(), { silenceStopSeconds: talk ? 1.2 : 1.8 });
+  const v = useVoiceInput(defaultLocale(), {
+    silenceStopSeconds: talk ? 1.2 : 1.8,
+    /* What Protron last said and the business's name, so names are spelled right (routes/intake.ts `context`). */
+    context: () => {
+      const lastSaid = [...turnsRef.current].reverse().find(t => t.role === 'protron')?.text ?? '';
+      return [lastSaid ? `They are answering: ${lastSaid.slice(0, 300)}` : '', prefsRef.current.business.name ? `Their business: ${prefsRef.current.business.name}` : ''].filter(Boolean).join('. ');
+    },
+  });
   /* When the take stopped and the transcriber started — the start of "heard in". */
   const heardFrom = useRef(0);
   useEffect(() => { if (v.phase === 'transcribing') heardFrom.current = performance.now(); }, [v.phase]);
@@ -592,11 +599,15 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
     /* Nothing heard: Talk mode waits for the microphone rather than reopening
        it forever on a silent room or a refused permission. */
     if (!r || !r.text.trim()) { loop.current = false; onFace('idle'); return; }
-    if (r.doubtful && !talkRef.current) {
+    if (r.audio) URL.revokeObjectURL(r.audio);
+    /* A voice message waits in the box to be checked and sent (owner,
+       2026-11-14: a misheard sentence went out with no chance to fix it).
+       Only hands-free Talk mode (the incubator) sends what it heard. */
+    if (!talkRef.current) {
       loop.current = false;
       onFace('idle');
-      setInput(r.text);
-      setVoiceNote(r.note);
+      setInput(prev => (prev.trim() ? `${prev.trim()} ${r.text}` : r.text));
+      setVoiceNote(r.doubtful ? r.note : 'Here’s what I heard — fix anything I got wrong, then press send.');
       window.setTimeout(() => box.current?.focus(), 0);
       return;
     }

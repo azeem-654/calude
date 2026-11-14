@@ -149,10 +149,10 @@ export async function writeEmails(p: {
   return { ok: true, noAi: false, emails: (r.emails as { id: string; subject: string; body: string }[]) ?? [], error: '' };
 }
 
-export async function transcribe(audioBase64: string, mime: string, language: string): Promise<{
+export async function transcribe(audioBase64: string, mime: string, language: string, context = ''): Promise<{
   ok: boolean; noAi: boolean; text: string; clarity: 'clear' | 'partly' | 'unclear'; error: string;
 }> {
-  const r = await call('transcribe', { audio: audioBase64, mime, language });
+  const r = await call('transcribe', { audio: audioBase64, mime, language, ...(context ? { context: context.slice(0, 600) } : {}) });
   if (!r.success) return { ok: false, noAi: r.code === 'no_ai', text: '', clarity: 'unclear', error: r.error ?? 'Could not transcribe that.' };
   const clarity = (['clear', 'partly', 'unclear'].includes(String(r.clarity)) ? r.clarity : 'partly') as 'clear' | 'partly' | 'unclear';
   return { ok: true, noAi: false, text: String(r.text ?? ''), clarity, error: '' };

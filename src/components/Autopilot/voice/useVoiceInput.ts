@@ -83,6 +83,8 @@ export interface VoiceResult {
   /** Worth a second look: the transcriber said so, or the browser was unsure. */
   doubtful: boolean;
   note: string;
+  /** The recording itself (an object URL of the WAV), to play back before sending. The caller revokes it. */
+  audio?: string;
 }
 
 /* ── Locales ── */
@@ -212,7 +214,10 @@ const SPEECH_LEVEL = 0.02;
  * thinks mid-sentence); Protron's conversation passes ~1.8 s, the pause that
  * ends a spoken turn, so the customer does not have to press stop each time.
  */
-export function useVoiceInput(locale: string, opts: { silenceStopSeconds?: number } = {}) {
+export function useVoiceInput(locale: string, opts: { silenceStopSeconds?: number; context?: () => string } = {}) {
+  /* What the screen just asked, for the transcriber (routes/intake.ts `context`). */
+  const contextRef = useRef(opts.context);
+  contextRef.current = opts.context;
   const silenceStop = opts.silenceStopSeconds ?? SILENCE_STOP_SECONDS;
   const [phase, setPhase] = useState<VoicePhase>('idle');
   const [finalText, setFinalText] = useState('');
@@ -328,14 +333,16 @@ export function useVoiceInput(locale: string, opts: { silenceStopSeconds?: numbe
 
     setPhase('transcribing');
     const wav = wavBytes(downsample(recorded, sampleRate));
-    const t = await transcribe(base64(wav), 'audio/wav', locale);
+    const t = await transcribe(base64(wav), 'audio/wav', locale, contextRef.current?.() ?? '');
     const text = t.ok ? t.text.trim() : '';
+    let audio: string | undefined;
+    try { audio = URL.createObjectURL(new Blob([wav as BlobPart], { type: 'audio/wav' })); } catch { /* no playback; the text still comes */ }
 
     if (text && t.clarity !== 'unclear') {
       setFinalText(text);
       setPhase('done');
       return {
-        text, engine: 'transcriber', doubtful: t.clarity !== 'clear' || text.includes('[unclear]'),
+        text, engine: 'transcriber', audio, doubtful: t.clarity !== 'clear' || text.includes('[unclear]'),
         note: t.clarity === 'clear' ? 'I heard this — please check it before continuing.'
           : 'Some of it was hard to make out, marked [unclear]. Please check it before continuing.',
       };
@@ -345,7 +352,7 @@ export function useVoiceInput(locale: string, opts: { silenceStopSeconds?: numbe
       setFinalText(browserText);
       setPhase('done');
       return {
-        text: browserText, engine: 'browser', doubtful: true,
+        text: browserText, engine: 'browser', audio, doubtful: true,
         note: t.noAi || !t.ok
           ? `This is your browser’s transcript, which is rougher${avg < 0.7 ? ' — and it was unsure of some words' : ''}. Please check it carefully before continuing.`
           : 'This is the best I could make out. Please check it carefully before continuing.',

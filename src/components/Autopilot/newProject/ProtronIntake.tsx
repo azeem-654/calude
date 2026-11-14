@@ -348,24 +348,42 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
 
   const toggleCard = (id: string) => setBrief({ ...brief, cards: brief.cards.includes(id) ? brief.cards.filter(x => x !== id) : [...brief.cards, id] });
   const toggleMore = (key: string) => setBrief({ ...brief, more: brief.more.includes(key) ? brief.more.filter(x => x !== key) : [...brief.more, key] });
-  const sendReply = (t: string) => { p.answer(t); setReply(''); };
+  const sendReply = (t: string) => { p.answer(t, !!recAudio); setReply(''); setRecNote(''); dropAudio(); };
 
   /* ── A recorded voice message ──
      The recorder AI Autopilot already uses (voice/useVoiceInput.ts): the whole
-     take is transcribed on the server by a model with thinking switched off,
-     then sent as the customer's answer. A take the transcriber was unsure of
-     goes in the box to be checked instead — a misheard answer sent unseen is
-     worse than one press more. */
-  const rec = useVoiceInput(defaultLocale(), { silenceStopSeconds: 2.2 });
+     take is transcribed on the server, told the question being answered and
+     the names already known so they are spelled right. The text then waits
+     in the box, with the recording beside it to play back, until the customer
+     presses send (owner, 2026-11-14: it sent a misheard sentence with no
+     chance to check it). A wrong answer sent unseen costs more than one press. */
+  const rec = useVoiceInput(defaultLocale(), {
+    silenceStopSeconds: 2.2,
+    context: () => {
+      const b = p.brief;
+      const asked = [...b.talk].reverse().find(t => t.role === 'protron')?.text ?? '';
+      return [
+        asked ? `They are answering: ${asked.split('\n').slice(-2).join(' ').slice(0, 300)}` : '',
+        b.company.trim() ? `Their business: ${b.company.trim()}` : '',
+        firstName ? `Their first name: ${firstName}` : '',
+      ].filter(Boolean).join('. ');
+    },
+  });
   const [recNote, setRecNote] = useState('');
+  const [recAudio, setRecAudio] = useState('');
+  const dropAudio = () => setRecAudio(a => { if (a) URL.revokeObjectURL(a); return ''; });
+  useEffect(() => () => { if (recAudio) URL.revokeObjectURL(recAudio); }, [recAudio]);
   const record = async () => {
     if (rec.phase === 'listening') { void rec.stop(); return; }
     if (rec.phase !== 'idle' && rec.phase !== 'done' && rec.phase !== 'error') return;
     setRecNote('');
+    dropAudio();
     const r = await rec.start();
-    if (!r || !r.text.trim()) return;
-    if (r.doubtful) { setReply(r.text); setRecNote(r.note || 'Please check what I heard, then press send.'); window.setTimeout(() => replyBox.current?.focus(), 0); return; }
-    p.answer(r.text, true);
+    if (!r || !r.text.trim()) { if (r?.audio) URL.revokeObjectURL(r.audio); return; }
+    setReply(prev => (prev.trim() ? `${prev.trim()} ${r.text}` : r.text));
+    setRecAudio(r.audio ?? '');
+    setRecNote(r.doubtful ? r.note : 'Here’s what I heard — fix anything I got wrong, then press send.');
+    window.setTimeout(() => replyBox.current?.focus(), 0);
   };
   const liveOn = live.state === 'live' || live.state === 'connecting';
 
@@ -542,10 +560,10 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
     );
     const what = brief.site?.industry || (brief.nature ?? '').split(/[.,]/)[0] || brief.company;
     return (
-      <div style={{ display: 'grid', gap: 14 }}>
+      <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'minmax(0, 1fr)', minWidth: 0 }}>
         {head(
           p.mode === 'year'
-            ? <>Your <span className="wz-accent">12-month business execution plan</span></>
+            ? <>Your <span className="wz-accent">12-month</span> business execution plan</>
             : <>Create a new <span className="wz-accent">business workspace</span></>,
           liveOn
             ? 'Talk normally — interrupt any time. Protron writes down what matters as you go.'
@@ -591,13 +609,20 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
             {(recording || rec.phase === 'transcribing') && (
               <div className="np-rec-strip" role="status">
                 {recording ? <span className="np-rec-dot" aria-hidden="true" /> : <Loader size={14} className="spin" />}
-                <span className="np-rec-text">{recording ? `Recording ${Math.floor(rec.seconds / 60)}:${String(rec.seconds % 60).padStart(2, '0')} — pause or press Send when you’re done` : 'Turning your voice message into text…'}</span>
+                <span className="np-rec-text">{recording ? `Recording ${Math.floor(rec.seconds / 60)}:${String(rec.seconds % 60).padStart(2, '0')} — pause or press Stop when you’re done` : 'Writing out what you said…'}</span>
                 {recording && <span className="np-rec-bars"><VoiceBars meter={rec.meter} count={18} height={20} /></span>}
                 {recording && <button type="button" className="np-link" onClick={rec.cancel}>Cancel</button>}
               </div>
             )}
             {rec.problem && rec.phase === 'error' && <p className="np-protron-note" style={{ margin: 0 }}><Info size={14} /> {rec.problem}</p>}
             {recNote && <p className="np-protron-note" style={{ margin: 0 }}><Info size={14} /> {recNote}</p>}
+            {recAudio && !recording && (
+              <div className="np-rec-review">
+                <span>Your recording</span>
+                <audio src={recAudio} controls preload="metadata" aria-label="Play back your recording" />
+                <button type="button" className="np-link" onClick={() => { setReply(''); setRecNote(''); dropAudio(); }}>Discard</button>
+              </div>
+            )}
             {!p.talkDone || liveOn ? (
               <div className="np-composer-box">
                 <textarea
@@ -610,7 +635,7 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
                   value={reply}
                   disabled={busy === 'asking' || recording}
                   placeholder={liveOn ? 'Or type here while you talk…' : recording ? 'Listening…' : 'Type your answer…'}
-                  onChange={e => { setReply(e.target.value); if (recNote) setRecNote(''); }}
+                  onChange={e => setReply(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(reply); } }}
                 />
                 <div className="np-composer-bar">
@@ -619,8 +644,8 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
                       <button type="button" className="np-composer-mic" data-on={recording ? '1' : '0'} aria-pressed={recording}
                         disabled={busy === 'asking' || rec.phase === 'transcribing'}
                         onClick={() => void record()}
-                        title={recording ? 'Stop and send the voice message' : 'Record a voice message'}>
-                        {recording ? <Square size={13} /> : <Mic size={15} />} {recording ? 'Stop & send' : 'Record'}
+                        title={recording ? 'Stop recording — you check the words before sending' : 'Record a voice message'}>
+                        {recording ? <Square size={13} /> : <Mic size={15} />} {recording ? 'Stop' : 'Record'}
                       </button>
                     )}
                     {live.supported && (
@@ -632,8 +657,8 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
                     )}
                   </span>
                   <button type="button" className="np-send" aria-label="Answer"
-                    disabled={recording ? false : !reply.trim() || busy === 'asking'}
-                    onClick={() => (recording ? void rec.stop() : sendReply(reply))}><ArrowRight size={17} /></button>
+                    disabled={recording || rec.phase === 'transcribing' || !reply.trim() || busy === 'asking'}
+                    onClick={() => sendReply(reply)}><ArrowRight size={17} /></button>
                 </div>
               </div>
             ) : null}

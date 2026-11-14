@@ -343,6 +343,15 @@ chats" on the message turns it off. It offers; it never acts on its own.
   1.5 s, worded as reasoning ("Weighing how competitors…"), never as a web
   search it is not doing; a real step (reading their site) is shown first.
 - **Protron's face** beside every reply in the wizard chat (`.np-chat-face`).
+- **Voice messages are checked before they are sent** (owner's test, same
+  day: "Azeem Dental, based in Virginia" came back as another sentence and
+  went straight out). Wizard and panel: the transcript lands in the box with
+  "Here's what I heard…", the wizard shows the recording to play back
+  (`VoiceResult.audio`, an object URL, revoked on send/discard), and the
+  customer presses send. Only hands-free Talk mode (incubator) sends at once.
+  The transcriber now leads with Flash (task `write`, thinking off) instead
+  of Lite, and is told the question being answered and the known names
+  (`context`, ≤ 600 chars, a hint only) so names are spelled right.
 - **12-month plan**: the dashboard's "Build my 12-month plan"
   (`?solution=marketing-plan`) opens the chat in `year` mode: `YEAR_BULLETS`
   (only what the product does — SMS once a number is connected, Shorts cut
