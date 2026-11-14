@@ -8,7 +8,7 @@ import {
   Search, Mail, Bell, ChevronDown, ChevronLeft,
   Share2, Star, Plus, Phone, Calendar as CalIcon, Send, TriangleAlert, Moon,
   Settings as SettingsIcon, Building2, Check, ArrowLeftRight, LogOut, CreditCard, Sun,
-  CheckCircle, XCircle, Info, BellOff, Crosshair, Sparkles, Users, Lock, ShieldCheck,
+  CheckCircle, XCircle, Info, BellOff, Crosshair, Sparkles, Users, Lock, ShieldCheck, LayoutGrid,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import CommandPalette from './CommandPalette';
@@ -122,13 +122,15 @@ export default function TopNav() {
    * The bar's real width is not fixed: a long workspace name, the counts on AI
    * Autopilot and the task badge, and the owner's extra menus all change it,
    * so breakpoints alone let the pills run under the icons on the right. It is
-   * measured instead, in four steps, and the first that fits wins: the pills
-   * as drawn (`full`), the same pills a little closer together (`tight`), a
-   * smaller, slimmer bar (`compact` — the owner, 2026-11-14: on a standard
-   * laptop, 1280 wide at 150% scaling, the bar wrapped to two thick rows and
-   * hid the top of the icon rail), and only then a row of their own (`wrap`).
-   * One line is what the bar is meant to be; the second row is the fallback
-   * for a narrow window, not the look.
+   * measured instead, and the first step that fits wins: the pills as drawn
+   * (`full`), a little closer together (`tight`), a smaller, slimmer bar
+   * (`compact`), then the same three with the menu folded (`data-menu="1"`):
+   * Dashboard, AI Autopilot and AI Prospecting stay, and every other group —
+   * with the moon, search and inbox from the corner — goes behind one "More"
+   * pill. Only if even that does not fit (a phone) does the row wrap. The
+   * owner, 2026-11-14: on a standard laptop at 125–150% scaling the bar took
+   * two thick rows and hid the top of the icon rail; one line is what the bar
+   * is meant to be.
    *
    * Its height is published as `--app-hdr-h` on <html>, so the icon rail can
    * start below it instead of sliding under it.
@@ -155,9 +157,14 @@ export default function TopNav() {
     };
     const measure = () => {
       const publish = () => document.documentElement.style.setProperty('--app-hdr-h', `${header.offsetHeight}px`);
-      for (const step of ['full', 'tight', 'compact'] as const) {
-        header.dataset.fit = step;
-        if (fits()) { publish(); return; }
+      /* Folded, the bar is always the slim one: with four pills there is
+         room to spare, and its height was the owner's complaint. */
+      for (const menu of ['0', '1'] as const) {
+        header.dataset.menu = menu;
+        for (const step of menu === '0' ? ['full', 'tight', 'compact'] as const : ['compact'] as const) {
+          header.dataset.fit = step;
+          if (fits()) { publish(); return; }
+        }
       }
       header.dataset.fit = 'wrap';
       publish();
@@ -197,7 +204,7 @@ export default function TopNav() {
   const closePalette = useCallback(() => setPaletteOpen(false), []);
 
   return (
-    <header ref={navRef} className="app-header" data-fit="full" style={{
+    <header ref={navRef} className="app-header" data-fit="full" data-menu="0" style={{
       position: 'sticky', top: 0, zIndex: 100,
       display: 'flex', alignItems: 'center', gap: 20,
       padding: '14px 28px',
@@ -394,7 +401,7 @@ export default function TopNav() {
                 to={group.path}
                 end={group.path === '/'}
                 onPointerEnter={e => { if (e.pointerType === 'mouse') openPanel(null); }}
-                className={`pill-link${on ? ' pill-active' : ''}`}
+                className={`pill-link${on ? ' pill-active' : ''}${group.id === 'home' ? '' : ' nav-fold'}`}
                 style={pill}
               >
                 {group.label}
@@ -407,7 +414,7 @@ export default function TopNav() {
                A tap fires pointerenter too, so without the check the tap opened
                the panel and the click that followed it closed it again — the
                menu was unusable on a phone. */
-            <div key={group.id} className="nav-group" style={{ position: 'relative', flexShrink: 0 }}
+            <div key={group.id} className="nav-group nav-fold" style={{ position: 'relative', flexShrink: 0 }}
               onPointerEnter={e => { if (e.pointerType === 'mouse') openPanel(group.id); }}>
               <button
                 type="button"
@@ -493,6 +500,62 @@ export default function TopNav() {
             </div>
           );
         })}
+
+        {/* "More": every folded group in one panel, shown only when the bar
+            folds its menu (data-menu="1", index.css). Its own pill is lit when
+            the screen open is one of them, so you can still see where you are. */}
+        {(() => {
+          const folded = NAV_GROUPS
+            .filter(g => g.id !== 'home' && g.id !== 'autopilot')
+            .map(g => ({ ...g, items: g.items.filter(i => !(i.agencyOnly && isClient)).filter(i => !(i.ownerOnly && !isInstallOwner)) }))
+            .filter(g => g.items.length > 0 || g.path);
+          const open = openId === 'more';
+          const on = folded.some(g => g.id === currentGroup) && !onProspecting;
+          const go = (path: string) => { openPanel(null); navigate(path); };
+          return (
+            <div className="nav-group nav-more" style={{ position: 'relative', flexShrink: 0 }}
+              onPointerEnter={e => { if (e.pointerType === 'mouse') openPanel('more'); }}>
+              <button type="button" data-nav-group="more" aria-haspopup="true" aria-expanded={open}
+                onClick={() => openPanel(open ? null : 'more')}
+                onKeyDown={e => { if (e.key === 'Escape') openPanel(null); }}
+                className={`pill-link${on ? ' pill-active' : ''}`}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: on ? 700 : 600, fontFamily: 'inherit', whiteSpace: 'nowrap', color: on ? '#fff' : '#3b3f45', backgroundColor: on ? '#17191c' : 'transparent' }}>
+                <LayoutGrid size={14} /> More
+                <ChevronDown size={13} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+              </button>
+              {open && (
+                <div className="nav-more-drop" style={{ position: 'absolute', top: '100%', right: 0, paddingTop: 8, zIndex: 300 }}>
+                  <div className="nav-panel nav-more-panel" role="menu" aria-label="More">
+                    <div className="nav-more-cols">
+                      {folded.map(g => (
+                        <div key={g.id} className="nav-more-col">
+                          {g.path
+                            ? <button type="button" role="menuitem" className="nav-more-head is-link" onClick={() => go(g.path!)}>{g.label}</button>
+                            : <span className="nav-more-head">{g.label}</span>}
+                          {g.items.map(item => {
+                            const Icon = item.icon;
+                            const here = isItemActive(location.pathname, item);
+                            return (
+                              <button key={item.path} type="button" role="menuitem" className={`nav-more-item${here ? ' is-here' : ''}`} onClick={() => go(item.path)} title={item.desc}>
+                                <Icon size={14} strokeWidth={2} /> <span>{item.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                    {/* The corner icons the folded bar hides. */}
+                    <div className="nav-more-foot">
+                      <button type="button" role="menuitem" onClick={() => { openPanel(null); setPaletteOpen(true); }}><Search size={14} /> Search <kbd>⌘K</kbd></button>
+                      <button type="button" role="menuitem" onClick={() => go('/conversations')}><Mail size={14} /> Inbox</button>
+                      <button type="button" role="menuitem" onClick={() => { setTheme(toggleTheme()); }}>{theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />} {theme === 'dark' ? 'Light mode' : 'Dark mode'}</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </nav>
 
       {/*
@@ -504,18 +567,18 @@ export default function TopNav() {
         <QuickCreate />
         <span className="nav-corner-div" aria-hidden="true" />
         <CloudBadge />
-        <button title={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'} data-noinvert onClick={() => setTheme(toggleTheme())} className="icon-btn" style={circleBtn}>
+        <button title={theme === 'dark' ? 'Light mode' : 'Dark mode'} aria-label={theme === 'dark' ? 'Light mode' : 'Dark mode'} data-noinvert onClick={() => setTheme(toggleTheme())} className="icon-btn nav-opt" style={circleBtn}>
           {theme === 'dark' ? <Sun size={18} strokeWidth={1.8} /> : <Moon size={18} strokeWidth={1.8} />}
         </button>
         <button
           title="Go to a module (⌘K)"
           aria-label="Go to a module"
           onClick={() => setPaletteOpen(true)}
-          className="icon-btn" style={circleBtn}
+          className="icon-btn nav-opt" style={circleBtn}
         >
           <Search size={18} strokeWidth={1.8} />
         </button>
-        <button title="Inbox" aria-label="Inbox" onClick={() => navigate('/conversations')} className="icon-btn" style={circleBtn}>
+        <button title="Inbox" aria-label="Inbox" onClick={() => navigate('/conversations')} className="icon-btn nav-opt" style={circleBtn}>
           <Mail size={18} strokeWidth={1.8} />
         </button>
 

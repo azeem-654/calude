@@ -857,6 +857,34 @@ details[open] > summary .faq-chevron { transform: rotate(180deg); }
   .pill-link { padding: 9px 11px !important; font-size: 13px !important; }
 }
 
+/* The folded menu (TopNav.tsx, data-menu="1"): Dashboard and the two lit
+   pills stay, every other group goes behind "More", and the corner drops the
+   moon, search and inbox (they are in the More panel's foot). */
+.nav-more { display: none; }
+.app-header[data-menu="1"] .nav-more { display: block; }
+.app-header[data-menu="1"] .nav-fold,
+.app-header[data-menu="1"] .nav-opt { display: none !important; }
+.nav-more-panel { background: #fff; border-radius: 20px; padding: 14px; width: min(660px, calc(100vw - 24px)); max-height: calc(100vh - var(--app-hdr-h, 64px) - 16px); overflow-y: auto; box-sizing: border-box; box-shadow: 0 16px 40px -8px rgba(23, 25, 28, 0.2); }
+.nav-more-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px 14px; }
+.nav-more-col { display: grid; align-content: start; gap: 1px; }
+.nav-more-head { display: block; padding: 2px 8px 5px; font-size: 10.5px !important; line-height: 1.3; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #8a8f98; text-align: left; border: 0; background: none; font-family: inherit; }
+.nav-more-head.is-link { cursor: pointer; color: #17191c; }
+.nav-more-head.is-link:hover { text-decoration: underline; }
+.nav-more-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border: 0; border-radius: 10px; background: none; cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 600; line-height: 1.2; color: #17191c; text-align: left; }
+.nav-more-item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-more-item svg { flex: none; color: #5b6068; }
+.nav-more-item:hover { background: #f2f3f5; }
+.nav-more-item.is-here { background: #17191c; color: #fff; }
+.nav-more-item.is-here svg { color: #fff; }
+.nav-more-foot { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #eef0f3; }
+.nav-more-foot button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid #e6e8eb; border-radius: 999px; background: #f7f8f9; cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 600; line-height: 1; color: #17191c; }
+.nav-more-foot button:hover { background: #eef0f2; }
+.nav-more-foot kbd { font-family: inherit; font-size: 10.5px; font-weight: 600; color: #8a8f98; }
+@media (max-width: 620px) {
+  .nav-more { position: static !important; }
+  .nav-more-drop { left: 0; right: 0 !important; }
+}
+
 /* A group's panel never leaves the screen, whatever the bar has done with the
    row it hangs from. */
 .nav-panel {

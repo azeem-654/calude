@@ -52,6 +52,13 @@ one 64px line instead of two thick rows. The bar publishes its height as
 `--app-hdr-h`; the **icon rail** is centred between it and Protron's button
 (bottom 118px), not in the window, shrinks below 760px tall and drops Back /
 Copy link below 640px — it used to slide under both on a short screen.
+Same day, second pass: when even `compact` does not fit (a laptop at
+125–150% zoom, ~1060 CSS px), the bar **folds** (`data-menu="1"`): Dashboard,
+AI Autopilot and AI Prospecting stay, every other group goes behind a
+**More** pill (`.nav-more`, one panel listing every group and its screens,
+with Search / Inbox / Dark mode in its foot), and the corner drops the moon,
+search and inbox (`.nav-opt`). Folded, the bar is always the slim 64px one.
+Only a phone wraps, and it wraps folded (four pills, not three rows).
 
 **2026-11-13**: the account button at the end of the corner is the Protected
 Central shield (`LogoMark` + green lock, `.nav-shield`); its menu opens on
