@@ -885,12 +885,13 @@ export default function Dashboard() {
       <span className="dash-glow" aria-hidden="true" />
       <span className="dash-glow-2" aria-hidden="true" />
       {/* The starting point: ask AI Autopilot, over the hills (owner, 2026-11-12). */}
-      <DashHero greeting={greeting} firstName={firstName} />
-      {/* One slim bar — face, greeting and the day — then the blocks. */}
-      <div className="dash-stack" style={{ padding: '18px clamp(18px, 3.2vw, 46px) 0', display: 'flex', flexDirection: 'column', gap: 26 }}>
-        {/* The hero above says good morning; the bar says what the day holds. */}
+      {/* The hero says good morning; the day bar inside it, under the film,
+          says what the day holds — in the hero's own light (owner, 2026-11-14). */}
+      <DashHero greeting={greeting} firstName={firstName}>
         <DayBar appointments={appointments} greeting="Here’s your day" firstName=""
           line={`${openDeals} deal${openDeals === 1 ? '' : 's'} in motion · ${contacts.length} contact${contacts.length === 1 ? '' : 's'} on the books`} />
+      </DashHero>
+      <div className="dash-stack" style={{ padding: '18px clamp(18px, 3.2vw, 46px) 0', display: 'flex', flexDirection: 'column', gap: 26 }}>
         <Toasts />
 
         {/*

@@ -46,6 +46,12 @@ inside: blue when the cron ran in the last 20 minutes, amber when late, out
 when unreadable; the words are kept for screen readers. The lit parts carry
 `data-noinvert`, so dark mode does not turn them inside out. `test:isolation`
 checks four widths as the owner, and that 1440 and up is one line.
+**2026-11-14**: a `compact` step (smaller pills and icons, 8px padding) comes
+before `wrap`, so a standard laptop (1280 wide, e.g. 1920×1080 at 150%) keeps
+one 64px line instead of two thick rows. The bar publishes its height as
+`--app-hdr-h`; the **icon rail** is centred between it and Protron's button
+(bottom 118px), not in the window, shrinks below 760px tall and drops Back /
+Copy link below 640px — it used to slide under both on a short screen.
 
 **2026-11-13**: the account button at the end of the corner is the Protected
 Central shield (`LogoMark` + green lock, `.nav-shield`); its menu opens on
@@ -67,20 +73,24 @@ and goes to the workspace owner when no address is given (booking.ts
 starting points, then the explainer film. Sending hands the words to the
 wizard like Protron does (`pc_protron_handoff`).
 
-**Fifth pass (owner, 2026-11-14, from a reference image) — the current look:**
-near-black ground lit from below by drifting ember-orange glows through a dot
-grid (`.dash-aurora*`, still CSS only); the box is dark glass with a glowing
-orange edge, an orange spark tile on its top edge, dark Record / Talk-or-Chat
-tiles and an orange **Send**; starting points are dark pills with short labels
-(the full sentence is what is sent). **One screen:** the box and the film
-share one column (`.dash-hero-col`) whose width comes from the window's height
-(`--hero-w`, `--hero-chrome` in dashboard.css) so greeting, box, starters and
-the whole player fit without scrolling — measured at 1280×800 (menu on two
-rows), 1366×768, 1440×900, 1536×864 and 1920×1080. To make that fit, on the
-hero the film hides its title row and lays captions over the foot of the
-picture (under it again on a phone); short screens (≤820px tall) drop the line
-under the greeting and the fourth starter. Change anything above the film and
-re-measure `--hero-chrome`. The aurora/silk notes below are history.
+**Fifth and sixth passes (owner, 2026-11-14) — the current look:** a glow
+rising from the bottom through a dot grid (`.dash-aurora*`, CSS only) that
+**drifts slowly from ember orange to the logo's green and back** (36 s each
+way: a green layer cross-faded by opacity on the ground; `--acc`, a
+registered `@property` colour, animated on the few small parts that wear it —
+box edge, spark, Send, chips, play button, day bar — never on the hero
+itself, or the film's whole tree restyles every frame). **Day mode is warm
+white, night mode near-black** — the hero is `data-noinvert` and draws both
+from `--h-*` tokens under `html[data-theme="dark"]`. The box is glass with an
+accent edge and a spark tile on its top edge; Send is the accent with dark
+words (readable on orange and green). **One full-width column**
+(`.dash-hero-col`, ≤1240px) holds the box, the film and the **day bar**, which
+now lives inside the hero (Dashboard.tsx passes `DayBar` as DashHero's
+children) and wears the hero's glass and accent (`.dash-hero-day .day-*`).
+On the hero the film hides its title row and lays captions over the foot of
+the picture (under it on a phone). The aurora/silk notes below are history;
+an earlier same-day pass sized the column to fit one screen and was undone
+("very small" on a laptop).
 
 - **The ground is colour light, not a picture** (owner, 2026-11-12, fourth
   pass: hills read as cartoonish, footage stuttered, then the office photo

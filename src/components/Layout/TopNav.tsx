@@ -122,10 +122,16 @@ export default function TopNav() {
    * The bar's real width is not fixed: a long workspace name, the counts on AI
    * Autopilot and the task badge, and the owner's extra menus all change it,
    * so breakpoints alone let the pills run under the icons on the right. It is
-   * measured instead, in three steps, and the first that fits wins: the pills
-   * as drawn (`full`), the same pills a little closer together (`tight`), and
-   * only then a row of their own (`wrap`). One line is what the bar is meant to
-   * be; the second row is the fallback for a narrow window, not the look.
+   * measured instead, in four steps, and the first that fits wins: the pills
+   * as drawn (`full`), the same pills a little closer together (`tight`), a
+   * smaller, slimmer bar (`compact` — the owner, 2026-11-14: on a standard
+   * laptop, 1280 wide at 150% scaling, the bar wrapped to two thick rows and
+   * hid the top of the icon rail), and only then a row of their own (`wrap`).
+   * One line is what the bar is meant to be; the second row is the fallback
+   * for a narrow window, not the look.
+   *
+   * Its height is published as `--app-hdr-h` on <html>, so the icon rail can
+   * start below it instead of sliding under it.
    *
    * The step is written straight onto the header as `data-fit`, not through
    * React state: each step has to be laid out and measured in the same frame,
@@ -148,11 +154,13 @@ export default function TopNav() {
       return others + need <= inner + 1;
     };
     const measure = () => {
-      for (const step of ['full', 'tight'] as const) {
+      const publish = () => document.documentElement.style.setProperty('--app-hdr-h', `${header.offsetHeight}px`);
+      for (const step of ['full', 'tight', 'compact'] as const) {
         header.dataset.fit = step;
-        if (fits()) return;
+        if (fits()) { publish(); return; }
       }
       header.dataset.fit = 'wrap';
+      publish();
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -708,9 +716,16 @@ export function IconRail() {
   ];
 
   return (
+    /* Centred in the space between the top bar and Protron's button at the
+       bottom left, not in the whole window: on a short laptop screen the
+       window's middle put the rail's top under the bar and its foot under the
+       button (owner, 2026-11-14). The box spans that space and lets clicks
+       through; only the two pods take them. index.css shrinks it on short
+       screens. */
     <div className="icon-rail" style={{
-      position: 'fixed', left: 14, top: '50%', transform: 'translateY(-50%)', zIndex: 90,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+      position: 'fixed', left: 14, top: 'calc(var(--app-hdr-h, 76px) + 10px)', bottom: 118, zIndex: 90,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10,
+      pointerEvents: 'none',
     }}>
       {/* Grouped capsule */}
       <div style={{
@@ -719,8 +734,8 @@ export function IconRail() {
         boxShadow: '0 4px 16px rgba(23,25,28,0.08)',
       }}>
         {groups.map((group, gi) => (
-          <div key={gi} style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
-            {gi > 0 && <div style={{ width: 22, height: 1, backgroundColor: '#ecedf0', margin: '3px 0' }} />}
+          <div key={gi} className="rail-grp" data-g={gi} style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
+            {gi > 0 && <div className="rail-sep" style={{ width: 22, height: 1, backgroundColor: '#ecedf0', margin: '3px 0' }} />}
             {group.map(({ icon: Icon, tip, path, onClick }) => {
               const active = !!path && (path === '/' ? location.pathname === '/' : location.pathname.startsWith(path));
               return (

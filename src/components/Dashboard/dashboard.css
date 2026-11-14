@@ -488,74 +488,125 @@ button.day-chip:hover { background: rgba(255, 255, 255, 0.10); border-color: rgb
 /* ── The hero: ask AI Autopilot (DashHero.tsx, AutopilotFilm.tsx) ──
    Up behind the menu and the trial bar (Dashboard.tsx measures --dash-bleed),
    so the ground starts at the top of the page and the menu, see-through while
-   the hero is in view, shares it. The whole hero is kept out of the dark-mode
-   inversion (data-noinvert): the dark ground, white words on it and the dark film read
-   the same in both themes; only the floor it fades into follows the theme.
-   Only transform and opacity move, and nothing blurs live — a backdrop blur
-   over a moving picture is a full repaint every frame, which is what made
-   the footage version stutter.
-   Fifth pass (owner, 2026-11-14, from a reference): near-black, an
-   ember-orange glow rising from the bottom through a dot grid, the box as
-   dark glass with a glowing orange edge, an orange Send.
+   the hero is in view, shares it. The hero carries data-noinvert, so the
+   app's dark-mode inversion leaves it alone and it draws its own day and
+   night versions below (html[data-theme="dark"]).
+   Only transform and opacity move on the ground, and nothing blurs live — a
+   backdrop blur over a moving picture is a full repaint every frame, which is
+   what made the footage version stutter.
 
-   One screen: the box and the film share one column (`.dash-hero-col`) whose
-   width is derived from the window's height, so everything down to the
-   film's controls is visible without scrolling. On the hero the film drops
-   its title row (the chapter names are on its scrubber) and lays its
-   captions over the foot of the picture, YouTube-style, so its height is
-   width × 9/16 plus the control bar; --hero-chrome is that bar plus
-   everything above the film inside the hero — padding, greeting, line, box,
-   starting points, gaps — measured in the browser at 1280–1920 wide. Change
-   what sits above the film and re-measure. Below 460px wide it scrolls
-   rather than shrink the box to a strip. */
+   Fifth pass (owner, 2026-11-14, from a reference): a glow rising from the
+   bottom through a dot grid, the box as glass with a glowing edge.
+   Sixth pass (same day): the colour drifts slowly from ember orange to the
+   logo's green and back (a green layer cross-faded by opacity on the ground;
+   `--acc`, a registered colour, animated on the few small parts that wear it
+   — never on the hero itself, or the film's whole tree would restyle every
+   frame); day mode is warm white, night mode near-black; the box, the film
+   and the day bar share one full-width column. */
+@property --acc { syntax: '<color>'; inherits: true; initial-value: #ff6a2b; }
 .dash-hero {
+  /* Day */
   --hero-floor: #e9ecef;
-  --hero-chrome: 372px;
-  --hero-w: min(1180px, 100%, max(460px, calc((100svh - var(--dash-bleed, 68px) - var(--hero-chrome)) * 16 / 9)));
+  --h-ink: #17120f; --h-mut: rgba(48, 34, 26, 0.68);
+  --h-ground: #fbf7f2;
+  --h-glass: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.78));
+  --h-tile: rgba(28, 18, 12, 0.05); --h-tile-hover: rgba(28, 18, 12, 0.09); --h-tile-line: rgba(28, 18, 12, 0.12);
+  --h-ph: rgba(48, 34, 26, 0.45);
+  --h-veil-top: rgba(255, 255, 255, 0.55);
+  --h-dot: rgba(196, 88, 36, 0.38); --h-dot-green: rgba(96, 150, 20, 0.4);
+  --h-chip-bg: rgba(255, 255, 255, 0.7);
+  --h-shadow: rgba(120, 60, 20, 0.18);
   position: relative;
+  z-index: 2; /* the day bar's clocks panel opens over the blocks below */
   isolation: isolate;
   box-sizing: border-box;
   margin: calc(var(--dash-bleed) * -1) 0 0 -62px;
-  padding: calc(var(--dash-bleed) + clamp(12px, 2vh, 28px)) clamp(16px, 4vw, 48px) 14px calc(62px + clamp(16px, 4vw, 48px));
-  min-height: 100svh;
+  padding: calc(var(--dash-bleed) + clamp(12px, 2.4vh, 32px)) clamp(16px, 3vw, 40px) clamp(18px, 3vh, 32px) calc(62px + clamp(16px, 3vw, 40px));
   display: grid;
   justify-items: center;
   align-content: start;
+  color: var(--h-ink);
 }
-html[data-theme="dark"] .dash-hero { --hero-floor: #161310; }
-.dash-hero-col { width: var(--hero-w); display: grid; gap: 14px; }
-.dash-hero-ground { position: absolute; inset: 0; z-index: -1; pointer-events: none; background: #0a0605; overflow: hidden; }
-.dash-hero-veil { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(8, 5, 4, 0.55) 0%, rgba(8, 5, 4, 0) 18%, rgba(8, 5, 4, 0) 93%, var(--hero-floor) 100%); }
-/* Near-black, lit from below. Each blob is a radial gradient (soft by
-   construction, nothing blurred live) drifting on its own loop. */
-.dash-aurora { position: absolute; inset: 0; overflow: hidden; --px: 0; --py: 0; --gx: 50%; --gy: 30%;
+html[data-theme="dark"] .dash-hero {
+  --hero-floor: #161310;
+  --h-ink: #fff; --h-mut: rgba(255, 236, 226, 0.72);
+  --h-ground: #0a0605;
+  --h-glass: linear-gradient(180deg, rgba(24, 13, 9, 0.95), rgba(10, 6, 5, 0.97));
+  --h-tile: rgba(255, 255, 255, 0.06); --h-tile-hover: rgba(255, 255, 255, 0.11); --h-tile-line: rgba(255, 255, 255, 0.1);
+  --h-ph: rgba(255, 236, 226, 0.45);
+  --h-veil-top: rgba(8, 5, 4, 0.55);
+  --h-dot: rgba(255, 186, 140, 0.55); --h-dot-green: rgba(200, 242, 77, 0.5);
+  --h-chip-bg: rgba(30, 13, 8, 0.6);
+  --h-shadow: rgba(0, 0, 0, 0.6);
+}
+/* The parts that wear the accent animate it themselves, all on the same
+   clock (they mount together), so they stay in step with the ground. */
+.dash-hero-box, .dash-hero-spark, .dash-hero-send, .dash-hero-chip, .dash-hero-film .apf-ctl.is-play, .dash-hero-day .day-top { --acc: #ff6a2b; }
+@media (prefers-reduced-motion: no-preference) {
+  .dash-hero-box, .dash-hero-spark, .dash-hero-send, .dash-hero-chip, .dash-hero-film .apf-ctl.is-play, .dash-hero-day .day-top { animation: hero-acc 36s ease-in-out infinite alternate; }
+  .dash-aurora-green { animation: hero-green 36s ease-in-out infinite alternate; }
+  .dash-aurora[data-active="0"] .dash-aurora-green { animation-play-state: paused; }
+}
+@keyframes hero-acc { 0%, 18% { --acc: #ff6a2b; } 82%, 100% { --acc: #a9e13c; } }
+@keyframes hero-green { 0%, 18% { opacity: 0; } 82%, 100% { opacity: 1; } }
+
+.dash-hero-col { width: min(1240px, 100%); display: grid; gap: 14px; }
+.dash-hero-ground { position: absolute; inset: 0; z-index: -1; pointer-events: none; background: var(--h-ground); overflow: hidden; }
+.dash-hero-veil { position: absolute; inset: 0; background: linear-gradient(180deg, var(--h-veil-top) 0%, transparent 16%, transparent 94%, var(--hero-floor) 100%); }
+
+/* The ground, lit from below. Each blob is a radial gradient (soft by
+   construction, nothing blurred live) drifting on its own loop. It covers
+   the first screen and fades to the base colour further down. */
+.dash-aurora { position: absolute; left: 0; right: 0; top: 0; height: max(100svh, 760px); overflow: hidden; --px: 0; --py: 0; --gx: 50%; --gy: 30%;
   background:
+    radial-gradient(42% 26% at 50% 0%, rgba(255, 120, 60, 0.14), rgba(255, 120, 60, 0) 100%),
+    radial-gradient(130% 62% at 50% 108%, rgba(255, 106, 40, 0.75) 0%, rgba(255, 140, 80, 0.35) 30%, rgba(255, 180, 130, 0.12) 52%, rgba(255, 255, 255, 0) 72%); }
+html[data-theme="dark"] .dash-aurora { background:
     radial-gradient(42% 26% at 50% 0%, rgba(255, 120, 60, 0.16), rgba(255, 120, 60, 0) 100%),
     radial-gradient(130% 62% at 50% 108%, #f2601f 0%, #b8410f 20%, #5c1c08 42%, #1d0b06 64%, #0a0605 82%); }
+.dash-aurora::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 26%; background: linear-gradient(180deg, transparent, var(--h-ground)); z-index: 4; }
 .dash-aurora-blob { position: absolute; border-radius: 50%; translate: calc(var(--px) * var(--k, -20px)) calc(var(--py) * var(--k, -20px)); }
-.dash-aurora-blob.is-a { --k: -30px; width: 60vw; height: 46vw; left: -16vw; bottom: -24vw; background: radial-gradient(closest-side, rgba(255, 118, 46, 0.7), rgba(255, 118, 46, 0) 100%); }
-.dash-aurora-blob.is-b { --k: 24px; width: 58vw; height: 44vw; right: -16vw; bottom: -22vw; background: radial-gradient(closest-side, rgba(255, 146, 70, 0.62), rgba(255, 146, 70, 0) 100%); }
-.dash-aurora-blob.is-c { --k: -18px; width: 70vw; height: 36vw; left: 15vw; bottom: -20vw; background: radial-gradient(closest-side, rgba(255, 96, 24, 0.62), rgba(255, 96, 24, 0) 100%); }
-.dash-aurora-blob.is-d { --k: 36px; width: 46vw; height: 26vw; left: 27vw; top: -12vw; background: radial-gradient(closest-side, rgba(255, 140, 90, 0.2), rgba(255, 140, 90, 0) 100%); }
+.dash-aurora-blob.is-a { --k: -30px; width: 60vw; height: 46vw; left: -16vw; bottom: -24vw; background: radial-gradient(closest-side, rgba(255, 118, 46, 0.55), rgba(255, 118, 46, 0) 100%); }
+.dash-aurora-blob.is-b { --k: 24px; width: 58vw; height: 44vw; right: -16vw; bottom: -22vw; background: radial-gradient(closest-side, rgba(255, 146, 70, 0.5), rgba(255, 146, 70, 0) 100%); }
+.dash-aurora-blob.is-c { --k: -18px; width: 70vw; height: 36vw; left: 15vw; bottom: -20vw; background: radial-gradient(closest-side, rgba(255, 96, 24, 0.5), rgba(255, 96, 24, 0) 100%); }
+.dash-aurora-blob.is-d { --k: 36px; width: 46vw; height: 26vw; left: 27vw; top: -12vw; background: radial-gradient(closest-side, rgba(255, 140, 90, 0.18), rgba(255, 140, 90, 0) 100%); }
+html[data-theme="dark"] .dash-aurora-blob.is-a { background: radial-gradient(closest-side, rgba(255, 118, 46, 0.7), rgba(255, 118, 46, 0) 100%); }
+html[data-theme="dark"] .dash-aurora-blob.is-b { background: radial-gradient(closest-side, rgba(255, 146, 70, 0.62), rgba(255, 146, 70, 0) 100%); }
+html[data-theme="dark"] .dash-aurora-blob.is-c { background: radial-gradient(closest-side, rgba(255, 96, 24, 0.62), rgba(255, 96, 24, 0) 100%); }
+/* The logo's green (#c8f24d lime, #8fd9c4 mint): a whole ground of its own,
+   opaque, faded in over the ember and back out. Its own two glows drift. */
+.dash-aurora-green { position: absolute; inset: 0; opacity: 0;
+  background:
+    radial-gradient(42% 26% at 50% 0%, rgba(143, 217, 196, 0.2), rgba(143, 217, 196, 0) 100%),
+    radial-gradient(130% 62% at 50% 108%, rgba(168, 226, 60, 0.7) 0%, rgba(160, 220, 120, 0.32) 30%, rgba(190, 235, 200, 0.12) 52%, rgba(255, 255, 255, 0) 72%),
+    var(--h-ground); }
+html[data-theme="dark"] .dash-aurora-green { background:
+    radial-gradient(42% 26% at 50% 0%, rgba(143, 217, 196, 0.16), rgba(143, 217, 196, 0) 100%),
+    radial-gradient(130% 62% at 50% 108%, #9bd43a 0%, #4f8a1c 20%, #1f3a0e 42%, #0b1407 64%, #0a0605 82%); }
+.dash-aurora-green::before, .dash-aurora-green::after { content: ''; position: absolute; border-radius: 50%; }
+.dash-aurora-green::before { width: 60vw; height: 44vw; left: -14vw; bottom: -24vw; background: radial-gradient(closest-side, rgba(200, 242, 77, 0.55), rgba(200, 242, 77, 0) 100%); }
+.dash-aurora-green::after { width: 56vw; height: 42vw; right: -14vw; bottom: -22vw; background: radial-gradient(closest-side, rgba(143, 217, 196, 0.5), rgba(143, 217, 196, 0) 100%); }
 /* The dot grid, shown where the light is: strong along the bottom, faint
-   under the top glow, dark in between. */
+   under the top glow, nearly gone in between. */
 .dash-aurora-dots { position: absolute; inset: 0;
-  background-image: radial-gradient(circle, rgba(255, 186, 140, 0.55) 0 1px, transparent 1.5px); background-size: 13px 13px;
+  background-image: radial-gradient(circle, var(--h-dot) 0 1px, transparent 1.5px); background-size: 13px 13px;
   -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0.05) 30%, rgba(0, 0, 0, 0.12) 55%, #000 100%);
   mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0.05) 30%, rgba(0, 0, 0, 0.12) 55%, #000 100%); opacity: .7; }
 /* A soft warm light that follows the pointer. */
-.dash-aurora-glow { position: absolute; left: 0; top: 0; width: 620px; height: 620px; margin: -310px 0 0 -310px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 150, 90, 0.13), rgba(255, 150, 90, 0) 62%); transform: translate3d(var(--gx), var(--gy), 0); opacity: 0; }
+.dash-aurora-glow { position: absolute; left: 0; top: 0; width: 620px; height: 620px; margin: -310px 0 0 -310px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 170, 110, 0.14), rgba(255, 170, 110, 0) 62%); transform: translate3d(var(--gx), var(--gy), 0); opacity: 0; }
 .dash-aurora[data-pointer="1"] .dash-aurora-glow { opacity: 1; }
 /* Grain: fixed, so a smooth gradient does not band on 8-bit screens. */
-.dash-aurora-grain { position: absolute; inset: 0; opacity: .12; mix-blend-mode: overlay;
+.dash-aurora-grain { position: absolute; inset: 0; opacity: .1; mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
 @media (prefers-reduced-motion: no-preference) {
   .dash-aurora-blob.is-a { animation: dash-float-a 26s ease-in-out infinite alternate; }
   .dash-aurora-blob.is-b { animation: dash-float-b 31s ease-in-out infinite alternate; }
   .dash-aurora-blob.is-c { animation: dash-float-c 23s ease-in-out infinite alternate; }
   .dash-aurora-blob.is-d { animation: dash-float-c 29s ease-in-out -9s infinite alternate-reverse; }
+  .dash-aurora-green::before { animation: dash-float-a 28s ease-in-out infinite alternate; }
+  .dash-aurora-green::after { animation: dash-float-b 33s ease-in-out infinite alternate; }
   .dash-aurora-glow { transition: opacity .6s ease; }
-  .dash-aurora[data-active="0"] *, .dash-aurora[data-active="0"] { animation-play-state: paused !important; }
+  .dash-aurora[data-active="0"] *, .dash-aurora[data-active="0"] *::before, .dash-aurora[data-active="0"] *::after { animation-play-state: paused !important; }
 }
 @keyframes dash-float-a { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(10vw, -3vw, 0) scale(1.1); } }
 @keyframes dash-float-b { from { transform: translate3d(0, 0, 0) scale(1.05); } to { transform: translate3d(-10vw, -2vw, 0) scale(.92); } }
@@ -564,86 +615,100 @@ html[data-theme="dark"] .dash-hero { --hero-floor: #161310; }
 html[data-hero-top="1"] .app-header { background-color: transparent !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
 html[data-hero-top="1"] .trial-bar { background: rgba(255, 255, 255, 0.78) !important; border-bottom-color: rgba(255, 255, 255, 0.35) !important; }
 .app-header { transition: background-color .25s ease; }
-.dash-hero-inner { width: 100%; display: grid; gap: 8px; justify-items: center; text-align: center; }
-.dash-hero-title { margin: 0; font-size: clamp(26px, 3vw, 36px); font-weight: 600; letter-spacing: -0.035em; color: #fff; line-height: 1.1; overflow-wrap: anywhere; }
-.dash-hero-sub { margin: 0; font-size: clamp(14px, 1.4vw, 16px); color: rgba(255, 236, 226, 0.72); }
-/* The box: dark glass, its edge lit orange and glowing outward (the reference). */
-.dash-hero-box { position: relative; container-type: inline-size; width: 100%; box-sizing: border-box; margin-top: 26px; display: grid; gap: 8px; text-align: left;
-  background: linear-gradient(180deg, rgba(24, 13, 9, 0.95), rgba(10, 6, 5, 0.97));
-  border: 1px solid rgba(255, 156, 108, 0.6); border-radius: 24px; padding: 16px 12px 12px 20px;
-  box-shadow: 0 0 0 1px rgba(255, 120, 60, 0.12), 0 -8px 44px -10px rgba(255, 112, 44, 0.6), 0 24px 80px -24px rgba(255, 92, 24, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.07); }
-.dash-hero-box:focus-within { border-color: rgba(255, 176, 130, 0.85); }
-/* The orange spark sitting on the box's top edge — the reference's tile,
-   overlapping so it costs no extra row. */
-.dash-hero-spark { position: absolute; top: -26px; left: 50%; translate: -50% 0; width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; color: #fff;
-  background: linear-gradient(160deg, #ff8346, #e4531c); box-shadow: 0 10px 30px -6px rgba(255, 100, 40, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
-.dash-hero-input { border: 0; outline: 0; resize: none; background: transparent; font: inherit; font-size: 15.5px; line-height: 1.5; color: #f7efe9; min-height: 44px; width: 100%; }
-.dash-hero-input::placeholder { color: rgba(255, 236, 226, 0.45); }
+
+.dash-hero-inner { width: 100%; display: grid; gap: 6px; justify-items: center; text-align: center; }
+.dash-hero-title { margin: 0; font-size: clamp(26px, 3vw, 38px); font-weight: 600; letter-spacing: -0.035em; color: var(--h-ink); line-height: 1.1; overflow-wrap: anywhere; }
+.dash-hero-sub { margin: 0; font-size: clamp(14px, 1.4vw, 16px); color: var(--h-mut); }
+/* The box: glass, its edge lit by the accent and glowing outward. */
+.dash-hero-box { position: relative; container-type: inline-size; width: 100%; box-sizing: border-box; margin-top: 28px; display: grid; gap: 8px; text-align: left;
+  background: var(--h-glass);
+  border: 1px solid color-mix(in srgb, var(--acc) 62%, transparent); border-radius: 24px; padding: 16px 12px 12px 20px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--acc) 14%, transparent), 0 -8px 44px -12px color-mix(in srgb, var(--acc) 60%, transparent), 0 24px 70px -26px color-mix(in srgb, var(--acc) 55%, transparent), 0 10px 30px -18px var(--h-shadow); }
+.dash-hero-box:focus-within { border-color: color-mix(in srgb, var(--acc) 90%, #fff); }
+/* The spark on the box's top edge — the reference's tile, overlapping so it
+   costs no extra row. */
+.dash-hero-spark { position: absolute; top: -26px; left: 50%; translate: -50% 0; width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; color: #140c08;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--acc) 80%, #fff), var(--acc)); box-shadow: 0 10px 30px -6px color-mix(in srgb, var(--acc) 85%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.4); }
+.dash-hero-input { border: 0; outline: 0; resize: none; background: transparent; font: inherit; font-size: 15.5px; line-height: 1.5; color: var(--h-ink); min-height: 48px; width: 100%; }
+.dash-hero-input::placeholder { color: var(--h-ph); }
 .dash-hero-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .dash-hero-ways { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
-/* Record and Talk/Chat: dark tiles like the reference's tool buttons; the
+/* Record and Talk/Chat: tiles like the reference's tool buttons; the
    microphone stays red and turns the whole button red while recording. */
-.dash-hero-rec, .dash-hero-live { position: relative; display: inline-flex; align-items: center; gap: 7px; font: inherit; font-size: 13px; font-weight: 650; color: #f3e9e4; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 8px 13px; cursor: pointer; }
-.dash-hero-rec:hover, .dash-hero-live:hover { background: rgba(255, 255, 255, 0.11); }
-.dash-hero-rec svg { color: #ff6b5a; }
+.dash-hero-rec, .dash-hero-live { position: relative; display: inline-flex; align-items: center; gap: 7px; font: inherit; font-size: 13px; font-weight: 650; color: var(--h-ink); background: var(--h-tile); border: 1px solid var(--h-tile-line); border-radius: 12px; padding: 8px 13px; cursor: pointer; }
+.dash-hero-rec:hover, .dash-hero-live:hover { background: var(--h-tile-hover); }
+.dash-hero-rec svg { color: #e5483a; }
 .dash-hero-rec.is-on { color: #fff; background: #d92d20; border-color: #d92d20; box-shadow: 0 0 0 calc(3px + var(--lvl, 0) * 10px) rgba(217, 45, 32, 0.28); }
 .dash-hero-rec.is-on svg { color: #fff; }
 .dash-hero-rec:disabled { opacity: .7; cursor: default; }
-.dash-hero-live { border-color: rgba(255, 156, 108, 0.32); }
 .dash-hero-live-sub { font-weight: 550; opacity: .7; font-size: 12px; }
-/* A narrow box (a short screen narrows the column) keeps the buttons on one line. */
 @container (max-width: 560px) { .dash-hero-live-sub { display: none; } }
-.dash-hero-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #3ddc97; box-shadow: 0 0 0 3px rgba(61, 220, 151, 0.25); }
-.dash-hero-note { margin: 0; font-size: 12px; color: #fdba74; }
-.dash-hero-send { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 16px; border-radius: 12px; border: 0; font: inherit; font-size: 14px; font-weight: 650; color: #fff; cursor: pointer;
-  background: linear-gradient(180deg, #ff7f42, #e8541d); box-shadow: 0 8px 24px -8px rgba(255, 100, 40, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.3); }
-.dash-hero-send:hover { filter: brightness(1.07); }
-.dash-hero-send:disabled { background: rgba(255, 255, 255, 0.08); color: rgba(255, 236, 226, 0.4); box-shadow: none; cursor: default; filter: none; }
-.dash-hero-send:focus-visible, .dash-hero-live:focus-visible, .dash-hero-rec:focus-visible, .dash-hero-chip:focus-visible { outline: 2px solid #ffb183; outline-offset: 2px; }
+.dash-hero-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #2fc583; box-shadow: 0 0 0 3px rgba(61, 220, 151, 0.25); }
+.dash-hero-note { margin: 0; font-size: 12px; color: #b45309; }
+html[data-theme="dark"] .dash-hero-note { color: #fdba74; }
+/* Send: the accent, with dark words — readable on the orange and the green alike. */
+.dash-hero-send { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 16px; border-radius: 12px; border: 0; font: inherit; font-size: 14px; font-weight: 700; color: #140c08; cursor: pointer;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--acc) 82%, #fff), var(--acc)); box-shadow: 0 8px 24px -8px color-mix(in srgb, var(--acc) 90%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+.dash-hero-send:hover { filter: brightness(1.06); }
+.dash-hero-send:disabled { background: var(--h-tile); color: var(--h-ph); box-shadow: none; cursor: default; filter: none; }
+.dash-hero-send:focus-visible, .dash-hero-live:focus-visible, .dash-hero-rec:focus-visible, .dash-hero-chip:focus-visible { outline: 2px solid color-mix(in srgb, var(--acc, #ff6a2b) 70%, #fff); outline-offset: 2px; }
 .dash-hero-starters { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 4px; }
-/* On a wide screen the starting points stay one row (its height is in the
-   sum above); where the column is too narrow for all four, the row slides
-   sideways instead of growing a second line. */
-@media (min-width: 641px) {
-  .dash-hero-starters { flex-wrap: nowrap; justify-content: safe center; overflow-x: auto; scrollbar-width: none; }
-  .dash-hero-starters::-webkit-scrollbar { display: none; }
-  .dash-hero-chip { flex: none; }
-}
-.dash-hero-chip { font: inherit; font-size: 12.5px; font-weight: 550; color: rgba(255, 240, 232, 0.9); background: rgba(30, 13, 8, 0.6); border: 1px solid rgba(255, 156, 108, 0.36); border-radius: 12px; padding: 6px 12px; cursor: pointer; }
-.dash-hero-chip:hover { background: rgba(255, 120, 60, 0.18); border-color: rgba(255, 170, 125, 0.6); }
-/* The film fills the column; on the hero it takes a warm frame and an
-   orange play button so it belongs to the same picture. */
-.dash-hero-film { width: 100%; container-type: inline-size; }
+.dash-hero-chip { font: inherit; font-size: 13px; font-weight: 550; color: var(--h-ink); background: var(--h-chip-bg); border: 1px solid color-mix(in srgb, var(--acc) 40%, transparent); border-radius: 12px; padding: 7px 14px; cursor: pointer; }
+.dash-hero-chip:hover { background: color-mix(in srgb, var(--acc) 18%, transparent); border-color: color-mix(in srgb, var(--acc) 65%, transparent); }
+/* The film fills the column. On the hero it drops its title row (the
+   chapter names are on its scrubber) and takes a frame and play button in
+   the accent so it belongs to the same picture. */
+.dash-hero-film { width: 100%; container-type: inline-size; margin-top: 6px; }
 .dash-hero-film .apf-head { display: none; }
+.dash-hero-film .apf { border-color: rgba(255, 170, 120, 0.28); box-shadow: 0 30px 80px -30px var(--h-shadow), 0 0 0 1px rgba(255, 120, 60, 0.06); }
+.dash-hero-film .apf-ctl.is-play { background: linear-gradient(180deg, color-mix(in srgb, var(--acc) 82%, #fff), var(--acc)); color: #140c08; }
 /* Captions over the foot of the picture, on a dark band as a video player
    draws them: `top` is the picture's height (the frame's width × 9/16, from
    the container unit) and the band hangs up from it. */
-.dash-hero-film .apf-subs { position: absolute; left: 0; right: 0; top: calc(100cqw * 9 / 16); translate: 0 -100%; z-index: 3; min-height: 0; padding: 26px 18% 10px; font-size: 13.5px; pointer-events: none; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); background: linear-gradient(180deg, rgba(4, 3, 3, 0), rgba(4, 3, 3, 0.82) 55%); }
+.dash-hero-film .apf-subs { position: absolute; left: 0; right: 0; top: calc(100cqw * 9 / 16); translate: 0 -100%; z-index: 3; min-height: 0; padding: 30px 16% 12px; font-size: 15px; pointer-events: none; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9); background: linear-gradient(180deg, rgba(4, 3, 3, 0), rgba(4, 3, 3, 0.82) 55%); }
 .dash-hero-film .apf-subs:empty { display: none; }
-.dash-hero-film .apf { border-color: rgba(255, 156, 108, 0.28); box-shadow: 0 30px 80px -30px rgba(255, 90, 20, 0.5), 0 0 0 1px rgba(255, 120, 60, 0.08); }
-.dash-hero-film .apf-ctl.is-play { background: linear-gradient(180deg, #ff7f42, #e8541d); color: #fff; }
 @media (prefers-reduced-motion: no-preference) {
   .dash-hero-live-dot { animation: dash-live 1.6s ease-in-out infinite; }
   .dash-hero-rec.is-on { transition: box-shadow 90ms linear; }
 }
 @keyframes dash-live { 50% { box-shadow: 0 0 0 6px rgba(61, 220, 151, 0); } }
-/* A short laptop screen (1280×800, 1366×768) gives up the line under the
-   greeting — the box's own placeholder asks the same — and the fourth
-   starting point, which no longer fits the narrower column beside the
-   other three, to keep the film's width; --hero-chrome loses the line. */
-@media (max-height: 820px) and (min-width: 641px) {
-  .dash-hero { --hero-chrome: 342px; }
-  .dash-hero-sub { display: none; }
-  .dash-hero-chip { font-size: 12px; padding: 5px 10px; }
-  .dash-hero-chip:nth-child(4) { display: none; }
-}
+
+/* ── The day bar inside the hero (DayBar, DayBoard.tsx) ──
+   The owner (2026-11-14): the navy pill read as a foreign object; it now
+   wears the hero's glass, ink and accent — day and night alike — with the
+   hour track and the name lit in the drifting accent. */
+.dash-hero-day { margin-top: 4px; }
+.dash-hero-day .day-top { color: var(--h-ink); background: var(--h-glass);
+  border: 1px solid color-mix(in srgb, var(--acc) 38%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 14px 40px -22px var(--h-shadow), 0 0 30px -14px color-mix(in srgb, var(--acc) 55%, transparent); }
+.dash-hero-day .day-face { box-shadow: 0 0 0 2px color-mix(in srgb, var(--acc) 55%, transparent), 0 0 16px color-mix(in srgb, var(--acc) 40%, transparent); }
+.dash-hero-day .day-hello-g { color: var(--h-ink); font-size: 14px; font-weight: 700; }
+.dash-hero-day .day-hello-n { background: linear-gradient(90deg, var(--acc), color-mix(in srgb, var(--acc) 55%, #8fd9c4)); -webkit-background-clip: text; background-clip: text; }
+.dash-hero-day .day-hello-l { color: var(--h-mut); }
+.dash-hero-day .day-chip { color: var(--h-ink); background: var(--h-tile); border-color: var(--h-tile-line); box-shadow: none; }
+.dash-hero-day button.day-chip:hover { background: var(--h-tile-hover); border-color: color-mix(in srgb, var(--acc) 45%, transparent); }
+.dash-hero-day .day-chip svg { color: var(--h-mut); }
+.dash-hero-day .day-chip-time { border-color: color-mix(in srgb, var(--acc) 60%, transparent); background: color-mix(in srgb, var(--acc) 14%, transparent); box-shadow: 0 0 16px -4px color-mix(in srgb, var(--acc) 55%, transparent); }
+.dash-hero-day .day-chip-time svg { color: var(--acc); }
+/* The seconds and am/pm are dimmed inline (WorldClocks.tsx) for the navy bar. */
+.dash-hero-day .day-chip-time > span > span + span { color: var(--h-mut) !important; }
+.dash-hero-day .day-track { background: var(--h-tile); box-shadow: inset 0 0 0 1px var(--h-tile-line); }
+.dash-hero-day .day-track-done { background: linear-gradient(90deg, color-mix(in srgb, var(--acc) 55%, transparent), var(--acc)); box-shadow: 0 0 14px color-mix(in srgb, var(--acc) 45%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+.dash-hero-day .day-pin { background: var(--acc); color: #140c08; }
+.dash-hero-day .day-pin.past { background: var(--h-tile-hover); color: var(--h-ink); }
+.dash-hero-day .day-knob { background: radial-gradient(circle at 40% 35%, #fff, var(--acc) 60%); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 0 12px var(--acc); }
+.dash-hero-day .day-now { background: var(--h-ink); }
+.dash-hero-day .day-now-tag { background: var(--h-ink); color: var(--h-ground); }
+.dash-hero-day .day-ticks span { color: var(--h-mut); }
+.dash-hero-day .day-ticks span::before { background: var(--h-tile-line); }
+
 @media (max-width: 640px) {
-  .dash-hero { min-height: 0; padding-bottom: 24px; }
+  .dash-hero { padding-bottom: 24px; }
   .dash-hero-chip { font-size: 12.5px; }
   .dash-hero-live-sub { display: none; }
   .dash-hero-bar { align-items: flex-end; }
-  /* A phone's picture is too small to carry two lines over it, and the
-     page scrolls there anyway: captions go back under the picture. */
+  /* A phone's picture is too small to carry two lines over it: captions go
+     back under the picture. */
   .dash-hero-film .apf-subs { position: static; translate: none; padding: 10px 14px 2px; font-size: 13px; background: none; text-shadow: none; }
 }
 

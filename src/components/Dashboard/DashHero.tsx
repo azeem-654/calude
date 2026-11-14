@@ -13,12 +13,15 @@
  * replaced (fourth pass, 2026-11-12) with "a more modern background that suits
  * the app's theme", pointing at a soft lilac–pink–blue gradient as the example.
  * So the ground is CSS only — no download. Fifth pass (owner, 2026-11-14,
- * with a reference): near-black with an ember-orange glow rising from the
- * bottom, a fine dot grid lit by it, and the prompt box as dark glass with a
- * glowing orange edge and an orange Send:
+ * with a reference): an ember-orange glow rising from the bottom through a
+ * fine dot grid, the prompt box as glass with a glowing edge. Sixth pass
+ * (same day): the glow drifts slowly between that orange and the logo's
+ * green and back, and the hero has a light version for day mode and a
+ * near-black one for night mode (dashboard.css):
  *
  *   colour  four soft blobs (three embers along the bottom, a faint warm one
- *           at the top), each a radial gradient drifting on its own slow loop
+ *           at the top), each a radial gradient drifting on its own slow loop,
+ *           and a green layer cross-faded over them on a long loop
  *   dots    a dot grid, masked so it shows where the glow is
  *   mouse   the colour shifts against the pointer (eased in a frame callback
  *           that stops as soon as it has caught up) and a soft light follows
@@ -44,13 +47,11 @@
  * AutopilotFilm.tsx shows what Autopilot does instead of listing features as
  * buttons.
  *
- * ── One screen ──
+ * ── One column, full width ──
  *
- * The box is exactly as wide as the film (one column, `.dash-hero-col`), and
- * that width is worked out from the window's height so the greeting, the
- * box, the starting points and the whole player — picture and controls — fit
- * on the first screen without scrolling (owner, 2026-11-14). dashboard.css
- * holds the sum.
+ * The box, the film and the day bar share one column (`.dash-hero-col`), as
+ * wide as the page allows (owner, 2026-11-14: a column sized to fit one
+ * screen made both "very small" on a laptop).
  *
  * Sending hands the words to the New business workspace wizard the same way
  * Protron does (`sessionStorage.pc_protron_handoff` → `/autopilot?new=1&from=protron`,
@@ -132,6 +133,8 @@ function AuroraGround({ active, still }: { active: boolean; still: boolean }) {
       <span className="dash-aurora-blob is-b" />
       <span className="dash-aurora-blob is-c" />
       <span className="dash-aurora-blob is-d" />
+      {/* The logo's green, cross-faded in and out over the ember (opacity only). */}
+      <span className="dash-aurora-green" />
       <span className="dash-aurora-dots" />
       <span className="dash-aurora-glow" />
       <span className="dash-aurora-grain" />
@@ -169,7 +172,7 @@ function RecordButton({ onText, signal }: { onText: (t: string, note: string) =>
   );
 }
 
-export default function DashHero({ greeting, firstName }: { greeting: string; firstName: string }) {
+export default function DashHero({ greeting, firstName, children }: { greeting: string; firstName: string; children?: React.ReactNode }) {
   const navigate = useNavigate();
   const [text, setText] = useState('');
   const [visible, setVisible] = useState(true);
@@ -278,6 +281,9 @@ export default function DashHero({ greeting, firstName }: { greeting: string; fi
       <div className="dash-hero-film">
         <AutopilotFilm onTalk={talk} onRecord={recordIt} onType={typeIt} />
       </div>
+      {/* The day bar, inside the same light (owner, 2026-11-14: "blend it
+          inside the theme atmosphere"). */}
+      {children && <div className="dash-hero-day">{children}</div>}
       </div>
     </section>
   );

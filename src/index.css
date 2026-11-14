@@ -464,6 +464,16 @@ button:focus-visible, a:focus-visible {
 .app-header[data-fit="tight"] .nav-corner-div { margin: 0 4px; }
 /* The workspace's initial and its menu stay; its name gives way to the pills. */
 .app-header[data-fit="tight"] .ws-name { display: none; }
+/* `compact`: a slimmer bar with smaller pills, tried before wrapping — a
+   standard laptop (1280 wide) fits on one line this way. */
+.app-header[data-fit="compact"] { gap: 6px !important; padding: 8px 12px !important; }
+.app-header[data-fit="compact"] .nav-pills { padding: 3px !important; }
+.app-header[data-fit="compact"] .pill-link { padding: 6px 6px !important; font-size: 12px !important; }
+.app-header[data-fit="compact"] .pill-link.nav-hero { padding: 2px 9px 2px 2px !important; font-size: 12.5px !important; gap: 5px !important; }
+.app-header[data-fit="compact"] .nav-hero .ai-lens { width: 24px !important; height: 24px !important; }
+.app-header[data-fit="compact"] .nav-corner .icon-btn { width: 30px !important; height: 30px !important; }
+.app-header[data-fit="compact"] .nav-corner-div { margin: 0 2px; }
+.app-header[data-fit="compact"] .ws-name { display: none; }
 .app-header[data-fit="wrap"] {
   flex-wrap: wrap;
   row-gap: 10px !important;
@@ -495,6 +505,21 @@ button:focus-visible, a:focus-visible {
   font-size: 11px;
   font-weight: 800;
   line-height: 1;
+}
+
+/* The icon rail spans the space between the bar and Protron's button
+   (TopNav.tsx IconRail); only its pods take clicks. A short screen gets
+   smaller buttons, and a very short one drops Back and Copy link (the
+   browser has both) so the rail never runs under the bar or the button. */
+.icon-rail > div { pointer-events: auto; }
+@media (max-height: 760px) {
+  .icon-rail { gap: 6px !important; }
+  .icon-rail > div { padding: 4px !important; gap: 2px !important; }
+  .icon-rail .rail-grp { gap: 2px !important; }
+  .icon-rail .rail-btn { width: 32px !important; height: 32px !important; }
+}
+@media (max-height: 640px) {
+  .icon-rail .rail-grp[data-g="0"], .icon-rail .rail-grp[data-g="1"] > .rail-sep { display: none !important; }
 }
 
 /* Icon rail buttons with custom tooltip */
