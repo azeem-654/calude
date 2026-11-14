@@ -9,12 +9,29 @@
  * neither caller breaks.
  */
 import { cookieToken, sameOrigin } from './session';
+import { aiBackInMs } from './aiPool';
+
+/* lib/ai.ts AI_BUSY, matched by its opening words so a route that wraps it in
+   a sentence of its own ("Could not write: Our AI is at capacity…") is caught
+   too. Not imported: lib/ai.ts pulls in half the Worker. */
+const AI_BUSY_TEXT = /Our AI is at capacity for a few minutes/;
 
 export function json(body: unknown, status = 200, extra: HeadersInit = {}): Response {
-  return new Response(JSON.stringify(body), {
+  const res = new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json; charset=utf-8', ...corsHeaders(), ...extra },
   });
+  /* Every AI key resting. Said in a header, with the seconds until the
+     soonest one is back (0: not known — something other than a rest), so the
+     page waits it out and asks again (src/services/aiPatience.ts) instead of
+     showing the error — whichever of the thirty-odd routes it came from, and
+     without the page reading any answer's body to find out. Only refusals:
+     an answer that succeeded with a busy note inside it has done its work. */
+  const b = body as { success?: unknown; error?: unknown; code?: unknown } | null;
+  if (b && typeof b === 'object' && b.success === false && (b.code === 'ai_busy' || (typeof b.error === 'string' && AI_BUSY_TEXT.test(b.error)))) {
+    res.headers.set('X-AI-Busy', String(Math.ceil(aiBackInMs() / 1000)));
+  }
+  return res;
 }
 
 /**
@@ -28,6 +45,8 @@ export function corsHeaders(origin = '*'): Record<string, string> {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    /* Local development is cross-origin; without this the page cannot read them. */
+    'Access-Control-Expose-Headers': 'X-AI-Busy, X-Refused-Field',
     'Vary': 'Origin',
     /* An API answer is data. Told not to guess otherwise, a browser will never
        run one as a script or render one as a page, whatever is inside it. */

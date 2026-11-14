@@ -133,6 +133,27 @@ async function order(env: Env, keys: PoolKey[]): Promise<PoolKey[]> {
   return [...live.filter((_, i) => !near[i]), ...live.filter((_, i) => near[i]), ...resting];
 }
 
+/**
+ * How long until the soonest install key stops resting — 0 when one is not
+ * resting (the failure was something else: out of time, mostly) or the pool
+ * has not been read in this isolate. Sent with a busy answer (lib/http.ts
+ * `json`) so the page knows whether it is waiting two minutes (a rate limit)
+ * or an hour (a daily quota). This isolate's view: the call that just failed
+ * ran here, so its rests are the newest.
+ */
+export function aiBackInMs(): number {
+  const keys = cached?.keys ?? [];
+  if (!keys.length) return 0;
+  const now = Date.now();
+  let soonest = Infinity;
+  for (const k of keys) {
+    const t = cooling.get(k.fp) ?? 0;
+    if (t <= now) return 0;
+    soonest = Math.min(soonest, t);
+  }
+  return soonest - now;
+}
+
 /** Resting now (a recent failure that was the key's). */
 export const isResting = (fp: string): boolean => (cooling.get(fp) ?? 0) > Date.now();
 

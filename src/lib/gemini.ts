@@ -81,8 +81,11 @@ export function noteCreditsOut(message: string): void { if (currentJob && messag
  *
  * Bounded at two minutes: the server walks its keys within about 100 s
  * (lib/aiPool.ts), so a wait past that is a connection that will not answer.
- * A chat waiting on a reply passes less (`timeoutMs`) and asks its own
- * fallback question instead (protron/intake.ts REPLY_WITHIN_MS).
+ * The two minutes are per attempt: when every key is resting the page waits
+ * and asks again (services/aiPatience.ts), and an overall limit would cut
+ * that wait short. A chat waiting on a reply passes less (`timeoutMs`) and
+ * keeps it overall — it asks its own fallback question instead of waiting
+ * (protron/intake.ts REPLY_WITHIN_MS).
  */
 export async function aiFetch(init: RequestInit | string, module = 'general', timeoutMs = 120_000): Promise<Response> {
   const bodyText = typeof init === 'string' ? init : String(init.body ?? '{}');
@@ -97,8 +100,8 @@ export async function aiFetch(init: RequestInit | string, module = 'general', ti
     const r = await fetch(`${base}/api/ai.php`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'generate', token: session?.token, accountId, module, request, ...(job ? { job: job.id } : {}) }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+      ...(timeoutMs >= 120_000 ? { attemptTimeoutMs: timeoutMs } : { signal: AbortSignal.timeout(timeoutMs) }),
+    } as RequestInit);
     const data = await r.json() as { success?: boolean; response?: unknown; error?: string; code?: string; creditsOut?: string };
     if (data.creditsOut && job) job.creditsOut = data.creditsOut;
     if (data.success) return new Response(JSON.stringify(data.response ?? {}), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -146,7 +149,8 @@ interface GeminiResponse {
 async function postGemini(body: unknown, module = 'general'): Promise<GeminiResponse> {
   /* Twice at most. The server already tries every key and model it has; three
      browser attempts on top of that were how a failing plan took three and a
-     half minutes to fail. An answer of "every key is busy" is not retried. */
+     half minutes to fail. An answer of "every key is busy" is not retried
+     here: the page has already waited it out (services/aiPatience.ts). */
   let lastError = '';
   let lastStatus = 0;
   for (let attempt = 1; attempt <= 2; attempt++) {

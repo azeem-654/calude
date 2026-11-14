@@ -29,6 +29,7 @@ import { LogoMark } from './components/shared/Logo';
 import HelpLauncher from './components/shared/HelpLauncher';
 import TrialBar from './components/shared/TrialBar';
 import CornerHelp from './components/shared/CornerHelp';
+import AiPatienceBar from './components/shared/AiPatienceBar';
 import Protron from './components/Protron/Protron';
 import { claimIndustryIfPending } from './services/industrySetup';
 
@@ -295,6 +296,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
       <NativeBridge />
       <HelpLauncher />
       <CornerHelp />
+      <AiPatienceBar />
       {/* The AI business manager, on every signed-in screen; its panel is a
           separate download fetched on first open (Protron.tsx). Live on both
           sites since 2026-11-13; the switch stays (services/features.ts). */}

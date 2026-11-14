@@ -51,8 +51,9 @@ async function call(action: string, extra: Record<string, unknown>): Promise<Rep
       /* A build's calls carry its job id (lib/gemini.ts aiJob), so a build that
          started inside the AI allowance finishes past it. */
       body: JSON.stringify({ token: sessionToken(), accountId, action, ...(currentAiJob() ? { job: currentAiJob() } : {}), ...extra }),
-      signal: AbortSignal.timeout(120_000),
-    });
+      /* Per attempt: a busy AI is waited out and asked again (services/aiPatience.ts). */
+      attemptTimeoutMs: 120_000,
+    } as RequestInit);
     return await r.json() as Reply;
   } catch (e) {
     return { success: false, error: `Could not reach the server: ${e instanceof Error ? e.message : String(e)}` };

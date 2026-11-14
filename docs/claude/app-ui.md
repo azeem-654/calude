@@ -80,7 +80,18 @@ and goes to the workspace owner when no address is given (booking.ts
 starting points, then the explainer film. Sending hands the words to the
 wizard like Protron does (`pc_protron_handoff`).
 
-**Fifth and sixth passes (owner, 2026-11-14) — the current look:** a glow
+**Seventh pass (owner, 2026-11-14) — "match the logo":** every colour on
+the dashboard and the top bar now comes from the shield (`public/favicon.svg`):
+lime `#c8f24d`/`#d6f96f`, mint `#8fd9c4`, tile black `#0f1210`. The hero's
+drift is **lime ↔ mint** (the ember orange is gone); night mode's ground is the
+tile black, day mode a cool green-white with green-black ink and a slightly
+deeper accent (`#9fd23a` ↔ `#5fbfa3`) so the box edge reads on white. The two
+lit pills are mint → white → lime glass (Prospecting the other way round), the
+corner pill is tile black, the "+" is lime with a dark cross (was violet), and
+`LogoMark` carries `data-noinvert` — dark mode used to draw it as a white tile
+with a dark-green shield. The "pass" notes below are history for the colours.
+
+**Fifth and sixth passes (owner, 2026-11-14):** a glow
 rising from the bottom through a dot grid (`.dash-aurora*`, CSS only) that
 **drifts slowly from ember orange to the logo's green and back** (36 s each
 way: a green layer cross-faded by opacity on the ground; `--acc`, a

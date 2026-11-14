@@ -53,3 +53,20 @@ publishing social posts (always a person's press). `npm run test:cloud`
 absolute URL (a Stripe return address, the link in the digest) reads
 `env.APP_ORIGIN`, set in `wrangler.jsonc`. Unset, those paths report that they
 were skipped rather than sending something broken.
+
+**AI keeps going when the keys run out** (2026-11-14). When every AI key is
+resting (lib/aiPool.ts: 2 min after a rate limit, an hour after a daily
+quota), the customer is not shown the busy sentence. `lib/http.ts` `json`
+marks every refusal carrying `AI_BUSY` (or `code: 'ai_busy'`) — from any
+route, wrapped or not — with `X-AI-Busy: <seconds until the soonest key is
+back>` (`aiBackInMs`, 0 = not a rest). `src/services/aiPatience.ts` patches
+`fetch` (installed before fieldGuard) and, for `/api/*.php` calls with a
+string body, waits and sends the same request again: up to ~3.5 min for a
+short rest, then "paused" with a check every 5 min for up to 3 h while the
+page is open (leaving asks first). `shared/AiPatienceBar.tsx` shows the
+countdown and "Stop waiting", which hands the screen the busy answer as
+before. Replaying is safe because routes refuse before they write and give
+the AI unit back (`aiRefund`). A caller's own `signal` still ends the wait
+(Protron's chat keeps its fallback); `attemptTimeoutMs` is a per-attempt
+limit instead (`aiFetch`, `intake.ts`). Cron work never needed it: it retries
+on its own tick. `npm run test:patience`.

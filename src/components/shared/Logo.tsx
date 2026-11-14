@@ -19,7 +19,10 @@ export function LogoMark({ size = 28, tile = true }: { size?: number; tile?: boo
      invalidating the gradient on every paint. */
   const id = `pc${useId().replace(/:/g, '')}`;
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" role="img" aria-label="Protected Central" style={{ display: 'block', flexShrink: 0 }}>
+    /* data-noinvert: dark mode inverts the whole page (index.css), which drew
+       the mark as a white tile with a dark-green shield — not the logo. It is
+       the same colours in both themes, like the browser tab's. */
+    <svg width={size} height={size} viewBox="0 0 32 32" role="img" aria-label="Protected Central" data-noinvert style={{ display: 'block', flexShrink: 0 }}>
       <defs>
         <linearGradient id={id} x1="6" y1="3" x2="26" y2="29" gradientUnits="userSpaceOnUse">
           <stop offset="0" stopColor="#d6f96f" />

@@ -15,13 +15,14 @@
  * So the ground is CSS only — no download. Fifth pass (owner, 2026-11-14,
  * with a reference): an ember-orange glow rising from the bottom through a
  * fine dot grid, the prompt box as glass with a glowing edge. Sixth pass
- * (same day): the glow drifts slowly between that orange and the logo's
- * green and back, and the hero has a light version for day mode and a
- * near-black one for night mode (dashboard.css):
+ * (same day): the glow drifts slowly between two colours and back, and the
+ * hero has a light version for day mode and a near-black one for night mode.
+ * Seventh pass (same day, "match the logo"): the two colours are the shield's
+ * own lime and mint, on the logo's near-black tile at night (dashboard.css):
  *
- *   colour  four soft blobs (three embers along the bottom, a faint warm one
+ *   colour  four soft blobs (three lime along the bottom, a faint mint one
  *           at the top), each a radial gradient drifting on its own slow loop,
- *           and a green layer cross-faded over them on a long loop
+ *           and a mint layer cross-faded over them on a long loop
  *   dots    a dot grid, masked so it shows where the glow is
  *   mouse   the colour shifts against the pointer (eased in a frame callback
  *           that stops as soon as it has caught up) and a soft light follows
@@ -88,8 +89,8 @@ function scrollerOf(el: HTMLElement | null): HTMLElement | Window {
 }
 
 /**
- * The ground: near-black lit from below by drifting ember-orange glows, a dot
- * grid catching that light, a fine grain, and a warm light that follows the
+ * The ground: the logo's near-black lit from below by drifting lime glows, a
+ * dot grid catching that light, a fine grain, and a lime light that follows the
  * pointer. Drawn entirely by CSS gradients (no photo, no download) — the
  * owner's reference of 2026-11-14 replaced the indigo-to-peach aurora.
  */
@@ -133,7 +134,7 @@ function AuroraGround({ active, still }: { active: boolean; still: boolean }) {
       <span className="dash-aurora-blob is-b" />
       <span className="dash-aurora-blob is-c" />
       <span className="dash-aurora-blob is-d" />
-      {/* The logo's green, cross-faded in and out over the ember (opacity only). */}
+      {/* The logo's mint, cross-faded in and out over the lime (opacity only). */}
       <span className="dash-aurora-green" />
       <span className="dash-aurora-dots" />
       <span className="dash-aurora-glow" />

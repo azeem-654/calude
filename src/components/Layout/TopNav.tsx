@@ -726,6 +726,7 @@ function QuickCreate() {
   return (
     <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
       <button type="button" className="nav-plus" aria-label="Create something new" title="Create something new"
+        data-noinvert /* the logo's lime in both themes, not its negative */
         aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(v => !v)}>
         <Plus size={18} strokeWidth={2.2} />
       </button>

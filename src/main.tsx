@@ -5,6 +5,7 @@ import App from './App.tsx'
 import { installTenantStorage } from './services/tenancy'
 import { adoptSessionWorkspace, moveSessionToCookie } from './services/auth'
 import { installFieldGuard } from './services/fieldGuard'
+import { installAiPatience } from './services/aiPatience'
 import { installCrashReport } from './services/crashReport'
 import { captureRef } from './services/referral'
 import { captureIndustry } from './services/industrySetup'
@@ -20,6 +21,9 @@ installTenantStorage();
 adoptSessionWorkspace();
 /* Every refused call that names a field is checked against the screen
    (services/fieldGuard.ts): a form must never ask for a box it does not show. */
+/* A busy AI is waited out rather than shown as an error (services/aiPatience.ts) —
+   installed first, so the guard sees the answer the screen gets, not each try. */
+installAiPatience();
 installFieldGuard();
 /* And a screen that crashed is reported, not just seen (services/crashReport.ts). */
 installCrashReport();
