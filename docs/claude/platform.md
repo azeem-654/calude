@@ -353,3 +353,23 @@ until the secrets are set. Native changes live in `mobile/native.mjs`
 iPhone compiled unsigned, or archived and uploaded to TestFlight with the App
 Store Connect key). Keys never enter the repository. `npm run test:push`
 (pure, real signatures against mocks), `npm run test:nativeapp` (fresh D1).
+
+### OpenAI keys (2026-11-14)
+
+Settings → Platform services → **OpenAI keys** (`OpenAiKeysPanel.tsx`,
+routes/aikeys.ts `openai_status|openai_add_many|openai_remove|openai_clear|openai_test`,
+owner only). Pasted in bulk: keys are pulled out of the paste (`sk-…`, not
+`sk-or-`/`sk-ant-`), ≤ 50 a paste, ≤ 200 stored, each proved with a GET
+`/v1/models` (five at a time) before it is kept, encrypted with the install
+secret in `crm_openai_keys` (migration 0098) — **not** `crm_ai_keys`, whose
+pool sends Gemini-shaped requests to every key. Results are reported by place
+in the paste (#n), never by key; errors are scrubbed of anything `sk-…`.
+Used only by `lib/openai.ts transcribeOpenAi`: intake.php `transcribe` asks
+OpenAI first (model picked from the key's own list by `pickTranscriber` —
+a full `…transcribe` before `-mini`, never diarise/realtime, Whisper last),
+with the screen's `context` as the prompt; 429 rests a key 2 min, 401/403
+30 min; all failing → the Gemini transcriber. Transcription works with OpenAI
+keys alone (no Gemini key). Not shared testing ← live (LIVE_VAULT carries the
+Google pool only). Tests: `test:aikeys` (OpenAI stand-in on `OPENAI_BASE`),
+`test:forms`.
+

@@ -42,6 +42,10 @@ if (!fs.existsSync('dist/index.html')) { console.log('Build first: VITE_BASE=/ n
 const K = tag => `AIza${tag}${'x'.repeat(35 - tag.length)}`;
 const QUOTA = K('QUOTA'), SPARE = K('SPARE'), DEAD = K('DEAD'), THIRD = K('THIRD'), WRONG = K('WRONG'), LITE = K('LITE'), GEMMA = K('GEMMA');
 const KNOWN = new Set([QUOTA, SPARE, DEAD, THIRD, LITE, GEMMA]);
+/* OpenAI (lib/openai.ts) at /oa: OAGOOD answers, OABUSY is rate-limited, OANOTX lists no transcription model; anything else is refused. */
+const OA = tag => `sk-proj-${tag}${'q'.repeat(40 - tag.length)}`;
+const OAGOOD = OA('GOOD'), OABUSY = OA('BUSY'), OANOTX = OA('NOTX'), OABAD = OA('BAD');
+let oaCalls = [];
 const ORK = `sk-or-v1-${'a'.repeat(48)}`, ORBAD = `sk-or-v1-${'b'.repeat(48)}`, ORDAY = `sk-or-v1-${'c'.repeat(48)}`;
 const name = k => (k === QUOTA ? 'QUOTA' : k === SPARE ? 'SPARE' : k === DEAD ? 'DEAD' : k === THIRD ? 'THIRD' : 'other');
 let calls = [];
@@ -85,6 +89,19 @@ const mock = http.createServer((req, res) => {
       const text = raw.includes('Transcribe') ? JSON.stringify({ text: `hello from ${name(key)}`, language: 'en', clarity: 'clear' }) : `answer from ${name(key)}`;
       return send(res, 200, { candidates: [{ content: { parts: [{ text }] } }] });
     }
+    if (u.pathname.startsWith('/oa/')) {
+      const bearer = (req.headers.authorization ?? '').replace(/^Bearer /, '');
+      const who = bearer === OAGOOD ? 'GOOD' : bearer === OABUSY ? 'BUSY' : bearer === OANOTX ? 'NOTX' : 'BAD';
+      if (who === 'BAD') return send(res, 401, { error: { message: 'Incorrect API key provided: sk-proj-************. You can find your API key at https://platform.openai.com/account/api-keys.' } });
+      if (u.pathname === '/oa/v1/models') return send(res, 200, { data: (who === 'NOTX' ? ['gpt-4.1'] : ['gpt-4.1', 'whisper-1', 'gpt-4o-mini-transcribe', 'gpt-4o-transcribe', 'gpt-4o-transcribe-diarize']).map(id => ({ id })) });
+      if (u.pathname === '/oa/v1/audio/transcriptions') {
+        const model = /name="model"\r\n\r\n([^\r]+)/.exec(raw)?.[1] ?? '';
+        const prompt = /name="prompt"\r\n\r\n([^\r]+)/.exec(raw)?.[1] ?? '';
+        oaCalls.push(`${who}:${model}`);
+        if (who === 'BUSY') return send(res, 429, { error: { message: 'Rate limit reached for requests' } });
+        return send(res, 200, { text: `Azeem Dental, from OpenAI ${model}${prompt ? ` (hint: ${prompt})` : ''}` });
+      }
+    }
     /* OpenRouter (lib/openrouter.ts) at /or: its key check, its model list, chat completions. */
     if (u.pathname.startsWith('/or/')) {
       const bearer = (req.headers.authorization ?? '').replace(/^Bearer /, '');
@@ -113,7 +130,7 @@ await new Promise(r => mock.listen(MOCK, '127.0.0.1', r));
 /* ── A fresh database and the real Worker ── */
 const persist = fs.mkdtempSync(path.join(os.tmpdir(), 'aikeys-d1-'));
 execSync(`npx wrangler d1 migrations apply crmpro --local --persist-to ${persist}`, { stdio: 'ignore', env: { ...process.env, CI: '1' } });
-const vars = [`APP_ORIGIN:${B}`, `GEMINI_BASE:${G}`, `OPENROUTER_BASE:${G}/or`];
+const vars = [`APP_ORIGIN:${B}`, `GEMINI_BASE:${G}`, `OPENROUTER_BASE:${G}/or`, `OPENAI_BASE:${G}/oa`];
 const wr = spawn('npx', ['wrangler', 'dev', '--local', '--port', String(PORT), '--inspector-port', String(INSPECT), '--persist-to', persist, ...vars.flatMap(v => ['--var', v])], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
 let wlog = '';
 wr.stdout.on('data', c => { wlog += c; }); wr.stderr.on('data', c => { wlog += c; });
@@ -287,6 +304,31 @@ calls = [];
 const plan2 = await api('intake.php', { token: C.token, accountId: C.acct, action: 'plan_year', business: { companyName: 'Harbour Plumbing', description: 'Boiler servicing and emergency plumbing for homes in Leeds.' } });
 ok('with a key answering, plan_year asks the AI (the mock\'s reply is not a plan, so the universal one comes back with that said)', plan2.success && calls.includes('THIRD') && plan2.plan?.months?.length === 12 && /unreadable/.test(plan2.plan?.note ?? ''), `${calls.join(' → ')} ${JSON.stringify(plan2).slice(0, 300)}`);
 
+/* ── OpenAI keys, pasted many at a time ── */
+r = await keys(C.token, 'openai_add_many', { keys: OAGOOD });
+ok('OpenAI: a customer is refused', r.status === 403 && r.d.code === 'not_owner', JSON.stringify(r.d));
+r = await keys(T, 'openai_add_many', { keys: `just some words, and ${ORK}` });
+ok('OpenAI: a paste with no OpenAI key is refused at its box (an OpenRouter key is not one)', !r.d.success && r.d.field === 'aikeys.openai', JSON.stringify(r.d));
+r = await keys(T, 'openai_add_many', { label: 'Batch', keys: `first: ${OABUSY}\n${OAGOOD}, ${OABAD}\n${OANOTX}\n${OAGOOD}\n${ORK}` });
+const out = r.d.results ?? [];
+ok('OpenAI: one paste adds every key OpenAI accepts, in order, named from the label', r.d.success && r.d.added === 3 && r.d.openai?.map(k => k.label).join() === 'Batch 1,Batch 2,Batch 3', JSON.stringify(r.d).slice(0, 400));
+ok('OpenAI: a refused key is reported by its place in the paste, with OpenAI\'s reason, scrubbed', out.find(x => x.n === 3)?.outcome === 'refused' && /Incorrect API key/.test(out.find(x => x.n === 3)?.error ?? '') && !JSON.stringify(out).includes(OABAD), JSON.stringify(out));
+ok('OpenAI: the same key twice in a paste is kept once', out.length === 4, JSON.stringify(out));
+ok('OpenAI: a key with no transcription model is flagged', out.find(x => x.n === 4)?.transcribes === false && out.find(x => x.n === 2)?.transcribes === true, JSON.stringify(out));
+r = await keys(T, 'openai_add_many', { keys: OAGOOD });
+ok('OpenAI: a key already saved is not added again', r.d.success && r.d.added === 0 && r.d.results?.[0]?.outcome === 'duplicate', JSON.stringify(r.d));
+r = await keys(T, 'openai_status');
+ok('OpenAI: no key comes back, whole or in part', ![OAGOOD, OABUSY, OANOTX].some(k => r.text.includes(k) || r.text.includes(k.slice(-8))), r.text.slice(0, 300));
+oaCalls = [];
+const tro = await api('intake.php', { token: C.token, accountId: C.acct, action: 'transcribe', mime: 'audio/wav', language: 'en-GB', context: 'They are answering: what is the name of your business?', audio: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=' });
+ok('OpenAI: a voice message is heard on OpenAI, the busy key skipped for the next, with the best transcription model', tro.success && tro.engine === 'openai' && oaCalls.join() === 'BUSY:gpt-4o-transcribe,GOOD:gpt-4o-transcribe', `${oaCalls.join()} ${JSON.stringify(tro)}`);
+ok('OpenAI: the screen\'s hint goes with it, so names are spelled right', /hint: They are answering/.test(tro.text ?? ''), tro.text);
+r = await keys(T, 'openai_status');
+ok('OpenAI: the busy key now rests, and says so', !!r.d.openai?.find(k => k.label === 'Batch 1')?.restingUntil && /Rate limit/.test(r.d.openai?.find(k => k.label === 'Batch 1')?.lastError ?? ''), JSON.stringify(r.d.openai));
+const goodId = r.d.openai?.find(k => k.label === 'Batch 2')?.id;
+r = await keys(T, 'openai_test', { id: goodId });
+ok('OpenAI: Test says which model voice messages use', r.d.tested?.ok && r.d.tested?.model === 'gpt-4o-transcribe', JSON.stringify(r.d.tested));
+
 /* ── The card ── */
 br = await pw.chromium.launch();
 const errs = [];
@@ -309,6 +351,18 @@ for (const width of [1280, 390]) {
   const html = await page.content();
   ok(`owner @${width}: no key on the page`, ![QUOTA, SPARE, DEAD, THIRD].some(k => html.includes(k)));
   ok(`owner @${width}: no sideways scroll`, (await overflow(page)) <= 0, String(await overflow(page)));
+  const oaCard = page.locator('#platform-openai-keys');
+  const oaText = await oaCard.innerText().catch(() => '');
+  ok(`owner @${width}: the OpenAI card lists the pasted keys by name, never the key`, /OpenAI keys/.test(oaText) && /Batch 1/.test(oaText) && /Batch 3/.test(oaText) && ![OAGOOD, OABUSY, OANOTX].some(k => html.includes(k)), oaText.slice(0, 300));
+  if (width === 1280) {
+    await oaCard.locator('[data-field="aikeys.openai"]').fill(`${OABAD}\n${OAGOOD}`);
+    const btn = oaCard.getByRole('button', { name: /Check and add 2 keys/ });
+    ok('owner: the button counts the keys found in the paste', await btn.count() === 1);
+    await btn.click();
+    await oaCard.getByRole('status').waitFor({ timeout: 15_000 }).catch(() => {});
+    const st = await oaCard.getByRole('status').innerText().catch(() => '');
+    ok('owner: the paste is summed up — none added, one already saved, one refused by its place', /0 added/.test(st) && /1 already saved/.test(st) && /#1: Incorrect API key/.test(st), st);
+  }
   if (width === 1280) {
     await card.locator('[data-field="aikeys.key"]').fill(WRONG);
     await card.getByRole('button', { name: /Add backup key/ }).click();

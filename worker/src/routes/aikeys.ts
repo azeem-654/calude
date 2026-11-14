@@ -10,14 +10,31 @@
  */
 import { body, fail, json } from '../lib/http';
 import { installSecret, nowIso, userFromToken, type Env, type SessionUser } from '../lib/db';
-import { encryptSecret } from '../lib/crypto';
+import { decryptSecret, encryptSecret } from '../lib/crypto';
 import { adoptAiBase, probeAiKey, verifyAiKey } from '../lib/ai';
 import { describePool, fingerprint, forgetPool, installPool, poolKeyAt, recordTest } from '../lib/aiPool';
+import { OPENAI_KEY, listOpenAiModels, noteOpenAiKey, pickTranscriber } from '../lib/openai';
 
-interface Req { token?: string; action?: string; apiKey?: string; label?: string; id?: string; index?: number; dir?: string }
+interface Req { token?: string; action?: string; apiKey?: string; label?: string; id?: string; index?: number; dir?: string; keys?: string }
 
 const isOwner = (u: SessionUser) => u.role === 'agency' && !u.accountId;
 const MAX_BACKUPS = 10;
+/* OpenAI keys come in bulk (the owner, 2026-11-14). Enough for that, and a
+   cap so one paste cannot keep the Worker verifying for minutes. */
+const MAX_OPENAI = 200;
+const MAX_PER_PASTE = 50;
+
+interface OpenAiRow { id: string; label: string; created_at: string; last_ok_at: string | null; last_failed_at: string | null; last_error: string; resting_until: string | null }
+async function openAiState(env: Env) {
+  const { results } = await env.DB.prepare(
+    'SELECT id, label, created_at, last_ok_at, last_failed_at, last_error, resting_until FROM crm_openai_keys ORDER BY position, created_at',
+  ).all<OpenAiRow>().catch(() => ({ results: [] as OpenAiRow[] }));
+  const now = nowIso();
+  return (results ?? []).map(r => ({
+    id: r.id, label: r.label, addedAt: r.created_at, lastOkAt: r.last_ok_at, lastFailedAt: r.last_failed_at,
+    lastError: r.last_error, restingUntil: r.resting_until && r.resting_until > now ? r.resting_until : null,
+  }));
+}
 
 export async function handleAiKeys(req: Request, env: Env): Promise<Response> {
   const d = await body<Req>(req);
@@ -29,6 +46,65 @@ export async function handleAiKeys(req: Request, env: Env): Promise<Response> {
   const state = async () => ({ success: true, keys: await describePool(env) });
 
   if (act === 'status') return json(await state());
+
+  /* ── OpenAI keys, many at a time (lib/openai.ts) ── */
+  const openAi = async (extra: Record<string, unknown> = {}) => json({ success: true, openai: await openAiState(env), ...extra });
+  if (act === 'openai_status') return openAi();
+
+  if (act === 'openai_add_many') {
+    const text = String(d.keys ?? '').slice(0, 60_000);
+    /* Keys out of whatever was pasted — one per line, commas, a spreadsheet
+       column, "name: key" lines. OpenRouter (sk-or-) and Anthropic (sk-ant-)
+       keys are not OpenAI's and are left out. */
+    const found = [...new Set((text.match(/sk-[A-Za-z0-9_-]{20,}/g) ?? []).filter(k => OPENAI_KEY.test(k)))];
+    if (!found.length) return fail('No OpenAI keys found in that. They start "sk-" (sk-proj-…, sk-svcacct-…), from platform.openai.com/api-keys.', 200, { field: 'aikeys.openai' });
+    if (found.length > MAX_PER_PASTE) return fail(`That is ${found.length} keys — paste up to ${MAX_PER_PASTE} at a time.`, 200, { field: 'aikeys.openai' });
+    const { n } = await env.DB.prepare('SELECT COUNT(*) AS n FROM crm_openai_keys').first<{ n: number }>() ?? { n: 0 };
+    const stored = new Set(((await env.DB.prepare('SELECT fp FROM crm_openai_keys').all<{ fp: string }>()).results ?? []).map(r => r.fp));
+    const secret = await installSecret(env.DB, 'mailbox_key');
+    const prefix = String(d.label ?? '').trim().slice(0, 40) || 'OpenAI key';
+    let { pos } = await env.DB.prepare('SELECT COALESCE(MAX(position), 0) AS pos FROM crm_openai_keys').first<{ pos: number }>() ?? { pos: 0 };
+    let room = MAX_OPENAI - n;
+    let num = n;
+    /* Reported by its place in the paste (#1, #2 …) — never by the key. */
+    const results: { n: number; outcome: 'added' | 'duplicate' | 'refused' | 'full'; error?: string; transcribes?: boolean }[] = [];
+    const todo = await Promise.all(found.map(async (k, i) => ({ k, i: i + 1, fp: await fingerprint(k) })));
+    for (let at = 0; at < todo.length; at += 5) {
+      /* Proved five at a time: each is a GET to OpenAI before it is kept. */
+      const batch = todo.slice(at, at + 5);
+      const checks = await Promise.all(batch.map(x => (stored.has(x.fp) ? null : listOpenAiModels(env, x.k))));
+      for (let j = 0; j < batch.length; j++) {
+        const x = batch[j]; const c = checks[j];
+        if (!c) { results.push({ n: x.i, outcome: 'duplicate' }); continue; }
+        if (!c.ok) { results.push({ n: x.i, outcome: 'refused', error: c.error }); continue; }
+        if (room <= 0) { results.push({ n: x.i, outcome: 'full' }); continue; }
+        stored.add(x.fp); room--; num++; pos++;
+        await env.DB.prepare('INSERT INTO crm_openai_keys (id, position, label, credentials, fp, created_at, last_ok_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .bind(crypto.randomUUID(), pos, `${prefix} ${num}`, await encryptSecret(secret, x.k), x.fp, nowIso(), nowIso()).run();
+        results.push({ n: x.i, outcome: 'added', transcribes: !!pickTranscriber(c.models) });
+      }
+    }
+    return openAi({ results, added: results.filter(r => r.outcome === 'added').length });
+  }
+
+  if (act === 'openai_remove') {
+    await env.DB.prepare('DELETE FROM crm_openai_keys WHERE id = ?').bind(String(d.id ?? '')).run();
+    return openAi();
+  }
+  if (act === 'openai_clear') {
+    await env.DB.prepare('DELETE FROM crm_openai_keys').run();
+    return openAi();
+  }
+  if (act === 'openai_test') {
+    const row = await env.DB.prepare('SELECT id, credentials FROM crm_openai_keys WHERE id = ?').bind(String(d.id ?? '')).first<{ id: string; credentials: string }>();
+    if (!row) return fail('That key is no longer in the list.');
+    let key = '';
+    try { key = await decryptSecret(await installSecret(env.DB, 'mailbox_key'), row.credentials); } catch { /* unreadable */ }
+    if (!key) return fail('That key could not be read — remove it and paste it again.');
+    const m = await listOpenAiModels(env, key);
+    await noteOpenAiKey(env, row.id, m.ok, m.ok ? 200 : m.status, m.ok ? '' : m.error);
+    return openAi({ tested: m.ok ? { ok: true, error: '', model: pickTranscriber(m.models) } : { ok: false, error: m.error } });
+  }
 
   if (act === 'add') {
     const apiKey = String(d.apiKey ?? '').trim();

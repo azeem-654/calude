@@ -36,6 +36,7 @@
 import { body, fail, json } from '../lib/http';
 import { canAccess, userFromToken, type Env } from '../lib/db';
 import { aiBudget, aiRefund, askGemini, askGeminiParts, loadAiKey, refundIfFailed, type AiPart } from '../lib/ai';
+import { readOpenAiKeys, transcribeOpenAi } from '../lib/openai';
 import { cleanYear, universalYear, yearPrompt } from '../lib/marketingYear';
 import { readSite } from '../lib/readSite';
 import { rateLimit } from '../lib/rateLimit';
@@ -136,11 +137,11 @@ export async function handleIntake(req: Request, env: Env): Promise<Response> {
   const aiNo = await aiBudget(env, accountId, { job: d.job });
   if (aiNo) return fail(aiNo, 402, { code: 'ai_budget' });
   const key = await loadAiKey(env, accountId);
-  if (!key) { await aiRefund(env, accountId); return fail('Our AI is not available right now. This is on our side, not yours.', 200, { code: 'no_ai' }); }
-
   /* Given back when nothing came of it (lib/ai.ts aiRefund). */
   const done = (r: Promise<Response>) => r.then(res => refundIfFailed(env, accountId, res));
-  if (act === 'transcribe') return done(transcribe(key, d));
+  /* A recording can be heard on the owner's OpenAI keys alone (lib/openai.ts). */
+  if (act === 'transcribe' && (key || (await readOpenAiKeys(env)).length)) return done(transcribe(key ?? '', d, env));
+  if (!key) { await aiRefund(env, accountId); return fail('Our AI is not available right now. This is on our side, not yours.', 200, { code: 'no_ai' }); }
   if (act === 'write_emails') return done(writeEmails(env, key, accountId, d));
   if (act === 'refine') return done(refine(key, d));
   if (act === 'suggest') return done(suggest(key, d));
@@ -263,7 +264,7 @@ async function writeEmails(env: Env, key: string, accountId: string, d: IntakeRe
  * to read it back and edit it, and a tidied paraphrase would put words in
  * their mouth that they then have to notice and remove.
  */
-export async function transcribe(key: string, d: IntakeReq): Promise<Response> {
+export async function transcribe(key: string, d: IntakeReq, env?: Env): Promise<Response> {
   const mime = clip(d.mime, 80).toLowerCase();
   const audio = String(d.audio ?? '');
   if (!AUDIO_TYPES.test(mime)) return fail('That recording is in a format this cannot read.');
@@ -294,6 +295,21 @@ export async function transcribe(key: string, d: IntakeReq): Promise<Response> {
     'Return JSON: {"text":"...","language":"BCP-47 code of what was spoken","clarity":"clear" | "partly" | "unclear"}',
     'clarity is "unclear" when you could not make out most of it, "partly" when some words were [unclear].',
   ].filter(Boolean).join('\n');
+
+  /* OpenAI first when the owner has stored keys (lib/openai.ts — the models
+     ChatGPT's voice typing uses); the Gemini transcriber below when there
+     are none, or every key failed. */
+  if (env) {
+    let bytes: Uint8Array | null = null;
+    try { bytes = Uint8Array.from(atob(audio), c => c.charCodeAt(0)); } catch { /* not base64: Gemini says so below */ }
+    if (bytes) {
+      const t0 = Date.now();
+      const o = await transcribeOpenAi(env, bytes, mime.split(';')[0], lang, context);
+      if (o.ok && o.text) return json({ success: true, text: clip(o.text, 6000), language: lang, clarity: 'clear', engine: 'openai', ms: Date.now() - t0 });
+      if (!key) return fail(o.ok ? 'I couldn’t make out any words.' : `The recording could not be transcribed: ${o.error}`);
+    }
+  }
+  if (!key) return fail('Our AI is not available right now. This is on our side, not yours.', 200, { code: 'no_ai' });
 
   const parts: AiPart[] = [
     { text: prompt },

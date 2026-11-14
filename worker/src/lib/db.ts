@@ -78,6 +78,8 @@ export interface Env {
   LIVE_VAULT?: { aiKeys(): Promise<{ key: string; label: string }[]> };
   /** Tests only: an OpenRouter stand-in. */
   OPENROUTER_BASE?: string;
+  /** Tests only: an OpenAI stand-in (lib/openai.ts). */
+  OPENAI_BASE?: string;
   /**
    * Read-only Cloudflare API token (Account Analytics: Read) and the account id,
    * for the owner's usage dashboard (lib/cloudUsage.ts). Optional: without them

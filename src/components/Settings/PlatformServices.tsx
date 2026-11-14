@@ -27,6 +27,7 @@ import { API_BASE } from '../../services/apiBase';
 import { sessionToken } from '../../services/auth';
 import PlacesKeyPanel from './PlacesKeyPanel';
 import AiKeysPanel from './AiKeysPanel';
+import OpenAiKeysPanel from './OpenAiKeysPanel';
 import AiEngineCard from './AiEngineCard';
 import GeoapifyKeyPanel from './GeoapifyKeyPanel';
 import EmailVerifierPanel from './EmailVerifierPanel';
@@ -162,6 +163,7 @@ export default function PlatformServices({ openTab }: { openTab: (id: string) =>
       <div id="platform-strategy-call" style={{ scrollMarginTop: 16 }}><StrategyCallSettings /></div>
       <div id="platform-ai-main" style={{ scrollMarginTop: 16 }}><AiEngineCard /></div>
       <div id="platform-ai-keys" style={{ scrollMarginTop: 16 }}><AiKeysPanel /></div>
+      <div id="platform-openai-keys" style={{ scrollMarginTop: 16 }}><OpenAiKeysPanel /></div>
       <div id="platform-geoapify" style={{ scrollMarginTop: 16 }}><GeoapifyKeyPanel /></div>
       <div id="platform-companies-house" style={{ scrollMarginTop: 16 }}><CompaniesHousePanel /></div>
       <div id="platform-email-verifier" style={{ scrollMarginTop: 16 }}><EmailVerifierPanel /></div>

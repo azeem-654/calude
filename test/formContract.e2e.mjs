@@ -229,6 +229,14 @@ ok('Settings → Platform services: a malformed Google Maps key is refused at a 
   await settle();
   ok('Settings → Platform services: a malformed Companies House key is refused at a box on screen', (await deadEnds()).length === 0 && /does not look like/.test(await card.innerText()), JSON.stringify(await deadEnds()));
 }
+/* The OpenAI keys card: a paste OpenAI refuses is summed up on the card, never a box that is not there. */
+{
+  const card = p.locator('#platform-openai-keys');
+  await card.locator('[data-field="aikeys.openai"]').fill(`sk-proj-${'x'.repeat(40)}`);
+  await card.getByRole('button', { name: /Check and add 1 key/ }).click();
+  await settle();
+  ok('Settings → Platform services: a refused OpenAI key is reported on the card', (await deadEnds()).length === 0 && /0 added/.test(await card.innerText()), JSON.stringify(await deadEnds()));
+}
 /* The email finder & verifier card: every service it offers, a malformed key each. */
 for (const name of ['Hunter', 'ZeroBounce', 'MillionVerifier']) {
   const card = p.locator('#platform-email-verifier');
