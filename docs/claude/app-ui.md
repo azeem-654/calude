@@ -80,18 +80,22 @@ and goes to the workspace owner when no address is given (booking.ts
 starting points, then the explainer film. Sending hands the words to the
 wizard like Protron does (`pc_protron_handoff`).
 
-**Seventh pass (owner, 2026-11-14) — "match the logo":** every colour on
-the dashboard and the top bar now comes from the shield (`public/favicon.svg`):
-lime `#c8f24d`/`#d6f96f`, mint `#8fd9c4`, tile black `#0f1210`. The hero's
-drift is **lime ↔ mint** (the ember orange is gone); night mode's ground is the
-tile black, day mode a cool green-white with green-black ink and a slightly
-deeper accent (`#9fd23a` ↔ `#5fbfa3`) so the box edge reads on white. The two
-lit pills are mint → white → lime glass (Prospecting the other way round), the
-corner pill is tile black, the "+" is lime with a dark cross (was violet), and
-`LogoMark` carries `data-noinvert` — dark mode used to draw it as a white tile
-with a dark-green shield. The "pass" notes below are history for the colours.
+**Dark is the default, in ember (owner, 2026-11-14, from a screenshot of
+the sixth pass):** a lime/mint retint of the dashboard and top bar was undone —
+the owner wants the ember look below, everywhere. With no choice stored
+(`crm_theme`), the **signed-in app is dark** (`services/theme.ts`
+`APP_DEFAULT`; TopNav calls `enterApp`/`leaveApp`), while public pages on the
+same host — sign-in, shop, booking, forms, reports, the Trust Center, pricing,
+the testing site's copy of the public site — stay light unless dark was
+chosen (`PUBLIC_PATH`). Every screen sits on the hero's ground in dark mode:
+`.app-ember` (App.tsx, `data-noinvert`) is warm black `#0a0605` lit ember from
+below with a faint dot grid; `body` and `.app-shell` go transparent so it shows
+between cards. The **logo is ember in dark mode** (`LogoMark` reads
+`--logo-1..3`/`--logo-tile`, set under `html[data-theme="dark"]`; light mode
+keeps the favicon's lime → mint) and carries `data-noinvert`, which it lacked —
+dark mode used to draw it as a white tile with a dark-green shield.
 
-**Fifth and sixth passes (owner, 2026-11-14):** a glow
+**Fifth and sixth passes (owner, 2026-11-14) — the current look:** a glow
 rising from the bottom through a dot grid (`.dash-aurora*`, CSS only) that
 **drifts slowly from ember orange to the logo's green and back** (36 s each
 way: a green layer cross-faded by opacity on the ground; `--acc`, a

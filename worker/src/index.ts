@@ -13,6 +13,7 @@
  * with no way to tell which of them broke something. The suffix is a URL, not
  * a language.
  */
+import { retryable, watchWrites } from './lib/writeWatch';
 import { sameOrigin, withCookieToken, withSessionCookie } from './lib/session';
 import { useWrapKey } from './lib/db';
 import { handleAi } from './routes/ai';
@@ -404,6 +405,9 @@ async function serve(req: Request, env: Env, ctx: ExecutionContext, url: URL): P
        no cookie, so they are left exactly as they arrived. */
     const webhook = /webhook|sms-inbound/.test(url.pathname);
     const inbound = webhook ? req : await withCookieToken(req);
+    /* What this request saves is noted, so a busy AI answer is only marked
+       for the page to send again when nothing was saved (lib/writeWatch.ts). */
+    const watched = watchWrites(env);
     if (url.pathname === '/api/auth.php') {
       /*
        * Same-origin JSON only (W-1). This is the route that issues sessions,
@@ -420,9 +424,9 @@ async function serve(req: Request, env: Env, ctx: ExecutionContext, url: URL): P
       }
       let action = '';
       try { action = String((JSON.parse(await inbound.clone().text()) as { action?: string }).action ?? ''); } catch { action = ''; }
-      return await withSessionCookie(inbound, await handler(inbound, env, ctx), action, inbound !== req || action === 'adopt_cookie');
+      return await withSessionCookie(inbound, await handler(inbound, watched.env, ctx), action, inbound !== req || action === 'adopt_cookie');
     }
-    return await handler(inbound, env, ctx);
+    return retryable(await handler(inbound, watched.env, ctx), watched, url.pathname);
   } catch (e) {
     /* A thrown error must not become a 500 with a stack trace in it: the
        client shows `message` to the customer, and a database error string is

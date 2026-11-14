@@ -20,17 +20,20 @@ export function LogoMark({ size = 28, tile = true }: { size?: number; tile?: boo
   const id = `pc${useId().replace(/:/g, '')}`;
   return (
     /* data-noinvert: dark mode inverts the whole page (index.css), which drew
-       the mark as a white tile with a dark-green shield — not the logo. It is
-       the same colours in both themes, like the browser tab's. */
+       the mark as a white tile with a dark-green shield — not the logo. In
+       dark mode it is drawn in the ember of the dashboard instead (owner,
+       2026-11-14); in light mode, the favicon's colours. */
     <svg width={size} height={size} viewBox="0 0 32 32" role="img" aria-label="Protected Central" data-noinvert style={{ display: 'block', flexShrink: 0 }}>
       <defs>
         <linearGradient id={id} x1="6" y1="3" x2="26" y2="29" gradientUnits="userSpaceOnUse">
-          <stop offset="0" stopColor="#d6f96f" />
-          <stop offset="0.55" stopColor="#c8f24d" />
-          <stop offset="1" stopColor="#8fd9c4" />
+          {/* Through CSS variables so dark mode can wear the dashboard's ember
+              (index.css `--logo-*`); unset, the lime-to-mint of the favicon. */}
+          <stop offset="0" style={{ stopColor: 'var(--logo-1, #d6f96f)' }} />
+          <stop offset="0.55" style={{ stopColor: 'var(--logo-2, #c8f24d)' }} />
+          <stop offset="1" style={{ stopColor: 'var(--logo-3, #8fd9c4)' }} />
         </linearGradient>
       </defs>
-      {tile && <rect width="32" height="32" rx="7.5" fill="#0f1210" />}
+      {tile && <rect width="32" height="32" rx="7.5" style={{ fill: 'var(--logo-tile, #0f1210)' }} />}
       <path
         fill={`url(#${id})`}
         fillRule="evenodd"

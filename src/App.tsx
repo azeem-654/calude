@@ -279,10 +279,14 @@ function AppLayout({ isClient }: { isClient: boolean }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#e9ebee' }}>
+    /* The page grey lives on a class so dark mode can clear it for the ember
+       ground (index.css `.app-shell`). */
+    <div className="app-shell" style={{ minHeight: '100vh' }}>
       {/* Above even the nav: "you are not on the live site" outranks everything
           else on the page, including the nav that makes it look like you are. */}
       <StagingBanner />
+      {/* Dark mode's ember ground behind every screen (index.css). */}
+      <div className="app-ember" data-noinvert aria-hidden="true" />
       <TopNav />
       {/* Above everything else, because it is the explanation for anything that
           refuses lower down the page. */}

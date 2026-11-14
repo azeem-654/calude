@@ -318,28 +318,26 @@ button:focus-visible, a:focus-visible {
   position: relative;
   z-index: 1;
   isolation: isolate;
-  /* The owner's reference video: a pill of stacked frosted glass with a
-     milky lens holding the AI bloom and dark text. The sheets underneath are
-     shadows stepping down and in, so the stack costs no extra elements and
-     never changes the pill's size. Tinted in the logo's own colours, mint →
-     white → lime (owner, 2026-11-14: "match the logo"); it was cyan → pink →
-     peach, which nothing else on the page wore. */
-  background-image: linear-gradient(100deg, rgba(143, 217, 196, 0.95) 0%, rgba(222, 246, 238, 0.95) 24%, #ffffff 42%, rgba(232, 250, 180, 0.95) 72%, rgba(200, 242, 77, 0.95) 100%);
+  /* The owner's reference video: a pill of stacked frosted glass, tinted
+     cyan → white → pink → peach, with a milky lens holding the AI bloom and
+     dark text. The sheets underneath are shadows stepping down and in, so the
+     stack costs no extra elements and never changes the pill's size. */
+  background-image: linear-gradient(100deg, rgba(146, 230, 250, 0.95) 0%, rgba(232, 250, 255, 0.95) 24%, #ffffff 42%, rgba(244, 190, 236, 0.95) 72%, rgba(255, 196, 160, 0.95) 100%);
   background-size: 180% 100%;
   background-position: 0% 0;
   border: 1px solid rgba(255, 255, 255, 0.95) !important;
   color: #111827 !important;
-  /* The glow the glass throws on what is under it, mint on the left and lime
-     on the right, then the sheets, then the shadow in the logo's tile black. */
+  /* The glow the glass throws on what is under it, cyan on the left and pink
+     on the right as in the reference, then the sheets, then the shadow. */
   box-shadow:
     inset 0 1px 0 #fff,
     inset 0 -2px 3px rgba(255, 255, 255, 0.55),
-    0 2px 0 -0.5px rgba(143, 217, 196, 0.95),
-    0 4px 0 -1px rgba(96, 196, 168, 0.8),
-    0 6px 0 -1.5px rgba(200, 242, 77, 0.75),
-    -12px 6px 26px -6px rgba(96, 196, 168, 0.6),
-    12px 6px 26px -6px rgba(178, 230, 70, 0.6),
-    0 14px 22px -12px rgba(15, 18, 16, 0.45);
+    0 2px 0 -0.5px rgba(56, 214, 240, 0.95),
+    0 4px 0 -1px rgba(96, 165, 250, 0.8),
+    0 6px 0 -1.5px rgba(196, 181, 253, 0.8),
+    -12px 6px 26px -6px rgba(34, 211, 238, 0.65),
+    12px 6px 26px -6px rgba(244, 114, 182, 0.65),
+    0 14px 22px -12px rgba(30, 27, 75, 0.45);
   letter-spacing: -0.01em;
   overflow: visible;
 }
@@ -347,12 +345,12 @@ button:focus-visible, a:focus-visible {
   box-shadow:
     inset 0 1px 0 #fff,
     inset 0 -2px 3px rgba(255, 255, 255, 0.55),
-    0 2px 0 -0.5px rgba(200, 242, 77, 0.95),
-    0 4px 0 -1px rgba(168, 222, 60, 0.8),
-    0 6px 0 -1.5px rgba(143, 217, 196, 0.8),
-    -12px 6px 26px -6px rgba(178, 230, 70, 0.6),
-    12px 6px 26px -6px rgba(96, 196, 168, 0.6),
-    0 14px 22px -12px rgba(15, 18, 16, 0.45);
+    0 2px 0 -0.5px rgba(253, 186, 116, 0.95),
+    0 4px 0 -1px rgba(244, 114, 182, 0.8),
+    0 6px 0 -1.5px rgba(196, 181, 253, 0.8),
+    -12px 6px 26px -6px rgba(251, 146, 60, 0.6),
+    12px 6px 26px -6px rgba(96, 165, 250, 0.6),
+    0 14px 22px -12px rgba(30, 27, 75, 0.45);
 }
 /* A light passing over the glass. */
 .nav-hero::after {
@@ -374,10 +372,10 @@ button:focus-visible, a:focus-visible {
   filter: brightness(1.04) saturate(1.15);
 }
 
-/* AI Prospecting: the same glass the other way round — led by the lime,
-   into the mint — so the two read as a pair, not as twins. */
+/* AI Prospecting: the same glass, its tint led by the warm end — pink into
+   peach — the colours of its own page. */
 .nav-hero-prospect {
-  background-image: linear-gradient(100deg, rgba(200, 242, 77, 0.95) 0%, rgba(236, 250, 196, 0.95) 26%, #ffffff 44%, rgba(214, 242, 232, 0.95) 72%, rgba(143, 217, 196, 0.95) 100%);
+  background-image: linear-gradient(100deg, rgba(255, 214, 170, 0.95) 0%, #fff7f0 26%, #ffffff 44%, rgba(250, 190, 226, 0.95) 72%, rgba(186, 214, 255, 0.95) 100%);
 }
 
 /* The page the pill leads to is open: a ring of light round the glass. */
@@ -386,13 +384,13 @@ button:focus-visible, a:focus-visible {
     inset 0 1px 0 #fff,
     inset 0 -2px 3px rgba(255, 255, 255, 0.55),
     0 0 0 2px rgba(255, 255, 255, 0.95),
-    0 0 0 3.5px rgba(143, 200, 60, 0.65),
-    0 2px 0 -0.5px rgba(143, 217, 196, 0.95),
-    0 4px 0 -1px rgba(96, 196, 168, 0.8),
-    0 6px 0 -1.5px rgba(200, 242, 77, 0.75),
-    -14px 6px 30px -4px rgba(96, 196, 168, 0.7),
-    14px 6px 30px -4px rgba(178, 230, 70, 0.7),
-    0 16px 24px -12px rgba(15, 18, 16, 0.5) !important;
+    0 0 0 3.5px rgba(167, 139, 250, 0.6),
+    0 2px 0 -0.5px rgba(56, 214, 240, 0.95),
+    0 4px 0 -1px rgba(96, 165, 250, 0.8),
+    0 6px 0 -1.5px rgba(196, 181, 253, 0.8),
+    -14px 6px 30px -4px rgba(34, 211, 238, 0.75),
+    14px 6px 30px -4px rgba(244, 114, 182, 0.75),
+    0 16px 24px -12px rgba(30, 27, 75, 0.5) !important;
 }
 
 /* The lens: milky glass, lit from the top left, a rim of light round it. */
@@ -422,14 +420,14 @@ button:focus-visible, a:focus-visible {
   /* The halo breathes on its own layer, so the pill's shadows stay put. */
   .nav-hero::before {
     content: ''; position: absolute; inset: -6px -10px; border-radius: inherit; z-index: -2; pointer-events: none;
-    background: radial-gradient(60% 90% at 20% 60%, rgba(96, 196, 168, 0.45), transparent 70%),
-                radial-gradient(60% 90% at 80% 60%, rgba(178, 230, 70, 0.45), transparent 70%);
+    background: radial-gradient(60% 90% at 20% 60%, rgba(34, 211, 238, 0.45), transparent 70%),
+                radial-gradient(60% 90% at 80% 60%, rgba(244, 114, 182, 0.45), transparent 70%);
     filter: blur(8px);
     animation: hero-halo 3.6s ease-in-out infinite;
   }
   .nav-hero-prospect::before {
-    background: radial-gradient(60% 90% at 20% 60%, rgba(178, 230, 70, 0.45), transparent 70%),
-                radial-gradient(60% 90% at 80% 60%, rgba(96, 196, 168, 0.45), transparent 70%);
+    background: radial-gradient(60% 90% at 20% 60%, rgba(251, 146, 60, 0.45), transparent 70%),
+                radial-gradient(60% 90% at 80% 60%, rgba(96, 165, 250, 0.45), transparent 70%);
     animation-delay: -1.8s;
   }
   .nav-hero::after { animation: hero-sheen 5.5s ease-in-out infinite; }
@@ -600,6 +598,34 @@ html[data-theme="dark"] iframe,
 html[data-theme="dark"] [data-noinvert] {
   filter: invert(1) hue-rotate(180deg);
 }
+/*
+ * Dark is the app's own look (owner, 2026-11-14: "make this dark theme the
+ * default"), and it is the dashboard's: warm black lit by ember from below.
+ * `.app-ember` (App.tsx, the signed-in shell) is that ground behind every
+ * screen — a fixed layer kept out of the inversion, so its colours are the
+ * ones written here — and the body steps aside so it shows between the cards.
+ * The logo wears the same ember (shared/Logo.tsx reads `--logo-*`).
+ */
+html[data-theme="dark"] {
+  --logo-1: #ffc28e; --logo-2: #ff7a35; --logo-3: #e4521c; --logo-tile: #0a0605;
+}
+.app-shell { background-color: #e9ebee; }
+html[data-theme="dark"] body, html[data-theme="dark"] .app-shell { background-color: transparent; }
+.app-ember { display: none; }
+html[data-theme="dark"] .app-ember {
+  display: block; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(42% 22% at 50% -4%, rgba(255, 120, 60, 0.1), rgba(255, 120, 60, 0) 100%),
+    radial-gradient(120% 52% at 50% 114%, rgba(242, 96, 31, 0.5) 0%, rgba(184, 65, 15, 0.26) 26%, rgba(92, 28, 8, 0.12) 46%, rgba(10, 6, 5, 0) 68%),
+    #0a0605;
+}
+html[data-theme="dark"] .app-ember::after {
+  content: ''; position: absolute; inset: 0;
+  background-image: radial-gradient(circle, rgba(255, 186, 140, 0.4) 0 1px, transparent 1.5px); background-size: 13px 13px;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, transparent 55%, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, transparent 55%, #000 100%); opacity: .45;
+}
+
 /* Keep the page scrollbar dark to match. */
 html[data-theme="dark"] *::-webkit-scrollbar-thumb {
   background: #3a3f46;
@@ -1693,23 +1719,21 @@ main section { min-width: 0; }
 
 
 /* ── The corner (TopNav.tsx): one dark pill ──
- * The owner's reference: a lit "+", a hairline divider, outline icons in
- * light grey, and the person's face at the end. The pill is the logo's tile
- * black and the "+" wears the shield's lime → mint with a dark cross — it was
- * violet, the one colour in the bar the logo has none of. */
+ * The owner's reference: a lit "+" in violet, a hairline divider, outline
+ * icons in light grey, and the person's face at the end. */
 .nav-corner {
   display: flex; align-items: center; gap: 2px; flex-shrink: 0;
   padding: 5px; border-radius: 999px;
-  background: #0f1210;
-  box-shadow: 0 10px 26px -12px rgba(15, 18, 16, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  background: #1c1c22;
+  box-shadow: 0 10px 26px -12px rgba(15, 15, 25, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 .nav-corner .icon-btn:hover, .nav-corner .icon-btn:focus-visible { background: rgba(255, 255, 255, 0.1) !important; color: #fff !important; }
 .nav-corner-div { width: 1px; height: 22px; margin: 0 6px 0 8px; background: rgba(255, 255, 255, 0.16); }
 .nav-plus {
   width: 38px; height: 38px; border-radius: 999px; border: none; cursor: pointer;
-  display: grid; place-items: center; color: #0f1210;
-  background: radial-gradient(circle at 35% 30%, #d6f96f, #c8f24d 55%, #8fd9c4);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25) inset, 0 4px 14px -4px rgba(200, 242, 77, 0.6);
+  display: grid; place-items: center; color: #fff;
+  background: radial-gradient(circle at 35% 30%, #9b8cff, #7357f6 60%, #5b3fe0);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12) inset, 0 4px 14px -4px rgba(115, 87, 246, 0.8);
   transition: transform 0.15s ease, filter 0.15s ease;
 }
 .nav-plus:hover { filter: brightness(1.1); }
@@ -1723,10 +1747,10 @@ main section { min-width: 0; }
   display: flex; align-items: center; gap: 11px; width: 100%; padding: 9px 10px; border: none; border-radius: 12px;
   background: transparent; cursor: pointer; text-align: left; font-family: inherit;
 }
-.nav-plus-menu button:hover, .nav-plus-menu button:focus-visible { background: #f2f8ea; }
+.nav-plus-menu button:hover, .nav-plus-menu button:focus-visible { background: #f4f2ff; }
 .nav-plus-menu b { display: block; font-size: 13px; color: #17191c; }
 .nav-plus-menu small { display: block; font-size: 11.5px; color: #8a8f98; margin-top: 1px; }
-.nav-plus-ic { width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0; display: grid; place-items: center; background: #ecf7dc; color: #3f6212; }
+.nav-plus-ic { width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0; display: grid; place-items: center; background: #efecff; color: #5b3fe0; }
 .nav-me {
   width: 38px; height: 38px; margin-left: 4px; padding: 0; border: none; border-radius: 999px; overflow: hidden; cursor: pointer;
   background: #2a2a31; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.14);
@@ -1737,12 +1761,12 @@ main section { min-width: 0; }
 .nav-me.nav-shield { position: relative; overflow: visible; display: grid; place-items: center; background: #111318; }
 .nav-shield-lock {
   position: absolute; right: -3px; bottom: -3px; width: 16px; height: 16px; border-radius: 999px;
-  display: grid; place-items: center; background: #16a34a; color: #fff; border: 2px solid #0f1210;
+  display: grid; place-items: center; background: #16a34a; color: #fff; border: 2px solid #1c1c22;
 }
 @media (prefers-reduced-motion: no-preference) {
   .nav-me.nav-shield { animation: nav-guard 3.2s ease-in-out infinite; }
 }
-@keyframes nav-guard { 50% { box-shadow: 0 0 0 2px rgba(200, 242, 77, .35), 0 0 14px rgba(200, 242, 77, .35); } }
+@keyframes nav-guard { 50% { box-shadow: 0 0 0 2px rgba(74, 222, 128, .35), 0 0 14px rgba(74, 222, 128, .35); } }
 /* The cloud key sits inside the pill at the pill's own height. */
 .nav-corner .cb-key { width: 36px; height: 36px; border-radius: 11px; }
 .nav-corner .cb-cap { inset: 3px 3px 5px; border-radius: 9px; }
@@ -1833,7 +1857,7 @@ html[data-theme="dark"] [data-noinvert] [data-noinvert] { filter: none; }
 }
 
 /* ── AI capacity wait (shared/AiPatienceBar.tsx) ──
-   Dark glass in the logo's lime → mint, under the top bar, centred. */
+   Dark glass with the dashboard's ember glow, under the top bar, centred. */
 .ai-patience {
   /* Centred by margins, not translate: the slide-in animation owns transform. */
   position: fixed; z-index: 400; left: 0; right: 0; margin: 0 auto;
@@ -1841,30 +1865,30 @@ html[data-theme="dark"] [data-noinvert] [data-noinvert] { filter: none; }
   width: min(560px, calc(100vw - 32px));
   display: flex; align-items: center; gap: 12px;
   padding: 12px 14px; border-radius: 16px;
-  background: rgba(15, 18, 16, 0.92); color: #eef3ea;
-  border: 1px solid rgba(200, 242, 77, 0.28);
-  box-shadow: 0 14px 40px -12px rgba(15, 18, 16, 0.55);
+  background: rgba(14, 8, 6, 0.92); color: #fbeee6;
+  border: 1px solid rgba(255, 106, 43, 0.35);
+  box-shadow: 0 14px 40px -12px rgba(10, 6, 5, 0.6);
   backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   font-size: 13px; line-height: 1.35;
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .ai-patience-dot {
   width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-  background: linear-gradient(135deg, #d6f96f, #8fd9c4);
-  box-shadow: 0 0 0 4px rgba(200, 242, 77, 0.16);
+  background: linear-gradient(135deg, #ffb27a, #ff6a2b);
+  box-shadow: 0 0 0 4px rgba(255, 106, 43, 0.18);
   animation: aiPatiencePulse 1.6s ease-in-out infinite;
 }
-.ai-patience[data-paused="1"] .ai-patience-dot { animation: none; background: #8fd9c4; }
+.ai-patience[data-paused="1"] .ai-patience-dot { animation: none; background: #ffb27a; }
 .ai-patience-text { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
 .ai-patience-text strong { font-weight: 700; color: #fff; }
-.ai-patience-text > span:not(.ai-patience-track) { color: #b9c2b4; font-variant-numeric: tabular-nums; }
+.ai-patience-text > span:not(.ai-patience-track) { color: #dcc4b8; font-variant-numeric: tabular-nums; }
 .ai-patience-track { display: block; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, 0.1); overflow: hidden; margin-top: 4px; }
-.ai-patience-track > span { display: block; height: 100%; transform-origin: left; background: linear-gradient(90deg, #c8f24d, #8fd9c4); transition: transform 0.5s linear; }
+.ai-patience-track > span { display: block; height: 100%; transform-origin: left; background: linear-gradient(90deg, #ff9a5c, #ff6a2b); transition: transform 0.5s linear; }
 .ai-patience button {
-  flex-shrink: 0; border: 1px solid rgba(255, 255, 255, 0.18); background: transparent; color: #eef3ea;
+  flex-shrink: 0; border: 1px solid rgba(255, 255, 255, 0.18); background: transparent; color: #fbeee6;
   border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
 }
 .ai-patience button:hover { background: rgba(255, 255, 255, 0.08); }
-@keyframes aiPatiencePulse { 50% { box-shadow: 0 0 0 7px rgba(200, 242, 77, 0.05); } }
+@keyframes aiPatiencePulse { 50% { box-shadow: 0 0 0 7px rgba(255, 106, 43, 0.05); } }
 @media (max-width: 520px) { .ai-patience { flex-wrap: wrap; } .ai-patience button { margin-left: 22px; } }
 @media (prefers-reduced-motion: reduce) { .ai-patience, .ai-patience-dot { animation: none; } .ai-patience-track > span { transition: none; } }

@@ -13,6 +13,7 @@
  */
 import { fail as refuse, json, ok as okRes } from '../worker/src/lib/http';
 import { AI_BUSY } from '../worker/src/lib/ai';
+import { retryable, watchWrites, writtenTables } from '../worker/src/lib/writeWatch';
 
 let pass = 0, failed = 0;
 const ok = (n: string, c: boolean, d: unknown = '') => { if (c) pass++; else failed++; console.log(`${c ? '  ✓' : '  ✗'} ${n}${c ? '' : ` — ${JSON.stringify(d).slice(0, 300)}`}`); };
@@ -25,6 +26,27 @@ ok('another refusal does not', refuse('Pick a date.').headers.get('X-AI-Busy') =
 ok('a success with the sentence inside does not', okRes({ note: AI_BUSY }).headers.get('X-AI-Busy') === null);
 ok('json success:false with it does', json({ success: false, error: AI_BUSY }).headers.get('X-AI-Busy') !== null);
 ok('the header is exposed to a cross-origin page', /X-AI-Busy/.test(refuse('x').headers.get('Access-Control-Expose-Headers') ?? ''));
+
+console.log('A request that saved something is never marked for retry');
+ok('an insert counts', writtenTables('INSERT INTO crm_contacts (id) VALUES (?)').join() === 'crm_contacts');
+ok('upsert, update, delete and replace count', writtenTables('INSERT OR REPLACE INTO crm_a VALUES (1); UPDATE crm_b SET x=1; DELETE FROM crm_c; REPLACE INTO crm_d VALUES (1)').join() === 'crm_a,crm_b,crm_c,crm_d');
+ok('a read does not', writtenTables('SELECT * FROM crm_contacts WHERE id = ?').length === 0);
+ok('the AI unit taken and given back does not', writtenTables("DELETE FROM crm_usage WHERE rowid = (SELECT rowid FROM crm_usage)").length === 0);
+ok('rate limits, key health and AI usage do not', writtenTables('INSERT INTO crm_rate_limits VALUES (1); INSERT INTO crm_ai_key_health VALUES (1); INSERT INTO crm_ai_usage VALUES (1)').length === 0);
+const fakeDb = { prepare: (sql: string) => ({ sql, bind() { return this; }, run: async () => ({}) }), exec: async () => ({}), batch: async () => [] };
+const env = { DB: fakeDb, APP_ORIGIN: 'x' } as unknown as Parameters<typeof watchWrites>[0];
+const w1 = watchWrites(env);
+await (w1.env.DB.prepare('INSERT INTO crm_usage (id) VALUES (?)').bind('u') as unknown as { run(): Promise<unknown> }).run();
+ok('bookkeeping alone keeps the mark', retryable(refuse(AI_BUSY), w1, '/api/x.php').headers.get('X-AI-Busy') !== null);
+ok('the rest of env is untouched', (w1.env as unknown as { APP_ORIGIN: string }).APP_ORIGIN === 'x' && typeof w1.env.DB.batch === 'function');
+const w2 = watchWrites(env);
+w2.env.DB.prepare('INSERT INTO crm_blog_posts (id) VALUES (?)');
+const stripped = retryable(refuse(AI_BUSY), w2, '/api/x.php');
+ok('a saved row removes the mark', stripped.headers.get('X-AI-Busy') === null && w2.wrote.has('crm_blog_posts'));
+ok('…and the answer is otherwise the same', (await stripped.json() as { error?: string }).error === AI_BUSY);
+const w3 = watchWrites(env);
+w3.env.DB.prepare('UPDATE crm_contacts SET x = 1');
+ok('an answer that was not busy is left alone', retryable(okRes({}), w3, '/api/x.php').headers.get('X-AI-Busy') === null);
 
 /* ── 2 · The page ── */
 console.log('The page waits it out');

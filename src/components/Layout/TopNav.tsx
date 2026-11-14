@@ -16,7 +16,7 @@ import { NAV_GROUPS, activeGroupId, isItemActive } from './navModel';
 import { watchPulse, type Pulse } from '../../services/autopilotPulse';
 import { loadSubAccounts, activeAccount, switchAccount, activeBranding } from '../../services/tenancy';
 import { getSession, logout } from '../../services/auth';
-import { getTheme, toggleTheme } from '../../services/theme';
+import { enterApp, getTheme, leaveApp, toggleTheme } from '../../services/theme';
 import { LogoMark } from '../shared/Logo';
 import AiBloom from '../shared/AiBloom';
 import UserFace from '../shared/UserFace';
@@ -69,6 +69,9 @@ export default function TopNav() {
   const [userOpen, setUserOpen] = useState(false);
   const userRef = useRef<HTMLDivElement>(null);
   const [theme, setTheme] = useState(getTheme());
+  /* The signed-in app is dark unless light was chosen; the public pages
+     around it are not (services/theme.ts). */
+  useEffect(() => { enterApp(); return leaveApp; }, []);
   const { notificationLog, unreadNotifications, markNotificationsRead, clearNotificationLog } = useApp();
   const [bellOpen, setBellOpen] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
@@ -726,7 +729,6 @@ function QuickCreate() {
   return (
     <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
       <button type="button" className="nav-plus" aria-label="Create something new" title="Create something new"
-        data-noinvert /* the logo's lime in both themes, not its negative */
         aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(v => !v)}>
         <Plus size={18} strokeWidth={2.2} />
       </button>

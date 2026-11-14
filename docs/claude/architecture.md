@@ -65,8 +65,13 @@ string body, waits and sends the same request again: up to ~3.5 min for a
 short rest, then "paused" with a check every 5 min for up to 3 h while the
 page is open (leaving asks first). `shared/AiPatienceBar.tsx` shows the
 countdown and "Stop waiting", which hands the screen the busy answer as
-before. Replaying is safe because routes refuse before they write and give
-the AI unit back (`aiRefund`). A caller's own `signal` still ends the wait
+before. **A retry can never save twice**, whatever the route does:
+`index.ts` hands every API request a database that notes the tables it writes
+(`lib/writeWatch.ts`), and a busy answer from a request that wrote anything
+but bookkeeping (AI units, rate limits, key health, AI usage/alerts, meta,
+sessions, audit, delivery log) loses `X-AI-Busy` — the page shows the error
+instead, and the Worker logs `[ai-busy] <path> wrote …`. The AI unit is given
+back either way (`aiRefund`). A caller's own `signal` still ends the wait
 (Protron's chat keeps its fallback); `attemptTimeoutMs` is a per-attempt
 limit instead (`aiFetch`, `intake.ts`). Cron work never needed it: it retries
 on its own tick. `npm run test:patience`.
