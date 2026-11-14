@@ -255,6 +255,12 @@ export function audienceIn(text: string): string | null {
   return null;
 }
 
+/** The text after "Label:" on its own line of a request — the shape Protron writes its instruction in. */
+export function labelledLine(prompt: string, label: string): string {
+  const m = new RegExp(`^\\s*${label}:[ \\t]*(.+)$`, 'im').exec(prompt);
+  return (m?.[1] ?? '').trim();
+}
+
 /**
  * Everything the request, its attachments and the workspace already answer.
  *
@@ -290,6 +296,21 @@ export function extractKnown(
     }
   } else if (docs.length) {
     put('business', 'upload', 'file', `read from ${docs[0].name}`);
+  } else if (asked.has('business') && labelledLine(prompt, 'Company') && labelledLine(prompt, 'Business context').length >= 8) {
+    /* Protron's instruction (services/protron/intake.ts) already carries the
+       name and what the business does, from the chat. Without this the first
+       question after the chat was "How should AI Autopilot learn about the
+       business?" — asking a reviewer who had just told Protron (local test,
+       2026-11-14). Kept as typed answers, so the business screen shows them
+       to correct rather than asking again. */
+    const name = labelledLine(prompt, 'Company').replace(/\.$/, '');
+    if (name && !/^my business$/i.test(name)) {
+      put('business', 'manual', 'prompt', 'from your chat with Protron');
+      out.bizName = { value: name.slice(0, 120), source: 'prompt', note: 'from your chat with Protron' };
+      out.bizWhat = { value: labelledLine(prompt, 'Business context').slice(0, 600), source: 'prompt', note: 'from your chat with Protron' };
+      const who = labelledLine(prompt, 'Customers');
+      if (who) out.bizWho = { value: who.slice(0, 300), source: 'prompt', note: 'from your chat with Protron' };
+    }
   } else if (!ws.portfolios.length && ws.workspace?.companyName && ws.workspace.description) {
     put('business', 'workspace', 'profile', `your ${ws.workspace.companyName} profile`);
   }

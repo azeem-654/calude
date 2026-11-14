@@ -37,6 +37,7 @@ import { body, fail, json } from '../lib/http';
 import { canAccess, userFromToken, type Env } from '../lib/db';
 import { aiBudget, aiRefund, askGemini, askGeminiParts, loadAiKey, refundIfFailed, type AiPart } from '../lib/ai';
 import { readOpenAiKeys, transcribeOpenAi } from '../lib/openai';
+import { transcribePiece, transcriberMode } from '../lib/video/transcribe';
 import { cleanYear, universalYear, yearPrompt } from '../lib/marketingYear';
 import { readSite } from '../lib/readSite';
 import { rateLimit } from '../lib/rateLimit';
@@ -140,7 +141,7 @@ export async function handleIntake(req: Request, env: Env): Promise<Response> {
   /* Given back when nothing came of it (lib/ai.ts aiRefund). */
   const done = (r: Promise<Response>) => r.then(res => refundIfFailed(env, accountId, res));
   /* A recording can be heard on the owner's OpenAI keys alone (lib/openai.ts). */
-  if (act === 'transcribe' && (key || (await readOpenAiKeys(env)).length)) return done(transcribe(key ?? '', d, env));
+  if (act === 'transcribe' && (key || (await readOpenAiKeys(env)).length || transcriberMode(env) === 'workers_ai')) return done(transcribe(key ?? '', d, env));
   if (!key) { await aiRefund(env, accountId); return fail('Our AI is not available right now. This is on our side, not yours.', 200, { code: 'no_ai' }); }
   if (act === 'write_emails') return done(writeEmails(env, key, accountId, d));
   if (act === 'refine') return done(refine(key, d));
@@ -299,15 +300,38 @@ export async function transcribe(key: string, d: IntakeReq, env?: Env): Promise<
   /* OpenAI first when the owner has stored keys (lib/openai.ts — the models
      ChatGPT's voice typing uses); the Gemini transcriber below when there
      are none, or every key failed. */
-  if (env) {
-    let bytes: Uint8Array | null = null;
-    try { bytes = Uint8Array.from(atob(audio), c => c.charCodeAt(0)); } catch { /* not base64: Gemini says so below */ }
-    if (bytes) {
-      const t0 = Date.now();
-      const o = await transcribeOpenAi(env, bytes, mime.split(';')[0], lang, context);
-      if (o.ok && o.text) return json({ success: true, text: clip(o.text, 6000), language: lang, clarity: 'clear', engine: 'openai', ms: Date.now() - t0 });
-      if (!key) return fail(o.ok ? 'I couldn’t make out any words.' : `The recording could not be transcribed: ${o.error}`);
+  let bytes: Uint8Array | null = null;
+  try { bytes = Uint8Array.from(atob(audio), c => c.charCodeAt(0)); } catch { /* not base64: Gemini says so below */ }
+  /*
+   * The last resort: Cloudflare's Whisper (lib/video/transcribe.ts), on the
+   * Worker's own AI binding — no key, so it still answers when every Google
+   * key is spent and no OpenAI key is stored. Before it, an OpenRouter-only
+   * pool said "Listening to recordings is not available right now" and the
+   * voice message was lost (local test, 2026-11-14) — the state AppSumo's
+   * reviewers met when the free Google quota ran out. Told only the business
+   * name: Whisper repeats a long prompt back as if it had been said.
+   */
+  const whisper = async (why: string): Promise<Response> => {
+    if (!env || !bytes || transcriberMode(env) !== 'workers_ai') return fail(why);
+    const t0 = Date.now();
+    try {
+      const hint = /Their business: ([^.]{2,80})/.exec(context)?.[1] ?? '';
+      const w = await transcribePiece(env, bytes.buffer as ArrayBuffer, 0, lang.slice(0, 2), hint);
+      const text = clip(w.text.replace(/\s+/g, ' ').trim(), 6000);
+      if (!text) return json({ success: true, text: '', language: lang, clarity: 'unclear', engine: 'whisper', ms: Date.now() - t0 });
+      const conf = w.words.map(x => x.c).filter((c): c is number => typeof c === 'number');
+      const avg = conf.length ? conf.reduce((a, c) => a + c, 0) / conf.length : 0.5;
+      return json({ success: true, text, language: w.language || lang, clarity: avg >= 0.55 ? 'clear' : 'partly', engine: 'whisper', ms: Date.now() - t0 });
+    } catch (e) {
+      console.warn('whisper voice message failed', e instanceof Error ? e.message : String(e));
+      return fail(why);
     }
+  };
+  if (env && bytes) {
+    const t0 = Date.now();
+    const o = await transcribeOpenAi(env, bytes, mime.split(';')[0], lang, context);
+    if (o.ok && o.text) return json({ success: true, text: clip(o.text, 6000), language: lang, clarity: 'clear', engine: 'openai', ms: Date.now() - t0 });
+    if (!key) return whisper(o.ok ? 'I couldn’t make out any words.' : o.noKeys ? 'Our AI is not available right now. This is on our side, not yours.' : `The recording could not be transcribed: ${o.error}`);
   }
   if (!key) return fail('Our AI is not available right now. This is on our side, not yours.', 200, { code: 'no_ai' });
 
@@ -322,7 +346,7 @@ export async function transcribe(key: string, d: IntakeReq, env?: Env): Promise<
      a wrong word costs the customer more than a second does. */
   const started = Date.now();
   const ai = await askGeminiParts(key, parts, 0, { module: 'business-wizard', task: 'write', fast: true, timeoutMs: 25_000 });
-  if (!ai.ok) return fail(ai.error);
+  if (!ai.ok) return whisper(ai.error);
   const r = parseJson<{ text?: string; language?: string; clarity?: string }>(ai.text);
   const ms = Date.now() - started;
   const text = clip(r?.text, 6000);

@@ -146,7 +146,15 @@ export async function askOpenRouter(apiKey: string, q: OrRequest): Promise<Attem
       lastStatus = 0; lastError = e instanceof Error ? e.message : String(e);
       continue;
     }
-    const raw = await res.text();
+    /* The timeout covers the body too: a slow free model that sent its headers
+       and then stalled threw here, outside the try above, and the customer got
+       a 500 "Something went wrong" instead of the next model (local test of
+       the wizard's prompt writer, 2026-11-14). */
+    let raw: string;
+    try { raw = await res.text(); } catch (e) {
+      lastStatus = 0; lastError = e instanceof Error ? e.message : String(e);
+      continue;
+    }
     let data: { choices?: { message?: { content?: string | null; annotations?: { type?: string; url_citation?: { url?: string; title?: string } }[] } }[]; error?: { code?: number; message?: string }; usage?: { prompt_tokens?: number; completion_tokens?: number } } = {};
     try { data = JSON.parse(raw) as typeof data; } catch { /* not JSON */ }
     /* OpenRouter can answer 200 with an error inside (an upstream refused). */

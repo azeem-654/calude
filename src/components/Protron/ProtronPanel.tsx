@@ -1022,7 +1022,7 @@ ${facts}` : '',
                         <button type="button" className="pt-link" onClick={() => onPrefs({ ...prefs, proactive: false })}>Don&rsquo;t start chats</button>
                       </span>
                     )}
-                    {t.offline && !t.error && <span className="pt-note" style={{ display: 'block' }}>Answered without the AI{aiDown && t === lastBot ? ` — ${aiDown}` : ''}.</span>}
+                    {t.offline && !t.error && <span className="pt-note" style={{ display: 'block' }}>Answered without the AI{aiDown && t === lastBot && !t.text.includes(aiDown) ? ` — ${aiDown.replace(/[.\s]+$/, '')}` : ''}.</span>}
                     {t.timing && <span className="pt-note pt-timing" style={{ display: 'block' }}>{timingLine(t.timing)}</span>}
                     {(t.actions ?? []).map(a => card(t, a))}
                     {t.error && t === lastTurn && (

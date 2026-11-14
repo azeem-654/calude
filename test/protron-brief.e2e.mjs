@@ -63,11 +63,12 @@ for (const width of [390, 1280]) {
   ok(`${W} a Gmail sign-up is asked, never told it has no business`, /own business, managing an agency, or working independently/.test(hello) && !/My Business/.test(hello), hello.slice(0, 240));
   ok(`${W} the panel header has the robot face`, (await panel.locator('.pt-head-bar svg.pt-av').count()) === 1);
 
-  /* The voice menu: warm by default, three choices. */
+  /* The voice menu: warm by default, two choices (the robot "commander" voice
+     was removed on 2026-11-13 — docs/claude/protron.md "One voice"). */
   await panel.getByRole('button', { name: 'Protron settings' }).click();
   const voice = panel.locator('[data-field="protron.voice"]');
   const opts = await voice.locator('option').evaluateAll(os => os.map(o => o.value));
-  ok(`${W} voice menu: warm (default), commander, device`, (await voice.inputValue()) === 'warm' && opts.join() === 'warm,commander,natural', `${await voice.inputValue()} ${opts}`);
+  ok(`${W} voice menu: warm (default), device`, (await voice.inputValue()) === 'warm' && opts.join() === 'warm,natural', `${await voice.inputValue()} ${opts}`);
   ok(`${W} the business profile has the new boxes`, (await panel.locator('[data-field="protron.places"]').count()) === 1 && (await panel.locator('[data-field="protron.audience"]').count()) === 1);
   await panel.getByRole('button', { name: 'Protron settings' }).click();
 

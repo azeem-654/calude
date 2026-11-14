@@ -418,6 +418,10 @@ export function useVoiceInput(locale: string, opts: { silenceStopSeconds?: numbe
     const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     const ac = new AC();
     ctx.current = ac;
+    /* Made after the permission prompt's await, so outside the click: Safari
+       (and iOS) start such a context suspended, the tap then hears nothing
+       and every take ended "I couldn't hear that clearly". */
+    if (ac.state === 'suspended') await ac.resume().catch(() => undefined);
     rate.current = ac.sampleRate;
     const source = ac.createMediaStreamSource(s);
     const analyser = ac.createAnalyser();

@@ -40,6 +40,20 @@ export const FILM_SAY = {
   end: 'Ready? Press Talk live, record your prompt, or type it — and put your business on AI Autopilot.',
 } as const;
 
+/**
+ * The same moments where the live app has no live talk (`protron-live` is in
+ * the incubator, docs/INCUBATOR.md): there Protron is a chat — typed, or a
+ * recorded voice message. The film said "press Talk live" on a dashboard
+ * whose button opened a typed chat; a reviewer pressing it found something
+ * other than what they had just been told (audit, 2026-11-14).
+ */
+export const FILM_SAY_CHAT = {
+  live: 'Chat with it, one to one. As you answer, Protron writes the plan, and AI Autopilot builds it once you approve.',
+  ways: 'Type it, record it, or chat with Protron. Whichever is easiest for you.',
+  step1: 'Step one. Open AI Autopilot and chat with Protron — type, or send a voice message.',
+  end: 'Ready? Chat with Protron, record your prompt, or type it — and put your business on AI Autopilot.',
+} as const;
+
 /** The example businesses, in the film's order: [who, where]. */
 export const FILM_PEOPLE: readonly (readonly [string, string])[] = [
   ['Plumber', 'Phoenix, AZ'],
@@ -62,5 +76,5 @@ export function exampleLine(i: number): string {
 
 /** Every line the film says. */
 export function filmLines(): string[] {
-  return [...Object.values(FILM_SAY), ...FILM_PEOPLE.map((_, i) => exampleLine(i))];
+  return [...Object.values(FILM_SAY), ...Object.values(FILM_SAY_CHAT), ...FILM_PEOPLE.map((_, i) => exampleLine(i))];
 }

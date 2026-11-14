@@ -157,7 +157,7 @@ export const AI_CALLERS: Record<string, AiCaller> = {
   'routes/autopilot.ts': { tools: ['text'], gate: 'aiBudget' },
   'routes/booking.ts': { tools: ['text', 'vision'], gate: 'aiBudget' },
   'routes/commerce.ts': { tools: ['text'], gate: 'aiBudget' },
-  'routes/intake.ts': { tools: ['text', 'vision'], gate: 'aiBudget' },
+  'routes/intake.ts': { tools: ['text', 'vision', 'transcription'], gate: 'aiBudget' },
   'routes/live.ts': { tools: ['live_voice'], gate: 'aiBudget' },
   'routes/mailbox.ts': { tools: ['vision'], gate: 'aiBudget' },
   'routes/projects.ts': { tools: ['text'], gate: 'aiBudget' },
@@ -169,6 +169,10 @@ export const AI_CALLERS: Record<string, AiCaller> = {
   'lib/autopilotWrite.ts': {
     tools: ['text'], gate: 'caller', from: ['autopilotTick.ts', 'lib/projectAgents.ts', 'routes/autopilot.ts'],
     why: 'The writers take the key their caller loaded after aiBudget(); they never load one themselves.',
+  },
+  'lib/openai.ts': {
+    tools: ['transcription'], gate: 'caller', from: ['routes/intake.ts', 'routes/aikeys.ts'],
+    why: 'Voice messages are transcribed only from intake.ts after its aiBudget(), and keys are listed only by the owner on Platform services; the file never decides on its own to spend.',
   },
   'lib/moderation.ts': {
     tools: ['text'], gate: 'caller', from: ['lib/contentGate.ts'],
@@ -201,7 +205,7 @@ export const AI_CALLERS: Record<string, AiCaller> = {
   },
   'lib/video/transcribe.ts': {
     tools: ['transcription'], gate: 'exempt',
-    why: 'Transcription is metered as the plan\'s video minutes (lib/video/usage.ts), checked before a recording is processed.',
+    why: 'Transcription is metered as the plan\'s video minutes (lib/video/usage.ts), checked before a recording is processed; a voice message reaches it only from routes/intake.ts after aiBudget().',
   },
 };
 

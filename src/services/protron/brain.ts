@@ -228,19 +228,22 @@ async function ask(contents: ReturnType<typeof historyOf>, ctx: TurnContext): Pr
 
 /** One answer from the AI, or the offline one when it cannot answer. */
 export async function think(turns: Turn[], ctx: TurnContext): Promise<BrainReply> {
-  const lastUser = [...turns].reverse().find(t => t.role === 'user')?.text ?? '';
+  const users = turns.filter(t => t.role === 'user').map(t => t.text);
+  const lastUser = users[users.length - 1] ?? '';
+  /* "Yes, go ahead and plan it" means the request before it (offlineTurn). */
+  const earlier = users[users.length - 2] ?? '';
   const contents = historyOf(turns);
   if (ctx.toolResult) {
     contents.push({ role: 'user', parts: [{ text: `[The app ran ${ctx.toolResult.name} and returned: ${JSON.stringify(ctx.toolResult.data).slice(0, 800)}. Answer my last question from it; propose no further actions.]` }] });
   }
-  if (!contents.length) return { ...offlineTurn(lastUser, ctx), offline: true };
+  if (!contents.length) return { ...offlineTurn(lastUser, ctx, earlier), offline: true };
   const r = await ask(contents, ctx);
   if (!r.ok) {
     const reason = reasonFor(r.msg, r.status, ctx.who);
-    if (NO_AI.test(r.msg) || r.status === 503) return { ...offlineTurn(lastUser, ctx), offline: true, reason };
+    if (NO_AI.test(r.msg) || r.status === 503) return { ...offlineTurn(lastUser, ctx, earlier), offline: true, reason };
     /* An allowance, a cap or a busy model: said as it is, with the offline
        matcher's help underneath so the customer is not left with nothing. */
-    const off = offlineTurn(lastUser, ctx);
+    const off = offlineTurn(lastUser, ctx, earlier);
     return { ...off, offline: true, reason, error: r.msg || 'The AI could not answer just now.' };
   }
   const parsed = parseReply(r.raw);
@@ -249,7 +252,7 @@ export async function think(turns: Turn[], ctx: TurnContext): Promise<BrainReply
     const plain = r.raw.trim().startsWith('{') ? '' : r.raw.trim().slice(0, 1500);
     if (plain) return { reply: plain, actions: [], suggestions: [], offline: false };
     const reason = r.cut ? 'the AI ran out of room before answering' : 'the AI gave an empty answer';
-    return { ...offlineTurn(lastUser, ctx), offline: true, reason, error: `${reason.charAt(0).toUpperCase()}${reason.slice(1)} — try again.` };
+    return { ...offlineTurn(lastUser, ctx, earlier), offline: true, reason, error: `${reason.charAt(0).toUpperCase()}${reason.slice(1)} — try again.` };
   }
   return { ...parsed, offline: false };
 }
@@ -303,7 +306,7 @@ export function offlineAhead(ctx: Pick<TurnContext, 'who' | 'path' | 'screen'>, 
  * The commonest requests, matched by their words. Deliberately narrow: a
  * guess that opens the wrong screen is worse than "I can't tell".
  */
-export function offlineTurn(text: string, ctx: Pick<TurnContext, 'who' | 'path'>): Omit<BrainReply, 'offline'> {
+export function offlineTurn(text: string, ctx: Pick<TurnContext, 'who' | 'path'>, earlier = ''): Omit<BrainReply, 'offline'> {
   const t = text.trim();
   const lower = t.toLowerCase();
   const note = 'The AI is not answering right now, so I matched your words instead.';
@@ -346,6 +349,29 @@ export function offlineTurn(text: string, ctx: Pick<TurnContext, 'who' | 'path'>
   const flow = /\b(work ?flow|follow[- ]?ups?|automation|sequence|drip)\b/.test(lower) && /\b(build|create|make|set ?up|start|need|want)\b/.test(lower) ? templateFor(t) : '';
   if (flow) {
     return { reply: `${note} The closest ready-made workflow is “${TEMPLATES.find(x => x.key === flow)?.name}”. I can build it as a draft in your business workspace — it sends nothing until you switch it on.`, actions: [{ name: 'create_workflow_draft', args: { template: flow } }], suggestions: [] };
+  }
+  /* A request to set something up is handed to the wizard with their words
+     in its box — the same hand-off the AI's plan makes — rather than only
+     opening the screen and dropping what they said (audit, 2026-11-14: with
+     the free keys spent, "set up a business workspace that brings in new
+     patients" opened AI Autopilot empty, and "yes, propose the plan" then
+     answered "I could not tell which screen that is"). */
+  const SETUP = /\b(set ?up|create|build|start|make|launch|plan|grow|get (?:me )?more|bring in|find|want|need|looking for|help me)\b/;
+  const GOAL = /\b(business workspace|workspace|autopilot|campaigns?|marketing|patients|customers|clients|leads|sales|bookings|appointments|followers)\b/;
+  if (t.length >= 30 && SETUP.test(lower) && GOAL.test(lower)) {
+    return {
+      reply: `${note} I'll open AI Autopilot's New business workspace with your words in its box. It asks only what's missing and shows you the plan before anything is built.`,
+      actions: [{ name: 'start_autopilot_project', args: { instruction: t.slice(0, 4000) } }],
+      suggestions: [],
+    };
+  }
+  const prior = earlier.trim();
+  if (/\b(propose|plan|go ahead|build it|set (?:it|that|everything) up|do it|yes)\b/.test(lower) && prior.length >= 30 && SETUP.test(prior.toLowerCase()) && GOAL.test(prior.toLowerCase())) {
+    return {
+      reply: `${note} I'll open AI Autopilot's New business workspace with what you asked for in its box. It shows you the plan before anything is built.`,
+      actions: [{ name: 'start_autopilot_project', args: { instruction: prior.slice(0, 4000) } }],
+      suggestions: [],
+    };
   }
   if (/\b(business workspace|autopilot|automate|automation)\b/.test(lower)) {
     return { reply: `${note} AI Autopilot is where a business workspace is planned and built.`, actions: [{ name: 'open_module', args: { path: '/autopilot' } }], suggestions: [] };

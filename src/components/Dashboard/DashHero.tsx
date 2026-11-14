@@ -47,11 +47,14 @@
  * through Understand like anything typed there. Nothing is created here.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, AudioLines, Loader, Mic, Sparkles, Square } from 'lucide-react';
+import { ArrowRight, AudioLines, Loader, MessageSquare, Mic, Sparkles, Square } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AutopilotFilm from './AutopilotFilm';
 import { useVoiceInput, defaultLocale } from '../Autopilot/voice/useVoiceInput';
 import { motionReduced } from '../../services/motion';
+import { featureReady } from '../../services/features';
+
+const LIVE_TALK = featureReady('protron-live');
 
 const STARTERS = [
   'Find new customers for me every day',
@@ -236,16 +239,26 @@ export default function DashHero({ greeting, firstName }: { greeting: string; fi
           <div className="dash-hero-bar">
             <div className="dash-hero-ways">
               <RecordButton onText={heard} signal={recSignal} />
-              <button type="button" className="dash-hero-live" onClick={talk} title="Talk to Protron live, one to one — it sets AI Autopilot up while you speak">
-                <span className="dash-hero-live-dot" aria-hidden="true" />
-                <AudioLines size={15} /> Talk live <span className="dash-hero-live-sub">one-to-one with Protron</span>
-              </button>
+              {LIVE_TALK ? (
+                <button type="button" className="dash-hero-live" onClick={talk} title="Talk to Protron live, one to one — it sets AI Autopilot up while you speak">
+                  <span className="dash-hero-live-dot" aria-hidden="true" />
+                  <AudioLines size={15} /> Talk live <span className="dash-hero-live-sub">one-to-one with Protron</span>
+                </button>
+              ) : (
+                /* Live talk is in the incubator (docs/INCUBATOR.md): on the live
+                   app this opens Protron's chat, so it says so (audit,
+                   2026-11-14 — "Talk live" led a reviewer to a typed chat). */
+                <button type="button" className="dash-hero-live" onClick={talk} title="Chat with Protron — type or send a voice message; it sets AI Autopilot up with you">
+                  <span className="dash-hero-live-dot" aria-hidden="true" />
+                  <MessageSquare size={15} /> Chat with Protron <span className="dash-hero-live-sub">type or record</span>
+                </button>
+              )}
             </div>
             <button type="submit" className="dash-hero-send" aria-label="Send to AI Autopilot" disabled={!text.trim()}><ArrowRight size={18} /></button>
           </div>
           {note && <p className="dash-hero-note" role="status">{note}</p>}
         </form>
-        <p className="dash-hero-how">Type it, record it, or just talk — Protron sets everything up while you speak.</p>
+        <p className="dash-hero-how">{LIVE_TALK ? 'Type it, record it, or just talk — Protron sets everything up while you speak.' : 'Type it, record it, or chat with Protron — it asks a few questions and sets everything up with you.'}</p>
         <div className="dash-hero-starters" role="group" aria-label="Starting points">
           {STARTERS.map(s => <button key={s} type="button" className="dash-hero-chip" onClick={() => send(s)}>{s}</button>)}
         </div>

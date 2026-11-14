@@ -130,7 +130,7 @@ const intake = await import('../src/services/protron/intake.ts');
   ok('L8 a context turn that leaves the turn open still passes the filter', live.allowedFromClient(JSON.stringify({ clientContent: { turns: [{ role: 'user', parts: [{ text: '[app] The screen is now Contacts.' }] }], turnComplete: false } })) !== null);
   const film = await import('../src/services/filmNarration.ts');
   const lines = film.filmLines();
-  ok('L8 the film has one line per scene and the examples are named in order', lines.length === 24 + film.FILM_PEOPLE.length && film.exampleLine(0).startsWith('Here is what that looks like. A plumber in Phoenix'), String(lines.length));
+  ok('L8 the film has one line per scene and the examples are named in order', lines.length === 24 + 4 + film.FILM_PEOPLE.length && film.exampleLine(0).startsWith('Here is what that looks like. A plumber in Phoenix'), String(lines.length));
 }
 
 /* L9 — the 2026-11-14 brief: the wizard opens on a chat, the 12-month plan, smarter replies */
@@ -159,6 +159,37 @@ const intake = await import('../src/services/protron/intake.ts');
   const yd = intake.draftInstruction(yb);
   ok('L9 the 12-month instruction says so, names its solutions and where the customers are', /12-month business execution plan/.test(yd) && /12-Month Marketing Plan/.test(yd) && /Where our potential customers are: Dallas, TX\./.test(yd), yd);
   ok('L9 a place said in the chat is not asked again', !intake.FALLBACK_QUESTIONS.filter(x => !x.when || x.when(yb)).some(x => x.id === 'where'));
+}
+
+/* L10 — the audit of 2026-11-14: the chat with the AI coming and going (a
+   reviewer on spent free keys), driven in a real browser. */
+{
+  const std = intake.openingMessage({ ...intake.EMPTY_BRIEF }, 'Azeem');
+  const g = intake.guessIntroFacts('Azeem Dental — a family dental practice in Richmond, Virginia. We do not have a website yet.');
+  ok('L10 a dash ends the name, and the rest is what the business does', g.company === 'Azeem Dental' && /family dental practice/.test(g.nature) && !/website/.test(g.nature), JSON.stringify(g));
+  ok('L10 …a bare name gives no description', intake.guessIntroFacts('Azeem Dental, azeemdental.com').nature === '');
+  const film = await import('../src/services/filmNarration.ts');
+  ok('L10 the live app\'s film lines never promise live talk', !Object.values(film.FILM_SAY_CHAT).some(x => /talk live|live, one to one/i.test(x)));
+  /* The AI asked who the customers are and was answered; then it stopped answering. */
+  const b = {
+    ...intake.EMPTY_BRIEF, company: 'Azeem Dental', nature: 'A family dental practice in Richmond.', place: 'Richmond, VA',
+    talk: [std, { role: 'user' as const, text: 'Azeem Dental — a family dental practice in Richmond.' },
+      { role: 'protron' as const, text: 'A family practice in Richmond is a great base. Who are the patients you want more of, so the emails speak to them?' },
+      { role: 'user' as const, text: 'Families and young professionals.' },
+      { role: 'protron' as const, text: 'What would you most like Protected Central to do for your business first?', fq: 'want' },
+      { role: 'user' as const, text: 'Email and social media.' }],
+  };
+  const n = intake.fallbackNext(b);
+  ok('L10 a fixed question is not asked again under other words (by id), nor one the AI already asked (by topic)', !!n && n.id !== 'want' && n.id !== 'who' && n.id !== 'name' && n.id !== 'what', JSON.stringify(n));
+  ok('L10 the question in a reply is its last asking sentence', intake.questionOf('That is a strong hook for people who want whiter teeth. Which should we build first?') === 'Which should we build first?');
+  const d = intake.draftInstruction({ ...b, talk: [...b.talk, { role: 'protron' as const, text: 'Anything else?' }, { role: 'user' as const, text: "Yes, that's all." }] });
+  ok('L10 the offline instruction never pastes Protron\'s greeting', !/I'm Protron/.test(d) && !/name of your business/.test(d), d);
+  ok('L10 …and "that\'s all" is not filed as an answer', !/that'?s all/i.test(d), d);
+  ok('L10 …the answer to the opening is not repeated when it is already the business context', (d.match(/family dental practice/g) ?? []).length === 1, d);
+  ok('L10 …the customers asked about by the AI are filed under Customers', /Customers: Families and young professionals\./.test(d), d);
+  const pi = await import('../src/services/projectIntake.ts');
+  const known = pi.extractKnown(d, ['social-growth'], { portfolios: [], workspace: null } as never);
+  ok('L10 after the chat, the business is not asked for again — it is the chat\'s, shown to correct', known.business?.value === 'manual' && known.bizName?.value === 'Azeem Dental' && /family dental practice/i.test(String(known.bizWhat?.value)), JSON.stringify(known.business ?? null));
 }
 
 console.log(out.join('\n'));

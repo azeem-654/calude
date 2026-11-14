@@ -45,7 +45,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.sha || github.sha }}
           # Enough history to prove the commit is on main (below).
@@ -68,7 +68,7 @@ jobs:
       # that pinned 20 built the app, then fell over on the first wrangler
       # command, so nothing has shipped since. This is the floor wrangler
       # states, not a preference.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: 'npm'

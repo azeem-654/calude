@@ -47,7 +47,7 @@ jobs:
 
       # Full history: a fast-forward check needs the commits on both sides, and
       # a shallow clone makes every branch look unrelated to every other.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 

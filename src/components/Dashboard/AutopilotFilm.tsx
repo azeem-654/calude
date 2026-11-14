@@ -60,7 +60,8 @@
  * keeps it (protron.php `narrate`), so a line heard before costs nothing.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { exampleLine, FILM_PEOPLE, FILM_SAY } from '../../services/filmNarration';
+import { exampleLine, FILM_PEOPLE, FILM_SAY, FILM_SAY_CHAT } from '../../services/filmNarration';
+import { featureReady } from '../../services/features';
 import { narrator, unlockAudio } from '../../services/protron/voice';
 import {
   AirVent, ArrowRight, AudioLines, BarChart3, BellRing, CalendarCheck, Check, CircleDollarSign, Clock, FileText,
@@ -178,8 +179,14 @@ const BUILD: { icon: Icon; label: string; sub: string; at: number }[] = [
 
 /* ── Part two: the baby steps ── */
 
+/* Live talk is in the incubator: on the live app the film shows the chat the
+   button really opens (filmNarration.ts FILM_SAY_CHAT). */
+const LIVE = featureReady('protron-live');
+const TALK_LABEL = LIVE ? 'Talk live' : 'Chat with Protron';
+const SAY = LIVE ? FILM_SAY : { ...FILM_SAY, ...FILM_SAY_CHAT };
+
 const STEPS = [
-  'Press Talk live — or Record, or type',
+  LIVE ? 'Press Talk live — or Record, or type' : 'Chat with Protron — type or record',
   'Say what your business does and what you want',
   'Answer a few short questions',
   'It writes your smart prompt and plan',
@@ -427,14 +434,14 @@ function buildScenes(): Scene[] {
       </div>
     </div>
   ));
-  add(0, 10000, FILM_SAY.live, p => {
+  add(0, 10000, SAY.live, p => {
     const speaking = TALK.find(l => p >= l.a && p <= l.b);
     return (
       <div className="apf-live">
         <div className="apf-call">
           <div className="apf-call-head">
             <ProtronAvatar size={48} state={speaking?.who === 'pt' ? 'speaking' : speaking ? 'listening' : 'working'} alive={false} />
-            <span><b>Live with Protron</b><span className="apf-rec"><i /> {mmss(p * 28000)}</span></span>
+            <span><b>{LIVE ? 'Live with Protron' : 'Chatting with Protron'}</b><span className="apf-rec"><i /> {mmss(p * 28000)}</span></span>
           </div>
           <div className="apf-log">
             {TALK.map(l => (
@@ -444,17 +451,18 @@ function buildScenes(): Scene[] {
           <Wave live={!!speaking} bars={28} />
         </div>
         <div className="apf-build">
-          <span className="apf-build-h"><Zap size={14} /> Building while you talk</span>
+          <span className="apf-build-h"><Zap size={14} /> {LIVE ? 'Building while you talk' : 'Planning as you answer'}</span>
           {BUILD.map((b, i) => <FlowNode key={b.label} icon={b.icon} label={b.label} sub={b.sub} shown={p >= b.at} last={i === BUILD.length - 1} />)}
         </div>
       </div>
     );
   });
-  add(0, 6500, FILM_SAY.ways, p => {
+  add(0, 6500, SAY.ways, p => {
     const ways = [
       { icon: Keyboard, h: 'Type it', t: 'One line is enough to start.' },
       { icon: Mic, h: 'Record it', t: 'Press record, say it, check the words.' },
-      { icon: AudioLines, h: 'Talk live', t: 'A real conversation — it asks, you answer.' },
+      LIVE ? { icon: AudioLines, h: 'Talk live', t: 'A real conversation — it asks, you answer.' }
+        : { icon: MessageSquare, h: 'Chat with Protron', t: 'It asks, you answer — typed or as a voice message.' },
     ];
     const lit = Math.min(2, Math.floor(p * 3.2));
     return (
@@ -468,22 +476,22 @@ function buildScenes(): Scene[] {
         ))}
       </div>
     );
-  }, [{ at: 0, k: 'way0', say: 'Type it' }, { at: 0.27, k: 'way1', say: 'Record it' }, { at: 0.58, k: 'way2', click: 0.75, say: 'Or talk live' }]);
+  }, [{ at: 0, k: 'way0', say: 'Type it' }, { at: 0.27, k: 'way1', say: 'Record it' }, { at: 0.58, k: 'way2', click: 0.75, say: LIVE ? 'Or talk live' : 'Or chat with Protron' }]);
 
   /* ── Part two: six baby steps ── */
-  add(1, 5500, FILM_SAY.step1, p => (
+  add(1, 5500, SAY.step1, p => (
     <StepFrame n={0} p={p}>
       <div className="apf-box">
         <span className="apf-box-ph">Describe a result — e.g. find 20 dentists in Austin every day and email them about our offer…</span>
         <div className="apf-box-bar">
           <span className="apf-btn is-rec"><Mic size={14} /> Record</span>
-          <span className={`apf-btn is-live${on(p, 0.55)}`} data-k="live"><AudioLines size={14} /> Talk live</span>
+          <span className={`apf-btn is-live${on(p, 0.55)}`} data-k="live"><AudioLines size={14} /> {TALK_LABEL}</span>
           <span className="apf-box-send"><ArrowRight size={16} /></span>
         </div>
       </div>
-      <div className={`apf-listen${on(p, 0.62)}`}><Wave live={p >= 0.62} bars={16} /> <b>Live</b> — Protron is listening</div>
+      <div className={`apf-listen${on(p, 0.62)}`}><Wave live={p >= 0.62} bars={16} /> {LIVE ? <><b>Live</b> — Protron is listening</> : <><b>Protron</b> — asks the first question</>}</div>
     </StepFrame>
-  ), [{ at: 0.06, k: 'live', click: 0.52, say: 'Pressing Talk live' }]);
+  ), [{ at: 0.06, k: 'live', click: 0.52, say: `Pressing ${TALK_LABEL}` }]);
   add(1, 6000, FILM_SAY.step2, p => (
     <StepFrame n={1} p={p}>
       <div className="apf-talkline">
@@ -577,7 +585,7 @@ function buildScenes(): Scene[] {
           <p><Typed text="Find homeowners in Dallas with older electrical panels. Email them a free safety inspection offer, follow up twice, and book visits on my booking page." p={span(p, 0.3, 0.68)} /></p>
           <div className="apf-ap-bar">
             <span className="apf-btn is-rec"><Mic size={13} /> Record</span>
-            <span className="apf-btn is-live"><AudioLines size={13} /> Talk live</span>
+            <span className="apf-btn is-live"><AudioLines size={13} /> {TALK_LABEL}</span>
             <span className={`apf-btn is-go${on(p, 0.84)}`} data-k="ap-build">
               <span className="apf-go-a"><Sparkles size={13} /> Build it</span>
               <span className="apf-go-b"><Loader size={13} className="apf-spin" /> Building…</span>
@@ -944,13 +952,13 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
   const scenes = useMemo(() => {
     const list = buildScenes();
     /* The last scene is where the film hands over to the real buttons. */
-    list.push({ ch: 5, ms: 7000, say: FILM_SAY.end, draw: () => (
+    list.push({ ch: 5, ms: 7000, say: SAY.end, draw: () => (
       <div className="apf-end">
         <span className="apf-kicker">Your turn</span>
-        <h3>Type it. Record it. Or just talk.</h3>
+        <h3>{LIVE ? 'Type it. Record it. Or just talk.' : 'Type it. Record it. Or chat with Protron.'}</h3>
         <p>Protron sets AI Autopilot up with you, one small step at a time.</p>
         <div className="apf-end-row">
-          <button type="button" className="apf-end-btn is-live" data-k="end-live" onClick={onTalk}><AudioLines size={16} /> Talk live with Protron</button>
+          <button type="button" className="apf-end-btn is-live" data-k="end-live" onClick={onTalk}><AudioLines size={16} /> {LIVE ? 'Talk live with Protron' : 'Chat with Protron'}</button>
           <button type="button" className="apf-end-btn is-rec" onClick={onRecord}><Mic size={16} /> Record my prompt</button>
           <button type="button" className="apf-end-btn" onClick={onType}><Keyboard size={16} /> Type it</button>
         </div>

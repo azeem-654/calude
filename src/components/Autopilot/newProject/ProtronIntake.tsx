@@ -146,7 +146,7 @@ export function useProtronIntake(initialCompany: string, start: IntroStep, mode:
       if (r.ask) setBrief({ ...ref.current, talk: [...ref.current.talk, { role: 'protron', text: r.ask }] });
       return;
     }
-    setBrief({ ...ref.current, talk: [...ref.current.talk, { role: 'protron', text: r.ask, quick: r.quick }] });
+    setBrief({ ...ref.current, talk: [...ref.current.talk, { role: 'protron', text: r.ask, quick: r.quick, ...(r.fq ? { fq: r.fq } : {}) }] });
   }, [setBrief, readWebsite]);
 
   /* ── Talking live ── */
@@ -358,7 +358,9 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
      presses send (owner, 2026-11-14: it sent a misheard sentence with no
      chance to check it). A wrong answer sent unseen costs more than one press. */
   const rec = useVoiceInput(defaultLocale(), {
-    silenceStopSeconds: 2.2,
+    /* 3 s, not 2.2: a reviewer thinking mid-sentence was cut off and had to
+       record the rest as a second take. Stop still ends it at once. */
+    silenceStopSeconds: 3,
     context: () => {
       const b = p.brief;
       const asked = [...b.talk].reverse().find(t => t.role === 'protron')?.text ?? '';

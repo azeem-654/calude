@@ -67,6 +67,8 @@ export interface Talk {
   intro?: boolean;
   /** Arrived as a recorded voice message (transcribed), not typed. */
   voice?: boolean;
+  /** Which fixed question this was (FALLBACK_QUESTIONS id), when the AI was not answering. */
+  fq?: string;
 }
 
 /**
@@ -160,14 +162,23 @@ export function openingMessage(b: Brief, firstName = ''): Talk {
 }
 
 /** Without the AI: a name and a website out of the answer to the opening, when it plainly gives them. */
-export function guessIntroFacts(answer: string): { company: string; website: string } {
+export function guessIntroFacts(answer: string): { company: string; website: string; nature: string } {
   const words = answer.trim().split(/\s+/);
   const site = words.map(w => w.replace(/[,;)(]+$/, '')).find(w => /\.[a-z]{2,}(\/|$)/i.test(w) && siteAddress(w));
   let rest = answer.replace(site ?? '\u0000', ' ').replace(/\b(?:and )?(?:our |the )?(?:website|site|web site)(?: is)?\b/gi, ' ');
   rest = rest.replace(/^\s*(?:yes|yeah|hi|hello)[,.!]?\s*/i, '').replace(/^(?:it'?s|it is|we are|we're|i am|i'm|my (?:company|business)(?: name)? is|the (?:company|business )?name is|called)\s+/i, '');
-  rest = rest.split(/[,.;!?]|\band\b|\bin\b|\bbased\b/i)[0].replace(/\s{2,}/g, ' ').trim();
+  /* A dash or colon ends the name too: "Azeem Dental — a family dental
+     practice in Richmond" was seven words, so no name was taken and the
+     next fixed question asked for the name they had just given (local
+     test, 2026-11-14). */
+  rest = rest.split(/[,.;:!?(]|\s[—–-]\s|\band\b|\bin\b|\bbased\b/i)[0].replace(/\s{2,}/g, ' ').trim();
   const company = rest && rest.split(/\s+/).length <= 6 && !/^(no|none|not yet|skip)$/i.test(rest) ? rest.slice(0, 120) : '';
-  return { company, website: site ? siteAddress(site) : '' };
+  /* What the business does, when the answer says more than a name and an
+     address — their own sentences, minus the ones about having a website. */
+  const said = answer.split(/(?<=[.!?])\s+/).filter(x => !/\b(?:website|web site|site)\b/i.test(x) && !(site && x.includes(site))).join(' ').trim();
+  const beyond = said.replace(company, '').replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean).length;
+  const nature = company && beyond >= 4 ? said.slice(0, 600) : '';
+  return { company, website: site ? siteAddress(site) : '', nature };
 }
 
 /** "acme.com" → "https://acme.com"; anything that is not an address → ''. */
@@ -231,15 +242,25 @@ export const FALLBACK_QUESTIONS: FallbackQ[] = [
   { id: 'tools', ask: () => 'What do you already have — a mailbox on your own domain, a contact list, a CRM?', quick: ['A mailbox on my domain', 'A contact list (spreadsheet)', 'Nothing yet'], when: sends },
 ];
 
+/** What each fixed question is about, so one the AI already asked (in other words) is not asked again. */
+const FALLBACK_TOPIC: Record<string, Topic> = { what: 'what', who: 'who', where: 'where', pain: 'pain', goal: 'goal', tools: 'tools' };
+
 /** The next fixed question, or null when they have all been asked. */
-export function fallbackNext(b: Brief): { ask: string; quick: string[] } | null {
+export function fallbackNext(b: Brief): { ask: string; quick: string[]; id: string } | null {
   /* The opening is not one of these questions, and a question already
-     answered drops out of `due` (its `when`), so the next one is the first
-     due that has not been put to them yet. */
-  const asked = new Set(b.talk.filter(t => t.role === 'protron' && !t.intro).map(t => t.text));
-  const q = FALLBACK_QUESTIONS.filter(x => !x.when || x.when(b)).find(x => !asked.has(x.ask(b)));
+     answered drops out of `due` (its `when`). A question counts as asked by
+     its id, its words, or its topic — the local test of 2026-11-14 with the
+     AI coming and going asked "what would you most like … first?" twice
+     (the company name had changed the words) and "who are the customers?"
+     after the AI had asked it and been answered. */
+  const said = b.talk.filter(t => t.role === 'protron' && !t.intro);
+  const askedIds = new Set(said.map(t => t.fq).filter(Boolean));
+  const askedText = new Set(said.map(t => t.text));
+  const askedTopics = new Set(said.map(t => topicOf(questionOf(t.text))).filter(Boolean));
+  const q = FALLBACK_QUESTIONS.filter(x => !x.when || x.when(b))
+    .find(x => !askedIds.has(x.id) && !askedText.has(x.ask(b)) && !(FALLBACK_TOPIC[x.id] && askedTopics.has(FALLBACK_TOPIC[x.id])));
   if (!q) return null;
-  return { ask: q.ask(b), quick: q.id === 'where' ? placeQuick(b) : q.quick };
+  return { ask: q.ask(b), quick: q.id === 'where' ? placeQuick(b) : q.quick, id: q.id };
 }
 
 /** Quick answers for "where are your customers": the website's places first. */
@@ -262,6 +283,8 @@ export interface NextStep {
   recommend: { key: string; why: string }[];
   offline: boolean;
   error?: string;
+  /** The fixed question asked, when offline — kept on the turn so it is never asked twice. */
+  fq?: string;
 }
 
 const catalogue = () => SOLUTIONS.filter(s => s.key !== CUSTOM).map(s => `${s.key}: ${s.label} — ${s.blurb}`).join('\n');
@@ -358,8 +381,8 @@ export async function nextStep(b: Brief): Promise<NextStep> {
     const last = b.talk[b.talk.length - 1];
     const facts = { ...NO_FACTS };
     if (prev?.intro && last?.role === 'user' && !b.company.trim()) Object.assign(facts, guessIntroFacts(last.text));
-    const q = fallbackNext({ ...b, company: b.company || facts.company, website: b.website || facts.website });
-    return { ask: q?.ask ?? '', facts, quick: q?.quick ?? [], done: !q, recommend: offlineRecommend(b), offline: true, error };
+    const q = fallbackNext({ ...b, company: b.company || facts.company, website: b.website || facts.website, nature: b.nature || facts.nature });
+    return { ask: q?.ask ?? '', facts, quick: q?.quick ?? [], done: !q, recommend: offlineRecommend(b), offline: true, error, fq: q?.id };
   };
   if (asked >= MAX_QUESTIONS) return { ask: '', facts: NO_FACTS, quick: [], done: true, recommend: [], offline: false };
   const r = await ask(interviewSystem(b), briefText(b), 'protron', true, 900);
@@ -430,6 +453,17 @@ export function mergeTalk(talk: Talk[]): Talk[] {
 
 type Topic = 'where' | 'who' | 'pain' | 'goal' | 'tools' | 'what';
 
+/**
+ * The question in one of Protron's replies: its last sentence that asks
+ * something. A reply is acknowledgement, a line of advice, then the question
+ * — "That's a strong hook … gives people within 15 miles a reason to call.
+ * Which should we build first?" is about what to build, not about customers.
+ */
+export function questionOf(text: string): string {
+  const sentences = text.replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s+/);
+  return [...sentences].reverse().find(x => x.trim().endsWith('?'))?.trim() ?? sentences[sentences.length - 1]?.trim() ?? '';
+}
+
 /** What a question was about, from its words — checked most specific first ("where are your customers" is a place). */
 export function topicOf(q: string): Topic | null {
   if (/\bwhere\b|located|location|which (?:area|city|town|region|country)|mentions? [A-Z]/i.test(q)) return 'where';
@@ -443,7 +477,7 @@ export function topicOf(q: string): Topic | null {
 
 /* An answer that says nothing new: a fragment, or "as I said before". */
 const META = /\b(?:previous question|already (?:said|told|mentioned|gave)|as i (?:said|mentioned)|i (?:just )?(?:said|mentioned) (?:that|the name|it))\b/i;
-const TRIVIAL = /^(?:and|so|but|or|the|yes|no|ok|okay|yeah|right|sure|maybe|well)\.?$/i;
+const TRIVIAL = /^(?:and|so|but|or|the|yes|no|ok|okay|yeah|right|sure|maybe|well|that'?s (?:all|it|everything)|that is (?:all|it|everything)|nothing else|all good)[.!]?$/i;
 function usable(a: string, topic: Topic | null): boolean {
   const words = a.split(/\s+/).filter(Boolean);
   if (!a || TRIVIAL.test(a) || META.test(a)) return false;
@@ -457,7 +491,19 @@ export function draftInstruction(b: Brief): string {
   const pairs = talk.reduce<{ q: string; a: string; topic: Topic | null }[]>((out, t, i, all) => {
     /* A skipped question leaves its line out; the AI version writes "(default)" instead. */
     if (t.role !== 'user' || SKIPPED.test(t.text)) return out;
-    const q = all[i - 1]?.role === 'protron' ? all[i - 1].text : '';
+    const before = all[i - 1];
+    /* The answer to the opening ("what's the name, and a website?") is the
+       name and the address, already on their own lines; it is kept only for
+       what it says beyond them, and never under the opening's words — the
+       whole greeting was pasted in as a "question" (local test, 2026-11-14). */
+    if (before?.intro) {
+      const a = tidySpoken(t.text);
+      const rest = a.replace(b.company.trim() || '\u0000', '').replace((b.website ?? '').replace(/^https?:\/\//, '').trim() || '\u0000', '');
+      const nature = tidySpoken(b.nature ?? '').replace(/[.!?]$/, '').toLowerCase();
+      if (rest.replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean).length >= 5 && !(nature && a.toLowerCase().includes(nature))) out.push({ q: '', a, topic: null });
+      return out;
+    }
+    const q = before?.role === 'protron' ? questionOf(before.text) : '';
     const topic = q ? topicOf(q) : null;
     const a = tidySpoken(t.text);
     if (usable(a, topic)) out.push({ q, a, topic });
@@ -477,7 +523,7 @@ export function draftInstruction(b: Brief): string {
   const goal = find('goal');
   const tools = find('tools');
   /* Everything else they said, as said (tidied) — never filed under a heading it does not answer. */
-  const notes = pairs.filter((_, n) => !taken.has(n)).slice(0, 6).map(p => (p.q ? `${tidySpoken(p.q).replace(/\?$/, '')}: ${p.a}` : p.a));
+  const notes = pairs.filter((_, n) => !taken.has(n)).slice(0, 6).map(p => (p.q && p.q.length <= 110 ? `${tidySpoken(p.q).replace(/\?$/, '')}: ${p.a}` : p.a));
   let labels = chosenLabels(b);
   let matched = false;
   if (!labels.length) {

@@ -11,6 +11,7 @@
  * steps run through the AI.
  */
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import pw from '/opt/node22/lib/node_modules/playwright/index.js';
 
 const B = process.env.BASE ?? 'http://localhost:8787';
@@ -49,13 +50,20 @@ for (const width of [1280, 390]) {
   await p.goto(`${B}/contacts`, { waitUntil: 'networkidle' });
   await p.waitForTimeout(1200);
 
-  /* Speaking first: ten seconds, nothing touched. */
+  /* Speaking first: ten seconds, nothing touched. Parked on both sites since
+     2026-11-14 (features.ts PARKED — "only when it's clicked"): then the
+     check is that it does NOT open by itself. */
+  const speaksFirst = !/'protron-speaks-first',/.test(readFileSync(new URL('../src/services/features.ts', import.meta.url), 'utf8').split('const PARKED')[1]?.split(']);')[0] ?? '');
   await p.mouse.move(5, 5);
-  await panelOf(p).waitFor({ timeout: 25_000 }).catch(() => undefined);
+  await panelOf(p).waitFor({ timeout: speaksFirst ? 25_000 : 14_000 }).catch(() => undefined);
   const autoText = await panelOf(p).innerText().catch(() => '');
-  ok(`${W} after 10 s untouched, Protron opens and speaks first`, /spoke up because you paused/.test(autoText), autoText.slice(0, 200));
-  ok(`${W} …about the screen it is on`, /Contacts/i.test(autoText), autoText.slice(0, 200));
-  await panelOf(p).getByRole('button', { name: 'Minimise Protron' }).click();
+  if (speaksFirst) {
+    ok(`${W} after 10 s untouched, Protron opens and speaks first`, /spoke up because you paused/.test(autoText), autoText.slice(0, 200));
+    ok(`${W} …about the screen it is on`, /Contacts/i.test(autoText), autoText.slice(0, 200));
+    await panelOf(p).getByRole('button', { name: 'Minimise Protron' }).click();
+  } else {
+    ok(`${W} speaking first is parked: 14 s untouched and the panel stays shut`, !autoText, autoText.slice(0, 200));
+  }
 
   /* Floating beside the helmet, wherever it was dragged. */
   if (width > 760) {

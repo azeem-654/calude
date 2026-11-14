@@ -153,6 +153,14 @@ const owner = { isClient: false, isOwner: true };
   ok('P6 "take me to deals" opens Deals', t('take me to deals').actions[0]?.args.path === '/pipelines');
   ok('P6 a customer asking for content review is not taken there', t('open content review').actions.every(a => A.checkCall(a, customer).ok));
   ok('P6 something unknown proposes nothing and says so', t('what is the meaning of life').actions.length === 0);
+  const setup = t('I run Azeem Dental in Richmond. Set up a business workspace that brings in new patients for teeth whitening.');
+  ok('P6 a set-up request without the AI hands their words to the wizard (audit 2026-11-14)', setup.actions[0]?.name === 'start_autopilot_project' && /teeth whitening/.test(String(setup.actions[0].args.instruction)), JSON.stringify(setup.actions));
+  const yes = B.offlineTurn('Yes, please propose the setup plan now.', { who: customer, path: '/' }, 'I run Azeem Dental in Richmond. Set up a business workspace that brings in new patients.');
+  ok('P6 …"yes, propose the plan" takes the request before it', yes.actions[0]?.name === 'start_autopilot_project' && /Azeem Dental/.test(String(yes.actions[0].args.instruction)), JSON.stringify(yes.actions));
+  const want = t('My business name is Azeem Dental, based in Virginia. We want more new patients for teeth whitening.');
+  ok('P6 …"we want more new patients" is a set-up request too (a voice message, audit 2026-11-14)', want.actions[0]?.name === 'start_autopilot_project', JSON.stringify(want.actions));
+  ok('P6 …and "where are my customers?" is not', t('where are my customers?').actions.every(a => a.name !== 'start_autopilot_project'));
+  ok('P6 …and all pass the registry', [setup, yes, want].every(r => r.actions.every(a => A.checkCall(a, customer).ok)));
   ok('P6 every offline proposal passes the registry', ['Find dentists in Austin, TX', 'open contacts', 'connect my email', 'set up autopilot'].every(s => t(s).actions.every(a => A.checkCall(a, customer).ok)));
 }
 

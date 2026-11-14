@@ -359,6 +359,31 @@ chats" on the message turns it off. It offers; it never acts on its own.
   chosen, then name + where. The instruction carries the year objective.
   Tests L9.
 
+### The 2026-11-14 audit (docs/audit/PROTRON-AUTOPILOT-AUDIT-2026-11-14.md)
+
+Driven in a real browser as a new trial customer, with the live app's switches
+and the AI mostly refusing (free keys rate-limited):
+
+- **The fallback interview never re-asks**: a fixed question counts as asked
+  by id (`Talk.fq`), words, or topic (`questionOf` → `topicOf`, from the
+  reply's last asking sentence). `guessIntroFacts` stops a name at a dash or
+  colon and keeps the rest as `nature`.
+- **The offline instruction** keeps the answer to the opening only for what it
+  adds beyond name and site, never under the greeting's words, never twice;
+  "that's all" is not an answer (test L10).
+- **After the chat the business is not asked again**: `extractKnown` reads the
+  instruction's `Company:` / `Business context:` / `Customers:` lines into the
+  business question as typed answers.
+- **Voice messages**: OpenAI keys → Gemini → **Cloudflare Whisper** (the
+  Worker's `AI` binding, no key, still behind `aiBudget`). OpenRouter cannot
+  hear audio, so before this a spent Google quota lost the message. The
+  recorder resumes a suspended `AudioContext` (Safari). The wizard stops after
+  3 s of silence.
+- **Panel offline**: a set-up request, or a "yes / plan it" after one, hands
+  the words to `start_autopilot_project` (the wizard opens with them in its box).
+- **Live wording**: with `protron-live` off, the dashboard's button is "Chat
+  with Protron — type or record" and the film speaks `FILM_SAY_CHAT`.
+
 ### Voice — Talk mode, turn by turn (the fallback)
 
 In: the Autopilot recorder (`useVoiceInput`, 1.8 s silence) → server
