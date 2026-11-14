@@ -180,7 +180,7 @@ const owner = { isClient: false, isOwner: true };
   const skipped = I.draftInstruction({ ...talked, talk: [...talked.talk, { role: 'protron' as const, text: 'What result would make this worth it over the next three months?' }, { role: 'user' as const, text: 'Skip — use a sensible default.' }] });
   ok('P7 a skipped answer is left out, not written in', !/Skip/.test(skipped) && !/Success looks like/.test(skipped), skipped);
   const sendsQs = I.FALLBACK_QUESTIONS.filter(q => !q.when || q.when(b)).length;
-  const socialOnly = I.FALLBACK_QUESTIONS.filter(q => !q.when || q.when({ ...I.EMPTY_BRIEF, cards: ['social'] })).length;
+  const socialOnly = I.FALLBACK_QUESTIONS.filter(q => !q.when || q.when({ ...I.EMPTY_BRIEF, company: b.company, cards: ['social'] })).length;
   ok('P7 a social-only project is not asked about mailboxes', socialOnly === sendsQs - 1);
   const recs = I.offlineRecommend({ ...I.EMPTY_BRIEF, cards: ['social'], custom: 'We want more Google reviews from happy customers' });
   ok('P7 offline recommendation finds a solution not yet chosen', recs.some(r => r.key === 'reputation'), JSON.stringify(recs));
@@ -415,6 +415,15 @@ const owner = { isClient: false, isOwner: true };
   ok('P12 press_button is registered, runs at once, and is offered to the model', pc.ok && pc.def.tier === 'reversible' && /press_button\(label: string/.test(A.describeActions(customer)));
   const res = await A.runChecked(pc, { who: customer, navigate: () => undefined, press: async (l: string) => ({ ok: false, label: l, message: 'refused' }) }, false);
   ok('P12 a refused press is reported as not done', !res.ok && res.message === 'refused');
+}
+
+/* P13 — the incubator (2026-11-14): with `hands` off Protron does not work the screen */
+{
+  const live = { isClient: false, isOwner: false, hands: false };
+  ok('P13 with hands off, fill_form, press_button and draft_social_post are refused', ['fill_form', 'press_button', 'draft_social_post'].every(n => !A.checkCall({ name: n, args: n === 'fill_form' ? { fields: { a: 'b' } } : n === 'press_button' ? { label: 'Next' } : { prompt: 'A post' } }, live).ok));
+  ok('P13 …and not offered to the model', !/press_button|fill_form|draft_social_post/.test(A.describeActions(live)));
+  ok('P13 everything else still is', /propose_setup_plan/.test(A.describeActions(live)) && /create_contact/.test(A.describeActions(live)));
+  ok('P13 with hands absent (the testing site), they are offered', /press_button/.test(A.describeActions(customer)));
 }
 
 console.log(out.join('\n'));

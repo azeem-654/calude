@@ -329,9 +329,9 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
             <Sparkles size={20} color="#c7f441" />
           </div>
           <div>
-            <h3 style={{ fontSize: 16.5, fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>Build a 12-month marketing plan for any of your businesses</h3>
+            <h3 style={{ fontSize: 16.5, fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>Build your 12-month business execution plan</h3>
             <p style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.6)', margin: '4px 0 0', lineHeight: 1.5 }}>
-              Pick the company, and AI Autopilot learns it, plans a year of marketing month by month, and writes each month's posts, articles and emails as it comes. Run one for each business you own.
+              Protron opens a chat, shows you everything a year with AI Autopilot sets up — campaigns, follow-ups, a booking page, content, reply-rate watching — and asks only what it needs about your business. Run one for each business you own.
             </p>
           </div>
         </div>
@@ -339,7 +339,7 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
           display: 'flex', alignItems: 'center', gap: 8, padding: '12px 22px', borderRadius: 999, border: 'none',
           backgroundColor: '#c7f441', color: INK, fontSize: 13, fontWeight: 800, cursor: 'pointer', flexShrink: 0,
         }}>
-          Start AI setup <ArrowRight size={14} strokeWidth={2.5} />
+          Build my 12-month plan <ArrowRight size={14} strokeWidth={2.5} />
         </button>
       </div>
     );

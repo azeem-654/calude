@@ -24,8 +24,9 @@
 import { isRehearsal } from './hosts';
 
 /**
- * Built, usable on the testing site, and deliberately not offered on the live
- * one yet. Each entry is listed in docs/TESTING-ONLY.md.
+ * THE INCUBATOR: built, usable on the testing site, and deliberately not
+ * offered on the live one yet. Each entry is listed in docs/INCUBATOR.md —
+ * "what is in the incubator?" is answered there.
  *
  * `prospects` was here until 2026-10-01: OpenStreetMap alone was too thin in
  * too many towns to be a button every customer presses once and judges the
@@ -34,14 +35,27 @@ import { isRehearsal } from './hosts';
  * The name stays in `Feature` so the next held-back feature has a pattern.
  */
 const REHEARSING = new Set<string>([
-  /* `protron` (the floating chat and live talk) was here from 2026-11-12 and
-     was released to live by the owner on 2026-11-13 — docs/TESTING-ONLY.md. */
+  /* `protron` (the floating chat) was here from 2026-11-12 and was released
+     to live by the owner on 2026-11-13. Two of its parts came back on
+     2026-11-14 (owner: "it keeps on failing", "that's making the thing
+     complex", and the AppSumo review must not meet them half-finished): */
+  'protron-live',    // real-time speech-to-speech (wizard and panel) and hands-free Talk mode
+  'protron-hands',   // Protron working the screen: pointer, pressing buttons, typing into forms, driving the wizard; the site's film of it
 ]);
 
-export type Feature = 'prospects' | 'protron';
+/**
+ * Parked: off on BOTH sites until the owner asks for it back. Kept in the
+ * build so it does not rot (see above), listed in docs/INCUBATOR.md.
+ */
+const PARKED = new Set<string>([
+  'protron-speaks-first',  // the panel opening by itself (idle, errors, a frozen page) — owner, 2026-11-14: "only when it's clicked"
+]);
+
+export type Feature = 'prospects' | 'protron' | 'protron-live' | 'protron-hands' | 'protron-speaks-first';
 
 /** Whether this visitor, on this hostname, may actually use it. */
 export function featureReady(name: Feature): boolean {
+  if (PARKED.has(name)) return false;
   if (!REHEARSING.has(name)) return true;
   return isRehearsal();
 }

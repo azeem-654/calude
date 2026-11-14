@@ -310,6 +310,46 @@ chats" on the message turns it off. It offers; it never acts on its own.
   coral glow, coral label pill, coral ring and ripple. The panel glass is a
   notch more see-through (~.40–.46, live stage ~.12–.26).
 
+### The 2026-11-14 brief — a chat, not a call; the incubator
+
+- **The incubator** (`docs/INCUBATOR.md`, `features.ts`): `protron-live`
+  (live talk in the wizard and panel, hands-free Talk mode, the launcher's
+  Talk chip) and `protron-hands` (pointer, `press_button`, `fill_form`,
+  `draft_social_post`, autodrive, the site film's agent story) are on the
+  testing site only. `protron-speaks-first` is **parked** — off on both: the
+  panel opens only when clicked. On live Protron is a chat: typed, or a
+  recorded voice message (the mic: recorded, transcribed, sent).
+  `Who.hands === false` refuses the hands actions in `checkCall`, keeps them
+  out of `describeActions`, and brain.ts tells the model to write the copy
+  and name the box instead; an approved plan then opens the wizard with the
+  plan in its box (no `pc_protron_autodrive`). Absent `hands` = allowed, so
+  the pure tests see the whole registry (test P13).
+- **The wizard opens on the chat** (`useProtronIntake(…, 'talk', mode)`):
+  Protron's first message is written locally (`openingMessage`, no AI wait),
+  asks name + website; the name/website/cards screens are no longer on the
+  path (Back never reaches them). "I'd rather describe it myself" is under
+  the chat. Footer blocker: "Answer Protron first".
+- **Replies** (`interviewSystem`): acknowledge what was said, one sentence of
+  what it needs in the product, then ONE question with why it matters
+  (owner's screenshot: "plan all 12 months" answered with "what city?").
+  JSON `reply` + `facts` {company, website, nature, place} — stated only,
+  never guessed — fill the brief and the side pane. A website in an answer is
+  read (≤ 10 s) *before* Protron replies. Without the AI, `guessIntroFacts`
+  takes a plain "Name, site.com" from the answer to the opening.
+- **Speed**: `/api/ai.php` turns thinking down for module `protron`
+  (`FAST_MODULES`, `thinkingFor`, 20 s per model, retried without the
+  setting if refused). `protron-plan` keeps its thinking.
+- **While it thinks**: `ThinkingLines` (panel and wizard) — one line every
+  1.5 s, worded as reasoning ("Weighing how competitors…"), never as a web
+  search it is not doing; a real step (reading their site) is shown first.
+- **Protron's face** beside every reply in the wizard chat (`.np-chat-face`).
+- **12-month plan**: the dashboard's "Build my 12-month plan"
+  (`?solution=marketing-plan`) opens the chat in `year` mode: `YEAR_BULLETS`
+  (only what the product does — SMS once a number is connected, Shorts cut
+  from their videos, reply-rate watch *proposes* changes), `YEAR_KEYS`
+  chosen, then name + where. The instruction carries the year objective.
+  Tests L9.
+
 ### Voice — Talk mode, turn by turn (the fallback)
 
 In: the Autopilot recorder (`useVoiceInput`, 1.8 s silence) → server
@@ -359,7 +399,7 @@ Hand-off from the panel: `start_autopilot_project` writes
 
 ### Tests
 
-`npm run test:protron` (pure, 148 checks — P12 is the pointer's safe presses; P11 is the 2026-11-12 brief: registry, permissions, tiers,
+`npm run test:protron` (pure, 153 checks — P13 is the incubator's `hands` switch — P12 is the pointer's safe presses; P11 is the 2026-11-12 brief: registry, permissions, tiers,
 injection, JSON and salvage, offline matching, onboarding, memory and sync
 stamps, context and SCREEN, fill_form/draft_social_post/live pipeline steps,
 speaking first offline). `npm run test:protron:e2e` — now also

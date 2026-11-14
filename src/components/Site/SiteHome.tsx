@@ -352,7 +352,7 @@ export default function SiteHome() {
   const services = servicesPublic(window.location.hostname);
   /* Protron on every screen is held back to the testing site (features.ts);
      the Protron, film and What's new sections say only what this host's app does. */
-  const agent = featureReady('protron');
+  const agent = featureReady('protron-hands');
   const [stuck, setStuck] = useState(false);
   const [tab, setTab] = useState(0);
 

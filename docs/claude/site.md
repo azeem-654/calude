@@ -264,7 +264,7 @@ film, not above the recipes, so Find my solution keeps its place.
   in-app ProspectingDemo are each only their steps and scenes. Pressing the
   chip of the step that is playing restarts it (`take`).
 - **Only what this host's app does**: Protron on every screen is held back to
-  the testing site (`featureReady('protron')`, docs/TESTING-ONLY.md), so the
+  the testing site (`featureReady('protron-hands')`, docs/INCUBATOR.md), so the
   three sections take `agent`. Off (the live site today): Protron is the
   live talk that starts a business workspace and writes the plan ("Build My
   AI Autopilot"), the campaign watch is a notice and an email, no pointer.

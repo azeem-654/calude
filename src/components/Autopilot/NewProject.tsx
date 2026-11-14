@@ -130,7 +130,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
   seedPrompt?: string;
   /**
    * A ready-made solution to start from (`?solution=` — the dashboard's
-   * "Start AI setup" opens the 12-Month Marketing Plan). Its example goes in
+   * "Build my 12-month plan" opens the chat in its year mode). Its example goes in
    * the box and it is the picked solution; the customer reads, edits and
    * continues as with any other.
    */
@@ -177,7 +177,14 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
      which then goes through Understand like any typed request. A wizard opened
      with something already to say (a list, the site's plan, Protron's own
      hand-off) starts on the box instead. */
-  const intake = useProtronIntake(ws.workspace?.companyName ?? '', seed || preset || seedPrompt || presetSol ? 'manual' : 'name');
+  /* The wizard opens on a chat with Protron (owner's brief, 2026-11-14: "start
+     the chat session immediately"). The dashboard's 12-month button
+     (`?solution=marketing-plan`) opens the same chat in its year mode; any
+     other preset — a list, a site plan, Protron's hand-off — has something to
+     say already and opens on the original box. */
+  const yearPlan = presetSol?.key === 'marketing-plan' && !seed && !preset && !seedPrompt;
+  const intake = useProtronIntake(ws.workspace?.companyName ?? '', !yearPlan && (seed || preset || seedPrompt || presetSol) ? 'manual' : 'talk', yearPlan ? 'year' : 'standard');
+  const presetBox = !yearPlan && !!(seed || preset || seedPrompt || presetSol);
 
   /* ── Understanding ── */
   const [state, setState] = useState<IntakeState | null>(null);
@@ -855,6 +862,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     if (phase === 'describe' && intake.step !== 'manual') {
       if (intake.busy === 'writing') return 'Writing your instruction…';
       if (intake.step === 'prompt' && intake.instruction.trim().length < 8) return 'The instruction is empty';
+      if (intake.step === 'talk' && intake.first === 'talk' && !intake.brief.talk.some(t => t.role === 'user') && !intake.brief.custom.trim()) return 'Answer Protron first';
       return '';
     }
     if (phase === 'describe') {
@@ -942,8 +950,9 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
   const back = () => {
     if (phase === 'describe') {
       if (intake.step === 'prompt') intake.setStep('talk');
-      else if (intake.step === 'talk') intake.setStep('solutions');
-      else if (intake.step === 'solutions' || (intake.step === 'manual' && !seed && !preset && !seedPrompt && !presetSol)) intake.setStep('name');
+      else if (intake.step === 'talk' && intake.first !== 'talk') intake.setStep('solutions');
+      else if (intake.step === 'solutions') intake.setStep('name');
+      else if (intake.step === 'manual' && !presetBox) intake.setStep(intake.first === 'manual' ? 'talk' : intake.first);
       return;
     }
     if (phase === 'understand') setPhase('describe');
@@ -1004,6 +1013,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
           <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b7280', letterSpacing: '0.05em' }}>WHAT PROTRON HAS SO FAR</span>
           <span style={{ fontSize: 13, color: '#334155' }}><b>Business:</b> {intake.brief.company.trim() || '—'}</span>
           <span style={{ fontSize: 13, color: '#334155', overflowWrap: 'anywhere' }}><b>Website:</b> {intake.brief.website.trim() || (intake.brief.nature.trim() ? 'none — described instead' : '—')}</span>
+          {(intake.brief.place ?? '').trim() && <span style={{ fontSize: 13, color: '#334155' }}><b>Customers in:</b> {intake.brief.place}</span>}
           <span style={{ fontSize: 13, color: '#334155' }}><b>Solutions:</b> {chosenLabels(intake.brief).join(', ') || '—'}</span>
           <span style={{ fontSize: 13, color: '#334155' }}><b>Answers:</b> {intake.brief.talk.filter(t => t.role === 'user').length}</span>
           <span style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5, marginTop: 6 }}>Nothing is saved until you approve the instruction and build the business workspace.</span>
@@ -1210,7 +1220,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
         )}
         <footer className="np-foot" ref={footRef}>
           {(['understand', 'questions', 'blueprint', 'requirements', 'review'].includes(phase)
-            || (phase === 'describe' && intake.step !== 'name' && !(intake.step === 'manual' && (seed || preset || seedPrompt || presetSol)))) && (
+            || (phase === 'describe' && intake.step !== 'name' && intake.step !== intake.first && !(intake.step === 'manual' && presetBox))) && (
             <button type="button" className="np-back" onClick={back} style={{ marginRight: 'auto' }}>
               <ArrowLeft size={15} /> <span className="np-back-label">Back</span>
             </button>

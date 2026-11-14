@@ -49,7 +49,17 @@ export interface Who {
   isClient: boolean;
   /** The install owner — the only login that sees owner-only screens. */
   isOwner: boolean;
+  /**
+   * Whether Protron may work the screen itself — type into forms, press
+   * buttons, drive the wizard (`protron-hands`, in the incubator: on the
+   * testing site, off on live; docs/INCUBATOR.md). Absent means yes, so the
+   * pure tests see the whole registry.
+   */
+  hands?: boolean;
 }
+
+/** Refuses an action that works the screen itself while `hands` is off. */
+const needsHands = (who: Who): string => (who.hands === false ? 'I can’t work the screen for you here yet — I’ll tell you which box or button to use instead.' : '');
 
 export type ParamSpec =
   | { type: 'string'; required?: boolean; max: number; desc: string }
@@ -82,7 +92,8 @@ export interface ActionCtx {
   counts?: () => Record<string, number>;
   setProactive?: (on: boolean) => void;
   /** `auto`: the customer approved Protron's plan, so the wizard drives itself (NewProject `autoDrive`). */
-  handOffToAutopilot?: (instruction: string, opts?: { auto?: boolean }) => void;
+  /** True when the wizard will drive itself (`auto`, and `hands` is on). */
+  handOffToAutopilot?: (instruction: string, opts?: { auto?: boolean }) => boolean | void;
   /** Types a value into a box on screen (services/protron/screen.ts). */
   fill?: (key: string, value: string) => Promise<{ ok: boolean; label: string; previous: string; message?: string }>;
   /** Moves the pointer to a control by its name and presses it when it only opens, shows or moves (screen.ts pressControl). */
@@ -307,16 +318,21 @@ export const ACTIONS: ActionDef[] = [
       bullets: { type: 'list', required: true, maxItems: 8, maxEach: 160, desc: 'what you will set up, one short bullet each, in the order you will do it' },
       instruction: { type: 'string', required: true, max: 4000, desc: 'the full instruction for the AI Autopilot wizard, written as the customer would say it, with every fact they gave (business, place, offer, goal)' },
     },
-    confirmText: a => `Here is my plan:\n${(a.bullets as string[]).map(b => `• ${b.trim()}`).join('\n')}\n\nApprove it and I will build it in AI Autopilot now, step by step on your screen. I stop and ask wherever I need an answer only you have.`,
+    confirmText: a => `Here is my plan:\n${(a.bullets as string[]).map(b => `• ${b.trim()}`).join('\n')}\n\nApprove it and I start building it in AI Autopilot now. It stops and asks wherever it needs an answer only you have.`,
     run: async (a, ctx) => {
       if (!ctx.handOffToAutopilot) return { ok: false, message: 'AI Autopilot could not be opened from here.' };
       const st = stepsFor(ctx, ['Open AI Autopilot', 'Start a new business workspace with your plan', 'Build it step by step']);
       st.run(0);
-      ctx.handOffToAutopilot(String(a.instruction), { auto: true });
+      const drives = ctx.handOffToAutopilot(String(a.instruction), { auto: true }) !== false;
       await pause(ctx, 400); st.ok(0); st.run(1);
       await pause(ctx, 400); st.ok(1); st.run(2);
       await pause(ctx, 300); st.ok(2);
-      return { ok: true, message: 'Approved — I am building it in AI Autopilot now. Watch the wizard: I press each step myself and stop only where I need your answer.' };
+      return {
+        ok: true,
+        message: drives
+          ? 'Approved — I am building it in AI Autopilot now. Watch the wizard: I press each step myself and stop only where I need your answer.'
+          : 'Approved — AI Autopilot is open with your plan in its box. Press the button at the bottom to build it; it asks only what it still needs from you.',
+      };
     },
   },
   {
@@ -386,6 +402,7 @@ export const ACTIONS: ActionDef[] = [
     module: 'screen',
     tier: 'reversible',
     params: { fields: { type: 'map', required: true, maxKeys: 15, maxEach: 4000, desc: 'box key → value' } },
+    refusal: needsHands,
     run: async (a, ctx) => {
       if (!ctx.fill) return { ok: false, message: 'There is no form here I can reach.' };
       const fields = Object.entries(a.fields as Record<string, string>);
@@ -412,6 +429,7 @@ export const ACTIONS: ActionDef[] = [
     module: 'screen',
     tier: 'reversible',
     params: { label: { type: 'string', required: true, max: 60, desc: 'the button name, as listed under SCREEN' } },
+    refusal: needsHands,
     run: async (a, ctx) => {
       if (!ctx.press) return { ok: false, message: 'There is nothing on this screen I can press from here.' };
       const st = stepsFor(ctx, [`Press “${String(a.label)}”`]);
@@ -431,7 +449,7 @@ export const ACTIONS: ActionDef[] = [
       prompt: { type: 'string', required: true, max: 1000, desc: 'the design brief: look, colours and the exact words on the post' },
       name: { type: 'string', required: false, max: 60, desc: 'design name' },
     },
-    refusal: who => (modulePaths(who).includes('/social-creator') ? '' : 'Graphics Designer is not part of this login.'),
+    refusal: who => needsHands(who) || (modulePaths(who).includes('/social-creator') ? '' : 'Graphics Designer is not part of this login.'),
     run: async (a, ctx) => {
       if (!ctx.fill || !ctx.waitFor) return { ok: false, message: 'Graphics Designer could not be reached from here.' };
       const st = stepsFor(ctx, ['Open Graphics Designer & Editor', 'Open Create with AI', 'Name the design', 'Write the design brief']);

@@ -6,8 +6,8 @@
  *
  * Protron on every screen — its plan, building with its pointer, offering
  * to improve a campaign — is held back to the testing site by the owner
- * (`featureReady('protron')`, docs/TESTING-ONLY.md). What is live everywhere
- * is Protron's live talk when a business workspace is started, the campaign
+ * (`featureReady('protron-hands')`, docs/INCUBATOR.md). What is live everywhere
+ * is chatting with Protron when a business workspace is started, the campaign
  * watch's notice and email, the Appointments tray, the 12-month plans, the
  * AI health monitor and the security shield. So both sections take `agent`
  * and say only what that host's app does; the day Protron is released the
@@ -48,9 +48,9 @@ function points(agent: boolean): Point[] {
   };
   if (!agent) {
     return [
-      { icon: AudioLines, title: 'Talk to it like a colleague', body: 'Start a new business workspace and Protron talks it through with you, out loud and in real time. Prefer to type? Type.' },
-      { icon: MessageSquare, title: 'A few short questions', body: 'It asks what the business does, where your customers are and what you offer — and reads your website if you have one.' },
-      { icon: ListChecks, title: 'Then it writes the plan', body: 'Protron writes the plan for AI Autopilot in plain words you can change. AI Autopilot builds from it.' },
+      { icon: MessageSquare, title: 'Chat with it like a colleague', body: 'Start a new business workspace and Protron opens a chat. Type, or record a voice message.' },
+      { icon: ListChecks, title: 'A few short questions', body: 'It asks what the business does, where your customers are and what you offer — and reads your website if you have one.' },
+      { icon: Sparkles, title: 'Then it writes the plan', body: 'Protron writes the plan for AI Autopilot in plain words you can change. AI Autopilot builds from it.' },
       watch,
       booked,
     ];
@@ -94,9 +94,9 @@ function Stage({ agent }: { agent: boolean }) {
       <div className="ptn-window">
         <div className="ptn-win-h">
           <b>Protron</b>
-          <span className="ptn-live"><i /> Talking live</span>
+          <span className="ptn-live"><i /> {agent ? 'Talking live' : 'Chat'}</span>
         </div>
-        <div className="ptn-voice">{Array.from({ length: 11 }, (_, i) => <i key={i} style={{ '--i': i } as CSSProperties} />)}</div>
+        {agent && <div className="ptn-voice">{Array.from({ length: 11 }, (_, i) => <i key={i} style={{ '--i': i } as CSSProperties} />)}</div>}
         <p className="ptn-bub is-you">I run a plumbing business in Tucson. I want more booked jobs.</p>
         <p className="ptn-bub is-bot">{agent ? 'Here is a plan. Approve it and I will build it while you watch.' : 'Got it. Where are most of your customers?'}</p>
         <div className="ptn-plan">
@@ -130,7 +130,7 @@ export function ProtronSection({ agent }: { agent: boolean }) {
         <p>
           {agent
             ? 'Protron is an AI business manager on every screen of the app. Talk to it live, out loud. It proposes a plan, builds it in AI Autopilot once you approve, and keeps watch while it runs.'
-            : 'Protron is the AI business manager you talk to when you start a business workspace. Talk to it live, out loud: it asks a few short questions and writes the plan AI Autopilot builds.'}
+            : 'Protron is the AI business manager you chat with when you start a business workspace. Type, or send a voice message: it asks a few short questions and writes the plan AI Autopilot builds.'}
         </p>
       </div>
       <div className="ptn-grid">
@@ -159,7 +159,7 @@ function news(agent: boolean): News[] {
   return [
     agent
       ? { area: 'Protron', icon: Bot, title: 'Protron, your AI Live Business Manager', body: 'On every screen: talk to it live, approve the plan it proposes, and watch it build in AI Autopilot.', href: '#protron' }
-      : { area: 'Protron', icon: Bot, title: 'Talk live with Protron', body: 'Start a business workspace by talking to Protron in real time. It asks a few questions and writes the plan.', href: '#protron' },
+      : { area: 'Protron', icon: Bot, title: 'Chat with Protron', body: 'Start a business workspace in a chat with Protron — typed, or as a voice message. It asks a few questions and writes the plan.', href: '#protron' },
     { area: 'AI Autopilot', icon: CalendarRange, title: '12-month marketing plans', body: 'AI Autopilot writes a 12-month plan for each business workspace, a theme for every month, and the dashboard lists each one.' },
     { area: 'Campaigns', icon: Activity, title: 'Campaign watch', body: agent
       ? 'Running campaigns are checked every hour. Failing sends or very low replies raise a notice and an email, and Protron offers to fix it.'

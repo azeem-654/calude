@@ -38,10 +38,24 @@ import { readFacts } from '../../../services/protron/facts';
 import { solutionByKey } from '../../../services/projectSolutions';
 import { readPortfolioFromUrl } from '../../../services/projects';
 import { LiveVoice, liveSupported, type LiveState } from '../../../services/protron/live';
+import { featureReady } from '../../../services/features';
+import ThinkingLines from '../../Protron/ThinkingLines';
+import VoiceBars from '../voice/VoiceBars';
+import { useVoiceInput, defaultLocale } from '../voice/useVoiceInput';
 import {
-  START_CARDS, MORE_SOLUTIONS, EMPTY_BRIEF, chosenKeys, chosenLabels, nextStep, recommendCards, writeInstruction, siteAddress,
-  MAX_INSTRUCTION, type Brief, type SiteRead,
+  START_CARDS, MORE_SOLUTIONS, EMPTY_BRIEF, YEAR_KEYS, chosenKeys, chosenLabels, nextStep, recommendCards, writeInstruction, siteAddress,
+  openingMessage, MAX_INSTRUCTION, type Brief, type IntakeMode, type SiteRead,
 } from '../../../services/protron/intake';
+
+/* Talking live (real-time speech) is in the incubator — on the testing site
+   only (docs/INCUBATOR.md). On live the chat is typed or a recorded voice message. */
+const LIVE_TALK = featureReady('protron-live');
+
+/** A website address in what they typed ("it's acme.com"), or ''. */
+function siteIn(text: string): string {
+  const w = text.split(/\s+/).map(x => x.replace(/^[(<]+|[,;:.!?)>]+$/g, '')).find(x => /\.[a-z]{2,}(\/|$)/i.test(x) && !/@/.test(x));
+  return w ? siteAddress(w) : '';
+}
 
 export type IntroStep = 'name' | 'solutions' | 'talk' | 'prompt' | 'manual';
 
@@ -52,14 +66,17 @@ const CARD_ICON: Record<string, typeof Search> = {
 
 export interface SiteState { status: 'idle' | 'reading' | 'done' | 'error'; url: string; error?: string }
 
-export function useProtronIntake(initialCompany: string, start: IntroStep) {
+export function useProtronIntake(initialCompany: string, start: IntroStep, mode: IntakeMode = 'standard') {
   const [step, setStepState] = useState<IntroStep>(start);
   /* A business name already given — at sign-up, on the workspace, in
-     Settings, or to Protron — is not asked for again (the owner's brief). */
-  const [brief, setBriefState] = useState<Brief>(() => ({ ...EMPTY_BRIEF, company: initialCompany || readFacts().businessName }));
+     Settings, or to Protron — is not asked for again (the owner's brief).
+     The 12-month plan starts with the year's solutions chosen. */
+  const [brief, setBriefState] = useState<Brief>(() => ({ ...EMPTY_BRIEF, mode, more: mode === 'year' ? [...YEAR_KEYS] : [], company: initialCompany || readFacts().businessName }));
   const ref = useRef(brief);
   const setBrief = useCallback((b: Brief) => { ref.current = b; setBriefState(b); }, []);
   const [busy, setBusy] = useState<'' | 'asking' | 'writing' | 'recommending'>('');
+  /* What is really happening before the AI is asked (reading their website) — shown first among the thinking lines. */
+  const [doing, setDoing] = useState<string[]>([]);
   const [note, setNote] = useState('');
   const [recs, setRecs] = useState<{ key: string; why: string }[]>([]);
   const [cardWhy, setCardWhy] = useState('');
@@ -111,6 +128,17 @@ export function useProtronIntake(initialCompany: string, start: IntroStep) {
     setBusy('asking');
     const r = await nextStep(b);
     setBusy('');
+    setDoing([]);
+    /* What they said in the chat fills the brief — never a guess (intake.ts `facts`). */
+    const f = r.facts;
+    const cur = ref.current;
+    const upd: Partial<Brief> = {};
+    if (f.company && !cur.company.trim()) upd.company = f.company;
+    if (f.website && !cur.website.trim()) upd.website = f.website;
+    if (f.nature && !(cur.nature ?? '').trim()) upd.nature = f.nature;
+    if (f.place && !(cur.place ?? '').trim()) upd.place = f.place;
+    if (Object.keys(upd).length) setBrief({ ...cur, ...upd });
+    if (upd.website && !cur.site) void readWebsite(upd.website);
     setNote(r.offline ? (r.error ? `${r.error} — asking the standard questions instead.` : 'The AI is not answering, so I am asking the standard questions.') : '');
     if (r.recommend.length) setRecs(prev => [...prev, ...r.recommend.filter(x => !prev.some(p => p.key === x.key))]);
     if (r.done || !r.ask) {
@@ -119,7 +147,7 @@ export function useProtronIntake(initialCompany: string, start: IntroStep) {
       return;
     }
     setBrief({ ...ref.current, talk: [...ref.current.talk, { role: 'protron', text: r.ask, quick: r.quick }] });
-  }, [setBrief]);
+  }, [setBrief, readWebsite]);
 
   /* ── Talking live ── */
   const live = useRef<LiveVoice | null>(null);
@@ -204,7 +232,7 @@ export function useProtronIntake(initialCompany: string, start: IntroStep) {
    *  automated browser (navigator.webdriver) — it has no microphone, and the
    *  e2e suites drive the typed company step. */
   const autoStart = useCallback(() => {
-    if (autoTried.current || live.current || !liveSupported() || navigator.webdriver) return;
+    if (!LIVE_TALK || autoTried.current || live.current || !liveSupported() || navigator.webdriver) return;
     if (ref.current.company.trim() || ref.current.website.trim()) return;
     autoTried.current = true;
     auto.current = true;
@@ -215,19 +243,45 @@ export function useProtronIntake(initialCompany: string, start: IntroStep) {
   const setStep = useCallback((s: IntroStep) => { if (s !== 'talk') stopLive(); setStepState(s); }, [stopLive]);
   useEffect(() => () => { live.current?.stop(true); }, []);
 
+  /* The chat opens on Protron's own first message, at once (the owner:
+     "start the chat session immediately") — written in intake.ts, no AI
+     call to wait for. Coming from the cards instead, the AI asks first. */
+  const opened = useRef(false);
   const startTalk = useCallback(() => {
     setStepState('talk');
-    if (!ref.current.talk.length && !live.current) void askNext(ref.current);
-  }, [askNext]);
+    if (ref.current.talk.length || live.current) return;
+    if (start === 'talk' || !ref.current.company.trim()) {
+      if (opened.current) return;
+      opened.current = true;
+      setBrief({ ...ref.current, talk: [openingMessage(ref.current, readFacts().firstName)] });
+    } else void askNext(ref.current);
+  }, [askNext, setBrief, start]);
+  useEffect(() => { if (start === 'talk') startTalk(); }, [start, startTalk]);
 
-  const answer = useCallback((text: string) => {
+  const answer = useCallback((text: string, voice = false) => {
     const t = text.trim();
     if (!t || busy) return;
     if (live.current?.sendText(t)) { appendTalk('user', t); return; }
-    const b = { ...ref.current, talk: [...ref.current.talk, { role: 'user' as const, text: t.slice(0, 1200) }] };
+    /* A quick answer that is a ready-made solution's name chooses it. */
+    const card = START_CARDS.find(c => c.label.toLowerCase() === t.toLowerCase());
+    const b: Brief = {
+      ...ref.current,
+      cards: card && !ref.current.cards.includes(card.id) ? [...ref.current.cards, card.id] : ref.current.cards,
+      talk: [...ref.current.talk, { role: 'user' as const, text: t.slice(0, 1200), ...(voice ? { voice: true } : {}) }],
+    };
     setBrief(b);
+    /* A website in the answer is read before Protron replies, so the reply
+       already knows what the business does (≤ 10 s, then it goes on without). */
+    const url = siteIn(t);
+    if (url && url !== siteAddress(b.website) && !b.site) {
+      setBrief({ ...b, website: url });
+      setBusy('asking');
+      setDoing([`Reading ${url.replace(/^https?:\/\//, '')}…`, 'Learning what the business offers…']);
+      void Promise.race([readWebsite(url), new Promise(res => setTimeout(res, 10_000))]).then(() => askNext(ref.current));
+      return;
+    }
     void askNext(b);
-  }, [busy, askNext, setBrief, appendTalk]);
+  }, [busy, askNext, setBrief, appendTalk, readWebsite]);
 
   const write = useCallback(async (extra = '') => {
     stopLive();
@@ -248,9 +302,9 @@ export function useProtronIntake(initialCompany: string, start: IntroStep) {
   }, [setBrief]);
 
   return {
-    step, setStep, brief, setBrief, busy, note, recs, setRecs, cardWhy, instruction, setInstruction, talkDone, startTalk, answer, write, recommend,
-    keys: chosenKeys(brief), site, readWebsite,
-    live: { state: liveState, message: liveMsg, partial, who, start: startLive, stop: stopLive, supported: liveSupported(), autoStart },
+    step, setStep, brief, setBrief, busy, doing, note, recs, setRecs, cardWhy, instruction, setInstruction, talkDone, startTalk, answer, write, recommend,
+    keys: chosenKeys(brief), site, readWebsite, first: start, mode,
+    live: { state: liveState, message: liveMsg, partial, who, start: startLive, stop: stopLive, supported: LIVE_TALK && liveSupported(), autoStart },
   };
 }
 
@@ -295,6 +349,24 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
   const toggleCard = (id: string) => setBrief({ ...brief, cards: brief.cards.includes(id) ? brief.cards.filter(x => x !== id) : [...brief.cards, id] });
   const toggleMore = (key: string) => setBrief({ ...brief, more: brief.more.includes(key) ? brief.more.filter(x => x !== key) : [...brief.more, key] });
   const sendReply = (t: string) => { p.answer(t); setReply(''); };
+
+  /* ── A recorded voice message ──
+     The recorder AI Autopilot already uses (voice/useVoiceInput.ts): the whole
+     take is transcribed on the server by a model with thinking switched off,
+     then sent as the customer's answer. A take the transcriber was unsure of
+     goes in the box to be checked instead — a misheard answer sent unseen is
+     worse than one press more. */
+  const rec = useVoiceInput(defaultLocale(), { silenceStopSeconds: 2.2 });
+  const [recNote, setRecNote] = useState('');
+  const record = async () => {
+    if (rec.phase === 'listening') { void rec.stop(); return; }
+    if (rec.phase !== 'idle' && rec.phase !== 'done' && rec.phase !== 'error') return;
+    setRecNote('');
+    const r = await rec.start();
+    if (!r || !r.text.trim()) return;
+    if (r.doubtful) { setReply(r.text); setRecNote(r.note || 'Please check what I heard, then press send.'); window.setTimeout(() => replyBox.current?.focus(), 0); return; }
+    p.answer(r.text, true);
+  };
   const liveOn = live.state === 'live' || live.state === 'connecting';
 
   const head = (title: React.ReactNode, sub: string) => (
@@ -464,15 +536,20 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
   if (step === 'talk') {
     const last = brief.talk[brief.talk.length - 1];
     const quick = !liveOn && !p.talkDone && last?.role === 'protron' && last.quick?.length && busy !== 'asking' ? last.quick : [];
+    const recording = rec.phase === 'listening' || rec.phase === 'starting';
+    const face = (state: 'idle' | 'thinking' | 'speaking') => (
+      <span className="np-chat-face" aria-hidden="true"><ProtronAvatar size={34} state={state} alive={false} /></span>
+    );
+    const what = brief.site?.industry || (brief.nature ?? '').split(/[.,]/)[0] || brief.company;
     return (
       <div style={{ display: 'grid', gap: 14 }}>
-        {head(<>Tell Protron about <span className="wz-accent">{brief.company.trim() || 'your business'}</span></>, liveOn
-          ? 'Talk normally — interrupt any time. Protron writes down what matters as you go.'
-          : "Only what changes the plan. Skip anything — I'll choose a sensible default and say so.")}
-        {!brief.company.trim() && (
-          <button type="button" className="np-link" style={{ justifySelf: 'start' }} onClick={() => p.setStep('name')}>
-            No microphone? Type it instead
-          </button>
+        {head(
+          p.mode === 'year'
+            ? <>Your <span className="wz-accent">12-month business execution plan</span></>
+            : <>Create a new <span className="wz-accent">business workspace</span></>,
+          liveOn
+            ? 'Talk normally — interrupt any time. Protron writes down what matters as you go.'
+            : 'Chat with Protron — type, or record a voice message. Skip anything; you approve the plan before anything is built.',
         )}
 
         <div className="np-chat">
@@ -482,13 +559,21 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
             )}
             {brief.talk.map((t, i) => (
               t.role === 'protron'
-                ? <div key={i} className="np-chat-row"><span className="np-chat-orb" aria-hidden="true"><Sparkles size={13} /></span><div className="np-talk-bot">{t.text}</div></div>
-                : <div key={i} className="np-talk-you">{t.text}</div>
+                ? <div key={i} className="np-chat-row">{face('idle')}<div className="np-talk-bot">{t.text}</div></div>
+                : <div key={i} className="np-talk-you">{t.voice && <Mic size={13} className="np-voice-tag" aria-label="Voice message" />}{t.text}</div>
             ))}
             {live.partial && (live.partial.role === 'protron'
-              ? <div className="np-chat-row"><span className="np-chat-orb" aria-hidden="true"><Sparkles size={13} /></span><div className="np-talk-bot" data-partial="1">{live.partial.text}</div></div>
+              ? <div className="np-chat-row">{face('speaking')}<div className="np-talk-bot" data-partial="1">{live.partial.text}</div></div>
               : <div className="np-talk-you" data-partial="1">{live.partial.text}</div>)}
-            {busy === 'asking' && <div className="np-chat-row" role="status"><span className="np-chat-orb" aria-hidden="true"><Sparkles size={13} /></span><span className="np-chat-thinking"><Loader size={14} className="spin" /> Thinking…</span></div>}
+            {busy === 'asking' && (
+              <div className="np-chat-row">
+                {face('thinking')}
+                <span className="np-chat-thinking">
+                  <span className="np-dots" aria-hidden="true"><i /><i /><i /></span>
+                  <ThinkingLines className="np-think-line" business={what} first={p.doing} />
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="np-composer">
@@ -503,6 +588,16 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
                 <span>{live.state === 'connecting' ? 'Connecting…' : live.who.who === 'protron' ? 'Protron is speaking — just talk to interrupt' : live.who.who === 'you' ? 'Listening…' : 'Live — speak whenever you like'}</span>
               </div>
             )}
+            {(recording || rec.phase === 'transcribing') && (
+              <div className="np-rec-strip" role="status">
+                {recording ? <span className="np-rec-dot" aria-hidden="true" /> : <Loader size={14} className="spin" />}
+                <span className="np-rec-text">{recording ? `Recording ${Math.floor(rec.seconds / 60)}:${String(rec.seconds % 60).padStart(2, '0')} — pause or press Send when you’re done` : 'Turning your voice message into text…'}</span>
+                {recording && <span className="np-rec-bars"><VoiceBars meter={rec.meter} count={18} height={20} /></span>}
+                {recording && <button type="button" className="np-link" onClick={rec.cancel}>Cancel</button>}
+              </div>
+            )}
+            {rec.problem && rec.phase === 'error' && <p className="np-protron-note" style={{ margin: 0 }}><Info size={14} /> {rec.problem}</p>}
+            {recNote && <p className="np-protron-note" style={{ margin: 0 }}><Info size={14} /> {recNote}</p>}
             {!p.talkDone || liveOn ? (
               <div className="np-composer-box">
                 <textarea
@@ -513,20 +608,32 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
                   rows={2}
                   maxLength={1200}
                   value={reply}
-                  disabled={busy === 'asking'}
-                  placeholder={liveOn ? 'Or type here while you talk…' : 'Type your answer…'}
-                  onChange={e => setReply(e.target.value)}
+                  disabled={busy === 'asking' || recording}
+                  placeholder={liveOn ? 'Or type here while you talk…' : recording ? 'Listening…' : 'Type your answer…'}
+                  onChange={e => { setReply(e.target.value); if (recNote) setRecNote(''); }}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(reply); } }}
                 />
                 <div className="np-composer-bar">
-                  {live.supported ? (
-                    <button type="button" className="np-composer-mic" data-on={liveOn ? '1' : '0'} aria-pressed={liveOn}
-                      onClick={() => (liveOn ? live.stop() : live.start())}
-                      title={liveOn ? 'End the live conversation' : 'Talk live with Protron'}>
-                      {liveOn ? <Square size={13} /> : <AudioLines size={15} />} {liveOn ? 'End' : 'Talk live'}
-                    </button>
-                  ) : <span />}
-                  <button type="button" className="np-send" aria-label="Answer" disabled={!reply.trim() || busy === 'asking'} onClick={() => sendReply(reply)}><ArrowRight size={17} /></button>
+                  <span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+                    {!liveOn && rec.supported && (
+                      <button type="button" className="np-composer-mic" data-on={recording ? '1' : '0'} aria-pressed={recording}
+                        disabled={busy === 'asking' || rec.phase === 'transcribing'}
+                        onClick={() => void record()}
+                        title={recording ? 'Stop and send the voice message' : 'Record a voice message'}>
+                        {recording ? <Square size={13} /> : <Mic size={15} />} {recording ? 'Stop & send' : 'Record'}
+                      </button>
+                    )}
+                    {live.supported && (
+                      <button type="button" className="np-composer-mic" data-on={liveOn ? '1' : '0'} aria-pressed={liveOn}
+                        onClick={() => (liveOn ? live.stop() : live.start())}
+                        title={liveOn ? 'End the live conversation' : 'Talk live with Protron'}>
+                        {liveOn ? <Square size={13} /> : <AudioLines size={15} />} {liveOn ? 'End' : 'Talk live'}
+                      </button>
+                    )}
+                  </span>
+                  <button type="button" className="np-send" aria-label="Answer"
+                    disabled={recording ? false : !reply.trim() || busy === 'asking'}
+                    onClick={() => (recording ? void rec.stop() : sendReply(reply))}><ArrowRight size={17} /></button>
                 </div>
               </div>
             ) : null}
@@ -549,11 +656,12 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
           </div>
         )}
 
-        {!p.talkDone && !liveOn && (
-          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+          {!p.talkDone && !liveOn && brief.talk.some(t => t.role === 'protron' && !t.intro) && (
             <button type="button" className="np-link" disabled={busy === 'asking'} onClick={() => sendReply('Skip — use a sensible default.')}><SkipForward size={13} /> Skip this question</button>
-          </div>
-        )}
+          )}
+          {p.first === 'talk' && <button type="button" className="np-link" onClick={onManual}>I&rsquo;d rather describe it myself</button>}
+        </div>
         {p.talkDone && (
           <p className="np-protron-note" style={{ background: '#ecfdf5', color: '#065f46', borderColor: '#a7f3d0' }}><Check size={14} /> That&rsquo;s enough to write the plan. Press <b>Create my smart optimized prompt</b>.</p>
         )}

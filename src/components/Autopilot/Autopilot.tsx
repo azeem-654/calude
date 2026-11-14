@@ -79,7 +79,7 @@ export default function Autopilot() {
      taken out of the address so closing the wizard does not reopen it. */
   const [presetList] = useState(() => (params.get('new') === '1' ? params.get('list') ?? '' : ''));
   /* `?new=1&solution=<key>`: the wizard opens with that ready-made solution
-     picked — the dashboard's "Start AI setup" sends `marketing-plan`. */
+     picked — the dashboard's "Build my 12-month plan" sends `marketing-plan` (the chat opens in its year mode). */
   const [presetSolution] = useState(() => (params.get('new') === '1' ? params.get('solution') ?? '' : ''));
   /* `?new=1&plan=site`: the plan a visitor made on the public site before
      signing up (services/sitePlan.ts) — the wizard builds it on arrival. */

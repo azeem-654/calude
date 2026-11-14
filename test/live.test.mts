@@ -64,13 +64,14 @@ const intake = await import('../src/services/protron/intake.ts');
 
 /* L5 */
 {
-  const withSite = { ...intake.EMPTY_BRIEF, company: 'Lone Star Roofing', site: { description: 'We repair and replace roofs across north Texas.', audience: '', offer: '', industry: 'Roofing', locations: 'Dallas' } };
+  /* A starting point chosen, so "what would you like first" is not due (it is asked when none is). */
+  const withSite = { ...intake.EMPTY_BRIEF, cards: ['leads'], company: 'Lone Star Roofing', site: { description: 'We repair and replace roofs across north Texas.', audience: '', offer: '', industry: 'Roofing', locations: 'Dallas' } };
   const q1 = intake.fallbackNext(withSite);
   ok('L5 what the business does is not asked when the website said it', !!q1 && !/What does/.test(q1.ask), q1?.ask);
   const asked = { ...withSite, talk: [{ role: 'protron' as const, text: q1!.ask }, { role: 'user' as const, text: 'Homeowners' }] };
   const q2 = intake.fallbackNext(asked);
   ok('L5 location is asked on its own, offering the website\'s place', !!q2 && /Your website mentions Dallas/.test(q2.ask) && q2.quick[0] === 'Yes — Dallas', JSON.stringify(q2));
-  const noSite = { ...intake.EMPTY_BRIEF, company: 'Acme', nature: 'We clean offices for small businesses.' };
+  const noSite = { ...intake.EMPTY_BRIEF, cards: ['leads'], company: 'Acme', nature: 'We clean offices for small businesses.' };
   const n1 = intake.fallbackNext(noSite);
   const n2 = intake.fallbackNext({ ...noSite, talk: [{ role: 'protron' as const, text: n1!.ask }, { role: 'user' as const, text: 'Small offices' }] });
   ok('L5 with nothing known, location is asked openly with no invented town', !!n2 && /Where are your potential customers located/.test(n2.ask) && n2.quick.includes('Nationwide') && !n2.quick.some(q => /Dallas|Austin/.test(q)), JSON.stringify(n2));
@@ -130,6 +131,34 @@ const intake = await import('../src/services/protron/intake.ts');
   const film = await import('../src/services/filmNarration.ts');
   const lines = film.filmLines();
   ok('L8 the film has one line per scene and the examples are named in order', lines.length === 24 + film.FILM_PEOPLE.length && film.exampleLine(0).startsWith('Here is what that looks like. A plumber in Phoenix'), String(lines.length));
+}
+
+/* L9 — the 2026-11-14 brief: the wizard opens on a chat, the 12-month plan, smarter replies */
+{
+  const std = intake.openingMessage({ ...intake.EMPTY_BRIEF }, 'Azeem');
+  ok('L9 the chat opens at once, greets by name and asks for the business and its website', std.intro === true && /Hi Azeem/.test(std.text) && /name of your business/.test(std.text) && /website/.test(std.text), std.text);
+  const known = intake.openingMessage({ ...intake.EMPTY_BRIEF, company: 'Azeem Dental' });
+  ok('L9 a known business name is not asked for again', /Azeem Dental/.test(known.text) && !/name of your business/.test(known.text), known.text);
+  const year = intake.openingMessage({ ...intake.EMPTY_BRIEF, mode: 'year' });
+  ok('L9 the 12-month plan opens on what a year sets up, then asks name and place', intake.YEAR_BULLETS.every(x => year.text.includes(x)) && /where is it based\?$/.test(year.text), year.text);
+  ok('L9 the year bullets promise nothing the product cannot do', !intake.YEAR_BULLETS.some(x => /guarantee|\d+%|automatically re-?optimi/i.test(x)) && intake.YEAR_BULLETS.some(x => /once a texting number is connected/.test(x)));
+  const g1 = intake.guessIntroFacts('Azeem Dental, azeemdental.com');
+  ok('L9 without the AI, "Name, site.com" gives both', g1.company === 'Azeem Dental' && g1.website === 'https://azeemdental.com', JSON.stringify(g1));
+  const g2 = intake.guessIntroFacts("It's Lone Star Roofing and we have no website");
+  ok('L9 …"It\'s X and …" gives the name', g2.company === 'Lone Star Roofing' && g2.website === '', JSON.stringify(g2));
+  const g3 = intake.guessIntroFacts('i wan to establish all 12 months of business automation with you, so plan each and everything');
+  ok('L9 …a sentence about goals is not taken for a company name', g3.company === '', JSON.stringify(g3));
+  const afterIntro = { ...intake.EMPTY_BRIEF, company: 'Azeem Dental', cards: ['leads'], talk: [std, { role: 'user' as const, text: 'Azeem Dental' }] };
+  const q = intake.fallbackNext(afterIntro);
+  ok('L9 the opening is not counted as one of the questions', !!q && /What does Azeem Dental do/.test(q.ask), q?.ask);
+  const sys = intake.interviewSystem({ ...intake.EMPTY_BRIEF });
+  ok('L9 the interview acknowledges first, then asks one question and says why', /Acknowledge specifically what they just said/.test(sys) && /exactly ONE question/.test(sys) && /why it matters/.test(sys));
+  ok('L9 the interview returns the facts it heard, never guessed', /"facts"/.test(sys) && /Never guess/.test(sys));
+  ok('L9 the year mode tells the interview about the year', /12-month business execution plan/.test(intake.interviewSystem({ ...intake.EMPTY_BRIEF, mode: 'year' })) && !/12-month business execution plan/.test(sys));
+  const yb = { ...intake.EMPTY_BRIEF, mode: 'year' as const, company: 'Azeem Dental', more: [...intake.YEAR_KEYS], place: 'Dallas, TX' };
+  const yd = intake.draftInstruction(yb);
+  ok('L9 the 12-month instruction says so, names its solutions and where the customers are', /12-month business execution plan/.test(yd) && /12-Month Marketing Plan/.test(yd) && /Where our potential customers are: Dallas, TX\./.test(yd), yd);
+  ok('L9 a place said in the chat is not asked again', !intake.FALLBACK_QUESTIONS.filter(x => !x.when || x.when(yb)).some(x => x.id === 'where'));
 }
 
 console.log(out.join('\n'));

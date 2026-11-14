@@ -24,7 +24,7 @@
  *
  * Protron on every screen — the plan it proposes, building it with its
  * pointer, offering to improve a campaign — is held back to the testing site
- * (`featureReady('protron')`, docs/TESTING-ONLY.md). Where it is off, `agent`
+ * (`featureReady('protron-hands')`, docs/INCUBATOR.md). Where it is off, `agent`
  * is false and the film shows only what is live there: talking to Protron
  * when a business workspace is started, the wizard building it, and the
  * campaign watch's notice and email. It turns into the full story the day
@@ -56,10 +56,10 @@ const ap = (s: string) => <>AI Autopilot <ChevronRight size={13} /> {s}</>;
 function steps(agent: boolean): FilmStep[] {
   return [
     {
-      title: 'Talk to Protron',
+      title: agent ? 'Talk to Protron' : 'Chat with Protron',
       caption: agent
         ? 'Talk to Protron like a colleague, out loud. It proposes a plan in a few lines, and you approve it.'
-        : 'Start a business workspace by talking to Protron out loud. It asks a few short questions and writes the plan.',
+        : 'Start a business workspace in a chat with Protron — type, or send a voice message. It asks a few short questions and writes the plan.',
       crumb: agent ? 'Protron · Live talk' : ap('New business workspace'),
       rail: agent ? '' : 'autopilot',
       ms: 10200,
@@ -228,11 +228,11 @@ export default function PlatformDemo({ agent }: { agent: boolean }) {
           <section {...scene(0, 'pfd-s1')}>
             <div className="apd-card pfd-talk">
               <div className="pfd-who">
-                <Face live />
+                <Face live={agent} />
                 <span className="pfd-who-t"><b>Protron</b><small>AI Live Business Manager</small></span>
-                <span className="pfd-live apd-r" data-k="live"><i /> Live</span>
+                <span className="pfd-live apd-r" data-k="live"><i /> {agent ? 'Live' : 'Chat'}</span>
               </div>
-              <div className="pfd-bars" aria-hidden="true">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ '--i': i } as CSSProperties} />)}</div>
+              {agent && <div className="pfd-bars" aria-hidden="true">{Array.from({ length: 9 }, (_, i) => <i key={i} style={{ '--i': i } as CSSProperties} />)}</div>}
               <div className="pfd-bub is-you apd-r" data-k="u1"><Typed k="u1t" text="We’re a plumbing business in Tucson. I want more booked jobs from local businesses." /></div>
               <div className="pfd-bub is-bot apd-r" data-k="p1"><Typed k="p1t" text={agent ? 'Got it. Here is a plan — approve it and I will build it.' : 'Got it. A couple of quick questions, then I will write the plan.'} /></div>
             </div>

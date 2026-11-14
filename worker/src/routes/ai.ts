@@ -30,7 +30,7 @@ import { findPhi, phiRefusal } from '../lib/phiGuard';
 import { fail, json } from '../lib/http';
 import { canAccess, userFromToken, type Env } from '../lib/db';
 import { cleanJob, jobMayFinish, jobTouch } from '../lib/aiJobs';
-import { AI_BUSY, aiBase, forGemma, isGemma, jsonOnly, loadAiKey, modelsFor, trialRefusal } from '../lib/ai';
+import { AI_BUSY, aiBase, forGemma, isGemma, jsonOnly, loadAiKey, modelsFor, thinkingFor, trialRefusal } from '../lib/ai';
 import { capRefusal, recordAiUse } from '../lib/aiUsage';
 import { moduleOf, taskOf } from '../lib/aiTasks';
 import { withFailover } from '../lib/aiPool';
@@ -60,6 +60,19 @@ const CONFIG_KEYS = new Set(['temperature', 'topP', 'topK', 'maxOutputTokens', '
    it — otherwise a slow chain ends in the page's own "took too long" with the
    server still working, and the answer is thrown away. */
 const ANSWER_BY_MS = 105_000;
+
+/**
+ * Somebody is waiting in a chat for these (owner, 2026-11-14: "the reply
+ * speed of this chatbot is very slow", against live talk answering at once).
+ * Gemini 2.5+ "thinks" before answering by default, which was most of the
+ * wait on a three-sentence reply. So thinking is turned down (lib/ai.ts
+ * `thinkingFor`: a budget of 0 on 2.5, the lowest level on newer models) and
+ * each model gets 20 s before the next is tried. A model that refuses the
+ * setting is asked again without it, so this can only make a reply faster.
+ * The instruction writer (`protron-plan`) keeps its thinking: it is one call,
+ * and its quality is what AI Autopilot builds from.
+ */
+const FAST_MODULES = new Set(['protron']);
 
 export async function handleAi(req: Request, env: Env): Promise<Response> {
   const started = Date.now();
@@ -125,6 +138,12 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
   /* On each of the install's keys in turn while the failure is the key's —
      a limit, a refusal, Google down for it (lib/aiPool.ts) — so a customer
      is answered by the next key rather than shown the first one's error. */
+  const fast = FAST_MODULES.has(module);
+  const fastPayload = (model: string) => {
+    const p = JSON.parse(payload) as { generationConfig?: Record<string, unknown> };
+    return JSON.stringify({ ...p, generationConfig: { ...(p.generationConfig ?? {}), thinkingConfig: thinkingFor(model) } });
+  };
+
   return withFailover<Response>(key, async k => {
     /* An OpenRouter key: the same request through its adapter, answered in Gemini's shape. */
     if (isOpenRouterKey(k)) {
@@ -147,10 +166,16 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
       let res: Response;
       /* Gemma takes the request without JSON mode or a system instruction (lib/ai.ts forGemma). */
       const gemma = isGemma(model);
+      const ask = (body: string) => fetch(`${aiBase()}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(k)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(Math.min(fast ? 20_000 : 40_000, left)),
+      });
       try {
-        res = await fetch(`${aiBase()}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(k)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: gemma ? JSON.stringify(forGemma(JSON.parse(payload))) : payload, signal: AbortSignal.timeout(Math.min(40_000, left)),
-        });
+        if (gemma) res = await ask(JSON.stringify(forGemma(JSON.parse(payload))));
+        else if (fast) {
+          res = await ask(fastPayload(model));
+          /* The setting refused (an older or unusual model): the same request without it. */
+          if (res.status === 400 && /thinking/i.test(await res.clone().text().catch(() => ''))) res = await ask(payload);
+        } else res = await ask(payload);
       } catch (e) {
         lastStatus = 0;
         lastError = e instanceof Error ? e.message : String(e);

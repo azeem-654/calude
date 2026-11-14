@@ -57,6 +57,7 @@ import ProtronAvatar, { type AvatarState } from './ProtronAvatar';
 import ProtronCursor from './ProtronCursor';
 import type { AutoWhy, Seed } from './ProtronPanel';
 import './protron.css';
+import { featureReady } from '../../services/features';
 
 const ProtronPanel = lazy(() => import('./ProtronPanel'));
 
@@ -93,11 +94,18 @@ function markAuto(): void {
   } catch { /* private mode: at worst once more */ }
 }
 
+/* The incubator (services/features.ts, docs/INCUBATOR.md): read once — the
+   hostname does not change under a running page. */
+const LIVE_TALK = featureReady('protron-live');
+const HANDS = featureReady('protron-hands');
+const SPEAKS_FIRST = featureReady('protron-speaks-first');
+
 export default function Protron() {
   const session = getSession();
   const who: Who = useMemo(() => ({
     isClient: session?.user.role === 'client',
     isOwner: !!session && session.user.accountId == null && session.user.role === 'agency',
+    hands: HANDS,
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the two fields are what decide it; the session object is new on every read
   }), [session?.user.role, session?.user.accountId]);
   const loc = useLocation();
@@ -139,7 +147,8 @@ export default function Protron() {
   }, [show]);
 
   /* ── Speaking first ── */
-  const canSpeakFirst = prefs.proactive && prefs.idleSeconds > 0 && !open;
+  /* Parked (owner, 2026-11-14): Protron opens only when it is clicked. */
+  const canSpeakFirst = SPEAKS_FIRST && prefs.proactive && prefs.idleSeconds > 0 && !open;
   const spokenHere = useRef('');
   const speakFirst = useCallback((why: AutoWhy) => {
     const path = window.location.pathname;
@@ -154,7 +163,7 @@ export default function Protron() {
   useEffect(() => { spokenHere.current = ''; }, [loc.pathname]);
 
   useEffect(() => {
-    if (!prefs.proactive || open) return;
+    if (!SPEAKS_FIRST || !prefs.proactive || open) return;
     const onTrouble = () => speakFirst('trouble');
     const onError = (e: ErrorEvent) => { if (e.error instanceof Error) speakFirst('trouble'); };
     window.addEventListener(TROUBLE_EVENT, onTrouble);
@@ -263,14 +272,14 @@ export default function Protron() {
             {!aside && <span className="pt-orb-sparks" aria-hidden><i /><i /><i /></span>}
             <span className="pt-orb-core"><ProtronAvatar size={aside ? 32 : 44} state={face} /></span>
           </button>
-          {!aside && (
+          {!aside && LIVE_TALK && (
             <button type="button" className="pt-talk" aria-label="Talk to Protron" title="Talk to Protron, hands-free" onClick={() => show({ talk: true })}>
               <AudioLines size={15} />
             </button>
           )}
           <span className="pt-name">Protron</span>
           {/* The owner's words for what it is, always on show under the tile. */}
-          {!aside && <span className="pt-caption" aria-hidden>AI Live Business Manager</span>}
+          {!aside && <span className="pt-caption" aria-hidden>{LIVE_TALK ? 'AI Live Business Manager' : 'AI Business Manager'}</span>}
         </div>
       )}
 
@@ -291,7 +300,7 @@ export default function Protron() {
           />
         </Suspense>
       )}
-      {everOpened && <ProtronCursor />}
+      {everOpened && HANDS && <ProtronCursor />}
     </>
   );
 }

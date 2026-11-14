@@ -83,6 +83,15 @@ import { describeFacts, needsSiteCheck, openingFor } from '../../services/protro
 import { readFacts } from '../../services/protron/facts';
 import { pointAt, pointerDone, waitForElement } from '../../services/protron/cursor';
 import { LiveVoice, liveSupported, type LiveState } from '../../services/protron/live';
+import { featureReady } from '../../services/features';
+import ThinkingLines from './ThinkingLines';
+
+/* The incubator (docs/INCUBATOR.md): on live, Protron is a chat — typed or a
+   recorded voice message. Live talk, hands-free Talk mode and working the
+   screen are on the testing site only; speaking first is parked. */
+const LIVE_TALK = featureReady('protron-live');
+const HANDS = featureReady('protron-hands');
+const SPEAKS_FIRST = featureReady('protron-speaks-first');
 import type { SearchOutcome } from '../../services/protron/actions';
 import { fetchBoard, type Project } from '../../services/projects';
 import { saveWorkflow } from '../../services/autopilot';
@@ -374,10 +383,11 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
     handOffToAutopilot: (text, opts) => {
       try {
         sessionStorage.setItem('pc_protron_handoff', text);
-        if (opts?.auto) sessionStorage.setItem('pc_protron_autodrive', '1'); else sessionStorage.removeItem('pc_protron_autodrive');
+        if (opts?.auto && HANDS) sessionStorage.setItem('pc_protron_autodrive', '1'); else sessionStorage.removeItem('pc_protron_autodrive');
       } catch { /* the wizard opens with an empty box instead */ }
       navTarget.current = '/autopilot';
       navigate('/autopilot?new=1&from=protron');
+      return !!opts?.auto && HANDS;
     },
     fill: fillField,
     press: pressControl,
@@ -742,7 +752,7 @@ ${facts}` : '',
       commit([...turnsRef.current, { id: newId(), role: 'protron', at: Date.now(), path: loc.pathname, text: seed.intro, suggestions: startersFor(loc.pathname) }]);
     }
     if (seed.message) { lastSend.current = 0; void send(seed.message); }
-    if (seed.talk) startTalk();
+    if (seed.talk && LIVE_TALK) startTalk();
     if (seed.auto) void opening(seed.auto);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- once per seed
   }, [seed]);
@@ -844,10 +854,12 @@ ${facts}` : '',
           <b>Protron</b>
           <span className="pt-status" data-tone={status.tone} aria-live="polite" title={status.text}><i aria-hidden />{status.text}</span>
         </span>
-        <button type="button" className="pt-icon" aria-pressed={talk} title={talk ? 'Back to the chat' : 'Talk to Protron, hands-free'}
-          aria-label={talk ? 'Back to the chat' : 'Talk to Protron'} onClick={() => (talk ? endTalk() : startTalk())}>
-          {talk ? <MessageSquare size={17} /> : <AudioLines size={17} />}
-        </button>
+        {LIVE_TALK && (
+          <button type="button" className="pt-icon" aria-pressed={talk} title={talk ? 'Back to the chat' : 'Talk to Protron, hands-free'}
+            aria-label={talk ? 'Back to the chat' : 'Talk to Protron'} onClick={() => (talk ? endTalk() : startTalk())}>
+            {talk ? <MessageSquare size={17} /> : <AudioLines size={17} />}
+          </button>
+        )}
         <button type="button" className="pt-icon" aria-pressed={prefs.speak} title={prefs.speak ? 'Stop reading replies aloud' : 'Read replies aloud'}
           aria-label={prefs.speak ? 'Stop reading replies aloud' : 'Read replies aloud'}
           onClick={() => { unlockAudio(); if (prefs.speak) hush(); onPrefs({ ...prefs, speak: !prefs.speak }); }}>
@@ -863,6 +875,7 @@ ${facts}` : '',
 
       {menu && (
         <div className="pt-menu">
+          {SPEAKS_FIRST && <>
           <label>
             <input type="checkbox" checked={prefs.proactive} onChange={e => onPrefs({ ...prefs, proactive: e.target.checked })} />
             <span>Start a conversation when I pause<small>Protron reads the screen (labels and messages, never what you typed) and offers help. It only offers — it never acts on its own.</small></span>
@@ -874,16 +887,17 @@ ${facts}` : '',
               {IDLE_CHOICES.filter(n => n > 0).map(n => <option key={n} value={n}>{n < 60 ? `${n} seconds` : `${n / 60} minutes`} without a touch</option>)}
             </select>
           </label>
+          </>}
           <label style={{ cursor: 'default' }}>
             <span style={{ flex: 1 }}>Voice</span>
             <select data-field="protron.voice" className="pt-select" value={prefs.voice} onChange={e => { stopAllVoices(); onPrefs({ ...prefs, voice: e.target.value === 'natural' ? 'natural' : 'warm' }); }}>
-              <option value="warm">Protron — the same voice as live talk (AI voice)</option>
+              <option value="warm">Protron — its own AI voice</option>
               <option value="natural">Device — this browser&rsquo;s own voice (free)</option>
             </select>
           </label>
           <label>
             <input type="checkbox" checked={prefs.speak} onChange={e => { if (!e.target.checked) hush(); onPrefs({ ...prefs, speak: e.target.checked }); }} />
-            <span>Read replies aloud<small>Spoken questions and Talk mode are always answered aloud. The AI voices are one AI credit a reply; your voice is turned into text and not kept.</small></span>
+            <span>Read replies aloud<small>{LIVE_TALK ? 'Spoken questions and Talk mode are always answered aloud.' : 'Voice messages are always answered aloud.'} The AI voices are one AI credit a reply; your voice is turned into text and not kept.</small></span>
           </label>
           <label style={{ display: 'grid', gap: 4, cursor: 'default' }}>
             <span style={{ fontWeight: 600 }}>Your business, so answers fit it</span>
@@ -954,14 +968,18 @@ ${facts}` : '',
               beside Protron's pointer resting on its charging dock — the
               pointer it moves around the app when it works for you. */}
           <div className="pt-hero">
-            <PointerDock />
+            {HANDS && <PointerDock />}
             <div className="pt-hero-copy">
-              <b>AI Live Business Manager</b>
-              <span>Talk to me like a colleague — I plan it, you approve, I build it on your screen.</span>
+              <b>{LIVE_TALK ? 'AI Live Business Manager' : 'AI Business Manager'}</b>
+              <span>{HANDS
+                ? 'Talk to me like a colleague — I plan it, you approve, I build it on your screen.'
+                : 'Type, or press the microphone to send a voice message. I plan it, you approve, AI Autopilot builds it.'}</span>
             </div>
-            <button type="button" className="pt-btn pt-live-cta" onClick={() => { unlockAudio(); startTalk(); }}>
-              <AudioLines size={15} /> Talk live
-            </button>
+            {LIVE_TALK && (
+              <button type="button" className="pt-btn pt-live-cta" onClick={() => { unlockAudio(); startTalk(); }}>
+                <AudioLines size={15} /> Talk live
+              </button>
+            )}
           </div>
           {!turns.length && (
             <div style={{ display: 'grid', gap: 12, justifyItems: 'start' }}>
@@ -969,12 +987,12 @@ ${facts}` : '',
                 <span className="pt-mini"><ProtronAvatar size={22} state="idle" alive={false} /></span>
                 <span className="pt-bubble-text">
                   {greeting.text}
-                  {'\n\n'}Tell me what you want — “I'm a dentist in Virginia and need clients”, or “set up automated email campaigns”. I'll show you the plan in a few bullets, and once you approve it I set it all up in AI Autopilot while you watch.
+                  {'\n\n'}Tell me what you want — “I'm a dentist in Virginia and need clients”, or “set up automated email campaigns”. I'll show you the plan in a few bullets, and once you approve it {HANDS ? 'I set it all up in AI Autopilot while you watch' : 'AI Autopilot sets it all up'}.
                 </span>
               </div>
               <div className="pt-sugs">
                 {greeting.suggestions.map(s => <button key={s} type="button" className="pt-sug" onClick={() => void send(s)}>{s}</button>)}
-                <button type="button" className="pt-sug" onClick={startTalk}><AudioLines size={13} style={{ verticalAlign: '-2px' }} /> Talk to me</button>
+                {LIVE_TALK && <button type="button" className="pt-sug" onClick={startTalk}><AudioLines size={13} style={{ verticalAlign: '-2px' }} /> Talk to me</button>}
               </div>
             </div>
           )}
@@ -1013,7 +1031,7 @@ ${facts}` : '',
             <div className="pt-typing" role="status">
               <span className="pt-mini"><ProtronAvatar size={22} state="thinking" alive={false} /></span>
               <span className="pt-dots" aria-hidden><span /><span /><span /></span>
-              <span className="pt-phase">{phase || 'Thinking'}…</span>
+              {phase ? <span className="pt-phase">{phase}…</span> : <ThinkingLines className="pt-phase" business={prefs.business.about || prefs.business.name} />}
             </div>
           )}
           <div ref={logEnd} />

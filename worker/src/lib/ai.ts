@@ -268,7 +268,7 @@ export type AiPart =
  * `timeoutMs`: how long one model gets before the next is tried. Without it a
  * slow or stuck model held the whole request for as long as Google took.
  */
-function thinkingFor(model: string): Record<string, unknown> {
+export function thinkingFor(model: string): Record<string, unknown> {
   return /^gemini-2\./.test(model) ? { thinkingBudget: 0 } : { thinkingLevel: 'low' };
 }
 

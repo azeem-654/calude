@@ -80,32 +80,28 @@ for (const width of [390, 1280]) {
   const d = p.getByRole('dialog', { name: 'New business workspace' });
   await d.waitFor({ timeout: 20000 });
   await p.waitForTimeout(800);
-  const nameBox = d.getByLabel('Company or business name');
-  out.push(`${width}: wizard first screen asks name=${await nameBox.isVisible()} prefilled="${await nameBox.inputValue()}" launcherAside=${await p.locator('.pt-launch[data-aside="1"]').count()}`);
-  await nameBox.fill('Lone Star Roofing');
+  /* Chat-first (2026-11-14): Protron's own opening is on screen at once — no form, no AI call. */
+  const opening = d.locator('.np-talk-bot').first();
+  await opening.waitFor({ timeout: 5000 });
+  const faces = await d.locator('.np-chat-row .np-chat-face').count();
+  out.push(`${width}: wizard opens on chat=${/name of your business/.test(await opening.innerText())} face=${faces > 0} nameBox=${await d.getByLabel('Company or business name').count()} launcherAside=${await p.locator('.pt-launch[data-aside="1"]').count()}`);
   const cta = d.locator('.wz-cta').last();
-  await cta.click();
-  await d.getByRole('button', { name: /Lead Generation/ }).click();
-  await d.getByRole('button', { name: /Customer Follow-Up Automation/ }).click();
-  await d.getByRole('button', { name: /Customer Reactivation/ }).click();
-  await d.getByRole('button', { name: /Customer Reactivation/ }).click(); // remove again
-  const pressed = await d.locator('.np-sol[aria-pressed="true"]').count();
-  out.push(`${width}: solutions chosen=${pressed} overflow=${await overflow()} cta="${await cta.innerText()}"`);
-  if (SHOTS) await p.screenshot({ path: `${SHOTS}/wizard-sol-${width}.png` });
-  await cta.click();
-  await d.locator('.np-talk-bot').first().waitFor({ timeout: 30000 });
-  out.push(`${width}: first question="${(await d.locator('.np-talk-bot').first().innerText()).slice(0, 90)}"`);
-  await d.getByLabel('Your answer').fill('We run a roofing company in Texas.');
-  await d.getByRole('button', { name: 'Answer', exact: true }).click();
+  const say = async (t) => {
+    const before = await d.locator('.np-talk-bot').count();
+    await d.getByLabel('Your answer').fill(t);
+    await d.getByRole('button', { name: 'Answer', exact: true }).click();
+    await d.locator('.np-talk-bot').nth(before).waitFor({ timeout: 30000 }).catch(() => {});
+  };
+  await say('Lone Star Roofing');
+  await say('We run a roofing company in Texas.');
+  /* "What would you like first?" offers the ready-made solutions as quick answers. */
+  await d.getByRole('button', { name: 'Lead Generation', exact: true }).click();
   await p.waitForTimeout(1500);
-  await d.getByLabel('Your answer').fill('Homeowners around Dallas.');
-  await d.getByRole('button', { name: 'Answer', exact: true }).click();
-  await p.waitForTimeout(1500);
-  await d.getByLabel('Your answer').fill('We forget to follow up on estimates.');
-  await d.getByRole('button', { name: 'Answer', exact: true }).click();
-  await p.waitForTimeout(1500);
-  await d.getByRole('button', { name: /Skip this question/ }).click().catch(() => {});
-  await p.waitForTimeout(1200);
+  await say('Homeowners around Dallas.');
+  await say('Dallas');
+  await say('We forget to follow up on estimates.');
+  const side = await d.locator('.np-side').innerText();
+  out.push(`${width}: chat filled company=${/Lone Star Roofing/.test(side)} solution=${/Lead Generation/.test(side)} overflow=${await overflow()} cta="${await cta.innerText()}"`);
   if (SHOTS) await p.screenshot({ path: `${SHOTS}/wizard-talk-${width}.png` });
   await cta.click(); // write my instruction
   const ins = d.getByLabel('Instruction for AI Autopilot');
@@ -118,7 +114,7 @@ for (const width of [390, 1280]) {
   await d.getByText(/Here.s what I understood|Understanding your request/).first().waitFor({ timeout: 40000 });
   await p.waitForTimeout(3000);
   const und = await d.innerText();
-  out.push(`${width}: understand step reached; solutions shown=${/Lead Generation/.test(und)}&${/Sales Follow-up/.test(und)}; overflow=${await overflow()}`);
+  out.push(`${width}: understand step reached; solutions shown=${/Lead Generation/.test(und)}; overflow=${await overflow()}`);
   if (SHOTS) await p.screenshot({ path: `${SHOTS}/wizard-understand-${width}.png` });
   out.push(`${width}: pageerrors=${JSON.stringify(errs)}`);
   await p.close();
@@ -126,10 +122,10 @@ for (const width of [390, 1280]) {
 await b.close();
 console.log(out.join('\n'));
 const want = [
-  /launcher visible=true overflow=0/, /welcome=true starters=4 overflow=0/, /card -> Search for prospects Needs your OK/,
+  /launcher visible=true overflow=0/, /welcome=true starters=4 overflow=0/, /card -> Search for prospects Confirm below/,
   /after cancel -> Search for prospects Cancelled .* url=\//, /email question -> url=\/settings/, /conversation turns kept=4/,
-  /context note on video studio=true/, /asks name=true .*launcherAside=1/, /solutions chosen=2 overflow=0/,
-  /instruction has company=true problem=true/, /solutions shown=true&true; overflow=0/, /pageerrors=\[\]/,
+  /context note on video studio=true/, /wizard opens on chat=true face=true nameBox=0 launcherAside=1/, /chat filled company=true solution=true overflow=0/,
+  /instruction has company=true problem=true/, /solutions shown=true; overflow=0/, /pageerrors=\[\]/,
 ];
 let failed = 0;
 for (const w of [390, 1280]) for (const re of want) {
