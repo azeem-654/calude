@@ -12,11 +12,14 @@
  * repaints the hero every frame), then an office photo, which the owner
  * replaced (fourth pass, 2026-11-12) with "a more modern background that suits
  * the app's theme", pointing at a soft lilac–pink–blue gradient as the example.
- * So the ground is CSS only — no download — in Autopilot's own colours:
+ * So the ground is CSS only — no download. Fifth pass (owner, 2026-11-14,
+ * with a reference): near-black with an ember-orange glow rising from the
+ * bottom, a fine dot grid lit by it, and the prompt box as dark glass with a
+ * glowing orange edge and an orange Send:
  *
- *   colour  four large soft blobs (indigo, violet, pink, a peach glow), each a
- *           radial gradient drifting on its own slow loop
- *   silk    two wide bands of light curving across, like the example's sheen
+ *   colour  four soft blobs (three embers along the bottom, a faint warm one
+ *           at the top), each a radial gradient drifting on its own slow loop
+ *   dots    a dot grid, masked so it shows where the glow is
  *   mouse   the colour shifts against the pointer (eased in a frame callback
  *           that stops as soon as it has caught up) and a soft light follows
  *           it; touch screens keep the drift alone
@@ -41,6 +44,14 @@
  * AutopilotFilm.tsx shows what Autopilot does instead of listing features as
  * buttons.
  *
+ * ── One screen ──
+ *
+ * The box is exactly as wide as the film (one column, `.dash-hero-col`), and
+ * that width is worked out from the window's height so the greeting, the
+ * box, the starting points and the whole player — picture and controls — fit
+ * on the first screen without scrolling (owner, 2026-11-14). dashboard.css
+ * holds the sum.
+ *
  * Sending hands the words to the New business workspace wizard the same way
  * Protron does (`sessionStorage.pc_protron_handoff` → `/autopilot?new=1&from=protron`,
  * read once by Autopilot.tsx), so it lands in the wizard's own box and goes
@@ -56,11 +67,14 @@ import { featureReady } from '../../services/features';
 
 const LIVE_TALK = featureReady('protron-live');
 
+/* Short labels so the four fit one row under the box at the film's width (the
+   row's height is part of the one-screen sum below); the full sentence is
+   what goes to the wizard. */
 const STARTERS = [
-  'Find new customers for me every day',
-  'Grow my social media with daily posts',
-  'Follow up with every enquiry automatically',
-  'Bring past customers back',
+  { label: 'New customers daily', prompt: 'Find new customers for me every day' },
+  { label: 'Daily social posts', prompt: 'Grow my social media with daily posts' },
+  { label: 'Follow up enquiries', prompt: 'Follow up with every enquiry automatically' },
+  { label: 'Win back customers', prompt: 'Bring past customers back' },
 ];
 
 /** The element that scrolls the page: the nearest scrolling ancestor, else the window. */
@@ -73,11 +87,10 @@ function scrollerOf(el: HTMLElement | null): HTMLElement | Window {
 }
 
 /**
- * The ground: soft colour light in the Autopilot palette — indigo, violet,
- * pink and a peach glow — drifting slowly, two silk bands of light across it
- * and a fine grain, with a light that follows the pointer. Drawn entirely by
- * CSS gradients (no photo, no download): the owner replaced the office photo
- * with "a more modern background that suits the app's theme" (2026-11-12).
+ * The ground: near-black lit from below by drifting ember-orange glows, a dot
+ * grid catching that light, a fine grain, and a warm light that follows the
+ * pointer. Drawn entirely by CSS gradients (no photo, no download) — the
+ * owner's reference of 2026-11-14 replaced the indigo-to-peach aurora.
  */
 function AuroraGround({ active, still }: { active: boolean; still: boolean }) {
   const root = useRef<HTMLDivElement>(null);
@@ -119,8 +132,7 @@ function AuroraGround({ active, still }: { active: boolean; still: boolean }) {
       <span className="dash-aurora-blob is-b" />
       <span className="dash-aurora-blob is-c" />
       <span className="dash-aurora-blob is-d" />
-      <span className="dash-aurora-silk is-1" />
-      <span className="dash-aurora-silk is-2" />
+      <span className="dash-aurora-dots" />
       <span className="dash-aurora-glow" />
       <span className="dash-aurora-grain" />
     </div>
@@ -219,17 +231,18 @@ export default function DashHero({ greeting, firstName }: { greeting: string; fi
         <AuroraGround active={visible} still={still} />
         <span className="dash-hero-veil" />
       </div>
+      <div className="dash-hero-col">
       <div className="dash-hero-inner">
-        <span className="dash-hero-badge"><Sparkles size={13} /> AI Autopilot</span>
         <h1 className="dash-hero-title">{greeting}{firstName ? `, ${firstName}` : ''}</h1>
         <p className="dash-hero-sub">What should AI Autopilot do for your business today?</p>
         <form className="dash-hero-box" onSubmit={e => { e.preventDefault(); send(text); }}>
+          <span className="dash-hero-spark" aria-hidden="true"><Sparkles size={20} /></span>
           <textarea
             ref={box}
             className="dash-hero-input"
             aria-label="Ask AI Autopilot"
             data-field="dashboard.autopilot"
-            rows={3}
+            rows={2}
             maxLength={3000}
             value={text}
             placeholder="Describe a result — e.g. find 20 dentists in Austin every day and email them about our offer…"
@@ -254,17 +267,17 @@ export default function DashHero({ greeting, firstName }: { greeting: string; fi
                 </button>
               )}
             </div>
-            <button type="submit" className="dash-hero-send" aria-label="Send to AI Autopilot" disabled={!text.trim()}><ArrowRight size={18} /></button>
+            <button type="submit" className="dash-hero-send" aria-label="Send to AI Autopilot" disabled={!text.trim()}><span>Send</span><ArrowRight size={16} /></button>
           </div>
           {note && <p className="dash-hero-note" role="status">{note}</p>}
         </form>
-        <p className="dash-hero-how">{LIVE_TALK ? 'Type it, record it, or just talk — Protron sets everything up while you speak.' : 'Type it, record it, or chat with Protron — it asks a few questions and sets everything up with you.'}</p>
         <div className="dash-hero-starters" role="group" aria-label="Starting points">
-          {STARTERS.map(s => <button key={s} type="button" className="dash-hero-chip" onClick={() => send(s)}>{s}</button>)}
+          {STARTERS.map(s => <button key={s.label} type="button" className="dash-hero-chip" title={s.prompt} onClick={() => send(s.prompt)}>{s.label}</button>)}
         </div>
       </div>
       <div className="dash-hero-film">
         <AutopilotFilm onTalk={talk} onRecord={recordIt} onType={typeIt} />
+      </div>
       </div>
     </section>
   );

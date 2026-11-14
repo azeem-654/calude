@@ -67,6 +67,21 @@ and goes to the workspace owner when no address is given (booking.ts
 starting points, then the explainer film. Sending hands the words to the
 wizard like Protron does (`pc_protron_handoff`).
 
+**Fifth pass (owner, 2026-11-14, from a reference image) — the current look:**
+near-black ground lit from below by drifting ember-orange glows through a dot
+grid (`.dash-aurora*`, still CSS only); the box is dark glass with a glowing
+orange edge, an orange spark tile on its top edge, dark Record / Talk-or-Chat
+tiles and an orange **Send**; starting points are dark pills with short labels
+(the full sentence is what is sent). **One screen:** the box and the film
+share one column (`.dash-hero-col`) whose width comes from the window's height
+(`--hero-w`, `--hero-chrome` in dashboard.css) so greeting, box, starters and
+the whole player fit without scrolling — measured at 1280×800 (menu on two
+rows), 1366×768, 1440×900, 1536×864 and 1920×1080. To make that fit, on the
+hero the film hides its title row and lays captions over the foot of the
+picture (under it again on a phone); short screens (≤820px tall) drop the line
+under the greeting and the fourth starter. Change anything above the film and
+re-measure `--hero-chrome`. The aurora/silk notes below are history.
+
 - **The ground is colour light, not a picture** (owner, 2026-11-12, fourth
   pass: hills read as cartoonish, footage stuttered, then the office photo
   gave way to "a more modern background that suits the app's theme"). CSS
