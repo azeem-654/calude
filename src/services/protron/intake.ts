@@ -30,6 +30,10 @@
 import { aiFetch } from '../../lib/gemini';
 import { SOLUTIONS, CUSTOM, solutionByKey } from '../projectSolutions';
 import { matchSolutions } from '../projectIntake';
+import { tidySpoken } from '../spoken';
+import { interviewKnowledge, gapNote } from './knowledge';
+
+export { tidySpoken };
 
 export interface StartCard {
   id: string;
@@ -134,7 +138,7 @@ export const EMPTY_BRIEF: Brief = { company: '', website: '', nature: '', site: 
  * owner: "start the chat session immediately"), costs nothing, and cannot
  * fail. The AI takes over from the customer's first answer. */
 export function openingMessage(b: Brief, firstName = ''): Talk {
-  const hi = firstName ? `Hi ${firstName} — I'm Protron, your AI business manager.` : "Hi — I'm Protron, your AI business manager.";
+  const hi = firstName ? `Hi ${firstName} — I'm Protron, your AI Live Business Manager.` : "Hi — I'm Protron, your AI Live Business Manager.";
   const company = b.company.trim();
   if (b.mode === 'year') {
     return {
@@ -297,14 +301,14 @@ function readJson(raw: string): Record<string, unknown> | null {
   try { return JSON.parse(t.slice(a, z + 1)) as Record<string, unknown>; } catch { return null; }
 }
 
-async function ask(system: string, user: string, module: string, json: boolean, maxTokens = json ? 600 : 1400): Promise<{ ok: true; text: string } | { ok: false; error: string; noAi: boolean }> {
+async function ask(system: string, user: string, module: string, json: boolean, maxTokens = json ? 600 : 1400, timeoutMs?: number): Promise<{ ok: true; text: string } | { ok: false; error: string; noAi: boolean }> {
   const res = await aiFetch({
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: user }] }],
       systemInstruction: { parts: [{ text: system }] },
       generationConfig: { temperature: json ? 0.45 : 0.5, maxOutputTokens: maxTokens, ...(json ? { responseMimeType: 'application/json' } : {}) },
     }),
-  }, module);
+  }, module, timeoutMs);
   if (!res.ok) {
     let msg = '';
     try { msg = String(((await res.json()) as { error?: { message?: string } }).error?.message ?? ''); } catch { /* none */ }
@@ -347,7 +351,7 @@ const NO_FACTS = { company: '', website: '', nature: '', place: '' };
  */
 export function interviewSystem(b: Brief): string {
   return [
-    'You are Protron, the AI business manager inside Protected Central, a CRM and marketing platform. You are chatting with a business owner to set up an AI Autopilot "business workspace": the automations, campaigns and content that will win them more customers and sales. You are a sharp, warm, senior growth consultant. The customer feeling understood and well looked after is your first priority.',
+    'You are Protron, the AI Live Business Manager inside Protected Central, a CRM and marketing platform. You are chatting with a business owner to set up an AI Autopilot "business workspace": the automations, campaigns and content that will win them more customers and sales. You are a sharp, warm, senior growth consultant. The customer feeling understood and well looked after is your first priority.',
     '',
     'HOW TO WRITE "reply" (2 to 4 short sentences, plain text, no markdown):',
     '1. Acknowledge specifically what they just said, in your own words, and reflect their goal back. If they asked something or raised a concern, answer it first.',
@@ -355,9 +359,10 @@ export function interviewSystem(b: Brief): string {
     '3. End with exactly ONE question and a few words on why it matters ("so I target the right area", "so the emails speak to the right people").',
     'If their answer did not address your last question, do not ignore what they said: acknowledge it, then ask again more clearly. Never repeat a question already answered.',
     'No filler openings ("Great question", "Thanks for sharing", "Absolutely"). Never invent facts, figures, results, prices, reviews or places.',
+    'WHEN THEY LACK SOMETHING ("no leads", "no website", "no list", "no time", "no designer"): never just say it is fine and move on. Say in one sentence which part of Protected Central covers it (see WHAT PROTECTED CENTRAL DOES), then carry on. With no leads or contacts, that is AI Prospecting finding businesses that fit for them every day — and add lead-generation to "recommend" if it is not chosen.',
     '',
     'WHAT YOU NEED (only what is still missing, most important first): the company name; their website (optional — offer "No website yet" as a quick answer); what the business does and its main services (skip when the website reading or their words already say); who their ideal customers are; WHERE those customers are (always its own question: if the website reading names places, offer them; otherwise ask openly — never invent a town); their main goal or biggest problem; and only if email or SMS will be sent, what they already have (a mailbox on their own domain, a contact list). Usually 4 to 6 questions in all.',
-    'When you have enough, set "done": true and make "reply" a warm acknowledgement plus one sentence on what you will now write for AI Autopilot — no question.',
+    'When you have enough, set "done": true and make "reply" one warm sentence acknowledging what you learned — no question (the screen adds how to go on).',
     b.mode === 'year'
       ? 'This customer pressed "Build my 12-month business execution plan": they want sales all year round. Already chosen: 12-Month Marketing Plan, Sales Follow-up and Appointment Booking. Also learn their main goal for the year and their busy and quiet seasons, so the months are planned around them.'
       : `When asking what they want first, offer these starting points as quick answers: ${START_CARDS.slice(0, 9).map(c => c.label).join(', ')}.`,
@@ -370,23 +375,58 @@ export function interviewSystem(b: Brief): string {
     '',
     'CATALOGUE',
     catalogue(),
+    '',
+    'WHAT PROTECTED CENTRAL DOES (answer only from this; never promise anything else)',
+    interviewKnowledge(),
   ].join('\n');
+}
+
+/**
+ * Protron's last message in the chat (owner, 2026-11-14): the customer is
+ * told plainly that the interview is over and which button comes next —
+ * before, the chat just stopped and the button had to be found.
+ */
+export const FINISHED_LINE = 'We have finalised our understanding of you, your business and your situation. Now press “Create my smart optimized prompt for AI Autopilot” and I’ll write it for you.';
+
+/** The closing message: the AI's acknowledgement (if any), then FINISHED_LINE, once. */
+export function finishedMessage(ack: string): string {
+  const a = ack.trim();
+  return a && !a.includes(FINISHED_LINE) ? `${a}\n\n${FINISHED_LINE}` : (a || FINISHED_LINE);
+}
+
+/**
+ * How long a chat reply may take before the standard question is asked
+ * instead (owner, 2026-11-14: "one message to reply takes around 3 to 4
+ * minutes"). The server walks its keys and models; with the free quotas
+ * spent that walk was the wait. A person in a chat would rather get the next
+ * question now than the perfect one in two minutes — and the next reply
+ * tries the AI again, with the spent keys resting (lib/aiPool.ts).
+ */
+export const REPLY_WITHIN_MS = 30_000;
+
+/** The next turn without the AI: the fixed questions, with a gap their last answer names said first. */
+export function offlineStep(b: Brief, error?: string): NextStep {
+  /* The answer to the opening, read without the AI: a name and a website when it plainly gives them. */
+  const prev = b.talk[b.talk.length - 2];
+  const last = b.talk[b.talk.length - 1];
+  const facts = { ...NO_FACTS };
+  if (prev?.intro && last?.role === 'user' && !b.company.trim()) Object.assign(facts, guessIntroFacts(last.text));
+  const q = fallbackNext({ ...b, company: b.company || facts.company, website: b.website || facts.website, nature: b.nature || facts.nature });
+  /* "I don't have any leads" answered with the next fixed question read as
+     "okay, fine" (owner's test). What covers the gap is said first. */
+  const gap = last?.role === 'user' ? gapNote(last.text) : null;
+  let recommend = offlineRecommend(b);
+  if (gap?.key && !chosenKeys(b).includes(gap.key)) recommend = [{ key: gap.key, why: gap.why }, ...recommend.filter(r => r.key !== gap.key)];
+  const askText = q?.ask ? (gap ? `${gap.say} ${q.ask}` : q.ask) : (gap?.say ?? '');
+  return { ask: askText, facts, quick: q?.quick ?? [], done: !q, recommend: recommend.slice(0, 2), offline: true, error, fq: q?.id };
 }
 
 export async function nextStep(b: Brief): Promise<NextStep> {
   const asked = b.talk.filter(t => t.role === 'protron' && !t.intro).length;
-  const offline = (error?: string): NextStep => {
-    /* The answer to the opening, read without the AI: a name and a website when it plainly gives them. */
-    const prev = b.talk[b.talk.length - 2];
-    const last = b.talk[b.talk.length - 1];
-    const facts = { ...NO_FACTS };
-    if (prev?.intro && last?.role === 'user' && !b.company.trim()) Object.assign(facts, guessIntroFacts(last.text));
-    const q = fallbackNext({ ...b, company: b.company || facts.company, website: b.website || facts.website, nature: b.nature || facts.nature });
-    return { ask: q?.ask ?? '', facts, quick: q?.quick ?? [], done: !q, recommend: offlineRecommend(b), offline: true, error, fq: q?.id };
-  };
+  const offline = (error?: string): NextStep => offlineStep(b, error);
   if (asked >= MAX_QUESTIONS) return { ask: '', facts: NO_FACTS, quick: [], done: true, recommend: [], offline: false };
-  const r = await ask(interviewSystem(b), briefText(b), 'protron', true, 900);
-  if (!r.ok) return offline(r.noAi ? undefined : r.error);
+  const r = await ask(interviewSystem(b), briefText(b), 'protron', true, 900, REPLY_WITHIN_MS);
+  if (!r.ok) return offline(r.noAi ? undefined : /took too long/i.test(r.error) ? 'The AI is slow right now' : r.error);
   const j = readJson(r.text);
   const said = typeof j?.reply === 'string' ? j.reply : typeof j?.ask === 'string' ? j.ask : '';
   if (!j || !said.trim()) return offline('The AI answer could not be read, so I am asking the standard questions.');
@@ -430,16 +470,8 @@ export const SKIPPED = /^\s*(skip|pass|not sure|don'?t know|no idea)\b/i;
  * "Uh yeah, I I want at least 10 patients a day", a pause that split one
  * answer in two, an "And." left over when Protron started talking. The AI
  * writer reads past that; the offline draft below must not paste it in. */
-const FILLER = /\b(?:uh+|um+|erm*|ah+|hmm+|uh-huh|you know|i mean)\b[,.]?\s*/gi;
-
-/** Fillers, stammered repeats and stray punctuation out; the words kept. */
-export function tidySpoken(t: string): string {
-  let s = ` ${t} `.replace(FILLER, ' ');
-  s = s.replace(/^\s*(?:(?:yeah|yes|okay|ok|so|well|right|oh)\s*[,.]?\s+)+(?=\S)/i, '');
-  s = s.replace(/\b(\w+)(?:\s+\1\b)+/gi, '$1');
-  s = s.replace(/\s+([,.!?])/g, '$1').replace(/([,.!?])(?:\s*[,.])+/g, '$1').replace(/\s{2,}/g, ' ').replace(/^[\s,.;:—–-]+/, '').trim();
-  return s ? s[0].toUpperCase() + s.slice(1) : '';
-}
+/* `tidySpoken` (services/spoken.ts, shared with the Worker's transcriber):
+   fillers, stammered repeats and stray punctuation out; the words kept. */
 
 /** Consecutive lines from the same side joined — one answer, however many pauses. */
 export function mergeTalk(talk: Talk[]): Talk[] {

@@ -38,6 +38,7 @@ import { canAccess, userFromToken, type Env } from '../lib/db';
 import { aiBudget, aiRefund, askGemini, askGeminiParts, loadAiKey, refundIfFailed, type AiPart } from '../lib/ai';
 import { readOpenAiKeys, transcribeOpenAi } from '../lib/openai';
 import { transcribePiece, transcriberMode } from '../lib/video/transcribe';
+import { tidySpoken } from '../../../src/services/spoken';
 import { cleanYear, universalYear, yearPrompt } from '../lib/marketingYear';
 import { readSite } from '../lib/readSite';
 import { rateLimit } from '../lib/rateLimit';
@@ -276,14 +277,17 @@ export async function transcribe(key: string, d: IntakeReq, env?: Env): Promise<
   const context = clip(d.context, 600).replace(/"/g, "'").replace(/[^\P{Cc}]/gu, ' ');
 
   const prompt = [
-    'Transcribe this recording exactly as spoken.',
+    'Write out what the speaker said, in clean words.',
     'The speaker is describing, in their own words, what they want an AI marketing and automation product to do for their business.',
     'Rules:',
-    '- Verbatim: keep their words and word order. Do not summarise, rephrase, correct grammar or add anything.',
+    /* Clean, not verbatim (owner, 2026-11-14: "remove the filler words … just
+       understand whatever the customer said, and write clean words"). Their
+       meaning, names and facts stay exactly; only the noise of speaking goes. */
+    '- Keep their own words, meaning, names and facts exactly. Do not summarise, add anything or answer them.',
+    '- Leave out filler words and sounds (um, uh, er, yeah, so yeah, right, okay so, you know, I mean, like), stammered repeats ("I I want"), and false starts — where they correct themselves, keep only what they settled on.',
     '- Add sentence punctuation and capitalisation. Write numbers as digits when they are quantities ("80 products", "3 times a week").',
     '- Speakers may have any accent — Indian, Pakistani, Nigerian, British, American, Australian, and others. Transcribe what they said, not what a US speaker would have said.',
     '- Brand and platform names are common: Instagram, LinkedIn, Facebook, TikTok, YouTube, Shopify, WooCommerce, Amazon, Google, Protected Central.',
-    '- Drop filler sounds (um, uh) and false starts only when they carry no meaning.',
     '- If a word is genuinely unintelligible, write [unclear] in its place rather than guessing.',
     lang ? `- The speaker's browser is set to ${lang}; they may still speak another language — if so, transcribe in that language.` : '',
     /* What the screen just asked and the names already known (owner,
@@ -311,26 +315,29 @@ export async function transcribe(key: string, d: IntakeReq, env?: Env): Promise<
    * reviewers met when the free Google quota ran out. Told only the business
    * name: Whisper repeats a long prompt back as if it had been said.
    */
-  const whisper = async (why: string): Promise<Response> => {
-    if (!env || !bytes || transcriberMode(env) !== 'workers_ai') return fail(why);
+  const canWhisper = !!(env && bytes && transcriberMode(env) === 'workers_ai');
+  /** Whisper's answer, or null when it could not run. */
+  const heard = async (): Promise<Response | null> => {
+    if (!env || !bytes || !canWhisper) return null;
     const t0 = Date.now();
     try {
       const hint = /Their business: ([^.]{2,80})/.exec(context)?.[1] ?? '';
       const w = await transcribePiece(env, bytes.buffer as ArrayBuffer, 0, lang.slice(0, 2), hint);
-      const text = clip(w.text.replace(/\s+/g, ' ').trim(), 6000);
+      const text = clip(tidySpoken(w.text.replace(/\s+/g, ' ').trim()), 6000);
       if (!text) return json({ success: true, text: '', language: lang, clarity: 'unclear', engine: 'whisper', ms: Date.now() - t0 });
       const conf = w.words.map(x => x.c).filter((c): c is number => typeof c === 'number');
       const avg = conf.length ? conf.reduce((a, c) => a + c, 0) / conf.length : 0.5;
       return json({ success: true, text, language: w.language || lang, clarity: avg >= 0.55 ? 'clear' : 'partly', engine: 'whisper', ms: Date.now() - t0 });
     } catch (e) {
       console.warn('whisper voice message failed', e instanceof Error ? e.message : String(e));
-      return fail(why);
+      return null;
     }
   };
+  const whisper = async (why: string): Promise<Response> => (await heard()) ?? fail(why);
   if (env && bytes) {
     const t0 = Date.now();
     const o = await transcribeOpenAi(env, bytes, mime.split(';')[0], lang, context);
-    if (o.ok && o.text) return json({ success: true, text: clip(o.text, 6000), language: lang, clarity: 'clear', engine: 'openai', ms: Date.now() - t0 });
+    if (o.ok && o.text) return json({ success: true, text: clip(tidySpoken(o.text), 6000), language: lang, clarity: 'clear', engine: 'openai', ms: Date.now() - t0 });
     if (!key) return whisper(o.ok ? 'I couldn’t make out any words.' : o.noKeys ? 'Our AI is not available right now. This is on our side, not yours.' : `The recording could not be transcribed: ${o.error}`);
   }
   if (!key) return fail('Our AI is not available right now. This is on our side, not yours.', 200, { code: 'no_ai' });
@@ -345,14 +352,35 @@ export async function transcribe(key: string, d: IntakeReq, env?: Env): Promise<
      fast but misheard names and accents (the owner's test, 2026-11-14), and
      a wrong word costs the customer more than a second does. */
   const started = Date.now();
-  const ai = await askGeminiParts(key, parts, 0, { module: 'business-wizard', task: 'write', fast: true, timeoutMs: 25_000 });
-  if (!ai.ok) return whisper(ai.error);
-  const r = parseJson<{ text?: string; language?: string; clarity?: string }>(ai.text);
-  const ms = Date.now() - started;
-  const text = clip(r?.text, 6000);
-  const clarity = ['clear', 'partly', 'unclear'].includes(String(r?.clarity)) ? String(r?.clarity) : 'partly';
-  if (!text) return json({ success: true, text: '', language: clip(r?.language, 12), clarity: 'unclear', ms });
-  return json({ success: true, text, language: clip(r?.language, 12), clarity, ms });
+  const fromGemini = (ai: { ok: boolean; text: string }): Response | null => {
+    if (!ai.ok) return null;
+    const r = parseJson<{ text?: string; language?: string; clarity?: string }>(ai.text);
+    const ms = Date.now() - started;
+    const text = clip(tidySpoken(String(r?.text ?? '')), 6000);
+    const clarity = ['clear', 'partly', 'unclear'].includes(String(r?.clarity)) ? String(r?.clarity) : 'partly';
+    if (!text) return json({ success: true, text: '', language: clip(r?.language, 12), clarity: 'unclear', ms });
+    return json({ success: true, text, language: clip(r?.language, 12), clarity, ms });
+  };
+  let geminiError = '';
+  const gemini = askGeminiParts(key, parts, 0, { module: 'business-wizard', task: 'write', fast: true, timeoutMs: 15_000 })
+    .then(ai => { if (!ai.ok) geminiError = ai.error; return fromGemini(ai); });
+  /*
+   * Gemini hears names best, so it is asked first — but not waited on for
+   * long (owner, 2026-11-14: a voice message and its reply took 3–4
+   * minutes). With the free Google quotas spent, its walk across keys was a
+   * minute or more before Whisper was even tried. Past 6.5 s Whisper starts
+   * too (a few seconds on a voice note, no key) and the first good answer
+   * wins; Gemini is still preferred whenever it answers first.
+   */
+  const early = await Promise.race([gemini, new Promise<undefined>(res => setTimeout(() => res(undefined), 6_500))]);
+  if (early !== undefined) return early ?? whisper(geminiError || 'The recording could not be transcribed.');
+  if (!canWhisper) return (await gemini) ?? fail(geminiError || 'The recording could not be transcribed.');
+  const viaWhisper = heard();
+  const first = await Promise.race([
+    gemini.then(r => r ?? viaWhisper),
+    viaWhisper.then(r => r ?? gemini),
+  ]);
+  return first ?? (await gemini) ?? (await viaWhisper) ?? fail(geminiError || 'The recording could not be transcribed.');
 }
 
 /* ── understand ─────────────────────────────────────────────────────────── */

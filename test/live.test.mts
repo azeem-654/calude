@@ -192,6 +192,30 @@ const intake = await import('../src/services/protron/intake.ts');
   ok('L10 after the chat, the business is not asked for again — it is the chat\'s, shown to correct', known.business?.value === 'manual' && known.bizName?.value === 'Azeem Dental' && /family dental practice/i.test(String(known.bizWhat?.value)), JSON.stringify(known.business ?? null));
 }
 
+/* L11 — the owner's test of 2026-11-14: clean voice words, product knowledge, the closing line, a reply that cannot hang */
+{
+  const sp = await import('../src/services/spoken.ts');
+  const t = sp.tidySpoken;
+  ok('L11 fillers out of a recorded message, the words kept', t("Um, Let the uh, prod from running the app uh, uh, be there, because that's definitely gonna come.") === "Let the prod from running the app be there, because that's definitely gonna come.", t("Um, Let the uh, prod from running the app uh, uh, be there, because that's definitely gonna come."));
+  ok('L11 "so yeah", "okay so" and a tag "right?" go', t('Okay so my business is Azeem Dental, based in Virginia, so yeah.') === 'My business is Azeem Dental, based in Virginia.' && t('We want 10 a day, right? Then more.') === 'We want 10 a day. Then more.', t('We want 10 a day, right? Then more.'));
+  ok('L11 a meaningful "like", "right" or "you know" stays', /I'd like the right customers/.test(t("I'd like the right customers")) && t('You know our prices are fair.') === 'You know our prices are fair.');
+  ok('L11 cleaning twice changes nothing', ['Yeah, I I want leads, you know, fast.', 'So, uh, we do roofing.'].every(x => t(t(x)) === t(x)));
+  const k = await import('../src/services/protron/knowledge.ts');
+  ok('L11 "no lead source" is answered with AI Prospecting', k.gapNote("I don't have any lead source with me")?.key === 'lead-generation' && /AI Prospecting/.test(k.gapNote('we have no leads')?.say ?? ''));
+  ok('L11 …and "lots of leads" is not a gap', k.gapNote('We have lots of leads already') === null);
+  const sys = intake.interviewSystem({ ...intake.EMPTY_BRIEF, company: 'Azeem Dental' });
+  ok('L11 the interview reads the product: AI Prospecting, Websites, the gaps rule', /AI Prospecting/.test(sys) && /WHAT PROTECTED CENTRAL DOES/.test(sys) && /WHEN THEY LACK SOMETHING/.test(sys) && /AI Live Business Manager/.test(sys));
+  ok('L11 the chat ends by naming the button', /Create my smart optimized prompt for AI Autopilot/.test(intake.finishedMessage('')) && intake.finishedMessage('Thanks, I have it all.').startsWith('Thanks, I have it all.') && intake.finishedMessage(intake.finishedMessage('x')) === intake.finishedMessage('x'));
+  /* Without the AI: "no leads" is answered before the next fixed question, and Lead Generation is suggested. */
+  const b = { ...intake.EMPTY_BRIEF, company: 'Azeem Dental', nature: 'A family dental practice in Virginia', cards: ['social'], talk: [
+    { role: 'protron' as const, text: 'Who are the customers you want more of?' },
+    { role: 'user' as const, text: "Families nearby, but I don't have any leads or a contact list." },
+  ] };
+  const step = intake.offlineStep(b);
+  ok('L11 offline, "no leads" gets AI Prospecting first, then the next question', step.offline && /^No leads yet/.test(step.ask) && /\?$/.test(step.ask) && step.recommend.some(r => r.key === 'lead-generation'), JSON.stringify(step));
+  ok('L11 a chat reply has a deadline under the server\'s walk', intake.REPLY_WITHIN_MS <= 30_000);
+}
+
 console.log(out.join('\n'));
 const failed = out.filter(l => l.startsWith('FAIL'));
 console.log(`\n${out.length - failed.length}/${out.length} passed`);

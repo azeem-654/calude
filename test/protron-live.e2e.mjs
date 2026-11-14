@@ -42,7 +42,7 @@ async function signedIn(width) {
   return { ctx, p, errs };
 }
 const overflow = p => p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-const panelOf = p => p.getByRole('dialog', { name: /Protron, your AI business manager/ });
+const panelOf = p => p.getByRole('dialog', { name: /Protron, your AI Live Business Manager/ });
 
 for (const width of [1280, 390]) {
   const W = `${width}px`;

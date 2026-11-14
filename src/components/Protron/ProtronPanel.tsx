@@ -368,7 +368,7 @@ export default function ProtronPanel({ open, who, size, onSize, prefs, onPrefs, 
       const now = new Date().toISOString();
       app.addContact({
         name: c.name, email: c.email, phone: c.phone, company: c.company, status: 'lead', tags: [],
-        source: 'Protron (AI business manager)', createdAt: now, lastActivity: now, value: 0,
+        source: 'Protron (AI Live Business Manager)', createdAt: now, lastActivity: now, value: 0,
       });
     },
     createPipeline: name => app.createPipeline(name).id,
@@ -851,7 +851,7 @@ ${facts}` : '',
     <section
       className="pt-panel"
       role="dialog"
-      aria-label="Protron, your AI business manager"
+      aria-label="Protron, your AI Live Business Manager"
       data-size={size}
       data-talk={talk ? '1' : '0'}
       data-peek={face === 'working' && !talk ? '1' : '0'}

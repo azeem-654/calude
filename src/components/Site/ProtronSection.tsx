@@ -129,8 +129,8 @@ export function ProtronSection({ agent }: { agent: boolean }) {
         <h2>Meet Protron. <em>Your AI Live Business Manager.</em></h2>
         <p>
           {agent
-            ? 'Protron is an AI business manager on every screen of the app. Talk to it live, out loud. It proposes a plan, builds it in AI Autopilot once you approve, and keeps watch while it runs.'
-            : 'Protron is the AI business manager you chat with when you start a business workspace. Type, or send a voice message: it asks a few short questions and writes the plan AI Autopilot builds.'}
+            ? 'Protron is your AI Live Business Manager, on every screen of the app. Talk to it live, out loud. It proposes a plan, builds it in AI Autopilot once you approve, and keeps watch while it runs.'
+            : 'Protron is your AI Live Business Manager: you chat with it when you start a business workspace. Type, or send a voice message: it asks a few short questions and writes the plan AI Autopilot builds.'}
         </p>
       </div>
       <div className="ptn-grid">
@@ -193,7 +193,7 @@ export function WhatsNew({ agent }: { agent: boolean }) {
             : <div key={n.title} className="ptn-new-card">{body}</div>;
         })}
       </div>
-      <p className="ptn-new-foot"><a href="/changelog">Everything that has shipped <ArrowRight size={13} /></a></p>
+      <p className="ptn-new-foot"><a href="/changelog">Everything that has shipped <ArrowRight size={13} /></a> · <a href="#coming-soon">Coming soon <ArrowRight size={13} /></a></p>
     </section>
   );
 }

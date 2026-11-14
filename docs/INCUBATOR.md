@@ -23,9 +23,12 @@ edits this file in the same commit.
 `featureReady('<name>')` is the only check; nothing else decides it.
 
 **To send one live:** take its name out of `REHEARSING`, delete its section
-below (one line under *Released*), push to `staging`, check it on the testing
-site once more, then **Actions → Promote testing to live**. Nothing else
-changes.
+below (one line under *Released*), remove its card from the home page's
+**Coming soon** section (`src/components/Site/UpcomingSection.tsx`, which
+lists the incubator for visitors — "Coming soon" on live, "In testing now" on
+testing) and, if it earns one, add it to What's new; push to `staging`, check
+it on the testing site once more, then **Actions → Promote testing to live**.
+A feature newly incubated gets a card there too, if the owner wants it shown.
 
 ## In the incubator (testing site only)
 
@@ -54,6 +57,11 @@ AppSumo review to meet it half-finished.
 On live, Protron still answers, opens screens, creates contacts and pipelines
 on Confirm, drafts workflows, and an approved plan opens the AI Autopilot
 wizard with the plan in its box — the customer presses the buttons.
+
+The dashboard film keeps its "Runs the app" chapter (owner, 2026-11-14:
+"that's definitely gonna come in the app"); where this is off, the chapter is
+labelled **Coming soon** with an "Upcoming feature" badge on the picture
+(`HANDS` in `AutopilotFilm.tsx`) — both disappear on release with no edit.
 
 Before release: the pointer and autodrive e2e (`protron-brief.e2e.mjs`,
 `protron-live.e2e.mjs`) green at 390 and 1280 on the testing site, and the

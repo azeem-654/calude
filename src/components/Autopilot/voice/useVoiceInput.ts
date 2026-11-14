@@ -52,6 +52,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { transcribe } from '../../../services/intake';
 import { base64, downsample, wavBytes } from './wav';
+import { tidySpoken } from '../../../services/spoken';
 
 /* ── The browser recogniser, typed only as far as it is used ── */
 interface RecAlt { transcript: string; confidence: number }
@@ -320,7 +321,7 @@ export function useVoiceInput(locale: string, opts: { silenceStopSeconds?: numbe
     const took = (Date.now() - startedAt.current) / 1000;
     const sampleRate = rate.current;
     const recorded = chunks.current;
-    const browserText = latest.current.trim() || committed.current.trim();
+    const browserText0 = latest.current.trim() || committed.current.trim();
     const conf = confidences.current;
     teardown();
     setLevel(0);
@@ -334,7 +335,9 @@ export function useVoiceInput(locale: string, opts: { silenceStopSeconds?: numbe
     setPhase('transcribing');
     const wav = wavBytes(downsample(recorded, sampleRate));
     const t = await transcribe(base64(wav), 'audio/wav', locale, contextRef.current?.() ?? '');
-    const text = t.ok ? t.text.trim() : '';
+    /* Clean words, whichever engine heard it (services/spoken.ts; the server
+       cleans too, and cleaning twice changes nothing). */
+    const text = t.ok ? tidySpoken(t.text.trim()) : '';
     let audio: string | undefined;
     try { audio = URL.createObjectURL(new Blob([wav as BlobPart], { type: 'audio/wav' })); } catch { /* no playback; the text still comes */ }
 
@@ -347,6 +350,7 @@ export function useVoiceInput(locale: string, opts: { silenceStopSeconds?: numbe
           : 'Some of it was hard to make out, marked [unclear]. Please check it before continuing.',
       };
     }
+    const browserText = tidySpoken(browserText0);
     if (browserText) {
       const avg = conf.length ? conf.reduce((a, b) => a + b, 0) / conf.length : 0.6;
       setFinalText(browserText);

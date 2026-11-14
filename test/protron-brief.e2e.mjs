@@ -55,7 +55,7 @@ for (const width of [390, 1280]) {
   ok(`${W} the launcher shows the robot portrait`, (await face.count()) === 1 && /\/protron\/robot-(160|384)\.webp$/.test(await face.locator('image.pt-photo').getAttribute('href') ?? '') && (await face.locator('.pt-ring').count()) === 1 && (await face.locator('.pt-mouth .pt-bar').count()) === 7);
 
   await p.getByRole('button', { name: /Open Protron/ }).click();
-  const panel = p.getByRole('dialog', { name: /Protron, your AI business manager/ });
+  const panel = p.getByRole('dialog', { name: /Protron, your AI Live Business Manager/ });
   await panel.waitFor();
   await p.waitForTimeout(600);
   const hello = await panel.innerText();

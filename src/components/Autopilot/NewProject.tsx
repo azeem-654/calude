@@ -62,8 +62,8 @@ import {
   type Blueprint, type IntakeState, type KnownSource, type WorkspaceFacts, type Attachment,
 } from '../../services/projectIntake';
 import Describe, { type DescribeValue } from './newProject/Describe';
-import ProtronIntake, { useProtronIntake } from './newProject/ProtronIntake';
-import { chosenLabels } from '../../services/protron/intake';
+import ProtronIntake, { useProtronIntake, SolutionChips } from './newProject/ProtronIntake';
+import ProtronAvatar from '../Protron/ProtronAvatar';
 import Understanding, { type Stage } from './newProject/Understanding';
 import Questions from './newProject/Questions';
 import FirstLeads from './newProject/FirstLeads';
@@ -991,8 +991,27 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
   const phaseIndex = PHASES.findIndex(p => p.key.includes(phase));
 
   /* ── The companion pane ── */
+  /* While Protron is interviewing, the pane is Protron's (owner, 2026-11-14:
+     "on the right section … put an animated avatar of Protron there"): its
+     living portrait, in the state of the chat, over what it has so far. */
+  const withProtron = phase === 'describe' && intake.step !== 'manual';
+  const protronState = intake.busy ? 'thinking' : intake.talkDone ? 'done' : 'idle';
   const side = (
-    <aside className="np-side" aria-label="AI Autopilot">
+    <aside className="np-side" aria-label={withProtron ? 'Protron, your AI Live Business Manager' : 'AI Autopilot'}>
+      {withProtron ? (
+        <div className="np-side-protron">
+          <span className="np-side-avatar"><ProtronAvatar size={112} state={protronState} /></span>
+          <b>Protron</b>
+          <span className="np-side-role">Your AI Live Business Manager</span>
+          <span className="np-side-status" data-state={protronState} role="status">
+            <i aria-hidden="true" />
+            {intake.busy === 'writing' ? 'Writing your smart optimized prompt…'
+              : intake.busy ? 'Thinking about your business…'
+                : intake.talkDone ? 'Finished understanding your business'
+                  : 'Listening — answer in the chat'}
+          </span>
+        </div>
+      ) : (
       <div style={{ display: 'flex', gap: 11, alignItems: 'center' }}>
         <AutopilotBot size={46} awake busy={phase === 'understand' && !understood} />
         <span style={{ minWidth: 0 }}>
@@ -1007,15 +1026,16 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
           </span>
         </span>
       </div>
+      )}
 
-      {phase === 'describe' && intake.step !== 'manual' && (
+      {withProtron && (
         <div style={{ display: 'grid', gap: 8 }}>
           <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b7280', letterSpacing: '0.05em' }}>WHAT PROTRON HAS SO FAR</span>
           <span style={{ fontSize: 13, color: '#334155' }}><b>Business:</b> {intake.brief.company.trim() || '—'}</span>
           <span style={{ fontSize: 13, color: '#334155', overflowWrap: 'anywhere' }}><b>Website:</b> {intake.brief.website.trim() || (intake.brief.nature.trim() ? 'none — described instead' : '—')}</span>
           {(intake.brief.place ?? '').trim() && <span style={{ fontSize: 13, color: '#334155' }}><b>Customers in:</b> {intake.brief.place}</span>}
-          <span style={{ fontSize: 13, color: '#334155' }}><b>Solutions:</b> {chosenLabels(intake.brief).join(', ') || '—'}</span>
           <span style={{ fontSize: 13, color: '#334155' }}><b>Answers:</b> {intake.brief.talk.filter(t => t.role === 'user').length}</span>
+          <SolutionChips brief={intake.brief} setBrief={intake.setBrief} />
           <span style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5, marginTop: 6 }}>Nothing is saved until you approve the instruction and build the business workspace.</span>
         </div>
       )}

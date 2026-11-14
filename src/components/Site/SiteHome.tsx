@@ -48,6 +48,7 @@ import LaunchFilm from './LaunchFilm';
 import AutopilotDemo from './AutopilotDemo';
 import PlatformDemo from './PlatformDemo';
 import { ProtronSection, WhatsNew } from './ProtronSection';
+import { UpcomingSection } from './UpcomingSection';
 import ProspectingShowcase from './ProspectingShowcase';
 import FeatureStage from './FeatureStage';
 import CloudSection from './CloudSection';
@@ -644,6 +645,10 @@ export default function SiteHome() {
              this host's app makes it (ProtronSection.tsx). After the film, not
              above the recipes: Find my solution stays where the funnel put it. ── */}
       <WhatsNew agent={agent} />
+
+      {/* ── Coming soon: the incubator's features, badged by this host's
+             switches (UpcomingSection.tsx, docs/INCUBATOR.md). ── */}
+      <UpcomingSection />
 
       {/* ── AI Autopilot ──
              First, because it is what the rest is now driven by, and because

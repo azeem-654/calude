@@ -42,7 +42,7 @@ for (const width of [390, 1280]) {
   out.push(`${width}: launcher visible=${await orb.isVisible()} overflow=${await overflow()}`);
   if (SHOTS) await p.screenshot({ path: `${SHOTS}/dash-${width}.png` });
   await orb.click();
-  const panel = p.getByRole('dialog', { name: /Protron, your AI business manager/ });
+  const panel = p.getByRole('dialog', { name: /Protron, your AI Live Business Manager/ });
   await panel.waitFor({ timeout: 10000 });
   const txt = await panel.innerText();
   out.push(`${width}: panel open; welcome=${/I.m Protron/.test(txt)} starters=${await panel.locator('.pt-sug').count()} overflow=${await overflow()}`);
@@ -68,7 +68,7 @@ for (const width of [390, 1280]) {
   const kept = await p.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('pc_protron_chat') && !/_(at|dirty)$/.test(k)).map(k => JSON.parse(localStorage.getItem(k)).length));
   out.push(`${width}: after reload, conversation turns kept=${kept}`);
   await p.getByRole('button', { name: /Open Protron/ }).click();
-  const panel2 = p.getByRole('dialog', { name: /Protron, your AI business manager/ });
+  const panel2 = p.getByRole('dialog', { name: /Protron, your AI Live Business Manager/ });
   await panel2.waitFor();
   await p.waitForTimeout(600);
   const t2 = await panel2.innerText();

@@ -384,6 +384,37 @@ and the AI mostly refusing (free keys rate-limited):
 - **Live wording**: with `protron-live` off, the dashboard's button is "Chat
   with Protron — type or record" and the film speaks `FILM_SAY_CHAT`.
 
+### The 2026-11-14 owner's test (after the audit)
+
+- **Speed.** Replies took 3–4 minutes: a voice message's transcription walked
+  every Google key (≈100 s) before Whisper, then the reply walked them again
+  (105 s). Now `/api/ai.php` gives FAST_MODULES (`protron`) 26 s in all and
+  12 s per model (`FAST_ANSWER_BY_MS`, `FAST_MODEL_MS`, `budgetMs` on
+  `withFailover`); the page gives up at `REPLY_WITHIN_MS` (30 s, `aiFetch`'s
+  third argument) and asks the standard question (`offlineStep`). Transcribe:
+  Gemini first, Whisper started too after 6.5 s, the first good answer wins.
+- **Clean words.** The transcriber is told to drop fillers and false starts;
+  every engine's text then goes through `tidySpoken` (`services/spoken.ts`,
+  shared by the Worker and `useVoiceInput`). Conservative: "like", "right",
+  "you know" go only where they cannot mean anything. No recording to play
+  back any more — the words are what is checked.
+- **Product knowledge.** `interviewSystem` carries `interviewKnowledge()`
+  (knowledge.ts: every subscriber module's line and note, plus `GAPS`). "I
+  don't have any leads" is answered with AI Prospecting and Lead Generation
+  is recommended — by the AI's rule, and offline by `gapNote` (test L11).
+- **The end of the chat** is always `finishedMessage` (`FINISHED_LINE`):
+  "We have finalised our understanding … press “Create my smart optimized
+  prompt for AI Autopilot”".
+- **"AI Live Business Manager"** wherever Protron is introduced (greeting,
+  panel, launcher, the system prompts, the site, "Protron, your AI Live
+  Business Manager, suggests adding"). The e2e dialog selectors read it.
+- **The side pane** during the chat is Protron's: the living avatar (112 px,
+  thinking / done), its status line, and the solutions as chips
+  (`SolutionChips`: icon, ✓, remove). **Include it** flies a chip to the
+  list (`flyToSolutions`, Web Animations; skipped under reduced motion) and
+  the new chip pops and glows on mount. Below 1040 px, where the pane is
+  hidden, the chips show above the suggestions (`.np-sols-inline`).
+
 ### Voice — Talk mode, turn by turn (the fallback)
 
 In: the Autopilot recorder (`useVoiceInput`, 1.8 s silence) → server

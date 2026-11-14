@@ -223,3 +223,82 @@ a.ptn-new-card:hover { border-color: rgba(200, 242, 77, 0.4); background: var(--
 
 @media (max-width: 900px) { .ptn-new-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .ptn-new-grid { grid-template-columns: 1fr; } }
+
+/* ── Coming soon (UpcomingSection.tsx): the incubator, drawn small ── */
+.ptn-up { padding-top: clamp(40px, 6vw, 80px); padding-bottom: clamp(40px, 6vw, 80px); }
+.ptn-up-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; text-align: left; }
+.ptn-up-card {
+  position: relative; display: flex; flex-direction: column; gap: 9px; min-width: 0;
+  padding: 14px 18px 20px; border-radius: 20px;
+  background: var(--glass); border: 1px solid var(--edge); color: var(--text);
+}
+.ptn-up-card > b { font-size: 17px; font-weight: 800; letter-spacing: -0.015em; }
+.ptn-up-card > small { font-size: 13.5px; line-height: 1.58; color: var(--muted); }
+.dc .ptn-up-card ul { display: grid; gap: 6px; margin: 2px 0 0; padding: 0; list-style: none; }
+.ptn-up-card li { display: flex; gap: 7px; align-items: flex-start; font-size: 13px; line-height: 1.45; color: var(--text); }
+.ptn-up-card li svg { flex: none; margin-top: 3px; color: var(--lime); }
+.ptn-up-badge {
+  font-style: normal; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: 999px; color: #f3b49b; background: rgba(217, 119, 87, 0.16); border: 1px solid rgba(217, 119, 87, 0.4);
+}
+.ptn-up-badge[data-testing='1'] { color: var(--lime); background: rgba(200, 242, 77, 0.12); border-color: rgba(200, 242, 77, 0.35); }
+.ptn-up-cap { position: absolute; top: 20px; right: 24px; z-index: 3; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(31, 27, 58, 0.55); }
+
+.ptn-up-art {
+  position: relative; overflow: hidden; height: 190px; border-radius: 14px; margin-bottom: 6px;
+  background: linear-gradient(160deg, #f4f1ff 0%, #ffffff 70%); color: #1f1b3a;
+}
+.is-live-art { display: flex; align-items: center; gap: 14px; padding: 16px; }
+.ptn-up-face { flex: none; width: 92px; height: 92px; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.22), 0 14px 30px -12px rgba(91, 70, 229, 0.6); }
+.ptn-up-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ptn-up-talk { flex: 1; min-width: 0; }
+.ptn-up-live { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; color: #16a34a; letter-spacing: 0.06em; text-transform: uppercase; }
+.ptn-up-live i { width: 7px; height: 7px; border-radius: 99px; background: #22c55e; }
+.ptn-up-talk .ptn-bub { font-size: 12px; }
+
+.is-hands-art { padding: 14px 16px; }
+.ptn-up-win { height: 100%; border-radius: 10px; background: #fff; border: 1px solid #e6e3f6; box-shadow: 0 10px 24px -16px rgba(31, 27, 58, 0.5); overflow: hidden; }
+.ptn-up-dots { display: flex; gap: 5px; padding: 8px 10px; border-bottom: 1px solid #f0eef9; }
+.ptn-up-dots i { width: 7px; height: 7px; border-radius: 99px; background: #e2def5; }
+.ptn-up-body { display: flex; gap: 12px; padding: 10px; }
+.ptn-up-nav { display: grid; gap: 7px; align-content: start; width: 54px; flex: none; }
+.ptn-up-nav i { height: 7px; border-radius: 4px; background: #eeebfb; }
+.ptn-up-nav i:first-child { background: #d9d2fb; }
+.ptn-up-form { display: grid; gap: 8px; flex: 1; min-width: 0; align-content: start; }
+.ptn-up-form b { font-size: 12px; font-weight: 800; color: #1f1b3a; }
+.ptn-up-field { position: relative; display: block; height: 20px; border-radius: 6px; border: 1px solid #e3e0f2; background: #fbfaff; overflow: hidden; }
+.ptn-up-field em { position: absolute; left: 7px; top: 6px; height: 7px; width: 62%; border-radius: 4px; background: #c4bbf5; transform-origin: left; transform: scaleX(1); }
+.ptn-up-field.is-2 em { width: 44%; }
+.ptn-up-btn { justify-self: start; padding: 6px 12px; border-radius: 999px; font-size: 11px; font-weight: 800; color: #fff; background: #5b46e5; }
+.ptn-up-ptr {
+  position: absolute; z-index: 2; left: 46%; top: 72%; display: flex; align-items: flex-start; gap: 2px;
+  filter: drop-shadow(0 0 10px rgba(217, 119, 87, 0.55)) drop-shadow(0 3px 5px rgba(20, 10, 5, 0.35));
+}
+.ptn-up-ptr .ptn-chip { margin-top: 16px; font-size: 11px; padding: 4px 9px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .ptn-up-art.is-on .ptn-voice i { animation: ptn-voice 0.95s ease-in-out infinite; animation-delay: calc(var(--i) * -0.09s); }
+  .ptn-up-art.is-on .ptn-up-live i { animation: np-up-blink 1.4s ease-in-out infinite; }
+  .ptn-up-art.is-on .ptn-up-ptr { animation: ptn-up-path 6s cubic-bezier(0.3, 0.7, 0.25, 1) infinite; }
+  .ptn-up-art.is-on .ptn-up-field em { animation: ptn-up-type 6s steps(14, end) infinite; }
+  .ptn-up-art.is-on .ptn-up-field.is-2 em { animation-name: ptn-up-type2; }
+  .ptn-up-art.is-on .ptn-ripple { animation: ptn-up-tap 6s ease-out infinite; }
+  .ptn-up-art.is-on .ptn-up-btn { animation: ptn-up-press 6s ease-out infinite; }
+}
+@keyframes np-up-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+/* To the first box, the second, then the button; a tap; away and again. */
+@keyframes ptn-up-path {
+  0% { transform: translate3d(120px, -40px, 0); opacity: 0; }
+  8% { opacity: 1; }
+  18%, 32% { transform: translate3d(40px, -78px, 0); }
+  42%, 54% { transform: translate3d(20px, -50px, 0); }
+  66%, 84% { transform: none; opacity: 1; }
+  96%, 100% { transform: translate3d(120px, -40px, 0); opacity: 0; }
+}
+@keyframes ptn-up-type { 0%, 18% { transform: scaleX(0); } 32%, 100% { transform: scaleX(1); } }
+@keyframes ptn-up-type2 { 0%, 42% { transform: scaleX(0); } 54%, 100% { transform: scaleX(1); } }
+@keyframes ptn-up-tap { 0%, 69% { transform: scale(0.2); opacity: 0; } 71% { opacity: 0.95; } 82%, 100% { transform: scale(1.4); opacity: 0; } }
+@keyframes ptn-up-press { 0%, 69% { transform: none; } 71% { transform: scale(0.94); } 75%, 100% { transform: none; } }
+
+@media (max-width: 760px) { .ptn-up-grid { grid-template-columns: 1fr; } }
+@media (max-width: 420px) { .ptn-up-face { width: 70px; height: 70px; } .ptn-up-art { height: 176px; } }

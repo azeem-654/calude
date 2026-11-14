@@ -74,6 +74,20 @@ const ANSWER_BY_MS = 105_000;
  */
 const FAST_MODULES = new Set(['protron']);
 
+/*
+ * And they answer within this, or not at all (owner, 2026-11-14, after the
+ * thinking change: "one message to reply takes around 3 to 4 minutes"). With
+ * the free quotas spent, the 105 s walk across every key and model *was* the
+ * wait — on top of a voice message's own. A chat reply that cannot come in
+ * 26 s says so, and the page asks its standard question at once
+ * (protron/intake.ts REPLY_WITHIN_MS, 30 s, a little after this); the keys
+ * that failed are resting by then, so the next reply goes straight to one
+ * that answers. Each model gets 12 s: a 900-token JSON reply on Flash with
+ * thinking off takes 3–6.
+ */
+const FAST_ANSWER_BY_MS = 26_000;
+const FAST_MODEL_MS = 12_000;
+
 export async function handleAi(req: Request, env: Env): Promise<Response> {
   const started = Date.now();
   const raw = await req.text();
@@ -139,6 +153,7 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
      a limit, a refusal, Google down for it (lib/aiPool.ts) — so a customer
      is answered by the next key rather than shown the first one's error. */
   const fast = FAST_MODULES.has(module);
+  const answerBy = fast ? FAST_ANSWER_BY_MS : ANSWER_BY_MS;
   const fastPayload = (model: string) => {
     const p = JSON.parse(payload) as { generationConfig?: Record<string, unknown> };
     return JSON.stringify({ ...p, generationConfig: { ...(p.generationConfig ?? {}), thinkingConfig: thinkingFor(model) } });
@@ -149,9 +164,9 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
     if (isOpenRouterKey(k)) {
       const q = fromGeminiRequest(JSON.parse(payload));
       if (!q) return { ok: false, status: -2, error: 'nothing to send', value: fail('There was nothing to ask the AI.') };
-      const left = ANSWER_BY_MS - (Date.now() - started);
-      if (left < 8_000) return { ok: false, status: -2, error: 'out of time', value: fail(AI_BUSY, 200, { code: 'ai_busy' }) };
-      const r = await askOpenRouter(k, { ...q, timeoutMs: Math.min(40_000, left), task, module, accountId });
+      const left = answerBy - (Date.now() - started);
+      if (left < (fast ? 4_000 : 8_000)) return { ok: false, status: -2, error: 'out of time', value: fail(AI_BUSY, 200, { code: 'ai_busy' }) };
+      const r = await askOpenRouter(k, { ...q, timeoutMs: Math.min(fast ? FAST_MODEL_MS : 40_000, left), task, module, accountId });
       if (r.ok) {
         await record(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`, 1, room.standing);
         return { ok: true, value: json({ success: true, response: asGeminiResponse(r.value.text), ...(creditsOut ? { creditsOut } : {}) }) };
@@ -160,14 +175,14 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
     }
     let lastStatus = -1; let lastError = '';
     for (const model of await modelsFor(k, task)) {
-      const left = ANSWER_BY_MS - (Date.now() - started);
+      const left = answerBy - (Date.now() - started);
       /* -2: not this key's fault — nothing is rested, and the next key stops here too. */
-      if (left < 8_000) return { ok: false, status: -2, error: 'out of time', value: fail(AI_BUSY, 200, { code: 'ai_busy' }) };
+      if (left < (fast ? 4_000 : 8_000)) return { ok: false, status: -2, error: 'out of time', value: fail(AI_BUSY, 200, { code: 'ai_busy' }) };
       let res: Response;
       /* Gemma takes the request without JSON mode or a system instruction (lib/ai.ts forGemma). */
       const gemma = isGemma(model);
       const ask = (body: string) => fetch(`${aiBase()}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(k)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(Math.min(fast ? 20_000 : 40_000, left)),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(Math.min(fast ? FAST_MODEL_MS : 40_000, left)),
       });
       try {
         if (gemma) res = await ask(JSON.stringify(forGemma(JSON.parse(payload))));
@@ -208,5 +223,5 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
       ok: false, status: lastStatus, error: lastError,
       value: fail(lastStatus === 429 ? AI_BUSY : `The AI could not answer: ${msg.slice(0, 240) || 'no response'}`),
     };
-  }, { exhausted: () => fail(AI_BUSY, 200, { code: 'ai_busy' }) });
+  }, { exhausted: () => fail(AI_BUSY, 200, { code: 'ai_busy' }), ...(fast ? { budgetMs: FAST_ANSWER_BY_MS } : {}) });
 }

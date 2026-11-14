@@ -97,3 +97,60 @@ export function productKnowledge(who: Who): string {
     '', 'TROUBLESHOOTING:', ...TROUBLESHOOTING.map(t => `- ${t}`),
   ].join('\n');
 }
+
+/* ── For the New business workspace interview ──
+ *
+ * The owner's test, 2026-11-14: told "I don't have any lead source", Protron
+ * said "okay, starting with no leads" — and never mentioned that AI
+ * Prospecting finds them. The interview had the solution catalogue but not
+ * the product, so it could not know. It now reads the same module notes the
+ * panel does (a subscriber's view: no agency or owner screens), plus GAPS:
+ * the commonest "I don't have…" answers and what in the product covers each.
+ * Every line is true of the code today; change it with the module. */
+
+/** What a customer says they lack → the part of the product that covers it, and the solution to suggest. */
+export const GAPS: { when: RegExp; say: string; key?: string; why: string }[] = [
+  {
+    when: /\b(?:no|don'?t have (?:any|a)?|haven'?t got (?:any)?|without (?:any)?|zero|lack(?:ing)?)\s+(?:\w+\s+){0,2}(?:leads?|lead sources?|prospects?|clients?|customers?|contacts?|contact lists?|email lists?|lists?)\b|\bstarting (?:from|with) (?:zero|nothing|scratch|no leads)\b/i,
+    say: 'No leads yet is fine — AI Prospecting finds businesses that fit your ideal customer for you every day: it searches directories and maps, reads each website for a published email and checks the address, and AI Autopilot can start conversations with them.',
+    key: 'lead-generation',
+    why: 'You have no leads yet — AI Prospecting finds new ones for you every day.',
+  },
+  {
+    when: /\b(?:no|don'?t have (?:a|any)?|haven'?t got (?:a)?|without (?:a)?)\s+(?:\w+\s+)?(?:website|web ?site|site|landing page)\b/i,
+    say: 'No website is no problem — you can build one from a template in Websites, or a lead-capturing funnel, and publish it on your own domain.',
+    why: 'You have no website yet.',
+  },
+  {
+    when: /\b(?:no|don'?t have (?:a|any)?|without (?:a)?)\s+(?:\w+\s+)?(?:designer|content|posts?|videos?|time to post)\b/i,
+    say: 'Graphics Designer & Editor makes finished posts in your brand from templates, AI Video Studio cuts Shorts from your videos, and Blog & SEO drafts articles — so content does not need a designer.',
+    key: 'social-growth',
+    why: 'You have no one making content — posts can be made in your brand for you.',
+  },
+  {
+    when: /\b(?:no|don'?t have (?:a|any)?|without (?:a)?)\s+(?:\w+\s+)?(?:crm|system|pipeline|follow[- ]?up)\b|\bforget to follow up\b/i,
+    say: 'Contacts holds everyone with their history, Deals moves each opportunity through stages, and AI Autopilot workflows follow up for you — as drafts until you approve them.',
+    key: 'sales-followup',
+    why: 'Nothing follows up for you yet — every enquiry can be chased automatically.',
+  },
+];
+
+/** The first gap their answer names, or null. */
+export function gapNote(answer: string): { say: string; key?: string; why: string } | null {
+  const hit = GAPS.find(g => g.when.test(answer));
+  return hit ? { say: hit.say, key: hit.key, why: hit.why } : null;
+}
+
+/** The product, as the interview reads it: every subscriber module with what it needs, and the gaps. */
+export function interviewKnowledge(): string {
+  const mods = modulesFor({ isClient: false, isOwner: false })
+    .filter(m => MODULE_NOTES[m.path])
+    .map(m => `- ${m.label}: ${m.desc}. ${MODULE_NOTES[m.path]}`);
+  return [
+    ...mods,
+    '- Protron (you): the AI Live Business Manager on every screen of the app.',
+    '',
+    'WHEN THEY SAY THEY DO NOT HAVE…',
+    ...GAPS.map(g => `- ${g.say}`),
+  ].join('\n');
+}

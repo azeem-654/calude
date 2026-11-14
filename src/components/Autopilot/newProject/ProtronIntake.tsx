@@ -31,7 +31,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Megaphone, Search, Mail, TrendingUp, RefreshCcw, PenLine, Workflow, Rocket, Repeat, Wand2,
   Sparkles, Check, Loader, RotateCcw, Plus, ChevronDown, ChevronUp, Info, SkipForward,
-  Mic, ArrowRight, Square, Globe, AlertTriangle, AudioLines,
+  Mic, ArrowRight, Square, Globe, AlertTriangle, AudioLines, X,
 } from 'lucide-react';
 import ProtronAvatar from '../../Protron/ProtronAvatar';
 import { readFacts } from '../../../services/protron/facts';
@@ -44,7 +44,7 @@ import VoiceBars from '../voice/VoiceBars';
 import { useVoiceInput, defaultLocale } from '../voice/useVoiceInput';
 import {
   START_CARDS, MORE_SOLUTIONS, EMPTY_BRIEF, YEAR_KEYS, chosenKeys, chosenLabels, nextStep, recommendCards, writeInstruction, siteAddress,
-  openingMessage, MAX_INSTRUCTION, type Brief, type IntakeMode, type SiteRead,
+  openingMessage, finishedMessage, MAX_INSTRUCTION, type Brief, type IntakeMode, type SiteRead,
 } from '../../../services/protron/intake';
 
 /* Talking live (real-time speech) is in the incubator — on the testing site
@@ -143,7 +143,8 @@ export function useProtronIntake(initialCompany: string, start: IntroStep, mode:
     if (r.recommend.length) setRecs(prev => [...prev, ...r.recommend.filter(x => !prev.some(p => p.key === x.key))]);
     if (r.done || !r.ask) {
       setTalkDone(true);
-      if (r.ask) setBrief({ ...ref.current, talk: [...ref.current.talk, { role: 'protron', text: r.ask }] });
+      /* Always said, in the chat itself: the interview is over and which button is next. */
+      setBrief({ ...ref.current, talk: [...ref.current.talk, { role: 'protron', text: finishedMessage(r.ask) }] });
       return;
     }
     setBrief({ ...ref.current, talk: [...ref.current.talk, { role: 'protron', text: r.ask, quick: r.quick, ...(r.fq ? { fq: r.fq } : {}) }] });
@@ -208,7 +209,11 @@ export function useProtronIntake(initialCompany: string, start: IntroStep, mode:
       },
       onActivity: (w, level) => setWho({ who: w, level }),
       onTool: async (name, args) => {
-        if (name === 'finish_interview') { setTalkDone(true); return { ok: true }; }
+        if (name === 'finish_interview') {
+          setTalkDone(true);
+          setBrief({ ...ref.current, talk: [...ref.current.talk, { role: 'protron', text: finishedMessage('') }] });
+          return { ok: true };
+        }
         if (name !== 'set_business_details') return { ok: false, error: 'unknown tool' };
         const str = (k: string) => (typeof args[k] === 'string' ? (args[k] as string).trim() : '');
         const next = { ...ref.current };
@@ -301,14 +306,89 @@ export function useProtronIntake(initialCompany: string, start: IntroStep, mode:
     if (r.ids.length) setBrief({ ...ref.current, cards: [...new Set([...ref.current.cards, ...r.ids])] });
   }, [setBrief]);
 
+  /* "Include it" (owner, 2026-11-14: "I didn't know where it was getting
+     added until I saw it on my right side"): the suggestion flies to the
+     solutions list and lands as a new chip, which pops. The chip is added
+     when the flyer arrives, so the two read as one movement. With no list on
+     screen, or reduced motion, it is added at once. */
+  const include = useCallback((key: string, from: HTMLElement | null) => {
+    setRecs(prev => prev.filter(x => x.key !== key));
+    const add = () => { if (!ref.current.more.includes(key)) setBrief({ ...ref.current, more: [...ref.current.more, key] }); };
+    const ms = from ? flyToSolutions(from, solutionByKey(key)?.label ?? 'Solution') : 0;
+    if (ms) window.setTimeout(add, ms - 120); else add();
+  }, [setBrief]);
+
   return {
-    step, setStep, brief, setBrief, busy, doing, note, recs, setRecs, cardWhy, instruction, setInstruction, talkDone, startTalk, answer, write, recommend,
+    step, setStep, brief, setBrief, include, busy, doing, note, recs, setRecs, cardWhy, instruction, setInstruction, talkDone, startTalk, answer, write, recommend,
     keys: chosenKeys(brief), site, readWebsite, first: start, mode,
     live: { state: liveState, message: liveMsg, partial, who, start: startLive, stop: stopLive, supported: LIVE_TALK && liveSupported(), autoStart },
   };
 }
 
 export type ProtronIntakeState = ReturnType<typeof useProtronIntake>;
+
+/**
+ * A chip that flies from `from` to the visible solutions list
+ * (`[data-solutions-target]`). Returns how long it takes, or 0 when it did
+ * not fly (no list on screen, reduced motion, no Web Animations).
+ */
+export function flyToSolutions(from: HTMLElement, label: string): number {
+  if (typeof document === 'undefined' || typeof from.animate !== 'function') return 0;
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 0;
+  const target = [...document.querySelectorAll<HTMLElement>('[data-solutions-target]')]
+    .find(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+  if (!target) return 0;
+  const a = from.getBoundingClientRect();
+  const b = target.getBoundingClientRect();
+  const chip = document.createElement('span');
+  chip.className = 'np-fly-chip';
+  chip.setAttribute('aria-hidden', 'true');
+  chip.textContent = `+ ${label}`;
+  chip.style.left = `${a.left}px`;
+  chip.style.top = `${a.top}px`;
+  document.body.appendChild(chip);
+  const dx = b.left + 6 - a.left;
+  const dy = b.bottom - 30 - a.top;
+  const ms = 820;
+  const run = chip.animate([
+    { transform: 'translate(0, 0) scale(1)', opacity: 0.4 },
+    { transform: 'translate(0, -8px) scale(1.08)', opacity: 1, offset: 0.15 },
+    { transform: `translate(${dx * 0.55}px, ${Math.min(dy * 0.55, dy - 90)}px) scale(1.04)`, opacity: 1, offset: 0.6 },
+    { transform: `translate(${dx}px, ${dy}px) scale(0.86)`, opacity: 0.25 },
+  ], { duration: ms, easing: 'cubic-bezier(0.45, 0, 0.25, 1)' });
+  const done = () => chip.remove();
+  run.onfinish = done;
+  run.oncancel = done;
+  return ms;
+}
+
+/**
+ * The solutions chosen so far, as chips: each one names what it builds and
+ * can be taken out. A chip new to the list pops and glows once (CSS, on
+ * mount) — that is how an included suggestion shows it arrived.
+ */
+export function SolutionChips({ brief, setBrief, compact = false }: { brief: Brief; setBrief: (b: Brief) => void; compact?: boolean }) {
+  const items = [
+    ...brief.cards.map(id => { const c = START_CARDS.find(x => x.id === id); return { id: `card:${id}`, label: c?.label ?? id, icon: CARD_ICON[id] ?? Sparkles, drop: () => setBrief({ ...brief, cards: brief.cards.filter(x => x !== id) }) }; }),
+    ...brief.more.map(k => ({ id: `more:${k}`, label: solutionByKey(k)?.label ?? k, icon: Sparkles, drop: () => setBrief({ ...brief, more: brief.more.filter(x => x !== k) }) })),
+  ];
+  return (
+    <div className="np-sols" data-compact={compact ? '1' : '0'}>
+      <span className="np-sols-h">YOUR SOLUTIONS{items.length ? ` · ${items.length}` : ''}</span>
+      <div className="np-sols-list" data-solutions-target="1">
+        {items.length === 0 && <span className="np-sols-empty">None yet — Protron suggests some as you chat.</span>}
+        {items.map(it => (
+          <span key={it.id} className="np-sol-chip">
+            <span className="np-sol-ico" aria-hidden="true"><it.icon size={13} /></span>
+            <span className="np-sol-lbl">{it.label}</span>
+            <Check size={13} className="np-sol-ok" aria-hidden="true" />
+            <button type="button" className="np-sol-x" aria-label={`Remove ${it.label}`} onClick={it.drop}><X size={12} /></button>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /** Bars from the real level of whoever is speaking — never a loop that moves on its own. */
 function LiveBars({ level, who }: { level: number; who: 'you' | 'protron' | 'none' }) {
@@ -348,15 +428,17 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
 
   const toggleCard = (id: string) => setBrief({ ...brief, cards: brief.cards.includes(id) ? brief.cards.filter(x => x !== id) : [...brief.cards, id] });
   const toggleMore = (key: string) => setBrief({ ...brief, more: brief.more.includes(key) ? brief.more.filter(x => x !== key) : [...brief.more, key] });
-  const sendReply = (t: string) => { p.answer(t, !!recAudio); setReply(''); setRecNote(''); dropAudio(); };
+  const sendReply = (t: string) => { p.answer(t, fromVoice); setReply(''); setRecNote(''); setFromVoice(false); };
 
   /* ── A recorded voice message ──
      The recorder AI Autopilot already uses (voice/useVoiceInput.ts): the whole
      take is transcribed on the server, told the question being answered and
-     the names already known so they are spelled right. The text then waits
-     in the box, with the recording beside it to play back, until the customer
-     presses send (owner, 2026-11-14: it sent a misheard sentence with no
-     chance to check it). A wrong answer sent unseen costs more than one press. */
+     the names already known so they are spelled right, and comes back in
+     clean words — fillers and false starts out (services/spoken.ts). The text
+     then waits in the box until the customer presses send (owner, 2026-11-14:
+     it sent a misheard sentence with no chance to check it). The recording
+     itself is not shown to play back: the owner asked for it gone the same
+     day — the words are what gets checked, not the audio. */
   const rec = useVoiceInput(defaultLocale(), {
     /* 3 s, not 2.2: a reviewer thinking mid-sentence was cut off and had to
        record the rest as a second take. Stop still ends it at once. */
@@ -372,18 +454,16 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
     },
   });
   const [recNote, setRecNote] = useState('');
-  const [recAudio, setRecAudio] = useState('');
-  const dropAudio = () => setRecAudio(a => { if (a) URL.revokeObjectURL(a); return ''; });
-  useEffect(() => () => { if (recAudio) URL.revokeObjectURL(recAudio); }, [recAudio]);
+  const [fromVoice, setFromVoice] = useState(false);
   const record = async () => {
     if (rec.phase === 'listening') { void rec.stop(); return; }
     if (rec.phase !== 'idle' && rec.phase !== 'done' && rec.phase !== 'error') return;
     setRecNote('');
-    dropAudio();
     const r = await rec.start();
-    if (!r || !r.text.trim()) { if (r?.audio) URL.revokeObjectURL(r.audio); return; }
+    if (r?.audio) URL.revokeObjectURL(r.audio);
+    if (!r || !r.text.trim()) return;
     setReply(prev => (prev.trim() ? `${prev.trim()} ${r.text}` : r.text));
-    setRecAudio(r.audio ?? '');
+    setFromVoice(true);
     setRecNote(r.doubtful ? r.note : 'Here’s what I heard — fix anything I got wrong, then press send.');
     window.setTimeout(() => replyBox.current?.focus(), 0);
   };
@@ -412,7 +492,7 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
       <div style={{ display: 'grid', gap: 22 }}>
         {head(
           <>Create a new <span className="wz-accent">business workspace</span></>,
-          `${firstName ? `Hi ${firstName} — I'm` : "I'm"} Protron, your AI business manager. Tell me the company and its website, and I'll ask only what the website doesn't already say. You approve the plan before anything is built.`,
+          `${firstName ? `Hi ${firstName} — I'm` : "I'm"} Protron, your AI Live Business Manager. Tell me the company and its website, and I'll ask only what the website doesn't already say. You approve the plan before anything is built.`,
         )}
         <div className="np-first">
           <label className="np-first-field">
@@ -617,13 +697,11 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
               </div>
             )}
             {rec.problem && rec.phase === 'error' && <p className="np-protron-note" style={{ margin: 0 }}><Info size={14} /> {rec.problem}</p>}
-            {recNote && <p className="np-protron-note" style={{ margin: 0 }}><Info size={14} /> {recNote}</p>}
-            {recAudio && !recording && (
-              <div className="np-rec-review">
-                <span>Your recording</span>
-                <audio src={recAudio} controls preload="metadata" aria-label="Play back your recording" />
-                <button type="button" className="np-link" onClick={() => { setReply(''); setRecNote(''); dropAudio(); }}>Discard</button>
-              </div>
+            {recNote && (
+              <p className="np-protron-note" style={{ margin: 0 }}>
+                <Info size={14} /> <span style={{ flex: 1 }}>{recNote}</span>
+                {fromVoice && !recording && <button type="button" className="np-link" onClick={() => { setReply(''); setRecNote(''); setFromVoice(false); }}>Discard</button>}
+              </p>
             )}
             {!p.talkDone || liveOn ? (
               <div className="np-composer-box">
@@ -670,13 +748,21 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
         {live.message && (live.state === 'error' || live.state === 'ended') && <p className="np-protron-note"><Info size={14} /> {live.message}</p>}
         {p.note && !liveOn && <p className="np-protron-note"><Info size={14} /> {p.note}</p>}
 
+        {/* Below the side pane's width, the chosen solutions show here, so an
+            included suggestion visibly lands somewhere. */}
+        {(brief.cards.length + brief.more.length > 0 || p.recs.length > 0) && (
+          <div className="np-sols-inline"><SolutionChips brief={brief} setBrief={setBrief} compact /></div>
+        )}
+
         {p.recs.length > 0 && (
           <div className="np-protron-recs">
-            <b style={{ fontSize: 13 }}>Protron suggests adding</b>
+            <b style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <ProtronAvatar size={22} state="idle" alive={false} /> Protron, your AI Live Business Manager, suggests adding
+            </b>
             {p.recs.map(r => (
               <div key={r.key} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                 <span style={{ flex: '1 1 220px', fontSize: 13, color: '#334155' }}><b>{solutionByKey(r.key)?.label}</b> — {r.why}</span>
-                <button type="button" className="np-tool" onClick={() => { setBrief({ ...brief, more: [...new Set([...brief.more, r.key])] }); p.setRecs(p.recs.filter(x => x.key !== r.key)); }}><Plus size={14} /> Include it</button>
+                <button type="button" className="np-tool np-include" onClick={e => p.include(r.key, e.currentTarget)}><Plus size={14} /> Include it</button>
                 <button type="button" className="np-link" onClick={() => p.setRecs(p.recs.filter(x => x.key !== r.key))}>No thanks</button>
               </div>
             ))}
@@ -690,7 +776,7 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
           {p.first === 'talk' && <button type="button" className="np-link" onClick={onManual}>I&rsquo;d rather describe it myself</button>}
         </div>
         {p.talkDone && (
-          <p className="np-protron-note" style={{ background: '#ecfdf5', color: '#065f46', borderColor: '#a7f3d0' }}><Check size={14} /> That&rsquo;s enough to write the plan. Press <b>Create my smart optimized prompt</b>.</p>
+          <p className="np-protron-note" style={{ background: '#ecfdf5', color: '#065f46', borderColor: '#a7f3d0' }}><Check size={14} /> Protron has finished understanding your business. Press <b>Create my smart optimized prompt for AI Autopilot</b>.</p>
         )}
       </div>
     );

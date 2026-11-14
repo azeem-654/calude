@@ -175,7 +175,7 @@ export interface Opening { text: string; suggestions: string[] }
  */
 export function openingFor(f: KnownFacts): Opening {
   const hi = f.firstName ? `Hi ${f.firstName}! ` : 'Hi! ';
-  const me = 'I\'m Protron, your AI business manager at Protected Central.';
+  const me = 'I\'m Protron, your AI Live Business Manager at Protected Central.';
   if (f.businessName && (f.about || f.industry)) {
     const what = f.about || f.industry;
     return {

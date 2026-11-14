@@ -257,8 +257,8 @@ export default function Protron() {
             type="button"
             className="pt-orb"
             data-state={face}
-            aria-label="Open Protron, your AI business manager"
-            title="Protron — your AI business manager (drag to move it anywhere)"
+            aria-label="Open Protron, your AI Live Business Manager"
+            title="Protron — your AI Live Business Manager (drag to move it anywhere)"
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}

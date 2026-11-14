@@ -570,10 +570,73 @@
 @media (prefers-reduced-motion: no-preference) { .np-rec-dot { animation: np-rec 1.1s infinite; } }
 @keyframes np-rec { 50% { opacity: .35; } }
 .np-composer-mic:disabled { opacity: .55; cursor: default; }
-.np-rec-review { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12.5px; font-weight: 600; color: #4b4a63; padding: 2px 4px; }
-.np-rec-review audio { height: 34px; flex: 1 1 200px; min-width: 0; max-width: 100%; }
 /* The chat never sets its own width: a long intro (the 12-month plan's
    bullets) pushed it past a 390 px phone and the bubbles were cut off. */
 .np-chat { grid-template-columns: minmax(0, 1fr); min-width: 0; }
 .np-chat-log, .np-composer { min-width: 0; }
 .np-talk-bot { min-width: 0; overflow-wrap: anywhere; }
+
+/* ── Protron in the side pane, and the solutions as chips (2026-11-14) ──
+   The portrait is Protron's own living avatar (ProtronAvatar: breathing,
+   blinking, its ring in the chat's state). A chip new to the list pops and
+   glows once on mount — the landing of an included suggestion, which flies
+   in as `.np-fly-chip` (ProtronIntake.tsx flyToSolutions). */
+.np-side-protron {
+  display: grid; justify-items: center; gap: 4px; text-align: center;
+  padding: 18px 12px 16px; border-radius: 20px;
+  background: radial-gradient(120% 90% at 50% 0%, #ece8ff 0%, #f7f6ff 55%, #fff 100%);
+  border: 1px solid #e4e0fb;
+}
+.np-side-avatar { display: block; margin-bottom: 6px; filter: drop-shadow(0 10px 22px rgba(91, 70, 229, 0.25)); }
+.np-side-protron > b { font-size: 16px; color: #17191c; letter-spacing: -0.01em; }
+.np-side-role { font-size: 12.5px; font-weight: 700; color: #5b46e5; }
+.np-side-status { display: inline-flex; align-items: center; gap: 7px; margin-top: 8px; font-size: 12px; color: #4b5563; }
+.np-side-status i { width: 7px; height: 7px; border-radius: 99px; background: #22c55e; box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18); }
+.np-side-status[data-state='thinking'] i { background: #8b5cf6; box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2); }
+
+.np-sols { display: grid; gap: 7px; margin-top: 6px; }
+.np-sols-h { font-size: 11.5px; font-weight: 800; color: #6b7280; letter-spacing: 0.05em; }
+.np-sols-list { display: flex; flex-wrap: wrap; gap: 7px; min-height: 30px; }
+.np-sols-empty { font-size: 12.5px; color: #8b93a3; }
+.np-sol-chip {
+  display: inline-flex; align-items: center; gap: 7px; max-width: 100%;
+  padding: 5px 6px 5px 6px; border-radius: 999px;
+  background: #fff; border: 1px solid #d9d3fb; color: #2e2a5c;
+  font-size: 12.5px; font-weight: 700;
+  box-shadow: 0 1px 0 rgba(17, 12, 60, 0.04), 0 4px 12px -8px rgba(91, 70, 229, 0.45);
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+.np-sol-chip:hover { border-color: #a99cf6; box-shadow: 0 6px 16px -8px rgba(91, 70, 229, 0.55); transform: translateY(-1px); }
+.np-sol-ico { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 99px; background: linear-gradient(135deg, #6d5bf0, #8b5cf6); color: #fff; flex: none; }
+.np-sol-lbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-sol-ok { color: #16a34a; flex: none; }
+.np-sol-x {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 99px; flex: none;
+  border: 0; background: #f1effd; color: #6b6890; cursor: pointer; padding: 0;
+}
+.np-sol-x:hover { background: #fee2e2; color: #b91c1c; }
+.np-sols[data-compact='1'] { margin-top: 0; padding: 10px 12px; border-radius: 14px; background: #faf9ff; border: 1px solid #ece9fd; }
+@media (min-width: 1040px) { .np-sols-inline { display: none; } }
+
+.np-include { background: linear-gradient(135deg, #6d5bf0, #8b5cf6); color: #fff; border-color: transparent; }
+.np-include:hover { filter: brightness(1.06); }
+
+.np-fly-chip {
+  position: fixed; z-index: 9999; pointer-events: none; white-space: nowrap;
+  padding: 7px 13px; border-radius: 999px;
+  font: 700 12.5px/1.2 system-ui, -apple-system, 'Segoe UI', sans-serif; color: #fff;
+  background: linear-gradient(135deg, #6d5bf0, #8b5cf6);
+  box-shadow: 0 12px 28px -10px rgba(91, 70, 229, 0.8), 0 0 0 4px rgba(139, 92, 246, 0.18);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .np-sol-chip { animation: np-sol-in .7s cubic-bezier(0.3, 1.4, 0.5, 1) both, np-sol-glow 1.6s ease-out .2s 1; }
+  .np-side-status i { animation: np-status 1.8s ease-in-out infinite; }
+}
+@keyframes np-sol-in { from { transform: scale(0.4); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes np-sol-glow {
+  0% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.55); background: #f1edff; }
+  60% { box-shadow: 0 0 0 10px rgba(139, 92, 246, 0); background: #f6f3ff; }
+  100% { box-shadow: 0 1px 0 rgba(17, 12, 60, 0.04), 0 4px 12px -8px rgba(91, 70, 229, 0.45); background: #fff; }
+}
+@keyframes np-status { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }

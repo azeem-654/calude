@@ -182,6 +182,16 @@ const BUILD: { icon: Icon; label: string; sub: string; at: number }[] = [
 /* Live talk is in the incubator: on the live app the film shows the chat the
    button really opens (filmNarration.ts FILM_SAY_CHAT). */
 const LIVE = featureReady('protron-live');
+/*
+ * "Runs the app" shows Protron's pointer working the screens — in the
+ * incubator, off on live (docs/INCUBATOR.md `protron-hands`). The owner,
+ * 2026-11-14: keep it in the film, "because that's definitely gonna come in
+ * the app", and say it is an upcoming feature. So where it is off, the
+ * chapter is labelled Coming soon and the scene carries the badge — never
+ * passed off as something the app does today.
+ */
+const HANDS = featureReady('protron-hands');
+const SOON_CHAPTER = 2;
 const TALK_LABEL = LIVE ? 'Talk live' : 'Chat with Protron';
 const SAY = LIVE ? FILM_SAY : { ...FILM_SAY, ...FILM_SAY_CHAT };
 
@@ -1220,10 +1230,13 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
       tabIndex={0}
     >
       <div className="apf-head">
-        <span className="apf-head-ch">{scene.ch + 1}/{CHAPTERS.length} · {CHAPTERS[scene.ch]}</span>
+        <span className="apf-head-ch">{scene.ch + 1}/{CHAPTERS.length} · {CHAPTERS[scene.ch]}{!HANDS && scene.ch === SOON_CHAPTER && <span className="apf-soon">Coming soon</span>}</span>
         <span className="apf-head-title">See AI Autopilot work</span>
       </div>
       <div className="apf-screen" ref={screen}>
+        {!HANDS && scene.ch === SOON_CHAPTER && (
+          <span className="apf-soon-badge" role="note">Upcoming feature · Protron working the app for you is in final testing</span>
+        )}
         <div className="apf-canvas" ref={canvas} style={{ width: fitNow.w, height: fitNow.h, transform: `scale(${fitNow.k})` }}>
           {leaving !== null && leaving !== idx && scenes[leaving] && (
             <div className="apf-layer is-leaving" key={`out-${leaving}`} aria-hidden="true">{scenes[leaving].draw(1)}</div>
@@ -1255,7 +1268,7 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
                 type="button"
                 className={`apf-ch${scene.ch === i ? ' is-now' : ''}`}
                 style={{ flexGrow: b - a }}
-                aria-label={`Chapter ${i + 1}: ${c}`}
+                aria-label={`Chapter ${i + 1}: ${c}${!HANDS && i === SOON_CHAPTER ? ' (coming soon)' : ''}`}
                 onClick={e => {
                   chosen.current = true;
                   const r = e.currentTarget.getBoundingClientRect();
@@ -1264,7 +1277,7 @@ export default function AutopilotFilm({ onTalk, onRecord, onType }: {
                   setPlaying(true);
                 }}
               >
-                <span className="apf-ch-lbl">{c}</span>
+                <span className="apf-ch-lbl">{c}{!HANDS && i === SOON_CHAPTER && <i className="apf-ch-soon"> · Soon</i>}</span>
                 <span className="apf-ch-track"><span style={{ transform: `scaleX(${fill.toFixed(4)})` }} /></span>
               </button>
             );
