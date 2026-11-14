@@ -94,6 +94,16 @@ between cards. The **logo is ember in dark mode** (`LogoMark` reads
 `--logo-1..3`/`--logo-tile`, set under `html[data-theme="dark"]`; light mode
 keeps the favicon's lime → mint) and carries `data-noinvert`, which it lacked —
 dark mode used to draw it as a white tile with a dark-green shield.
+**Every screen wears it** (same day): `index.css` "The ember look on every
+screen" recolours by what React writes into `style` — white and frosted-white
+cards become warm-black glass with an ember hairline and glow (rounded ones
+only, never inputs or buttons), near-white panels a step lighter, near-black
+and indigo primary buttons the hero's ember Send (dark words), the top bar,
+a screen's sticky header and the trial bar warm black. Colours there are
+written as their **inverse** (the page is inverted: a warm white draws warm
+black, `#f45f20` draws `#ff6a2b`), and anything inside `data-noinvert` is
+skipped. A new screen gets the look by using those same inline colours; a
+new near-white needs adding to the panel list.
 
 **Fifth and sixth passes (owner, 2026-11-14) — the current look:** a glow
 rising from the bottom through a dot grid (`.dash-aurora*`, CSS only) that
