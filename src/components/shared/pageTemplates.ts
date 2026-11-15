@@ -55,14 +55,26 @@ function withHeroImage(pages: FunnelStep[], ctx: BrandContext): FunnelStep[] {
 let seq = 0;
 const uid = () => `tb-${Date.now().toString(36)}-${(seq++).toString(36)}`;
 
+/* Every template block is drawn in the renderer's modern look (inset hero,
+   pill nav, glassy cards — BlockRender's `modernBlock`). It is a setting on
+   the block rather than a change to the renderer so pages built and published
+   before it keep their look. */
 function blk(type: FunnelBlock['type'], content: string, settings: FunnelBlock['settings'] = {}): FunnelBlock {
-  return { id: uid(), type, content, settings };
+  return { id: uid(), type, content, settings: { look: 'modern', ...settings } };
 }
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'page';
 
-/** Darkened brand gradient used for hero/CTA bands. */
-const heroGrad = (c: string) => `linear-gradient(135deg, ${c} 0%, #17191c 100%)`;
+/** The hero/CTA background: a deep mesh lit by the brand colour from two corners. */
+const heroGrad = (c: string) => [
+  `radial-gradient(110% 85% at 0% 0%, ${tint(c, 0.95)} 0%, transparent 58%)`,
+  `radial-gradient(80% 70% at 100% 8%, ${tint(c, 0.5)} 0%, transparent 62%)`,
+  `radial-gradient(70% 60% at 70% 115%, ${tint(c, 0.42)} 0%, transparent 60%)`,
+  'linear-gradient(160deg, #16181d 0%, #0b0c10 100%)',
+].join(', ');
+
+/** A light section's background: near-white with a faint wash of the brand colour. */
+const soft = (c: string) => `radial-gradient(60% 55% at 0% 0%, ${tint(c, 0.09)} 0%, transparent 70%), radial-gradient(55% 50% at 100% 100%, ${tint(c, 0.07)} 0%, transparent 70%), #f7f8fb`;
 
 /* ── Shared building blocks ── */
 
@@ -85,35 +97,45 @@ function footer(ctx: BrandContext): FunnelBlock {
       { heading: 'Legal', links: [{ label: 'Privacy', url: '#' }, { label: 'Terms', url: '#' }] },
     ],
     footerCopyright: `© ${new Date().getFullYear()} ${ctx.name}. All rights reserved.`,
+    ...(ctx.tagline ? { subheading: ctx.tagline } : {}),
   });
 }
 
+/* The band under a hero used to read "12,000+ customers served · 4.9★ ·
+   98% would recommend" on every page, in every customer's name — figures
+   nobody had measured. It now says how working with them goes, which is
+   true of any business and has no number in it to be wrong. */
 function trustStats(ctx: BrandContext): FunnelBlock {
-  return blk('stats', '', {
-    bgColor: '#0f172a', textColor: '#ffffff', padding: 56,
+  return blk('stats', 'How it works', {
+    eyebrow: 'Simple from the start', bgColor: '#0f1115', textColor: '#ffffff', padding: 72, iconColor: ctx.color,
     statItems: [
-      { value: '12,000+', label: 'Customers served', icon: '🤝' },
-      { value: '4.9★', label: 'Average rating', icon: '⭐' },
-      { value: '24h', label: 'Response time', icon: '⚡' },
-      { value: '98%', label: 'Would recommend', icon: '🏆' },
+      { value: '01', label: 'Tell us what you need — it takes a couple of minutes.' },
+      { value: '02', label: 'Get a clear plan and price before anything starts.' },
+      { value: '03', label: `${ctx.name} gets it done, and keeps you posted.` },
+      { value: '04', label: 'You see the result — and know who to call.' },
     ],
   });
 }
 
+/* Slots for the customer's own reviews, drawn as placeholders (dashed, no
+   stars, tagged). The names and five-star quotes that were here were made
+   up, and went out under the customer's name on a published page. */
 function testimonials(ctx: BrandContext): FunnelBlock {
-  return blk('testimonials', 'Loved by our customers', {
-    eyebrow: 'Reviews', bgColor: '#ffffff', padding: 72,
+  const slot = { stars: 0, placeholder: true, author: 'Customer name', role: 'Placeholder — replace or delete' };
+  return blk('testimonials', 'What our customers say', {
+    eyebrow: 'Reviews', subtitle: 'Placeholders: add real reviews from your customers (with their permission), or delete this section.',
+    bgColor: '#ffffff', padding: 80, iconColor: ctx.color,
     testimonialItems: [
-      { stars: 5, quote: `${ctx.name} paid for itself in the first month. I only wish we'd started sooner.`, author: 'Sarah Mitchell', role: 'Operations Lead' },
-      { stars: 5, quote: 'Straightforward, fast, and they actually answer the phone. Rare these days.', author: 'James Okafor', role: 'Small business owner' },
-      { stars: 5, quote: 'The onboarding took ten minutes and the results showed up the same week.', author: 'Priya Raman', role: 'Marketing Manager' },
+      { ...slot, quote: `Paste a real review of ${ctx.name} here.` },
+      { ...slot, quote: 'A second review — what changed for them after working with you.' },
+      { ...slot, quote: 'A third review — ideally from a different kind of customer.' },
     ],
   });
 }
 
 function faq(ctx: BrandContext): FunnelBlock {
   return blk('faq', 'Frequently asked questions', {
-    eyebrow: 'FAQ', bgColor: '#f8fafc', padding: 72, align: 'center',
+    eyebrow: 'FAQ', iconColor: ctx.color, bgGradient: soft(ctx.color), bgColor: '#f8fafc', padding: 72, align: 'center',
     faqItems: [
       { q: 'How quickly can I get started?', a: `Most customers are up and running with ${ctx.name} the same day — there is nothing to install.` },
       { q: 'Is there a contract or lock-in?', a: 'No. Everything is month-to-month and you can cancel from your account at any time.' },
@@ -154,7 +176,7 @@ export function buildFunnelPageBlocks(type: FunnelStep['type'], ctx: BrandContex
           secondaryButtonText: 'See what is inside', minHeight: 480, align: 'center', padding: 76,
         }),
         blk('features', 'What you will learn', {
-          eyebrow: 'Inside the guide', subtitle: 'Three things you can apply the same day', bgColor: '#f8fafc', padding: 68, columns: 3, iconColor: ctx.color,
+          eyebrow: 'Inside the guide', subtitle: 'Three things you can apply the same day', bgGradient: soft(ctx.color), bgColor: '#f8fafc', padding: 68, columns: 3, iconColor: ctx.color,
           featureItems: [
             { icon: '⚡', title: 'The 10-minute setup', desc: 'A simple checklist that removes the busywork from your week.' },
             { icon: '🎯', title: 'The 3 costly mistakes', desc: 'What quietly drains time and money — and how to avoid all three.' },
@@ -185,13 +207,13 @@ export function buildFunnelPageBlocks(type: FunnelStep['type'], ctx: BrandContex
             { icon: '💰', title: 'Fair, simple pricing', desc: 'One monthly price, no surprise fees, cancel whenever you want.' },
           ],
         }),
-        blk('columns', 'Built for busy owners, not technicians', {
+        blk('columns', 'Built for busy owners, not technicians', { iconColor: ctx.color,
           subheading: 'You should be running your business, not wrestling with software. Everything here is designed to work on day one.',
-          bgColor: '#f8fafc', padding: 72, imagePosition: 'right', buttonText: 'Get started', buttonColor: ctx.color, buttonTextColor: '#ffffff',
+          bgGradient: soft(ctx.color), bgColor: '#f8fafc', padding: 72, imagePosition: 'right', buttonText: 'Get started', buttonColor: ctx.color, buttonTextColor: '#ffffff',
           listItems: ['Set up in under 10 minutes', 'Templates written for your industry', 'Free migration from your old tool', 'Cancel any time, keep your data'],
         }),
         testimonials(ctx),
-        blk('pricing', 'Simple pricing that scales with you', {
+        blk('pricing', 'Simple pricing that scales with you', { iconColor: ctx.color,
           eyebrow: 'Pricing', subtitle: 'No contracts. No setup fees. Cancel anytime.', bgColor: '#ffffff', padding: 72,
           pricingPlans: [
             { name: 'Starter', price: '$49', period: '/mo', features: ['Up to 500 contacts', 'Email campaigns', 'Standard support'], buttonText: 'Start free trial' },
@@ -201,7 +223,7 @@ export function buildFunnelPageBlocks(type: FunnelStep['type'], ctx: BrandContex
         }),
         faq(ctx),
         blk('cta', 'Ready to get started?', {
-          eyebrow: 'Get started', subheading: 'Join thousands already growing with us. 30-day money-back guarantee.',
+          eyebrow: 'Get started', subheading: 'One clear next step — and a straight answer about whether it is right for you.',
           bgGradient: g, textColor: '#ffffff', buttonText: 'Get instant access', buttonColor: '#c7f441', buttonTextColor: '#17191c', padding: 76,
         }),
         footer(ctx),
@@ -224,7 +246,7 @@ export function buildFunnelPageBlocks(type: FunnelStep['type'], ctx: BrandContex
           redirectUrl: '/thank-you',
         }),
         blk('features', 'Every order includes', {
-          bgColor: '#f8fafc', padding: 56, columns: 3, iconColor: ctx.color,
+          bgGradient: soft(ctx.color), bgColor: '#f8fafc', padding: 56, columns: 3, iconColor: ctx.color,
           featureItems: [
             { icon: '🔒', title: 'Secure payment', desc: 'Bank-level encryption on every transaction.' },
             { icon: '↩️', title: '30-day guarantee', desc: 'Not happy? Get a full refund, no questions.' },
@@ -241,10 +263,10 @@ export function buildFunnelPageBlocks(type: FunnelStep['type'], ctx: BrandContex
           bgGradient: g, textColor: '#ffffff', buttonText: 'Yes, add it to my order', buttonColor: '#c7f441', buttonTextColor: '#17191c',
           secondaryButtonText: 'No thanks, continue', minHeight: 460, padding: 72,
         }),
-        blk('columns', 'Why customers add this', {
+        blk('columns', 'Why customers add this', { iconColor: ctx.color,
           subheading: 'The customers who get the best results are almost always the ones who added this at checkout.',
           bgColor: '#ffffff', padding: 68, imagePosition: 'left', buttonText: 'Add to my order', buttonColor: ctx.color, buttonTextColor: '#ffffff',
-          listItems: ['Get results roughly twice as fast', 'Everything is done for you', 'Only available at this price today'],
+          listItems: ['Get to the result sooner', 'Everything is done for you', 'Only available at this price today'],
         }),
         blk('cta', 'Add it for 40% off — today only', {
           subheading: 'One click adds it to the order you just placed.', bgGradient: g, textColor: '#ffffff',
@@ -260,7 +282,7 @@ export function buildFunnelPageBlocks(type: FunnelStep['type'], ctx: BrandContex
           bgGradient: g, textColor: '#ffffff', buttonText: 'Add the starter option', buttonColor: '#c7f441', buttonTextColor: '#17191c',
           secondaryButtonText: 'No thanks', minHeight: 420, padding: 70,
         }),
-        blk('columns', 'The essentials, at a lower price', {
+        blk('columns', 'The essentials, at a lower price', { iconColor: ctx.color,
           subheading: 'Same quality, smaller scope. It is the easiest way to get started without a bigger commitment.',
           bgColor: '#ffffff', padding: 64, imagePosition: 'right',
           listItems: ['Everything you need to begin', 'Upgrade any time at the difference in price', '30-day money-back guarantee'],
@@ -309,7 +331,7 @@ export function buildFunnelPageBlocks(type: FunnelStep['type'], ctx: BrandContex
           ],
         }),
         blk('form', 'Save your seat — it is free', {
-          bgColor: '#f8fafc', padding: 64, buttonText: 'Reserve my seat', buttonColor: ctx.color, buttonTextColor: '#ffffff',
+          bgGradient: soft(ctx.color), bgColor: '#f8fafc', padding: 64, buttonText: 'Reserve my seat', buttonColor: ctx.color, buttonTextColor: '#ffffff',
           formFields: [
             { label: 'Full name', type: 'text', required: true },
             { label: 'Email address', type: 'email', required: true },
@@ -349,7 +371,7 @@ export function buildFunnelPageBlocks(type: FunnelStep['type'], ctx: BrandContex
           secondaryButtonText: 'Learn more', minHeight: 480, padding: 76,
         }),
         blk('features', 'How we help', {
-          eyebrow: 'What we do', subtitle: 'Three ways we make your life easier', bgColor: '#f8fafc', padding: 68, columns: 3, iconColor: ctx.color,
+          eyebrow: 'What we do', subtitle: 'Three ways we make your life easier', bgGradient: soft(ctx.color), bgColor: '#f8fafc', padding: 68, columns: 3, iconColor: ctx.color,
           featureItems: [
             { icon: '✨', title: 'Done properly', desc: 'Careful work from people who take the details seriously.' },
             { icon: '⚡', title: 'Done quickly', desc: 'Clear timelines that we actually hold ourselves to.' },
@@ -392,7 +414,7 @@ function aboutPage(ctx: BrandContext): SitePageSpec {
         eyebrow: 'Our story', subheading: ctx.tagline || 'Why we do this, and who we do it for.',
         bgGradient: heroGrad(ctx.color), textColor: '#ffffff', minHeight: 340, padding: 64, buttonText: '',
       }),
-      blk('columns', 'What we believe', {
+      blk('columns', 'What we believe', { iconColor: ctx.color,
         subheading: `${ctx.name} started with a simple frustration: good work should not be this hard to buy. So we built the thing we wished existed — clear pricing, straight answers and people who pick up the phone.`,
         bgColor: '#ffffff', padding: 68, imagePosition: 'right',
         listItems: ['Straight answers, always', 'Fair, published pricing', 'We finish what we start', 'You always know where things stand'],
@@ -453,12 +475,12 @@ export function buildWebsiteTemplatePages(templateId: string, ctx: BrandContext)
             { icon: '📊', title: 'Live dashboards', desc: 'Know what is working today, not at the end of the quarter.' },
             { icon: '🔗', title: 'Integrations', desc: 'Connects to the tools your team already lives in.' },
             { icon: '📱', title: 'Works anywhere', desc: 'Full functionality on your phone, tablet and desktop.' },
-            { icon: '🔒', title: 'Enterprise security', desc: 'SOC-2 aligned practices with encryption at rest and in transit.' },
-            { icon: '💬', title: 'Support that answers', desc: 'Median first response under two hours, from real engineers.' },
+            { icon: '🔒', title: 'Enterprise security', desc: 'Encryption at rest and in transit, with access kept to the people who need it.' },
+            { icon: '💬', title: 'Support that answers', desc: 'Real people who know the product, not a scripted chatbot.' },
           ],
         }),
-        blk('pricing', 'Pricing that makes sense', {
-          eyebrow: 'Pricing', subtitle: 'Start free. Upgrade only when it is paying for itself.', bgColor: '#f8fafc', padding: 76,
+        blk('pricing', 'Pricing that makes sense', { iconColor: ctx.color,
+          eyebrow: 'Pricing', subtitle: 'Start free. Upgrade only when it is paying for itself.', bgGradient: soft(ctx.color), bgColor: '#f8fafc', padding: 76,
           pricingPlans: [
             { name: 'Free', price: '$0', period: '/mo', features: ['1 user', '100 records', 'Community support'], buttonText: 'Start free' },
             { name: 'Pro', price: '$79', period: '/mo', highlighted: true, features: ['10 users', 'Unlimited records', 'Automations', 'Priority support'], buttonText: 'Start free trial' },
@@ -479,7 +501,7 @@ export function buildWebsiteTemplatePages(templateId: string, ctx: BrandContext)
       home = { name: 'Home', type: 'landing', blocks: [
         navbar(ctx, 'Start a project'),
         blk('hero', 'We build brands people remember', {
-          eyebrow: 'Digital agency', subheading: tag, bgGradient: 'linear-gradient(135deg,#0f172a,#1e293b)', textColor: '#ffffff',
+          eyebrow: 'Digital agency', subheading: tag, bgGradient: g, textColor: '#ffffff',
           buttonText: 'Start a project', buttonColor: '#c7f441', buttonTextColor: '#17191c', secondaryButtonText: 'See our work', minHeight: 540, padding: 84,
         }),
         blk('features', 'What we do', {
@@ -518,7 +540,7 @@ export function buildWebsiteTemplatePages(templateId: string, ctx: BrandContext)
           galleryImages: ['#f59e0b', '#ec4899', '#6366f1', '#10b981', '#0ea5e9', '#8b5cf6'],
         }),
         blk('features', 'Why shop with us', {
-          bgColor: '#f8fafc', padding: 68, columns: 3, iconColor: ctx.color,
+          bgGradient: soft(ctx.color), bgColor: '#f8fafc', padding: 68, columns: 3, iconColor: ctx.color,
           featureItems: [
             { icon: '🚚', title: 'Free shipping', desc: 'On every order over $50, dispatched same day.' },
             { icon: '↩️', title: 'Easy returns', desc: '30 days, prepaid label, no awkward questions.' },
@@ -538,14 +560,14 @@ export function buildWebsiteTemplatePages(templateId: string, ctx: BrandContext)
       home = { name: 'Home', type: 'landing', blocks: [
         navbar(ctx, 'Reserve a table'),
         blk('hero', 'Honest food, done properly', {
-          eyebrow: 'Open daily 11am–10pm', subheading: tag, bgGradient: 'linear-gradient(135deg,#78350f,#1c0a00)', textColor: '#ffffff',
+          eyebrow: 'Open daily 11am–10pm', subheading: tag, bgGradient: g, textColor: '#ffffff',
           buttonText: 'Reserve a table', buttonColor: '#c7f441', buttonTextColor: '#17191c', secondaryButtonText: 'View the menu', minHeight: 540, padding: 82,
         }),
         blk('features', 'Why people come back', {
           eyebrow: 'The kitchen', bgColor: '#fffbf5', padding: 72, columns: 3, iconColor: ctx.color,
           featureItems: [
             { icon: '🌿', title: 'Fresh every day', desc: 'Produce delivered each morning from local growers.' },
-            { icon: '👨‍🍳', title: 'A serious kitchen', desc: 'A team that has cooked in rooms you have heard of.' },
+            { icon: '👨‍🍳', title: 'A serious kitchen', desc: 'A kitchen team that takes every plate seriously.' },
             { icon: '🍷', title: 'A proper wine list', desc: 'Well chosen, fairly priced, happily explained.' },
           ],
         }),
@@ -571,7 +593,7 @@ export function buildWebsiteTemplatePages(templateId: string, ctx: BrandContext)
       home = { name: 'Home', type: 'landing', blocks: [
         navbar(ctx, 'Hire me'),
         blk('hero', 'I design things people actually enjoy using', {
-          eyebrow: 'Portfolio', subheading: tag, bgGradient: 'linear-gradient(135deg,#f59e0b,#ec4899)', textColor: '#ffffff',
+          eyebrow: 'Portfolio', subheading: tag, bgGradient: g, textColor: '#ffffff',
           buttonText: 'View my work', buttonColor: '#17191c', buttonTextColor: '#ffffff', secondaryButtonText: 'Get in touch', minHeight: 540, padding: 84,
         }),
         blk('gallery', 'Selected work', {
@@ -579,7 +601,7 @@ export function buildWebsiteTemplatePages(templateId: string, ctx: BrandContext)
           galleryImages: ['#6366f1', '#f59e0b', '#ec4899', '#0891b2', '#22c55e', '#f97316'],
         }),
         blk('features', 'What I do', {
-          bgColor: '#f8fafc', padding: 68, columns: 3, iconColor: ctx.color,
+          bgGradient: soft(ctx.color), bgColor: '#f8fafc', padding: 68, columns: 3, iconColor: ctx.color,
           featureItems: [
             { icon: '🎨', title: 'Interface design', desc: 'Clean, considered screens that respect the user.' },
             { icon: '🧠', title: 'Research', desc: 'Decisions grounded in what people actually do.' },
@@ -600,7 +622,7 @@ export function buildWebsiteTemplatePages(templateId: string, ctx: BrandContext)
         navbar(ctx, 'Subscribe'),
         blk('hero', 'Writing worth your time', {
           eyebrow: 'The blog', subheading: 'Practical essays on the work, published every week. No filler, no clickbait.',
-          bgGradient: 'linear-gradient(135deg,#0891b2,#06b6d4)', textColor: '#ffffff',
+          bgGradient: g, textColor: '#ffffff',
           buttonText: 'Start reading', buttonColor: '#c7f441', buttonTextColor: '#17191c', secondaryButtonText: 'Subscribe free', minHeight: 480, padding: 78,
         }),
         blk('features', 'What we write about', {
@@ -624,7 +646,7 @@ export function buildWebsiteTemplatePages(templateId: string, ctx: BrandContext)
       home = { name: 'Home', type: 'landing', blocks: [
         navbar(ctx, 'Book a consult'),
         blk('hero', 'Expert guidance, without the jargon', {
-          eyebrow: 'Consulting', subheading: tag, bgGradient: 'linear-gradient(135deg,#1e3a5f,#0f172a)', textColor: '#ffffff',
+          eyebrow: 'Consulting', subheading: tag, bgGradient: g, textColor: '#ffffff',
           buttonText: 'Book a free consult', buttonColor: '#c7f441', buttonTextColor: '#17191c', secondaryButtonText: 'How we work', minHeight: 520, padding: 82,
         }),
         trustStats(ctx),
@@ -650,16 +672,18 @@ export function buildWebsiteTemplatePages(templateId: string, ctx: BrandContext)
       home = { name: 'Home', type: 'landing', blocks: [
         navbar(ctx, 'Donate'),
         blk('hero', 'Small actions, real change', {
-          eyebrow: 'Our mission', subheading: tag, bgGradient: 'linear-gradient(135deg,#dc2626,#7f1d1d)', textColor: '#ffffff',
+          eyebrow: 'Our mission', subheading: tag, bgGradient: g, textColor: '#ffffff',
           buttonText: 'Donate now', buttonColor: '#c7f441', buttonTextColor: '#17191c', secondaryButtonText: 'Our impact', minHeight: 520, padding: 82,
         }),
-        blk('stats', '', {
-          bgColor: '#0f172a', textColor: '#ffffff', padding: 60,
+        /* The impact figures are the charity's to give: each is a labelled
+           blank until they put their own number in. */
+        blk('stats', 'Our impact', {
+          eyebrow: 'Add your own figures', bgColor: '#0f1115', textColor: '#ffffff', padding: 72, iconColor: ctx.color,
           statItems: [
-            { value: '48,000', label: 'People reached', icon: '❤️' },
-            { value: '92¢', label: 'Of each $1 to programs', icon: '💰' },
-            { value: '31', label: 'Communities served', icon: '🌍' },
-            { value: '1,200', label: 'Active volunteers', icon: '🤝' },
+            { value: '—', label: 'People reached (add your figure)' },
+            { value: '—', label: 'Share of each gift spent on programmes (add yours)' },
+            { value: '—', label: 'Communities served (add your figure)' },
+            { value: '—', label: 'Volunteers (add your figure)' },
           ],
         }),
         blk('features', 'Where your money goes', {
@@ -707,9 +731,9 @@ export function buildWebsiteTemplatePages(templateId: string, ctx: BrandContext)
             { icon: '🤝', title: 'Aftercare', desc: 'We stay reachable long after the invoice is paid.' },
           ],
         }),
-        blk('columns', 'Why choose us', {
+        blk('columns', 'Why choose us', { iconColor: ctx.color,
           subheading: `${ctx.name} has built its reputation on doing what we say we will do. No surprises, no disappearing acts.`,
-          bgColor: '#f8fafc', padding: 72, imagePosition: 'right', buttonText: 'Get in touch', buttonColor: ctx.color, buttonTextColor: '#ffffff',
+          bgGradient: soft(ctx.color), bgColor: '#f8fafc', padding: 72, imagePosition: 'right', buttonText: 'Get in touch', buttonColor: ctx.color, buttonTextColor: '#ffffff',
           listItems: ['Clear, fixed pricing up front', 'Fully licensed and insured', 'Work guaranteed in writing', 'Same-day replies during business hours'],
         }),
         testimonials(ctx),
@@ -868,7 +892,7 @@ const HERO_COPY: Record<string, { title: string; eyebrow?: string; cta?: string 
   'lp-comingsoon': { title: 'We are launching soon', eyebrow: 'Coming soon', cta: 'Notify me' },
   'lp-book': { title: 'See it working on your own data — book a demo', eyebrow: 'Live demo', cta: 'Book a demo' },
   'lp-portfolio': { title: 'Selected work from the last twelve months', eyebrow: 'Portfolio', cta: 'Start a project' },
-  'lp-charity': { title: 'Your $25 feeds a family for a week', eyebrow: 'Donate', cta: 'Give now' },
+  'lp-charity': { title: 'Your gift goes straight to the people who need it', eyebrow: 'Donate', cta: 'Give now' },
   'lp-restaurant': { title: 'Honest food, cooked properly, every night', eyebrow: 'Open daily', cta: 'Reserve a table' },
   'ev-webinar': { title: 'Free live training: the system that actually works', eyebrow: 'Live webinar', cta: 'Save my seat' },
   'ev-conference': { title: 'Two days. Twelve speakers. One room.', eyebrow: 'Conference', cta: 'Get my ticket' },
@@ -906,37 +930,37 @@ const HERO_COPY: Record<string, { title: string; eyebrow?: string; cta?: string 
 function longFormSections(ctx: BrandContext, variant: 'saas' | 'agency' | 'course' | 'store' | 'studio'): FunnelBlock[] {
   const g = heroGrad(ctx.color);
   const common: FunnelBlock[] = [
-    blk('columns', 'Built around how you actually work', {
+    blk('columns', 'Built around how you actually work', { iconColor: ctx.color,
       eyebrow: 'The approach', subheading: 'No retraining your team, no six-week onboarding. It fits the way you already do things and removes the friction around it.',
       bgColor: '#ffffff', padding: 84, imagePosition: 'right', buttonText: 'See how it works', buttonColor: ctx.color, buttonTextColor: '#ffffff',
       listItems: ['Set up in an afternoon, not a quarter', 'Works with the tools you already pay for', 'Every change is reversible', 'Your data stays yours, exportable any time'],
     }),
     blk('features', 'Everything included, nothing upsold', {
-      eyebrow: 'What you get', subtitle: 'Six things that usually cost extra elsewhere', bgColor: '#f8fafc', padding: 84, columns: 3, iconColor: ctx.color,
+      eyebrow: 'What you get', subtitle: 'Six things that usually cost extra elsewhere', bgGradient: soft(ctx.color), bgColor: '#f8fafc', padding: 84, columns: 3, iconColor: ctx.color,
       featureItems: [
-        { icon: '⚡', title: 'Fast by default', desc: 'Pages load in under a second, everywhere, on any connection.' },
+        { icon: '⚡', title: 'Fast by default', desc: 'Quick to load on any connection, phone or desktop.' },
         { icon: '🔐', title: 'Security built in', desc: 'Encryption at rest and in transit, with audited access logs.' },
         { icon: '📈', title: 'Reporting that helps', desc: 'The three numbers that matter, not forty you will never read.' },
         { icon: '🤝', title: 'Onboarding included', desc: 'A real person walks you through setup at no extra cost.' },
         { icon: '🔁', title: 'Free migration', desc: 'We move your existing data across and check it with you.' },
-        { icon: '💬', title: 'Support that answers', desc: 'Median first reply under two hours during business days.' },
+        { icon: '💬', title: 'Support that answers', desc: 'Questions answered by people, during business hours.' },
       ],
     }),
-    blk('columns', 'A workflow that pays for itself', {
-      eyebrow: 'Results', subheading: 'Customers routinely save a full day a week within the first month. That is the whole pitch — you get time back and nothing breaks.',
+    blk('columns', 'A workflow that pays for itself', { iconColor: ctx.color,
+      eyebrow: 'Results', subheading: 'The point is simple: you get time back, and nothing breaks along the way.',
       bgColor: '#ffffff', padding: 84, imagePosition: 'left',
-      listItems: ['Cut manual admin by around 60%', 'Fewer dropped follow-ups', 'One place to look instead of five'],
+      listItems: ['Less manual admin', 'Fewer dropped follow-ups', 'One place to look instead of five'],
     }),
     trustStats(ctx),
     testimonials(ctx),
     blk('gallery', 'A look inside', {
-      eyebrow: 'Screenshots', subtitle: 'Real screens, not marketing mockups', bgColor: '#f8fafc', padding: 80, columns: 3,
+      eyebrow: 'Screenshots', subtitle: 'Real screens, not marketing mockups', bgGradient: soft(ctx.color), bgColor: '#f8fafc', padding: 80, columns: 3,
       galleryImages: [ctx.color, '#8b5cf6', '#0ea5e9', '#22c55e', '#f59e0b', '#ec4899'],
     }),
   ];
 
   const tail: FunnelBlock[] = [
-    blk('pricing', 'Straightforward pricing', {
+    blk('pricing', 'Straightforward pricing', { iconColor: ctx.color,
       eyebrow: 'Pricing', subtitle: 'Every plan includes onboarding, migration and support', bgColor: '#ffffff', padding: 84,
       pricingPlans: [
         { name: 'Starter', price: '$39', period: '/mo', features: ['1 workspace', 'Core features', 'Email support', 'Free migration'], buttonText: 'Start free' },
@@ -956,7 +980,7 @@ function longFormSections(ctx: BrandContext, variant: 'saas' | 'agency' | 'cours
     return [
       blk('gallery', 'Recent work', { eyebrow: 'Portfolio', subtitle: 'A selection from the last twelve months', bgColor: '#0f172a', textColor: '#ffffff', padding: 84, columns: 3, galleryImages: [ctx.color, '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#0ea5e9'] }),
       common[0], common[1], trustStats(ctx), testimonials(ctx),
-      blk('columns', 'How we run a project', {
+      blk('columns', 'How we run a project', { iconColor: ctx.color,
         eyebrow: 'Process', subheading: 'Four stages, fixed price, no surprise invoices. You know what happens next at every point.',
         bgColor: '#ffffff', padding: 84, imagePosition: 'left',
         listItems: ['1. Discovery — we learn the business', '2. Strategy — written plan you approve', '3. Build — weekly demos, no black box', '4. Handover — training and documentation'],
@@ -968,7 +992,7 @@ function longFormSections(ctx: BrandContext, variant: 'saas' | 'agency' | 'cours
   if (variant === 'course') {
     return [
       common[0],
-      blk('features', 'What is inside the programme', { eyebrow: 'Curriculum', subtitle: 'Six modules, released weekly', bgColor: '#f8fafc', padding: 84, columns: 3, iconColor: ctx.color,
+      blk('features', 'What is inside the programme', { eyebrow: 'Curriculum', subtitle: 'Six modules, released weekly', bgGradient: soft(ctx.color), bgColor: '#f8fafc', padding: 84, columns: 3, iconColor: ctx.color,
         featureItems: [
           { icon: '1️⃣', title: 'Foundations', desc: 'The mental model everything else builds on.' },
           { icon: '2️⃣', title: 'The system', desc: 'Build your version, step by step, with templates.' },
@@ -978,7 +1002,7 @@ function longFormSections(ctx: BrandContext, variant: 'saas' | 'agency' | 'cours
           { icon: '6️⃣', title: 'Staying consistent', desc: 'The routine that keeps it running without you.' },
         ] }),
       trustStats(ctx), testimonials(ctx), common[5],
-      blk('pricing', 'Enrol today', { eyebrow: 'Enrolment', subtitle: 'Lifetime access, including every future update', bgColor: '#ffffff', padding: 84,
+      blk('pricing', 'Enrol today', { iconColor: ctx.color, eyebrow: 'Enrolment', subtitle: 'Lifetime access, including every future update', bgColor: '#ffffff', padding: 84,
         pricingPlans: [
           { name: 'Self-paced', price: '$249', period: 'once', features: ['All 6 modules', 'Templates & worksheets', 'Lifetime updates'], buttonText: 'Enrol now' },
           { name: 'With coaching', price: '$899', period: 'once', highlighted: true, features: ['Everything in Self-paced', '6 group coaching calls', 'Private community', 'Feedback on your work'], buttonText: 'Enrol with coaching' },
@@ -991,7 +1015,7 @@ function longFormSections(ctx: BrandContext, variant: 'saas' | 'agency' | 'cours
     return [
       blk('gallery', 'Shop the collection', { eyebrow: 'New in', subtitle: 'Restocked weekly', bgColor: '#ffffff', padding: 80, columns: 3, galleryImages: [ctx.color, '#f59e0b', '#ec4899', '#10b981', '#0ea5e9', '#8b5cf6'] }),
       common[1], common[2], trustStats(ctx), testimonials(ctx),
-      blk('gallery', 'As worn by our customers', { eyebrow: 'Community', bgColor: '#f8fafc', padding: 76, columns: 4, galleryImages: [ctx.color, '#ec4899', '#f59e0b', '#0ea5e9'] }),
+      blk('gallery', 'As worn by our customers', { eyebrow: 'Community', bgGradient: soft(ctx.color), bgColor: '#f8fafc', padding: 76, columns: 4, galleryImages: [ctx.color, '#ec4899', '#f59e0b', '#0ea5e9'] }),
       faq(ctx),
       blk('cta', 'Get 10% off your first order', { eyebrow: 'Welcome offer', subheading: 'Join the list for early access to every drop.', bgGradient: g, textColor: '#ffffff', buttonText: 'Claim 10% off', buttonColor: '#c7f441', buttonTextColor: '#17191c', padding: 84 }),
     ];

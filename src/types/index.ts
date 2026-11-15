@@ -333,7 +333,8 @@ export interface FunnelBlock {
     shadow?: boolean;
     fullWidth?: boolean;
     featureItems?: { icon: string; title: string; desc: string }[];
-    testimonialItems?: { quote: string; author: string; role: string; stars?: number; avatar?: string }[];
+    /** `placeholder`: a slot for a real review the customer has not added yet — drawn as one, never as a review. */
+    testimonialItems?: { quote: string; author: string; role: string; stars?: number; avatar?: string; placeholder?: boolean }[];
     pricingPlans?: { name: string; price: string; period: string; features: string[]; highlighted?: boolean; buttonText?: string }[];
     statItems?: { value: string; label: string; icon?: string }[];
     faqItems?: { q: string; a: string }[];
@@ -346,6 +347,13 @@ export interface FunnelBlock {
     footerCopyright?: string;
     /** Small kicker/badge text shown above a section's heading, e.g. "WHY CHOOSE US". */
     eyebrow?: string;
+    /**
+     * Which generation of the shared renderer's styling the block is drawn in.
+     * `modern` (inset rounded hero, pill nav, glassy cards; set by
+     * shared/pageTemplates.ts) is opt-in per block so pages built before it
+     * existed — some of them published — keep looking exactly as they did.
+     */
+    look?: 'modern';
   };
 }
 

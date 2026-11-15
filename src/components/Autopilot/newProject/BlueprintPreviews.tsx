@@ -18,8 +18,14 @@ import { PageBlocks } from '../../shared/BlockRender';
 
 const RENDER_WIDTH = 1280;
 
-/** One page, scaled to the box's width, at its whole height — scrolled inside the box. */
-function FitPage({ page, height }: { page: FunnelStep; height: number }) {
+/**
+ * One page, scaled to the box's width, at its whole height — scrolled inside
+ * the box. Also the template preview's page (TemplatePagePreview.tsx), drawn
+ * 390 wide there for the phone view.
+ */
+export function FitPage({ page, height, renderWidth = RENDER_WIDTH, className = 'np-wide-view' }: {
+  page: FunnelStep; height: number | string; renderWidth?: number; className?: string;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0);
@@ -27,7 +33,7 @@ function FitPage({ page, height }: { page: FunnelStep; height: number }) {
   useLayoutEffect(() => {
     const measure = () => {
       const w = box.current?.clientWidth ?? 0;
-      if (w) setScale(w / RENDER_WIDTH);
+      if (w) setScale(w / renderWidth);
       setTall(inner.current?.scrollHeight ?? 0);
     };
     measure();
@@ -35,11 +41,11 @@ function FitPage({ page, height }: { page: FunnelStep; height: number }) {
     if (box.current) ro.observe(box.current);
     if (inner.current) ro.observe(inner.current);
     return () => ro.disconnect();
-  }, [page]);
+  }, [page, renderWidth]);
   return (
-    <div ref={box} className="np-wide-view" style={{ height }} tabIndex={0} aria-label={`${page.name} — scroll to read the whole page`}>
+    <div ref={box} className={className} data-noinvert style={{ height }} tabIndex={0} aria-label={`${page.name} — scroll to read the whole page`}>
       <div style={{ height: tall * scale, position: 'relative' }}>
-        <div ref={inner} style={{ position: 'absolute', top: 0, left: 0, width: RENDER_WIDTH, transform: `scale(${scale})`, transformOrigin: 'top left', pointerEvents: 'none' }}>
+        <div ref={inner} style={{ position: 'absolute', top: 0, left: 0, width: renderWidth, transform: `scale(${scale})`, transformOrigin: 'top left', pointerEvents: 'none' }}>
           <PageBlocks page={page} />
         </div>
       </div>

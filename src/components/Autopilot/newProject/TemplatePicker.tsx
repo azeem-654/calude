@@ -11,11 +11,17 @@
  *
  * Rendering a real page is not free, so a tab shows its most-used templates
  * first and the rest on request, and each preview is built once.
+ *
+ * Each card has a Preview button (a sibling of the card, not inside it — a
+ * button cannot hold a button) that opens every page or step full size
+ * (TemplatePagePreview.tsx), from the same built pages.
  */
 import { useMemo, useState } from 'react';
-import { Check, Sparkles, ChevronDown, Filter, LayoutTemplate, Ban } from 'lucide-react';
+import { Check, Sparkles, ChevronDown, Filter, LayoutTemplate, Ban, Maximize2 } from 'lucide-react';
 import { TEMPLATE_CATALOG, buildTemplatePages, type BrandContext, type TemplateMeta } from '../../shared/pageTemplates';
 import { PagesStrip, ScaledPage } from '../../shared/BlockRender';
+import TemplatePagePreview from './TemplatePagePreview';
+import './templatePreview.css';
 
 const ACCENT = '#5b46e5';
 const FIRST = 6;
@@ -42,6 +48,7 @@ export default function TemplatePicker({ value, onPick, brand, prefer, hasSite =
       ? 'A funnel is one focused page with one action — book, buy or enquire — which is what a campaign needs. Add a full website later if you want one.'
       : 'You have no website yet and this business workspace is about being found, so a small website comes first. A funnel can be added for campaigns later.';
   const [all, setAll] = useState(false);
+  const [previewing, setPreviewing] = useState<TemplateMeta | null>(null);
   const list = useMemo(() => TEMPLATE_CATALOG
     .filter(t => t.kind === tab && t.category !== 'Thank You Pages')
     .sort((a, b) => b.popularity - a.popularity), [tab]);
@@ -97,7 +104,8 @@ export default function TemplatePicker({ value, onPick, brand, prefer, hasSite =
           const on = value === t.id;
           const ps = pages(t);
           return (
-            <button key={t.id} type="button" className="np-tpl" aria-pressed={on} onClick={() => onPick(t.id)}
+            <div key={t.id} className="tpv-cardwrap">
+            <button type="button" className="np-tpl" aria-pressed={on} onClick={() => onPick(t.id)}
               aria-label={`${t.name} — ${t.kind === 'funnel' ? `${ps.length}-step funnel` : `${ps.length}-page website`}`}>
               <span className="np-tpl-pic" aria-hidden>
                 {t.kind === 'funnel' && ps.length > 1
@@ -112,6 +120,11 @@ export default function TemplatePicker({ value, onPick, brand, prefer, hasSite =
                 {t.kind === 'funnel' ? ps.map(p => p.name).join(' → ') : `${ps.length} pages · ${t.industry}`}
               </span>
             </button>
+            <button type="button" className="tpv-open" onClick={() => setPreviewing(t)}
+              aria-label={`Preview ${t.name} — ${t.kind === 'funnel' ? 'every step' : 'every page'}, full size`}>
+              <Maximize2 size={12} /> Preview
+            </button>
+            </div>
           );
         })}
       </div>
@@ -124,9 +137,13 @@ export default function TemplatePicker({ value, onPick, brand, prefer, hasSite =
       )}
 
       <span style={{ fontSize: 12, color: '#6b7280' }}>
-        Hover a preview to scroll through the page. These show your name, colour and background photo; the wording is a starting point, not the final copy.
+        Hover a design to scroll it, or press <b>Preview</b> to see every {tab === 'funnel' ? 'step' : 'page'} full size. These show your name, colour and background photo; the wording is a starting point, not the final copy, and review slots are placeholders for your own.
       </span>
       </>)}
+      {previewing && (
+        <TemplatePagePreview meta={previewing} pages={pages(previewing)} chosen={value === previewing.id}
+          onUse={() => onPick(previewing.id)} onClose={() => setPreviewing(null)} />
+      )}
     </div>
   );
 }

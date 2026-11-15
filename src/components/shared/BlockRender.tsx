@@ -6,8 +6,9 @@
  * a template is exactly what the builder creates.
  */
 import { useEffect, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactElement, ReactNode } from 'react';
 import type { FunnelBlock, FunnelStep } from '../../types';
+import './blockModern.css';
 
 export function BlockRender({ block }: { block: FunnelBlock }) {
   const s = block.settings;
@@ -17,6 +18,14 @@ export function BlockRender({ block }: { block: FunnelBlock }) {
     ? { backgroundImage: `url(${s.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
     : { background: s.bgColor ?? '#fff' };
   const pad = s.padding ?? 40;
+
+  /* The newer look is per block and opt-in (see `look` in types), so a page
+     saved before it keeps the styling it was published with. Blocks it does
+     not restyle fall through to the original drawing below. */
+  if (s.look === 'modern') {
+    const m = modernBlock(block, bg, pad);
+    if (m !== undefined) return m;
+  }
 
   switch (block.type) {
     case 'navbar': return (
@@ -338,10 +347,14 @@ function FormBlock({ block, bg, pad }: { block: FunnelBlock; bg: CSSProperties; 
     fontSize: 14, boxSizing: 'border-box', fontFamily: 'inherit',
   };
 
+  const modern = s.look === 'modern';
   return (
-    <section style={{ ...bg, padding: `${pad}px 60px` }}>
-      {block.content && <h2 style={{ textAlign: s.align ?? 'center', fontSize: 30, fontWeight: 800, color: s.textColor ?? '#0f172a', margin: '0 0 30px' }}>{block.content}</h2>}
-      <div style={{ maxWidth: 540, margin: '0 auto' }}>
+    <section className={modern ? 'bm' : undefined} style={modern ? bg : { ...bg, padding: `${pad}px 60px` }}>
+      <div className={modern ? 'bm-in' : undefined} style={modern ? padY(pad) : undefined}>
+      {block.content && (modern
+        ? <h2 className="bm-h2" style={{ textAlign: s.align ?? 'center', color: s.textColor ?? '#0f172a', margin: '0 auto 28px', maxWidth: 760 }}>{block.content}</h2>
+        : <h2 style={{ textAlign: s.align ?? 'center', fontSize: 30, fontWeight: 800, color: s.textColor ?? '#0f172a', margin: '0 0 30px' }}>{block.content}</h2>)}
+      <div className={modern ? 'bm-form' : undefined} style={{ maxWidth: modern ? undefined : 540, margin: '0 auto' }}>
         {state === 'sent' ? (
           <p style={{
             margin: 0, padding: '16px 18px', borderRadius: 10, background: '#ecfdf5',
@@ -411,8 +424,271 @@ function FormBlock({ block, bg, pad }: { block: FunnelBlock; bg: CSSProperties; 
           </>
         )}
       </div>
+      </div>
     </section>
   );
+}
+
+/* ── The modern look (settings.look === 'modern') ─────────────────────────────
+   Same blocks, same fields, drawn the way pages are designed now: an inset
+   rounded hero over a mesh, a floating pill nav, big tight type, glassy
+   rounded cards, pill buttons. Layout is in blockModern.css (it has to follow
+   the width the page is drawn at); colours are the block's own settings. */
+
+/** A custom property in an inline style. */
+const cssVars = (v: Record<string, string | number>): CSSProperties => v as CSSProperties;
+/** The section's vertical padding: the block's own at full width, less on a phone. */
+const padY = (pad: number): CSSProperties => cssVars({ '--bm-y': `clamp(${Math.round(pad * 0.6)}px, 12cqi, ${pad}px)` });
+const mix = (c: string, pct: number, to = 'transparent') => `color-mix(in srgb, ${c} ${pct}%, ${to})`;
+
+/** Whether a colour is light — so text on it should be dark, and a section with light text is a dark one. */
+function isLight(c?: string): boolean {
+  const v = String(c ?? '').trim();
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(v);
+  if (!m) return /^white$/i.test(v);
+  const h = m[1].length === 3 ? m[1].split('').map(x => x + x).join('') : m[1];
+  const n = parseInt(h, 16);
+  return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255 > 0.6;
+}
+const readableOn = (c: string) => (isLight(c) ? '#0f172a' : '#ffffff');
+/** The brand colour as small text on white: a pale one (mint, lemon) is darkened until it reads. */
+const textTone = (c: string) => (isLight(c) ? mix(c, 45, '#0f172a') : c);
+const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '·';
+
+function Head({ eyebrow, title, subtitle, ink, accent, align }: {
+  eyebrow?: string; title?: string; subtitle?: string; ink: string; accent: string; align?: string;
+}) {
+  if (!eyebrow && !title && !subtitle) return null;
+  const tone = isLight(ink) ? '#ffffff' : textTone(accent);
+  return (
+    <div className="bm-head" data-align={align === 'left' ? 'left' : undefined}>
+      {eyebrow && <span className="bm-eyebrow" style={{ color: tone, borderColor: mix(tone, 28), background: mix(tone, 8) }}>{eyebrow}</span>}
+      {title && <h2 className="bm-h2" style={{ color: ink }}>{title}</h2>}
+      {subtitle && <p className="bm-sub" style={{ color: mix(ink, 66) }}>{subtitle}</p>}
+    </div>
+  );
+}
+
+function Btn({ text, bg, color, ghost, arrow, small }: {
+  text: string; bg?: string; color: string; ghost?: boolean; arrow?: boolean; small?: boolean;
+}) {
+  /* Templates write white text on the brand colour; a pale brand colour
+     (a mint, a lemon) would make that unreadable, so the text flips. */
+  if (bg && !ghost && isLight(bg) === isLight(color)) color = readableOn(bg);
+  return (
+    <button type="button" className={`bm-btn${small ? ' bm-btn-sm' : ''}${ghost ? ' bm-btn-ghost' : ''}`} data-ico={arrow ? '' : undefined}
+      style={ghost || !bg ? { color } : { background: bg, color, boxShadow: `0 14px 30px -14px ${mix(bg, 80)}` }}>
+      {text}
+      {arrow && <span className="bm-btn-ico" aria-hidden>→</span>}
+    </button>
+  );
+}
+
+/** The hero's and the call-to-action's shared panel: inset, rounded, over the block's background. */
+function Panel({ block, bg, pad, cta }: { block: FunnelBlock; bg: CSSProperties; pad: number; cta?: boolean }) {
+  const s = block.settings;
+  const ink = s.textColor ?? '#ffffff';
+  const onDark = isLight(ink);
+  const accent = s.buttonColor ?? '#ffffff';
+  return (
+    <section className="bm bm-inset">
+      <div className="bm-panel" data-align={s.align === 'left' ? 'left' : undefined}
+        style={{ ...bg, color: ink, minHeight: cta ? undefined : `min(${s.minHeight ?? 420}px, 150cqi)` }}>
+        <span className="bm-glow" style={{ background: onDark ? 'rgba(255,255,255,0.32)' : mix(accent, 40), top: '-32%', right: '-14%' }} />
+        {s.buttonColor && <span className="bm-glow" style={{ background: mix(s.buttonColor, 45), bottom: '-40%', left: '-18%', opacity: 0.35 }} />}
+        <div className="bm-in" style={padY(pad)}>
+          {s.eyebrow && (
+            <span className={`bm-eyebrow${onDark ? ' bm-glass-eyebrow' : ''}`}
+              style={onDark ? { color: ink } : { color: accent, borderColor: mix(accent, 28), background: mix(accent, 8) }}>{s.eyebrow}</span>
+          )}
+          {cta
+            ? <h2 className="bm-h1 bm-cta-h" style={{ color: ink }}>{block.content}</h2>
+            : <h1 className="bm-h1" style={{ color: ink }}>{block.content}</h1>}
+          {s.subheading && <p className="bm-lead" style={{ color: mix(ink, 78) }}>{s.subheading}</p>}
+          {(s.buttonText || s.secondaryButtonText) && (
+            <div className="bm-actions">
+              {s.buttonText && <Btn text={s.buttonText} bg={s.buttonColor ?? '#ffffff'} color={s.buttonTextColor ?? readableOn(s.buttonColor ?? '#ffffff')} arrow />}
+              {s.secondaryButtonText && <Btn text={s.secondaryButtonText} color={ink} ghost />}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function modernBlock(block: FunnelBlock, bg: CSSProperties, pad: number): ReactElement | null | undefined {
+  const s = block.settings;
+  const ink = s.textColor ?? '#0f172a';
+  const accent = s.iconColor ?? s.buttonColor ?? '#6366f1';
+  const dark = isLight(ink) ? '' : undefined;
+  const sec = (children: ReactNode) => (
+    <section className="bm" data-dark={dark} style={{ ...bg, color: ink }}>
+      <div className="bm-in" style={padY(pad)}>{children}</div>
+    </section>
+  );
+  const head = <Head eyebrow={s.eyebrow} title={block.content} subtitle={s.subtitle} ink={ink} accent={accent} align={s.align} />;
+
+  switch (block.type) {
+    case 'navbar': {
+      const brand = s.buttonColor ?? '#6366f1';
+      return (
+        /* The strip is see-through so the pill floats over the page once it
+           sticks; the pill carries the block's background. */
+        <nav className="bm bm-nav">
+          <div className="bm-nav-pill" style={{ background: mix(s.bgColor ?? '#ffffff', 80), color: ink }}>
+            {s.navLogoImage
+              ? <img src={s.navLogoImage} alt={s.navLogo ?? ''} style={{ height: 34, width: 'auto', maxWidth: 170, objectFit: 'contain' }} />
+              : <span className="bm-logo"><i style={{ background: `linear-gradient(135deg, ${brand}, ${mix(brand, 55, '#000000')})` }} /><span>{s.navLogo ?? 'MySite'}</span></span>}
+            <div className="bm-links">{(s.navLinks ?? []).map((l, i) => <a key={i} href={l.url} style={{ color: ink }}>{l.label}</a>)}</div>
+            {s.buttonText && <span className="bm-nav-cta"><Btn text={s.buttonText} bg={brand} color={s.buttonTextColor ?? readableOn(brand)} small /></span>}
+          </div>
+        </nav>
+      );
+    }
+    case 'hero': return <Panel block={block} bg={bg} pad={pad} />;
+    case 'cta': return <Panel block={block} bg={bg} pad={pad} cta />;
+    case 'features': return sec(<>
+      {head}
+      <div className="bm-grid" style={cssVars({ '--bm-cols': Math.min(Math.max(s.columns ?? 3, 1), 4) })}>
+        {(s.featureItems ?? []).map((f, i) => (
+          <div key={i} className="bm-card">
+            <div className="bm-ico" style={{ background: `linear-gradient(135deg, ${mix(accent, 22)}, ${mix(accent, 6)})`, borderColor: mix(accent, 22) }}>{f.icon}</div>
+            <h3 style={{ color: ink }}>{f.title}</h3>
+            {f.desc && <p style={{ color: mix(ink, 64) }}>{f.desc}</p>}
+          </div>
+        ))}
+      </div>
+    </>);
+    case 'testimonials': {
+      const items = s.testimonialItems ?? [];
+      return sec(<>
+        {head}
+        <div className="bm-grid" style={cssVars({ '--bm-cols': Math.min(Math.max(items.length, 1), 3) })}>
+          {items.map((t, i) => (
+            <figure key={i} className="bm-card bm-quote" data-placeholder={t.placeholder ? '' : undefined} style={{ margin: 0 }}>
+              {t.placeholder
+                ? <span className="bm-tag">Placeholder</span>
+                : (t.stars ?? 0) > 0
+                  ? <div style={{ color: '#f59e0b', letterSpacing: 2, fontSize: 15 }} aria-label={`${t.stars} stars`}>{'★'.repeat(Math.min(5, t.stars ?? 0))}</div>
+                  : <span className="bm-qmark" style={{ color: accent }} aria-hidden>“</span>}
+              <blockquote style={{ color: t.placeholder ? mix(ink, 60) : ink }}>{t.quote}</blockquote>
+              <figcaption className="bm-who">
+                <span className="bm-avatar" style={t.avatar ? { backgroundImage: `url(${t.avatar})` } : { background: mix(accent, 14), color: accent }}>{t.avatar ? '' : initials(t.author)}</span>
+                <span><strong style={{ color: ink }}>{t.author}</strong><small style={{ color: ink }}>{t.role}</small></span>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      </>);
+    }
+    case 'pricing': {
+      const plans = s.pricingPlans ?? [];
+      return sec(<>
+        {head}
+        <div className="bm-plans" style={cssVars({ '--bm-cols': Math.min(Math.max(plans.length, 1), 3) })}>
+          {plans.map((p, i) => (
+            <div key={i} className="bm-card bm-plan" data-hot={p.highlighted ? '' : undefined}
+              style={p.highlighted
+                ? { background: `radial-gradient(120% 80% at 100% 0%, ${mix(accent, 55)}, transparent 60%), #0e1014`, boxShadow: `0 30px 60px -30px ${mix(accent, 75)}` }
+                : { color: ink }}>
+              {/* "Recommended", not "Most popular": that would be a claim about sales nobody has measured. */}
+              {p.highlighted && <span className="bm-pop" style={{ background: accent, color: readableOn(accent) }}>Recommended</span>}
+              <div className="bm-plan-name">{p.name}</div>
+              <div className="bm-price">{p.price}<small>{p.period}</small></div>
+              <ul>{p.features.map((f, j) => <li key={j}><span style={{ color: p.highlighted ? '#ffffff' : accent, fontWeight: 800 }}>✓</span><span>{f}</span></li>)}</ul>
+              <Btn text={p.buttonText ?? 'Get started'} bg={p.highlighted ? '#ffffff' : accent} color={p.highlighted ? '#0e1014' : readableOn(accent)} />
+            </div>
+          ))}
+        </div>
+      </>);
+    }
+    case 'columns': {
+      const btn = s.buttonColor ?? accent;
+      return sec(
+        <div className="bm-split" data-flip={s.imagePosition === 'left' ? '' : undefined}>
+          <div>
+            {s.eyebrow && <span className="bm-eyebrow" style={{ color: isLight(ink) ? '#ffffff' : textTone(accent), borderColor: mix(accent, 28), background: mix(accent, 8) }}>{s.eyebrow}</span>}
+            <h2 className="bm-h2" style={{ color: ink }}>{block.content}</h2>
+            {s.subheading && <p className="bm-sub" style={{ color: mix(ink, 66) }}>{s.subheading}</p>}
+            {(s.listItems ?? []).map((li, i) => (
+              <div key={i} className="bm-check" style={{ color: ink }}><i style={{ background: mix(accent, 14), color: accent }}>✓</i><span>{li}</span></div>
+            ))}
+            {s.buttonText && <div style={{ marginTop: 26 }}><Btn text={s.buttonText} bg={btn} color={s.buttonTextColor ?? readableOn(btn)} arrow /></div>}
+          </div>
+          <div className="bm-visual" style={s.imageUrl
+            ? { background: `url(${s.imageUrl}) center / cover` }
+            : { background: `radial-gradient(80% 70% at 15% 10%, ${mix(accent, 75)}, transparent 62%), radial-gradient(70% 70% at 95% 95%, ${mix(accent, 45, '#ffffff')}, transparent 60%), linear-gradient(135deg, ${mix(accent, 28, '#ffffff')}, ${mix(accent, 10, '#ffffff')})` }}>
+            {/* A picture slot until there is a picture: shapes only, nothing that reads as data. */}
+            {!s.imageUrl && (
+              <div className="bm-visual-ui" aria-hidden>
+                <i style={{ width: '38%', background: accent }} /><i style={{ width: '86%' }} /><i style={{ width: '72%' }} /><i style={{ width: '58%' }} />
+              </div>
+            )}
+          </div>
+        </div>,
+      );
+    }
+    case 'stats': return sec(<>
+      {head}
+      <div className="bm-stats">
+        {(s.statItems ?? []).map((st, i) => (
+          <div key={i} className="bm-stat">
+            <strong style={{ backgroundImage: `linear-gradient(180deg, ${ink}, ${mix(ink, 55)})`, WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>{st.value}</strong>
+            <span style={{ color: mix(ink, 72) }}>{st.label}</span>
+          </div>
+        ))}
+      </div>
+    </>);
+    case 'faq': return sec(<>
+      {head}
+      <div className="bm-faq">
+        {(s.faqItems ?? []).map((f, i) => (
+          <details key={i}>
+            <summary style={{ color: ink }}>{f.q}<span className="bm-plus" style={{ background: mix(accent, 12), color: accent }} aria-hidden>+</span></summary>
+            <div style={{ color: mix(ink, 66) }}>{f.a}</div>
+          </details>
+        ))}
+      </div>
+    </>);
+    case 'gallery': {
+      const imgs = s.galleryImages ?? [];
+      const cols = Math.min(Math.max(s.columns ?? 3, 2), 4);
+      return sec(<>
+        {head}
+        <div className="bm-bento" data-bento={imgs.length >= 5 && cols >= 3 ? '' : undefined} style={cssVars({ '--bm-cols': cols })}>
+          {imgs.map((c, i) => <div key={i} style={{ background: c.startsWith('#') ? `linear-gradient(140deg, ${c}, ${mix(c, 55, '#ffffff')})` : `url(${c}) center / cover` }} />)}
+        </div>
+      </>);
+    }
+    case 'footer': {
+      const cols = s.footerColumns ?? [];
+      const name = s.navLogo ?? 'MySite';
+      const muted = s.textColor ?? '#94a3b8';
+      return (
+        <footer className="bm bm-foot" data-dark="" style={{ ...bg, color: muted }}>
+          <div className="bm-in" style={padY(pad)}>
+            <div className="bm-foot-top" style={cssVars({ '--bm-cols': Math.max(cols.length, 1) })}>
+              <div className="bm-foot-brand">
+                <strong style={{ color: '#ffffff' }}>{name}</strong>
+                {s.subheading && <p>{s.subheading}</p>}
+              </div>
+              {cols.map((col, i) => (
+                <div key={i}>
+                  <h4 style={{ color: '#ffffff' }}>{col.heading}</h4>
+                  {col.links.map((l, j) => <a key={j} href={l.url} style={{ color: muted }}>{l.label}</a>)}
+                </div>
+              ))}
+            </div>
+            {s.footerCopyright && <div className="bm-foot-bar"><span>{s.footerCopyright}</span></div>}
+            {/* Sized by the name's length so the whole name fits the width. */}
+            <div className="bm-wordmark" aria-hidden style={{ fontSize: `clamp(40px, ${Math.min(15, 160 / Math.max(name.length, 4)).toFixed(2)}cqi, 210px)` }}>{name}</div>
+          </div>
+        </footer>
+      );
+    }
+    default: return undefined;
+  }
 }
 
 /** Render every block of a page, in order. */
@@ -480,7 +756,9 @@ export function ScaledPage({ page, height, renderWidth = 1100, hoverScroll = tru
   const [ref, w] = useBoxWidth<HTMLDivElement>();
   const scale = w > 0 ? w / renderWidth : 0;
   return (
-    <div ref={ref} className={hoverScroll ? 'tpl-preview' : undefined}
+    /* data-noinvert: a picture of the customer's page is shown in its own colours,
+       not turned into a negative by the app's dark mode (index.css). */
+    <div ref={ref} className={hoverScroll ? 'tpl-preview' : undefined} data-noinvert
       style={{ position: 'relative', height, overflow: 'hidden', background: '#fff' }}>
       {scale > 0 && (
         <div className={hoverScroll ? 'tpl-preview-inner' : undefined}

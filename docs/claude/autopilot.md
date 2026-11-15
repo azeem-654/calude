@@ -221,7 +221,22 @@ true })`). The pick is built by the wizard as a draft through `addWebsite` /
 does not add a second. `ai` falls back to the `pageLayout` question and the
 planner's page. The blueprint shows `ResultPreview` — posts, the page, the
 first email's opening — drawn from what the wizard knows, no AI call, and
-labelled as a preview. T9 in `test:wizard` covers it.
+labelled as a preview. T9 in `test:wizard` covers it. Each gallery card has
+a **Preview** button (`newProject/TemplatePagePreview.tsx`, CSS in
+`templatePreview.css`; not the workflow `Autopilot/TemplatePreviewModal.tsx`):
+an aria-modal near-full-screen view (the whole screen on a phone) of every
+step or page through the blueprint's `FitPage`, ←/→ and arrow buttons between
+steps, ↑/↓ scroll, Esc closes without closing the wizard, a desktop/phone
+width toggle, and **Use this design**. Template blocks carry
+`settings.look: 'modern'` (set in `blk()`), which BlockRender draws as
+`modernBlock` (layout in `shared/blockModern.css`, sized by container query
+so a 390-wide preview reflows): inset rounded mesh hero, pill nav, glassy
+cards, pill buttons. Pages without `look` keep the old drawing. The
+templates' reviews are labelled placeholder slots (`placeholder: true`) and
+the band under the hero is "How it works", not invented figures. The
+builders' editing canvases have their own renderer copies and do not show
+the modern look. Page previews carry `data-noinvert` so dark mode does not
+show them in negative.
 
 **Every question helps.** *Here's what I understood* (`Understanding.tsx`)
 has no solution dropdown: a correction box (`data-field="intake.correction"`)
