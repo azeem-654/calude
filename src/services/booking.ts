@@ -38,12 +38,30 @@ export function bookingSlugFor(s: ScheduleAvailability, name = ''): string {
  * comes back with it, because "taken by another workspace" is something the
  * owner can act on and "could not publish" is not.
  */
-export async function publishBookingConfig(token: string, schedule: ScheduleAvailability): Promise<{ ok: boolean; error?: string; field?: string }> {
+/**
+ * Which page a publish, upload or check is about. Absent: the account's own
+ * page (`crm_booking_config`). With `pageId`: one of the workspace's extra
+ * pages — a business workspace's own (`crm_booking_pages`, migration 0099),
+ * made by the AI Autopilot wizard or on Scheduling → Booking pages.
+ */
+export interface BookingPageRef {
+  pageId?: string;
+  /** The business workspace it belongs to, once that exists. */
+  projectId?: string;
+  /** Said on the page beside the photo: the business this page is for, not the account's. */
+  businessName?: string;
+}
+
+/** A new page's id, made here so the wizard can publish it before the project exists. */
+export const newBookingPageId = (): string => `bp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+export async function publishBookingConfig(token: string, schedule: ScheduleAvailability, ref: BookingPageRef = {}): Promise<{ ok: boolean; error?: string; field?: string }> {
   const a = withoutTwilio(schedule).automations;
   const res = await call({
     action: 'publish',
     token,
     accountId: getActiveAccountId() ?? '',
+    ...(ref.pageId ? { pageId: ref.pageId, projectId: ref.projectId ?? '' } : {}),
     public: {
       slug: schedule.slug,
       title: schedule.title,
@@ -67,7 +85,7 @@ export async function publishBookingConfig(token: string, schedule: ScheduleAvai
       videoFileUrl: schedule.videoFileUrl ?? '',
       hostName: schedule.hostName ?? '',
       /* Said on the page beside the photo when no host name is set. */
-      businessName: customerBusinessName(),
+      businessName: ref.businessName || customerBusinessName(),
       /* Points with their icons; `bullets` (plain lines) is what pages
          published before icons kept, and is still read as ticks. */
       points: pointsOf(schedule.points, schedule.bullets),
@@ -109,8 +127,8 @@ export async function publishBookingConfig(token: string, schedule: ScheduleAvai
  * box rather than discovered when a save is refused. `null` when the server
  * could not be asked — which the box says, rather than calling it free.
  */
-export async function checkBookingSlug(token: string, slug: string): Promise<{ available: boolean; reason?: string; yours?: boolean } | null> {
-  const res = await call({ action: 'slug_check', token, accountId: getActiveAccountId() ?? '', slug });
+export async function checkBookingSlug(token: string, slug: string, pageId = ''): Promise<{ available: boolean; reason?: string; yours?: boolean } | null> {
+  const res = await call({ action: 'slug_check', token, accountId: getActiveAccountId() ?? '', slug, ...(pageId ? { pageId } : {}) });
   if (!res || !res.success) return null;
   return { available: res.available === true, reason: res.reason as string | undefined, yours: res.yours === true };
 }
@@ -143,9 +161,10 @@ export type BookingMediaKind = 'photo' | 'logo' | 'video' | 'testimonial';
  * decides what it is from those bytes (routes/bookingMedia.ts); the session
  * travels as the cookie, named by the `Bearer cookie` placeholder.
  */
-export async function uploadBookingMedia(kind: BookingMediaKind, file: Blob): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+export async function uploadBookingMedia(kind: BookingMediaKind, file: Blob, pageId = ''): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   try {
-    const q = new URLSearchParams({ action: 'upload', kind, accountId: getActiveAccountId() ?? '' });
+    /* Per page: a new page's logo must not replace the file another page shows. */
+    const q = new URLSearchParams({ action: 'upload', kind, accountId: getActiveAccountId() ?? '', ...(pageId ? { page: pageId } : {}) });
     const r = await fetch(`${API_BASE}/api/booking-media.php?${q}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/octet-stream', Authorization: `Bearer ${getSession()?.token || 'cookie'}` },
@@ -159,11 +178,11 @@ export async function uploadBookingMedia(kind: BookingMediaKind, file: Blob): Pr
   }
 }
 
-export async function clearBookingMedia(kind: BookingMediaKind): Promise<boolean> {
+export async function clearBookingMedia(kind: BookingMediaKind, pageId = ''): Promise<boolean> {
   try {
     const r = await fetch(`${API_BASE}/api/booking-media.php`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'clear', token: getSession()?.token || 'cookie', accountId: getActiveAccountId() ?? '', kind }),
+      body: JSON.stringify({ action: 'clear', token: getSession()?.token || 'cookie', accountId: getActiveAccountId() ?? '', kind, ...(pageId ? { page: pageId } : {}) }),
     });
     const j = await r.json().catch(() => null) as { success?: boolean } | null;
     return !!j?.success;
@@ -180,18 +199,19 @@ export async function clearBookingMedia(kind: BookingMediaKind): Promise<boolean
  * showing somebody else's availability.
  */
 export interface BookingDelivery { confirms: boolean; meet: boolean }
-export async function fetchPublicConfig(slug?: string, accountId?: string): Promise<
-  { config: Partial<ScheduleAvailability> & { weekly?: ScheduleAvailability['weekly'] }; accountId?: string; delivery?: BookingDelivery } | { notFound: true } | null
+export async function fetchPublicConfig(slug?: string, accountId?: string, pageId?: string): Promise<
+  { config: Partial<ScheduleAvailability> & { weekly?: ScheduleAvailability['weekly'] }; accountId?: string; pageId?: string; delivery?: BookingDelivery } | { notFound: true } | null
 > {
   /* By workspace only for a guest's manage link, which names its booking and
      so its workspace; a visitor arriving cold is found by slug. */
-  const res = await call(slug ? { action: 'config', slug } : accountId ? { action: 'config', accountId } : { action: 'config' });
+  const res = await call(slug ? { action: 'config', slug } : accountId ? { action: 'config', accountId, ...(pageId ? { pageId } : {}) } : { action: 'config' });
   if (!res) return null;
   if (res.notFound) return { notFound: true };
   if (!res.success || !res.config) return null;
   return {
     config: res.config as Partial<ScheduleAvailability> & { weekly?: ScheduleAvailability['weekly'] },
     accountId: res.accountId as string | undefined,
+    pageId: typeof res.pageId === 'string' ? res.pageId : undefined,
     delivery: res.delivery && typeof res.delivery === 'object' ? res.delivery as BookingDelivery : undefined,
   };
 }
@@ -211,7 +231,7 @@ export async function fetchBookedRange(accountId: string, from: string, to: stri
 }
 
 export async function createRemoteBooking(payload: {
-  accountId: string; eventTypeId?: string; slotDate: string; slotTime: string;
+  accountId: string; pageId?: string; eventTypeId?: string; slotDate: string; slotTime: string;
   guestName: string; guestEmail: string; guestPhone?: string; notes?: string; timezone?: string;
 }): Promise<{ ok: boolean; id?: string; key?: string; error?: string; emailed?: boolean; startsAt?: string }> {
   const res = await call({ action: 'create', ...payload });
@@ -304,4 +324,30 @@ export function googleCalendarUrl(opts: CalOpts): string {
     location: opts.location ?? '',
   });
   return `https://calendar.google.com/calendar/render?${p.toString()}`;
+}
+
+/** One of the workspace's booking pages, as the owner's screens list them. */
+export interface BookingPageSummary {
+  id: string;
+  projectId: string | null;
+  slug: string;
+  config: Partial<ScheduleAvailability>;
+  updatedAt: string;
+}
+
+/** Owner: every booking page this workspace has — its own, and each business workspace's. */
+export async function listBookingPages(): Promise<{ main: { slug: string; config: Partial<ScheduleAvailability> } | null; pages: BookingPageSummary[] } | null> {
+  const res = await call({ action: 'pages', token: getSession()?.token || 'cookie', accountId: getActiveAccountId() ?? '' });
+  if (!res || !res.success) return null;
+  return {
+    main: (res.main as { slug: string; config: Partial<ScheduleAvailability> } | null) ?? null,
+    pages: Array.isArray(res.pages) ? res.pages as BookingPageSummary[] : [],
+  };
+}
+
+/** Owner: take one of the business workspaces' pages down. Bookings already taken stay. */
+export async function deleteBookingPage(pageId: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await call({ action: 'page_delete', token: getSession()?.token || 'cookie', accountId: getActiveAccountId() ?? '', pageId });
+  if (!res) return { ok: false, error: 'The server could not be reached.' };
+  return res.success ? { ok: true } : { ok: false, error: String(res.error ?? 'Not deleted.') };
 }

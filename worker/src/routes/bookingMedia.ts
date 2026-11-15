@@ -62,9 +62,14 @@ export function sniffVideo(b: Uint8Array): 'video/mp4' | 'video/webm' | null {
 
 const notFound = () => new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain', 'X-Content-Type-Options': 'nosniff' } });
 
-async function removeKind(env: Env, accountId: string, kind: Kind): Promise<void> {
-  const old = await env.DB.prepare('SELECT key, r2_key FROM crm_booking_media WHERE account_id = ? AND kind = ?')
-    .bind(accountId, kind).first<{ key: string; r2_key: string | null }>();
+/** A booking page's id as the browser names it ('' = the account's own page). */
+export const PAGE_ID_RE = /^bp-[a-z0-9-]{4,40}$/;
+const pageOf = (v: unknown): string => (PAGE_ID_RE.test(String(v ?? '')) ? String(v) : '');
+
+async function removeKind(env: Env, accountId: string, kind: Kind, pageId = ''): Promise<void> {
+  /* Per page: one page's new logo must not delete the file another page shows. */
+  const old = await env.DB.prepare('SELECT key, r2_key FROM crm_booking_media WHERE account_id = ? AND kind = ? AND page_id = ?')
+    .bind(accountId, kind, pageId).first<{ key: string; r2_key: string | null }>();
   if (!old) return;
   if (old.r2_key && env.VIDEO) {
     try { await env.VIDEO.delete(old.r2_key); } catch { /* the row goes either way: an orphan object costs pennies, a dangling row breaks the page */ }
@@ -125,6 +130,7 @@ export async function handleBookingMedia(req: Request, env: Env): Promise<Respon
     const user = await userFromToken(env.DB, bearer(req, url));
     if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
     const accountId = String(url.searchParams.get('accountId') ?? '').trim();
+    const pageId = pageOf(url.searchParams.get('page'));
     if (!accountId) return fail('A workspace is required.', 200, { field });
     if (!(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours to change.', 403);
 
@@ -153,10 +159,10 @@ export async function handleBookingMedia(req: Request, env: Env): Promise<Respon
       const key = publicKey();
       const r2Key = `booking/${accountId}/${key}`;
       await env.VIDEO!.put(r2Key, buf, { httpMetadata: { contentType: mime } });
-      await removeKind(env, accountId, 'video');
+      await removeKind(env, accountId, 'video', pageId);
       await env.DB.prepare(
-        'INSERT INTO crm_booking_media (key, account_id, kind, mime, data, r2_key, bytes, created_at) VALUES (?,?,?,?,?,?,?,?)',
-      ).bind(key, accountId, 'video', mime, null, r2Key, buf.length, nowIso()).run();
+        'INSERT INTO crm_booking_media (key, account_id, kind, mime, data, r2_key, bytes, created_at, page_id) VALUES (?,?,?,?,?,?,?,?,?)',
+      ).bind(key, accountId, 'video', mime, null, r2Key, buf.length, nowIso(), pageId).run();
       return json({ success: true, key, url: bookingMediaUrl(key), bytes: buf.length });
     }
 
@@ -168,15 +174,15 @@ export async function handleBookingMedia(req: Request, env: Env): Promise<Respon
     let bin = '';
     for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
     const key = publicKey();
-    await removeKind(env, accountId, kind);
+    await removeKind(env, accountId, kind, pageId);
     await env.DB.prepare(
-      'INSERT INTO crm_booking_media (key, account_id, kind, mime, data, r2_key, bytes, width, height, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
-    ).bind(key, accountId, kind, img.mime, btoa(bin), null, buf.length, img.width, img.height, nowIso()).run();
+      'INSERT INTO crm_booking_media (key, account_id, kind, mime, data, r2_key, bytes, width, height, created_at, page_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+    ).bind(key, accountId, kind, img.mime, btoa(bin), null, buf.length, img.width, img.height, nowIso(), pageId).run();
     return json({ success: true, key, url: bookingMediaUrl(key), width: img.width, height: img.height });
   }
 
   /* ── Owner: take one away ── */
-  const d = await body<{ action?: string; token?: string; accountId?: string; kind?: string }>(req);
+  const d = await body<{ action?: string; token?: string; accountId?: string; kind?: string; page?: string }>(req);
   if (d.action === 'clear') {
     const user = await userFromToken(env.DB, d.token);
     if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
@@ -184,7 +190,7 @@ export async function handleBookingMedia(req: Request, env: Env): Promise<Respon
     const kind = String(d.kind ?? '') as Kind;
     if (!accountId || !KINDS.includes(kind)) return fail('A workspace and what to remove are required.');
     if (!(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours to change.', 403);
-    await removeKind(env, accountId, kind);
+    await removeKind(env, accountId, kind, pageOf(d.page));
     return json({ success: true });
   }
   return fail(`"${String(d.action ?? '')}" is not something this endpoint does.`);

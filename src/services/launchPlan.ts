@@ -38,6 +38,8 @@ export interface LaunchStep {
   why: string;
   /** Where it happens. Empty when Autopilot does it without anybody going anywhere. */
   route: string;
+  /** Finished by the build itself (e.g. the booking page it published) — drawn ticked. */
+  done?: boolean;
 }
 
 interface StepDef extends LaunchStep {

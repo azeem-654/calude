@@ -11,14 +11,16 @@
  */
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, Circle, Loader, AlertTriangle, XCircle, ArrowRight, ExternalLink } from 'lucide-react';
-import AutopilotBot from '../AutopilotBot';
+import ProtronHero, { ThoughtBubbles, buildThoughts } from '../../Protron/ProtronHero';
 import { percentOf, type BuildResult, type BuildStep } from './buildRunner';
 import ContactsCheck from './ContactsCheck';
 import FinderLive from './FinderLive';
 import WorkflowStrip from './WorkflowStrip';
 import type { WorkflowNode } from '../../../services/autopilot';
 
-export default function Build({ steps, say, result, reach = [], flows = [] }: {
+export default function Build({ steps, say, result, reach = [], flows = [], business = '' }: {
+  /** The business being built for, named in what Protron is thinking about. */
+  business?: string;
   steps: BuildStep[];
   /** Every workflow in the blueprint, so the finished screen shows their steps, not only a count. */
   flows?: { name: string; nodes?: WorkflowNode[] }[];
@@ -37,17 +39,18 @@ export default function Build({ steps, say, result, reach = [], flows = [] }: {
 
   return (
     <div style={{ display: 'grid', gap: 20 }}>
-      <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-        <span className={done ? '' : 'np-glow'} style={{ borderRadius: 18, flexShrink: 0 }}>
-          <AutopilotBot size={58} awake busy={!done} />
-        </span>
-        <div style={{ minWidth: 0 }}>
+      {/* Protron, not the older two-eyed bot (owner, 2026-11-15): alive while
+          it builds, thinking out loud in a bubble that changes slowly. */}
+      <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+        <ProtronHero size={104} state={failed ? 'error' : done ? 'done' : 'working'} />
+        <div style={{ minWidth: 0, flex: '1 1 260px' }}>
           <h2 className="wz-title" style={{ fontSize: 'clamp(22px, 3.6vw, 30px)' }}>
             {failed ? 'The build stopped' : done ? <>Your AI Autopilot is <span className="wz-accent">ready</span></> : <>Building <span className="wz-accent">your AI Autopilot</span></>}
           </h2>
           <p aria-live="polite" style={{ margin: '6px 0 0', fontSize: 14.5, color: '#4c39d1', fontWeight: 600, lineHeight: 1.5 }}>
-            {failed ? result?.fatal : done ? 'Everything below is a real record, and it keeps running without this open.' : say}{!done && <> <span className="np-think" aria-hidden><i /><i /><i /></span></>}
+            {failed ? result?.fatal : done ? 'Everything below is a real record, and it keeps running without this open.' : say}
           </p>
+          {!done && <div style={{ marginTop: 12 }}><ThoughtBubbles lines={buildThoughts(business, now?.label)} every={4500} /></div>}
         </div>
       </div>
 

@@ -333,12 +333,31 @@ export async function transcribe(key: string, d: IntakeReq, env?: Env): Promise<
       return null;
     }
   };
-  const whisper = async (why: string): Promise<Response> => (await heard()) ?? fail(why);
+  /* The first answer that has words in it, of several started at different
+     moments; null only when every one came back empty. */
+  const firstGood = (ps: Promise<Response | null>[]): Promise<Response | null> => new Promise(resolve => {
+    let left = ps.length;
+    if (!left) { resolve(null); return; }
+    for (const p of ps) void p.then(r => { if (r) resolve(r); else if (--left === 0) resolve(null); }, () => { if (--left === 0) resolve(null); });
+  });
+  const wait = <T,>(ms: number) => new Promise<T | undefined>(res => setTimeout(() => res(undefined), ms));
+
+  /* OpenAI's transcriber, when the owner has keys, is waited on for 4 s at
+     most before the others start too — it used to be awaited in full, then
+     Gemini in turn, then Whisper, so a slow first engine held up the message
+     (owner, 2026-11-15: replies should feel as quick as the live talk). */
+  let openAi: Promise<Response | null> = Promise.resolve(null);
+  let openAiWhy = '';
   if (env && bytes) {
     const t0 = Date.now();
-    const o = await transcribeOpenAi(env, bytes, mime.split(';')[0], lang, context);
-    if (o.ok && o.text) return json({ success: true, text: clip(tidySpoken(o.text), 6000), language: lang, clarity: 'clear', engine: 'openai', ms: Date.now() - t0 });
-    if (!key) return whisper(o.ok ? 'I couldn’t make out any words.' : o.noKeys ? 'Our AI is not available right now. This is on our side, not yours.' : `The recording could not be transcribed: ${o.error}`);
+    openAi = transcribeOpenAi(env, bytes, mime.split(';')[0], lang, context).then(o => {
+      if (o.ok && o.text) return json({ success: true, text: clip(tidySpoken(o.text), 6000), language: lang, clarity: 'clear', engine: 'openai', ms: Date.now() - t0 });
+      openAiWhy = o.ok ? 'I couldn’t make out any words.' : o.noKeys ? 'Our AI is not available right now. This is on our side, not yours.' : `The recording could not be transcribed: ${o.error}`;
+      return null;
+    }, () => null);
+    const quick = await Promise.race([openAi, wait<Response | null>(4_000)]);
+    if (quick) return quick;
+    if (!key) return (await firstGood([openAi, heard()])) ?? fail(openAiWhy || 'The recording could not be transcribed.');
   }
   if (!key) return fail('Our AI is not available right now. This is on our side, not yours.', 200, { code: 'no_ai' });
 
@@ -372,15 +391,13 @@ export async function transcribe(key: string, d: IntakeReq, env?: Env): Promise<
    * too (a few seconds on a voice note, no key) and the first good answer
    * wins; Gemini is still preferred whenever it answers first.
    */
-  const early = await Promise.race([gemini, new Promise<undefined>(res => setTimeout(() => res(undefined), 6_500))]);
-  if (early !== undefined) return early ?? whisper(geminiError || 'The recording could not be transcribed.');
-  if (!canWhisper) return (await gemini) ?? fail(geminiError || 'The recording could not be transcribed.');
-  const viaWhisper = heard();
-  const first = await Promise.race([
-    gemini.then(r => r ?? viaWhisper),
-    viaWhisper.then(r => r ?? gemini),
-  ]);
-  return first ?? (await gemini) ?? (await viaWhisper) ?? fail(geminiError || 'The recording could not be transcribed.');
+  /* 2026-11-15: Whisper joins after 3 s rather than 6.5 — Flash answers a
+     voice note in one to two seconds when it is free, so past three it is
+     busy, and Whisper's few seconds are then the quicker answer. */
+  const early = await Promise.race([firstGood([gemini, openAi]), wait<Response | null>(3_000)]);
+  if (early) return early;
+  if (!canWhisper) return (await firstGood([gemini, openAi])) ?? fail(geminiError || openAiWhy || 'The recording could not be transcribed.');
+  return (await firstGood([gemini, openAi, heard()])) ?? fail(geminiError || openAiWhy || 'The recording could not be transcribed.');
 }
 
 /* ── understand ─────────────────────────────────────────────────────────── */

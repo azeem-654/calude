@@ -130,10 +130,12 @@ export default function ProjectOverview({ project, flows, runs, assets, onCreate
           <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 6 }}>
             {plan.map(s => (
               <li key={s.label} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: T.ink, lineHeight: 1.5 }}>
-                <Circle size={12} color={T.faint} style={{ flexShrink: 0, marginTop: 3 }} />
+                {s.done
+                  ? <CheckCircle2 size={12} color="#16a34a" style={{ flexShrink: 0, marginTop: 3 }} aria-label="Done" />
+                  : <Circle size={12} color={T.faint} style={{ flexShrink: 0, marginTop: 3 }} />}
                 <span style={{ minWidth: 0 }}>
                   {s.label}
-                  {s.route && (
+                  {s.route && !s.done && (
                     <button onClick={() => navigate(s.route)} style={{ marginLeft: 6, border: 'none', background: 'none', padding: 0, color: T.accent, fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
                       Go →
                     </button>

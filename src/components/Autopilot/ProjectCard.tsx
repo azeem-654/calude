@@ -434,6 +434,7 @@ export default function ProjectCard({
   const plan = project.launchSteps ?? [];
   const finished = (day?.didToday ?? []).filter(a => a.kind !== 'observe' && a.kind !== 'error');
   const planDone = plan.filter(step => {
+    if (step.done) return true;
     const words = step.label.toLowerCase().split(/\s+/).filter(w => w.length > 4);
     return finished.some(a => words.some(w => `${a.summary} ${a.detail}`.toLowerCase().includes(w)));
   }).length;

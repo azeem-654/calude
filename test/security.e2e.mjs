@@ -487,6 +487,26 @@ check("B cannot overwrite A's portfolio by id", !hijackPortfolio.ok, JSON.string
   const bQ = (await api('booking.php', { action: 'config', slug: `b-${run}` })).data.config ?? {};
   check("B's page cannot show A's testimonial photo, and keeps only a known theme", aQuote.data.success && bQ.testimonial?.name === 'Pat' && bQ.testimonial?.photoUrl === '' && bQ.theme === '', JSON.stringify([bQ.testimonial, bQ.theme]));
   if (aQuote.data.url) await api('booking-media.php', { action: 'clear', token: A.token, accountId: A.acct, kind: 'testimonial' });
+
+  /* A business workspace's own booking pages (crm_booking_pages, 0099). */
+  const pageId = `bp-sec-${run}`;
+  const bPage = await api('booking.php', { action: 'publish', token: B.token, accountId: B.acct, pageId, public: { slug: `bp-${run}`, title: 'B roofing' } });
+  check('A workspace can publish a second booking page', bPage.ok, JSON.stringify(bPage.data));
+  const steal = await api('booking.php', { action: 'publish', token: A.token, accountId: A.acct, pageId, public: { slug: `a-steal-${run}`, title: 'A' } });
+  check("A cannot take over B's booking page by its id", !steal.ok && steal.status === 403, JSON.stringify(steal.data));
+  const clash = await api('booking.php', { action: 'publish', token: B.token, accountId: B.acct, pageId: `bp-sec2-${run}`, public: { slug: `b-${run}`, title: 'dup' } });
+  check("A page cannot take another page's address", !clash.ok && clash.data.field === 'booking.slug', JSON.stringify(clash.data));
+  const foreignProj = await api('booking.php', { action: 'publish', token: B.token, accountId: B.acct, pageId, projectId: 'proj-not-mine', public: { slug: `bp-${run}`, title: 'B' } });
+  check("A page cannot be tied to a business workspace in another account", !foreignProj.ok && foreignProj.status === 403, JSON.stringify(foreignProj.data));
+  const listA = await api('booking.php', { action: 'pages', token: B.token, accountId: A.acct });
+  check("B cannot list A's booking pages", !listA.ok && listA.status === 403, JSON.stringify(listA.data));
+  const delB = await api('booking.php', { action: 'page_delete', token: A.token, accountId: A.acct, pageId });
+  check("A cannot delete B's booking page", !delB.ok, JSON.stringify(delB.data));
+  const pCfg = await api('booking.php', { action: 'config', slug: `bp-${run}` });
+  check("A business workspace's page is found by its address", pCfg.ok && pCfg.data.pageId === pageId && pCfg.data.config?.title === 'B roofing', JSON.stringify(pCfg.data).slice(0, 160));
+  const pBorrow = await api('booking.php', { action: 'config', accountId: A.acct, pageId });
+  check("A page is not served under another account's id", !pBorrow.data.pageId, JSON.stringify(pBorrow.data).slice(0, 160));
+  await api('booking.php', { action: 'page_delete', token: B.token, accountId: B.acct, pageId });
 }
 
 console.log('\nPublic surfaces');

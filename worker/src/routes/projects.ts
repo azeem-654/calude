@@ -472,8 +472,9 @@ export async function handleProjects(req: Request, env: Env): Promise<Response> 
     const launchSteps = Array.isArray(d.launchSteps)
       ? JSON.stringify(
         (d.launchSteps as unknown[]).slice(0, 12).map(raw => {
-          const step = raw as { label?: unknown; why?: unknown; route?: unknown };
+          const step = raw as { label?: unknown; why?: unknown; route?: unknown; done?: unknown };
           return {
+            ...(step.done === true ? { done: true } : {}),
             label: String(step.label ?? '').slice(0, 120),
             why: String(step.why ?? '').slice(0, 400),
             /* An in-app path only. A step is rendered as a link, and a link

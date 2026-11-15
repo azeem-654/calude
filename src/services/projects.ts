@@ -58,7 +58,7 @@ export interface Project {
    * instead of an empty frame. Real steps with a real count; nothing here
    * advances on a timer.
    */
-  launchSteps?: { label: string; why: string; route: string }[];
+  launchSteps?: { label: string; why: string; route: string; done?: boolean }[];
   /**
    * The blueprint the customer approved in the wizard — null for projects made
    * before it existed. Shown on the project's Overview; the server reads only
@@ -195,7 +195,7 @@ export const saveProject = (p: {
    * exactly what the screen somebody agreed to said it would. Omitted on an
    * edit, which leaves the order alone — it was agreed once.
    */
-  launchSteps?: { label: string; why: string; route: string }[];
+  launchSteps?: { label: string; why: string; route: string; done?: boolean }[];
   /** The approved blueprint. Omitted on an edit, which keeps the stored one. */
   brief?: Record<string, unknown>;
 }) => call('save_project', p);

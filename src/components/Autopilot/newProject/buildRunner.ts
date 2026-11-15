@@ -83,6 +83,14 @@ export interface BuildInput {
     addWebsite: (w: Omit<Website, 'id'>) => void;
     addFunnel: (f: Omit<Funnel, 'id'>) => void;
   };
+  /**
+   * The business workspace's own booking page, made in the wizard
+   * (crm_booking_pages). Absent: the account's own page is published, as
+   * before. Present: this page is published again with the new project's id,
+   * which is what links it — {{bookingLink}} in the project's emails then
+   * points here, not at another business's page.
+   */
+  bookingPage?: { pageId: string; schedule: ScheduleAvailability; businessName: string };
 }
 
 /**
@@ -371,6 +379,20 @@ async function runBuildOnce(
     bp = { ...bp, audienceListId: made.id };
   }
   if (bp.audienceListId) await flushNow();
+
+  /* The booking page first, so the set-up list can say it is done: the
+     wizard's editor published it as it was edited, and a step left with an
+     empty circle read as "connect a booking page" on a workspace that had one
+     (the owner's test, 2026-11-15). Linked to the project once it exists. */
+  let bookingLive = false;
+  if (bp.requirements.includes('bookingPage') && inp.bookingPage) {
+    const token = getSession()?.token;
+    if (token && inp.bookingPage.schedule.slug) {
+      const r = await publishBookingConfig(token, inp.bookingPage.schedule, { pageId: inp.bookingPage.pageId, businessName: inp.bookingPage.businessName });
+      bookingLive = r.ok;
+      if (!r.ok) result.problems.push(`Booking page: ${r.error ?? 'not published'} — publish it from Scheduling → Booking pages.`);
+    }
+  }
   const p = await saveProject({
     name: bp.name.trim().slice(0, 150) || 'AI Autopilot business workspace',
     objective: bp.objective.trim().length >= 8 ? bp.objective.trim() : `${bp.objective.trim()} — set up with AI Autopilot`.slice(0, 400),
@@ -378,7 +400,7 @@ async function runBuildOnce(
     kind: kindOf(bp),
     guardrails: guardrailsFor(capsOf(bp)),
     goals: [],
-    launchSteps: launchStepsOf(bp),
+    launchSteps: launchStepsOf(bp, { booking: bookingLive }),
     brief: { ...briefOf(bp, state.prompt, bp.audienceListId ? loadLists().find(l => l.id === bp.audienceListId)?.name ?? '' : ''), ...(year ? { year } : {}) },
   });
   if (!p.success || !p.id) {
@@ -491,7 +513,13 @@ async function runBuildOnce(
      The emails' {{bookingLink}} is the published page (worker lib/mergeFields.ts);
      a page never published leaves every booking line blank. The wizard's editor
      publishes as it is edited — this covers a page nobody touched. */
-  if (bp.requirements.includes('bookingPage')) {
+  if (bp.requirements.includes('bookingPage') && inp.bookingPage) {
+    const token = getSession()?.token;
+    if (token && bookingLive) {
+      const r = await publishBookingConfig(token, inp.bookingPage.schedule, { pageId: inp.bookingPage.pageId, projectId: p.id, businessName: inp.bookingPage.businessName });
+      if (!r.ok) result.problems.push(`Booking page: published, but not linked to this business workspace (${r.error ?? 'refused'}).`);
+    }
+  } else if (bp.requirements.includes('bookingPage')) {
     const token = getSession()?.token;
     let sched: ScheduleAvailability | null = null;
     try { sched = JSON.parse(localStorage.getItem('crm_schedule') || 'null') as ScheduleAvailability | null; } catch { sched = null; }

@@ -47,7 +47,9 @@ export interface DesignHooks {
   hasPage: boolean;
 }
 
-export default function Questions({ screen, state, ws, files, answer, onFiles, onLink, index, total, profile, onProfile, onReadProfile, design, company }: {
+export default function Questions({ screen, state, ws, files, answer, onFiles, onLink, index, total, profile, onProfile, onReadProfile, design, company, booking }: {
+  /** This business's own booking page (NewProject's draft), edited where "our booking page" is picked. */
+  booking?: Pick<React.ComponentProps<typeof BookingSetup>, 'value' | 'onChange' | 'page'>;
   screen: Screen;
   design: DesignHooks;
   /** The business as read so far, and the two ways to change it. */
@@ -105,7 +107,7 @@ export default function Questions({ screen, state, ws, files, answer, onFiles, o
         )}
       </div>
       {screen.questions.map(q => (
-        <Field key={q.id} q={q} state={state} ws={ws} files={files} answer={answer} onFiles={onFiles} onLink={onLink} design={design} company={company} ideas={ideas} reading={profile.reading} />
+        <Field key={q.id} q={q} state={state} ws={ws} files={files} answer={answer} onFiles={onFiles} onLink={onLink} design={design} company={company} ideas={ideas} reading={profile.reading} booking={booking} />
       ))}
       {screen.questions.some(q => q.id === 'business') && (
         <ProfileFound state={state} files={files} profile={profile} onProfile={onProfile} onRead={onReadProfile} />
@@ -218,8 +220,9 @@ function ProfileFound({ state, files, profile, onProfile, onRead }: {
   );
 }
 
-function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, ideas, reading }: {
+function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, ideas, reading, booking }: {
   q: Question; state: IntakeState; ws: WorkspaceFacts; files: Attachment[];
+  booking?: Pick<React.ComponentProps<typeof BookingSetup>, 'value' | 'onChange' | 'page'>;
   /** The business's site or profile is being read right now (shown beside the website's tag). */
   reading?: boolean;
   design: DesignHooks; company?: string; ideas: ScreenIdeas;
@@ -535,7 +538,7 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
         {byAi && <span style={{ fontSize: 12, color: '#5b46e5' }}>✦ chosen for you — press any option to change it</span>}
         {q.id === 'emailStyle' && <EmailStyleExample style={String(vals[0] ?? aiValue ?? 'researched')} company={company} offer={said('offer')} />}
         {/* Our booking page, shown and set up the moment it is picked — not on another screen later. */}
-        {((q.id === 'booking' && vals[0] === 'page') || (q.id === 'calendar' && vals[0] === 'pc')) && <BookingSetup business={company} website={design.logo.website} />}
+        {((q.id === 'booking' && vals[0] === 'page') || (q.id === 'calendar' && vals[0] === 'pc')) && <BookingSetup business={company} website={design.logo.website} {...booking} />}
         {skip}
       </div>
     );

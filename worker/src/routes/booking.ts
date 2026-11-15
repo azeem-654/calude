@@ -26,7 +26,7 @@ import { ownerEmailOf } from '../lib/allowanceStore';
 import { loadMailbox } from './mailbox';
 import { adoptLegacyTwilio, takeLegacyTwilio } from '../lib/legacyTwilio';
 import { clockLabel, isZone, slotProblem, slugProblem, utcToWall, videoEmbedOf, wallToUtc, type Busy, type SlotRules } from '../lib/bookingTime';
-import { ownMediaUrl } from './bookingMedia';
+import { ownMediaUrl, PAGE_ID_RE } from './bookingMedia';
 import {
   autofillPrompt, cleanAutofill, cleanHex, cleanLines, cleanLogoTone, cleanRatio, cleanTestimonial, cleanTheme, clipText, helpLink,
   pageFacts, plainFill, pointsOf, MAX_DISCUSS, MAX_TAGS,
@@ -59,6 +59,10 @@ interface BookingBody {
   to?: string;
   url?: string;
   business?: string;
+  /** One of the workspace's extra pages (crm_booking_pages); absent = the account's own page. */
+  pageId?: string;
+  /** The business workspace a page belongs to. */
+  projectId?: string;
 }
 
 /* A photo fetched for the editor to shrink: larger than a logo, because a
@@ -67,6 +71,39 @@ const PHOTO_FETCH_CAP = 3_000_000;
 const GEMINI_IMAGE = /^data:(image\/(?:png|jpeg|webp|gif));base64,(.+)$/;
 
 const SLUG_OK = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+/**
+ * Whether an address is held by any page other than the one being saved.
+ *
+ * Addresses live in two tables — the account's own page and the business
+ * workspaces' pages — and a visitor's /book/<slug> must find exactly one, so
+ * every check asks both. `pageId` '' means the page being saved is the
+ * account's own.
+ */
+async function slugTaken(env: Env, slug: string, accountId: string, pageId: string): Promise<boolean> {
+  const main = pageId
+    ? await env.DB.prepare('SELECT 1 AS n FROM crm_booking_config WHERE slug = ?').bind(slug).first()
+    : await env.DB.prepare('SELECT 1 AS n FROM crm_booking_config WHERE slug = ? AND account_id != ?').bind(slug, accountId).first();
+  if (main) return true;
+  const page = await env.DB.prepare('SELECT 1 AS n FROM crm_booking_pages WHERE slug = ? AND id != ?').bind(slug, pageId).first();
+  return !!page;
+}
+
+/** A workspace's extra page, only ever read with the account it belongs to. */
+async function pageRow(env: Env, accountId: string, pageId: string): Promise<{ id: string; public: string; slug: string; project_id: string | null } | null> {
+  if (!PAGE_ID_RE.test(pageId)) return null;
+  return env.DB.prepare('SELECT id, public, slug, project_id FROM crm_booking_pages WHERE id = ? AND account_id = ?')
+    .bind(pageId, accountId).first<{ id: string; public: string; slug: string; project_id: string | null }>();
+}
+
+/** The published settings a booking is made under: its own page's, else the account's. */
+async function publicOf(env: Env, accountId: string, pageId = ''): Promise<Record<string, unknown> | null> {
+  const row = pageId
+    ? await pageRow(env, accountId, pageId)
+    : await env.DB.prepare('SELECT public FROM crm_booking_config WHERE account_id = ?').bind(accountId).first<{ public: string }>();
+  if (!row) return null;
+  try { return JSON.parse(row.public || '{}') as Record<string, unknown>; } catch { return {}; }
+}
 
 const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -152,16 +189,17 @@ function pictureUrl(v: unknown): string {
 async function bookingMail(
   env: Env, accountId: string, origin: string,
   what: 'booked' | 'rescheduled' | 'cancelled',
-  b: { id: string; key: string; slotDate: string; slotTime: string; guestName: string; guestEmail: string; notes?: string; meetingUrl?: string; guestTz?: string },
+  b: { id: string; key: string; slotDate: string; slotTime: string; guestName: string; guestEmail: string; notes?: string; meetingUrl?: string; guestTz?: string; pageId?: string },
 ): Promise<{ guest: boolean }> {
   try {
     const cfg = await env.DB.prepare('SELECT public, private FROM crm_booking_config WHERE account_id = ?')
       .bind(accountId).first<{ public: string; private: string }>();
-    if (!cfg) return { guest: false };
-    let pub: Record<string, unknown> = {};
+    /* The title, zone and place are the page the guest booked on; the
+       switches stay the account's (one owner, one mailbox). */
+    const pub = b.pageId ? await publicOf(env, accountId, b.pageId) : cfg ? await publicOf(env, accountId) : null;
+    if (!pub) return { guest: false };
     let auto: Record<string, unknown> = {};
-    try { pub = JSON.parse(cfg.public || '{}') as Record<string, unknown>; } catch { /* defaults */ }
-    try { auto = ((JSON.parse(cfg.private || '{}') as { automations?: Record<string, unknown> }).automations ?? {}); } catch { /* defaults */ }
+    try { auto = ((JSON.parse(cfg?.private || '{}') as { automations?: Record<string, unknown> }).automations ?? {}); } catch { /* defaults */ }
 
     const mb = await loadMailbox(env, accountId);
     if (!canSend(mb)) return { guest: false };
@@ -230,22 +268,43 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     if (slug && !SLUG_OK.test(slug)) {
       return fail('A booking link can use lowercase letters, numbers and hyphens only.', 200, { field: 'booking.slug' });
     }
+
+    /* One of the workspace's extra pages — a business workspace's own. Its id
+       is made by the browser that started it (the wizard makes one before the
+       project exists), so an id held by another account is refused rather
+       than taken over. */
+    const pageId = String(d.pageId ?? '').trim();
+    if (pageId && !PAGE_ID_RE.test(pageId)) return fail('That booking page id is not one this app makes.');
+    let projectId: string | null = null;
+    if (pageId) {
+      const holder = await env.DB.prepare('SELECT account_id, project_id FROM crm_booking_pages WHERE id = ?')
+        .bind(pageId).first<{ account_id: string; project_id: string | null }>();
+      if (holder && holder.account_id !== accountId) return fail('That booking page belongs to another workspace.', 403);
+      projectId = holder?.project_id ?? null;
+      const want = String(d.projectId ?? '').trim();
+      if (want) {
+        const proj = await env.DB.prepare('SELECT 1 AS n FROM crm_projects WHERE id = ? AND account_id = ?').bind(want, accountId).first();
+        if (!proj) return fail('That business workspace is not in this account.', 403);
+        projectId = want;
+      }
+      if (!slug) return fail('A booking page needs its own address.', 200, { field: 'booking.slug' });
+    }
+
     /* The stricter rule (three characters, no hyphen at either end) is for a
        new address only: a page already live under an older, looser one keeps
        working rather than being refused on its next save. */
-    const current = await env.DB.prepare('SELECT slug FROM crm_booking_config WHERE account_id = ?')
-      .bind(accountId).first<{ slug: string | null }>();
+    const current = pageId
+      ? await env.DB.prepare('SELECT slug FROM crm_booking_pages WHERE id = ?').bind(pageId).first<{ slug: string | null }>()
+      : await env.DB.prepare('SELECT slug FROM crm_booking_config WHERE account_id = ?').bind(accountId).first<{ slug: string | null }>();
     if (slug && slug !== (current?.slug ?? '')) {
       const why = slugProblem(slug);
       if (why) return fail(why, 200, { field: 'booking.slug' });
     }
 
-    /* A slug is how a visitor finds one workspace rather than another, so two
-       accounts cannot hold the same one. */
-    if (slug) {
-      const clash = await env.DB.prepare('SELECT account_id FROM crm_booking_config WHERE slug = ? AND account_id != ?')
-        .bind(slug, accountId).first<{ account_id: string }>();
-      if (clash) return fail(`The link "${slug}" is already taken by another workspace. Choose a different one.`, 200, { field: 'booking.slug' });
+    /* A slug is how a visitor finds one page rather than another, so no two
+       pages — in this workspace or another — can hold the same one. */
+    if (slug && await slugTaken(env, slug, accountId, pageId)) {
+      return fail(`The link "${slug}" is already taken by another booking page. Choose a different one.`, 200, { field: 'booking.slug' });
     }
 
     /* The owner's zone is what every stored booking time means. A name Intl
@@ -304,6 +363,16 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
      * once more; they are kept as the sender if the workspace has none, and
      * never written to this row.
      */
+    if (pageId) {
+      /* No private side: the switches are the account's, set on its own page. */
+      await env.DB.prepare(
+        `INSERT INTO crm_booking_pages (id, account_id, project_id, slug, public, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET slug = excluded.slug, public = excluded.public,
+                                       project_id = excluded.project_id, updated_at = excluded.updated_at`,
+      ).bind(pageId, accountId, projectId, slug, JSON.stringify(pub), nowIso()).run();
+      return ok({ slug, pageId, projectId });
+    }
+
     const { clean: priv, found } = takeLegacyTwilio(d.private ?? {});
     if (found) {
       try { await adoptLegacyTwilio(env, accountId, found); } catch { /* publishing must not fail for this */ }
@@ -424,6 +493,38 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
      refused. The answer is not a secret — /book/<slug> already says whether a
      page is there — but it still needs a session, so it is not a free oracle
      for walking every address on the install. */
+  /* ── Owner: the workspace's booking pages, and taking one down ──
+     The account's own page is listed first ('' id) so a screen can show
+     every page a visitor can reach. */
+  if (action === 'pages' || action === 'page_delete') {
+    const user = await userFromToken(env.DB, d.token);
+    if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
+    const accountId = String(d.accountId ?? '').trim();
+    if (!accountId) return fail('A workspace is required.');
+    if (!(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours.', 403);
+    if (action === 'page_delete') {
+      const pageId = String(d.pageId ?? '');
+      if (!PAGE_ID_RE.test(pageId)) return fail('Which booking page?');
+      const res = await env.DB.prepare('DELETE FROM crm_booking_pages WHERE id = ? AND account_id = ?').bind(pageId, accountId).run();
+      if (res.meta.changes) {
+        /* Its pictures go with it; bookings already taken stay (they are the guests'). */
+        await env.DB.prepare('DELETE FROM crm_booking_media WHERE account_id = ? AND page_id = ?').bind(accountId, pageId).run().catch(() => null);
+      }
+      return res.meta.changes ? ok() : fail('That booking page was not found.');
+    }
+    const { results } = await env.DB.prepare(
+      'SELECT id, project_id, slug, public, updated_at FROM crm_booking_pages WHERE account_id = ? ORDER BY updated_at DESC LIMIT 100',
+    ).bind(accountId).all<{ id: string; project_id: string | null; slug: string; public: string; updated_at: string }>();
+    const main = await env.DB.prepare('SELECT slug, public, updated_at FROM crm_booking_config WHERE account_id = ?')
+      .bind(accountId).first<{ slug: string | null; public: string; updated_at: string }>();
+    const parse = (v: string) => { try { return JSON.parse(v || '{}') as Record<string, unknown>; } catch { return {}; } };
+    return json({
+      success: true,
+      main: main ? { slug: main.slug ?? '', config: parse(main.public), updatedAt: main.updated_at } : null,
+      pages: (results ?? []).map(r => ({ id: r.id, projectId: r.project_id, slug: r.slug, config: parse(r.public), updatedAt: r.updated_at })),
+    });
+  }
+
   if (action === 'slug_check') {
     const user = await userFromToken(env.DB, d.token);
     if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
@@ -433,13 +534,14 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     const limit = await rateLimit(env, { what: 'booking-slug', who: accountId, max: 300, windowSeconds: 3600 });
     if (!limit.allowed) return fail('Too many checks — wait a minute and try again.', 429, { field: 'booking.slug' });
     const slug = String(d.slug ?? '').trim().toLowerCase();
-    const mine = await env.DB.prepare('SELECT slug FROM crm_booking_config WHERE account_id = ?')
-      .bind(accountId).first<{ slug: string | null }>();
+    const pageId = PAGE_ID_RE.test(String(d.pageId ?? '')) ? String(d.pageId) : '';
+    const mine = pageId
+      ? await env.DB.prepare('SELECT slug FROM crm_booking_pages WHERE id = ? AND account_id = ?').bind(pageId, accountId).first<{ slug: string | null }>()
+      : await env.DB.prepare('SELECT slug FROM crm_booking_config WHERE account_id = ?').bind(accountId).first<{ slug: string | null }>();
     if (slug && slug === mine?.slug) return json({ success: true, available: true, yours: true });
     const why = slugProblem(slug);
     if (why) return json({ success: true, available: false, reason: why });
-    const clash = await env.DB.prepare('SELECT 1 AS n FROM crm_booking_config WHERE slug = ? AND account_id != ?')
-      .bind(slug, accountId).first();
+    const clash = await slugTaken(env, slug, accountId, pageId);
     return json(clash
       ? { success: true, available: false, reason: 'Another workspace already uses this address. Try another.' }
       : { success: true, available: true });
@@ -467,11 +569,21 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
      * "whose page is this?", so it says there is none.
      */
     let row: { account_id: string; public: string } | null = null;
+    let pageId = '';
     if (slug) {
       row = await env.DB.prepare('SELECT account_id, public FROM crm_booking_config WHERE slug = ?')
         .bind(slug).first<{ account_id: string; public: string }>();
+      if (!row) {
+        /* A business workspace's own page. */
+        const pg = await env.DB.prepare('SELECT id, account_id, public FROM crm_booking_pages WHERE slug = ?')
+          .bind(slug).first<{ id: string; account_id: string; public: string }>();
+        if (pg) { row = { account_id: pg.account_id, public: pg.public }; pageId = pg.id; }
+      }
     } else if (accountId) {
-      row = await env.DB.prepare('SELECT account_id, public FROM crm_booking_config WHERE account_id = ?')
+      /* A guest's manage link: the booking names its page when it was a business workspace's. */
+      const pg = PAGE_ID_RE.test(String(d.pageId ?? '')) ? await pageRow(env, accountId, String(d.pageId)) : null;
+      if (pg) { row = { account_id: accountId, public: pg.public }; pageId = pg.id; }
+      else row = await env.DB.prepare('SELECT account_id, public FROM crm_booking_config WHERE account_id = ?')
         .bind(accountId).first<{ account_id: string; public: string }>();
     } else {
       const n = await env.DB.prepare('SELECT count(*) AS n FROM crm_booking_config').first<{ n: number }>();
@@ -497,7 +609,7 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
       confirms = auto.confirmEmail !== false && canSend(await loadMailbox(env, row.account_id));
       meet = !!(await env.DB.prepare("SELECT 1 AS n FROM crm_calendar_connections WHERE account_id = ? AND status = 'connected' LIMIT 1").bind(row.account_id).first());
     } catch { /* unknown: promise nothing */ }
-    return json({ success: true, accountId: row.account_id, config: JSON.parse(row.public || '{}'), delivery: { confirms, meet } });
+    return json({ success: true, accountId: row.account_id, ...(pageId ? { pageId } : {}), config: JSON.parse(row.public || '{}'), delivery: { confirms, meet } });
   }
 
   /* ── Visitor: which slots are already taken ── */
@@ -534,10 +646,9 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
        contacts into a stranger's workspace, start their automations, and, with
        a calendar connected, have Google send invitations from their account to
        any address. */
-    const page = await env.DB.prepare('SELECT public FROM crm_booking_config WHERE account_id = ?').bind(accountId).first<{ public: string }>();
-    if (!page) return json({ success: false, notFound: true, error: 'There is no booking page at that address.' });
-    let pub: Record<string, unknown> = {};
-    try { pub = JSON.parse(page.public || '{}') as Record<string, unknown>; } catch { /* an empty page offers nothing */ }
+    const pageId = PAGE_ID_RE.test(String(d.pageId ?? '')) ? String(d.pageId) : '';
+    const pub = await publicOf(env, accountId, pageId);
+    if (!pub) return json({ success: false, notFound: true, error: 'There is no booking page at that address.' });
     const ip = req.headers.get('CF-Connecting-IP') ?? 'unknown';
     const limit = await rateLimit(env, { what: 'booking', who: ip, max: 8, windowSeconds: 3600 });
     if (!limit.allowed) return fail('Too many bookings from here in the last hour. Try again later.', 429);
@@ -579,6 +690,8 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
       startsAt: new Date(wallToUtc(slotDate, slotTime, rules.timezone) ?? 0).toISOString(),
       duration: rules.duration,
       eventTypeId,
+      /* Which page it was booked on: its title, zone and place word the emails and a later move. */
+      ...(pageId ? { pageId } : {}),
     };
 
     await env.DB.prepare(
@@ -615,7 +728,7 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     } catch { /* the booking is the thing that had to be saved */ }
 
     const mail = await bookingMail(env, accountId, new URL(req.url).origin, 'booked', {
-      id, key: manageKey, slotDate, slotTime, guestName, guestEmail, notes: data.notes, meetingUrl, guestTz: data.timezone,
+      id, key: manageKey, slotDate, slotTime, guestName, guestEmail, notes: data.notes, meetingUrl, guestTz: data.timezone, pageId,
     });
 
     /* Returned so the confirmation screen can show it rather than promising a
@@ -648,12 +761,12 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
       });
     }
 
-    let guestData: { guestName?: string; guestEmail?: string; notes?: string; timezone?: string; duration?: number; eventTypeId?: string } = {};
+    let guestData: { guestName?: string; guestEmail?: string; notes?: string; timezone?: string; duration?: number; eventTypeId?: string; pageId?: string } = {};
     try { guestData = JSON.parse(row.data || '{}'); } catch { /* nothing to address */ }
     const mailFor = (slotDate: string, slotTime: string) => ({
       id, key, slotDate, slotTime,
       guestName: String(guestData.guestName ?? ''), guestEmail: String(guestData.guestEmail ?? ''), notes: guestData.notes,
-      guestTz: guestData.timezone ?? '',
+      guestTz: guestData.timezone ?? '', pageId: guestData.pageId ?? '',
     });
 
     if (action === 'cancel') {
@@ -670,9 +783,7 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     /* The same rules as a new booking, with this booking's own time not
        counted against it — moving a meeting by half an hour must not be
        refused because it overlaps itself. */
-    const cfgRow = await env.DB.prepare('SELECT public FROM crm_booking_config WHERE account_id = ?').bind(row.account_id).first<{ public: string }>();
-    let pubCfg: Record<string, unknown> = {};
-    try { pubCfg = JSON.parse(cfgRow?.public || '{}') as Record<string, unknown>; } catch { /* defaults */ }
+    const pubCfg = (await publicOf(env, row.account_id, guestData.pageId ?? '')) ?? {};
     const rules = rulesOf(pubCfg, guestData.eventTypeId);
     if (Number(guestData.duration) > 0) rules.duration = Number(guestData.duration);
     const problem = slotProblem(newDate, newTime, rules, await busyOn(env, row.account_id, newDate, rules.duration, id), Date.now());

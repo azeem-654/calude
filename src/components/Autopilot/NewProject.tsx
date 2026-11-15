@@ -48,7 +48,6 @@ import { getSession } from '../../services/auth';
 import { loadOnboarding } from '../../services/onboarding';
 import { WizardBackdrop, WizardCta } from '../shared/WizardChrome';
 import DigitalSetupStep from '../Setup/DigitalSetupStep';
-import AutopilotBot from './AutopilotBot';
 import { readPortfolioFromUrl, readLogoFromUrl, type Portfolio } from '../../services/projects';
 import type { LogoChoice } from '../../services/designOptions';
 import { shrinkLogo, logoFromFile, photoFromFile } from './newProject/logoImage';
@@ -63,7 +62,7 @@ import {
 } from '../../services/projectIntake';
 import Describe, { type DescribeValue } from './newProject/Describe';
 import ProtronIntake, { useProtronIntake, SolutionChips } from './newProject/ProtronIntake';
-import ProtronAvatar from '../Protron/ProtronAvatar';
+import ProtronHero from '../Protron/ProtronHero';
 import Understanding, { type Stage } from './newProject/Understanding';
 import Questions from './newProject/Questions';
 import FirstLeads from './newProject/FirstLeads';
@@ -75,6 +74,25 @@ import Requirements from './newProject/Requirements';
 import Review from './newProject/Review';
 import { finderSpecOf } from './newProject/contactFacts';
 import BookingSetup from './newProject/BookingSetup';
+import { bookingSlugFor, newBookingPageId } from '../../services/booking';
+import type { ScheduleAvailability } from '../../types';
+
+/**
+ * A new booking page for a business being set up: the owner's availability
+ * from the account's page (one person, one diary), nothing else — no title,
+ * words, pictures or meeting types from another business.
+ */
+function freshBookingSchedule(base: ScheduleAvailability, name: string): ScheduleAvailability {
+  return {
+    ...base,
+    slug: bookingSlugFor({ ...base, slug: '' }, name),
+    title: '', description: '', hostName: '', hostRole: '', tagline: '', pointsTitle: '',
+    points: [], bullets: [], discuss: [], tags: [], eventTypes: [],
+    photoUrl: '', logoUrl: '', videoUrl: '', videoFileUrl: '', imageUrl: '',
+    testimonial: null, help: '', accent: '', logoTone: '', logoRatio: 0,
+    theme: 'midnight-lime',
+  };
+}
 import Build from './newProject/Build';
 import { runBuild, planSteps, type BuildResult, type BuildStep } from './newProject/buildRunner';
 import { listChoices } from './newProject/contactFacts';
@@ -145,7 +163,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
   autoDrive?: boolean;
 }) {
   const presetSol = presetSolution ? solutionByKey(presetSolution) ?? null : null;
-  const { addNotification, addWebsite, addFunnel } = useApp();
+  const { addNotification, addWebsite, addFunnel, schedule: accountSchedule } = useApp();
   const [phase, setPhase] = useState<Phase>('describe');
   /* Read once: the lists do not change while the wizard is open, and the
      names are what "what I already know" says instead of an id. */
@@ -280,6 +298,30 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
       return host ? host.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : '';
     } catch { return ''; }
   }, [state, portfolios, ws, profileDraft]);
+
+  /* ── This business's own booking page ──
+     A new page (crm_booking_pages) in this business's name, never the page
+     the account already has: the owner set up a roofing company in Texas and
+     the preview showed — and would have rewritten — another company's page.
+     Only the owner's availability (hours, zone, length) is carried over; the
+     words, pictures and look start empty and are read from this business's
+     own website by the editor. Its address follows the name until it is
+     typed (Protron may learn the real name mid-chat). */
+  const [bookingDraft, setBookingDraft] = useState<{ pageId: string; schedule: ScheduleAvailability; named: string; typed: boolean } | null>(null);
+  useEffect(() => {
+    if (!company) return;
+    setBookingDraft(d => {
+      if (!d) return { pageId: newBookingPageId(), schedule: freshBookingSchedule(accountSchedule, company), named: company, typed: false };
+      if (!d.typed && d.named !== company) return { ...d, named: company, schedule: { ...d.schedule, slug: bookingSlugFor({ ...d.schedule, slug: '' }, company) } };
+      return d;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [company]);
+  const bookingProps = bookingDraft ? {
+    value: bookingDraft.schedule,
+    onChange: (patch: Partial<ScheduleAvailability>) => setBookingDraft(d => (d ? { ...d, typed: d.typed || 'slug' in patch, schedule: { ...d.schedule, ...patch } } : d)),
+    page: { pageId: bookingDraft.pageId, businessName: company },
+  } : undefined;
 
   /* The client's own words for the template previews and the result preview:
      their name, one line of what they do, and their offer as the headline. */
@@ -815,6 +857,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
         brand: { name: brandWords.name || 'Your business', color: pal.accent, tagline: brandWords.tagline, heroTitle: brandWords.heroTitle, heroImage: brandWords.heroImage },
         addWebsite, addFunnel,
       } : undefined,
+      bookingPage: bookingDraft ? { pageId: bookingDraft.pageId, schedule: bookingDraft.schedule, businessName: company } : undefined,
     };
     setPhase('build');
     setSteps(planSteps(input));
@@ -1000,7 +1043,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     <aside className="np-side" aria-label={withProtron ? 'Protron, your AI Live Business Manager' : 'AI Autopilot'}>
       {withProtron ? (
         <div className="np-side-protron">
-          <span className="np-side-avatar"><ProtronAvatar size={112} state={protronState} /></span>
+          <span className="np-side-avatar"><ProtronHero size={128} state={protronState} /></span>
           <b>Protron</b>
           <span className="np-side-role">Your AI Live Business Manager</span>
           <span className="np-side-status" data-state={protronState} role="status">
@@ -1012,10 +1055,14 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
           </span>
         </div>
       ) : (
-      <div style={{ display: 'flex', gap: 11, alignItems: 'center' }}>
-        <AutopilotBot size={46} awake busy={phase === 'understand' && !understood} />
+      /* Protron throughout, not the older two-eyed AI Autopilot bot (owner,
+         2026-11-15: "show the true bot there"), with the business it is
+         working for named under it. */
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <ProtronHero size={64} state={phase === 'build' ? (result ? 'done' : 'working') : (phase === 'understand' && !understood) || editing ? 'thinking' : 'idle'} />
         <span style={{ minWidth: 0 }}>
-          <b style={{ display: 'block', fontSize: 14, color: '#17191c' }}>AI Autopilot</b>
+          <b style={{ display: 'block', fontSize: 14, color: '#17191c' }}>Protron · AI Autopilot</b>
+          {company && <span className="np-side-for" data-testid="side-company" key={company}>For <b>{company}</b></span>}
           <span style={{ display: 'block', fontSize: 12, color: '#6b7280', lineHeight: 1.45 }}>
             {phase === 'describe' ? 'Tell me the result. I’ll work out how.'
               : phase === 'understand' ? (understood ? 'Here’s what I took from that.' : 'Reading everything you gave me…')
@@ -1031,7 +1078,8 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
       {withProtron && (
         <div style={{ display: 'grid', gap: 8 }}>
           <span style={{ fontSize: 11.5, fontWeight: 800, color: '#6b7280', letterSpacing: '0.05em' }}>WHAT PROTRON HAS SO FAR</span>
-          <span style={{ fontSize: 13, color: '#334155' }}><b>Business:</b> {intake.brief.company.trim() || '—'}</span>
+          {/* Keyed by the name: a correction mid-chat ("it's for another company") flashes as it changes. */}
+          <span key={intake.brief.company.trim()} className="np-side-biz" data-testid="side-company" style={{ fontSize: 13, color: '#334155' }}><b>Business:</b> {intake.brief.company.trim() || '—'}</span>
           <span style={{ fontSize: 13, color: '#334155', overflowWrap: 'anywhere' }}><b>Website:</b> {intake.brief.website.trim() || (intake.brief.nature.trim() ? 'none — described instead' : '—')}</span>
           {(intake.brief.place ?? '').trim() && <span style={{ fontSize: 13, color: '#334155' }}><b>Customers in:</b> {intake.brief.place}</span>}
           <span style={{ fontSize: 13, color: '#334155' }}><b>Answers:</b> {intake.brief.talk.filter(t => t.role === 'user').length}</span>
@@ -1172,7 +1220,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                     brand: brandWords, prefer: prefersFunnel ? 'funnel' : 'website', hasSite, hasPage: designKindsOf(state).includes('page'),
                     background: { ...background, stock: stockPhoto }, onBackground: mode => setBackground(b => ({ ...b, mode, error: '' })), onBackgroundFile: f => void backgroundFile(f),
                   }}
-                  screen={screen} state={state} ws={ws} files={files} answer={answer} company={company}
+                  screen={screen} state={state} ws={ws} files={files} answer={answer} company={company} booking={bookingProps}
                   profile={profile} onProfile={editProfile} onReadProfile={() => { setProfile(p => ({ ...p, error: '' })); void readProfileNow(); }}
                   onFiles={(atts: Attachment[]) => setDescribe(d => ({ ...d, files: [...d.files, ...atts] }))}
                   onLink={url => setDescribe(d => ({ ...d, links: [...d.links.filter(l => l.url !== url), { url, role: 'reference' }] }))}
@@ -1194,7 +1242,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                   )}
                   {/* The booking page the emails will link to, when this project uses ours — editable here as on the question. */}
                   {bp.requirements.includes('bookingPage') && (
-                    <div style={{ marginTop: 18 }}><BookingSetup business={company} website={logoSite} /></div>
+                    <div style={{ marginTop: 18 }}><BookingSetup business={company} website={logoSite} {...bookingProps} /></div>
                   )}
                   {(() => {
                     const said = (id: string) => String(withDefaults(state!).known[id]?.value ?? '');
@@ -1217,7 +1265,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                 <Requirements ids={bp.requirements} ready={ready} mailboxPlan={String(state?.known.mailbox?.value ?? '')} finder={finderSpecOf(bp.workflows)} />
               )}
               {phase === 'review' && bp && <Review bp={bp} />}
-              {phase === 'build' && <Build steps={steps} say={say} result={result} reach={(bp?.workflows ?? []).filter(w => w.sends).map(w => ({ name: w.name, nodes: w.nodes }))} flows={(bp?.workflows ?? []).map(w => ({ name: w.name, nodes: w.nodes }))} />}
+              {phase === 'build' && <Build business={company} steps={steps} say={say} result={result} reach={(bp?.workflows ?? []).filter(w => w.sends).map(w => ({ name: w.name, nodes: w.nodes }))} flows={(bp?.workflows ?? []).map(w => ({ name: w.name, nodes: w.nodes }))} />}
               {phase === 'domains' && result?.projectId && (
                 <DigitalSetupStep
                   companyName={company}

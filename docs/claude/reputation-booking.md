@@ -202,3 +202,27 @@ workspace's `/book/<slug>` (our hosts only).
   five-way race, daily limit, closed dates, guest move/cancel, the review by
   its own key (not the manage key) and its page at 1280/390, the sites'
   links and isolation at 1280/390. `test:security` covers the route by id.
+
+### Several booking pages per workspace (2026-11-15)
+
+`crm_booking_pages` (migration 0099): a business workspace's own pages, any
+number per account (`id` bp-…, made by the browser; `project_id`; `slug`
+unique across **both** tables — `slugTaken` in routes/booking.ts asks each).
+The account's page stays in `crm_booking_config`, so every older reader still
+works; the private side (automation switches) stays the account's. `publish`
+/`slug_check` take `pageId` (+ `projectId`, checked against `crm_projects`);
+`pages` lists, `page_delete` removes (and its pictures); `config` by slug
+falls back to pages and returns `pageId`; `create` files `pageId` in the
+booking's data, which words its emails and a later move. Media are per page
+(`crm_booking_media.page_id`, unique per account × kind × page — before, a new
+page's logo deleted the other page's file). `{{bookingLink}}` prefers the
+project's own page (mergeFields `businessFor`). BookingSetup takes
+`value`/`onChange`/`page` to edit one; **Full screen** opens the card in a
+dialog (`BigPreview`). Scheduling → **Booking pages** (`BookingPages.tsx`):
+the main page plus each business workspace's, "New booking page", take down.
+The AI Autopilot wizard makes a **fresh** page for the business it sets up
+(`freshBookingSchedule`: the owner's hours only, nothing of another
+business), publishes it as edited, and the build links it to the project and
+marks the set-up step `done` (launch steps carry `done`; Overview ticks it).
+`test:security` covers take-over by id, address clashes, foreign projects,
+listing and deleting across accounts.

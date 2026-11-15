@@ -82,6 +82,8 @@ export function useProtronIntake(initialCompany: string, start: IntroStep, mode:
   const [cardWhy, setCardWhy] = useState('');
   const [instruction, setInstruction] = useState('');
   const [talkDone, setTalkDone] = useState(false);
+  /* Protron's reply as it is being written (streamed, intake.ts partialReply). */
+  const [streaming, setStreaming] = useState('');
 
   /* ── The website, read the moment its address is in ── */
   const [site, setSite] = useState<SiteState>({ status: 'idle', url: '' });
@@ -126,19 +128,24 @@ export function useProtronIntake(initialCompany: string, start: IntroStep, mode:
 
   const askNext = useCallback(async (b: Brief) => {
     setBusy('asking');
-    const r = await nextStep(b);
+    setStreaming('');
+    const r = await nextStep(b, t => setStreaming(t));
     setBusy('');
+    setStreaming('');
     setDoing([]);
     /* What they said in the chat fills the brief — never a guess (intake.ts `facts`). */
     const f = r.facts;
     const cur = ref.current;
     const upd: Partial<Brief> = {};
-    if (f.company && !cur.company.trim()) upd.company = f.company;
-    if (f.website && !cur.website.trim()) upd.website = f.website;
+    /* A different name is a correction ("actually it's for …"): the model is
+       told to report one only when the customer said so, and the side pane
+       follows at once (owner, 2026-11-15). Website likewise, read afresh. */
+    if (f.company && f.company.trim().toLowerCase() !== cur.company.trim().toLowerCase()) upd.company = f.company;
+    if (f.website && siteAddress(f.website) !== siteAddress(cur.website)) { upd.website = f.website; if (cur.website.trim()) upd.site = null; }
     if (f.nature && !(cur.nature ?? '').trim()) upd.nature = f.nature;
     if (f.place && !(cur.place ?? '').trim()) upd.place = f.place;
     if (Object.keys(upd).length) setBrief({ ...cur, ...upd });
-    if (upd.website && !cur.site) void readWebsite(upd.website);
+    if (upd.website && (!cur.site || upd.site === null)) void readWebsite(upd.website);
     setNote(r.offline ? (r.error ? `${r.error} — asking the standard questions instead.` : 'The AI is not answering, so I am asking the standard questions.') : '');
     if (r.recommend.length) setRecs(prev => [...prev, ...r.recommend.filter(x => !prev.some(p => p.key === x.key))]);
     if (r.done || !r.ask) {
@@ -269,8 +276,12 @@ export function useProtronIntake(initialCompany: string, start: IntroStep, mode:
     if (live.current?.sendText(t)) { appendTalk('user', t); return; }
     /* A quick answer that is a ready-made solution's name chooses it. */
     const card = START_CARDS.find(c => c.label.toLowerCase() === t.toLowerCase());
+    /* "It's for another company called …": the name in the side pane changes
+       the moment it is sent, not after the reply (the model confirms it). */
+    const named = companyIn(t);
     const b: Brief = {
       ...ref.current,
+      ...(named && named.toLowerCase() !== ref.current.company.trim().toLowerCase() ? { company: named } : {}),
       cards: card && !ref.current.cards.includes(card.id) ? [...ref.current.cards, card.id] : ref.current.cards,
       talk: [...ref.current.talk, { role: 'user' as const, text: t.slice(0, 1200), ...(voice ? { voice: true } : {}) }],
     };
@@ -319,7 +330,7 @@ export function useProtronIntake(initialCompany: string, start: IntroStep, mode:
   }, [setBrief]);
 
   return {
-    step, setStep, brief, setBrief, include, busy, doing, note, recs, setRecs, cardWhy, instruction, setInstruction, talkDone, startTalk, answer, write, recommend,
+    step, setStep, brief, setBrief, include, busy, doing, note, recs, setRecs, cardWhy, instruction, setInstruction, talkDone, streaming, startTalk, answer, write, recommend,
     keys: chosenKeys(brief), site, readWebsite, first: start, mode,
     live: { state: liveState, message: liveMsg, partial, who, start: startLive, stop: stopLive, supported: LIVE_TALK && liveSupported(), autoStart },
   };
@@ -367,6 +378,28 @@ export function flyToSolutions(from: HTMLElement, label: string): number {
  * can be taken out. A chip new to the list pops and glows once (CSS, on
  * mount) — that is how an included suggestion shows it arrived.
  */
+/**
+ * A company name the customer states in so many words — "it's for Lone Star
+ * Roofing", "the company is called Lone Star Roofing", "our business name is
+ * …". Capitalised words only, at most six, so "it's for my roofing company"
+ * names nothing. Shown at once; the model's `facts` then confirm or correct it.
+ */
+export function companyIn(text: string): string {
+  const NAME = String.raw`["“']?([A-Z0-9][\w&'’.-]*(?:\s+(?:&|and|of|the|[A-Z0-9][\w&'’.-]*)){0,5})`;
+  const patterns = [
+    new RegExp(String.raw`\b(?:[Cc]ompany|[Bb]usiness|[Ff]irm|[Aa]gency|[Bb]rand|[Ss]hop|[Ss]tore|[Pp]ractice|[Cc]linic|[Ss]tudio)(?:['’]s)?\s+(?:name\s+)?(?:is\s+)?(?:called|named)\s+` + NAME),
+    new RegExp(String.raw`\b(?:[Cc]ompany|[Bb]usiness)(?:['’]s)?\s+name\s+is\s+` + NAME),
+    new RegExp(String.raw`\b(?:[Ii]t['’]?s|[Ii]t is|[Tt]his is|[Ww]orkspace is|[Pp]roject is)\s+(?:actually\s+|now\s+|really\s+)?for\s+(?:a\s+(?:different|new|another)\s+(?:company|business)\s+(?:called\s+|named\s+)?)?` + NAME),
+  ];
+  for (const re of patterns) {
+    const m = re.exec(text);
+    if (!m) continue;
+    const name = m[1].replace(/["”'’.,]+$/, '').replace(/\s+(?:&|and|of|the)$/i, '').trim();
+    if (name.length >= 2 && !/^(I|My|Our|The|A|An)$/.test(name)) return name.slice(0, 120);
+  }
+  return '';
+}
+
 export function SolutionChips({ brief, setBrief, compact = false }: { brief: Brief; setBrief: (b: Brief) => void; compact?: boolean }) {
   const items = [
     ...brief.cards.map(id => { const c = START_CARDS.find(x => x.id === id); return { id: `card:${id}`, label: c?.label ?? id, icon: CARD_ICON[id] ?? Sparkles, drop: () => setBrief({ ...brief, cards: brief.cards.filter(x => x !== id) }) }; }),
@@ -414,7 +447,17 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
      for the name or website and fills these boxes as the customer answers. */
   const { autoStart } = live;
   useEffect(() => { if (step === 'name') autoStart(); }, [step, autoStart]);
-  useEffect(() => { const el = logBox.current; if (el) el.scrollTop = el.scrollHeight; }, [brief.talk.length, busy, live.partial?.text]);
+  /* The newest thing in the chat is always in view — a reply, a suggestion,
+     the finish card — inside the log and on the page (owner, 2026-11-15:
+     suggestions landed below the fold and nobody saw them). */
+  useEffect(() => {
+    const el = logBox.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    const lastEl = el.lastElementChild as HTMLElement | null;
+    const box = el.getBoundingClientRect();
+    if (box.bottom > window.innerHeight || box.top < 0) lastEl?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [brief.talk.length, busy, live.partial?.text, p.streaming, p.recs.length, p.talkDone]);
 
   /* Read the website once the address has settled — not on every keystroke. */
   const { readWebsite } = p;
@@ -665,13 +708,33 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
             {live.partial && (live.partial.role === 'protron'
               ? <div className="np-chat-row">{face('speaking')}<div className="np-talk-bot" data-partial="1">{live.partial.text}</div></div>
               : <div className="np-talk-you" data-partial="1">{live.partial.text}</div>)}
-            {busy === 'asking' && (
+            {busy === 'asking' && p.streaming && (
+              <div className="np-chat-row">{face('speaking')}<div className="np-talk-bot" data-partial="1">{p.streaming}<span className="np-caret" aria-hidden="true" /></div></div>
+            )}
+            {busy === 'asking' && !p.streaming && (
               <div className="np-chat-row">
                 {face('thinking')}
                 <span className="np-chat-thinking">
                   <span className="np-dots" aria-hidden="true"><i /><i /><i /></span>
                   <ThinkingLines className="np-think-line" business={what} first={p.doing} />
                 </span>
+              </div>
+            )}
+            {/* Protron's suggestions in the conversation itself, where the eye
+                already is — not appended below the chat out of sight. */}
+            {p.recs.length > 0 && busy !== 'asking' && (
+              <div className="np-chat-row np-rec-row">
+                {face('idle')}
+                <div className="np-protron-recs np-rec-card">
+                  <b style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}><Sparkles size={14} /> Protron suggests adding</b>
+                  {p.recs.map(r => (
+                    <div key={r.key} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ flex: '1 1 200px', fontSize: 13, color: '#334155' }}><b>{solutionByKey(r.key)?.label}</b> — {r.why}</span>
+                      <button type="button" className="np-tool np-include" onClick={e => p.include(r.key, e.currentTarget)}><Plus size={14} /> Include it</button>
+                      <button type="button" className="np-link" onClick={() => p.setRecs(p.recs.filter(x => x.key !== r.key))}>No thanks</button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -741,7 +804,21 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
                     onClick={() => sendReply(reply)}><ArrowRight size={17} /></button>
                 </div>
               </div>
-            ) : null}
+            ) : (
+              /* The interview is over: the next step, said and pressable right
+                 here — the composer used to leave an empty box that read as a
+                 broken button (owner, 2026-11-15). */
+              <div className="np-finish" role="status">
+                <span className="np-finish-tick" aria-hidden="true"><Check size={18} /></span>
+                <span className="np-finish-text">
+                  <b>Protron has finished understanding {brief.company.trim() || 'your business'}.</b>
+                  <span>Next, it writes the smart optimized prompt AI Autopilot builds from — you read and approve it first.</span>
+                </span>
+                <button type="button" className="np-finish-cta" onClick={() => void p.write()}>
+                  Create my smart optimized prompt <ArrowRight size={16} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -754,30 +831,12 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
           <div className="np-sols-inline"><SolutionChips brief={brief} setBrief={setBrief} compact /></div>
         )}
 
-        {p.recs.length > 0 && (
-          <div className="np-protron-recs">
-            <b style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <ProtronAvatar size={22} state="idle" alive={false} /> Protron, your AI Live Business Manager, suggests adding
-            </b>
-            {p.recs.map(r => (
-              <div key={r.key} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ flex: '1 1 220px', fontSize: 13, color: '#334155' }}><b>{solutionByKey(r.key)?.label}</b> — {r.why}</span>
-                <button type="button" className="np-tool np-include" onClick={e => p.include(r.key, e.currentTarget)}><Plus size={14} /> Include it</button>
-                <button type="button" className="np-link" onClick={() => p.setRecs(p.recs.filter(x => x.key !== r.key))}>No thanks</button>
-              </div>
-            ))}
-          </div>
-        )}
-
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
           {!p.talkDone && !liveOn && brief.talk.some(t => t.role === 'protron' && !t.intro) && (
             <button type="button" className="np-link" disabled={busy === 'asking'} onClick={() => sendReply('Skip — use a sensible default.')}><SkipForward size={13} /> Skip this question</button>
           )}
           {p.first === 'talk' && <button type="button" className="np-link" onClick={onManual}>I&rsquo;d rather describe it myself</button>}
         </div>
-        {p.talkDone && (
-          <p className="np-protron-note" style={{ background: '#ecfdf5', color: '#065f46', borderColor: '#a7f3d0' }}><Check size={14} /> Protron has finished understanding your business. Press <b>Create my smart optimized prompt for AI Autopilot</b>.</p>
-        )}
       </div>
     );
   }

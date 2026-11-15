@@ -112,6 +112,64 @@ export async function aiFetch(init: RequestInit | string, module = 'general', ti
   }
 }
 
+/**
+ * `aiFetch`, streamed: `onText` is called with the whole text so far as it
+ * arrives (Server-Sent Events from /api/ai.php `stream`), and the Response it
+ * resolves to is the same shape `aiFetch` gives — so a caller reads the end
+ * exactly as before. When the server answers in one piece (an OpenRouter or
+ * Gemma key, an error), that is passed through and `onText` is never called.
+ */
+export async function aiStream(init: RequestInit | string, module: string, onText: (soFar: string) => void, timeoutMs = 30_000): Promise<Response> {
+  const bodyText = typeof init === 'string' ? init : String(init.body ?? '{}');
+  let request: unknown = {};
+  try { request = JSON.parse(bodyText); } catch { request = {}; }
+  let session: { token?: string } | null = null;
+  try { session = JSON.parse(localStorage.getItem('crm_session') || 'null'); } catch { session = null; }
+  const accountId = (() => { try { return localStorage.getItem('crm_active_account') || ''; } catch { return ''; } })();
+  const base = (import.meta.env.DEV ? 'http://localhost:8787' : '');
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    const r = await fetch(`${base}/api/ai.php`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'generate', stream: true, token: session?.token, accountId, module, request }),
+      signal: ctl.signal,
+    });
+    if (!/event-stream/i.test(r.headers.get('Content-Type') ?? '') || !r.body) {
+      const data = await r.json() as { success?: boolean; response?: unknown; error?: string; code?: string };
+      if (data.success) return new Response(JSON.stringify(data.response ?? {}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: { message: data.error ?? 'The AI could not answer.', code: data.code ?? '' } }), { status: r.status >= 400 ? r.status : 502 });
+    }
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    let text = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith('data:')) continue;
+        try {
+          const chunk = JSON.parse(line.slice(5)) as { candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[] };
+          const add = (chunk.candidates?.[0]?.content?.parts ?? []).filter(p => !p.thought).map(p => p.text ?? '').join('');
+          if (add) { text += add; onText(text); }
+        } catch { /* a keep-alive or a partial line */ }
+      }
+    }
+    if (!text.trim()) return new Response(JSON.stringify({ error: { message: 'The AI gave an empty answer.', code: '' } }), { status: 502 });
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  } catch (e) {
+    const slow = e instanceof Error && /timeout|abort/i.test(`${e.name} ${e.message}`);
+    return new Response(JSON.stringify({ error: { message: slow ? 'The AI took too long to answer. Please try again.' : 'Could not reach the server.', code: slow ? 'ai_busy' : '' } }), { status: slow ? 504 : 503 });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Transient errors worth retrying once: rate limit, or the server's AI being overloaded. */
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 

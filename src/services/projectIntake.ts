@@ -977,11 +977,13 @@ export function kindOf(bp: Blueprint): ProjectKind {
 }
 
 /** The setup steps with somewhere to go, as the project's first checklist. */
-export function launchStepsOf(bp: Blueprint): LaunchStep[] {
+export function launchStepsOf(bp: Blueprint, done: { booking?: boolean } = {}): LaunchStep[] {
   return bp.setup.slice(0, 12).map(s => ({
     label: s.label.slice(0, 120),
     why: s.by === 'autopilot' ? 'Done by AI Autopilot while it builds the business workspace.' : 'Yours to do — the link goes straight there.',
     route: s.route ?? '',
+    /* Only what the build has proved: the booking page answered "published". */
+    ...(s.key === 'booking' && done.booking ? { done: true } : {}),
   }));
 }
 

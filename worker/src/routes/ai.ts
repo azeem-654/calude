@@ -45,6 +45,8 @@ interface AiReq {
   module?: string;
   /** A multi-call job's id (lib/aiJobs.ts): once started, it finishes past the month's allowance. */
   job?: string;
+  /** Protron's chat only: the answer as Server-Sent Events, word by word. */
+  stream?: boolean;
   request?: {
     contents?: unknown;
     generationConfig?: Record<string, unknown>;
@@ -181,7 +183,12 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
       let res: Response;
       /* Gemma takes the request without JSON mode or a system instruction (lib/ai.ts forGemma). */
       const gemma = isGemma(model);
-      const ask = (body: string) => fetch(`${aiBase()}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(k)}`, {
+      /* Streamed for a chat somebody is watching (FAST_MODULES only): the first
+         words reach the page in about a second, as the live talk's do, rather
+         than after the whole answer is written (the owner, 2026-11-15). The
+         failover still works — a refusal arrives as a status before any text. */
+      const streaming = fast && d.stream === true && !gemma;
+      const ask = (body: string) => fetch(`${aiBase()}/v1beta/models/${model}:${streaming ? 'streamGenerateContent?alt=sse&' : 'generateContent?'}key=${encodeURIComponent(k)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(Math.min(fast ? FAST_MODEL_MS : 40_000, left)),
       });
       try {
@@ -195,6 +202,11 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
         lastStatus = 0;
         lastError = e instanceof Error ? e.message : String(e);
         continue;
+      }
+      if (res.ok && streaming && res.body) {
+        await recordAiUse({ provider: 'gemini', key: k, model, module, accountId, ok: true, status: 200 });
+        await record(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`, 1, room.standing);
+        return { ok: true, value: new Response(res.body, { headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } }) };
       }
       if (res.ok) {
         const answer = await res.json() as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number } };

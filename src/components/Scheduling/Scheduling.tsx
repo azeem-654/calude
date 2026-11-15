@@ -3,7 +3,7 @@ import {
   Calendar, Clock, Link, Settings, Check, Copy, Trash2,
   Globe, Plus, Zap, Layers, CloudUpload, Mail, MessageSquare, Upload, LayoutTemplate,
 } from 'lucide-react';
-import BookingSetup from '../Autopilot/newProject/BookingSetup';
+import BookingPages from './BookingPages';
 import { allZones, offsetLabel } from '../../services/bookingTime';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
@@ -243,7 +243,7 @@ export default function Scheduling() {
 
         {/* Tabs */}
         <div style={{ display: 'flex', flexWrap: 'wrap', backgroundColor: '#f1f5f9', borderRadius: 10, padding: 4, gap: 2, marginBottom: 20 }}>
-          {([['bookings', 'Bookings', <Calendar size={14} />], ['page', 'Booking page', <LayoutTemplate size={14} />], ['types', 'Event Types', <Layers size={14} />], ['availability', 'Availability', <Clock size={14} />], ['automations', 'Automations', <Zap size={14} />], ['settings', 'Settings', <Settings size={14} />]] as const).map(([id, label, icon]) => (
+          {([['bookings', 'Bookings', <Calendar size={14} />], ['page', 'Booking pages', <LayoutTemplate size={14} />], ['types', 'Event Types', <Layers size={14} />], ['availability', 'Availability', <Clock size={14} />], ['automations', 'Automations', <Zap size={14} />], ['settings', 'Settings', <Settings size={14} />]] as const).map(([id, label, icon]) => (
             <button key={id} onClick={() => setTab(id)}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', border: 'none', borderRadius: 8, backgroundColor: tab === id ? 'white' : 'transparent', color: tab === id ? '#17191c' : '#64748b', fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: tab === id ? '0 1px 3px rgba(16,24,40,0.08)' : 'none', transition: 'all 0.15s' }}>
               {icon} {label}
@@ -255,7 +255,8 @@ export default function Scheduling() {
             Its own publishing is off here: this screen already publishes
             every change to the schedule (the effect above), and two
             publishers racing each other would only double the requests. */}
-        {tab === 'page' && <BookingSetup autoPublish={false} />}
+        {/* Several pages since 2026-11-15: the main one, and each business workspace's (BookingPages.tsx). */}
+        {tab === 'page' && <BookingPages />}
 
         {/* ── Bookings Tab ── */}
         {tab === 'bookings' && (

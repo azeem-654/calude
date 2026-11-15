@@ -126,7 +126,13 @@ export async function businessFor(env: Env, accountId: string, projectId?: strin
 
   let bookingLink = '';
   try {
-    const b = await env.DB.prepare('SELECT slug FROM crm_booking_config WHERE account_id = ?').bind(accountId).first<{ slug: string }>();
+    /* A business workspace's own page first (crm_booking_pages, 0099): the
+       roofing project's emails must not link to the account's other business. */
+    const own = projectId
+      ? await env.DB.prepare('SELECT slug FROM crm_booking_pages WHERE account_id = ? AND project_id = ? ORDER BY updated_at DESC LIMIT 1')
+        .bind(accountId, projectId).first<{ slug: string }>().catch(() => null)
+      : null;
+    const b = own ?? await env.DB.prepare('SELECT slug FROM crm_booking_config WHERE account_id = ?').bind(accountId).first<{ slug: string }>();
     const origin = (env.APP_ORIGIN ?? '').replace(/\/$/, '');
     if (b?.slug && origin) bookingLink = `${origin}/book/${b.slug}`;
   } catch { /* no booking page */ }

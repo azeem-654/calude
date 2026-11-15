@@ -507,3 +507,28 @@ widget draws Protron's face on the assistant's greeting.
   ActiveCampaign refuses rather than drop them). No mailbox → 503 telling the
   customer to use the Help button's ticket; one copy failing → "partial".
   The Gmail copy's address is never shown to the customer.
+
+### The 2026-11-15 brief — the true bot everywhere, quicker replies
+
+- **ProtronHero** (`Protron/ProtronHero.tsx`, `.pth-*` in protron.css): the
+  portrait inside a turning ring of light, an orbit with two sparks, a
+  breathing halo, a scan line and rising sparks, coloured by state; static
+  under reduced motion. It replaced the older two-eyed AutopilotBot in the
+  wizard's side pane (every phase, with "For <company>") and on **Building
+  your AI Autopilot**, where `ThoughtBubbles` shows `buildThoughts` — the real
+  step first, then reasoning lines — one every 4.5 s.
+- **Streaming**: `/api/ai.php` `stream: true` (FAST_MODULES only, Gemini keys,
+  not Gemma) answers with Google's SSE passed through; `aiStream` in
+  lib/gemini.ts reads it, and `partialReply` shows the JSON's `reply` as it
+  arrives (`p.streaming`, with a caret). OpenRouter/Gemma answer in one piece
+  and the page reads that the same way.
+- **Voice messages**: OpenAI is waited on 4 s at most, then Gemini (and
+  OpenAI still) race; Whisper joins after 3 s (was 6.5 s, strictly in turn).
+- **A different company mid-chat**: `companyIn` (capitalised names after
+  "it's for…", "the company is called…") changes the side pane the moment the
+  answer is sent; the model is told to report a corrected `facts.company`,
+  which now overwrites (website too, re-read).
+- **In view**: suggestions are a card inside the chat log, the log and the
+  page scroll to the newest item, and the end of the interview replaces the
+  composer (which left an empty box) with the **finish card** — an animated
+  "Create my smart optimized prompt" button calling `write()`.

@@ -39,18 +39,30 @@
  * The real card, at a desktop width (1180px) scaled to the pane, or at a
  * phone's 390px — the layout is chosen by the card's own width (container
  * queries), so the pane would otherwise only ever show the phone layout.
+ * **Full screen** opens the same card in a dialog almost the size of the
+ * window (the owner, 2026-11-15: the pane was too small to judge the page).
+ *
+ * ── Whose page ──
+ *
+ * With no `value`, this edits the account's own page (`crm_schedule`). With
+ * `value`/`onChange`/`page`, it edits one of the workspace's extra pages — a
+ * business workspace's own (`crm_booking_pages`). The AI Autopilot wizard
+ * uses that: a new business gets a new page in its own name, rather than the
+ * page the account already had for another business (the owner set up a
+ * roofing company in Texas and was shown somebody else's page).
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, Building2, Check, Copy, ExternalLink, Image as ImageIcon, Loader, Monitor, Phone, Plus, Smartphone, Sparkles, Trash2, Upload, Video, X,
+  AlertTriangle, Building2, Check, Copy, ExternalLink, Image as ImageIcon, Loader, Maximize2, Monitor, Phone, Plus, Smartphone, Sparkles, Trash2, Upload, Video, X,
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import type { ScheduleAvailability } from '../../../types';
 import { useApp } from '../../../context/AppContext';
 import { getSession } from '../../../services/auth';
 import { customerBusinessName } from '../../../services/tenancy';
 import {
   autofillBookingPage, bookingSlugFor, checkBookingSlug, clearBookingMedia, publishBookingConfig, uploadBookingMedia,
-  type BookingAutofill, type BookingMediaKind,
+  type BookingAutofill, type BookingMediaKind, type BookingPageRef,
 } from '../../../services/booking';
 import { allZones, offsetLabel, slugProblem, slugify, videoEmbedOf } from '../../../services/bookingTime';
 import {
@@ -173,13 +185,22 @@ async function measureLogo(blob: Blob): Promise<{ lum: number; transparent: bool
   }
 }
 
-export default function BookingSetup({ business, website, autoPublish = true }: {
+export default function BookingSetup({ business, website, autoPublish = true, value, onChange, page }: {
   business?: string;
   /** The business's website, when the screen showing this knows it; else the workspace profile's. */
   website?: string;
   autoPublish?: boolean;
+  /** A page other than the account's own: its settings, held by the caller… */
+  value?: ScheduleAvailability;
+  /** …changed by patches, like `updateSchedule`… */
+  onChange?: (patch: Partial<ScheduleAvailability>) => void;
+  /** …and published, uploaded and checked as this page. */
+  page?: BookingPageRef;
 }) {
-  const { schedule, updateSchedule } = useApp();
+  const app = useApp();
+  const schedule = value ?? app.schedule;
+  const updateSchedule = onChange ?? app.updateSchedule;
+  const pageId = page?.pageId ?? '';
   const signedIn = !!getSession()?.token;
   const [pub, setPub] = useState<'idle' | 'saving' | 'live' | 'refused' | 'local'>('idle');
   const [pubError, setPubError] = useState<{ message: string; field?: string }>({ message: '' });
@@ -200,12 +221,13 @@ export default function BookingSetup({ business, website, autoPublish = true }: 
     setPub('saving');
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(async () => {
-      const r = await publishBookingConfig(token, schedule);
+      const r = await publishBookingConfig(token, schedule, page ? { ...page, businessName: page.businessName || business } : {});
       setPubError({ message: r.error ?? '', field: r.field });
       setPub(r.ok ? 'live' : 'refused');
     }, 900);
     return () => window.clearTimeout(timer.current);
-  }, [schedule, autoPublish]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schedule, autoPublish, page?.pageId, page?.projectId]);
 
   /* ── The address ──
      Typed into a draft and checked with the server before it is used: an
@@ -231,7 +253,7 @@ export default function BookingSetup({ business, website, autoPublish = true }: 
       const clean = v.replace(/-+$/, '');
       const token = getSession()?.token;
       if (!token) { setSlugState({ s: 'unknown', msg: 'Saved here — it is checked when you are signed in.' }); updateSchedule({ slug: clean }); return; }
-      const r = await checkBookingSlug(token, clean);
+      const r = await checkBookingSlug(token, clean, pageId);
       if (!r) { setSlugState({ s: 'unknown', msg: 'Could not check it just now — it is checked again when the page is saved.' }); updateSchedule({ slug: clean }); return; }
       if (!r.available) { setSlugState({ s: 'bad', msg: r.reason || 'That address is taken.' }); return; }
       setSlugState({ s: 'ok' });
@@ -270,7 +292,7 @@ export default function BookingSetup({ business, website, autoPublish = true }: 
         if (m) extra = { logoTone: logoToneOf(m), logoRatio: cleanRatio(m.ratio) };
       }
     }
-    const r = await uploadBookingMedia(kind, blob);
+    const r = await uploadBookingMedia(kind, blob, pageId);
     if (!r.ok) { setM(kind, { error: r.error }); return false; }
     setM(kind, {});
     placeMedia(kind, r.url, extra);
@@ -280,7 +302,7 @@ export default function BookingSetup({ business, website, autoPublish = true }: 
   const remove = async (kind: BookingMediaKind) => {
     setM(kind, { busy: true });
     placeMedia(kind, '', kind === 'logo' ? { logoTone: '', logoRatio: 0 } : {});
-    const ok = signedIn ? await clearBookingMedia(kind) : true;
+    const ok = signedIn ? await clearBookingMedia(kind, pageId) : true;
     setM(kind, ok ? {} : { error: 'Taken off the page, but the file could not be deleted just now.' });
   };
   const [videoMode, setVideoMode] = useState<'link' | 'upload'>(schedule.videoFileUrl ? 'upload' : 'link');
@@ -386,15 +408,18 @@ export default function BookingSetup({ business, website, autoPublish = true }: 
       && !schedule.logoUrl && !schedule.photoUrl;
     if (!empty) return;
     let done = '';
-    try { done = localStorage.getItem(AUTOFILL_KEY) ?? ''; } catch { /* private window: run, it is harmless */ }
+    /* Per page: a business workspace's new page is read for itself. */
+    const key = pageId ? `${AUTOFILL_KEY}_${pageId}` : AUTOFILL_KEY;
+    try { done = localStorage.getItem(key) ?? ''; } catch { /* private window: run, it is harmless */ }
     if (done === knownSite) return;
-    try { localStorage.setItem(AUTOFILL_KEY, knownSite); } catch { /* see above */ }
+    try { localStorage.setItem(key, knownSite); } catch { /* see above */ }
     void runFill('auto', knownSite);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [knownSite, signedIn]);
 
   /* ── The preview's width ── */
   const [view, setView] = useState<'desktop' | 'phone'>('desktop');
+  const [big, setBig] = useState(false);
   const frameRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
   const [fit, setFit] = useState({ scale: 1, height: 0, left: 0 });
@@ -806,6 +831,7 @@ export default function BookingSetup({ business, website, autoPublish = true }: 
               <button type="button" aria-pressed={view === 'desktop'} onClick={() => setView('desktop')}><Monitor size={12} /> Desktop</button>
               <button type="button" aria-pressed={view === 'phone'} onClick={() => setView('phone')}><Smartphone size={12} /> Phone</button>
             </span>
+            <button type="button" className="bks-big-btn" onClick={() => setBig(true)}><Maximize2 size={12} /> Full screen</button>
             {pub === 'live' && <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#5b46e5', display: 'inline-flex', gap: 4, alignItems: 'center' }}>Open the live page <ExternalLink size={11} /></a>}
           </div>
           <div className="bks-frame" ref={frameRef} data-view={view} style={{ height: fit.height || undefined }}>
@@ -816,7 +842,58 @@ export default function BookingSetup({ business, website, autoPublish = true }: 
           </div>
           <figcaption>The page your visitors get{view === 'desktop' && fit.scale < 1 ? `, shown at ${Math.round(fit.scale * 100)}%` : ''} — times shown in the zone of whoever opens it.</figcaption>
         </figure>
+        {big && <BigPreview onClose={() => setBig(false)} url={pub === 'live' ? url : ''} schedule={schedule} cfg={previewCfg} busy={noBusy} />}
       </div>
     </section>
+  );
+}
+
+/**
+ * The booking page almost the size of the window.
+ *
+ * The same BookingCard, laid out at the width it gets (so a wide screen shows
+ * the desktop layout at 100%, not scaled), scrolled inside the dialog. A
+ * portal to <body>, because the wizard's own panes clip and transform their
+ * children; aria-modal so Protron's launcher steps aside (see protron.md).
+ */
+function BigPreview({ onClose, url, schedule, cfg, busy }: {
+  onClose: () => void;
+  url: string;
+  schedule: ScheduleAvailability;
+  cfg: ScheduleAvailability & { businessName: string };
+  busy: never[];
+}) {
+  const [view, setView] = useState<'desktop' | 'phone'>('desktop');
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    window.addEventListener('keydown', onKey, true);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', onKey, true); document.body.style.overflow = overflow; prev?.focus?.(); };
+  }, [onClose]);
+  return createPortal(
+    <div className="bks-big" role="dialog" aria-modal="true" aria-label="Booking page preview, full screen" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bks-big-win">
+        <div className="bks-big-bar">
+          <b>Your booking page</b>
+          <span className="bks-tabs" role="group" aria-label="Preview width">
+            <button type="button" aria-pressed={view === 'desktop'} onClick={() => setView('desktop')}><Monitor size={12} /> Desktop</button>
+            <button type="button" aria-pressed={view === 'phone'} onClick={() => setView('phone')}><Smartphone size={12} /> Phone</button>
+          </span>
+          {url && <a href={url} target="_blank" rel="noopener noreferrer">Open the live page <ExternalLink size={11} /></a>}
+          <button type="button" ref={closeRef} className="bks-big-x" onClick={onClose} aria-label="Close the preview"><X size={18} /></button>
+        </div>
+        <div className="bks-big-scroll">
+          <div className="bkp" data-preview="" data-noinvert="" data-view={view} {...themeRoot(schedule)}
+            style={{ ...accentStyle(schedule), width: view === 'phone' ? PHONE_W : '100%', maxWidth: view === 'phone' ? PHONE_W : DESKTOP_W, margin: '0 auto' }}>
+            <BookingCard cfg={cfg} businessName={cfg.businessName} busy={busy} preview />
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }

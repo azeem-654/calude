@@ -512,3 +512,67 @@
 .pt-report-error { margin: 0; font-size: 12px; color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 10px; }
 .pt-report-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: auto; padding-top: 4px; }
 @media (max-width: 420px) { .pt-btn.pt-report-cta { padding: 6px 8px; font-size: 11.5px; } }
+
+/* ── ProtronHero: the portrait with rings of light, orbiting sparks, a scan
+   line and rising sparks (owner's brief, 2026-11-15). The colour is the
+   state's: cyan idle, violet thinking/working, green done, amber error.
+   Static under reduced motion — the rings and halo still show the colour. ── */
+.pth { --pth-c: #36d9ff; --pth-c2: #8b5cf6; position: relative; display: inline-grid; place-items: center; flex-shrink: 0; isolation: isolate; }
+.pth[data-state="thinking"], .pth[data-state="working"] { --pth-c: #a78bfa; --pth-c2: #22d3ee; }
+.pth[data-state="speaking"], .pth[data-state="listening"] { --pth-c: #38bdf8; --pth-c2: #a78bfa; }
+.pth[data-state="done"] { --pth-c: #34d399; --pth-c2: #22d3ee; }
+.pth[data-state="error"] { --pth-c: #f59e0b; --pth-c2: #f97316; }
+.pth > i { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; }
+.pth-halo { inset: -14% !important; background: radial-gradient(closest-side, color-mix(in srgb, var(--pth-c) 42%, transparent), transparent 72%); filter: blur(4px); z-index: -1; }
+.pth-ring { background: conic-gradient(from 0deg, transparent 0 8%, var(--pth-c) 14%, transparent 26% 46%, var(--pth-c2) 56%, transparent 68% 84%, var(--pth-c) 92%, transparent 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px)); filter: drop-shadow(0 0 6px var(--pth-c)); }
+.pth-orbit { inset: 6% !important; border: 1px dashed color-mix(in srgb, var(--pth-c2) 55%, transparent); }
+.pth-orbit b { position: absolute; width: 7px; height: 7px; border-radius: 50%; background: var(--pth-c); box-shadow: 0 0 10px 2px var(--pth-c); top: -3.5px; left: calc(50% - 3.5px); }
+.pth-orbit b + b { top: auto; bottom: -3.5px; background: var(--pth-c2); box-shadow: 0 0 10px 2px var(--pth-c2); width: 5px; height: 5px; left: calc(50% - 2.5px); }
+.pth-face { position: relative; display: grid; place-items: center; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 1px color-mix(in srgb, var(--pth-c) 40%, transparent), 0 0 26px -4px var(--pth-c); }
+.pth-face .pt-av { display: block; }
+.pth-scan { position: absolute; left: 0; right: 0; height: 32%; top: -35%; background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--pth-c) 38%, transparent) 70%, color-mix(in srgb, #fff 55%, var(--pth-c)) 96%, transparent); mix-blend-mode: screen; opacity: 0; pointer-events: none; }
+.pth-sparks b { position: absolute; bottom: 12%; width: 4px; height: 4px; border-radius: 50%; background: var(--pth-c); box-shadow: 0 0 8px var(--pth-c); opacity: 0; }
+.pth-sparks b:nth-child(1) { left: 14%; } .pth-sparks b:nth-child(2) { left: 30%; background: var(--pth-c2); }
+.pth-sparks b:nth-child(3) { left: 52%; } .pth-sparks b:nth-child(4) { left: 70%; background: var(--pth-c2); } .pth-sparks b:nth-child(5) { left: 86%; }
+
+/* The thought bubble: two small rising circles, then the cloud with one line. */
+.pth-thought { position: relative; display: inline-flex; align-items: flex-start; max-width: 100%; padding-left: 18px; }
+.pth-thought-dot { position: absolute; border-radius: 50%; background: color-mix(in srgb, #8b5cf6 16%, #fff); border: 1px solid color-mix(in srgb, #8b5cf6 30%, transparent); }
+.pth-thought-dot-1 { width: 7px; height: 7px; left: 0; bottom: 2px; }
+.pth-thought-dot-2 { width: 11px; height: 11px; left: 6px; bottom: 12px; }
+.pth-thought-cloud { display: inline-flex; gap: 9px; align-items: center; min-width: 0; padding: 10px 15px; border-radius: 18px 18px 18px 6px;
+  background: linear-gradient(135deg, color-mix(in srgb, #8b5cf6 12%, #fff), color-mix(in srgb, #22d3ee 10%, #fff)); border: 1px solid color-mix(in srgb, #8b5cf6 28%, transparent);
+  color: #3b2a9a; font-size: 13.5px; font-weight: 600; line-height: 1.45; box-shadow: 0 8px 24px -12px rgba(91, 70, 229, .45); }
+.pth-thought-dots { display: inline-flex; gap: 3px; flex-shrink: 0; }
+.pth-thought-dots b { width: 5px; height: 5px; border-radius: 50%; background: #8b5cf6; opacity: .35; }
+.pth-thought-line { min-width: 0; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pth-thought-cloud { color: #e9e4ff; background: linear-gradient(135deg, rgba(139, 92, 246, .22), rgba(34, 211, 238, .14)); } }
+:root[data-theme="dark"] .pth-thought-cloud { color: #e9e4ff; background: linear-gradient(135deg, rgba(139, 92, 246, .22), rgba(34, 211, 238, .14)); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .pth { animation: pth-bob 6s ease-in-out infinite; }
+  .pth-ring { animation: pth-spin 7s linear infinite; }
+  .pth-orbit { animation: pth-spin 11s linear infinite reverse; }
+  .pth-halo { animation: pth-breathe 3.6s ease-in-out infinite; }
+  .pth-scan { animation: pth-scan 4.8s ease-in-out infinite; }
+  .pth-sparks b { animation: pth-spark 3.8s ease-in infinite; }
+  .pth-sparks b:nth-child(2) { animation-delay: .7s; } .pth-sparks b:nth-child(3) { animation-delay: 1.5s; }
+  .pth-sparks b:nth-child(4) { animation-delay: 2.2s; } .pth-sparks b:nth-child(5) { animation-delay: 3s; }
+  .pth[data-state="thinking"] .pth-ring, .pth[data-state="working"] .pth-ring { animation-duration: 2.6s; }
+  .pth[data-state="thinking"] .pth-orbit, .pth[data-state="working"] .pth-orbit { animation-duration: 4.5s; }
+  .pth[data-state="thinking"] .pth-scan, .pth[data-state="working"] .pth-scan { animation-duration: 2.4s; }
+  .pth[data-state="done"] .pth-ring { animation-duration: 14s; }
+  .pth-thought-line { animation: pth-line 0.9s cubic-bezier(.2, .8, .2, 1); }
+  .pth-thought-dots b { animation: pth-dot 1.4s ease-in-out infinite; }
+  .pth-thought-dots b:nth-child(2) { animation-delay: .2s; } .pth-thought-dots b:nth-child(3) { animation-delay: .4s; }
+  .pth-thought-dot-1 { animation: pth-pop 2.4s ease-in-out infinite; } .pth-thought-dot-2 { animation: pth-pop 2.4s ease-in-out .3s infinite; }
+}
+@keyframes pth-spin { to { transform: rotate(360deg); } }
+@keyframes pth-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes pth-breathe { 0%, 100% { opacity: .55; transform: scale(.96); } 50% { opacity: 1; transform: scale(1.05); } }
+@keyframes pth-scan { 0% { top: -35%; opacity: 0; } 15% { opacity: .9; } 70% { opacity: .7; } 100% { top: 105%; opacity: 0; } }
+@keyframes pth-spark { 0% { transform: translateY(0) scale(.6); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(-120%) scale(1.1); opacity: 0; } }
+@keyframes pth-line { from { opacity: 0; transform: translateY(6px); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes pth-dot { 0%, 100% { opacity: .3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
+@keyframes pth-pop { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }

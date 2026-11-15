@@ -64,6 +64,7 @@ export default function BookingPage() {
   const { slug } = useParams<{ slug?: string }>();
   const [unknownLink, setUnknownLink] = useState(false);
   const [pageAccount, setPageAccount] = useState('');
+  const [pageId, setPageId] = useState('');
   const [emailed, setEmailed] = useState(false);
   const [cancelError, setCancelError] = useState('');
   const [delivery, setDelivery] = useState<BookingDelivery | undefined>(undefined);
@@ -76,10 +77,12 @@ export default function BookingPage() {
     let alive = true;
     const params = new URLSearchParams(window.location.search);
     const m = params.get('manage');
-    const loadConfig = (accountId?: string) => fetchPublicConfig(accountId ? undefined : slug, accountId).then(res => {
+    const loadConfig = (accountId?: string, pageId?: string) => fetchPublicConfig(accountId ? undefined : slug, accountId, pageId).then(res => {
       if (!alive) return;
       if (res && 'notFound' in res) { setUnknownLink(true); return; }
       if (res?.accountId) setPageAccount(res.accountId);
+      /* A business workspace's own page: bookings are filed under it. */
+      setPageId(res && 'pageId' in res ? res.pageId ?? '' : '');
       if (res && 'delivery' in res) setDelivery(res.delivery);
       setRemoteCfg(res?.config ?? null);
     });
@@ -89,8 +92,8 @@ export default function BookingPage() {
         if (!alive) return;
         setManage({ id, key, booking: b });
         setStep('manage');
-        const owner = (b as (Booking & { accountId?: string }) | null)?.accountId;
-        if (owner) void loadConfig(owner);
+        const owner = (b as (Booking & { accountId?: string; pageId?: string }) | null)?.accountId;
+        if (owner) void loadConfig(owner, (b as (Booking & { pageId?: string }) | null)?.pageId);
         else setRemoteCfg(null);
       });
     } else {
@@ -180,6 +183,7 @@ export default function BookingPage() {
   const onBook = async (s: Slot, guest: { name: string; email: string; phone: string; notes: string }, zone: string): Promise<string | null> => {
     const res = await createRemoteBooking({
       accountId: pageAccount,
+      ...(pageId ? { pageId } : {}),
       eventTypeId: eventType?.id,
       slotDate: s.ownerDate, slotTime: s.ownerTime,
       guestName: guest.name.trim(), guestEmail: guest.email.trim(),
