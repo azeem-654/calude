@@ -44,6 +44,9 @@
 .dz-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 13px; border-radius: 10px; border: 1px solid var(--dz-line); background: #fff; color: var(--dz-ink); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .dz-btn.sm { padding: 6px 10px; font-size: 12.5px; }
 .dz-btn.primary { background: var(--dz-ink); border-color: var(--dz-ink); color: #fff; }
+/* Dark mode (inverted page, so written as the inverse): the ember primary of
+   every other screen, not a white slab. */
+html[data-theme="dark"] .dz-btn.primary:not(:disabled) { background: linear-gradient(180deg, #ad440e, #f45f20); border-color: transparent; color: #fbf5f3; }
 .dz-btn.ghost { border-color: transparent; background: transparent; }
 .dz-btn:disabled { opacity: .55; cursor: default; }
 .dz-icon { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; border: 0; background: transparent; cursor: pointer; color: inherit; flex-shrink: 0; }

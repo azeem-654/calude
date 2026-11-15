@@ -466,7 +466,7 @@ function SyncGate({ children }: { children: React.ReactNode }) {
   }, []);
   if (!syncing) return <>{children}</>;
   return (
-    <div style={{ minHeight: '100vh', background: '#e9ebee', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--surface-page)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <LogoMark size={32} />
         <span style={{ fontSize: 22, fontWeight: 800, color: '#17191c', letterSpacing: '-0.03em' }}>{brand.appName}</span>

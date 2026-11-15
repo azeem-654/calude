@@ -77,23 +77,25 @@
 }
 .aip *, .aip *::before, .aip *::after { box-sizing: border-box; }
 
-/* Dark — the screenshot's palette. */
+/* Dark — the app's ember look (owner, 2026-11-15: "some module pages are still
+   not in the Ember colours"): the same layout as the screenshot's palette, on
+   the warm blacks of `.app-ember` instead of blue-greys. */
 html[data-theme="dark"] .aip,
 html[data-theme="dark"] .aip-vars {
-  --aip-frame: #0f1115;
-  --aip-side: #0c0e12;
-  --aip-ground: #0b0d10;
+  --aip-frame: #140c09;
+  --aip-side: #110a07;
+  --aip-ground: #0e0806;
   --aip-dot: rgba(255, 255, 255, 0.07);
-  --aip-line: #20242c;
-  --aip-line-2: #191c22;
-  --aip-ink: #eceef2;
-  --aip-ink-2: #c3c8d1;
-  --aip-muted: #8d95a3;
-  --aip-faint: #646b78;
-  --aip-hover: #171a21;
-  --aip-chip: #161920;
-  --aip-card: #111419;
-  --aip-bubble: #1a1e26;
+  --aip-line: #2e1d16;
+  --aip-line-2: #22150f;
+  --aip-ink: #f5ece7;
+  --aip-ink-2: #d4c4bc;
+  --aip-muted: #a3918a;
+  --aip-faint: #74635c;
+  --aip-hover: #1f130e;
+  --aip-chip: #1d120d;
+  --aip-card: #170e0a;
+  --aip-bubble: #24160f;
   --aip-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 18px 48px rgba(0, 0, 0, 0.35);
   --aip-accent: #ff8a57;
   --aip-accent-soft: rgba(255, 138, 87, 0.10);
@@ -102,7 +104,7 @@ html[data-theme="dark"] .aip-vars {
   --aip-amber: #fbbf24; --aip-amber-bg: rgba(251, 191, 36, 0.12);
   --aip-red: #f87171; --aip-red-bg: rgba(248, 113, 113, 0.12);
   --pp-picked-hover: rgba(255, 138, 87, 0.15);
-  --pp-disabled: #2a2f38;
+  --pp-disabled: #3a2a22;
   --pp-warn-ink: #fbbf24;
   --pp-warn-bg: rgba(251, 191, 36, 0.08);
   --pp-warn-line: rgba(251, 191, 36, 0.28);

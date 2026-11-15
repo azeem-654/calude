@@ -40,21 +40,24 @@ export interface Palette {
   accentSoft: string;
 }
 
+/* Dark is the app's ember look (owner, 2026-11-15): warm blacks and the
+   ember accent instead of the reference's blue-greys and lime. Up/down keep
+   their validated pair — on these surfaces (#120a07) they still separate. */
 const DARK: Palette = {
   up: '#26d9a8',
   down: '#f2536d',
-  flat: '#8b949e',
-  ink: '#0e1117',
-  panel: '#151a21',
-  panelHi: '#1c2230',
-  border: '#232b36',
-  grid: 'rgba(255,255,255,0.055)',
-  textStrong: '#e6edf3',
-  textMuted: '#9aa6b4',
-  textDim: '#6e7d8d',
-  accent: '#c7f441',
-  onAccent: '#0e1117',
-  accentSoft: 'rgba(199,244,65,0.12)',
+  flat: '#9a8c85',
+  ink: '#120a07',
+  panel: '#1b100b',
+  panelHi: '#24150f',
+  border: '#34211a',
+  grid: 'rgba(255,214,190,0.06)',
+  textStrong: '#f6ece7',
+  textMuted: '#b3a39b',
+  textDim: '#857169',
+  accent: '#ff6a2b',
+  onAccent: '#1a0c06',
+  accentSoft: 'rgba(255,106,43,0.14)',
 };
 
 const LIGHT: Palette = {

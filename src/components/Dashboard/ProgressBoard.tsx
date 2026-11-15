@@ -50,13 +50,16 @@ interface Row {
    #c7f441 is 14:1 on a near-black card and 1.28:1 on white, so the same hex
    cannot do both jobs. The bar fill takes the step that clears 3:1 against the
    surface it is drawn on; the call-to-action keeps the bright lime in both
-   modes, because there it is a large shape carrying near-black text. */
-const LIME_ON_DARK = '#c7f441';
+   modes, because there it is a large shape carrying near-black text.
+   In dark mode both are the ember of the app's dark look (owner, 2026-11-15):
+   the marks as a hex (they reach SVG attributes, where var() does not work),
+   the CTA through dashboard.css `--dash-hi*`, used only inside `style`. */
+const LIME_ON_DARK = '#ff6a2b';
 const LIME_ON_LIGHT = '#65a30d';
-const LIME_CTA = '#c7f441';
-const ON_LIME = '#0e1117';
+const LIME_CTA = 'var(--dash-hi, #c7f441)';
+const ON_LIME = 'var(--dash-on-hi, #0e1117)';
 /** The CTA is pale against white, so its edge is drawn rather than assumed. */
-const LIME_CTA_EDGE = '#a8d327';
+const LIME_CTA_EDGE = 'var(--dash-hi-edge, #a8d327)';
 
 export default function ProgressBoard({ book }: { book: Book }) {
   const navigate = useNavigate();
@@ -111,9 +114,9 @@ export default function ProgressBoard({ book }: { book: Book }) {
      The reference reads as raised cards on a recessed plane, with one bright
      working card. Light mode needs its own version of that, because a white
      card on a white panel is invisible. */
-  const PLANE = dark ? '#0c0e12' : '#eef0f4';
-  const TILE_BG = dark ? '#161a20' : '#ffffff';
-  const TILE_LINE = dark ? '#232a33' : '#e3e6eb';
+  const PLANE = dark ? '#120a07' : '#f3f4f6';
+  const TILE_BG = dark ? '#1b100b' : '#ffffff';
+  const TILE_LINE = dark ? '#34211a' : '#e5e7eb';
   const LIME_TILE = dark ? LIME_ON_DARK : LIME_ON_LIGHT;
   const TRACK_TILE = dark ? 'rgba(255,255,255,0.10)' : '#e6e9ee';
 
@@ -212,7 +215,7 @@ export default function ProgressBoard({ book }: { book: Book }) {
                     {members.length > 5 && (
                       <span style={{
                         marginLeft: -7, width: 22, height: 22, borderRadius: 999, flexShrink: 0,
-                        backgroundColor: dark ? '#232a33' : '#eef0f4', color: p.textMuted,
+                        backgroundColor: dark ? '#34211a' : '#eef0f4', color: p.textMuted,
                         fontSize: 9.5, fontWeight: 800,
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                         border: `2px solid ${TILE_BG}`,
@@ -270,7 +273,7 @@ export default function ProgressBoard({ book }: { book: Book }) {
           <SlidersHorizontal size={13} /> Active filters
           <span style={{
             minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999,
-            backgroundColor: activeFilters ? LIME_CTA : (dark ? '#232a33' : '#e3e6eb'),
+            backgroundColor: activeFilters ? LIME_CTA : (dark ? '#34211a' : '#e3e6eb'),
             color: activeFilters ? ON_LIME : p.textDim,
             fontSize: 10.5, fontWeight: 800,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

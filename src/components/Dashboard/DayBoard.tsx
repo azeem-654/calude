@@ -32,8 +32,13 @@ import { useMyAvatar } from '../../services/userAvatar';
  * computed suggestions as before — no decorative cards.
  */
 
-const LIME = '#c7f441';
-const ON_LIME = '#0e1117';
+/* The highlight is the logo's lime in light mode and the ember in dark
+   (dashboard.css `--dash-hi`): the dark look is ember everywhere (owner,
+   2026-11-15), and a lime card on it read as a leftover. A CSS variable, so
+   every piece below follows the toggle without a re-render; it is only ever
+   used inside `style`, where var() works. */
+const LIME = 'var(--dash-hi, #c7f441)';
+const ON_LIME = 'var(--dash-on-hi, #0e1117)';
 /**
  * The accent needs a darker step for marks drawn on a light card. #c7f441
  * measures 1.05:1 against a light track — a bar in it is invisible to anyone
@@ -78,13 +83,15 @@ export default function DayBoard({ appointments, actions, onStatusChange }: Prop
   }, [slots, filter, nowMin]);
 
   /* ── Surfaces ── */
-  const PLANE = dark ? '#0c0e12' : '#eef0f4';
-  const CARD = dark ? '#161a20' : '#ffffff';
-  const LINE = dark ? '#232a33' : '#e3e6eb';
-  const INK = dark ? '#e9eef4' : '#17191c';
-  const MUTED = dark ? '#8f9aa8' : '#6b7480';
+  /* Dark is the ember look's warm blacks (index.css `.app-ember`), not the
+     blue-grey of the trading-board reference. */
+  const PLANE = dark ? '#120a07' : '#f3f4f6';
+  const CARD = dark ? '#1b100b' : '#ffffff';
+  const LINE = dark ? '#34211a' : '#e5e7eb';
+  const INK = dark ? '#f6ece7' : '#17191c';
+  const MUTED = dark ? '#a8968d' : '#6b7480';
   /** The dark chrome pieces stay dark in both themes, as in the reference. */
-  const CHROME = '#15181d';
+  const CHROME = dark ? '#28170f' : '#15181d';
 
   return (
     <div data-noinvert style={{

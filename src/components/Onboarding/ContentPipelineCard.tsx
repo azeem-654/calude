@@ -319,14 +319,17 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
       );
     }
     return (
-      <div style={{
+      /* data-noinvert + its own dark version (index.css `.pc-plan-cta`): a dark
+         card is already dark, so the inversion only turned it into a pale
+         grey slab with a dark-green button in the ember look. */
+      <div className="pc-plan-cta" data-noinvert style={{
         backgroundColor: INK, borderRadius: 24, padding: '22px 26px', color: '#fff',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap',
         boxShadow: '0 16px 40px -12px rgba(23,25,28,0.45)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 260 }}>
           <div style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Sparkles size={20} color="#c7f441" />
+            <Sparkles size={20} style={{ color: 'var(--dash-hi, #c7f441)' }} />
           </div>
           <div>
             <h3 style={{ fontSize: 16.5, fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>Build your 12-month business execution plan</h3>
@@ -337,7 +340,7 @@ export default function ContentPipelineCard({ onSetup, refreshKey }: { onSetup: 
         </div>
         <button onClick={onSetup} style={{
           display: 'flex', alignItems: 'center', gap: 8, padding: '12px 22px', borderRadius: 999, border: 'none',
-          backgroundColor: '#c7f441', color: INK, fontSize: 13, fontWeight: 800, cursor: 'pointer', flexShrink: 0,
+          backgroundColor: 'var(--dash-hi, #c7f441)', color: 'var(--dash-on-hi, #17191c)', fontSize: 13, fontWeight: 800, cursor: 'pointer', flexShrink: 0,
         }}>
           Build my 12-month plan <ArrowRight size={14} strokeWidth={2.5} />
         </button>

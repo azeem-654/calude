@@ -59,6 +59,20 @@ AI Autopilot and AI Prospecting stay, every other group goes behind a
 with Search / Inbox / Dark mode in its foot), and the corner drops the moon,
 search and inbox (`.nav-opt`). Folded, the bar is always the slim 64px one.
 Only a phone wraps, and it wraps folded (four pills, not three rows).
+**2026-11-15**: the More panel is the header's full width (fixed under the bar,
+which its blur makes the containing block), every group a column, nothing
+scrolling inside it at laptop sizes (a phone gets two columns and scrolls only
+if the screen is too short); a click within 500 ms of the hover that opened a
+group no longer shuts it. The two lit pills have a gap between them (their
+glass and rings ran together); TopNav's fit measure counts pill margins. In
+dark mode the open pill and the More panel's current screen are ember, the
+corner is a warm-black pill, and the lit pills are smoked glass.
+**Light mode** (same day): page ground `#f4f5f7` (was `#e9ebee`), and
+index.css "Light mode on every screen" gives white/frosted rounded cards with
+no border or shadow of their own a hairline ring (`--shadow-card`), and turns
+the old indigo solid buttons into the ink primary. **Dark dashboard gaps**:
+DayBoard/ProgressBoard/marketTheme/AI Prospecting draw ember warm blacks, and
+the lime highlight is `--dash-hi` (lime in light, ember in dark).
 
 **2026-11-13**: the account button at the end of the corner is the Protected
 Central shield (`LogoMark` + green lock, `.nav-shield`); its menu opens on
@@ -90,10 +104,10 @@ the testing site's copy of the public site — stay light unless dark was
 chosen (`PUBLIC_PATH`). Every screen sits on the hero's ground in dark mode:
 `.app-ember` (App.tsx, `data-noinvert`) is warm black `#0a0605` lit ember from
 below with a faint dot grid; `body` and `.app-shell` go transparent so it shows
-between cards. The **logo is ember in dark mode** (`LogoMark` reads
-`--logo-1..3`/`--logo-tile`, set under `html[data-theme="dark"]`; light mode
-keeps the favicon's lime → mint) and carries `data-noinvert`, which it lacked —
-dark mode used to draw it as a white tile with a dark-green shield.
+between cards. The **logo is the favicon's green on black in both themes**
+(owner, 2026-11-15: an ember recolour of it was undone — the logo is the brand,
+the theme is not); it carries `data-noinvert`, which it lacked — dark mode used
+to draw it as a white tile with a dark-green shield.
 **Every screen wears it** (same day): `index.css` "The ember look on every
 screen" recolours by what React writes into `style` — white and frosted-white
 cards become warm-black glass with an ember hairline and glow (rounded ones

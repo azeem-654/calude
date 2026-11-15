@@ -8,18 +8,29 @@
    ───────────────────────────────────────────────────────────── */
 
 :root {
+  /* Light mode (owner, 2026-11-15: "looks outdated"): a soft neutral ground a
+     step under white, so white cards read as cards without heavy shadows; a
+     hairline ring instead of a grey box round every card; ink, not indigo, for
+     the primary action. The cold #e9ebee ground made every near-white panel
+     look grey and every frosted one dirty. */
   --accent: #17191c;
   --accent-soft: rgba(23, 25, 28, 0.08);
   --ink: #0f172a;
   --ink-body: #475569;
-  --ink-muted: #94a3b8;
+  --ink-muted: #7c8696;
   --surface: #ffffff;
-  --surface-page: #e9ebee;
-  --line: #e6e9f0;
-  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04);
-  --shadow-pop: 0 8px 24px rgba(16, 24, 40, 0.08);
+  --surface-page: #f4f5f7;
+  --surface-sunk: #f7f8fa;
+  --line: #e7e9ee;
+  --line-strong: #d9dde4;
+  --shadow-card: 0 0 0 1px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 20px -12px rgba(16, 24, 40, 0.12);
+  --shadow-pop: 0 0 0 1px rgba(16, 24, 40, 0.06), 0 16px 40px -12px rgba(16, 24, 40, 0.22);
+  /* The dashboard's highlight (DayBoard, ProgressBoard, WorldClocks, the plan
+     card): the logo's lime in light mode, ember in dark — see below. */
+  --dash-hi: #c7f441; --dash-on-hi: #0e1117; --dash-hi-edge: #a8d327; --dash-chrome: #15181d;
   color-scheme: light;
 }
+html[data-theme="dark"] { --dash-hi: #ff6a2b; --dash-on-hi: #1a0c06; --dash-hi-edge: #e4521c; --dash-chrome: #1d120d; }
 
 * {
   box-sizing: border-box;
@@ -352,6 +363,17 @@ button:focus-visible, a:focus-visible {
     12px 6px 26px -6px rgba(96, 165, 250, 0.6),
     0 14px 22px -12px rgba(30, 27, 75, 0.45);
 }
+/* Room between the two lit pills (owner, 2026-11-15: "they overlap"). Their
+   boxes were 2px apart and the glass, the sheets under it and the open ring
+   ran into each other, so they read as one smeared shape. TopNav's fit
+   measure counts these margins. */
+.nav-hero { margin: 0 3px; }
+.nav-hero + .nav-hero { margin-left: 9px; }
+.app-header[data-fit="compact"] .nav-hero { margin: 0 2px; }
+.app-header[data-fit="compact"] .nav-hero + .nav-hero { margin-left: 7px; }
+/* The one being hovered or open draws over its neighbour's glow, not under it. */
+.nav-hero:hover, .nav-hero-on { z-index: 2; }
+
 /* A light passing over the glass. */
 .nav-hero::after {
   content: '';
@@ -392,6 +414,25 @@ button:focus-visible, a:focus-visible {
     14px 6px 30px -4px rgba(244, 114, 182, 0.75),
     0 16px 24px -12px rgba(30, 27, 75, 0.5) !important;
 }
+
+/* Dark mode: the same two glass pills, smoked. Lit white glass was the
+   brightest thing on the ember bar and pulled the eye off everything else;
+   here the tint stays only at the ends and in the glow, the words go white,
+   and the open ring is ember. (The pills carry data-noinvert: true colours.) */
+html[data-theme="dark"] .nav-hero {
+  background-image: linear-gradient(100deg, rgba(56, 214, 240, 0.3) 0%, rgba(34, 20, 15, 0.92) 34%, rgba(26, 15, 11, 0.94) 62%, rgba(244, 114, 182, 0.3) 100%);
+  border-color: rgba(255, 220, 200, 0.18) !important;
+  color: #fff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), -10px 4px 22px -10px rgba(34, 211, 238, 0.5), 10px 4px 22px -10px rgba(244, 114, 182, 0.5);
+}
+html[data-theme="dark"] .nav-hero-prospect {
+  background-image: linear-gradient(100deg, rgba(255, 170, 110, 0.34) 0%, rgba(34, 20, 15, 0.92) 34%, rgba(26, 15, 11, 0.94) 62%, rgba(186, 214, 255, 0.26) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), -10px 4px 22px -10px rgba(251, 146, 60, 0.55), 10px 4px 22px -10px rgba(96, 165, 250, 0.45);
+}
+html[data-theme="dark"] .nav-hero-on {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 0 1.5px rgba(255, 106, 43, 0.85), 0 0 22px -4px rgba(255, 106, 43, 0.6) !important;
+}
+html[data-theme="dark"] .nav-hero::after { background-image: linear-gradient(90deg, transparent 0, rgba(255, 255, 255, 0.12) 50%, transparent 100%); }
 
 /* The lens: milky glass, lit from the top left, a rim of light round it. */
 .ai-lens {
@@ -604,12 +645,11 @@ html[data-theme="dark"] [data-noinvert] {
  * `.app-ember` (App.tsx, the signed-in shell) is that ground behind every
  * screen — a fixed layer kept out of the inversion, so its colours are the
  * ones written here — and the body steps aside so it shows between the cards.
- * The logo wears the same ember (shared/Logo.tsx reads `--logo-*`).
+ * The logo is not part of the look: it stays the brand's green on black in
+ * both themes (owner, 2026-11-15 — an ember shield read as a different
+ * company). shared/Logo.tsx still reads `--logo-*`; nothing sets them.
  */
-html[data-theme="dark"] {
-  --logo-1: #ffc28e; --logo-2: #ff7a35; --logo-3: #e4521c; --logo-tile: #0a0605;
-}
-.app-shell { background-color: #e9ebee; }
+.app-shell { background-color: var(--surface-page); }
 html[data-theme="dark"] body, html[data-theme="dark"] .app-shell { background-color: transparent; }
 .app-ember { display: none; }
 html[data-theme="dark"] .app-ember {
@@ -649,7 +689,9 @@ html[data-theme="dark"] .app-ember::after {
 html[data-theme="dark"] .app-shell :is(
   [style*="background: rgb(255, 255, 255)"], [style*="background-color: rgb(255, 255, 255)"],
   [style*="background: white"], [style*="background-color: white"],
-  /* Frosted white (0.5 and up): the same card, drawn as glass. */
+  /* Frosted white (0.46 and up): the same card, drawn as glass. 0.46 is the
+     dashboard's FROST — its blocks were the cool grey ones left over. */
+  [style*="background-color: rgba(255, 255, 255, 0.46)"],
   [style*="background: rgba(255, 255, 255, 0.5"], [style*="background-color: rgba(255, 255, 255, 0.5"],
   [style*="background: rgba(255, 255, 255, 0.6"], [style*="background-color: rgba(255, 255, 255, 0.6"],
   [style*="background: rgba(255, 255, 255, 0.7"], [style*="background-color: rgba(255, 255, 255, 0.7"],
@@ -685,16 +727,96 @@ html[data-theme="dark"] .app-shell :is(button, a):is(
   border-color: transparent !important;
   box-shadow: 0 8px 24px -10px rgba(244, 95, 32, 0.85), inset 0 -1px 0 rgba(0, 0, 0, 0.2) !important;
 }
+/* The near-black selected rows, active tabs and icon tiles that are not
+   buttons ("All contacts", an empty state's tile) drew as white slabs; they
+   take the same ember with dark words. Big rounded containers (20px and up)
+   are left to their own component — a card-sized slab of ember is a shout. */
+html[data-theme="dark"] .app-shell :is(
+  [style*="background: rgb(23, 25, 28)"], [style*="background-color: rgb(23, 25, 28)"]
+):not(button, a, [data-noinvert], [data-noinvert] *, .app-header *, [style*="border-radius: 2"], [style*="border-radius: 3"]) {
+  background: linear-gradient(180deg, #ad440e, #f45f20) !important;
+  color: #fbf5f3 !important;
+}
+/* The top bar: the open group's pill and the More panel's current screen are
+   ember like the rail's lit button, and the corner is the dark pill it is in
+   light mode (drawn dark, so the inversion made it a white one — written light
+   here to come out warm black, its icons dark to come out light). */
+html[data-theme="dark"] .app-header .pill-link.pill-active,
+html[data-theme="dark"] .nav-more-item.is-here {
+  background: linear-gradient(180deg, #ad440e, #f45f20) !important;
+  color: #fbf5f3 !important;
+  box-shadow: 0 6px 18px -8px rgba(244, 95, 32, 0.8) !important;
+}
+html[data-theme="dark"] .nav-more-item.is-here svg { color: #fbf5f3; }
+html[data-theme="dark"] .nav-more-panel { background: #f8f0ec; box-shadow: 0 0 0 1px rgba(244, 95, 32, 0.26), 0 24px 48px -20px rgba(244, 95, 32, 0.45); }
+html[data-theme="dark"] .nav-more-item:hover:not(.is-here), html[data-theme="dark"] .nav-more-foot button { background: #efe3dd; }
+html[data-theme="dark"] .nav-corner { background: #f6eeea; box-shadow: inset 0 0 0 1px rgba(244, 95, 32, 0.32), 0 10px 26px -14px rgba(244, 95, 32, 0.5); }
+html[data-theme="dark"] .nav-corner-div { background: rgba(0, 0, 0, 0.16); }
+html[data-theme="dark"] .nav-corner .icon-btn:not([data-noinvert]) { color: #2b2622 !important; }
+html[data-theme="dark"] .nav-corner .icon-btn:not([data-noinvert]):hover { background: rgba(0, 0, 0, 0.07) !important; color: #000 !important; }
+html[data-theme="dark"] .nav-me { background: #ece7e4; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.12); }
+html[data-theme="dark"] .nav-shield-lock { border-color: #f6eeea; }
 html[data-theme="dark"]:not([data-hero-top="1"]) .app-header { background-color: rgba(251, 245, 243, 0.88) !important; }
 /* A screen's own sticky header wears the page grey of the top bar. */
 html[data-theme="dark"] .app-main [style*="background-color: rgba(233, 235, 238"]:not([data-noinvert] *) { background-color: rgba(251, 245, 243, 0.9) !important; }
 html[data-theme="dark"] .trial-bar { background: rgba(250, 241, 238, 0.92) !important; border-bottom: 1px solid rgba(244, 95, 32, 0.28) !important; }
+/* The dashboard's own glass is drawn by class, not inline, so the rules above
+   missed it: the week's figures and the chips sat in cool grey. Same inverse
+   colours as the cards. */
+html[data-theme="dark"] .dash-tile { background: rgba(247, 237, 233, 0.88); border-color: rgba(244, 95, 32, 0.22); box-shadow: 0 0 0 1px rgba(244, 95, 32, 0.06), 0 22px 46px -30px rgba(244, 95, 32, 0.5); }
+html[data-theme="dark"] .dash-chip { background: rgba(244, 231, 226, 0.85); border-color: rgba(244, 95, 32, 0.2); }
+html[data-theme="dark"] button.dash-chip:hover { background: #f1e2db; }
+/* The 12-month plan card is kept out of the inversion (true colours here). */
+html[data-theme="dark"] .pc-plan-cta {
+  background: radial-gradient(90% 140% at 100% 100%, rgba(255, 106, 43, 0.22), transparent 60%), linear-gradient(180deg, #1c110c, #120a07) !important;
+  box-shadow: 0 0 0 1px rgba(255, 106, 43, 0.28), 0 22px 46px -30px rgba(255, 106, 43, 0.6) !important;
+}
 
 /* Keep the page scrollbar dark to match. */
 html[data-theme="dark"] *::-webkit-scrollbar-thumb {
   background: #3a3f46;
   background-clip: padding-box;
 }
+
+/*
+ * ── Light mode on every screen (owner, 2026-11-15: "many elements don't adopt
+ * the theme or blend into it… looks outdated") ──
+ *
+ * The same idea as the ember block above, for the light theme and with no
+ * inversion to work through: recolour by what the screens write into `style`,
+ * because there are thousands of inline colours and the tokens alone reach
+ * none of them.
+ *
+ *   cards     a white or frosted-white rounded box with no border and no
+ *             shadow of its own gets the hairline ring and soft lift
+ *             (--shadow-card), so it stops dissolving into the ground — the
+ *             Inbox and Reviews empty states were 60% white on grey. Not
+ *             !important: a card that draws its own shadow keeps it.
+ *   headers   a screen's sticky header was written in the old #e9ebee page
+ *             grey; it takes the ground it sits on.
+ *   primary   the indigo solid buttons left from an older palette take the
+ *             ink of every other primary action (Add Contact, Send…), so one
+ *             screen does not have two different "do it" colours.
+ */
+html:not([data-theme="dark"]) .app-shell :is(
+  [style*="background: rgb(255, 255, 255)"], [style*="background-color: rgb(255, 255, 255)"],
+  [style*="background: white"], [style*="background-color: white"],
+  [style*="background: rgba(255, 255, 255, 0.6"], [style*="background: rgba(255, 255, 255, 0.7"], [style*="background: rgba(255, 255, 255, 0.8"],
+  [style*="background-color: rgba(255, 255, 255, 0.6"], [style*="background-color: rgba(255, 255, 255, 0.7"], [style*="background-color: rgba(255, 255, 255, 0.8"]
+):is([style*="border-radius: 1"], [style*="border-radius: 2"]):not([style*="border: 1px"], [style*="border: 2px"], [style*="box-shadow"], button, a, input, select, textarea, [data-noinvert], [data-noinvert] *, .app-header *) {
+  box-shadow: var(--shadow-card);
+}
+html:not([data-theme="dark"]) .app-main [style*="background-color: rgba(233, 235, 238"]:not([data-noinvert] *) { background-color: rgba(244, 245, 247, 0.9) !important; }
+html:not([data-theme="dark"]) .app-shell :is(button, a):is(
+  [style*="background: rgb(99, 102, 241)"], [style*="background-color: rgb(99, 102, 241)"],
+  [style*="background: rgb(91, 70, 229)"], [style*="background-color: rgb(91, 70, 229)"],
+  [style*="background: rgb(79, 70, 229)"], [style*="background-color: rgb(79, 70, 229)"]
+):not(:disabled, [data-noinvert], [data-noinvert] *, .app-header *, .pill-link) {
+  background: #17191c !important;
+  border-color: #17191c !important;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.12), 0 6px 16px -8px rgba(16, 24, 40, 0.45) !important;
+}
+html:not([data-theme="dark"]):not([data-hero-top="1"]) .app-header { box-shadow: 0 1px 0 rgba(16, 24, 40, 0.06); }
 
 /* ── Sidebar nav (hover states inline styles can't express) ── */
 .nav-item {
@@ -956,9 +1078,21 @@ details[open] > summary .faq-chevron { transform: rotate(180deg); }
 .app-header[data-menu="1"] .nav-more { display: block; }
 .app-header[data-menu="1"] .nav-fold,
 .app-header[data-menu="1"] .nav-opt { display: none !important; }
-.nav-more-panel { background: #fff; border-radius: 20px; padding: 14px; width: min(660px, calc(100vw - 24px)); max-height: calc(100vh - var(--app-hdr-h, 64px) - 16px); overflow-y: auto; box-sizing: border-box; box-shadow: 0 16px 40px -8px rgba(23, 25, 28, 0.2); }
-.nav-more-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px 14px; }
-.nav-more-col { display: grid; align-content: start; gap: 1px; }
+/* The More panel is the width of the window, every group a column, all of it
+   in view (owner, 2026-11-15: on a smaller laptop it was a 660px box that
+   scrolled inside itself). Fixed under the bar — the header's blur makes it
+   the containing block, so this is the header's width — with a transparent
+   strip on top that overlaps the bar's lower edge, so the pointer travelling
+   down from the pill is already inside it and the menu does not shut on the
+   way. The cap only bites when a window is too short to show it all (a phone),
+   and then it scrolls rather than running off the screen. */
+.app-header[data-menu="1"] .nav-more-drop {
+  position: fixed !important; left: 12px !important; right: 12px !important;
+  top: calc(var(--app-hdr-h, 64px) - 14px) !important; padding-top: 18px !important;
+}
+.nav-more-panel { background: var(--surface); border-radius: 20px; padding: 18px 18px 14px; width: 100%; max-height: calc(100dvh - var(--app-hdr-h, 64px) - 12px); overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; box-shadow: var(--shadow-pop); }
+.nav-more-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(136px, 1fr)); gap: 14px 16px; }
+.nav-more-col { display: grid; align-content: start; gap: 1px; min-width: 0; }
 .nav-more-head { display: block; padding: 2px 8px 5px; font-size: 10.5px !important; line-height: 1.3; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #8a8f98; text-align: left; border: 0; background: none; font-family: inherit; }
 .nav-more-head.is-link { cursor: pointer; color: #17191c; }
 .nav-more-head.is-link:hover { text-decoration: underline; }
@@ -972,9 +1106,11 @@ details[open] > summary .faq-chevron { transform: rotate(180deg); }
 .nav-more-foot button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid #e6e8eb; border-radius: 999px; background: #f7f8f9; cursor: pointer; font-family: inherit; font-size: 12.5px; font-weight: 600; line-height: 1; color: #17191c; }
 .nav-more-foot button:hover { background: #eef0f2; }
 .nav-more-foot kbd { font-family: inherit; font-size: 10.5px; font-weight: 600; color: #8a8f98; }
+/* A phone: the panel runs to the bottom of the screen, two columns. */
 @media (max-width: 620px) {
-  .nav-more { position: static !important; }
-  .nav-more-drop { left: 0; right: 0 !important; }
+  .app-header[data-menu="1"] .nav-more-drop { left: 8px !important; right: 8px !important; }
+  .nav-more-panel { padding: 14px 12px 12px; }
+  .nav-more-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 8px; }
 }
 
 /* A group's panel never leaves the screen, whatever the bar has done with the
@@ -1042,7 +1178,8 @@ details[open] > summary .faq-chevron { transform: rotate(180deg); }
   .app-header { padding: 8px 10px !important; gap: 8px !important; row-gap: 8px !important; }
   .app-header .icon-btn,
   .app-header button[aria-label] { width: 34px !important; height: 34px !important; }
-  .nav-pills button, .nav-pills a { padding: 6px 11px !important; font-size: 12.5px !important; }
+  /* The pills only — not the More panel's rows, which hang inside the row. */
+  .nav-pills :is(button, a):not(:where(.nav-more-panel *)) { padding: 6px 11px !important; font-size: 12.5px !important; }
 }
 
 
@@ -1099,7 +1236,8 @@ details[open] > summary .faq-chevron { transform: rotate(180deg); }
   .nav-pills { position: relative; }
   .nav-pills > div { position: static !important; }
 
-  .nav-panel {
+  /* A group's own panel. The More panel has its own sheet (see .nav-more-drop). */
+  .nav-panel:not(.nav-more-panel) {
     position: absolute !important;
     top: calc(100% + 8px) !important;
     left: 0 !important;

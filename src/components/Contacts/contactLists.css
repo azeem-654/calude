@@ -52,6 +52,10 @@
 .cl-item:hover { background: #f4f5f7; }
 .cl-item[aria-current="true"] { background: #17191c; color: #fff; }
 .cl-item[aria-current="true"] .cl-n { color: rgba(255, 255, 255, 0.7); }
+/* Dark mode (page inverted, so written as the inverse): the selected list is
+   ember with dark words, like the rail's lit button — not a white slab. */
+html[data-theme="dark"] .cl-item[aria-current="true"] { background: linear-gradient(180deg, #ad440e, #f45f20); color: #fbf5f3; }
+html[data-theme="dark"] .cl-item[aria-current="true"] .cl-n { color: rgba(251, 245, 243, 0.75); }
 .cl-item .cl-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cl-item .cl-n { font-size: 11.5px; font-weight: 700; color: #94a3b8; font-variant-numeric: tabular-nums; }
 .cl-item.cl-sub { padding-left: 26px; font-size: 12.5px; }

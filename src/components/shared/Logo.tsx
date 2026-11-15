@@ -20,14 +20,15 @@ export function LogoMark({ size = 28, tile = true }: { size?: number; tile?: boo
   const id = `pc${useId().replace(/:/g, '')}`;
   return (
     /* data-noinvert: dark mode inverts the whole page (index.css), which drew
-       the mark as a white tile with a dark-green shield — not the logo. In
-       dark mode it is drawn in the ember of the dashboard instead (owner,
-       2026-11-14); in light mode, the favicon's colours. */
+       the mark as a white tile with a dark-green shield — not the logo. It
+       is the favicon's green on black in both themes: an ember recolour for
+       the dark look was undone (owner, 2026-11-15 — the logo is the brand,
+       the theme is not). */
     <svg width={size} height={size} viewBox="0 0 32 32" role="img" aria-label="Protected Central" data-noinvert style={{ display: 'block', flexShrink: 0 }}>
       <defs>
         <linearGradient id={id} x1="6" y1="3" x2="26" y2="29" gradientUnits="userSpaceOnUse">
-          {/* Through CSS variables so dark mode can wear the dashboard's ember
-              (index.css `--logo-*`); unset, the lime-to-mint of the favicon. */}
+          {/* Through CSS variables so a surface could tint it; none does, so
+              this is always the favicon's lime-to-mint. */}
           <stop offset="0" style={{ stopColor: 'var(--logo-1, #d6f96f)' }} />
           <stop offset="0.55" style={{ stopColor: 'var(--logo-2, #c8f24d)' }} />
           <stop offset="1" style={{ stopColor: 'var(--logo-3, #8fd9c4)' }} />

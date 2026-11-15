@@ -23,8 +23,10 @@ const INK = '#ffffff';
 const DIM = 'rgba(255,255,255,0.62)';
 const LINE = 'rgba(255,255,255,0.13)';
 const FILL = 'rgba(255,255,255,0.08)';
-const LIME = '#c7f441';
-const ON_LIME = '#0e1117';
+/* Lime in light mode, ember in dark (dashboard.css `--dash-hi`), like the day
+   bar it opens from. Only ever used inside `style`, where var() works. */
+const LIME = 'var(--dash-hi, #c7f441)';
+const ON_LIME = 'var(--dash-on-hi, #0e1117)';
 
 /** One tick a second while seconds are shown, one a minute when they are not. */
 function useTick(withSeconds: boolean): Date {
@@ -178,7 +180,7 @@ function ClocksPanel({ settings, now, home, onChange, onClose, startAdding = fal
       style={{
         position: 'absolute', top: 'calc(100% + 12px)', left: 0, zIndex: 260,
         width: 'min(330px, calc(100vw - 40px))', maxHeight: 460, overflowY: 'auto',
-        backgroundColor: '#15181d', border: `1px solid ${LINE}`, borderRadius: 20,
+        backgroundColor: 'var(--dash-chrome, #15181d)', border: `1px solid ${LINE}`, borderRadius: 20,
         padding: 14, boxShadow: '0 26px 60px -16px rgba(0,0,0,0.6)',
         display: 'flex', flexDirection: 'column', gap: 12,
       }}

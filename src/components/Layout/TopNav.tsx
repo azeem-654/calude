@@ -58,6 +58,13 @@ export default function TopNav() {
   const here = `${location.pathname}${location.search}`;
   const openId = openGroup?.where === here ? openGroup.id : null;
   const openPanel = (id: string | null) => setOpenGroup(id ? { id, where: here } : null);
+  /* A group opens on hover, and the click that follows a moment later used to
+     toggle it straight shut again — so pointing at "More" and clicking it,
+     the natural thing to do, closed the menu you had just seen open. A click
+     within half a second of the hover keeps it open; a later one still closes. */
+  const hoverAt = useRef(0);
+  const hoverOpen = (id: string) => { hoverAt.current = Date.now(); openPanel(id); };
+  const clickToggle = (id: string, open: boolean) => openPanel(open && Date.now() - hoverAt.current > 500 ? null : id);
   const session = getSession();
   const isClient = session?.user.role === 'client';
   /* The install owner, not merely an agency — every customer of this product
@@ -155,7 +162,11 @@ export default function TopNav() {
       const ps = getComputedStyle(pills);
       const pg = parseFloat(ps.columnGap || '0') || 0;
       const pad = (parseFloat(ps.paddingLeft) || 0) + (parseFloat(ps.paddingRight) || 0);
-      const need = [...pills.children].reduce((w, k) => w + (k as HTMLElement).getBoundingClientRect().width, 0) + pg * Math.max(0, pills.children.length - 1) + pad + 4;
+      /* Margins count: the two lit pills keep a gap between them (index.css). */
+      const need = [...pills.children].reduce((w, k) => {
+        const m = getComputedStyle(k);
+        return w + (k as HTMLElement).getBoundingClientRect().width + (parseFloat(m.marginLeft) || 0) + (parseFloat(m.marginRight) || 0);
+      }, 0) + pg * Math.max(0, pills.children.length - 1) + pad + 4;
       return others + need <= inner + 1;
     };
     const measure = () => {
@@ -211,7 +222,7 @@ export default function TopNav() {
       position: 'sticky', top: 0, zIndex: 100,
       display: 'flex', alignItems: 'center', gap: 20,
       padding: '14px 28px',
-      backgroundColor: 'rgba(233,235,238,0.85)',
+      backgroundColor: 'rgba(244,245,247,0.82)',
       backdropFilter: 'blur(14px)',
       WebkitBackdropFilter: 'blur(14px)',
     }}>
@@ -418,13 +429,13 @@ export default function TopNav() {
                the panel and the click that followed it closed it again — the
                menu was unusable on a phone. */
             <div key={group.id} className="nav-group nav-fold" style={{ position: 'relative', flexShrink: 0 }}
-              onPointerEnter={e => { if (e.pointerType === 'mouse') openPanel(group.id); }}>
+              onPointerEnter={e => { if (e.pointerType === 'mouse') hoverOpen(group.id); }}>
               <button
                 type="button"
                 data-nav-group={group.id}
                 aria-haspopup="true"
                 aria-expanded={open}
-                onClick={() => openPanel(open ? null : group.id)}
+                onClick={() => clickToggle(group.id, open)}
                 onKeyDown={e => { if (e.key === 'Escape') openPanel(null); }}
                 className={`pill-link${on ? ' pill-active' : ''}`}
                 style={pill}
@@ -517,9 +528,9 @@ export default function TopNav() {
           const go = (path: string) => { openPanel(null); navigate(path); };
           return (
             <div className="nav-group nav-more" style={{ position: 'relative', flexShrink: 0 }}
-              onPointerEnter={e => { if (e.pointerType === 'mouse') openPanel('more'); }}>
+              onPointerEnter={e => { if (e.pointerType === 'mouse') hoverOpen('more'); }}>
               <button type="button" data-nav-group="more" aria-haspopup="true" aria-expanded={open}
-                onClick={() => openPanel(open ? null : 'more')}
+                onClick={() => clickToggle('more', open)}
                 onKeyDown={e => { if (e.key === 'Escape') openPanel(null); }}
                 className={`pill-link${on ? ' pill-active' : ''}`}
                 style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: on ? 700 : 600, fontFamily: 'inherit', whiteSpace: 'nowrap', color: on ? '#fff' : '#3b3f45', backgroundColor: on ? '#17191c' : 'transparent' }}>

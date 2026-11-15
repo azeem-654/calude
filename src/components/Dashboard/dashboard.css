@@ -506,7 +506,7 @@ button.day-chip:hover { background: rgba(255, 255, 255, 0.10); border-color: rgb
 @property --acc { syntax: '<color>'; inherits: true; initial-value: #ff6a2b; }
 .dash-hero {
   /* Day */
-  --hero-floor: #e9ecef;
+  --hero-floor: var(--surface-page, #f4f5f7);
   --h-ink: #17120f; --h-mut: rgba(48, 34, 26, 0.68);
   --h-ground: #fbf7f2;
   --h-glass: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.78));

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Globe, Plus, Trash2, Eye, ExternalLink, Edit3, Copy, BarChart3, Search } from 'lucide-react';
+import { Globe, Plus, Trash2, Eye, ExternalLink, Edit3, Copy, BarChart3, Search, CheckCircle2, Users } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import type { Website } from '../../types';
@@ -238,12 +238,14 @@ export default function Websites() {
       {/* Stats row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(160px, 100%), 1fr))', gap: 16, marginBottom: 28 }}>
         {[
-          { label: 'Total Sites', value: websites.length, icon: '🌐', color: '#6366f1' },
-          { label: 'Published', value: websites.filter(w => w.status === 'published').length, icon: '✅', color: '#22c55e' },
-          { label: 'Total Visitors', value: websites.reduce((a, w) => a + (w.visitors ?? 0), 0).toLocaleString(), icon: '👥', color: '#f59e0b' },
+          /* Line icons like every other screen's stat cards (Funnels beside
+             it): emoji drew differently on every machine and dated the page. */
+          { label: 'Total Sites', value: websites.length, icon: Globe, color: '#6366f1' },
+          { label: 'Published', value: websites.filter(w => w.status === 'published').length, icon: CheckCircle2, color: '#16a34a' },
+          { label: 'Total Visitors', value: websites.reduce((a, w) => a + (w.visitors ?? 0), 0).toLocaleString(), icon: Users, color: '#d97706' },
         ].map(s => (
-          <div key={s.label} style={{ background: '#fff', borderRadius: 12, padding: '20px 24px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', gap: 16 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 12, background: `${s.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>{s.icon}</div>
+          <div key={s.label} style={{ background: '#fff', borderRadius: 16, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: `${s.color}14`, color: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><s.icon size={20} strokeWidth={2} /></div>
             <div>
               <div style={{ fontSize: 24, fontWeight: 800, color: '#0f172a' }}>{s.value}</div>
               <div style={{ fontSize: 13, color: '#64748b' }}>{s.label}</div>
