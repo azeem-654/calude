@@ -29,6 +29,14 @@ import { noteTool } from './aiToolHealth';
 const failureOf = (a: Attempt<unknown>): string => (a.ok ? '' : `${a.status}: ${a.error}`);
 
 const GOOGLE = 'https://generativelanguage.googleapis.com';
+
+/**
+ * The key goes in Google's `x-goog-api-key` header, never the address.
+ * AI Studio now hands out keys in a second shape (`AQ.…`, 2026) beside the
+ * old `AIza…`; the header is the way Google documents for both, and a key in
+ * a URL ends up in every log line that prints the URL.
+ */
+export const googleHeaders = (key: string, extra: Record<string, string> = {}): Record<string, string> => ({ ...extra, 'x-goog-api-key': key.trim() });
 /* `GEMINI_BASE` points every call at a stand-in, for tests only — set from
    the first `env` this isolate sees, since the callers below are handed a
    key and not an env (test/aikeys.e2e.mjs). */
@@ -83,7 +91,7 @@ export async function geminiNames(apiKey: string): Promise<string[] | null> {
   const hit = namesCache.get(apiKey);
   if (hit && Date.now() - hit.at < 6 * 3_600_000) return hit.names;
   try {
-    const res = await fetch(`${BASE}/v1beta/models?pageSize=1000&key=${encodeURIComponent(apiKey)}`, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch(`${BASE}/v1beta/models?pageSize=1000`, { headers: googleHeaders(apiKey), signal: AbortSignal.timeout(8000) });
     if (!res.ok) return null;
     const data = await res.json<{ models?: { name?: string; supportedGenerationMethods?: string[] }[] }>();
     const names = (data.models ?? [])
@@ -328,8 +336,8 @@ async function askGeminiOnce(
 ): Promise<Attempt<AiResult>> {
   /* An OpenRouter key in the pool is asked through its own adapter (lib/openrouter.ts). */
   if (isOpenRouterKey(apiKey)) return askOpenRouter(apiKey, { parts: parts.filter((x): x is AiPart => !('fileData' in x)), temperature, json: opts.json !== false, timeoutMs: opts.timeoutMs, task: opts.task, module: opts.module, accountId: opts.accountId });
-  const use = (model: string, ok: boolean, status: number, meta?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number }) =>
-    recordAiUse({ provider: 'gemini', key: apiKey, model, module: opts.module, accountId: opts.accountId, ok, status, tokensIn: meta?.promptTokenCount, tokensOut: (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0) });
+  const use = (model: string, ok: boolean, status: number, meta?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number }, ms?: number) =>
+    recordAiUse({ provider: 'gemini', key: apiKey, model, module: opts.module, accountId: opts.accountId, ok, status, ms, tokensIn: meta?.promptTokenCount, tokensOut: (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0) });
   const failed = (status: number, raw: string): Attempt<AiResult> =>
     ({ ok: false, status, error: raw, value: { ok: false, text: '', error: friendly(status, raw) } });
   const asJson = opts.json !== false;
@@ -347,10 +355,12 @@ async function askGeminiOnce(
         generationConfig: gemma ? { temperature } : thinking ? { ...base, thinkingConfig: thinkingFor(model) } : base,
       };
       let res: Response;
+      let started = Date.now();
       try {
-        res = await fetch(`${BASE}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+        started = Date.now();
+        res = await fetch(`${BASE}/v1beta/models/${model}:generateContent`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: googleHeaders(apiKey, { 'Content-Type': 'application/json' }),
           body: JSON.stringify(body),
           /* A default, so no caller can wait on a model forever (the audit
              found a dozen with none); withFailover bounds the walk. */
@@ -366,7 +376,7 @@ async function askGeminiOnce(
       if (res.ok) {
         const data = await res.json<{ candidates?: { content?: { parts?: { text?: string }[] } }[]; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number } }>()
           .catch(() => ({}) as Record<string, never>);
-        await use(model, true, 200, data.usageMetadata);
+        await use(model, true, 200, data.usageMetadata, Date.now() - started);
         const text = (data.candidates?.[0]?.content?.parts ?? []).map(p => p.text ?? '').join('');
         /* Models sometimes wrap JSON in a fence despite being asked not to. */
         return {
@@ -438,12 +448,12 @@ async function askAboutFileOnce(
     ({ ok: false, status, error: raw, value: { ok: false, text: '', error: said ?? friendly(status, raw) } });
   /* No Files API behind an OpenRouter key: the next key, no rest (-2). */
   if (isOpenRouterKey(apiKey)) return failed(-2, 'not a Gemini key', 'Watching a video file is not available on this installation right now. This is on our side, not yours.');
-  const k = encodeURIComponent(apiKey);
   let uploadUrl = '';
   try {
-    const start = await fetch(`${BASE}/upload/v1beta/files?key=${k}`, {
+    const start = await fetch(`${BASE}/upload/v1beta/files`, {
       method: 'POST',
       headers: {
+        'x-goog-api-key': apiKey.trim(),
         'X-Goog-Upload-Protocol': 'resumable', 'X-Goog-Upload-Command': 'start',
         'X-Goog-Upload-Header-Content-Length': String(file.size), 'X-Goog-Upload-Header-Content-Type': file.mimeType,
         'Content-Type': 'application/json',
@@ -476,14 +486,14 @@ async function askAboutFileOnce(
   }
   if (!meta.name || !meta.uri) return failed(502, 'no file in the upload answer', 'Google did not confirm the upload — try again shortly.');
 
-  const forget = () => fetch(`${BASE}/v1beta/${meta.name}?key=${k}`, { method: 'DELETE' }).then(() => undefined, () => undefined);
+  const forget = () => fetch(`${BASE}/v1beta/${meta.name}`, { method: 'DELETE', headers: googleHeaders(apiKey) }).then(() => undefined, () => undefined);
   /* Google processes a video before it can be read; PROCESSING → ACTIVE (or FAILED). */
   let state = meta.state ?? 'PROCESSING';
   const deadline = Date.now() + (opts.activeWaitMs ?? 180_000);
   while (state === 'PROCESSING' && Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 2500));
     try {
-      const r = await fetch(`${BASE}/v1beta/${meta.name}?key=${k}`, { signal: AbortSignal.timeout(15_000) });
+      const r = await fetch(`${BASE}/v1beta/${meta.name}`, { headers: googleHeaders(apiKey), signal: AbortSignal.timeout(15_000) });
       if (r.ok) state = (await r.json<{ state?: string }>().catch(() => ({} as { state?: string }))).state ?? state;
     } catch { /* asked again on the next turn */ }
   }
@@ -522,7 +532,7 @@ export async function verifyAiKey(apiKey: string): Promise<AiResult> {
   if (!k) return { ok: false, text: '', error: 'Enter an API key first.' };
   if (isOpenRouterKey(k)) return verifyOpenRouterKey(k);
   try {
-    const r = await fetch(`${BASE}/v1beta/models?key=${encodeURIComponent(k)}&pageSize=1`);
+    const r = await fetch(`${BASE}/v1beta/models?pageSize=1`, { headers: googleHeaders(k), signal: AbortSignal.timeout(15_000) });
     if (r.ok) return { ok: true, text: '', error: '' };
     return { ok: false, text: '', error: friendly(r.status, await r.text().catch(() => '')) };
   } catch (e) {
@@ -643,8 +653,8 @@ Reply with JSON only, in exactly this shape:
   for (const model of await researchModels(apiKey)) {
     let res: Response;
     try {
-      res = await fetch(`${BASE}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      res = await fetch(`${BASE}/v1beta/models/${model}:generateContent`, {
+        method: 'POST', headers: googleHeaders(apiKey, { 'Content-Type': 'application/json' }), body: JSON.stringify(body),
         signal: AbortSignal.timeout(45_000),
       });
     } catch (e) {

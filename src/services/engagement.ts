@@ -50,6 +50,8 @@ export interface Ticket {
   id: string; reference: string; subject: string; status: string; priority: string;
   category: string; assignedTo: string; source: string; createdAt: string; updatedAt: string;
   personName: string | null; personEmail: string | null;
+  /** The customer's "How did we do?" (1–5) once resolved; null when not given. */
+  csatScore?: number | null;
 }
 
 export interface FormField {

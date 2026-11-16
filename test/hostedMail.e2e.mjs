@@ -25,7 +25,7 @@ let failed = 0, passed = 0;
 const ok = (name, cond, detail = '') => { if (cond) passed++; else failed++; console.log(`${cond ? 'PASS' : 'FAIL'}  ${name}${cond ? '' : ` — ${typeof detail === 'string' ? detail : JSON.stringify(detail).slice(0, 600)}`}`); };
 
 /* ── Cloudflare and Resend, as far as this feature talks to them ── */
-const st = { zoneActive: false, zones: {}, records: [], catchAll: null, routing: false, resendVerified: false, verifyCalls: 0, deleted: [] };
+const st = { zoneActive: false, zones: {}, records: [], catchAll: null, routing: false, resendVerified: false, verifyCalls: 0, deleted: [], rules: [], patched: [] };
 const mock = http.createServer((req, res) => {
   let b = '';
   req.on('data', c => { b += c; });
@@ -34,17 +34,22 @@ const mock = http.createServer((req, res) => {
     const send = (s, j) => { res.writeHead(s, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(j)); };
     const okc = result => send(200, { success: true, result, errors: [] });
     const p = u.pathname, body = b ? JSON.parse(b) : {};
+    let m;
     if (/^\/cf\/accounts\/\w+\/tokens\/verify$/.test(p)) return send(401, { success: false, errors: [{ message: 'Invalid API Token' }] });
     if (p === '/cf/user/tokens/verify') return req.headers.authorization === 'Bearer cf-good' ? okc({ status: 'active' }) : send(401, { success: false, errors: [{ message: 'Invalid API Token' }] });
     if (p === '/cf/zones' && req.method === 'GET') return okc(Object.values(st.zones).filter(z => z.name === u.searchParams.get('name')));
     if (p === '/cf/zones' && req.method === 'POST') { const z = { id: `z${Object.keys(st.zones).length + 1}`, name: body.name, jump: body.jump_start }; st.zones[z.id] = z; return okc({ ...z, status: 'pending', name_servers: ['ada.ns.cloudflare.com', 'bob.ns.cloudflare.com'] }); }
-    let m;
     if ((m = /^\/cf\/zones\/(\w+)$/.exec(p))) {
       if (req.method === 'DELETE') { st.deleted.push(m[1]); delete st.zones[m[1]]; return okc({ id: m[1] }); }
       return okc({ id: m[1], status: st.zoneActive ? 'active' : 'pending', name_servers: ['ada.ns.cloudflare.com', 'bob.ns.cloudflare.com'] });
     }
     if (/\/email\/routing\/enable$/.test(p)) { st.routing = true; return okc({ enabled: true }); }
     if (/\/email\/routing\/rules\/catch_all$/.test(p)) { st.catchAll = body; return okc(body); }
+    /* The owner's own address: one literal rule per address. */
+    if (/\/email\/routing\/rules$/.test(p) && req.method === 'GET') return okc(st.rules);
+    if (/\/email\/routing\/rules$/.test(p) && req.method === 'POST') { const r = { id: `rule${st.rules.length + 1}`, ...body }; st.rules.push(r); return okc(r); }
+    if ((m = /\/email\/routing\/rules\/(\w+)$/.exec(p)) && req.method === 'DELETE') { st.rules = st.rules.filter(r => r.id !== m[1]); return okc({ id: m[1] }); }
+    if ((m = /\/dns_records\/(\w+)$/.exec(p)) && req.method === 'PATCH') { const r = st.records.find(x => x.id === m[1]); if (r) Object.assign(r, body); st.patched.push(body); return okc(r); }
     if (/\/email\/routing$/.test(p)) return okc({ enabled: st.routing, status: 'ready' });
     if (/\/dns_records$/.test(p) && req.method === 'GET') return okc(st.records.filter(r => r.type === u.searchParams.get('type') && r.name === u.searchParams.get('name')));
     if (/\/dns_records$/.test(p) && req.method === 'POST') { st.records.push(body); return okc({ id: `r${st.records.length}`, ...body }); }
@@ -179,6 +184,53 @@ r = await api('provider-send.php', { ...spoof, fromEmail: 'ceo@dan-shop.com' });
 ok('…as does another address on its own domain that is not this mailbox', !r.success && /sends only as/.test(r.error ?? r.message), r);
 r = await api('provider-send.php', { ...spoof, fromEmail: 'Sales@Dan-Shop.com', to: 'nobody@invalid.invalid' });
 ok('its own address is not refused for its From', !/sends only as/.test(r.error ?? r.message ?? ''), r);
+
+console.log('\nThe owner\'s own address, received here');
+/* owner-site.com is already the owner's zone (as protectedcentral.com is);
+   support@ there is a send-only mailbox in the owner's workspace. */
+st.zones.zown = { id: 'zown', name: 'owner-site.com', status: 'active' };
+st.zones.zmx = { id: 'zmx', name: 'gmail-hosted.com', status: 'active' };
+st.records.push({ id: 'spf1', type: 'TXT', name: 'owner-site.com', content: '"v=spf1 include:spf.brevo.com ~all"' });
+st.records.push({ id: 'mx1', type: 'MX', name: 'gmail-hosted.com', content: 'aspmx.l.google.com' });
+const OW = 'ownerws1';
+const saveOwn = email => api('mailbox.php', { token: O, accountId: OW, action: 'save', label: email, from: { email, name: 'Support' }, provider: { name: 'brevo', key: 'xkeysib-owner-test' } });
+await saveOwn('support@owner-site.com');
+await saveOwn('help@gmail-hosted.com');
+r = await api('hosted-mail.php', { token: C.token, action: 'own_status' });
+ok('a customer cannot see or change the owner\'s own addresses', !r.success && r.code === 'not_owner', r);
+r = await api('hosted-mail.php', { token: O, action: 'own_status' });
+const sup = (r.own ?? []).find(x => x.address === 'support@owner-site.com');
+const gh = (r.own ?? []).find(x => x.address === 'help@gmail-hosted.com');
+ok('the owner\'s send-only mailboxes are listed, not receiving', r.success && sup && !sup.receiving && gh, r);
+r = await api('hosted-mail.php', { token: O, action: 'own_receive', mailboxId: gh?.id });
+ok('a domain whose mail already goes to a mail host is refused, and nothing is changed', !r.success && /aspmx\.l\.google\.com/.test(r.error) && r.field === 'hosted.ownMailbox' && !st.rules.length, r);
+const cMb = (await api('mailbox.php', { token: C.token, accountId: C.acct, action: 'list' })).mailboxes?.[0];
+r = await api('hosted-mail.php', { token: O, action: 'own_receive', mailboxId: cMb?.id ?? 'x' });
+ok('a mailbox outside the owner\'s workspaces is refused', !r.success, r);
+r = await api('hosted-mail.php', { token: O, action: 'own_receive', mailboxId: sup?.id });
+const rule = st.rules[0];
+ok('receiving on: one rule for that address to this Worker, not the catch-all', r.success && r.receiving === true && st.rules.length === 1 && rule.matchers?.[0]?.type === 'literal' && rule.matchers[0].value === 'support@owner-site.com' && rule.actions?.[0]?.value?.[0] === 'crmpro', [r, st.rules]);
+ok('…and Cloudflare added to the one SPF record, keeping what was there', /^"v=spf1 include:spf\.brevo\.com include:_spf\.mx\.cloudflare\.net ~all"$/.test(st.records.find(x => x.id === 'spf1')?.content ?? ''), st.records.find(x => x.id === 'spf1'));
+r = await api('hosted-mail.php', { token: O, action: 'own_receive', mailboxId: sup?.id });
+ok('"Check again" changes nothing twice', r.success && st.rules.length === 1 && st.patched.length === 1, [st.rules.length, st.patched]);
+let ombs = await api('mailbox.php', { token: O, accountId: OW, action: 'list' });
+let omb = (ombs.mailboxes ?? []).find(x => x.from?.email === 'support@owner-site.com');
+ok('the mailbox keeps sending through Brevo and now shows receiving as connected', omb?.provider?.name === 'brevo' && omb.incoming.state === 'connected', omb);
+er = await deliver('support@owner-site.com', 'Where is my invoice?');
+ok('a message to support@ is accepted', er.status < 400, `${er.status}`);
+await sleep(500);
+const oin = await api('imap-fetch.php', { token: O, accountId: OW, mailboxId: omb?.id });
+ok('…and is in that mailbox\'s inbox in the app', oin.success && oin.messages?.[0]?.subject === 'Where is my invoice?', oin);
+r = await api('mailbox.php', { token: O, accountId: OW, action: 'test_incoming', id: omb?.id });
+ombs = await api('mailbox.php', { token: O, accountId: OW, action: 'list' });
+omb = (ombs.mailboxes ?? []).find(x => x.from?.email === 'support@owner-site.com');
+ok('Validate does not try to log in anywhere and keeps it connected', omb?.incoming.state === 'connected', [r, omb?.incoming]);
+s = await H(C, 'status');
+ok('the customer\'s own-domain panel never lists the owner\'s address', !(s.addresses ?? []).some(a => a.address === 'support@owner-site.com'), s.addresses);
+r = await api('hosted-mail.php', { token: O, action: 'own_stop', mailboxId: sup?.id });
+ombs = await api('mailbox.php', { token: O, accountId: OW, action: 'list' });
+omb = (ombs.mailboxes ?? []).find(x => x.from?.email === 'support@owner-site.com');
+ok('Stop removes the rule and the link, leaving the zone alone', r.success && !st.rules.length && !(r.own ?? []).find(x => x.address === 'support@owner-site.com')?.receiving && !st.deleted.includes('zown') && omb?.incoming.state !== 'connected', [r, st.rules, omb?.incoming]);
 
 console.log('\nRemoving');
 r = await H(D, 'remove_domain', { domainId: dom.id });

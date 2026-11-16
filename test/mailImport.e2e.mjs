@@ -128,7 +128,7 @@ const mock = http.createServer((req, res) => {
       return send(res, 200, { Status: 3 });
     }
     if (req.method === 'GET' && u.pathname === '/v1beta/models') {
-      return u.searchParams.get('key') === GKEY ? send(res, 200, { models: [{ name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] }] })
+      return (req.headers['x-goog-api-key'] ?? u.searchParams.get('key')) === GKEY ? send(res, 200, { models: [{ name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] }] })
         : send(res, 400, { error: { code: 400, message: 'API key not valid.', details: [{ reason: 'API_KEY_INVALID' }] } });
     }
     if (req.method === 'POST' && /:generateContent$/.test(u.pathname)) {

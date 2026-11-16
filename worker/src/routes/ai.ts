@@ -30,7 +30,7 @@ import { findPhi, phiRefusal } from '../lib/phiGuard';
 import { fail, json } from '../lib/http';
 import { canAccess, userFromToken, type Env } from '../lib/db';
 import { cleanJob, jobMayFinish, jobTouch } from '../lib/aiJobs';
-import { AI_BUSY, aiBase, forGemma, isGemma, jsonOnly, loadAiKey, modelsFor, thinkingFor, trialRefusal } from '../lib/ai';
+import { AI_BUSY, aiBase, forGemma, googleHeaders, isGemma, jsonOnly, loadAiKey, modelsFor, thinkingFor, trialRefusal } from '../lib/ai';
 import { capRefusal, recordAiUse } from '../lib/aiUsage';
 import { moduleOf, taskOf } from '../lib/aiTasks';
 import { withFailover } from '../lib/aiPool';
@@ -188,9 +188,11 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
          than after the whole answer is written (the owner, 2026-11-15). The
          failover still works — a refusal arrives as a status before any text. */
       const streaming = fast && d.stream === true && !gemma;
-      const ask = (body: string) => fetch(`${aiBase()}/v1beta/models/${model}:${streaming ? 'streamGenerateContent?alt=sse&' : 'generateContent?'}key=${encodeURIComponent(k)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(Math.min(fast ? FAST_MODEL_MS : 40_000, left)),
+      const ask = (body: string) => fetch(`${aiBase()}/v1beta/models/${model}:${streaming ? 'streamGenerateContent?alt=sse' : 'generateContent'}`, {
+        method: 'POST', headers: googleHeaders(k, { 'Content-Type': 'application/json' }), body, signal: AbortSignal.timeout(Math.min(fast ? FAST_MODEL_MS : 40_000, left)),
       });
+      /* Streamed: the time to the first words, which is what somebody watching feels. */
+      const t0 = Date.now();
       try {
         if (gemma) res = await ask(JSON.stringify(forGemma(JSON.parse(payload))));
         else if (fast) {
@@ -204,7 +206,7 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
         continue;
       }
       if (res.ok && streaming && res.body) {
-        await recordAiUse({ provider: 'gemini', key: k, model, module, accountId, ok: true, status: 200 });
+        await recordAiUse({ provider: 'gemini', key: k, model, module, accountId, ok: true, status: 200, ms: Date.now() - t0 });
         await record(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`, 1, room.standing);
         return { ok: true, value: new Response(res.body, { headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } }) };
       }
@@ -216,7 +218,7 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
           const parts = (answer as { candidates?: { content?: { parts?: { text?: string }[] } }[] }).candidates?.[0]?.content?.parts;
           if (parts?.length) { const joined = parts.map(p => p.text ?? '').join(''); parts.splice(0, parts.length, { text: jsonOnly(joined) }); }
         }
-        await recordAiUse({ provider: 'gemini', key: k, model, module, accountId, ok: true, status: 200, tokensIn: answer?.usageMetadata?.promptTokenCount, tokensOut: (answer?.usageMetadata?.candidatesTokenCount ?? 0) + (answer?.usageMetadata?.thoughtsTokenCount ?? 0) });
+        await recordAiUse({ provider: 'gemini', key: k, model, module, accountId, ok: true, status: 200, ms: Date.now() - t0, tokensIn: answer?.usageMetadata?.promptTokenCount, tokensOut: (answer?.usageMetadata?.candidatesTokenCount ?? 0) + (answer?.usageMetadata?.thoughtsTokenCount ?? 0) });
         await record(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`, 1, room.standing);
         return { ok: true, value: json({ success: true, response: answer, ...(creditsOut ? { creditsOut } : {}) }) };
       }

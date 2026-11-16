@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle, Loader, RefreshCw, XCircle } from 'lucide-react';
 import { API_BASE } from '../../services/apiBase';
 import { sessionToken } from '../../services/auth';
+import AiKeyMonitor from './AiKeyMonitor';
 
 const INK = '#0f172a';
 const MUTED = '#64748b';
@@ -116,6 +117,7 @@ export default function UsageDashboard() {
         each provider's free daily allowance. A model at its free limit is moved to the back automatically, so the next model is
         used instead. Days are UTC{r ? ` — today is ${r.day}` : ''}.
       </p>
+      <AiKeyMonitor />
       {error && <div role="alert" style={{ fontSize: 12.5, color: '#b42318', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 12px' }}>{error}</div>}
       {!r && !error && <div style={{ fontSize: 12.5, color: MUTED }}><Loader size={12} className="spin" /> Reading…</div>}
 

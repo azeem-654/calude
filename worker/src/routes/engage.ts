@@ -29,7 +29,7 @@ import { nowIso, userFromToken, type Env, type SessionUser } from '../lib/db';
 import { rateLimit } from '../lib/rateLimit';
 import { gate as contentGate } from '../lib/contentGate';
 import {
-  cleanEmail, guestKey, publicKey, recordEvent, rid, upsertPerson, nextTicketRef,
+  browseKnowledge, cleanEmail, guestKey, publicKey, recordEvent, rid, upsertPerson, nextTicketRef,
 } from '../lib/engagement';
 import { think, type AgentConfig, type Turn } from '../lib/agentBrain';
 import { HOUSE_AGENT, HOUSE_STYLE, houseFacts } from '../lib/houseKnowledge';
@@ -62,6 +62,11 @@ interface Req {
   screenshot?: string;
   pictures?: unknown[];
   code?: string;
+  /* Help articles: the search typed, or the article opened. A ticket's rating: 1–5 and a comment. */
+  query?: string;
+  articleId?: string;
+  score?: number;
+  comment?: string;
 
   message?: string;
   name?: string;
@@ -216,7 +221,7 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
      Charged to the shared 60 it ran out after ~30 page loads from one address:
      an office of testers behind one IP (AppSumo's, or a customer's staff) lost
      the help button, and a busy site its own embedded form, for ten minutes. */
-  const READS = new Set(['widget', 'house', 'form', 'ticket_status']);
+  const READS = new Set(['widget', 'house', 'form', 'ticket_status', 'articles', 'article']);
   const limit = act === 'live_poll'
     ? await rateLimit(env, { what: 'engage-live', who: ip, max: 600, windowSeconds: 600 })
     : act === 'poll'
@@ -276,6 +281,10 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
            a typing indicator and replies that take as long as a person's
            would. A customer's widget keeps answering as fast as it can. */
         natural: isHouse,
+        /* How many published help articles there are, so the widget offers
+           "Search help articles" only when there is something to find. */
+        articles: Number((await env.DB.prepare("SELECT COUNT(*) AS n FROM crm_kb_articles WHERE account_id = ? AND status = 'published'")
+          .bind(String(w.accountId)).first<{ n: number }>().catch(() => null))?.n ?? 0),
       },
       /* Named rather than assumed: a widget with no live agent can still take a
          ticket, and saying so beats a chat box that answers nothing. */
@@ -294,6 +303,77 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
      is public anyway, or with nothing. */
   if (act === 'house') {
     return withCors(json({ success: true, widgetKey: await houseWidgetKey(env) }));
+  }
+
+  /* ── Help articles ──
+     The widget's workspace's published knowledge articles (Customer
+     Engagement → Knowledge): searched as the visitor types, then opened one at
+     a time. Drafts never; another workspace's never — the widget key names the
+     workspace and nothing in the request can change it. Shown as text. */
+  if (act === 'articles' || act === 'article') {
+    const w = await widgetFor(env, String(d.widgetKey ?? ''));
+    if (!w || w.status !== 'live') return withCors(fail('Help is not available here.', 404));
+    if (!hostAllowed(String(w.allowedHosts ?? ''), origin)) return withCors(fail('This is not enabled for this website.', 403));
+    const accountId = String(w.accountId);
+    if (act === 'articles') {
+      const q = String(d.query ?? '').trim().slice(0, 200);
+      return withCors(json({ success: true, query: q, articles: await browseKnowledge(env, accountId, q, 8) }));
+    }
+    const a = await env.DB.prepare(
+      `SELECT id, title, body, kind, source_url AS sourceUrl, updated_at AS updatedAt FROM crm_kb_articles
+       WHERE id = ? AND account_id = ? AND status = 'published'`,
+    ).bind(String(d.articleId ?? '').slice(0, 80), accountId).first<Record<string, unknown>>();
+    if (!a) return withCors(fail('That article is not available any more.', 404));
+    /* Only a web address may be offered as a link: it lands on a stranger's page. */
+    if (!/^https:\/\//i.test(String(a.sourceUrl ?? ''))) a.sourceUrl = '';
+    return withCors(json({ success: true, article: a }));
+  }
+
+  /* ── How did we do? ──
+     The customer's rating of a resolved ticket, proved the way they reached
+     it: the reference and its key (ticket_status), or — for the list by email
+     (my_tickets), which never hands out keys — the same proof as that list:
+     the signed-in session's address, or the address and its mailed code, and
+     the ticket must be that address's at this widget's workspace. 1–5 and a
+     comment, changeable; only once resolved or closed — a rating of work not
+     finished says nothing. */
+  if (act === 'rate_ticket') {
+    const ref = String(d.ticketRef ?? '').trim().toUpperCase().slice(0, 20);
+    const key = String(d.guestKey ?? '');
+    const score = Math.round(Number(d.score));
+    const same = 'We could not find that ticket.';
+    if (!ref) return withCors(fail(same, 200, { code: 'no-match' }));
+    if (!(score >= 1 && score <= 5)) return withCors(fail('Choose from 1 to 5.', 200, { field: 'csat.score' }));
+    type T = { id: string; account_id: string; status: string; reference: string };
+    let t: T | null = null;
+    if (key) {
+      t = await env.DB.prepare('SELECT id, account_id, status, reference FROM crm_tickets WHERE reference = ? AND guest_key = ?').bind(ref, key).first<T>();
+    } else {
+      const w = await widgetFor(env, String(d.widgetKey ?? ''));
+      if (!w || w.status !== 'live' || !hostAllowed(String(w.allowedHosts ?? ''), origin)) return withCors(fail(same, 200, { code: 'no-match' }));
+      const accountId = String(w.accountId);
+      let email = (await signedIn(env, d.token))?.email?.toLowerCase() ?? '';
+      if (!email) {
+        email = cleanEmail(d.email);
+        if (!email || await checkLookupCode(env, accountId, email, String(d.code ?? '').trim()) !== 'ok') return withCors(fail('Check your tickets again to rate one — the code has expired.', 200, { code: 'need_code' }));
+      }
+      t = await env.DB.prepare(
+        `SELECT t.id, t.account_id, t.status, t.reference FROM crm_tickets t
+         JOIN crm_engage_people p ON p.id = t.person_id AND p.account_id = t.account_id
+         WHERE t.account_id = ? AND t.reference = ? AND p.email = ?`,
+      ).bind(accountId, ref, email).first<T>();
+    }
+    if (!t) return withCors(fail(same, 200, { code: 'no-match' }));
+    if (t.status !== 'resolved' && t.status !== 'closed') return withCors(fail('You can rate this once it is resolved.', 200, { field: 'csat.score' }));
+    const comment = redactPhi(String(d.comment ?? '').trim().slice(0, 1000)).text;
+    if (comment) {
+      const g = await contentGate(env, t.account_id, 'form', comment);
+      if (!g.ok) return withCors(fail(g.message, 422, { code: 'blocked', field: 'csat.comment' }));
+    }
+    const now = nowIso();
+    await env.DB.prepare('UPDATE crm_tickets SET csat_score = ?, csat_comment = ?, csat_at = ? WHERE id = ?').bind(score, comment, now, t.id).run();
+    await recordEvent(env, t.account_id, { kind: 'ticket.rated', refId: t.id, summary: `${t.reference}: rated ${score}/5${comment ? ` — ${comment.slice(0, 120)}` : ''}` });
+    return withCors(json({ success: true, csatScore: score, csatComment: comment, csatAt: now }));
   }
 
   /* ── Start a conversation ── */
@@ -772,7 +852,8 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     if (!ref || !key) return withCors(fail(same, 200, { code: 'no-match' }));
 
     const t = await env.DB.prepare(
-      `SELECT id, reference, subject, status, priority, created_at AS createdAt, resolution
+      `SELECT id, reference, subject, status, priority, created_at AS createdAt, resolution,
+              csat_score AS csatScore, csat_comment AS csatComment, guest_key AS guestKey
        FROM crm_tickets WHERE reference = ? AND guest_key = ?`,
     ).bind(ref, key).first<Record<string, unknown>>();
     if (!t) return withCors(fail(same, 200, { code: 'no-match' }));

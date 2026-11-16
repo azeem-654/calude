@@ -198,7 +198,7 @@ export function startGeminiMock(port) {
     const buf = await readBody(req);
     const raw = buf.toString('utf8');
     const u = new URL(req.url, `http://127.0.0.1:${port}`);
-    const key = u.searchParams.get('key') ?? '';
+    const key = req.headers['x-goog-api-key'] ?? u.searchParams.get('key') ?? '';
     if (req.method === 'GET' && u.pathname === '/v1beta/models') {
       return send(res, 200, { models: [{ name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] }] });
     }

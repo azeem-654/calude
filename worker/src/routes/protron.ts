@@ -46,7 +46,7 @@
 import { fail, json, ok } from '../lib/http';
 import { canAccess, userFromToken, type Env } from '../lib/db';
 import { recordAuthEvent, origin } from '../lib/audit';
-import { aiBase, geminiNames, loadAiKey, trialRefusal } from '../lib/ai';
+import { aiBase, geminiNames, googleHeaders, loadAiKey, trialRefusal } from '../lib/ai';
 import { capRefusal, recordAiUse } from '../lib/aiUsage';
 import { withFailover } from '../lib/aiPool';
 import { isOpenRouterKey } from '../lib/openrouter';
@@ -132,8 +132,8 @@ async function voiceReply(env: Env, accountId: string, text: string, voice: { na
       if ((voiceRest.get(`${k}|${m}`) ?? 0) > Date.now()) continue;
       model = m;
       try {
-        res = await fetch(`${aiBase()}/v1beta/models/${m}:generateContent?key=${encodeURIComponent(k)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(30_000),
+        res = await fetch(`${aiBase()}/v1beta/models/${m}:generateContent`, {
+          method: 'POST', headers: googleHeaders(k, { 'Content-Type': 'application/json' }), signal: AbortSignal.timeout(30_000),
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: `${voice.direction} ${text}` }] }],
             generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice.name } } } },

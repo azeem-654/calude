@@ -30,7 +30,7 @@ import { sendsViaApi } from '../lib/deliver';
 import { aiBudget, askGeminiParts, extractJson, loadAiKey } from '../lib/ai';
 import { rateLimit } from '../lib/rateLimit';
 import { lookupDomain, lookupDomainOk, lookupSummary } from '../lib/mailLookup';
-import { sendCredsFor } from '../lib/hostedMail';
+import { HOSTED_HOST, sendCredsFor } from '../lib/hostedMail';
 import { check as allowanceCheck, record as allowanceRecord } from '../lib/allowanceStore';
 import {
   KNOWN_PROVIDERS, SCREENSHOT_PROMPT, domainOf, knownAsFound, providerForDomain, providerForMx, recordsFromAi,
@@ -600,6 +600,14 @@ interface Proof {
 
 /** Log in over IMAP and open the folder; the answer is recorded on the row. */
 async function proveIncoming(env: Env, mb: Mailbox): Promise<Proof> {
+  /* The owner's own address received here through Email Routing (lib/hostedMail.ts
+     receiveOwnAddress): there is no server to log in to — its state is what
+     Platform services last found, and an IMAP attempt would only clear it. */
+  if (!mb.hosted && mb.imap.host === HOSTED_HOST) {
+    const ok = !!mb.incomingCheck?.verifiedAt;
+    const why = mb.incomingCheck?.lastError || 'Receiving is not confirmed yet — Platform services → Email on customers\' domains → Receive your own address → Check again.';
+    return { ok, message: ok ? 'Mail to this address arrives here through Cloudflare Email Routing.' : why, error: ok ? undefined : why };
+  }
   if (!mb.imap.host || !mb.imap.username) {
     return { ok: false, refused: true, message: 'Add your incoming mail server (IMAP) details first — host and username at least.', field: mb.imap.host ? 'imap.username' : 'imap.host' };
   }
@@ -1027,7 +1035,7 @@ async function activateOne(env: Env, accountId: string, key: string, id: string)
     incoming = viaApi && gaps.noMailHost
       ? { ok: false, kind: 'send_only', message: `${label} only sends mail, and ${gaps.noMailHost === 'no_mx' ? `${where} lists no mail server in DNS, so nothing receives mail for it` : `no incoming settings could be found for ${where} (${gaps.inWhy})`}. This mailbox sends only — add an incoming server under Incoming mail if replies should be collected here.` }
       : { ok: false, kind: 'not_set_up', message: `No incoming server is set${gaps.inWhy ? `, and none could be found: ${gaps.inWhy}` : ''}. Add one under Incoming mail.` };
-  } else if (!row.imap_password) {
+  } else if (!row.imap_password && row.imap_host !== HOSTED_HOST) {
     incoming = { ok: false, kind: 'not_set_up', message: `Incoming server ${row.imap_host} is set — add this mailbox's password under Incoming mail to collect replies.` };
   } else {
     incoming = sideResult(await proveIncoming(env, mb), gaps.appPassword);

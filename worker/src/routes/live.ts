@@ -50,7 +50,7 @@
 import { fail } from '../lib/http';
 import { canAccess, userFromToken, type Env } from '../lib/db';
 import { cookieToken, sameOrigin } from '../lib/session';
-import { aiBase, aiBudget, aiRefund, loadAiKey } from '../lib/ai';
+import { aiBase, aiBudget, aiRefund, googleHeaders, loadAiKey } from '../lib/ai';
 import { poolKeysFor } from '../lib/aiPool';
 import { isOpenRouterKey } from '../lib/openrouter';
 import { recordAiUse } from '../lib/aiUsage';
@@ -150,7 +150,7 @@ async function modelsFor(key: string): Promise<string[]> {
   const hit = liveNames.get(key);
   if (hit && Date.now() - hit.at < 6 * 3_600_000) return hit.names;
   try {
-    const res = await fetch(`${aiBase()}/v1beta/models?pageSize=1000&key=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch(`${aiBase()}/v1beta/models?pageSize=1000`, { headers: googleHeaders(key), signal: AbortSignal.timeout(8000) });
     if (!res.ok) return [];
     const data = await res.json<{ models?: { name?: string; supportedGenerationMethods?: string[] }[] }>();
     const names = liveModels(data.models ?? []);

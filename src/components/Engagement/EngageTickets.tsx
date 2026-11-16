@@ -68,10 +68,21 @@ export default function EngageTickets({ tickets, onChange }: { tickets: Ticket[]
     );
   }
 
+  /* Only ratings customers actually gave — no score is assumed for the rest. */
+  const rated = tickets.filter(t => typeof t.csatScore === 'number');
+  const avg = rated.length ? rated.reduce((a, t) => a + (t.csatScore ?? 0), 0) / rated.length : 0;
+
   return (
-    /* Wraps rather than a fixed two-column grid: at phone width the 340px list
+    <div style={{ display: 'grid', gap: 10 }}>
+    {rated.length > 0 && (
+      <div style={{ fontSize: 12.5, color: MUTED }} data-testid="csat-summary">
+        Customer satisfaction: <strong style={{ color: INK }}>{avg.toFixed(1)} / 5</strong> from {rated.length} rated ticket{rated.length === 1 ? '' : 's'}
+        {' '}({Math.round(100 * rated.filter(t => (t.csatScore ?? 0) >= 4).length / rated.length)}% rated 4 or 5)
+      </div>
+    )}
+    {/* Wraps rather than a fixed two-column grid: at phone width the 340px list
        left the open ticket a column a few pixels wide. The ticket's grow far
-       outweighs the list's, so side by side the list stays near its 300px. */
+       outweighs the list's, so side by side the list stays near its 300px. */}
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-start' }}>
       <div style={{ ...card, flex: '1 1 300px', minWidth: 0, maxWidth: '100%', overflow: 'hidden', maxHeight: '70vh', overflowY: 'auto' }}>
         {tickets.map(t => (
@@ -89,6 +100,7 @@ export default function EngageTickets({ tickets, onChange }: { tickets: Ticket[]
             <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginTop: 3, lineHeight: 1.4 }}>{t.subject}</div>
             <div style={{ fontSize: 11.5, color: MUTED, marginTop: 2 }}>
               {t.personName || t.personEmail || 'No contact'} · {t.source}
+              {typeof t.csatScore === 'number' && <> · <span style={{ color: t.csatScore >= 4 ? '#0f7b3d' : t.csatScore <= 2 ? '#b42318' : '#9a3412', fontWeight: 700 }}>rated {t.csatScore}/5</span></>}
             </div>
           </button>
         ))}
@@ -120,6 +132,13 @@ export default function EngageTickets({ tickets, onChange }: { tickets: Ticket[]
               ))}
             </div>
 
+            {typeof detail.csat_score === 'number' && (
+              <p style={{ fontSize: 12.5, color: INK, background: '#f8fafc', border: `1px solid ${LINE}`, borderRadius: 11, padding: '9px 12px', margin: '0 0 12px', lineHeight: 1.55 }}>
+                <strong>Customer's rating: {String(detail.csat_score)}/5</strong>
+                {detail.csat_comment ? <> — “{String(detail.csat_comment)}”</> : ''}
+                {detail.csat_at ? <span style={{ color: MUTED }}> · {new Date(String(detail.csat_at)).toLocaleDateString()}</span> : ''}
+              </p>
+            )}
             {!!detail.body && (
               <p style={{ fontSize: 13.5, color: INK, lineHeight: 1.65, whiteSpace: 'pre-wrap', margin: '0 0 12px' }}>
                 {String(detail.body)}
@@ -184,6 +203,7 @@ export default function EngageTickets({ tickets, onChange }: { tickets: Ticket[]
           </>
         )}
       </div>
+    </div>
     </div>
   );
 }

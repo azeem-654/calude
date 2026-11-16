@@ -116,6 +116,28 @@ than retry a wrong password into a lockout; an unreachable server keeps its
 stamp and records the error; a success clears it. Validate or Check and turn
 on brings a skipped mailbox back.
 
+## The owner's own address, received here
+
+`support@protectedcentral.com` was a sending account only (Brevo, later Resend)
+and **protectedcentral.com had no MX record** (checked 2026-11-16; Email Routing
+`unconfigured`), so mail to it bounced at the sender and the app had nothing to
+collect. Platform services → Email on customers' domains → **Receive your own
+address here** (`hosted-mail.php own_status / own_receive / own_stop`, owner only,
+mailboxes in workspaces whose `owner_email` is the owner's; lib/hostedMail.ts
+`receiveOwnAddress`) uses the same Email Routing path as customer domains,
+without moving nameservers: the zone must already be on the configured
+Cloudflare account and active; it **refuses** when MX points elsewhere, the
+mailbox already reads IMAP, a customer holds the domain, or there are two SPF
+records; it merges `include:_spf.mx.cloudflare.net` into the one SPF record,
+enables routing, and adds **one literal rule** for that address → the Worker
+(never the catch-all). The address row's `domain_id` is `own:<zone>` (no customer
+domain row, so nothing can delete the owner's zone and the customer panel never
+lists it); the existing mailbox row keeps its sending provider and gets
+`imap_host = HOSTED_HOST`, so `readsHosted` (inbox, reply cron) reads D1 and
+`proveIncoming` answers from the stamp instead of logging in. Stop removes the
+rule and the link and keeps received mail. Do it on **live** — routing goes to
+one Worker. `npm run test:hostedmail` covers it.
+
 ## Email on the customer's own domain — hosted here
 
 `lib/hostedMail.ts`, `/api/hosted-mail.php` (`routes/hostedMail.ts`),
@@ -230,6 +252,22 @@ On the house widget it is also mailed to support@ with a copy to
 azeem654@gmail.com, pictures as attachments through `deliver`; no mailbox no
 longer fails a report — the ticket is saved and the answer says so.
 `CornerHelp` offers it too.
+
+**Help articles and "How did we do?"** (2026-11-16). The widget config carries
+`articles` (count of the workspace's published `crm_kb_articles`); only when it is
+above 0 does the home panel show **Search help articles** (`data-field
+help.search`), which calls `engage.php articles` (lib/engagement.ts
+`browseKnowledge`: published only, this widget's workspace only, one matching
+word is enough, a snippet around it) 300 ms after the last key, and opens one
+with `article` (text only; `source_url` offered only when https). A resolved or
+closed ticket in Check ticket status asks **How did we do?** — 1–5 and an
+optional comment (`rate_ticket`, `csat.score` / `csat.comment`, changeable;
+migration 0101 `csat_score`, `csat_comment`, `csat_at`; NULL = not rated, never a
+default). Proved by reference + guest key (ticket_status), or — for the list by
+email, which never hands out keys — by the same session or email + code as
+`my_tickets`, and the ticket must be that address's at this widget's workspace.
+Customer Engagement → Tickets shows each rating, and the average of the rated
+ones only. `npm run test:supportwidget` covers both.
 
 **Check ticket status** (was "Check a ticket", 2026-11-15) finds tickets by
 who somebody is, not by a reference (`lib/ticketLookup.ts`): signed in on this

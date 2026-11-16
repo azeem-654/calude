@@ -132,6 +132,51 @@ ok('and not the visitor\'s', !(own.json.tickets ?? []).some(t => t.reference ===
 const ownB = await pub({ action: 'my_tickets', widgetKey: key, token: Bt.token });
 ok('another signed-in customer sees none of them', ownB.json.success === true && (ownB.json.tickets ?? []).length === 0, JSON.stringify(ownB.json).slice(0, 160));
 
+/* ═══ API: How did we do? ══════════════════════════════════════════════ */
+const early = await pub({ action: 'rate_ticket', ticketRef: rep.json.reference, guestKey: rep.json.guestKey, score: 4 });
+ok('a ticket cannot be rated before it is resolved, said at the score', early.json.success === false && early.json.field === 'csat.score', JSON.stringify(early.json));
+await as(A, 'set_ticket', { id: row?.id, status: 'resolved', priority: 'high' });
+const outOf = await pub({ action: 'rate_ticket', ticketRef: rep.json.reference, guestKey: rep.json.guestKey, score: 9 });
+ok('a score outside 1–5 is refused at the score', outOf.json.field === 'csat.score', JSON.stringify(outOf.json));
+const badKey = await pub({ action: 'rate_ticket', ticketRef: rep.json.reference, guestKey: 'nope', score: 2 });
+ok('a wrong key rates nothing', badKey.json.success === false && badKey.json.code === 'no-match', JSON.stringify(badKey.json));
+const rated = await pub({ action: 'rate_ticket', ticketRef: rep.json.reference, guestKey: rep.json.guestKey, score: 4, comment: 'Quick and kind' });
+ok('resolved, it is rated with the reference and key', rated.json.success === true && rated.json.csatScore === 4, JSON.stringify(rated.json));
+/* A fresh code: the one above was killed on purpose by five wrong guesses. */
+const code2 = String(randomBytes(3).readUIntBE(0, 3) % 1_000_000).padStart(6, '0');
+d1(`INSERT INTO crm_ticket_lookup_codes (id, account_id, email, code_hash, attempts, expires_at, created_at) VALUES ('tlc2-${run}', '${A.acct}', '${visitor}', '${createHash('sha256').update(`${A.acct}|${visitor}|${code2}`).digest('hex')}', 0, ${Math.floor(Date.now() / 1000) + 900}, '${new Date(Date.now() + 1000).toISOString()}')`);
+const byCode = await pub({ action: 'rate_ticket', widgetKey: key, ticketRef: rep.json.reference, email: visitor, code: code2, score: 5 });
+ok('…and can be changed from the list opened by email and code', byCode.json.success === true && byCode.json.csatScore === 5, JSON.stringify(byCode.json));
+const byCodeB = await pub({ action: 'rate_ticket', widgetKey: keyB, ticketRef: rep.json.reference, email: visitor, code: code2, score: 1 });
+ok('the same email and code rate nothing at another business\'s widget', byCodeB.json.success === false, JSON.stringify(byCodeB.json));
+const seen = await as(A, 'ticket', { id: row?.id });
+ok('the business sees the rating and comment on the ticket', seen.json.ticket?.csat_score === 5 && seen.json.ticket?.csat_comment === '' , JSON.stringify(seen.json.ticket ?? {}).slice(0, 200));
+const listed = (await as(A, 'tickets')).json.tickets?.find(t => t.reference === rep.json.reference);
+ok('…and in the ticket list', listed?.csatScore === 5, JSON.stringify(listed ?? {}));
+const again = await pub({ action: 'my_tickets', widgetKey: key, email: visitor, code: code2 });
+ok('the customer\'s list shows their rating, still without the key', again.json.tickets?.find(t => t.reference === rep.json.reference)?.csatScore === 5 && !JSON.stringify(again.json).includes(rep.json.guestKey));
+
+/* ═══ API: help articles ════════════════════════════════════════════════ */
+const noArt = await pub({ action: 'widget', widgetKey: key });
+ok('with no published article the widget is told there are none', noArt.json.widget?.articles === 0, JSON.stringify(noArt.json.widget ?? {}).slice(0, 120));
+const art = await as(A, 'save_article', { record: { title: `Refund policy ${run}`, body: 'We refund any unused month in full.\nWrite to us from the help button.', kind: 'policy', status: 'published', source_url: 'javascript:alert(1)' } });
+await as(A, 'save_article', { record: { title: `Draft refunds ${run}`, body: 'Not ready — refunds draft.', status: 'draft' } });
+await as(Bt, 'save_article', { record: { title: `Other refunds ${run}`, body: 'Another business refunds.', status: 'published' } });
+const artId = art.json.item?.id;
+ok('a published article is saved', !!artId, JSON.stringify(art.json).slice(0, 160));
+const withArt = await pub({ action: 'widget', widgetKey: key });
+ok('…and the widget is told it has one', withArt.json.widget?.articles === 1, String(withArt.json.widget?.articles));
+const found = await pub({ action: 'articles', widgetKey: key, query: 'refund' });
+const titles = (found.json.articles ?? []).map(a => a.title);
+ok('searching finds the published article, with a snippet', titles.includes(`Refund policy ${run}`) && /unused month/.test(found.json.articles?.[0]?.snippet ?? ''), JSON.stringify(found.json).slice(0, 240));
+ok('…never a draft, never another business\'s', !titles.some(t => /Draft|Other/.test(t)), titles.join(' | '));
+const nothing = await pub({ action: 'articles', widgetKey: key, query: 'zebra crossing' });
+ok('a search with no match finds nothing', nothing.json.success === true && nothing.json.articles?.length === 0, JSON.stringify(nothing.json));
+const opened1 = await pub({ action: 'article', widgetKey: key, articleId: artId });
+ok('the article opens whole, with no unsafe link', opened1.json.article?.body?.includes('Write to us') && opened1.json.article?.sourceUrl === '', JSON.stringify(opened1.json.article ?? {}).slice(0, 200));
+const fromB = await pub({ action: 'article', widgetKey: keyB, articleId: artId });
+ok('another business\'s widget cannot open it', fromB.json.success === false, JSON.stringify(fromB.json));
+
 /* ═══ Browser: a visitor on a customer's website ════════════════════════ */
 const errs = [];
 const shot = async (page, name) => { if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/${name}.png` }); };
@@ -157,6 +202,19 @@ for (const width of [390, 1280]) {
     ['Live chat', 'Report a problem', 'Submit a ticket', 'Check ticket status'].every(t => home.includes(t)), home.slice(0, 300));
   ok(`${width}: "Check a ticket" is gone`, !home.includes('Check a ticket'));
   await shot(site, `widget-home-${width}`);
+
+  /* Help articles: typed, found, opened, and back. */
+  await dlg.locator('[data-field="help.search"]').fill('refund policy');
+  await dlg.getByRole('button', { name: new RegExp(`Refund policy ${run}`) }).waitFor({ timeout: 8000 }).catch(() => {});
+  ok(`${width}: typing in Search help articles finds the article`, await dlg.getByRole('button', { name: new RegExp(`Refund policy ${run}`) }).count() === 1, (await dlg.innerText()).slice(0, 300));
+  await dlg.getByRole('button', { name: new RegExp(`Refund policy ${run}`) }).click().catch(() => {});
+  await dlg.getByText('Still need help?').waitFor({ timeout: 8000 }).catch(() => {});
+  const artText = await dlg.innerText();
+  ok(`${width}: the article opens in the widget, with the ways to ask after it`, /unused month in full/.test(artText) && /Still need help\?/.test(artText) && /Submit a ticket/.test(artText), artText.slice(0, 300));
+  ok(`${width}: no sideways scroll on an article`, await overflow(site) <= 0);
+  await shot(site, `widget-article-${width}`);
+  await site.evaluate(() => window.ProtectedCentralChat?.open('home'));
+  await dlg.getByText('Report a problem').waitFor({ timeout: 8000 });
 
   await dlg.getByText('Report a problem').click();
   await dlg.locator('[data-field="report.email"]').fill(`browser-${width}-${run}@example.test`);
@@ -186,6 +244,25 @@ for (const width of [390, 1280]) {
   ok(`${width}: with no mailbox it says so and opens the reference form`, /cannot email you a code/.test(noBox) && /Reference/.test(noBox), noBox.slice(-300));
   ok(`${width}: no sideways scroll on ticket status`, await overflow(site) <= 0);
   await shot(site, `widget-status-${width}`);
+
+  /* How did we do? — on the browser's own ticket once it is resolved. */
+  const myRef = (done.match(/[A-Z]+-\d+/) ?? [''])[0];
+  const mineRow = ((await as(A, 'tickets')).json.tickets ?? []).find(t => t.reference === myRef);
+  await as(A, 'set_ticket', { id: mineRow?.id, status: 'resolved', priority: 'high' });
+  await site.evaluate(() => window.ProtectedCentralChat?.open('status'));
+  await dlg.getByText('RAISED IN THIS BROWSER').waitFor({ timeout: 8000 });
+  await dlg.getByRole('button', { name: /Stuck on the invoice screen/ }).first().click();
+  await dlg.getByText('How did we do?').waitFor({ timeout: 8000 }).catch(() => {});
+  ok(`${width}: a resolved ticket asks How did we do?`, await dlg.getByText('How did we do?').count() === 1, (await dlg.innerText()).slice(-300));
+  await dlg.getByRole('radio', { name: /^4 — Good/ }).click().catch(() => {});
+  await dlg.locator('[data-field="csat.comment"]').fill('Sorted the same day');
+  await dlg.getByRole('button', { name: 'Send rating' }).click().catch(() => {});
+  await dlg.getByText(/You rated this 4\/5/).waitFor({ timeout: 8000 }).catch(() => {});
+  ok(`${width}: the rating is sent and thanked`, await dlg.getByText(/You rated this 4\/5/).count() === 1, (await dlg.innerText()).slice(-300));
+  const stored = ((await as(A, 'tickets')).json.tickets ?? []).find(t => t.reference === myRef);
+  ok(`${width}: …and the business sees it`, stored?.csatScore === 4, JSON.stringify(stored ?? {}));
+  ok(`${width}: no sideways scroll with the rating`, await overflow(site) <= 0);
+  await shot(site, `widget-rating-${width}`);
   await ctx.close();
 }
 

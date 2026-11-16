@@ -209,3 +209,40 @@ export async function searchKnowledge(
      as "here is your knowledge" is what produces a confident irrelevance. */
   return hits.filter(h => h.score >= 2).slice(0, limit);
 }
+
+/**
+ * The help widget's article search (routes/engage.ts `articles`): what a
+ * person typing into "Search help articles" sees. Looser than
+ * `searchKnowledge`, which feeds a model and so drops weak matches — here a
+ * person reads the titles and picks, so one matching word is enough. No
+ * query lists the newest articles. Published only, this workspace only; a
+ * snippet of the body where the first matching word is, never the whole
+ * article (that is `article`, one at a time).
+ */
+export async function browseKnowledge(env: Env, accountId: string, query: string, limit = 8): Promise<{ id: string; title: string; kind: string; snippet: string }[]> {
+  const want = [...new Set(terms(query))];
+  const { results } = await env.DB.prepare(
+    `SELECT id, title, body, kind, updated_at FROM crm_kb_articles
+     WHERE account_id = ? AND status = 'published' ORDER BY updated_at DESC LIMIT 400`,
+  ).bind(accountId).all<{ id: string; title: string; body: string; kind: string; updated_at: string }>();
+  const flat = (t: string) => t.replace(/[#*_`>]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const scored = (results ?? []).map((a, i) => {
+    if (!want.length) return { a, score: 1, at: -1, order: i };
+    const title = terms(a.title), body = terms(a.body);
+    let score = 0;
+    for (const w of want) {
+      if (title.some(t => t.startsWith(w))) score += 3;
+      if (body.some(t => t.startsWith(w))) score += 1;
+    }
+    const low = a.body.toLowerCase();
+    const at = want.map(w => low.indexOf(w)).filter(x => x >= 0).sort((x, y) => x - y)[0] ?? -1;
+    return { a, score, at, order: i };
+  }).filter(x => x.score > 0);
+  scored.sort((x, y) => y.score - x.score || x.order - y.order);
+  return scored.slice(0, limit).map(({ a, at }) => {
+    const text = flat(a.body);
+    const from = at > 60 ? Math.max(0, flat(a.body.slice(0, at)).length - 50) : 0;
+    const snip = text.slice(from, from + 180);
+    return { id: a.id, title: a.title, kind: a.kind, snippet: `${from > 0 ? '…' : ''}${snip}${from + 180 < text.length ? '…' : ''}` };
+  });
+}

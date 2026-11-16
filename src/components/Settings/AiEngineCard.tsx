@@ -171,7 +171,7 @@ export default function AiEngineCard() {
               type={show ? 'text' : 'password'}
               value={key}
               onChange={e => { setKey(e.target.value); setResult(null); }}
-              placeholder={server?.hasKey ? 'A key is saved — paste a new one to replace it' : 'AIza...'}
+              placeholder={server?.hasKey ? 'A key is saved — paste a new one to replace it' : 'AIza… or AQ.…'}
               autoComplete="off"
               style={{ width: '100%', padding: '10px 40px 10px 12px', border: '1px solid #e2e8f0', borderRadius: '9px', fontSize: '13px', outline: 'none', boxSizing: 'border-box', fontFamily: 'ui-monospace, monospace' }}
             />
@@ -198,7 +198,7 @@ export default function AiEngineCard() {
           <ol style={{ fontSize: 12.5, color: '#475569', margin: 0, paddingLeft: 18, lineHeight: 1.8 }}>
             <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style={{ color: '#17191c', fontWeight: 600 }}>aistudio.google.com/apikey <ExternalLink size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /></a></li>
             <li>Sign in with your Google account and click <strong>Create API key</strong></li>
-            <li>Copy the key (starts with <code>AIza</code>) and paste it above, then Verify &amp; Save</li>
+            <li>Copy the key (it starts with <code>AIza</code> or, for newer keys, <code>AQ.</code>) and paste it above, then Verify &amp; Save</li>
           </ol>
           <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '10px 0 0', lineHeight: 1.5 }}>
             Verify &amp; Save keeps one copy, encrypted on the server — that is what writes, replies and

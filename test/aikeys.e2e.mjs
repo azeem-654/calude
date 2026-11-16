@@ -41,7 +41,9 @@ if (!fs.existsSync('dist/index.html')) { console.log('Build first: VITE_BASE=/ n
 /* ── The Gemini mock ── */
 const K = tag => `AIza${tag}${'x'.repeat(35 - tag.length)}`;
 const QUOTA = K('QUOTA'), SPARE = K('SPARE'), DEAD = K('DEAD'), THIRD = K('THIRD'), WRONG = K('WRONG'), LITE = K('LITE'), GEMMA = K('GEMMA');
-const KNOWN = new Set([QUOTA, SPARE, DEAD, THIRD, LITE, GEMMA]);
+/* AI Studio's newer key shape (2026): "AQ." and a long tail. Accepted for what Google says, not for its first letters. */
+const AQK = `AQ.Ab8RN6${'k'.repeat(44)}`, AQK2 = `AQ.Ab8RN6${'m'.repeat(44)}`;
+const KNOWN = new Set([QUOTA, SPARE, DEAD, THIRD, LITE, GEMMA, AQK, AQK2]);
 /* OpenAI (lib/openai.ts) at /oa: OAGOOD answers, OABUSY is rate-limited, OANOTX lists no transcription model; anything else is refused. */
 const OA = tag => `sk-proj-${tag}${'q'.repeat(40 - tag.length)}`;
 const OAGOOD = OA('GOOD'), OABUSY = OA('BUSY'), OANOTX = OA('NOTX'), OABAD = OA('BAD');
@@ -55,7 +57,7 @@ const mock = http.createServer((req, res) => {
   req.on('data', c => { raw += c; });
   req.on('end', () => {
     const u = new URL(req.url, G);
-    const key = u.searchParams.get('key') ?? '';
+    const key = req.headers['x-goog-api-key'] ?? u.searchParams.get('key') ?? '';
     if (req.method === 'GET' && u.pathname === '/v1beta/models') {
       if (!KNOWN.has(key)) return send(res, 400, { error: { code: 400, status: 'INVALID_ARGUMENT', message: 'API key not valid. Please pass a valid API key.', details: [{ reason: 'API_KEY_INVALID' }] } });
       /* LITE: a free project as the live one was (2026-11-11) — the newest
@@ -172,6 +174,13 @@ r = await keys(T, 'add', { apiKey: SPARE, label: 'Project two' });
 ok('…and a second, after it', r.d.success && r.d.keys?.map(k => k.label).join() === 'Project one,Project two', JSON.stringify(r.d));
 r = await keys(T, 'add', { apiKey: QUOTA, label: 'again' });
 ok('the same key twice is refused', !r.d.success && /already/.test(r.d.error), JSON.stringify(r.d));
+r = await keys(T, 'add', { apiKey: AQK, label: 'New-style key' });
+ok('a key in AI Studio\'s newer "AQ." shape is accepted once Google accepts it', r.d.success && r.d.keys?.some(k => k.label === 'New-style key'), JSON.stringify(r.d));
+r = await keys(T, 'add', { apiKey: `${WRONG}\n  Project three: ${AQK2}\n${AQK}`, label: 'Pasted' });
+const said = Object.fromEntries((r.d.results ?? []).map(x => [x.n, x.outcome]));
+ok('several keys pasted at once are each proved: refused, added, already there — by line, never by key', r.d.success && r.d.added === 1 && said[1] === 'refused' && said[2] === 'added' && said[3] === 'duplicate' && !r.text.includes(AQK2) && !r.text.includes(WRONG), JSON.stringify(r.d.results));
+for (const k of (r.d.keys ?? []).filter(k => k.label === 'New-style key' || /^Pasted/.test(k.label))) await keys(T, 'remove', { id: k.id });
+ok('…and they can be removed again', !(await keys(T)).d.keys?.some(k => k.label === 'New-style key' || /^Pasted/.test(k.label)));
 r = await keys(T);
 ok('no key comes back, whole or in part', ![QUOTA, SPARE].some(k => r.text.includes(k) || r.text.includes(k.slice(-6))), r.text.slice(0, 300));
 
@@ -205,7 +214,7 @@ r = await keys(T);
 ok('a third key moved to the front', r.d.keys?.[0]?.label === 'Leaked one', JSON.stringify(r.d.keys?.map(k => k.label)));
 calls = [];
 const tr = await api('intake.php', { token: C.token, accountId: C.acct, action: 'transcribe', mime: 'audio/wav', audio: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=' });
-ok('a server-side call fails over too: the refused key, then the working one', tr.success && tr.text === 'hello from SPARE' && calls[0] === 'DEAD' && calls.includes('SPARE'), `${calls.join(' → ')} ${JSON.stringify(tr)}`);
+ok('a server-side call fails over too: the refused key, then the working one', tr.success && /^hello from SPARE$/i.test(tr.text ?? '') && calls[0] === 'DEAD' && calls.includes('SPARE'), `${calls.join(' → ')} ${JSON.stringify(tr)}`);
 r = await keys(T);
 ok('the refused key rests for half an hour', (Date.parse(r.d.keys[0].restingUntil) - Date.now()) > 25 * 60_000 && /403/.test(r.d.keys[0].lastError), JSON.stringify(r.d.keys[0]));
 

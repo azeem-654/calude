@@ -60,6 +60,8 @@ export async function checkLookupCode(env: Env, accountId: string, email: string
 export interface OwnTicket {
   id: string; reference: string; subject: string; status: string; category: string;
   createdAt: string; updatedAt: string; resolution: string;
+  /** The customer's own "How did we do?" (routes/engage.ts rate_ticket) — never the guest key, which this list does not hand out. */
+  csatScore: number | null; csatComment: string;
   messages: { role: string; body: string; createdAt: string }[];
 }
 
@@ -67,6 +69,7 @@ export interface OwnTicket {
 export async function ticketsFor(env: Env, accountId: string, email: string): Promise<OwnTicket[]> {
   const { results } = await env.DB.prepare(
     `SELECT t.id, t.reference, t.subject, t.status, t.category, t.resolution,
+            t.csat_score AS csatScore, t.csat_comment AS csatComment,
             t.created_at AS createdAt, t.updated_at AS updatedAt
      FROM crm_tickets t
      JOIN crm_engage_people p ON p.id = t.person_id AND p.account_id = t.account_id

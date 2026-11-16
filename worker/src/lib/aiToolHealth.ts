@@ -32,7 +32,7 @@ const sawFail = new Set<string>();
 /** Anything shaped like a key, out of a provider's error before it is stored or shown. */
 export function scrubSecrets(text: string): string {
   return String(text ?? '')
-    .replace(/AIza[0-9A-Za-z_-]{10,}/g, '[key]')
+    .replace(/AIza[0-9A-Za-z_-]{10,}/g, '[key]').replace(/\bAQ\.[0-9A-Za-z._-]{10,}/g, '[key]')
     .replace(/sk-(?:or-)?[0-9A-Za-z_-]{8,}/g, '[key]')
     .replace(/([?&](?:key|api_key|token)=)[^&\s"']+/gi, '$1[key]')
     .replace(/(Bearer\s+)[0-9A-Za-z._-]{8,}/g, '$1[key]')

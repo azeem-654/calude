@@ -167,9 +167,10 @@
       ticket: 'Submit a ticket',
       report: 'Report a problem',
       status: 'Check ticket status',
+      article: 'Help article',
     };
     headTitle.textContent = titles[view] || 'Help';
-    ({ home: homeView, chat: chatView, screen: screenView, voice: voiceView, ticket: ticketView, report: reportView, status: statusView }[view] || homeView)();
+    ({ home: homeView, chat: chatView, screen: screenView, voice: voiceView, ticket: ticketView, report: reportView, status: statusView, article: articleView }[view] || homeView)();
   }
 
   function onlyChat() { return state.features.length === 1 && has('chat'); }
@@ -232,6 +233,9 @@
     if (who) wrap.appendChild(who);
     var hello = (state.agent && state.agent.greeting) || (state.cfg && state.cfg.welcome) || 'Hello — how can we help?';
     wrap.appendChild(el('div', 'font-size:14px;color:#334155;line-height:1.55;margin-bottom:4px;', hello));
+    /* Only when the business has published articles: a search box with
+       nothing behind it is a dead end in front of the ways that work. */
+    if (state.cfg && state.cfg.articles > 0) wrap.appendChild(articleSearch());
 
     function option(key, label, hint, go, strong) {
       var b = el('button', BTN + 'padding:13px 14px;' + (strong ? 'border-color:' + accent() + '66;' : ''));
@@ -1105,6 +1109,95 @@
     (KNOWN.email ? msg : (KNOWN.name ? email : name)).focus();
   }
 
+  /* ── Help articles ──────────────────────────────────────────────────────
+   *
+   * The business's published knowledge articles (Customer Engagement →
+   * Knowledge), searched as the visitor types and opened here. Everything is
+   * drawn as text: an article is the business's words landing on whatever page
+   * the widget is on. Asked again 300 ms after the last key, and an older
+   * answer arriving after a newer one is ignored.
+   */
+  function articleSearch() {
+    var box = el('div', 'display:flex;flex-direction:column;gap:6px;margin-bottom:4px;');
+    var field = el('input', FIELD + 'padding-left:34px;');
+    field.type = 'search';
+    field.placeholder = 'Search help articles';
+    field.setAttribute('aria-label', 'Search help articles');
+    field.setAttribute('data-field', 'help.search');
+    field.value = state.articleQuery || '';
+    var holder = el('div', 'position:relative;');
+    var glass = el('span', 'position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#94a3b8;display:flex;pointer-events:none;');
+    glass.appendChild(icon(ICONS.search, 16));
+    holder.appendChild(field); holder.appendChild(glass);
+    box.appendChild(holder);
+    var out = el('div', 'display:flex;flex-direction:column;gap:6px;');
+    out.setAttribute('aria-live', 'polite');
+    box.appendChild(out);
+    var timer = null, asked = 0;
+    function draw(list, q) {
+      while (out.firstChild) out.removeChild(out.firstChild);
+      if (!q) return;
+      if (!list.length) {
+        out.appendChild(el('div', 'font-size:12.5px;color:#64748b;line-height:1.5;padding:2px 2px 4px;', 'No articles match “' + q + '” — try other words, or ask us below.'));
+        return;
+      }
+      list.forEach(function (a) {
+        var b = el('button', BTN + 'flex-direction:column;align-items:flex-start;gap:3px;padding:10px 12px;');
+        b.type = 'button';
+        b.appendChild(el('span', 'font-size:13.5px;font-weight:700;line-height:1.35;', a.title));
+        if (a.snippet) b.appendChild(el('span', 'font-size:12px;font-weight:500;color:#64748b;line-height:1.45;', a.snippet));
+        b.onclick = function () { state.article = a.id; show('article'); };
+        out.appendChild(b);
+      });
+    }
+    function ask() {
+      var q = field.value.trim();
+      state.articleQuery = q;
+      if (q.length < 3) { asked++; draw([], ''); return; }
+      var mine = ++asked;
+      post({ action: 'articles', widgetKey: KEY, query: q }).then(function (r) {
+        if (mine !== asked) return;
+        draw((r && r.success && r.articles) || [], q);
+      });
+    }
+    field.oninput = function () { if (timer) clearTimeout(timer); timer = setTimeout(ask, 300); };
+    field.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); if (timer) clearTimeout(timer); ask(); } };
+    if (field.value) ask();
+    return box;
+  }
+
+  function articleView() {
+    var wrap = el('div', 'padding:16px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;flex:1;');
+    body.appendChild(wrap);
+    wrap.appendChild(el('div', 'font-size:13px;color:#64748b;', 'Loading…'));
+    post({ action: 'article', widgetKey: KEY, articleId: state.article || '' }).then(function (r) {
+      if (state.view !== 'article') return;
+      while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
+      if (!r || !r.success || !r.article) {
+        wrap.appendChild(el('div', 'font-size:13px;color:#b42318;', (r && (r.error || r.message)) || 'That article could not be opened.'));
+        return;
+      }
+      var a = r.article;
+      wrap.appendChild(el('div', 'font-size:16px;font-weight:800;color:#0f172a;line-height:1.35;', a.title));
+      wrap.appendChild(el('div', 'font-size:13.5px;color:#1e293b;line-height:1.6;white-space:pre-wrap;word-wrap:break-word;', a.body || ''));
+      if (a.sourceUrl) {
+        var link = el('a', 'font-size:12.5px;font-weight:700;color:' + accent() + ';', 'Read it on our website');
+        link.href = a.sourceUrl; link.target = '_blank'; link.rel = 'noopener noreferrer';
+        wrap.appendChild(link);
+      }
+      var more = el('div', 'border-top:1px solid #e6e9f0;padding-top:10px;display:flex;flex-direction:column;gap:7px;');
+      more.appendChild(el('div', 'font-size:12.5px;color:#64748b;', 'Still need help?'));
+      [['chat', 'chat', 'Live chat'], ['ticket', 'ticket', 'Submit a ticket']].forEach(function (o) {
+        if (!has(o[0])) return;
+        var b = el('button', BTN + 'padding:10px 12px;font-size:13.5px;', o[2]);
+        b.type = 'button';
+        b.onclick = function () { show(o[1]); };
+        more.appendChild(b);
+      });
+      if (more.childNodes.length > 1) wrap.appendChild(more);
+    });
+  }
+
   /* ── Check ticket status ─────────────────────────────────────────────────
    *
    * By who they are, not by a reference they had to keep (owner,
@@ -1136,6 +1229,94 @@
     });
     if (!(messages || []).length && !t.resolution) into.appendChild(el('div', 'font-size:12.5px;color:#64748b;', 'No reply yet — we answer by email, and it shows here too.'));
   }
+  /* ── How did we do? ──
+   * On a resolved or closed ticket: 1 to 5, then an optional comment. Sent
+   * with the ticket's reference and key (rate_ticket), changeable later.
+   * Nothing is assumed for a ticket nobody rated. */
+  var CSAT_WORDS = ['', 'Very poor', 'Poor', 'Okay', 'Good', 'Excellent'];
+  function ratingInto(into, t) {
+    if (t.status !== 'resolved' && t.status !== 'closed') return;
+    /* Proved by the ticket's key (looked up by reference), or by how this list was opened (session, or email + code). */
+    var proof = t.guestKey ? { guestKey: t.guestKey } : state.ticketProof;
+    if (!proof) return;
+    var box = el('div', 'border-top:1px solid #e6e9f0;padding-top:10px;margin-top:2px;display:flex;flex-direction:column;gap:8px;');
+    box.setAttribute('data-testid', 'csat');
+    into.appendChild(box);
+    function clear() { while (box.firstChild) box.removeChild(box.firstChild); }
+    function thanks() {
+      clear();
+      var row = el('div', 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:#0f172a;');
+      row.appendChild(el('span', 'font-weight:700;', 'You rated this ' + t.csatScore + '/5 (' + CSAT_WORDS[t.csatScore] + ') — thank you.'));
+      var change = el('button', 'border:0;background:none;color:' + accent() + ';font-weight:700;font-size:12.5px;cursor:pointer;padding:0;font-family:inherit;', 'Change');
+      change.type = 'button';
+      change.onclick = ask;
+      row.appendChild(change);
+      box.appendChild(row);
+      if (t.csatComment) box.appendChild(el('div', 'font-size:12.5px;color:#475569;white-space:pre-wrap;', '“' + t.csatComment + '”'));
+    }
+    function ask() {
+      clear();
+      box.appendChild(el('div', 'font-size:13.5px;font-weight:800;color:#0f172a;', 'How did we do?'));
+      var picked = t.csatScore || 0;
+      var row = el('div', 'display:flex;gap:6px;');
+      row.setAttribute('role', 'radiogroup');
+      row.setAttribute('aria-label', 'Rate this ticket from 1 (very poor) to 5 (excellent)');
+      row.setAttribute('data-field', 'csat.score');
+      var btns = [];
+      function paint() {
+        btns.forEach(function (b, i) {
+          var on = i + 1 === picked;
+          b.setAttribute('aria-checked', on ? 'true' : 'false');
+          b.style.background = on ? accent() : '#fff';
+          b.style.color = on ? '#fff' : '#0f172a';
+          b.style.borderColor = on ? accent() : '#e6e9f0';
+        });
+        caption.textContent = picked ? CSAT_WORDS[picked] : '1 = very poor · 5 = excellent';
+        send.disabled = !picked;
+        send.style.opacity = picked ? '1' : '.5';
+      }
+      for (var i = 1; i <= 5; i++) {
+        (function (n) {
+          var b = el('button', 'flex:1;min-width:0;height:38px;border:1px solid #e6e9f0;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;', String(n));
+          b.type = 'button';
+          b.setAttribute('role', 'radio');
+          b.setAttribute('aria-label', n + ' — ' + CSAT_WORDS[n]);
+          b.onclick = function () { picked = n; paint(); };
+          btns.push(b); row.appendChild(b);
+        })(i);
+      }
+      box.appendChild(row);
+      var caption = el('div', 'font-size:11.5px;color:#64748b;');
+      box.appendChild(caption);
+      var note = el('textarea', FIELD + 'min-height:56px;resize:vertical;font-size:13px;');
+      note.placeholder = 'Anything to add? (optional)';
+      note.maxLength = 1000;
+      note.value = t.csatComment || '';
+      note.setAttribute('data-field', 'csat.comment');
+      note.setAttribute('aria-label', 'Anything to add about how we handled this?');
+      box.appendChild(note);
+      var send = el('button', primary() + 'align-self:flex-start;padding:9px 14px;font-size:13px;', 'Send rating');
+      send.type = 'button';
+      var err = el('div', 'font-size:12.5px;color:#b42318;');
+      err.setAttribute('role', 'alert');
+      send.onclick = function () {
+        if (!picked) return;
+        send.disabled = true; send.textContent = 'Sending…'; err.textContent = '';
+        var req = { action: 'rate_ticket', widgetKey: KEY, ticketRef: t.reference, score: picked, comment: note.value };
+        for (var p in proof) if (Object.prototype.hasOwnProperty.call(proof, p)) req[p] = proof[p];
+        post(req).then(function (r) {
+          if (r && r.success) { t.csatScore = r.csatScore; t.csatComment = r.csatComment || ''; thanks(); return; }
+          send.disabled = false; send.textContent = 'Send rating';
+          err.textContent = (r && (r.error || r.message)) || 'Could not send that just now — try again.';
+        });
+      };
+      box.appendChild(send);
+      box.appendChild(err);
+      paint();
+    }
+    if (t.csatScore) thanks(); else ask();
+  }
+
   function ticketCard(t, messages, openNow) {
     var card = el('div', 'border:1px solid #e6e9f0;border-radius:12px;background:#fff;overflow:hidden;');
     var head = el('button', 'display:flex;flex-direction:column;gap:4px;width:100%;padding:11px 12px;border:0;background:none;cursor:pointer;text-align:left;font-family:inherit;color:#0f172a;');
@@ -1153,7 +1334,7 @@
     head.onclick = function () {
       var openIt = thread.style.display === 'none';
       thread.style.display = openIt ? 'flex' : 'none';
-      if (openIt && !filled) { filled = true; threadInto(thread, t, messages); }
+      if (openIt && !filled) { filled = true; threadInto(thread, t, messages); ratingInto(thread, t); }
     };
     card.appendChild(head); card.appendChild(thread);
     if (openNow) head.onclick();
@@ -1188,7 +1369,7 @@
       results.appendChild(el('div', 'font-size:13px;color:#64748b;', 'Loading your tickets…'));
       post({ action: 'my_tickets', widgetKey: KEY }).then(function (r) {
         if (state.view !== 'status') return;
-        if (r.success && r.signedIn) { listInto(results, r.tickets || []); return; }
+        if (r.success && r.signedIn) { state.ticketProof = {}; listInto(results, r.tickets || []); return; }
         /* The session did not come through (expired, another tab signed
            out): the same way as anybody else. */
         while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
@@ -1267,6 +1448,8 @@
           if (r.code === 'dead') { stage = 'email'; codeRow.style.display = 'none'; code.value = ''; go.textContent = 'Email me a new code'; }
           return;
         }
+        /* Kept in memory only, for "How did we do?" on these tickets: the list never carries their keys. */
+        state.ticketProof = { email: email.value, code: code.value };
         f.style.display = 'none';
         found.appendChild(el('div', 'font-size:12.5px;color:#64748b;', 'Tickets from ' + r.email));
         var list = el('div', 'display:flex;flex-direction:column;gap:8px;');

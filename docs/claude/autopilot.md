@@ -362,7 +362,20 @@ the failure is the key's (429, 401/403, invalid/blocked/disabled key, 5xx, no
 answer) and not when it is the request's (a plain 400). A failed key rests
 (`crm_ai_key_health.cooldown_until`: 2 min rate limit, 1 h daily quota, 30 min
 refusal) and goes to the back. Any new direct Gemini call must go through
-`withFailover` too, or it skips the pool. **OpenRouter keys** (`sk-or-…`, 2026-11,
+`withFailover` too, or it skips the pool. **Key shape is not checked** (2026-11-16):
+AI Studio issues `AQ.…` keys beside `AIza…`, and the AI keys card refused them by
+prefix — `routes/aikeys.ts` now refuses only what cannot be a key (spaces, too
+short, OpenAI/Anthropic keys) and lets Google's ListModels answer decide; up to 50
+backups, several pasted at once (results by line, never by key). **Every Gemini
+request sends the key in the `x-goog-api-key` header** (`googleHeaders`, lib/ai.ts),
+never `?key=` — the documented way for both shapes, and out of logged URLs; test
+mocks read the header first (only Live's WebSocket still uses `?key=`). Each answer's
+time is recorded (`crm_ai_usage.ms_total`, migration 0101) and **AI keys — live** at
+the top of AI & cloud usage (`AiKeyMonitor.tsx`, `platform.php usage_live`, polled
+every 15 s) shows each key's state (answering / resting until / refusing), today's
+calls, refusals and average reply time. Keys are still tried **in order**, one by one
+as each hits its limit — a round-robin was tried and dropped: it made the owner's
+order arrows meaningless and the failover tests non-deterministic. **OpenRouter keys** (`sk-or-…`, 2026-11,
 `lib/openrouter.ts`) sit in the same pool — a backup key on the AI keys card, or
 the `OPENROUTER_API_KEY` secret (after `AI_API_KEY`). A call that reaches one is
 turned into a chat completion on OpenRouter's **free** models (read from its

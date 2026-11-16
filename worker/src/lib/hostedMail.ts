@@ -383,7 +383,7 @@ export async function removeAddress(env: Env, accountId: string, id: string): Pr
 export async function listAddresses(env: Env, accountId: string): Promise<(AddressRow & { messages: number })[]> {
   const { results } = await env.DB.prepare(
     `SELECT a.*, (SELECT COUNT(*) FROM crm_hosted_messages m WHERE m.address_id = a.id) AS messages
-       FROM crm_hosted_addresses a WHERE a.account_id = ? ORDER BY a.address`,
+       FROM crm_hosted_addresses a WHERE a.account_id = ? AND a.domain_id NOT LIKE 'own:%' ORDER BY a.address`,
   ).bind(accountId).all<AddressRow & { messages: number }>();
   return results ?? [];
 }
@@ -463,4 +463,177 @@ export async function fetchHosted(env: Env, accountId: string, mailboxId: string
       };
     }),
   };
+}
+
+/* ── The owner's own address, received here ─────────────────────────────── */
+
+/**
+ * support@protectedcentral.com, received into the app (the owner, 2026-11-16:
+ * "configured, and I can see the inbox, but no email arrives").
+ *
+ * ── Why it never arrived ──
+ *
+ * The mailbox was a sending account (Brevo, later Resend). Those only send:
+ * neither holds mail for anybody. And protectedcentral.com had no MX record
+ * at all, so a message to support@ had nowhere to go and bounced at the
+ * sender — there was nothing for the app to collect, over IMAP or otherwise.
+ *
+ * ── What this does ──
+ *
+ * The domain is already a zone on the operator's Cloudflare account, so the
+ * same Email Routing path customers' domains use (`receive`, above) works
+ * for it, without moving nameservers: Email Routing on, one rule for this
+ * one address to this Worker (not the catch-all — other addresses on the
+ * domain are left exactly as they were), and the existing mailbox row keeps
+ * sending the way it does and now reads its mail from crm_hosted_messages
+ * (`imap_host = HOSTED_HOST`). The address row's domain id is `own:<zone>`
+ * because there is no customer domain row: nothing here may delete the
+ * owner's zone, and the customer "Your own domain" panel does not list it.
+ *
+ * It refuses rather than takes over: a domain whose mail already goes to a
+ * real mail host (MX elsewhere), a mailbox already reading over IMAP, a
+ * domain a customer has added, or two SPF records. Mail is the one thing
+ * that must never be quietly moved.
+ */
+export const OWN_PREFIX = 'own:';
+
+/** Whether a mailbox's incoming mail is in D1 (a hosted address, or the owner's own received here). */
+export const readsHosted = (mb: { hosted?: boolean; imap: { host: string } }): boolean => !!mb.hosted || mb.imap.host === HOSTED_HOST;
+
+const CF_MX = /(^|\.)mx\.cloudflare\.net\.?$/i;
+const CF_SPF = 'include:_spf.mx.cloudflare.net';
+
+interface OwnRow { id: string; account_id: string; from_email: string; imap_host: string; provider: string }
+
+export interface OwnResult { ok: boolean; error: string; field?: string; steps: string[]; receiving: boolean }
+
+export async function receiveOwnAddress(env: Env, mb: OwnRow): Promise<OwnResult> {
+  const steps: string[] = [];
+  const no = (error: string): OwnResult => ({ ok: false, error, steps, receiving: false });
+  const address = String(mb.from_email ?? '').trim().toLowerCase();
+  const domain = address.split('@')[1] ?? '';
+  if (!address || !DOMAIN.test(domain)) return no('That mailbox has no address to receive at.');
+  if (mb.provider === 'hosted') return no('That address is already hosted here on a customer domain.');
+  if (mb.imap_host && mb.imap_host !== HOSTED_HOST) return no(`This mailbox already reads its mail from ${mb.imap_host} over IMAP — nothing to change.`);
+  const c = await hostedConfig(env);
+  if (!c) return no('First paste a Cloudflare API token and account ID above (Email on customers\' domains) — receiving goes through Cloudflare Email Routing.');
+  if (await env.DB.prepare('SELECT 1 FROM crm_hosted_domains WHERE domain = ?').bind(domain).first()) {
+    return no(`${domain} is set up as a customer's domain here, so its mail is already theirs.`);
+  }
+
+  type Zone = { id: string; status: string };
+  const z = await cf<Zone[]>(c.cfToken, `/zones?name=${encodeURIComponent(domain)}&account.id=${c.cfAccountId}`);
+  if (!z.ok) return no(`Cloudflare could not be asked about ${domain}: ${z.error}`);
+  const zone = z.result?.[0];
+  if (!zone) return no(`${domain} is not a domain on this Cloudflare account, so its mail cannot be routed here. Add it to Cloudflare first, or connect the mailbox over IMAP.`);
+  if (zone.status !== 'active') return no(`${domain} is on Cloudflare but not active yet (${zone.status}) — its nameservers have to point at Cloudflare first.`);
+  steps.push(`${domain} is on your Cloudflare account.`);
+
+  /* Mail already going somewhere real stays there. */
+  type Rec = { id: string; type: string; name: string; content: string };
+  const mx = await cf<Rec[]>(c.cfToken, `/zones/${zone.id}/dns_records?type=MX&name=${encodeURIComponent(domain)}`);
+  if (!mx.ok) return no(`Could not read ${domain}'s mail records: ${mx.error}`);
+  const foreign = (mx.result ?? []).filter(r => !CF_MX.test(r.content));
+  if (foreign.length) return no(`Mail for ${domain} already goes to ${foreign.map(r => r.content).join(', ')}. Receiving here would take it away from there, so nothing was changed — connect that mailbox over IMAP instead.`);
+
+  /* One SPF record, with Cloudflare's include added — two would break sending for the whole domain. */
+  const txt = await cf<Rec[]>(c.cfToken, `/zones/${zone.id}/dns_records?type=TXT&name=${encodeURIComponent(domain)}`);
+  if (!txt.ok) return no(`Could not read ${domain}'s TXT records: ${txt.error}`);
+  const bare = (s: string) => s.replace(/^"|"$/g, '');
+  const spf = (txt.result ?? []).filter(r => /^v=spf1\b/i.test(bare(r.content)));
+  if (spf.length > 1) return no(`${domain} has ${spf.length} SPF records; mail checks fail with more than one. Merge them into one in Cloudflare → DNS, then try again.`);
+  if (spf.length === 1 && !bare(spf[0].content).includes(CF_SPF)) {
+    const old = bare(spf[0].content);
+    const merged = /\s[~?+-]?all\s*$/i.test(old) ? old.replace(/\s([~?+-]?all)\s*$/i, ` ${CF_SPF} $1`) : `${old} ${CF_SPF}`;
+    const quoted = spf[0].content.startsWith('"') ? `"${merged}"` : merged;
+    const p = await cf(c.cfToken, `/zones/${zone.id}/dns_records/${spf[0].id}`, { method: 'PATCH', body: JSON.stringify({ content: quoted }) });
+    if (!p.ok) return no(`Could not add Cloudflare to ${domain}'s SPF record: ${p.error}`);
+    steps.push(`Added Cloudflare to the SPF record, keeping what was there (${old}).`);
+  }
+
+  /* Routing on: Cloudflare adds its MX records (and SPF when there was none). */
+  const st0 = await cf<{ enabled?: boolean }>(c.cfToken, `/zones/${zone.id}/email/routing`);
+  if (!st0.ok || !st0.result?.enabled) {
+    const on = await cf(c.cfToken, `/zones/${zone.id}/email/routing/enable`, { method: 'POST', body: '{}' });
+    if (!on.ok && !/already/i.test(on.error)) return no(`Cloudflare would not switch on Email Routing for ${domain}: ${on.error}`);
+    steps.push('Switched on Cloudflare Email Routing (it adds the mail records itself).');
+  }
+
+  /* One rule, this address → this Worker. */
+  type Rule = { id: string; matchers?: { type: string; field?: string; value?: string }[]; actions?: { type: string; value?: string[] }[] };
+  const rules = await cf<Rule[]>(c.cfToken, `/zones/${zone.id}/email/routing/rules?per_page=50`);
+  if (!rules.ok) return no(`Could not read the routing rules: ${rules.error}`);
+  const mine = (rules.result ?? []).find(r => (r.matchers ?? []).some(m => m.type === 'literal' && String(m.value ?? '').toLowerCase() === address));
+  const rule = { name: `Protected Central inbox — ${address}`, enabled: true, matchers: [{ type: 'literal', field: 'to', value: address }], actions: [{ type: 'worker', value: [c.workerName] }] };
+  const toWorker = (r: Rule) => (r.actions ?? []).some(a => a.type === 'worker' && (a.value ?? []).includes(c.workerName));
+  if (!mine || !toWorker(mine)) {
+    const w = mine
+      ? await cf(c.cfToken, `/zones/${zone.id}/email/routing/rules/${mine.id}`, { method: 'PUT', body: JSON.stringify(rule) })
+      : await cf(c.cfToken, `/zones/${zone.id}/email/routing/rules`, { method: 'POST', body: JSON.stringify(rule) });
+    if (!w.ok) return no(`Cloudflare would not add the rule for ${address}: ${w.error}`);
+    steps.push(`Mail to ${address} now goes to the Worker "${c.workerName}".`);
+  }
+  const st = await cf<{ enabled?: boolean; status?: string }>(c.cfToken, `/zones/${zone.id}/email/routing`);
+  const receiving = !!(st.ok && st.result?.enabled);
+
+  /* The address and the mailbox, here. */
+  const held = await env.DB.prepare('SELECT domain_id, mailbox_id FROM crm_hosted_addresses WHERE address = ?').bind(address).first<{ domain_id: string; mailbox_id: string }>();
+  if (held && !held.domain_id.startsWith(OWN_PREFIX)) return no(`${address} is a customer's hosted address here.`);
+  const now = nowIso();
+  await env.DB.batch([
+    held
+      ? env.DB.prepare('UPDATE crm_hosted_addresses SET account_id = ?, domain_id = ?, mailbox_id = ? WHERE address = ?').bind(mb.account_id, `${OWN_PREFIX}${zone.id}`, mb.id, address)
+      : env.DB.prepare('INSERT INTO crm_hosted_addresses (id, account_id, domain_id, address, mailbox_id, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(`ha-${crypto.randomUUID()}`, mb.account_id, `${OWN_PREFIX}${zone.id}`, address, mb.id, now),
+    env.DB.prepare(
+      `UPDATE crm_mailbox_accounts SET imap_host = ?, imap_port = 0, imap_username = ?, in_verified_at = ?, in_last_error = ?, updated_at = ? WHERE id = ? AND account_id = ?`,
+    ).bind(HOSTED_HOST, address, receiving ? now : null, receiving ? '' : 'Cloudflare is still switching on Email Routing — press Check again in a minute.', now, mb.id, mb.account_id),
+  ]);
+  steps.push(receiving ? `Receiving is on: mail to ${address} arrives in this mailbox's inbox here.` : 'Cloudflare has not confirmed routing yet — press Check again in a minute.');
+  return { ok: true, error: '', steps, receiving };
+}
+
+/** Stop receiving the owner's address here: the rule and the link go; mail already received is kept. The zone, its SPF and its routing setting are left as they are. */
+export async function stopOwnAddress(env: Env, mb: OwnRow): Promise<{ ok: boolean; error: string }> {
+  const address = String(mb.from_email ?? '').trim().toLowerCase();
+  const held = await env.DB.prepare('SELECT domain_id FROM crm_hosted_addresses WHERE address = ? AND mailbox_id = ?').bind(address, mb.id).first<{ domain_id: string }>();
+  if (!held || !held.domain_id.startsWith(OWN_PREFIX)) return { ok: false, error: 'That mailbox is not receiving here.' };
+  const c = await hostedConfig(env);
+  let warn = '';
+  if (c) {
+    const zoneId = held.domain_id.slice(OWN_PREFIX.length);
+    const rules = await cf<{ id: string; matchers?: { type: string; value?: string }[] }[]>(c.cfToken, `/zones/${zoneId}/email/routing/rules?per_page=50`);
+    const mine = (rules.result ?? []).find(r => (r.matchers ?? []).some(m => m.type === 'literal' && String(m.value ?? '').toLowerCase() === address));
+    if (mine) { const d = await cf(c.cfToken, `/zones/${zoneId}/email/routing/rules/${mine.id}`, { method: 'DELETE' }); if (!d.ok) warn = `Cloudflare kept the rule: ${d.error}`; }
+  }
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM crm_hosted_addresses WHERE address = ? AND mailbox_id = ?').bind(address, mb.id),
+    env.DB.prepare("UPDATE crm_mailbox_accounts SET imap_host = '', imap_username = '', in_verified_at = NULL, in_last_error = '', updated_at = ? WHERE id = ? AND account_id = ? AND imap_host = ?")
+      .bind(nowIso(), mb.id, mb.account_id, HOSTED_HOST),
+  ]);
+  return { ok: !warn, error: warn };
+}
+
+/** The owner's mailboxes that could receive here, and the ones that do. */
+export async function ownInboxes(env: Env, ownerEmail: string) {
+  const { results } = await env.DB.prepare(
+    `SELECT m.id, m.account_id, m.from_email, m.imap_host, m.provider, m.in_verified_at, m.in_last_error,
+            (SELECT COUNT(*) FROM crm_hosted_messages h WHERE h.mailbox_id = m.id) AS messages,
+            (SELECT MAX(received_at) FROM crm_hosted_messages h WHERE h.mailbox_id = m.id) AS lastAt
+       FROM crm_mailbox_accounts m JOIN crm_workspaces w ON w.account_id = m.account_id
+      WHERE lower(w.owner_email) = lower(?) AND m.provider != 'hosted' AND (m.imap_host = '' OR m.imap_host = ?) AND m.from_email != ''
+      ORDER BY m.from_email LIMIT 50`,
+  ).bind(ownerEmail, HOSTED_HOST).all<OwnRow & { in_verified_at: string | null; in_last_error: string; messages: number; lastAt: string | null }>();
+  return (results ?? []).map(r => ({
+    id: r.id, address: r.from_email, receiving: r.imap_host === HOSTED_HOST, verified: !!r.in_verified_at,
+    problem: r.in_last_error ?? '', messages: r.messages ?? 0, lastAt: r.lastAt,
+  }));
+}
+
+/** One of the owner's mailboxes, by id — only one in a workspace the owner owns. */
+export async function ownMailbox(env: Env, ownerEmail: string, id: string): Promise<OwnRow | null> {
+  return env.DB.prepare(
+    `SELECT m.id, m.account_id, m.from_email, m.imap_host, m.provider FROM crm_mailbox_accounts m
+       JOIN crm_workspaces w ON w.account_id = m.account_id WHERE m.id = ? AND lower(w.owner_email) = lower(?)`,
+  ).bind(id, ownerEmail).first<OwnRow>();
 }

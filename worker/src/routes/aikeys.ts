@@ -12,13 +12,43 @@ import { body, fail, json } from '../lib/http';
 import { installSecret, nowIso, userFromToken, type Env, type SessionUser } from '../lib/db';
 import { decryptSecret, encryptSecret } from '../lib/crypto';
 import { adoptAiBase, probeAiKey, verifyAiKey } from '../lib/ai';
-import { describePool, fingerprint, forgetPool, installPool, poolKeyAt, recordTest } from '../lib/aiPool';
+import { describePool, fingerprint, forgetPool, poolKeyAt, readInstallKeys, recordTest } from '../lib/aiPool';
 import { OPENAI_KEY, listOpenAiModels, noteOpenAiKey, pickTranscriber } from '../lib/openai';
 
 interface Req { token?: string; action?: string; apiKey?: string; label?: string; id?: string; index?: number; dir?: string; keys?: string }
 
 const isOwner = (u: SessionUser) => u.role === 'agency' && !u.accountId;
-const MAX_BACKUPS = 10;
+/* Raised from 10 (the owner, 2026-11-16): a year of Autopilot content for
+   many customers needs many free projects' quotas, one key each. */
+const MAX_BACKUPS = 50;
+
+/**
+ * What might be an AI key, by shape alone — deliberately loose. Google's
+ * keys were "AIza" + 35; AI Studio now also issues "AQ.…" keys (2026), and
+ * refusing a key Google would accept, because of its first letters, is how
+ * the owner's new keys were turned away. So nothing is refused for its
+ * prefix: anything key-like is asked of Google (or OpenRouter, for sk-or-),
+ * and Google's answer decides. Only what cannot be a key at all — spaces
+ * inside, too short, an OpenAI or Anthropic key — is stopped here.
+ */
+const KEYLIKE = /^[A-Za-z0-9._~+/=-]{20,256}$/;
+function keyProblem(k: string): string {
+  if (/\s/.test(k)) return 'That has a space or line break in the middle — paste the key on its own.';
+  if (/^sk-ant-/.test(k)) return 'That is an Anthropic key — this list takes Google AI keys (aistudio.google.com) and OpenRouter keys (sk-or-…).';
+  if (/^sk-(?!or-)/.test(k)) return 'That is an OpenAI key — paste it under OpenAI keys instead.';
+  if (!KEYLIKE.test(k)) return 'That does not look like an API key — copy the whole key from aistudio.google.com/apikey (or openrouter.ai/keys).';
+  return '';
+}
+/* Keys out of a paste: one per line, commas, "name: key" lines. Each piece's last key-like word. */
+function keysIn(text: string): string[] {
+  const out: string[] = [];
+  for (const piece of text.split(/[\n,;]+/)) {
+    const words = piece.trim().split(/\s+/).filter(Boolean);
+    const k = [...words].reverse().find(w => KEYLIKE.test(w) && !/^https?:/i.test(w));
+    if (k && !out.includes(k)) out.push(k);
+  }
+  return out;
+}
 /* OpenAI keys come in bulk (the owner, 2026-11-14). Enough for that, and a
    cap so one paste cannot keep the Worker verifying for minutes. */
 const MAX_OPENAI = 200;
@@ -107,27 +137,43 @@ export async function handleAiKeys(req: Request, env: Env): Promise<Response> {
   }
 
   if (act === 'add') {
-    const apiKey = String(d.apiKey ?? '').trim();
-    if (!apiKey) return fail('Paste the API key first.', 200, { field: 'aikeys.key' });
-    /* A Google AI key, or an OpenRouter key (lib/openrouter.ts — tried through its free models). */
-    if (!/^AIza[0-9A-Za-z_-]{30,}$/.test(apiKey) && !/^sk-or-[0-9A-Za-z_-]{20,}$/.test(apiKey)) {
-      return fail('That does not look like a Google AI key (they start "AIza", from aistudio.google.com) or an OpenRouter key (they start "sk-or-", from openrouter.ai/keys).', 200, { field: 'aikeys.key' });
-    }
-    const fp = await fingerprint(apiKey);
-    const already = (await installPool(env)).some(k => k.fp === fp);
-    if (already) return fail('That key is already in the list.', 200, { field: 'aikeys.key' });
-    const { n } = await env.DB.prepare('SELECT COUNT(*) AS n FROM crm_ai_keys').first<{ n: number }>() ?? { n: 0 };
-    if (n >= MAX_BACKUPS) return fail(`Up to ${MAX_BACKUPS} backup keys. Remove one first.`);
-    /* Proved before it is kept: a mistyped key in the pool is a failure
-       waiting for the moment the main key needs it. */
-    const v = await verifyAiKey(apiKey);
-    if (!v.ok) return fail(/^sk-or-/.test(apiKey) ? v.error : `Google refused that key: ${v.error}`, 200, { field: 'aikeys.key' });
+    const text = String(d.apiKey ?? '').trim().slice(0, 30_000);
+    if (!text) return fail('Paste the API key first.', 200, { field: 'aikeys.key' });
+    /* One key, or several (one per line, or with commas) — each proved on its own. */
+    const found = /[\n,;]/.test(text) ? keysIn(text) : [text];
+    if (!found.length) return fail('No API keys found in that — paste one key per line.', 200, { field: 'aikeys.key' });
+    if (found.length > 20) return fail(`That is ${found.length} keys — paste up to 20 at a time.`, 200, { field: 'aikeys.key' });
+    const single = found.length === 1;
+    const secret = await installSecret(env.DB, 'mailbox_key');
+    const stored = new Set((await readInstallKeys(env)).map(k => k.fp));
+    let { n } = await env.DB.prepare('SELECT COUNT(*) AS n FROM crm_ai_keys').first<{ n: number }>() ?? { n: 0 };
+    let { pos } = await env.DB.prepare('SELECT COALESCE(MAX(position), 0) AS pos FROM crm_ai_keys').first<{ pos: number }>() ?? { pos: 0 };
     const label = String(d.label ?? '').trim().slice(0, 60);
-    const { pos } = await env.DB.prepare('SELECT COALESCE(MAX(position), 0) AS pos FROM crm_ai_keys').first<{ pos: number }>() ?? { pos: 0 };
-    await env.DB.prepare('INSERT INTO crm_ai_keys (id, position, label, credentials, fp, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(crypto.randomUUID(), pos + 1, label, await encryptSecret(await installSecret(env.DB, 'mailbox_key'), apiKey), fp, nowIso()).run();
-    forgetPool();
-    return json(await state());
+    /* Reported by its place in the paste (#1, #2 …) — never by the key. */
+    const results: { n: number; outcome: 'added' | 'duplicate' | 'refused' | 'full'; error?: string }[] = [];
+    for (let i = 0; i < found.length; i++) {
+      const apiKey = found[i];
+      const bad = keyProblem(apiKey);
+      if (bad) { results.push({ n: i + 1, outcome: 'refused', error: bad }); continue; }
+      const fp = await fingerprint(apiKey);
+      if (stored.has(fp)) { results.push({ n: i + 1, outcome: 'duplicate' }); continue; }
+      if (n >= MAX_BACKUPS) { results.push({ n: i + 1, outcome: 'full', error: `Up to ${MAX_BACKUPS} backup keys. Remove one first.` }); continue; }
+      /* Proved before it is kept: a mistyped key in the pool is a failure
+         waiting for the moment the main key needs it. This is the test the
+         owner asked for — Google's answer, not the key's first letters. */
+      const v = await verifyAiKey(apiKey);
+      if (!v.ok) { results.push({ n: i + 1, outcome: 'refused', error: /^sk-or-/.test(apiKey) ? v.error : `Google refused it: ${v.error}` }); continue; }
+      n++; pos++; stored.add(fp);
+      await env.DB.prepare('INSERT INTO crm_ai_keys (id, position, label, credentials, fp, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(crypto.randomUUID(), pos, single ? label : (label ? `${label} ${i + 1}` : ''), await encryptSecret(secret, apiKey), fp, nowIso()).run();
+      results.push({ n: i + 1, outcome: 'added' });
+    }
+    if (results.some(r => r.outcome === 'added')) forgetPool();
+    if (single && results[0].outcome !== 'added') {
+      const r = results[0];
+      return fail(r.outcome === 'duplicate' ? 'That key is already in the list.' : r.error ?? 'Not added.', 200, { field: 'aikeys.key' });
+    }
+    return json({ ...(await state()), results, added: results.filter(r => r.outcome === 'added').length });
   }
 
   if (act === 'remove') {

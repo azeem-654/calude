@@ -34,7 +34,7 @@ import { installPlacesKey, placesUsage } from '../lib/googlePlaces';
 import { PROVIDERS as VOICE_PROVIDERS } from '../lib/voice';
 import { systemMailStatus } from './systemMail';
 import { loadSettings as loadStrategySettings } from './strategyCall';
-import { usageReport } from '../lib/usageReport';
+import { liveAiUsage, usageReport } from '../lib/usageReport';
 import { hostedConfigView } from '../lib/hostedMail';
 import { saveCaps, saveFreeLimits } from '../lib/aiUsage';
 
@@ -420,6 +420,8 @@ export async function handlePlatform(req: Request, env: Env): Promise<Response> 
   if (act === 'status') return json({ success: true, ...(await platformStatus(env)) });
   /* The usage dashboard and its two settings (lib/usageReport.ts, lib/aiUsage.ts). */
   if (act === 'usage') return json({ success: true, ...(await usageReport(env)) });
+  /* The live key monitor, polled while the dashboard is open — our own tables only. */
+  if (act === 'usage_live') return json({ success: true, ...(await liveAiUsage(env)) });
   if (act === 'save_caps') return json({ success: true, caps: await saveCaps(env, d.caps) });
   if (act === 'save_limits') return json({ success: true, limits: await saveFreeLimits(env, d.limits) });
   return fail(`"${act}" is not something this endpoint does.`);

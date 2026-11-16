@@ -6,18 +6,20 @@
  * server, and every row is read and written with `account_id = ?` — a domain
  * or address id from another workspace finds nothing. The operator's
  * Cloudflare token and sending key (`config`, `save_config`) are the install
- * owner's alone and never returned.
+ * owner's alone and never returned. So are `own_*`: the owner's own
+ * addresses (support@ on the install's domain) received here, only for
+ * mailboxes in workspaces the owner owns (lib/hostedMail.ts receiveOwnAddress).
  */
 import { body, fail, json } from '../lib/http';
 import { mailWebhookUrl } from '../lib/bounces';
 import { canAccess, userFromToken, type Env, type SessionUser } from '../lib/db';
 import {
   addAddress, addDomain, hostedConfig, hostedConfigView, listAddresses, listDomains, refreshDomain, removeAddress, removeDomain,
-  saveHostedConfig, type DomainRow,
+  ownInboxes, ownMailbox, receiveOwnAddress, saveHostedConfig, stopOwnAddress, type DomainRow,
 } from '../lib/hostedMail';
 
 interface Req {
-  token?: string; action?: string; accountId?: string; domain?: string; domainId?: string; addressId?: string; local?: string; name?: string;
+  token?: string; action?: string; accountId?: string; mailboxId?: string; domain?: string; domainId?: string; addressId?: string; local?: string; name?: string;
   cfToken?: string; cfAccountId?: string; workerName?: string; sendProvider?: string; sendKey?: string; eventsSecret?: string;
 }
 
@@ -57,6 +59,22 @@ export async function handleHostedMail(req: Request, env: Env): Promise<Response
     });
     if (!r.ok) return fail(r.error, 200, r.field ? { field: r.field } : {});
     return json({ success: true, config: await configView() });
+  }
+
+  /* The owner's own addresses, received here (support@ on the install's own domain). */
+  if (act === 'own_status' || act === 'own_receive' || act === 'own_stop') {
+    if (!isOwner(user)) return fail('Only the owner of this installation can change this.', 403, { code: 'not_owner' });
+    const list = async () => ({ success: true, own: await ownInboxes(env, user.email) });
+    if (act === 'own_status') return json(await list());
+    const mb = await ownMailbox(env, user.email, String(d.mailboxId ?? ''));
+    if (!mb) return fail('That mailbox is not in one of your workspaces.', 200, { field: 'hosted.ownMailbox' });
+    if (act === 'own_stop') {
+      const r = await stopOwnAddress(env, mb);
+      return json({ ...(await list()), ...(r.ok ? {} : { warning: r.error }) });
+    }
+    const r = await receiveOwnAddress(env, mb);
+    if (!r.ok) return fail(r.error, 200, { field: 'hosted.ownMailbox', steps: r.steps });
+    return json({ ...(await list()), steps: r.steps, receiving: r.receiving });
   }
 
   const accountId = String(d.accountId ?? '').trim();

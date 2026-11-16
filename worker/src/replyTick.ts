@@ -19,7 +19,7 @@
 import { dataGet, nowIso, type Env } from './lib/db';
 import { incomingReady, loadMailboxes, noteIncomingSync, type Mailbox } from './routes/mailbox';
 import { imapFetch } from './lib/imap';
-import { fetchHosted } from './lib/hostedMail';
+import { fetchHosted, readsHosted } from './lib/hostedMail';
 import { deliver, fromAddressOf } from './lib/deliver';
 import { aiBudget, aiRefund, askGemini, loadAiKey } from './lib/ai';
 import { parseDsn, suppress } from './lib/bounces';
@@ -135,9 +135,9 @@ async function doMailbox(
   }
 
   /* Hosted on the workspace's own domain: read from D1, the same shape as IMAP. */
-  const fetched = mb.hosted ? await fetchHosted(env, mb.accountId, mb.id, FETCH_LIMIT) : await imapFetch({ ...mb.imap, folder: mb.imap.folder }, FETCH_LIMIT);
+  const fetched = readsHosted(mb) ? await fetchHosted(env, mb.accountId, mb.id, FETCH_LIMIT) : await imapFetch({ ...mb.imap, folder: mb.imap.folder }, FETCH_LIMIT);
   /* On the row as well as in the report, so the mailbox list shows it (a hosted address's state is its domain's). */
-  if (!mb.hosted) await noteIncomingSync(env, mb, fetched);
+  if (!readsHosted(mb)) await noteIncomingSync(env, mb, fetched);
   if (!fetched.ok) {
     report.failed++;
     report.notes.push(`${mb.label || mb.imap.host}: could not read the mailbox — ${fetched.error.slice(0, 120)}`);

@@ -21,6 +21,9 @@ export interface AiKeysRes {
   error?: string;
   keys?: AiPoolEntry[];
   tested?: { ok: boolean; error: string };
+  /** Several keys pasted at once: each by its place in the paste (#1, #2 …), never by the key. */
+  results?: { n: number; outcome: 'added' | 'duplicate' | 'refused' | 'full'; error?: string }[];
+  added?: number;
 }
 
 async function call(action: string, extra: Record<string, unknown> = {}): Promise<AiKeysRes> {

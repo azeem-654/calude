@@ -58,6 +58,8 @@ export interface UseRecord {
   provider: 'gemini' | 'openrouter';
   key: string; model: string; module?: string; accountId?: string;
   ok: boolean; status?: number; tokensIn?: number; tokensOut?: number;
+  /** How long the answer took, request to parsed reply (migration 0101). Summed; the dashboard averages it over answers. */
+  ms?: number;
 }
 
 /** Counted for today, and in this isolate's free-limit view at once. Never throws. */
@@ -67,19 +69,22 @@ export async function recordAiUse(r: UseRecord): Promise<void> {
   try {
     const fp = await keyFp(r.key);
     const tin = Math.max(0, Math.round(r.tokensIn ?? 0)), tout = Math.max(0, Math.round(r.tokensOut ?? 0));
+    /* Only an answer's time: a refusal comes back in milliseconds and would make a key look fast. */
+    const ms = r.ok ? Math.max(0, Math.min(600_000, Math.round(r.ms ?? 0))) : 0;
     const view = todayCounts.get(fp);
     if (view && view.day === today()) {
       const c = view.counts[r.model] ?? (view.counts[r.model] = { n: 0, ok: 0, l: 0 });
       c.n++; if (r.ok) c.ok++; if (r.status === 429) c.l++;
     }
     await env.DB.prepare(
-      `INSERT INTO crm_ai_usage (day, provider, key_fp, model, module, account_id, requests, ok, limited, tokens_in, tokens_out, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+      `INSERT INTO crm_ai_usage (day, provider, key_fp, model, module, account_id, requests, ok, limited, tokens_in, tokens_out, ms_total, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(day, provider, key_fp, model, module, account_id) DO UPDATE SET
          requests = requests + 1, ok = ok + excluded.ok, limited = limited + excluded.limited,
-         tokens_in = tokens_in + excluded.tokens_in, tokens_out = tokens_out + excluded.tokens_out, updated_at = excluded.updated_at`,
+         tokens_in = tokens_in + excluded.tokens_in, tokens_out = tokens_out + excluded.tokens_out,
+         ms_total = ms_total + excluded.ms_total, updated_at = excluded.updated_at`,
     ).bind(today(), r.provider, fp, r.model.slice(0, 120), (r.module || 'general').slice(0, 40), (r.accountId || '').slice(0, 80),
-      r.ok ? 1 : 0, r.status === 429 ? 1 : 0, tin, tout, nowIso()).run();
+      r.ok ? 1 : 0, r.status === 429 ? 1 : 0, tin, tout, ms, nowIso()).run();
     /* Kept ~100 days: enough for a quarter's view, small enough never to matter. */
     if (Math.random() < 0.002) await env.DB.prepare('DELETE FROM crm_ai_usage WHERE day < ?').bind(new Date(Date.now() - 100 * 86_400_000).toISOString().slice(0, 10)).run();
   } catch { /* counting must never cost the customer their answer */ }

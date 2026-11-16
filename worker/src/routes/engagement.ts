@@ -372,7 +372,7 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
   if (act === 'tickets') {
     const { results } = await env.DB.prepare(
       `SELECT t.id, t.reference, t.subject, t.status, t.priority, t.category, t.assigned_to AS assignedTo,
-              t.source, t.created_at AS createdAt, t.updated_at AS updatedAt,
+              t.source, t.created_at AS createdAt, t.updated_at AS updatedAt, t.csat_score AS csatScore,
               p.name AS personName, p.email AS personEmail
        FROM crm_tickets t
        LEFT JOIN crm_engage_people p ON p.id = t.person_id AND p.account_id = t.account_id

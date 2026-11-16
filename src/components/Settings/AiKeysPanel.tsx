@@ -55,7 +55,15 @@ export default function AiKeysPanel() {
     setBusy('add'); setMsg(null);
     const r = await addAiKey(apiKey.trim(), label.trim());
     setBusy('');
-    apply(r, 'Google accepted it. Saved and encrypted — it takes over whenever the keys above it fail.');
+    if (r.results) {
+      /* Several at once: what happened to each, by its line — never the key. */
+      if (r.keys) setKeys(r.keys);
+      const said = r.results.map(x => `#${x.n} ${x.outcome === 'added' ? 'added' : x.outcome === 'duplicate' ? 'already in the list' : x.error ?? 'not added'}`);
+      setMsg({ ok: (r.added ?? 0) > 0, text: `${r.added ?? 0} of ${r.results.length} added. ${said.join(' · ')}` });
+      if ((r.added ?? 0) > 0) { setApiKey(''); setLabel(''); }
+      return;
+    }
+    apply(r, 'Google accepted it. Saved and encrypted — it takes over whenever the keys above it hit a limit or fail.');
     if (r.success) { setApiKey(''); setLabel(''); }
   };
   const test = async (i: number) => {
@@ -142,11 +150,12 @@ export default function AiKeysPanel() {
           <input style={inp} value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. Backup — project 2" maxLength={60} data-field="aikeys.label" />
         </label>
         <label style={{ fontSize: 12, fontWeight: 700, color: INK, display: 'grid', gap: 5 }}>
-          Google AI key or OpenRouter key
-          <input style={inp} type="password" autoComplete="off" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="AIza… or sk-or-…" data-field="aikeys.key" />
+          Google AI key(s) or OpenRouter key — one per line to add several
+          {/* Any shape Google issues (AIza…, and AQ.… since 2026): Google's answer decides, not the first letters. */}
+          <textarea style={{ ...inp, minHeight: 42, resize: 'vertical', fontFamily: 'ui-monospace, monospace', fontSize: 12 }} rows={2} autoComplete="off" spellCheck={false} value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="AIza… or AQ.… or sk-or-…" data-field="aikeys.key" />
         </label>
         <button style={{ ...b, justifyContent: 'center', padding: '10px 14px', background: INK, color: '#fff', borderColor: INK }} disabled={!!busy || !apiKey.trim()} onClick={add}>
-          <Plus size={13} /> {busy === 'add' ? 'Checking with Google…' : 'Add backup key'}
+          <Plus size={13} /> {busy === 'add' ? 'Checking with Google…' : /\n/.test(apiKey.trim()) ? 'Check and add keys' : 'Add backup key'}
         </button>
       </div>
       {msg && <div role="status" style={{ marginTop: 12, fontSize: 12.5, fontWeight: 600, color: msg.ok ? '#0f7b3d' : '#b42318' }}>{msg.text}</div>}

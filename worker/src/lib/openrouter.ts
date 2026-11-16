@@ -128,6 +128,7 @@ export async function askOpenRouter(apiKey: string, q: OrRequest): Promise<Attem
   let lastStatus = -1, lastError = '';
   for (const model of await freeModels(chat.vision, q.task ?? (q.module ? taskOf(q.module) : chat.vision ? 'vision' : 'write'))) {
     let res: Response;
+    const t0 = Date.now();
     try {
       res = await fetch(`${BASE}/chat/completions`, {
         method: 'POST',
@@ -161,7 +162,7 @@ export async function askOpenRouter(apiKey: string, q: OrRequest): Promise<Attem
     const text = data.choices?.[0]?.message?.content ?? '';
     const okAnswer = res.ok && !data.error && !!text;
     /* Every request counts against OpenRouter's free daily allowance, answered or not. */
-    await recordAiUse({ provider: 'openrouter', key: apiKey, model, module: q.module, accountId: q.accountId, ok: okAnswer, status: okAnswer ? 200 : (res.ok ? (data.error?.code ?? 502) : res.status), tokensIn: data.usage?.prompt_tokens, tokensOut: data.usage?.completion_tokens });
+    await recordAiUse({ provider: 'openrouter', key: apiKey, model, module: q.module, accountId: q.accountId, ok: okAnswer, status: okAnswer ? 200 : (res.ok ? (data.error?.code ?? 502) : res.status), ms: Date.now() - t0, tokensIn: data.usage?.prompt_tokens, tokensOut: data.usage?.completion_tokens });
     if (res.ok && !data.error && text) {
       const clean = q.json ? text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim() : text.trim();
       const sources = (data.choices?.[0]?.message?.annotations ?? [])

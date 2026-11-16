@@ -15,9 +15,11 @@ const LINE = '#e6e9f0';
 
 interface View { configured: boolean; cfAccountId: string; workerName: string; sendProvider: 'resend' | 'brevo'; hasToken: boolean; tokenFrom: '' | 'saved' | 'secret'; hasSendKey: boolean; hasEventsSecret?: boolean; eventsUrl?: string }
 
+interface Own { id: string; address: string; receiving: boolean; verified: boolean; problem: string; messages: number; lastAt: string | null }
+
 async function call(action: string, extra: Record<string, unknown> = {}) {
   const r = await fetch(`${API_BASE}/api/hosted-mail.php`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: sessionToken(), action, ...extra }) });
-  return r.json() as Promise<{ success?: boolean; error?: string; field?: string; config?: View }>;
+  return r.json() as Promise<{ success?: boolean; error?: string; field?: string; config?: View; own?: Own[]; steps?: string[]; warning?: string }>;
 }
 
 const input: React.CSSProperties = { padding: '8px 10px', borderRadius: 9, border: `1px solid ${LINE}`, fontSize: 13, fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' };
@@ -28,6 +30,21 @@ export default function HostedMailSettings() {
   const [f, setF] = useState({ cfToken: '', cfAccountId: '', workerName: '', sendProvider: 'resend', sendKey: '', eventsSecret: '' });
   const [msg, setMsg] = useState<{ ok: boolean; text: string; field?: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [own, setOwn] = useState<Own[] | null>(null);
+  const [ownBusy, setOwnBusy] = useState('');
+  const [ownMsg, setOwnMsg] = useState<{ ok: boolean; text: string; steps?: string[] } | null>(null);
+
+  useEffect(() => {
+    void call('own_status').then(d => { if (d.own) setOwn(d.own); }).catch(() => undefined);
+  }, []);
+  const ownRun = async (action: 'own_receive' | 'own_stop', id: string) => {
+    setOwnBusy(`${action}${id}`); setOwnMsg(null);
+    const d = await call(action, { mailboxId: id }).catch(() => ({ success: false, error: 'Could not reach the server.' } as Awaited<ReturnType<typeof call>>));
+    setOwnBusy('');
+    if (d.own) setOwn(d.own);
+    if (d.success) setOwnMsg({ ok: !d.warning, text: d.warning ?? (action === 'own_stop' ? 'Stopped. Mail already received is kept.' : 'Done.'), steps: d.steps });
+    else setOwnMsg({ ok: false, text: d.error ?? 'That did not work.', steps: d.steps });
+  };
 
   useEffect(() => {
     void call('config').then(d => {
@@ -94,6 +111,47 @@ export default function HostedMailSettings() {
         </button>
         {msg && <span role={msg.ok ? 'status' : 'alert'} style={{ fontSize: 12.5, color: msg.ok ? '#0f7b3d' : '#b42318' }}>{msg.text}</span>}
       </div>
+
+      {/* The owner's own addresses (support@ on this install's domain): a
+          sending account (Brevo, Resend) only sends, so mail to it had
+          nowhere to arrive. Received here through the same Email Routing. */}
+      {own && (
+        <section style={{ borderTop: `1px solid ${LINE}`, paddingTop: 12, display: 'grid', gap: 8 }} data-testid="own-inbox">
+          <h4 style={{ fontSize: 14, fontWeight: 700, color: INK, margin: 0 }}>Receive your own address here</h4>
+          <p style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.6, margin: 0 }}>
+            Resend and Brevo only <b>send</b> — they never hold mail, so an address set up with them alone cannot receive. If its domain is on your
+            Cloudflare account, mail to it can arrive straight into its inbox here: Email Routing is switched on and one rule sends that one address to this
+            Worker. Other addresses on the domain are not touched, sending keeps working as it does, and nothing changes if the domain's mail already goes to a
+            mail host (then connect it over IMAP instead). The token above needs <b>Email Routing Rules: Edit</b>, <b>Zone Settings: Edit</b> and <b>DNS: Edit</b>.
+            Do this on the live site (app.protectedcentral.com): the address can be received by one site only.
+          </p>
+          {own.length === 0 && <p style={{ fontSize: 12.5, color: MUTED, margin: 0 }}>None of your workspaces has a send-only mailbox. Add the address under Settings → Email &amp; SMS first.</p>}
+          {own.map(o => (
+            <div key={o.id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', border: `1px solid ${LINE}`, borderRadius: 10, padding: '8px 10px' }}>
+              <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: INK, overflowWrap: 'anywhere' }}>{o.address}</div>
+                <div style={{ fontSize: 11.5, color: o.receiving && o.verified ? '#0f7b3d' : MUTED }}>
+                  {o.receiving ? (o.verified ? `Receiving here · ${o.messages} message${o.messages === 1 ? '' : 's'}${o.lastAt ? `, last ${new Date(o.lastAt).toLocaleString()}` : ''}` : o.problem || 'Waiting for Cloudflare — press Check again.') : 'Sends only — mail to it does not arrive anywhere here'}
+                </div>
+              </div>
+              <button onClick={() => void ownRun('own_receive', o.id)} disabled={!!ownBusy || !v?.configured} title={v?.configured ? '' : 'Save a Cloudflare token above first'}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 9, border: 'none', background: INK, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }} data-field="hosted.ownMailbox">
+                {ownBusy === `own_receive${o.id}` && <Loader size={12} className="spin" />} {o.receiving ? 'Check again' : 'Receive mail here'}
+              </button>
+              {o.receiving && (
+                <button onClick={() => void ownRun('own_stop', o.id)} disabled={!!ownBusy}
+                  style={{ padding: '7px 12px', borderRadius: 9, border: `1px solid ${LINE}`, background: '#fff', color: '#b42318', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Stop</button>
+              )}
+            </div>
+          ))}
+          {ownMsg && (
+            <div role={ownMsg.ok ? 'status' : 'alert'} style={{ fontSize: 12.5, color: ownMsg.ok ? '#0f7b3d' : '#b42318', lineHeight: 1.55 }}>
+              {ownMsg.text}
+              {!!ownMsg.steps?.length && <ul style={{ margin: '4px 0 0', paddingLeft: 18, color: '#334155' }}>{ownMsg.steps.map((x, i) => <li key={i}>{x}</li>)}</ul>}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

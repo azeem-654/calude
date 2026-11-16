@@ -7,7 +7,7 @@
  * key: keys appear by their label and fingerprint.
  */
 import type { Env } from './db';
-import { readInstallKeys } from './aiPool';
+import { describePool, readInstallKeys } from './aiPool';
 import { geminiNames } from './ai';
 import { freeModels, isOpenRouterKey, openRouterKeyInfo } from './openrouter';
 import { MODULES, TASKS, chainFor, tierOf, type AiTask } from './aiTasks';
@@ -87,5 +87,53 @@ export async function usageReport(env: Env) {
     monthTotals: byModelMonth.map(r => ({ provider: r.provider, model: r.model, requests: r.r, limited: r.l, tokensIn: r.ti, tokensOut: r.to })),
     routing, workspaces, cloud, registrar,
     modelsKnown: !!names, hasGoogleKey: !!gKey, hasOpenRouterKey: orKeys.length > 0,
+  };
+}
+
+/**
+ * The live view of the AI keys (Platform services → AI & cloud usage, polled
+ * every 15 s while the page is open): every install key in the order it is
+ * tried, whether it is answering, resting (and until when) or refusing, and
+ * today's calls, refusals, tokens and average reply time on it.
+ *
+ * Separate from `usageReport` because that one asks OpenRouter, Cloudflare and
+ * the registrar for their figures — fine on opening the page, too much four
+ * times a minute. This reads two tables of our own and nothing else.
+ */
+export async function liveAiUsage(env: Env) {
+  const [pool, keys] = await Promise.all([describePool(env), readInstallKeys(env)]);
+  const { results } = await env.DB.prepare(
+    `SELECT key_fp, SUM(requests) r, SUM(ok) ok, SUM(limited) l, SUM(tokens_in + tokens_out) t, SUM(ms_total) ms, MAX(updated_at) lastAt
+       FROM crm_ai_usage WHERE day = ? GROUP BY key_fp`,
+  ).bind(today()).all<{ key_fp: string; r: number; ok: number; l: number; t: number; ms: number; lastAt: string }>()
+    .catch(() => ({ results: [] as { key_fp: string; r: number; ok: number; l: number; t: number; ms: number; lastAt: string }[] }));
+  const by = new Map((results ?? []).map(r => [r.key_fp, r]));
+  const now = Date.now();
+  const rows = pool.map((p, i) => {
+    const k = keys[i];
+    const u = k ? by.get(k.fp) : undefined;
+    const state = p.restingUntil ? 'resting'
+      : p.lastFailedAt && (!p.lastOkAt || p.lastFailedAt > p.lastOkAt) ? 'failing'
+        : p.lastOkAt ? 'working' : 'unused';
+    return {
+      label: p.label, source: p.source, provider: k && isOpenRouterKey(k.key) ? 'openrouter' : 'google', state,
+      restingUntil: p.restingUntil, lastOkAt: p.lastOkAt, lastFailedAt: p.lastFailedAt, lastError: p.lastError.slice(0, 200),
+      today: { requests: u?.r ?? 0, answered: u?.ok ?? 0, limited: u?.l ?? 0, tokens: u?.t ?? 0, avgMs: u && u.ok ? Math.round(u.ms / u.ok) : null, lastAt: u?.lastAt ?? null },
+    };
+  });
+  const own = by.get('own');
+  const sum = (f: (r: typeof rows[number]) => number) => rows.reduce((a, r) => a + f(r), 0);
+  const answered = sum(r => r.today.answered);
+  const msAll = rows.reduce((a, r) => a + (r.today.avgMs ?? 0) * r.today.answered, 0);
+  return {
+    at: new Date(now).toISOString(),
+    keys: rows,
+    totals: {
+      keys: rows.length, working: rows.filter(r => r.state === 'working' || r.state === 'unused').length, resting: rows.filter(r => r.state === 'resting').length,
+      requests: sum(r => r.today.requests), answered, limited: sum(r => r.today.limited), tokens: sum(r => r.today.tokens),
+      avgMs: answered ? Math.round(msAll / answered) : null,
+    },
+    /* Customers on their own keys: their quota, shown so the totals are not mistaken for everything. */
+    ownKeys: own ? { requests: own.r, answered: own.ok } : null,
   };
 }
