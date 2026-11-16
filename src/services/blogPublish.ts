@@ -18,6 +18,7 @@
 import { newId } from './blogAutomation';
 import { loadPlans, upsertPlan } from './blogPlanner';
 import { postUrl } from './blogExport';
+import { coverOf } from './blogImages';
 import { getSession, sessionToken } from './auth';
 import { getActiveAccountId } from './tenancy';
 import type {
@@ -292,6 +293,8 @@ export interface PublishPass {
   url?: string;
   state?: PublishState;
   error?: string;
+  /** What happened to the pictures — said when one could not be uploaded. */
+  note?: string;
 }
 
 /** When a post is due, as an instant. */
@@ -334,9 +337,14 @@ export async function publishNext(
   const at = (job.mode === 'now' ? now : due).toISOString();
 
   const existing = post.published?.[target.id];
+  /* The cover is not in the body — it becomes WordPress's featured image, so
+     it is sent beside the HTML. The pictures inside the HTML are uploaded to
+     the site's media library by the Worker. */
+  const cover = coverOf(article);
 
   try {
     const r = await call('publish', {
+      cover: cover ? { src: cover.dataUrl, alt: cover.alt } : undefined,
       targetId: target.id,
       slug: article.seo.slug,
       title: post.title,
@@ -359,7 +367,11 @@ export async function publishNext(
       error: undefined,
     }));
 
-    return { job: advance({ ...job, done: [...job.done, postId] }, rest), post, url, state };
+    const pictures = (r.pictures ?? {}) as { failed?: string[]; note?: string };
+    return {
+      job: advance({ ...job, done: [...job.done, postId] }, rest), post, url, state,
+      note: pictures.failed?.length ? pictures.note : undefined,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     upsertPlan(setRecord(plan, postId, target.id, { state: 'failed', error: message.slice(0, 300) }));

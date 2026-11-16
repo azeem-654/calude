@@ -26,6 +26,7 @@ import { fileUrl, sign, workspacePrefix } from '../lib/video/store';
 import { checkPng } from '../lib/video/png';
 import { refusal } from '../lib/video/usage';
 import { originOf } from '../lib/video/pipeline';
+import { fetchFreePhoto, searchFreePhotos } from '../lib/freePhotos';
 
 interface Req {
   token?: string; accountId?: string; action?: string;
@@ -44,25 +45,6 @@ function looksLikeJpeg(b: Uint8Array): boolean {
   return b.length > 4 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff && b[b.length - 2] === 0xff && b[b.length - 1] === 0xd9;
 }
 
-const ovBase = (env: Env) => ((env as Env & { OPENVERSE_BASE?: string }).OPENVERSE_BASE ?? '').trim().replace(/\/$/, '') || 'https://api.openverse.org';
-const UA = 'ProtectedCentral-Designer/1.0 (+https://protectedcentral.com)';
-/* Only licences that allow commercial use and changes with no conditions —
-   CC BY would need a credit on every post, which a graphic cannot promise. */
-const FREE = new Set(['cc0', 'pdm']);
-
-interface OvImage { id?: string; title?: string; creator?: string; license?: string; license_version?: string; license_url?: string; foreign_landing_url?: string; url?: string; thumbnail?: string; width?: number; height?: number; source?: string; provider?: string; mature?: boolean; filetype?: string }
-
-function cleanPhoto(o: OvImage) {
-  const code = String(o.license ?? '').toLowerCase();
-  if (!o.id || !o.url || !FREE.has(code) || o.mature) return null;
-  return {
-    id: String(o.id), title: s(o.title, 120) || 'Untitled', creator: s(o.creator, 120),
-    license: code === 'cc0' ? 'CC0 1.0 (public domain dedication)' : 'Public Domain Mark',
-    licenseUrl: s(o.license_url, 300), landing: s(o.foreign_landing_url, 400),
-    width: Number(o.width) || 0, height: Number(o.height) || 0, provider: s(o.source ?? o.provider, 60),
-  };
-}
-
 /** GET ?photo=<openverse id> — the picture itself, re-checked, same-origin. */
 export async function handleMediaPhoto(req: Request, env: Env): Promise<Response> {
   const id = new URL(req.url).searchParams.get('photo') ?? '';
@@ -70,15 +52,9 @@ export async function handleMediaPhoto(req: Request, env: Env): Promise<Response
   const who = req.headers.get('cf-connecting-ip') ?? 'anon';
   const rl = await rateLimit(env, { what: 'media-photo', who, max: 300, windowSeconds: 3600 });
   if (!rl.allowed) return new Response('slow down', { status: 429 });
-  const meta = await fetch(`${ovBase(env)}/v1/images/${id}/`, { headers: { 'user-agent': UA, accept: 'application/json' }, signal: AbortSignal.timeout(15_000) })
-    .then(r => (r.ok ? r.json<OvImage>() : null)).catch(() => null);
-  const p = meta ? cleanPhoto(meta) : null;
-  if (!p || !meta?.url) return new Response('not a free picture', { status: 404 });
-  const img = await fetch(meta.url, { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(20_000) }).catch(() => null);
-  const type = img?.headers.get('content-type') ?? '';
-  if (!img?.ok || !/^image\/(jpeg|png|webp|gif)/.test(type)) return new Response('the picture could not be fetched', { status: 502 });
-  const len = Number(img.headers.get('content-length') ?? 0);
-  if (len > MAX_BYTES) return new Response('too large', { status: 413 });
+  const got = await fetchFreePhoto(env, id);
+  if (!got.ok) return new Response(got.reason, { status: got.status });
+  const { res: img, type } = got;
   return new Response(img.body, { headers: { 'Content-Type': type, 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' } });
 }
 
@@ -107,10 +83,9 @@ export async function handleMedia(req: Request, env: Env): Promise<Response> {
     const rl = await rateLimit(env, { what: 'media-search', who: accountId, max: 60, windowSeconds: 3600 });
     if (!rl.allowed) return fail('That is a lot of searches — try again in a few minutes.', 429);
     const page = Math.max(1, Math.min(5, Number(d.page) || 1));
-    const r = await fetch(`${ovBase(env)}/v1/images/?q=${encodeURIComponent(q)}&license=cc0,pdm&mature=false&page_size=24&page=${page}`, { headers: { 'user-agent': UA, accept: 'application/json' }, signal: AbortSignal.timeout(15_000) }).catch(() => null);
-    if (!r?.ok) return fail('The free photo library (Openverse) did not answer just now — try again shortly, or upload your own picture.', 200, { code: 'openverse_down' });
-    const data = await r.json<{ results?: OvImage[] }>().catch(() => ({ results: [] as OvImage[] }));
-    const photos = (data.results ?? []).map(cleanPhoto).filter(Boolean).map(p => ({ ...p!, src: `${origin}/api/media.php?photo=${p!.id}` }));
+    const r = await searchFreePhotos(env, q, { page, pageSize: 24 });
+    if (!r.ok) return fail('The free photo library (Openverse) did not answer just now — try again shortly, or upload your own picture.', 200, { code: 'openverse_down' });
+    const photos = r.photos.map(p => ({ ...p, src: `${origin}/api/media.php?photo=${p.id}` }));
     return json({ success: true, photos, source: 'Openverse', note: 'CC0 and public-domain pictures only — free to use commercially and to change, with no credit required.' });
   }
 

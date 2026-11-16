@@ -10,7 +10,8 @@
  * Covers: connect (refusals by box, a wrong password said plainly, a site that
  * is not WordPress), the password stored encrypted and never returned, status
  * asking WordPress, publish / update in place / schedule / withdraw with the
- * stored credential, a revoked password, disconnect, and another workspace
+ * stored credential, pictures into the media library (featured image, rewritten
+ * src), a revoked password, disconnect, and another workspace
  * refused on both the target id and the workspace id.
  *
  *   npm run test:blogpublish      (self-contained: wrangler :8896, mock :8897)
@@ -29,7 +30,7 @@ let failed = 0, passed = 0;
 const ok = (name, cond, detail = '') => { if (cond) passed++; else failed++; console.log(`${cond ? 'PASS' : 'FAIL'}  ${name}${cond ? '' : ` — ${typeof detail === 'string' ? detail : JSON.stringify(detail).slice(0, 600)}`}`); };
 
 /* ── WordPress, as far as publishing talks to it ── */
-const wp = { user: 'editor', pass: 'abcd efgh ijkl mnop qrst uvwx', posts: {}, next: 100, auths: [] };
+const wp = { user: 'editor', pass: 'abcd efgh ijkl mnop qrst uvwx', posts: {}, next: 100, auths: [], media: [] };
 const mock = http.createServer((req, res) => {
   let b = '';
   req.on('data', c => { b += c; });
@@ -43,6 +44,14 @@ const mock = http.createServer((req, res) => {
     if (u.pathname.startsWith('/notwp/')) { res.writeHead(404, { 'Content-Type': 'text/html' }); return res.end('<h1>Not found</h1>'); }
     if (!u.pathname.startsWith('/wp-json/')) return send(404, { code: 'rest_no_route' });
     if (!authed) return send(401, { code: 'incorrect_password', message: 'The provided password is an invalid application password.' });
+    /* The media library: the bytes are not JSON, so this is answered before the body is parsed. */
+    if (u.pathname === '/wp-json/wp/v2/media' && req.method === 'POST') {
+      const name = /filename="([^"]+)"/.exec(String(req.headers['content-disposition'] ?? ''))?.[1] ?? 'x';
+      const m = { id: wp.next++, source_url: `${SITE}/wp-content/uploads/${name}`, alt_text: u.searchParams.get('alt_text') ?? '', type: req.headers['content-type'] };
+      wp.media.push(m);
+      return send(201, m);
+    }
+    if (u.pathname === '/wp-json/wp/v2/media' && req.method === 'GET') return send(200, wp.media.filter(m => m.source_url.includes(u.searchParams.get('search') ?? '~')));
     const p = u.pathname.slice('/wp-json'.length), body = b ? JSON.parse(b) : {};
     if (p === '/wp/v2/users/me' && req.method === 'GET') return send(200, { id: 7, name: 'Ed Itor', slug: 'editor' });
     if (p === '/wp/v2/posts' && req.method === 'POST') {
@@ -125,12 +134,21 @@ ok('publishing again with the remote id updates the same post', r.success && Str
 const when = new Date(Date.now() + 3 * 864e5).toISOString();
 r = await P(C, 'publish', { targetId: T, title: 'Spring checks', html: '<p>Service it.</p>', slug: 'spring', status: 'future', date: when });
 ok('a future post is handed to WordPress as scheduled', r.success && r.state === 'scheduled' && wp.posts[r.remoteId]?.status === 'future' && wp.posts[r.remoteId].date_gmt === when.slice(0, 19), [r, wp.posts[r.remoteId]]);
+/* Pictures: a cover drawn in Blog Automation arrives as a data URL; it and the
+   picture in the body go to the media library and the post points at them. */
+const png = `data:image/png;base64,${Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]).toString('base64')}`;
+const jpg = `data:image/jpeg;base64,${Buffer.from([0xff, 0xd8, 0xff, 7, 0xff, 0xd9]).toString('base64')}`;
+r = await P(C, 'publish', { targetId: T, title: 'With pictures', html: `<p>Hi.</p><figure><img src="${jpg}" alt="A boiler" /></figure>`, slug: 'with-pictures', status: 'publish', cover: { src: png, alt: 'Cover card' } });
+const pic = wp.posts[r.remoteId] ?? {};
+ok('pictures: cover and inline uploaded, cover is the featured image', r.success && wp.media.length === 2 && pic.featured_media === wp.media[0].id && wp.media[0].alt_text === 'Cover card' && wp.media[1].type === 'image/jpeg', [r, wp.media]);
+ok('pictures: the post points at the WordPress copy, not a data URL', String(pic.content).includes(`src="${wp.media[1].source_url}"`) && !String(pic.content).includes('data:'), pic.content);
+ok('pictures: the result says so', r.pictures?.sent === 2 && !r.partial && /2 pictures added/.test(r.message), r);
 r = await P(C, 'withdraw', { targetId: T, remoteId: String(id1) });
 ok('withdraw sets the post back to draft, never deletes', r.success && wp.posts[id1]?.status === 'draft', [r, wp.posts[id1]]);
 r = await P(C, 'publish', { targetId: T, title: '', html: '<p>x</p>' });
 ok('a post with no title is refused', !r.success && /title/.test(r.error), r);
 r = await api('blog-publish.php', { token: C.token, accountId: C.acct, title: 't', content: 'c' });
-ok('the old shape (no target, no action) is refused, not published', !r.success && Object.keys(wp.posts).length === 2, r);
+ok('the old shape (no target, no action) is refused, not published', !r.success && Object.keys(wp.posts).length === 3, r);
 
 console.log('\nAnother workspace');
 r = await P(D, 'status', { targetId: T });

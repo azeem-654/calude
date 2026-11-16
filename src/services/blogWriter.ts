@@ -691,13 +691,25 @@ Angle: ${post.angle}
 Sections (use these as <h2>): ${post.outline.join(' | ')}
 Length: about ${post.targetWords} words.
 
+Structure (the same one AI Autopilot's posts follow — worker/src/lib/autopilotWrite.ts):
+- Open with two or three sentences that answer the searcher's question directly. No preamble, no "in this article".
+- Each section an <h2> that says what it answers; <h3> only for a sub-point inside a section.
+- Paragraphs of one to three sentences. <ol> for steps in order, <ul> for options or things to check.
+- Before the FAQ, an <h2>Key takeaways</h2> with a <ul> of three to five one-sentence points a reader could act on.
+- Then <h2>Frequently asked questions</h2> with three or four questions customers really ask, each an <h3> ending in "?" and answered in two to four sentences.
+- Close with one short paragraph telling the reader the next step with the business.
+
 Rules:
 - Put "${post.primaryKeyword}" in the first 100 words and in at least one heading, naturally. Do not repeat it more than about 8 times in total.
 ${page?.url ? `- Include exactly one link to ${page.url}, with anchor text describing what is there — never "click here".` : ''}
-- Finish with an FAQ of 3 question headings and short answers.
 - Allowed tags: p, h2, h3, ul, ol, li, strong, em, blockquote, a. Nothing else.
-- Do not invent prices, guarantees, statistics, awards or customer names. If a
-  specific fact would be needed, write the sentence so the reader is told to ask.`;
+- Do not invent prices, guarantees, statistics, awards or customer names. No
+  percentages, survey or study results, "experts say", quotes or research
+  citations at all. If a specific fact would be needed, write the sentence so
+  the reader is told to ask.
+- Write like a person who does the work talking to a customer: short words, "you", varied sentence length.
+- Never use: "in today's fast-paced world", "delve", "dive into", "unlock", "game-changer", "navigating the landscape", "in the realm of", "elevate", "seamless", "harness", "it's important to note", "in conclusion", "look no further".
+- No meta-commentary about the article, the reader's search or SEO.`;
 
   try {
     const res = await aiFetch({

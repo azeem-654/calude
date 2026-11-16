@@ -106,34 +106,91 @@ export interface WrittenPost {
   excerpt: string;
   body: string;
   keywords: string[];
+  /** 140-160 characters, for the search result. Absent from older drafts. */
+  metaDescription?: string;
+  /** Two or three concrete photo searches, for lib/blogPictures.ts. Never sent to an image model. */
+  imageQueries?: { query: string; alt: string }[];
 }
 
 /**
+ * Phrases that mark copy as machine-written to a reader and to a reviewer.
+ * Named in the prompt because "write naturally" alone does not stop them.
+ */
+const AI_TELLS = [
+  "in today's fast-paced world", 'in today\'s digital age', 'delve', 'dive into', 'unlock', 'unleash',
+  'game-changer', 'navigating the landscape', 'navigate the complexities', 'in the realm of', 'elevate',
+  'seamless', 'robust', 'harness', 'embark', 'tapestry', 'it\'s important to note', 'it\'s worth noting',
+  'in conclusion', 'in summary', 'whether you\'re a', 'look no further', 'ever-evolving',
+];
+
+/**
  * `format` is the article shape chosen in the wizard (lib/designLayouts.ts).
- * Empty keeps the free shape every article had before there was a choice.
+ * Empty keeps the guide shape.
+ *
+ * ── The structure, and why each part ──
+ *
+ * The owner's complaint was posts full of statistics, text that read as
+ * machine-written and no clear structure. What search engines reward
+ * (Google's people-first guidance; how featured snippets and People Also Ask
+ * are chosen) is the same thing a reader wants: the question answered in the
+ * first sentences, one idea per H2, short paragraphs, lists where there are
+ * steps, the questions people actually ask answered under their own headings.
+ *
+ * No figures at all unless the brand block gives them. A model writing about a
+ * trade it knows six lines of invents "73% of homeowners" with a confident
+ * source, and the customer publishes it under their own name. NO_INVENTING
+ * already said "no statistics"; it is repeated here as its own rule because
+ * the wider rule was not stopping it.
  */
 export function writeBlogPost(apiKey: string, b: Brand, topic = '', format = ''): Promise<Written<WrittenPost>> {
-  return ask<WrittenPost>(apiKey, `Write a blog post for this business.
+  return ask<WrittenPost>(apiKey, blogPostPrompt(b, topic, format), 0.6);
+}
+
+/** The prompt alone, so a test can hold it to the rules without a model. */
+export function blogPostPrompt(b: Brand, topic = '', format = ''): string {
+  const qa = format === 'qa';
+  return `Write a blog post for this business.
 
 === THE BUSINESS ===
 ${brandBlock(b)}
 
 ${topic ? `Topic: ${topic}` : 'Choose a topic their customers actually search for before buying — a question they ask, or a decision they are trying to make.'}
 
+Who reads it: somebody who typed a question into a search engine. Answer that question for them, as a person at this business who does the work would.
+
+Structure, in markdown:
+- Title: under 60 characters, with the main search phrase near the start. Plain, specific, no clickbait, no colon-and-subtitle.
+- Opening: two or three sentences that answer the searcher's question directly. No preamble, no "in this article", no scene-setting.
+- Then ${qa ? 'the questions' : 'four to six sections'}, each a "## " heading that says what the section answers (phrase it as the question when it is one). Use "### " for a sub-point inside a section, never to start one.${format ? `\n- ${blogFormatRule(format)}` : ''}
+- Paragraphs of one to three sentences. A numbered list for steps in order, a bulleted list for options or things to check. Bold at most one phrase per section.
+- "## Key takeaways": three to five bullets, each one full sentence a reader could act on.${qa ? '' : '\n- "## Frequently asked questions": three or four questions a customer would really type, each as a "### " heading ending in "?", each answered in two to four sentences.'}
+- Last: a short closing paragraph (no heading needed) telling the reader the one next step with ${b.companyName || 'the business'} — call, book, ask for a quote — using only the contact routes in the brand block.
+- 800-1,200 words in total.
+
 Rules:
 - Genuinely useful to somebody who never buys anything. A post that is only an advert does not get read or ranked.
 - ${NO_INVENTING}
-- 500-700 words, in markdown, ${format ? 'with subheadings.' : 'with two or three subheadings.'}${format ? `\n- ${blogFormatRule(format)}` : ''}
-- No introduction about what the article will cover. Start with the substance.
+- No numbers presented as facts: no statistics, percentages, survey or study results, "experts say", quotes, research citations, prices, timeframes promised or dates, unless they appear in the brand block above. Say "most", "often", "it depends on" instead, and say what it depends on.
+- Write like a person talking to a customer: short words, active voice, "you". Vary sentence length. No rhetorical questions to open a section.
+- Never use: ${AI_TELLS.map(x => `"${x}"`).join(', ')}.
+- No meta-commentary: never mention the article itself, the reader's search, SEO, or that it was written for them.
+- Do not repeat the title as a heading. Do not use "#" headings.
 
 Return ONLY valid JSON, no fences:
 {
-  "title": "",
-  "slug": "lowercase-hyphenated",
+  "title": "under 60 characters, main phrase first",
+  "slug": "lowercase-hyphenated-main-phrase",
+  "metaDescription": "140-160 characters: what the reader learns and why it helps, with the main phrase",
   "excerpt": "one sentence",
-  "body": "markdown",
-  "keywords": ["", "", ""]
-}`, 0.7);
+  "body": "markdown, starting with the opening paragraph",
+  "keywords": ["main search phrase", "", ""],
+  "imageQueries": [
+    {"query": "2-4 word photo search for a real scene in this post, e.g. plumber fixing sink", "alt": "what such a photo would show, under 120 characters"},
+    {"query": "", "alt": ""},
+    {"query": "", "alt": ""}
+  ]
+}
+The imageQueries describe ordinary photographs a stock library would have: people working, tools, places, objects. No text, logos, brand names or charts.`;
 }
 
 /* ── Social posts ────────────────────────────────────────────────────────── */

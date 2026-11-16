@@ -46,6 +46,7 @@ import {
 } from './lib/autopilotWrite';
 import { planNext, type PlannedAction, type Workspace, type Contact, type Sequence, type Enrolment, type Pipeline } from './lib/autopilotPlan';
 import { loadPublishTarget, notePublishResult, publishPost } from './lib/publishTarget';
+import { illustratePost, markdownToHtml, picturesDetail } from './lib/blogPictures';
 
 const CONTACTS_KEY = 'crm_contacts';
 const SEQ_KEY = 'crm_sequences';
@@ -1318,6 +1319,10 @@ async function carryOutWrite(
     if (!r.ok || !r.value) return { ok: false, detail: r.error };
     const v = r.value;
     const id = `bp-${crypto.randomUUID()}`;
+    /* Free photos placed before anything is published or filed, so the site
+       and the record carry the same pictures. Never fails the post. */
+    const pics = await illustratePost(env, v);
+    const cover = pics.images.find(p => p.role === 'cover');
 
     /*
      * ── Publish it, or say why it is still a draft ──
@@ -1338,6 +1343,7 @@ async function carryOutWrite(
     let published = false;
     let link = '';
     let why = '';
+    let pictureNote = '';
 
     /* Read from the project's own guardrails, the same map every other
        permission comes from. `'on'` and nothing else: absent, 'off' and
@@ -1349,21 +1355,15 @@ async function carryOutWrite(
       if (!target) {
         why = 'Nothing is connected to publish to — add a site in Settings → Publishing and the next one goes up on its own.';
       } else {
-        /* Markdown out of the writer, HTML into WordPress. Minimal on purpose:
-           a full Markdown renderer here would be a second one that drifts from
-           the client's, and paragraphs plus headings is what a post is. */
-        const html = v.body
-          .split(/\n{2,}/)
-          .map(block => {
-            const t = block.trim();
-            if (!t) return '';
-            const h = /^(#{1,4})\s+(.*)$/.exec(t);
-            if (h) return `<h${Math.min(h[1].length + 1, 5)}>${h[2]}</h${Math.min(h[1].length + 1, 5)}>`;
-            return `<p>${t.replace(/\n/g, '<br />')}</p>`;
-          })
-          .filter(Boolean).join('\n');
-
-        const out = await publishPost(target, { title: v.title, html, excerpt: v.excerpt });
+        /* Markdown out of the writer, HTML into WordPress — with its lists,
+           sub-headings and pictures (lib/blogPictures.ts says why the old
+           headings-and-paragraphs converter was not enough). */
+        const html = markdownToHtml(pics.body);
+        const out = await publishPost(target, {
+          title: v.title, html, excerpt: v.metaDescription?.trim() || v.excerpt, slug: v.slug,
+          cover: cover ? { src: cover.url, alt: cover.alt } : null,
+        }, env);
+        pictureNote = out.pictures;
         await notePublishResult(env, accountId, out.ok, out.error);
         published = out.ok;
         link = out.link;
@@ -1372,7 +1372,8 @@ async function carryOutWrite(
     }
 
     await push(BLOG_POSTS_KEY, {
-      id, title: v.title, slug: v.slug, excerpt: v.excerpt, body: v.body,
+      id, title: v.title, slug: v.slug, excerpt: v.excerpt, body: pics.body,
+      metaDescription: String(v.metaDescription ?? '').trim().slice(0, 170), images: pics.images,
       keywords: v.keywords,
       status: published ? 'published' : 'draft',
       publishedUrl: link,
@@ -1381,11 +1382,11 @@ async function carryOutWrite(
 
     return {
       ok: true,
-      detail: published
-        ? `Published "${v.title}"${link ? ` — ${link}` : ''}.`
+      detail: (published
+        ? `Published "${v.title}"${link ? ` — ${link}` : ''}.${pictureNote ? ` ${pictureNote}` : ''}`
         : why
           ? `Drafted "${v.title}". It is not live: ${why}`
-          : `Drafted "${v.title}". Read it before it goes anywhere.`,
+          : `Drafted "${v.title}". Read it before it goes anywhere.`) + picturesDetail(pics),
       link: published && link
         ? { kind: 'blog-post', id, label: v.title.slice(0, 60), route: link }
         : { kind: 'blog-post', id, label: v.title.slice(0, 60), route: '/blog-automation' },

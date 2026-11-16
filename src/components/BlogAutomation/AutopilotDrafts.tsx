@@ -16,8 +16,8 @@ import { useMemo, useState } from 'react';
 import { Bot, ChevronDown, ChevronRight, Copy, Trash2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
-  loadAutopilotPosts, deleteAutopilotPost, draftAsMarkdown,
-  type AutopilotPost,
+  loadAutopilotPosts, deleteAutopilotPost, draftAsMarkdown, draftBlocks,
+  type AutopilotPost, type DraftBlock,
 } from '../../services/autopilotDrafts';
 
 const INK = '#17191c';
@@ -72,7 +72,9 @@ export default function AutopilotDrafts({ onChanged }: { onChanged?: () => void 
       <p style={{ margin: '0 0 12px', fontSize: 12, color: MUTED, lineHeight: 1.6, maxWidth: 760 }}>
         AI Autopilot writes one of these each time its content play runs. They are finished drafts and
         nothing has been published — copy one into whatever runs your site, or start a project above
-        if you want a whole month planned around keywords instead of a post at a time.
+        if you want a whole month planned around keywords instead of a post at a time. Their pictures are
+        free CC0 and public-domain photos from Openverse, found by search rather than generated — check each
+        one fits before it goes up.
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
@@ -128,12 +130,24 @@ export default function AutopilotDrafts({ onChanged }: { onChanged?: () => void 
                       ))}
                     </div>
                   )}
-                  {/* The body as written, wrapped rather than rendered — it is Markdown from a
-                      model and turning it into HTML here would mean sanitising it here too. */}
-                  <pre style={{
-                    margin: 0, fontSize: 12.5, lineHeight: 1.7, color: INK, whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word', fontFamily: 'inherit', maxHeight: 420, overflowY: 'auto',
-                  }}>{p.body || 'This draft came back empty. Delete it and let the next run try again.'}</pre>
+                  {p.metaDescription && (
+                    <p style={{ margin: '0 0 10px', fontSize: 11.5, color: MUTED, lineHeight: 1.55 }}>
+                      <strong style={{ color: INK }}>Search result description</strong> ({p.metaDescription.length} characters): {p.metaDescription}
+                    </p>
+                  )}
+                  {(() => {
+                    const cover = p.images?.find(i => i.role === 'cover');
+                    return cover ? (
+                      <Picture url={cover.url} alt={cover.alt} caption={`Cover · Photo${cover.creator ? ` by ${cover.creator}` : ''} · ${cover.license} · via ${cover.provider || 'Openverse'}`} landing={cover.landing} />
+                    ) : null;
+                  })()}
+                  {/* Drawn block by block as text, never as HTML: it is Markdown
+                      from a model, and React escaping it is the sanitiser. */}
+                  <div style={{ maxHeight: 520, overflowY: 'auto', color: INK, fontSize: 13, lineHeight: 1.7, wordBreak: 'break-word' }}>
+                    {p.body
+                      ? draftBlocks(p.body).map((b, i) => <Block key={i} b={b} />)
+                      : <p style={{ margin: 0 }}>This draft came back empty. Delete it and let the next run try again.</p>}
+                  </div>
                 </div>
               )}
             </article>
@@ -150,4 +164,49 @@ function iconBtn(): React.CSSProperties {
     backgroundColor: '#fff', color: INK, cursor: 'pointer', flexShrink: 0,
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   };
+}
+
+/** **bold** and [links](https://…) inside a line; everything else is plain text. */
+function Inline({ text }: { text: string }) {
+  const parts = text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)\s]+\))/g);
+  return (
+    <>
+      {parts.map((s, i) => {
+        const bold = /^\*\*([^*]+)\*\*$/.exec(s);
+        if (bold) return <strong key={i}>{bold[1]}</strong>;
+        const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(s);
+        if (link) return /^https?:\/\//i.test(link[2])
+          ? <a key={i} href={link[2]} target="_blank" rel="noopener noreferrer" style={{ color: INK }}>{link[1]}</a>
+          : <span key={i}>{link[1]}</span>;
+        return <span key={i}>{s.replace(/(^|\s)[*_]([^*_]+)[*_](?=\s|$|[.,;:!?])/g, '$1$2')}</span>;
+      })}
+    </>
+  );
+}
+
+function Picture({ url, alt, caption, landing }: { url: string; alt: string; caption: string; landing?: string }) {
+  return (
+    <figure style={{ margin: '4px 0 14px' }}>
+      <img src={url} alt={alt} loading="lazy" style={{ display: 'block', width: '100%', maxWidth: 640, height: 'auto', borderRadius: 12, border: `1px solid ${LINE}`, backgroundColor: '#eef0f4' }} />
+      {caption && (
+        <figcaption style={{ marginTop: 5, fontSize: 10.5, color: MUTED }}>
+          {landing && /^https?:\/\//i.test(landing)
+            ? <a href={landing} target="_blank" rel="noopener noreferrer" style={{ color: MUTED }}><Inline text={caption} /></a>
+            : <Inline text={caption} />}
+        </figcaption>
+      )}
+    </figure>
+  );
+}
+
+function Block({ b }: { b: DraftBlock }) {
+  switch (b.kind) {
+    case 'h2': return <h3 style={{ margin: '16px 0 6px', fontSize: 15, fontWeight: 800, letterSpacing: '-0.015em' }}><Inline text={b.text} /></h3>;
+    case 'h3': return <h4 style={{ margin: '12px 0 4px', fontSize: 13.5, fontWeight: 700 }}><Inline text={b.text} /></h4>;
+    case 'quote': return <blockquote style={{ margin: '8px 0', paddingLeft: 12, borderLeft: `3px solid ${LINE}`, color: MUTED }}><Inline text={b.text} /></blockquote>;
+    case 'ul': return <ul style={{ margin: '6px 0 10px', paddingLeft: 20 }}>{b.items.map((x, i) => <li key={i}><Inline text={x} /></li>)}</ul>;
+    case 'ol': return <ol style={{ margin: '6px 0 10px', paddingLeft: 20 }}>{b.items.map((x, i) => <li key={i}><Inline text={x} /></li>)}</ol>;
+    case 'img': return <Picture url={b.url} alt={b.alt} caption={b.caption} />;
+    default: return <p style={{ margin: '0 0 9px' }}><Inline text={b.text} /></p>;
+  }
 }

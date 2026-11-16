@@ -47,6 +47,7 @@ import {
   writeBlogPost, writeImagePosts, writeSequenceBatch,
   type Brand, type SourceItem,
 } from './autopilotWrite';
+import { illustratePost, picturesDetail } from './blogPictures';
 
 const SOCIAL_KEY = 'crm_social_posts';
 const BLOG_KEY = 'crm_blog_posts';
@@ -674,14 +675,18 @@ async function runAgentNodeOnce(
     if (!r.ok || !r.value?.title) return { outcome: 'failed', detail: r.error || 'Nothing usable came back from the writer.' };
     const v = r.value;
     const id = `bp-${crypto.randomUUID()}`;
+    /* Pictures never fail the post: illustratePost returns the body untouched
+       and says why when Openverse is down or finds nothing. */
+    const pics = await illustratePost(env, v);
     await push(env, accountId, BLOG_KEY, {
-      id, title: v.title, slug: v.slug, excerpt: v.excerpt, body: v.body,
+      id, title: v.title, slug: v.slug, excerpt: v.excerpt, body: pics.body,
+      metaDescription: String(v.metaDescription ?? '').trim().slice(0, 170), images: pics.images,
       keywords: v.keywords ?? [], status: 'draft', source, createdAt: now,
     });
     await record(env, accountId, 'blog_articles', id);
     return {
       outcome: 'ok',
-      detail: `Drafted "${v.title}". Read it before it goes anywhere.${fallbackNote}`,
+      detail: `Drafted "${v.title}". Read it before it goes anywhere.${picturesDetail(pics)}${fallbackNote}`,
       link: { kind: 'blog-post', id, label: v.title.slice(0, 60), route: '/blog-automation' },
       hash,
     };
@@ -1002,9 +1007,15 @@ export async function repurposeRecording(
     if (r.ok && r.value?.title) {
       const v = r.value;
       const id = `bp-${crypto.randomUUID()}`;
-      await push(env, accountId, BLOG_KEY, { id, title: v.title, slug: v.slug, excerpt: v.excerpt, body: v.body, keywords: v.keywords ?? [], status: 'draft', source, createdAt: now });
+      const pics = await illustratePost(env, v);
+      await push(env, accountId, BLOG_KEY, {
+        id, title: v.title, slug: v.slug, excerpt: v.excerpt, body: pics.body,
+        metaDescription: String(v.metaDescription ?? '').trim().slice(0, 170), images: pics.images,
+        keywords: v.keywords ?? [], status: 'draft', source, createdAt: now,
+      });
       await record(env, accountId, 'blog_articles', id);
       links.push({ kind: 'blog-post', id, label: v.title.slice(0, 60), route: '/blog-automation' });
+      if (pics.note) notes.push(`Blog: ${pics.note}`);
     } else notes.push(`Blog: ${r.error || 'nothing usable came back from the writer'}.`);
   }
   const mailRoom = want.email ? await roomFor(env, accountId, 'ai_emails') : null;

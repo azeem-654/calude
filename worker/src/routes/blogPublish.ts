@@ -23,7 +23,7 @@ import { gate as contentGate } from '../lib/contentGate';
 import { adoptSiteTestOrigin } from '../lib/readSite';
 import {
   BLOG_TARGET_ID, blogTargetOwner, deleteBlogTarget, loadBlogTarget, noteBlogTarget,
-  saveBlogTarget, verifyWordPress, wordpressBase, wordpressCall,
+  picturesNote, saveBlogTarget, sendPicturesToWordPress, verifyWordPress, wordpressBase, wordpressCall,
 } from '../lib/publishTarget';
 
 interface Req {
@@ -31,6 +31,8 @@ interface Req {
   siteUrl?: string; username?: string; password?: string;
   title?: string; html?: string; content?: string; excerpt?: string; slug?: string;
   status?: string; date?: string; remoteId?: string | number;
+  /** The post's cover — becomes the featured image. A data URL or a /api/media.php photo address. */
+  cover?: { src?: string; alt?: string };
 }
 
 /** WordPress takes `date_gmt` without a zone or milliseconds. */
@@ -149,12 +151,22 @@ export async function handleBlogPublish(req: Request, env: Env): Promise<Respons
   const title = headerSafe(d.title, 250);
   if (!title) return fail('The post needs a title.');
   const status = d.status === 'future' ? 'future' : d.status === 'draft' ? 'draft' : 'publish';
+
+  /* The pictures go into the site's media library before the post, so the
+     post is stored pointing at WordPress's copies (lib/publishTarget.ts says
+     why). One that fails is reported with the result, never as a failed post. */
+  const coverSrc = typeof d.cover?.src === 'string' ? d.cover.src.slice(0, 4_000_000) : '';
+  const pics = await sendPicturesToWordPress(
+    env, { base: target.siteUrl, username: target.username, appPassword: target.appPassword },
+    html, coverSrc ? { src: coverSrc, alt: String(d.cover?.alt ?? '').slice(0, 250) } : null, String(d.slug ?? title),
+  );
   const post: Record<string, unknown> = {
     title,
-    content: html,
+    content: pics.html,
     excerpt: String(d.excerpt ?? '').slice(0, 500),
     status,
   };
+  if (pics.featuredMedia) post.featured_media = pics.featuredMedia;
   const slug = String(d.slug ?? '').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 190);
   if (slug) post.slug = slug;
   if (status === 'future') {
@@ -183,6 +195,8 @@ export async function handleBlogPublish(req: Request, env: Env): Promise<Respons
     remoteId: r.data.id,
     url: typeof r.data.link === 'string' ? r.data.link : '',
     state: status === 'future' ? 'scheduled' : status === 'draft' ? 'draft' : 'live',
-    message: status === 'future' ? 'Scheduled on WordPress.' : 'Published to WordPress.',
+    message: `${status === 'future' ? 'Scheduled on WordPress.' : 'Published to WordPress.'}${picturesNote(pics) ? ` ${picturesNote(pics)}` : ''}`,
+    pictures: { sent: pics.sent, failed: pics.failed, featuredMedia: pics.featuredMedia, note: picturesNote(pics) },
+    partial: pics.failed.length > 0,
   });
 }

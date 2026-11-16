@@ -104,6 +104,32 @@ keep "project"; so does a video project in AI Video Studio, and the nav's
 - Inbox replies run for every running project's workspace, not only those
   with their own key (replyTick.ts).
 
+## Blog posts: structure, free photos, WordPress (2026-11-15)
+
+- **Structure** (`blogPostPrompt` in lib/autopilotWrite.ts; the browser writer
+  in services/blogWriter.ts carries the same rules): title under 60 characters
+  with the main phrase, `metaDescription` 140-160, an opening that answers the
+  search in two or three sentences, `##`/`###` sections, short paragraphs and
+  lists, `## Key takeaways`, `## Frequently asked questions` (3-4 `###`
+  questions; omitted for the `qa` shape), a closing next step. **No figures**:
+  statistics, percentages, studies, quotes, prices only when the brand block has
+  them — the owner's complaint. `AI_TELLS` names the banned phrases.
+- **Pictures, zero AI calls** (lib/blogPictures.ts): the writer returns 2-3
+  `imageQueries`; `illustratePost` searches Openverse (lib/freePhotos.ts, the
+  same CC0/PDM rule and `OPENVERSE_BASE` as media.ts `photo_search`), keeps a
+  cover and up to two inline photos (stored on the post as `images`, served at
+  `${APP_ORIGIN}/api/media.php?photo=<id>`), and puts the inline ones after the
+  first paragraph under an H2 — never under takeaways or the FAQ — with a credit
+  line. Openverse down or empty: the post is saved without pictures and the
+  run's detail says why. /blog-automation's draft preview shows them.
+- **WordPress** (`sendPicturesToWordPress`, lib/publishTarget.ts, used by both
+  `publishPost` and blog-publish.php): each picture of ours (data URL or
+  media.php photo) is uploaded to `/wp/v2/media` with its alt text, the cover
+  becomes `featured_media`, the post's `src` points at WordPress's copy. A
+  re-publish finds the copy by a hash in the filename. A refused upload never
+  fails the post — it is reported as partial. The export bundle already writes
+  images as files. Tests: `test:blogimages`, `test:blogpublish`.
+
 ## The 12-Month Marketing Plan
 
 The dashboard's **Start AI setup** opens `/autopilot?new=1&solution=marketing-plan`

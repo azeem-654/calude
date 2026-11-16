@@ -203,6 +203,8 @@ export default function PublishDesk({ project }: Props) {
       upsertPublishJob(current);
       bump();
       if (r.error) addNotification(`"${r.post?.title ?? 'A post'}" was not published: ${r.error}`, 'error');
+      /* Published, but a picture did not make it — partial, and said so. */
+      else if (r.note) addNotification(`"${r.post?.title ?? 'A post'}" is live. Pictures: ${r.note}`, 'info');
     }
 
     running.current = false;
@@ -453,6 +455,14 @@ export default function PublishDesk({ project }: Props) {
               </>
             )}
           </div>
+
+          {/* Said here because each destination treats pictures differently, and
+              finding out after a month is published is the expensive way. */}
+          <p style={{ margin: '10px 0 0', fontSize: 11.5, color: MUTED, lineHeight: 1.55 }}>
+            {target.kind === 'wordpress'
+              ? 'Pictures: the cover becomes the post’s featured image and every picture in the article is uploaded to your WordPress media library, with its alt text. The WordPress user needs to be an Author or above to upload; a picture that cannot be uploaded is reported and the post still goes up.'
+              : 'Pictures: every image is written into the bundle as its own file, and each page points at it.'}
+          </p>
 
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             <button onClick={() => void saveAndConnect()} disabled={busy === 'connect'} className="press" style={primary()}>
