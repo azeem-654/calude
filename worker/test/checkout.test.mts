@@ -16,6 +16,7 @@ import {
   type Discount, type ShippingRate, type TaxRate,
 } from '../src/lib/checkout';
 import { stripe } from '../src/lib/payments/stripe';
+import { creem } from '../src/lib/payments/creem';
 import { PLAN_CURRENCY } from '../src/lib/allowances';
 
 const out: string[] = [];
@@ -247,6 +248,37 @@ const tax = (over: Partial<TaxRate> = {}): TaxRate => ({
   ok('a price id handed in is never sent', !q.has('line_items[0][price]'), sent[0]);
   ok('the line item is the plan\'s amount in dollars',
     q.get('line_items[0][price_data][unit_amount]') === '29700' && q.get('line_items[0][price_data][currency]') === 'usd', sent[0]);
+}
+
+/* ── Creem: what its webhook events mean (shapes as Creem sends them) ── */
+{
+  const ev = (eventType: string, object: Record<string, unknown>) => creem.readEvent(JSON.stringify({ id: 'evt_c1', eventType, object }))!;
+  const sub = { id: 'sub_1', customer: { id: 'cust_1' }, product: { price: 9700, currency: 'USD' }, metadata: { accountId: 'ws1' } };
+
+  const plain = ev('subscription.paid', { ...sub, last_transaction_id: 'tran_1' });
+  ok('a Creem renewal names the workspace from its metadata', plain.kind === 'paid' && plain.reference === 'ws1', JSON.stringify(plain));
+  ok('…counts as a subscription payment at the plan price', plain.subscriptionPayment === true && plain.amountCents === 9700 && plain.currency === 'USD', JSON.stringify(plain));
+  ok('…and keeps the transaction id a refund will name', plain.paymentRef === 'tran_1', JSON.stringify(plain));
+
+  const taxed = ev('subscription.paid', { ...sub, last_transaction: { id: 'tran_2', amount: 9700, amount_paid: 11543, tax_amount: 1843, currency: 'USD' } });
+  ok('VAT Creem collects is not revenue: a taxed $97 still reads as $97', taxed.amountCents === 9700 && taxed.paymentRef === 'tran_2', JSON.stringify(taxed));
+  const coupon = ev('subscription.paid', { ...sub, last_transaction: { id: 't', amount: 9700, amount_paid: 4850, tax_amount: 0, currency: 'USD' } });
+  ok('a discounted payment counts what was paid', coupon.amountCents === 4850, JSON.stringify(coupon));
+
+  ok('a renewal that failed puts the subscription behind, not the checkout',
+    (() => { const e = ev('subscription.past_due', sub); return e.kind === 'failed' && !e.checkout && e.reference === 'ws1'; })());
+  ok('a cancellation at the end of a paid period ends nothing yet',
+    ev('subscription.canceled', { ...sub, status: 'scheduled_cancel' }).kind === 'other');
+  ok('a cancellation that took effect ends it', ev('subscription.canceled', { ...sub, status: 'canceled' }).kind === 'cancelled');
+  ok('an expired subscription ends it', ev('subscription.expired', sub).kind === 'cancelled');
+
+  const done = ev('checkout.completed', { id: 'ch_1', request_id: 'ws1', order: { id: 'ord_1', amount: 9700, amount_paid: 11543, tax_amount: 1843, currency: 'USD' }, metadata: { accountId: 'ws1' } });
+  ok('a completed Creem checkout is paid, named by request_id, net of tax', done.kind === 'paid' && done.reference === 'ws1' && done.amountCents === 9700, JSON.stringify(done));
+  ok('…and is not itself a subscription payment (its subscription.paid is)', !done.subscriptionPayment);
+
+  const refund = ev('refund.created', { id: 'ref_1', refund_amount: 9700, transaction: { id: 'tran_1', amount: 9700 } });
+  ok('a Creem refund names the transaction it reverses', refund.kind === 'refunded' && refund.paymentRef === 'tran_1' && refund.reversal?.reversedCents === 9700, JSON.stringify(refund));
+  ok('…and names no workspace, so it cancels nobody\'s plan by itself', refund.reference === '');
 }
 
 console.log(out.join('\n'));

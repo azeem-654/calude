@@ -191,6 +191,25 @@ async function orderProduct(key: string, ctx: ProviderContext, currency: string)
   return { id: made.data.id, error: '', steps: [] };
 }
 
+/** A Creem order or transaction, as far as the money in it goes. */
+interface Txn { id?: string; amount?: number; amount_paid?: number; tax_amount?: number; currency?: string }
+
+/**
+ * What the seller earned on a payment, in minor units.
+ *
+ * Creem is the merchant of record and adds the buyer's sales tax or VAT on
+ * top of a product's price. The tax is Creem's to remit, not the operator's
+ * revenue: counted in, a $97 plan paid from Germany read as $115.43 — no plan
+ * has that price, and an affiliate's 40% would have been paid on the VAT.
+ * `amount_paid` less `tax_amount` is what was actually paid for the plan,
+ * after any discount; `amount` is the fallback when only that is given.
+ */
+function netOf(t: Txn): number {
+  const tax = Number(t.tax_amount ?? 0) || 0;
+  if (typeof t.amount_paid === 'number') return Math.max(0, t.amount_paid - tax);
+  return Number(t.amount ?? 0) || 0;
+}
+
 export const creem: PaymentProvider = {
   id: 'creem',
   label: 'Creem',
@@ -402,9 +421,9 @@ export const creem: PaymentProvider = {
       id?: string;
       eventType?: string;
       object?: {
-        id?: string; request_id?: string; metadata?: Record<string, string>; order?: { id?: string; amount?: number; currency?: string };
+        id?: string; request_id?: string; metadata?: Record<string, string>; order?: Txn;
         customer?: { id?: string; email?: string } | string; product?: { price?: number; currency?: string };
-        last_transaction?: { id?: string; amount?: number; currency?: string };
+        last_transaction?: Txn; last_transaction_id?: string; status?: string;
         transaction?: { id?: string; amount?: number } | string; refund_amount?: number; amount?: number;
       };
     };
@@ -420,18 +439,36 @@ export const creem: PaymentProvider = {
      * twice.
      */
     if (ev.eventType === 'subscription.paid') {
-      const amount = Number(o.last_transaction?.amount ?? o.product?.price ?? 0);
+      const amount = o.last_transaction ? netOf(o.last_transaction) : Number(o.product?.price ?? 0);
       return {
         kind: 'paid', reference: String(o.metadata?.accountId || o.request_id || ''), sessionId: String(o.id ?? ''),
         eventId: String(ev.id ?? ''), amountCents: amount,
         currency: String(o.last_transaction?.currency ?? o.product?.currency ?? '').toUpperCase(),
         subscriptionPayment: amount > 0,
         customerId,
-        paymentRef: String(o.last_transaction?.id ?? ''),
+        /* Creem's subscription carries `last_transaction_id`, and only
+           sometimes the expanded `last_transaction`. Reading the object alone
+           stored no payment ref, so a refund — which names the transaction —
+           never found the commission it should reverse (M-5). */
+        paymentRef: String(o.last_transaction?.id || o.last_transaction_id || ''),
+      };
+    }
+    /* A renewal that could not be charged. Creem retries it; until then the
+       subscription is behind, not ended — `expired` follows if it never pays. */
+    if (ev.eventType === 'subscription.past_due') {
+      return {
+        kind: 'failed', reference: String(o.metadata?.accountId || o.request_id || ''), sessionId: String(o.id ?? ''),
+        eventId: String(ev.id ?? ''), customerId,
       };
     }
     /* A subscription that has ended: cancelled now, or at the end of a
-       period already paid for (Creem sends `expired` then). */
+       period already paid for (Creem sends `expired` then). A cancellation
+       that only takes effect at the period's end arrives with status
+       `scheduled_cancel`: the subscriber has paid up to that date, so it
+       ends nothing yet — the event that ends it comes when the period does. */
+    if (ev.eventType === 'subscription.canceled' && o.status === 'scheduled_cancel') {
+      return { kind: 'other', reference: '', sessionId: String(o.id ?? ''), eventId: String(ev.id ?? ''), customerId };
+    }
     if (ev.eventType === 'subscription.canceled' || ev.eventType === 'subscription.expired') {
       return {
         kind: 'cancelled', reference: String(o.metadata?.accountId || o.request_id || ''), sessionId: String(o.id ?? ''),
@@ -467,7 +504,7 @@ export const creem: PaymentProvider = {
     return {
       kind, reference, sessionId, eventId: String(ev.id ?? ''), customerId,
       ...(reversal ? { reversal, paymentRef: txn } : {}),
-      amountCents: typeof o.order?.amount === 'number' ? o.order.amount : undefined,
+      amountCents: typeof o.order?.amount === 'number' || typeof o.order?.amount_paid === 'number' ? netOf(o.order!) : undefined,
       currency: o.order?.currency ? String(o.order.currency).toUpperCase() : undefined,
     };
   },

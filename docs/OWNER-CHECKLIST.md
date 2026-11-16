@@ -52,7 +52,7 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 | 19 | **Set your kickoff-call booking link**, signed in as azeem@protectedcentral.com: Workspace → **Sign-ups & trials** → Kickoff call & welcome → paste a booking page (your own under Booking pages, or any calendar link) → Save | app.protectedcentral.com | The "Book a free kickoff call" button on every trial customer's trial bar, help card and welcome message. Until it is set those buttons are simply not shown |
 | 20 | **Read the onboarding emails and pick your digest hour**, signed in as azeem@protectedcentral.com: Workspace → Sign-ups & trials → *Onboarding emails* (the day 1, 3 and 5 wording — they are on by default) and *Daily digest* (the hour, in your own time zone, and where it goes) → Save. Press *Send me today's digest now* to see one | app.protectedcentral.com | Both send from the mailbox in item 15; until it validates, nothing goes |
 
-| 19 | **Send renewal and cancellation events to the app** — in Stripe → Developers → Webhooks → your endpoint for `/api/billing-webhook.php`, add the events **`invoice.paid`**, **`invoice.payment_failed`** and **`customer.subscription.deleted`** (keep `checkout.session.completed`). On Creem, add **`subscription.paid`**, **`subscription.canceled`** and **`subscription.expired`** | Stripe or Creem dashboard | The plan a customer paid for (since 2026-10-02 a payment sets it — Agency's 12 sub-accounts, Network's unlimited — and a cancellation ends it), and the affiliate program's commissions on every renewal. Without them only the first sign-up is seen, and a cancelled customer keeps their plan |
+| 19 | **Send renewal and cancellation events to the app** — in Stripe → Developers → Webhooks → your endpoint for `/api/billing-webhook.php`, add the events **`invoice.paid`**, **`invoice.payment_failed`** and **`customer.subscription.deleted`** (keep `checkout.session.completed`). On Creem, add **`subscription.paid`**, **`subscription.canceled`**, **`subscription.expired`** and **`subscription.past_due`** (or all events — step 4 below) | Stripe or Creem dashboard | The plan a customer paid for (since 2026-10-02 a payment sets it — Agency's 12 sub-accounts, Network's unlimited — and a cancellation ends it), and the affiliate program's commissions on every renewal. Without them only the first sign-up is seen, and a cancelled customer keeps their plan |
 | 19a | **Stripe only: switch on the customer portal once** — Stripe → Settings → Billing → **Customer portal** → **Save** (the defaults are fine). Creem needs nothing | Stripe dashboard | "Manage billing & payment method" on a subscriber's Plan & billing screen: changing a card, seeing invoices, cancelling. Until it is saved, Stripe refuses and the screen says so |
 | 20 | **Pay affiliates once a month** — Affiliate program → Manage program shows what is payable and where each affiliate wants paying; pay them, then press **Mark paid** | app.protectedcentral.com/affiliate | Affiliates being paid. The app records commissions; it never sends money |
 | 21 | **Have the lawyer read the Affiliate Program Terms** too (`/affiliate-terms`, from `AFFILIATE_TERMS` in legalText.ts) | a lawyer | The program's promises being exactly what you mean |
@@ -395,17 +395,51 @@ expires and a captured delivery stays valid for ever.
 
 ### 4. Connect Creem, so the app can charge its subscribers
 
-**Settings → Billing → How this app is paid.** Only the install owner sees this
-panel, because it decides who gets paid for everybody.
+**Not done yet (2026-11-16).** Until it is, Advanced/Scale checkout says the
+owner has not connected a processor (or falls back to the deployment's Stripe
+key, if one is set), and no subscription money reaches you.
 
-1. creem.io → Developers → API keys. `creem_test_…` is the sandbox key and only
-   takes test payments; the live key takes real ones.
-2. Paste it, **Save**, then **Test**. A green tick means Creem accepted it.
-3. Copy the webhook address the panel shows. In Creem, add an endpoint for it
-   listening for `checkout.completed`, and paste the signing secret back.
+**A. In Creem (creem.io dashboard), switched to *Live* — not Test mode:**
 
-Until this is done the app falls back to the Stripe key set on the deployment
-itself, and the panel says so — that works, but nobody chose it.
+1. Finish **store activation**: business details, identity check and the payout
+   bank account. Creem reviews the store; until it is approved a live key does
+   not take real payments. This is Creem's step and only you can do it.
+2. **Developers → API keys** → copy the **live** key (`creem_…`, *not*
+   `creem_test_…` — that one only takes test payments, and the panel then shows
+   "· test mode").
+3. **Developers → Webhooks → Add endpoint**, address
+   `https://app.protectedcentral.com/api/billing-webhook.php` (the panel below
+   shows the same one, with a Copy button). If Creem asks which events, choose
+   all, or at least `checkout.completed`, `subscription.paid`,
+   `subscription.canceled`, `subscription.expired`, `subscription.past_due`,
+   `refund.created`, `dispute.created`. Copy its **signing secret**. Webhooks
+   are separate in Test and Live mode: the live one is the one that counts.
+4. **Do not create products by hand.** The app makes Advanced and Scale
+   (monthly and yearly) in your Creem catalogue itself, the first time each is
+   bought, at the prices in `lib/allowances.ts`, and reuses them after that.
+
+**B. In the app, signed in as azeem@protectedcentral.com on
+app.protectedcentral.com → Settings → Billing → How this app is paid:**
+
+1. Pick **Creem**, paste the live key and the signing secret, **Save**, then
+   **Test**. A green tick without "· test mode" means it is live.
+2. Do one real purchase of Advanced with your own card, from a second account
+   (not the owner one), and refund it in Creem afterwards. That proves the whole
+   loop: the checkout opens, the plan turns on in the app, the product appears
+   in Creem, and the refund is matched. Doing it on testing.protectedcentral.com
+   first with a `creem_test_` key and Creem's test card is the safe rehearsal —
+   testing has its own database, so connect it there separately.
+
+What the webhook does with each event (`lib/payments/creem.ts`, tested in
+`npm run test:checkout`): `checkout.completed`/`subscription.paid` turn the
+plan on, a renewal earns the affiliate commission, `subscription.past_due`
+marks it behind, `subscription.canceled` (once it takes effect) or `expired`
+ends it, and a refund or dispute reverses its commission. Amounts are read net
+of the VAT/sales tax Creem adds, since that is Creem's to remit, not revenue.
+
+**Prices and tax:** Creem adds tax on top of the product price by default, so a
+European buyer pays $97 + VAT. If you would rather the $97 include tax, set the
+products to tax-inclusive in Creem after they have been created.
 
 **Creem bills in USD or EUR only.** A plan priced in anything else is refused
 when you try to charge it, by name.
