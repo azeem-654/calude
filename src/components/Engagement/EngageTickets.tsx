@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react';
 import { Loader, Send, Lock } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { getTicket, replyToTicket, setTicket, type Ticket } from '../../services/engagement';
+import { chatFileUrl, getTicket, replyToTicket, setTicket, type Ticket } from '../../services/engagement';
 
 const INK = '#0f172a';
 const MUTED = '#64748b';
@@ -32,18 +32,23 @@ export default function EngageTickets({ tickets, onChange }: { tickets: Ticket[]
   const [openId, setOpenId] = useState('');
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [messages, setMessages] = useState<{ role: string; author: string; body: string; internal: number; createdAt: string }[]>([]);
+  const [pictures, setPictures] = useState<string[]>([]);
   const [draft, setDraft] = useState('');
   const [internal, setInternal] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!openId) { setDetail(null); setMessages([]); return; }
+    if (!openId) { setDetail(null); setMessages([]); setPictures([]); return; }
     let alive = true;
     void (async () => {
       const r = await getTicket(openId);
       if (!alive || !r.success) return;
       setDetail((r.ticket ?? null) as Record<string, unknown> | null);
       setMessages((r.messages ?? []) as typeof messages);
+      /* A reported problem's screenshots (lib/problemReport.ts). */
+      const ids = ((r as { pictures?: { id: string }[] }).pictures ?? []).map(p => p.id);
+      const urls = await Promise.all(ids.map(id => chatFileUrl(id).catch(() => '')));
+      if (alive) setPictures(urls.filter(Boolean));
     })();
     return () => { alive = false; };
   }, [openId]);
@@ -119,6 +124,15 @@ export default function EngageTickets({ tickets, onChange }: { tickets: Ticket[]
               <p style={{ fontSize: 13.5, color: INK, lineHeight: 1.65, whiteSpace: 'pre-wrap', margin: '0 0 12px' }}>
                 {String(detail.body)}
               </p>
+            )}
+            {pictures.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '0 0 12px' }} aria-label="Screenshots sent with this ticket">
+                {pictures.map((src, i) => (
+                  <a key={i} href={src} target="_blank" rel="noopener noreferrer" title="Open the full picture">
+                    <img src={src} alt={`Screenshot ${i + 1} sent with this ticket`} style={{ width: 120, height: 80, objectFit: 'cover', objectPosition: 'top', borderRadius: 9, border: `1px solid ${LINE}` }} />
+                  </a>
+                ))}
+              </div>
             )}
             {!!detail.ai_summary && (
               <p style={{ fontSize: 12.5, color: MUTED, background: '#f8fafc', border: `1px solid ${LINE}`, borderRadius: 11, padding: '10px 12px', margin: '0 0 14px', lineHeight: 1.6 }}>

@@ -83,8 +83,13 @@ screen, counts and listing business workspaces stay — that is how support
 shows somebody where to go. The wizard's Protron (New business workspace) is
 not the floating panel and is unchanged.
 
-**Report a problem** is *not* incubated — it is on both sites (see
-`docs/claude/protron.md`).
+Since 2026-11-15 (owner: "remove only the floating Protron from the live
+site") the floating Protron is not drawn at all where this is off — App.tsx
+mounts it only with `protron-acts` on. On live, its support answers are the
+help button's Live chat and its Report a problem is the help button's.
+
+**Report a problem** is *not* incubated — it is on both sites, now on the help
+button (see `docs/claude/platform.md`).
 
 Before release: the owner decides Protron should build again on live; the
 pure tests P14 (support) and P13 (hands) still pass.

@@ -214,11 +214,34 @@ the monitor and the route on SQLite).
 
 ## Support — the help button, tickets and live help
 
-**Report a problem** (2026-11-14) is the one exception to "one support
-system": the owner asked for it by email. Protron's button sends the
-customer's words and a screenshot to support@ with a copy to azeem654@gmail.com
-as attachments through `deliver` — details in `docs/claude/protron.md`. It
-stores nothing; with no mailbox it says so and points at the ticket.
+**Report a problem** (2026-11-14, reworked 2026-11-15) is a ticket first and
+an email second (`lib/problemReport.ts`). It is an option on the help widget
+(`report`, shown wherever `ticket` is): signed in inside the app the widget
+calls `window.ProtectedCentralReport.open()` (`shared/ReportProblemHost.tsx`,
+mounted in App.tsx), which opens the screenshot sheet
+(`Protron/ReportProblem.tsx` → `/api/support-report.php`, session +
+canAccess, ticket in the house widget's workspace); anywhere else the widget's
+own form (email, description, up to 3 chosen or pasted screenshots) posts
+`engage.php report`, a ticket in that widget's workspace. Either way: category
+`problem`, priority high, source `report`, pictures in `crm_chat_files` with
+`conversation_id` = the ticket id (the public `file` action cannot reach them;
+the business sees them in the ticket, `engagement.php ticket` → `pictures`).
+On the house widget it is also mailed to support@ with a copy to
+azeem654@gmail.com, pictures as attachments through `deliver`; no mailbox no
+longer fails a report — the ticket is saved and the answer says so.
+`CornerHelp` offers it too.
+
+**Check ticket status** (was "Check a ticket", 2026-11-15) finds tickets by
+who somebody is, not by a reference (`lib/ticketLookup.ts`): signed in on this
+origin, `engage.php my_tickets` lists the session email's tickets at once;
+anybody else types their email, `ticket_code` mails a six-digit code (only to
+an address that has tickets there; same answer either way; 3 per 15 min) and
+`my_tickets` with email + code lists them (migration 0100: hashed, 15 min, dead
+after five wrong guesses, per workspace). An address alone never lists
+anything. Tickets raised in this browser are listed straight away, and the
+reference + key still work — and are offered — when no mailbox can send the
+code. `npm run test:supportwidget` (API and browser at 390/1280, BASE/PERSIST/
+SHOTS).
 
 Protected Central answers its own customers with its own Customer Engagement
 module; there is no second support system. The round button in the app's
@@ -277,7 +300,8 @@ drawn where unsupported; who is talking from `getStats` audio levels) —
 
 The widget's launcher reads "Help" (with a green dot only when `online`) and
 opens a home panel listing exactly the enabled features (`homeOptions`: "Start
-an online call", "Share your screen with us", "Live chat", "Submit a ticket"),
+an online call", "Share your screen with us", "Live chat", "Report a problem",
+"Submit a ticket", "Check ticket status", the booking link),
 also read by the marketing-site teaser (`data-pc-teaser`, ≥720px wide): a
 see-through frosted card above the launcher on **every page load** (closing it
 hides it for that page only — nothing about a dismissal is remembered), back
@@ -310,7 +334,11 @@ prose about what ships — never a copied number. A customer's widget never gets
 them. It answers only once an AI key is set (Platform services); until then the
 fallback names support@. Migration 0086 set the house widget to chat, ticket
 and `meeting` with `booking_slug = 'strategy-call'` (call and screen share off,
-the owner's request); widget.js names that option "Book a strategy call".
+the owner's request); widget.js names that option "Book a strategy call". Since 2026-11-15 the
+facts also carry **WHERE THINGS ARE IN THE APP** (menu names and addresses —
+what the floating Protron used to show on live) and the style rules send a
+fault to "Report a problem"; widget.js turns http(s) addresses in a reply into
+links (`linked`, text nodes only).
 
 **It talks like a person, and never pretends to be one** (2026-11-08). The
 house widget's config carries `natural: true` (a customer's widget never), and

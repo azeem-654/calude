@@ -397,7 +397,12 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
        ticket, and a screen that shows it teaches people to paste it around. */
     const row = t as Record<string, unknown>;
     delete row.guest_key;
-    return json({ success: true, ticket: row, messages: results ?? [] });
+    /* A reported problem's screenshots are kept beside its ticket
+       (lib/problemReport.ts) and fetched one by one through `file`. */
+    const { results: pics } = await env.DB.prepare(
+      'SELECT id, mime, size FROM crm_chat_files WHERE conversation_id = ? AND account_id = ? ORDER BY created_at ASC LIMIT 8',
+    ).bind(s(d.id, 80), accountId).all();
+    return json({ success: true, ticket: row, messages: results ?? [], pictures: pics ?? [] });
   }
 
   if (act === 'ticket_reply') {

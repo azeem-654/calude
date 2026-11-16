@@ -508,6 +508,18 @@ widget draws Protron's face on the assistant's greeting.
   customer to use the Help button's ticket; one copy failing → "partial".
   The Gmail copy's address is never shown to the customer.
 
+### 2026-11-15 — no floating Protron on live
+
+Owner: "remove only the floating Protron from the live site, and move the
+capacity of Protron into the start live chat button". App.tsx mounts
+`<Protron />` only where `protron-acts` is on (the testing site, localhost):
+on live the floating panel is gone. What it did there moved to the help
+widget — its answers are the widget's Live chat (the house agent *is*
+Protron, with `houseFacts` now naming every screen and its address), and its
+**Report a problem** is a widget option opening the same sheet through
+`shared/ReportProblemHost.tsx` (`docs/claude/platform.md`). The wizard's
+Protron is unchanged.
+
 ### The 2026-11-15 brief — the true bot everywhere, quicker replies
 
 - **ProtronHero** (`Protron/ProtronHero.tsx`, `.pth-*` in protron.css): the

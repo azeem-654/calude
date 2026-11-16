@@ -125,6 +125,7 @@
     screen: ['M2 4h20v12H2z', 'M8 20h8', 'M12 16v4'],
     ticket: ['M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4z'],
     search: ['M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z', 'M21 21l-4.3-4.3'],
+    bug: ['M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z', 'M12 9v4', 'M12 17h.01'],
     calendar: ['M3 5h18v16H3z', 'M16 3v4', 'M8 3v4', 'M3 10h18'],
     back: ['M15 18l-6-6 6-6'],
     close: ['M18 6L6 18', 'M6 6l12 12'],
@@ -164,10 +165,11 @@
       screen: 'Share your screen',
       voice: 'Online call',
       ticket: 'Submit a ticket',
-      status: 'Check a ticket',
+      report: 'Report a problem',
+      status: 'Check ticket status',
     };
     headTitle.textContent = titles[view] || 'Help';
-    ({ home: homeView, chat: chatView, screen: screenView, voice: voiceView, ticket: ticketView, status: statusView }[view] || homeView)();
+    ({ home: homeView, chat: chatView, screen: screenView, voice: voiceView, ticket: ticketView, report: reportView, status: statusView }[view] || homeView)();
   }
 
   function onlyChat() { return state.features.length === 1 && has('chat'); }
@@ -196,10 +198,24 @@
       });
     }
     if (has('screen')) o.push({ key: 'screen', view: 'screen', label: 'Share your screen with us', hint: 'Show us the problem and we talk you through it' });
-    if (has('chat')) o.push({ key: 'chat', view: 'chat', label: 'Live chat', hint: state.agent ? 'Answered straight away, a person when needed' : 'Write to us here and we reply here' });
+    if (has('chat')) {
+      o.push({
+        key: 'chat', view: 'chat', label: 'Live chat',
+        hint: state.agent ? 'Answered straight away by ' + (state.agent.name || 'our assistant') + (natural() ? ', our AI assistant' : '') + ' — a person when needed'
+          : 'Write to us here and we reply here',
+      });
+    }
+    /* Report a problem is a ticket with a screenshot, for the moment
+       something is broken or they are stuck (owner, 2026-11-15) — it was
+       Protron's button, and is here now the floating Protron is not on live.
+       Submit a ticket stays for a question or a request. */
     if (has('ticket')) {
-      o.push({ key: 'ticket', view: 'ticket', label: 'Submit a ticket', hint: 'Tell us what happened — we reply by email' });
-      o.push({ key: 'search', view: 'status', label: 'Check a ticket', hint: 'See where one you raised has got to' });
+      o.push({ key: 'bug', view: 'report', label: 'Report a problem', hint: 'Something not working, or stuck? Send us a screenshot' });
+      o.push({ key: 'ticket', view: 'ticket', label: 'Submit a ticket', hint: 'A question or a request — we reply by email' });
+      o.push({
+        key: 'search', view: 'status', label: 'Check ticket status',
+        hint: SAME_ORIGIN && KNOWN.email ? 'Your tickets and our replies, from your account' : 'See our replies — by the email you wrote from',
+      });
     }
     if (has('meeting') && cfg.bookingSlug) {
       o.push({
@@ -415,6 +431,27 @@
     return p;
   }
 
+  /* Addresses in a reply become links — the assistant names the screen to
+     open ("Settings → Email & SMS setup (https://…)"). Built from text nodes
+     and an <a> whose href is only ever http(s): a reply is still never HTML. */
+  function linked(text) {
+    var frag = document.createDocumentFragment();
+    var re = /https?:\/\/[^\s<>"'()]*[^\s<>"'().,;:!?]/g;
+    var at = 0, m;
+    while ((m = re.exec(text))) {
+      if (m.index > at) frag.appendChild(document.createTextNode(text.slice(at, m.index)));
+      var a = el('a', 'color:inherit;text-decoration:underline;word-break:break-all;', m[0]);
+      a.href = m[0];
+      var here = false;
+      try { here = new URL(m[0]).origin === window.location.origin; } catch (e) { /* left as a new tab */ }
+      if (!here) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+      frag.appendChild(a);
+      at = m.index + m[0].length;
+    }
+    if (at < text.length) frag.appendChild(document.createTextNode(text.slice(at)));
+    return frag;
+  }
+
   function bubble(role, text, attachments, tickState) {
     if (!log) return null;
     var mine = role === 'visitor';
@@ -424,7 +461,8 @@
       mine
         ? 'align-self:flex-end;background:' + accent() + ';color:#fff;'
         : 'align-self:flex-start;background:#f1f3f7;color:#0f172a;',
-    ].join(''), text || null);
+    ].join(''), mine ? (text || null) : null);
+    if (!mine && text) b.appendChild(linked(text));
     if (attachments && attachments.length) {
       if (!text) b.style.padding = '4px';
       attachments.forEach(function (a) { b.appendChild(thumb(a)); });
@@ -931,14 +969,12 @@
       }).then(function (r) {
         go.disabled = false; go.textContent = 'Send ticket';
         if (!r.success) { out.textContent = r.message || r.error || 'That could not be sent.'; return; }
-        var list = savedTickets();
-        list.unshift({ ref: r.reference, key: r.guestKey, subject: subject.value });
-        try { window.localStorage.setItem(TICKETS, JSON.stringify(list.slice(0, 10))); } catch (x) { /* shown below either way */ }
+        rememberTicket(r.reference, r.guestKey, subject.value);
         while (body.firstChild) body.removeChild(body.firstChild);
         var done = el('div', 'padding:18px;display:flex;flex-direction:column;gap:10px;');
         done.appendChild(el('div', 'font-size:16px;font-weight:800;color:#0f172a;', 'Ticket ' + r.reference + ' raised'));
         done.appendChild(el('div', 'font-size:13.5px;color:#334155;line-height:1.55;',
-          'We will reply by email. To look it up here later you need the reference and this key — this browser remembers both, but keep a copy:'));
+          'We will reply by email. Follow it any time under Check ticket status with your email address. The reference and key also open it:'));
         done.appendChild(el('div', 'font-family:ui-monospace,monospace;font-size:12.5px;padding:10px;border-radius:10px;background:#f1f3f7;color:#0f172a;word-break:break-all;',
           r.reference + '  ·  ' + r.guestKey));
         var again = el('button', BTN + 'justify-content:center;', 'Back');
@@ -951,49 +987,324 @@
     (KNOWN.name ? subject : name).focus();
   }
 
-  function statusView() {
-    var f = formWrap();
-    var list = savedTickets();
-    var ref = el('input', FIELD + 'text-transform:uppercase;'); ref.value = list[0] ? list[0].ref : '';
-    var key = el('input', FIELD + 'font-family:ui-monospace,monospace;'); key.value = list[0] ? list[0].key : '';
-    if (list.length > 1) {
-      var pick = el('select', FIELD);
-      list.forEach(function (t, i) {
-        var o = el('option', '', t.ref + (t.subject ? ' — ' + t.subject : ''));
-        o.value = String(i);
-        pick.appendChild(o);
-      });
-      pick.onchange = function () { var t = list[Number(pick.value)]; ref.value = t.ref; key.value = t.key; };
-      f.appendChild(labelled('Tickets from this browser', pick));
+  /* ── Report a problem ──────────────────────────────────────────────────
+   *
+   * Signed in inside the app, the app's own sheet does it better — it takes a
+   * screenshot of the screen they were on (the page registers
+   * ProtectedCentralReport; shared/ReportProblemHost.tsx). Anywhere else this
+   * form: what went wrong, the screenshots they choose or paste, and an email
+   * to reply to. Either way it becomes a ticket they can follow under Check
+   * ticket status.
+   */
+  var MAX_OWN_PICS = 3;
+
+  function appReport() {
+    var r = window.ProtectedCentralReport;
+    return SAME_ORIGIN && KNOWN.email && r && typeof r.open === 'function' ? r : null;
+  }
+
+  function rememberTicket(ref, key, subject) {
+    var list = savedTickets().filter(function (t) { return t.ref !== ref; });
+    list.unshift({ ref: ref, key: key, subject: subject });
+    try { window.localStorage.setItem(TICKETS, JSON.stringify(list.slice(0, 10))); } catch (x) { /* shown on screen either way */ }
+  }
+
+  function reportView() {
+    var app = appReport();
+    if (app) {
+      if (state.open) toggle();
+      app.open();
+      return;
     }
-    f.appendChild(labelled('Reference', ref));
-    f.appendChild(labelled('Key', key));
-    var go = el('button', primary(), 'Look it up'); go.type = 'submit';
-    var out = el('div', 'display:flex;flex-direction:column;gap:8px;');
-    f.appendChild(go); f.appendChild(out);
+    var f = formWrap();
+    f.appendChild(el('div', 'font-size:13px;color:#334155;line-height:1.55;',
+      'Tell us what went wrong, or where you are stuck. A screenshot helps us see it straight away.'));
+    var name = el('input', FIELD); name.value = KNOWN.name; name.autocomplete = 'name';
+    var email = el('input', FIELD); email.type = 'email'; email.value = KNOWN.email; email.autocomplete = 'email';
+    email.setAttribute('data-field', 'report.email');
+    var msg = el('textarea', FIELD + 'resize:vertical;min-height:96px;line-height:1.5;'); msg.rows = 4; msg.maxLength = 4000;
+    msg.setAttribute('data-field', 'report.description');
+    msg.placeholder = 'e.g. I pressed Save on the booking page and nothing happened.';
+    if (!KNOWN.name) f.appendChild(labelled('Your name', name));
+    if (!KNOWN.email) f.appendChild(labelled('Email, so we can reply', email));
+    f.appendChild(labelled('What happened, and what did you expect?', msg));
+
+    var pics = [];
+    var strip = el('div', 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;');
+    strip.setAttribute('data-field', 'report.pictures');
+    var pick = el('input', 'display:none;'); pick.type = 'file'; pick.accept = 'image/*'; pick.multiple = true;
+    var add = el('button', BTN + 'width:auto;padding:8px 11px;font-size:13px;', '+ Add a screenshot'); add.type = 'button';
+    add.onclick = function () { pick.click(); };
+    var out = el('div', 'font-size:12.5px;color:#b42318;line-height:1.5;');
+    function drawPics() {
+      while (strip.firstChild) strip.removeChild(strip.firstChild);
+      pics.forEach(function (p, i) {
+        var t = el('span', 'position:relative;width:56px;height:56px;display:inline-block;');
+        var im = el('img', 'width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid #e6e9f0;');
+        im.src = p; im.alt = 'Screenshot ' + (i + 1);
+        var x = el('button', 'position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:0;background:#0f172a;color:#fff;cursor:pointer;font-size:12px;line-height:20px;padding:0;', '×');
+        x.type = 'button'; x.setAttribute('aria-label', 'Remove screenshot ' + (i + 1));
+        x.onclick = function () { pics.splice(i, 1); drawPics(); };
+        t.appendChild(im); t.appendChild(x); strip.appendChild(t);
+      });
+      if (pics.length < MAX_OWN_PICS) strip.appendChild(add);
+    }
+    function addFiles(files) {
+      out.textContent = '';
+      Array.prototype.slice.call(files).forEach(function (file) {
+        if (pics.length >= MAX_OWN_PICS) { out.textContent = 'Up to ' + MAX_OWN_PICS + ' screenshots.'; return; }
+        shrink(file).then(function (img) {
+          if (pics.length >= MAX_OWN_PICS) return;
+          pics.push(img.data); drawPics();
+        }).catch(function (e) { out.textContent = e.message; });
+      });
+    }
+    pick.onchange = function () { if (pick.files) addFiles(pick.files); pick.value = ''; };
+    msg.addEventListener('paste', function (e) {
+      var files = e.clipboardData && e.clipboardData.files;
+      if (files && files.length && /^image\//.test(files[0].type)) { e.preventDefault(); addFiles(files); }
+    });
+    drawPics();
+    f.appendChild(strip); f.appendChild(pick);
+    f.appendChild(el('div', 'font-size:11.5px;color:#64748b;line-height:1.45;', 'You can paste a screenshot into the box too. Please leave out passwords and card or patient details.'));
+    var go = el('button', primary(), 'Send report'); go.type = 'submit';
+    f.appendChild(out); f.appendChild(go);
     f.onsubmit = function (e) {
       e.preventDefault();
-      while (out.firstChild) out.removeChild(out.firstChild);
-      go.disabled = true;
-      post({ action: 'ticket_status', widgetKey: KEY, ticketRef: ref.value, guestKey: key.value }).then(function (r) {
-        go.disabled = false;
-        if (!r.success || !r.ticket) {
-          out.appendChild(el('div', 'font-size:12.5px;color:#b42318;', r.message || 'We could not find a ticket with that reference and key.'));
+      out.textContent = '';
+      if (msg.value.trim().length < 5) { out.textContent = 'Say what went wrong, or where you are stuck, in a sentence or two.'; msg.focus(); return; }
+      go.disabled = true; go.textContent = 'Sending…';
+      post({
+        action: 'report', widgetKey: KEY, name: name.value, email: email.value || KNOWN.email,
+        description: msg.value, pictures: pics, context: { page: window.location.href },
+      }).then(function (r) {
+        go.disabled = false; go.textContent = 'Send report';
+        if (!r.success) {
+          out.textContent = r.message || r.error || 'That could not be sent.';
+          var bad = r.field && f.querySelector('[data-field="' + r.field + '"]');
+          if (bad && bad.focus) bad.focus();
           return;
         }
-        var t = r.ticket;
-        out.appendChild(el('div', 'font-size:14px;font-weight:800;color:#0f172a;', t.reference + ' — ' + t.subject));
-        out.appendChild(el('div', 'font-size:12.5px;color:#475569;', 'Status: ' + String(t.status).replace(/_/g, ' ')));
-        if (t.resolution) out.appendChild(el('div', 'font-size:13px;color:#0f172a;line-height:1.5;', t.resolution));
-        (r.messages || []).forEach(function (m) {
-          var mine = m.role === 'customer' || m.role === 'visitor';
-          out.appendChild(el('div', 'padding:9px 11px;border-radius:12px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word;'
-            + (mine ? 'background:#f1f3f7;color:#0f172a;' : 'background:' + accent() + '12;color:#0f172a;border:1px solid ' + accent() + '33;'), m.body));
-        });
-        if (!(r.messages || []).length) out.appendChild(el('div', 'font-size:12.5px;color:#64748b;', 'No replies yet.'));
+        var first = msg.value.trim().split('\n')[0].slice(0, 80);
+        rememberTicket(r.reference, r.guestKey, 'Problem: ' + first);
+        while (body.firstChild) body.removeChild(body.firstChild);
+        var done = el('div', 'padding:18px;display:flex;flex-direction:column;gap:10px;');
+        done.appendChild(el('div', 'font-size:16px;font-weight:800;color:#0f172a;', 'Thanks — report ' + r.reference + ' is with us'));
+        done.appendChild(el('div', 'font-size:13.5px;color:#334155;line-height:1.55;',
+          'We reply by email' + ((email.value || KNOWN.email) ? ' to ' + (email.value || KNOWN.email) : '')
+          + '. Follow it any time under Check ticket status, with that email address.'));
+        var see = el('button', BTN + 'justify-content:center;', 'Check ticket status');
+        see.onclick = function () { show('status'); };
+        var back = el('button', BTN + 'justify-content:center;', 'Back');
+        back.onclick = function () { show('home'); };
+        done.appendChild(see); done.appendChild(back);
+        body.appendChild(done);
       });
     };
     body.appendChild(f);
+    (KNOWN.email ? msg : (KNOWN.name ? email : name)).focus();
+  }
+
+  /* ── Check ticket status ─────────────────────────────────────────────────
+   *
+   * By who they are, not by a reference they had to keep (owner,
+   * 2026-11-15). Signed in inside the app: their tickets, at once, from the
+   * session. Anybody else: their email, then a six-digit code we mail to it —
+   * an address alone would let anybody read anybody's support conversations
+   * (lib/ticketLookup.ts). Tickets raised in this browser are listed straight
+   * away, and the reference and key still work where no code can be mailed.
+   */
+  var STATUS_TONE = {
+    open: ['#1d4ed8', '#dbeafe'], in_progress: ['#7c3aed', '#ede9fe'], waiting: ['#b45309', '#fef3c7'],
+    resolved: ['#15803d', '#dcfce7'], closed: ['#475569', '#e2e8f0'],
+  };
+  function statusPill(st) {
+    var t = STATUS_TONE[st] || STATUS_TONE.open;
+    var label = st === 'waiting' ? 'waiting for you' : String(st || 'open').replace(/_/g, ' ');
+    return el('span', 'font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;color:' + t[0] + ';background:' + t[1] + ';text-transform:capitalize;white-space:nowrap;', label);
+  }
+  function when(iso) {
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  }
+  function threadInto(into, t, messages) {
+    if (t.resolution) into.appendChild(el('div', 'font-size:13px;color:#0f172a;line-height:1.5;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:8px 10px;', t.resolution));
+    (messages || []).forEach(function (m) {
+      var mine = m.role === 'customer' || m.role === 'visitor';
+      into.appendChild(el('div', 'padding:9px 11px;border-radius:12px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word;'
+        + (mine ? 'background:#f1f3f7;color:#0f172a;' : 'background:' + accent() + '12;color:#0f172a;border:1px solid ' + accent() + '33;'), m.body));
+    });
+    if (!(messages || []).length && !t.resolution) into.appendChild(el('div', 'font-size:12.5px;color:#64748b;', 'No reply yet — we answer by email, and it shows here too.'));
+  }
+  function ticketCard(t, messages, openNow) {
+    var card = el('div', 'border:1px solid #e6e9f0;border-radius:12px;background:#fff;overflow:hidden;');
+    var head = el('button', 'display:flex;flex-direction:column;gap:4px;width:100%;padding:11px 12px;border:0;background:none;cursor:pointer;text-align:left;font-family:inherit;color:#0f172a;');
+    head.type = 'button';
+    var top = el('span', 'display:flex;align-items:center;justify-content:space-between;gap:8px;');
+    top.appendChild(el('span', 'font-size:12px;font-weight:800;color:#64748b;font-family:ui-monospace,monospace;', t.reference));
+    top.appendChild(statusPill(t.status));
+    head.appendChild(top);
+    head.appendChild(el('span', 'font-size:14px;font-weight:700;line-height:1.35;', t.subject || '(no subject)'));
+    var stamp = when(t.updatedAt || t.createdAt);
+    var n = (messages || []).filter(function (m) { return m.role !== 'customer' && m.role !== 'visitor'; }).length;
+    head.appendChild(el('span', 'font-size:11.5px;color:#64748b;', (stamp ? 'Updated ' + stamp : '') + (n ? ' · ' + n + ' repl' + (n === 1 ? 'y' : 'ies') : '')));
+    var thread = el('div', 'display:none;flex-direction:column;gap:8px;padding:0 12px 12px;');
+    var filled = false;
+    head.onclick = function () {
+      var openIt = thread.style.display === 'none';
+      thread.style.display = openIt ? 'flex' : 'none';
+      if (openIt && !filled) { filled = true; threadInto(thread, t, messages); }
+    };
+    card.appendChild(head); card.appendChild(thread);
+    if (openNow) head.onclick();
+    return card;
+  }
+  function listInto(into, tickets) {
+    while (into.firstChild) into.removeChild(into.firstChild);
+    if (!tickets.length) {
+      into.appendChild(el('div', 'font-size:13px;color:#475569;line-height:1.55;', 'No tickets yet. Report a problem or submit a ticket and it shows here.'));
+      return;
+    }
+    var active = tickets.filter(function (t) { return t.status !== 'resolved' && t.status !== 'closed'; });
+    var done = tickets.filter(function (t) { return t.status === 'resolved' || t.status === 'closed'; });
+    if (active.length) {
+      into.appendChild(el('div', 'font-size:11.5px;font-weight:800;color:#64748b;letter-spacing:.04em;', 'ACTIVE (' + active.length + ')'));
+      active.forEach(function (t, i) { into.appendChild(ticketCard(t, t.messages, i === 0 && active.length === 1)); });
+    }
+    if (done.length) {
+      into.appendChild(el('div', 'font-size:11.5px;font-weight:800;color:#64748b;letter-spacing:.04em;margin-top:4px;', 'RESOLVED (' + done.length + ')'));
+      done.forEach(function (t) { into.appendChild(ticketCard(t, t.messages, false)); });
+    }
+  }
+
+  function statusView() {
+    var wrap = el('div', 'padding:16px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;flex:1;');
+    body.appendChild(wrap);
+    var results = el('div', 'display:flex;flex-direction:column;gap:8px;');
+
+    if (SAME_ORIGIN && KNOWN.email) {
+      wrap.appendChild(el('div', 'font-size:12.5px;color:#64748b;', 'Signed in as ' + KNOWN.email));
+      wrap.appendChild(results);
+      results.appendChild(el('div', 'font-size:13px;color:#64748b;', 'Loading your tickets…'));
+      post({ action: 'my_tickets', widgetKey: KEY }).then(function (r) {
+        if (state.view !== 'status') return;
+        if (r.success && r.signedIn) { listInto(results, r.tickets || []); return; }
+        /* The session did not come through (expired, another tab signed
+           out): the same way as anybody else. */
+        while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
+        visitorStatus(wrap, KNOWN.email);
+      });
+      return;
+    }
+    visitorStatus(wrap, '');
+  }
+
+  function visitorStatus(wrap, presetEmail) {
+    var results = el('div', 'display:flex;flex-direction:column;gap:8px;');
+    var mine = savedTickets();
+    if (mine.length) {
+      wrap.appendChild(el('div', 'font-size:11.5px;font-weight:800;color:#64748b;letter-spacing:.04em;', 'RAISED IN THIS BROWSER'));
+      mine.slice(0, 5).forEach(function (s) {
+        var b = el('button', BTN + 'flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;');
+        b.type = 'button';
+        b.appendChild(el('span', 'font-size:12px;font-weight:800;color:#64748b;font-family:ui-monospace,monospace;', s.ref));
+        b.appendChild(el('span', 'font-size:13.5px;', s.subject || 'Ticket'));
+        b.onclick = function () {
+          b.disabled = true;
+          post({ action: 'ticket_status', widgetKey: KEY, ticketRef: s.ref, guestKey: s.key }).then(function (r) {
+            b.disabled = false;
+            while (results.firstChild) results.removeChild(results.firstChild);
+            if (!r.success || !r.ticket) { results.appendChild(el('div', 'font-size:12.5px;color:#b42318;', r.message || 'That ticket could not be found.')); return; }
+            results.appendChild(ticketCard(r.ticket, r.messages, true));
+          });
+        };
+        wrap.appendChild(b);
+      });
+      wrap.appendChild(results);
+    }
+
+    var f = el('form', 'display:flex;flex-direction:column;gap:10px;margin-top:' + (mine.length ? '6px' : '0') + ';');
+    f.setAttribute('novalidate', '');
+    f.appendChild(el('div', 'font-size:13px;color:#334155;line-height:1.55;',
+      'Enter the email you used when you wrote to us. We email you a six-digit code, and your tickets show here.'));
+    var email = el('input', FIELD); email.type = 'email'; email.autocomplete = 'email'; email.value = presetEmail || '';
+    email.setAttribute('data-field', 'status.email');
+    var code = el('input', FIELD + 'letter-spacing:.3em;font-size:18px;font-weight:800;text-align:center;');
+    code.inputMode = 'numeric'; code.maxLength = 6; code.autocomplete = 'one-time-code'; code.placeholder = '••••••';
+    code.setAttribute('data-field', 'status.code');
+    var codeRow = labelled('The code from the email', code);
+    codeRow.style.display = 'none';
+    var note = el('div', 'font-size:12.5px;line-height:1.5;color:#334155;');
+    var go = el('button', primary(), 'Email me a code'); go.type = 'submit';
+    f.appendChild(labelled('Your email', email));
+    f.appendChild(codeRow); f.appendChild(note); f.appendChild(go);
+    var found = el('div', 'display:flex;flex-direction:column;gap:8px;');
+    var stage = 'email';
+
+    f.onsubmit = function (e) {
+      e.preventDefault();
+      note.style.color = '#334155'; note.textContent = '';
+      go.disabled = true;
+      if (stage === 'email') {
+        post({ action: 'ticket_code', widgetKey: KEY, email: email.value }).then(function (r) {
+          go.disabled = false;
+          if (!r.success) {
+            note.style.color = '#b42318'; note.textContent = r.message || 'That could not be sent.';
+            if (r.code === 'no_mailbox') refForm.style.display = 'flex';
+            return;
+          }
+          stage = 'code';
+          note.textContent = r.message || 'A code is on its way.';
+          codeRow.style.display = 'flex'; go.textContent = 'Show my tickets';
+          code.focus();
+        });
+        return;
+      }
+      post({ action: 'my_tickets', widgetKey: KEY, email: email.value, code: code.value }).then(function (r) {
+        go.disabled = false;
+        if (!r.success) {
+          note.style.color = '#b42318'; note.textContent = r.message || 'That did not work.';
+          if (r.code === 'dead') { stage = 'email'; codeRow.style.display = 'none'; code.value = ''; go.textContent = 'Email me a new code'; }
+          return;
+        }
+        f.style.display = 'none';
+        found.appendChild(el('div', 'font-size:12.5px;color:#64748b;', 'Tickets from ' + r.email));
+        var list = el('div', 'display:flex;flex-direction:column;gap:8px;');
+        found.appendChild(list);
+        listInto(list, r.tickets || []);
+      });
+    };
+    email.oninput = function () {
+      if (stage === 'code') { stage = 'email'; codeRow.style.display = 'none'; go.textContent = 'Email me a code'; }
+    };
+    wrap.appendChild(f); wrap.appendChild(found);
+
+    /* The reference and key from when it was raised — where no code can be
+       mailed, or for somebody who kept them. */
+    var toggleRef = el('button', 'border:0;background:none;color:' + accent() + ';font-size:12.5px;font-weight:700;cursor:pointer;padding:2px 0;text-align:left;font-family:inherit;', 'I have a reference and key instead');
+    toggleRef.type = 'button';
+    var refForm = el('form', 'display:none;flex-direction:column;gap:9px;');
+    refForm.setAttribute('novalidate', '');
+    var ref = el('input', FIELD + 'text-transform:uppercase;');
+    var key = el('input', FIELD + 'font-family:ui-monospace,monospace;');
+    refForm.appendChild(labelled('Reference', ref));
+    refForm.appendChild(labelled('Key', key));
+    var look = el('button', BTN + 'justify-content:center;', 'Look it up'); look.type = 'submit';
+    var refOut = el('div', 'display:flex;flex-direction:column;gap:8px;');
+    refForm.appendChild(look); refForm.appendChild(refOut);
+    toggleRef.onclick = function () { refForm.style.display = refForm.style.display === 'none' ? 'flex' : 'none'; };
+    refForm.onsubmit = function (e) {
+      e.preventDefault();
+      while (refOut.firstChild) refOut.removeChild(refOut.firstChild);
+      look.disabled = true;
+      post({ action: 'ticket_status', widgetKey: KEY, ticketRef: ref.value, guestKey: key.value }).then(function (r) {
+        look.disabled = false;
+        if (!r.success || !r.ticket) { refOut.appendChild(el('div', 'font-size:12.5px;color:#b42318;', r.message || 'We could not find a ticket with that reference and key.')); return; }
+        refOut.appendChild(ticketCard(r.ticket, r.messages, true));
+      });
+    };
+    wrap.appendChild(toggleRef); wrap.appendChild(refForm);
+    if (!presetEmail) email.focus();
   }
 
   /* ── Live help: sharing a screen, or a voice call ──────────────────────────
@@ -1768,9 +2079,13 @@
     if (cfg.online === true || cfg.online === false) {
       var st = el('div', 'display:flex;gap:6px;align-items:center;font-size:12.5px;color:#475569;line-height:1.4;');
       st.appendChild(el('span', 'width:8px;height:8px;border-radius:50%;flex-shrink:0;background:' + (cfg.online ? '#22c55e' : '#cbd5e1') + ';'));
+      /* The owner's button is answered by the assistant at any hour, and its
+         header says Online: "Away" under it read as a contradiction. Said
+         plainly instead — the assistant now, a person by email. */
       st.appendChild(el('span', '', cfg.online
         ? 'Online now'
-        : 'Away right now — leave a message and we will reply'));
+        : natural() && has('chat') ? 'Our AI assistant answers now — a person follows up by email'
+          : 'Away right now — leave a message and we will reply'));
       txt.appendChild(st);
     }
     row.appendChild(txt);
@@ -1784,6 +2099,9 @@
       + 'display:flex;flex-direction:column;align-items:' + (left ? 'flex-start' : 'flex-end') + ';'
       + 'max-width:calc(100vw - 40px);'
       + 'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;');
+    /* Left out of the app's own "Report a problem" screenshot, which is of
+       the screen they were stuck on, not of this panel. */
+    root.setAttribute('data-no-shot', '');
 
     var label = launcherLabel();
     var online = !!(state.cfg && state.cfg.online === true);
@@ -2174,8 +2492,9 @@
     },
     open: function (view) {
       if (!panel) return;
+      if (view === 'report' && has('ticket') && appReport()) { if (state.open) toggle(); appReport().open(); return; }
       if (!state.open) toggle();
-      if (view && (view === 'home' || has(view === 'status' ? 'ticket' : view))) show(view);
+      if (view && (view === 'home' || has(view === 'status' || view === 'report' ? 'ticket' : view))) show(view);
     },
     /* What this widget offers, so a page can name only what will work. */
     features: function () { return state.features.slice(); },

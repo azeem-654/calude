@@ -1,0 +1,21 @@
+{
+  "name": "Protected Central",
+  "short_name": "Protected Central",
+  "description": "Your CRM, inbox and support desk.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f1210",
+  "theme_color": "#0f1210",
+  "icons": [
+    { "src": "/app-icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/app-icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/app-icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Support chats", "short_name": "Chats", "url": "/engagement?tab=inbox", "icons": [{ "src": "/app-icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Support tickets", "short_name": "Tickets", "url": "/engagement?tab=tickets", "icons": [{ "src": "/app-icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Unified Inbox", "short_name": "Inbox", "url": "/conversations", "icons": [{ "src": "/app-icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

@@ -41,7 +41,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { CalendarCheck, LifeBuoy, MessageSquare, Monitor, Phone, Ticket, X } from 'lucide-react';
+import { AlertTriangle, CalendarCheck, LifeBuoy, MessageSquare, Monitor, Phone, X } from 'lucide-react';
 import { getSession } from '../../services/auth';
 import { myAccount, onMyAccount, readNotice, type MyAccount } from '../../services/customers';
 import { TROUBLE_EVENT } from '../../services/fieldGuard';
@@ -191,7 +191,8 @@ export default function CornerHelp() {
             {canCall && <button type="button" style={PRIMARY} onClick={() => openChat('voice')}><Phone size={14} /> Start an online call</button>}
             {canScreen && <button type="button" style={canCall ? SECONDARY : PRIMARY} onClick={() => openChat('screen')}><Monitor size={14} /> Share your screen with us</button>}
             {canChat && <button type="button" style={canCall || canScreen ? SECONDARY : PRIMARY} onClick={() => openChat('chat')}><MessageSquare size={14} /> Live chat</button>}
-            {canTicket && !canChat && !canScreen && !canCall && <button type="button" style={PRIMARY} onClick={() => openChat('ticket')}><Ticket size={14} /> Submit a ticket</button>}
+            {/* The screenshot sheet (shared/ReportProblemHost.tsx), through the widget's own option. */}
+            {canTicket && <button type="button" style={!canChat && !canScreen && !canCall ? PRIMARY : SECONDARY} onClick={() => openChat('report')}><AlertTriangle size={14} /> Report a problem</button>}
             {!canChat && !canScreen && !canCall && !canTicket && features.length > 0 && (
               <button type="button" style={PRIMARY} onClick={() => openChat('home')}><LifeBuoy size={14} /> Get help</button>
             )}
@@ -219,7 +220,7 @@ export default function CornerHelp() {
 function ways(o: { call: boolean; screen: boolean; chat: boolean; ticket: boolean; book: boolean }): string {
   const w = [
     o.call && 'call us now from your browser', o.screen && 'share your screen', o.chat && 'chat',
-    o.ticket && !o.chat && !o.screen && !o.call && 'submit a ticket', o.book && 'book a call',
+    o.ticket && 'report a problem with a screenshot', o.book && 'book a call',
   ].filter(Boolean) as string[];
   if (!w.length) return 'press Get help';
   return w.length === 1 ? w[0] : `${w.slice(0, -1).join(', ')} or ${w[w.length - 1]}`;

@@ -40,6 +40,11 @@ import {
 } from '../lib/liveHelp';
 import { avatarUrl } from '../lib/widgetAvatar';
 import { decodeImage, fileResponse, parseAttachments, storeChatFile } from '../lib/chatFiles';
+import { fileProblemTicket, mailProblem, MAX_REPORT_TEXT, readPictures } from '../lib/problemReport';
+import { checkLookupCode, issueLookupCode, ticketsFor } from '../lib/ticketLookup';
+import { alertMailbox } from '../lib/aiHealth';
+import { canSend, deliver, fromAddressOf } from '../lib/deliver';
+import { loadMailbox } from './mailbox';
 
 interface Req {
   action?: string;
@@ -51,6 +56,12 @@ interface Req {
   visitorKey?: string;
   ticketRef?: string;
   guestKey?: string;
+  /* Report a problem: what went wrong, a screenshot and their own pictures
+     as data URLs. Check ticket status: the six-digit code mailed to them. */
+  description?: string;
+  screenshot?: string;
+  pictures?: unknown[];
+  code?: string;
 
   message?: string;
   name?: string;
@@ -166,6 +177,15 @@ export async function houseWidgetKey(env: Env): Promise<string> {
      ORDER BY updated_at DESC LIMIT 1`,
   ).first<{ publicKey: string }>().catch(() => null);
   return w?.publicKey ?? '';
+}
+
+/** The workspace of the house widget, for a report sent from inside the app. */
+export async function houseWidgetAccount(env: Env): Promise<string> {
+  const key = await houseWidgetKey(env);
+  if (!key) return '';
+  const w = await env.DB.prepare('SELECT account_id AS accountId FROM crm_widgets WHERE public_key = ?')
+    .bind(key).first<{ accountId: string }>().catch(() => null);
+  return w?.accountId ?? '';
 }
 
 export async function handleEngage(req: Request, env: Env): Promise<Response> {
@@ -763,6 +783,109 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     ).bind(String(t.id)).all();
 
     return withCors(json({ success: true, ticket: t, messages: results ?? [] }));
+  }
+
+  /* ── Report a problem / I'm stuck ──
+     The widget's own form, for anybody — a visitor on the marketing site, a
+     customer signed out. Signed in inside the app, the page's sheet (with a
+     screenshot it takes itself) goes to /api/support-report.php instead.
+     Always a ticket in this widget's workspace; on the owner's help button
+     also the email to support@ (lib/problemReport.ts). */
+  if (act === 'report') {
+    const w = await widgetFor(env, String(d.widgetKey ?? ''));
+    if (!w || w.status !== 'live') return withCors(fail('Support is not available here.', 404));
+    if (!hostAllowed(String(w.allowedHosts ?? ''), origin)) return withCors(fail('This is not enabled for this website.', 403));
+    if (!offers(w.features, 'ticket')) return withCors(fail('This help button does not take reports.', 403));
+    const accountId = String(w.accountId);
+    const me = await signedIn(env, d.token);
+    const email = me?.email || cleanEmail(d.email);
+    if (!email) return withCors(fail('Enter your email so we can reply.', 200, { field: 'report.email' }));
+    const described = redactPhi(String(d.description ?? '').trim().slice(0, MAX_REPORT_TEXT)).text;
+    if (described.length < 5) return withCors(fail('Say what went wrong, or where you are stuck, in a sentence or two.', 200, { field: 'report.description' }));
+    const read = readPictures(d.screenshot, d.pictures);
+    if (!read.ok) return withCors(fail(read.message, 200, { field: read.field ?? 'report.pictures' }));
+    const rGate = await contentGate(env, accountId, 'form', described);
+    if (!rGate.ok) return withCors(fail(rGate.message, 422, { code: 'blocked' }));
+    const perPerson = await rateLimit(env, { what: 'engage-report', who: `${accountId}|${email}`, max: 5, windowSeconds: 3600 });
+    if (!perPerson.allowed) return withCors(fail('That is five reports this hour — please wait a little, or use Live chat.', 429));
+
+    const page = String(d.context?.page ?? '').slice(0, 400);
+    const name = String(d.name ?? '').trim().slice(0, 120) || me?.name || '';
+    const filed = await fileProblemTicket(env, accountId, {
+      email, name, described, page, pics: read.pics, context: { page, signedIn: !!me },
+    });
+    const isHouse = String(d.widgetKey ?? '') === await houseWidgetKey(env);
+    const mail = isHouse
+      ? await mailProblem(env, {
+        described, name, email, pics: read.pics, shot: read.shot, reference: filed.reference, signedIn: !!me,
+        rows: [['Page', page], ['Browser', (req.headers.get('user-agent') ?? '').slice(0, 300)]],
+      })
+      : null;
+    return withCors(json({
+      success: true, reference: filed.reference, guestKey: filed.guestKey,
+      /* Said as it is: on the owner's button a report whose email could not
+         go is still a ticket somebody will read. */
+      emailed: mail ? mail.sent : 'n/a',
+    }));
+  }
+
+  /* ── Check ticket status, by who they are ──
+     `ticket_code` mails a six-digit code to an address that has tickets
+     here (and says the same thing whether or not it has, so this cannot be
+     used to find out who has written in, nor to mail strangers);
+     `my_tickets` lists them for the session's email, or for the address and
+     its code (lib/ticketLookup.ts, migration 0100). */
+  if (act === 'ticket_code') {
+    const w = await widgetFor(env, String(d.widgetKey ?? ''));
+    if (!w || w.status !== 'live') return withCors(fail('Support is not available here.', 404));
+    if (!hostAllowed(String(w.allowedHosts ?? ''), origin)) return withCors(fail('This is not enabled for this website.', 403));
+    const accountId = String(w.accountId);
+    const email = cleanEmail(d.email);
+    if (!email) return withCors(fail('Enter the email you used when you wrote to us.', 200, { field: 'status.email' }));
+    const isHouse = String(d.widgetKey ?? '') === await houseWidgetKey(env);
+    const box = isHouse ? await alertMailbox(env) : await (async () => {
+      const mb = await loadMailbox(env, accountId).catch(() => null);
+      return mb && canSend(mb) ? { mb, from: fromAddressOf(mb) } : null;
+    })();
+    if (!box) {
+      return withCors(fail('We cannot email you a code from here yet. Use the reference and key you were shown when you raised the ticket.', 200, { code: 'no_mailbox' }));
+    }
+    const perAddress = await rateLimit(env, { what: 'ticket-code', who: `${accountId}|${email}`, max: 3, windowSeconds: 900 });
+    if (!perAddress.allowed) return withCors(fail('A code was sent a moment ago — check your inbox (and spam), or try again in a few minutes.', 429));
+    const same = 'If we have tickets from that address, a six-digit code is on its way to it. It works for 15 minutes.';
+    const has = await env.DB.prepare(
+      `SELECT 1 FROM crm_tickets t JOIN crm_engage_people p ON p.id = t.person_id AND p.account_id = t.account_id
+       WHERE t.account_id = ? AND p.email = ? LIMIT 1`,
+    ).bind(accountId, email).first();
+    if (!has) return withCors(json({ success: true, message: same }));
+    const code = await issueLookupCode(env, accountId, email);
+    const biz = await env.DB.prepare('SELECT business_name AS name FROM crm_engage_settings WHERE account_id = ?')
+      .bind(accountId).first<{ name: string }>().catch(() => null);
+    const who = (isHouse ? 'Protected Central' : String(biz?.name ?? '')) || 'Support';
+    const sent = await deliver(box.mb, {
+      to: email, fromName: `${who} support`, fromEmail: box.from,
+      subject: `${code} is your code to see your support tickets`,
+      html: `<div style="font:15px/1.55 system-ui,sans-serif;color:#0f172a"><p>Your code to see your support tickets with ${who.replace(/[<>&"]/g, '')}:</p><p style="font-size:28px;font-weight:800;letter-spacing:.18em">${code}</p><p style="color:#64748b">It works for 15 minutes. If you did not ask for it, ignore this email — nobody can see your tickets without it.</p></div>`,
+    }).catch(e => ({ ok: false, error: String(e) }));
+    if (!sent.ok) return withCors(fail('The code could not be emailed just now — try again shortly, or use the reference and key.', 200, { code: 'send_failed' }));
+    return withCors(json({ success: true, message: same }));
+  }
+
+  if (act === 'my_tickets') {
+    const w = await widgetFor(env, String(d.widgetKey ?? ''));
+    if (!w || w.status !== 'live') return withCors(fail('Support is not available here.', 404));
+    if (!hostAllowed(String(w.allowedHosts ?? ''), origin)) return withCors(fail('This is not enabled for this website.', 403));
+    const accountId = String(w.accountId);
+    const me = await signedIn(env, d.token);
+    let email = me?.email?.toLowerCase() ?? '';
+    if (!email) {
+      email = cleanEmail(d.email);
+      if (!email) return withCors(fail('Enter the email you used when you wrote to us.', 200, { field: 'status.email', code: 'need_email' }));
+      const verdict = await checkLookupCode(env, accountId, email, String(d.code ?? '').trim());
+      if (verdict === 'wrong') return withCors(fail('That code is not right — check the email we sent and try again.', 200, { field: 'status.code', code: 'wrong' }));
+      if (verdict === 'dead') return withCors(fail('That code has expired or had too many tries — ask for a new one.', 200, { field: 'status.code', code: 'dead' }));
+    }
+    return withCors(json({ success: true, email, signedIn: !!me, tickets: await ticketsFor(env, accountId, email) }));
   }
 
   /* ══ Live help: sharing a screen with the business ══════════════════════

@@ -26,6 +26,7 @@ import { STRATEGY_CALL_PATH } from '../worker/src/lib/strategyCall';
 import StandingBanner from './components/shared/StandingBanner';
 import StagingBanner from './components/shared/StagingBanner';
 import { LogoMark } from './components/shared/Logo';
+import ReportProblemHost from './components/shared/ReportProblemHost';
 import HelpLauncher from './components/shared/HelpLauncher';
 import TrialBar from './components/shared/TrialBar';
 import CornerHelp from './components/shared/CornerHelp';
@@ -299,12 +300,18 @@ function AppLayout({ isClient }: { isClient: boolean }) {
       <ProspectSync />
       <NativeBridge />
       <HelpLauncher />
+      <ReportProblemHost />
       <CornerHelp />
       <AiPatienceBar />
       {/* The AI business manager, on every signed-in screen; its panel is a
-          separate download fetched on first open (Protron.tsx). Live on both
-          sites since 2026-11-13; the switch stays (services/features.ts). */}
-      {featureReady('protron') && <Protron />}
+          separate download fetched on first open (Protron.tsx). Only where it
+          builds (`protron-acts`, the testing site): on live it was a support
+          chat beside the help button's own support chat, and the owner asked
+          on 2026-11-15 for the floating one to go — its answers are the help
+          button's Live chat (Protron, houseKnowledge.ts) and its Report a
+          problem the help button's (ReportProblemHost). The wizard's Protron
+          is not this one and stays. */}
+      {featureReady('protron') && featureReady('protron-acts') && <Protron />}
       {/* The 62px is the floating icon rail's width. The rail is hidden below
           760px (see index.css), so on a phone that padding was 62px of nothing
           shoving every screen off-centre to the right; `app-main` takes it back
