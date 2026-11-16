@@ -395,9 +395,16 @@ expires and a captured delivery stays valid for ever.
 
 ### 4. Connect Creem, so the app can charge its subscribers
 
-**Not done yet (2026-11-16).** Until it is, Advanced/Scale checkout says the
-owner has not connected a processor (or falls back to the deployment's Stripe
-key, if one is set), and no subscription money reaches you.
+**Connected and live (2026-11-16, issue #3).** Creem in Live mode, store
+"live, can accept payments"; key and webhook secret saved, **Test** green with
+no "· test mode"; **Create plans in Creem** made all four plans (Advanced
+$97/mo, $970/yr; Scale $297/mo, $2,970/yr) and each test checkout showed the
+right name and price. **Still yours:**
+
+- **Add a payout account in Creem** (Creem → payouts / bank details). Until
+  then customers can pay, but Creem has nowhere to send your money.
+- **One real purchase and refund** (B.3 below), to prove the webhook turns a
+  plan on. Not done yet: the test checkouts were opened, not paid.
 
 **A. In Creem (creem.io dashboard), switched to *Live* — not Test mode:**
 
