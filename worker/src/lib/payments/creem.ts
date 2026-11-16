@@ -31,7 +31,7 @@
  * is the caller's own idempotency — which is why the order is moved only when
  * it is still `pending`. Worth knowing before anyone relaxes that check.
  */
-import type { PaymentEvent, PaymentProvider, ProviderContext } from './types';
+import type { PaymentEvent, PaymentProvider, PlanProduct, PlanSpec, ProviderContext } from './types';
 
 /** Test keys carry the mode in the key, so the customer cannot point a live key
  *  at the sandbox by mistake, or the reverse. */
@@ -115,7 +115,7 @@ function remedy(error: string, status: number): string[] {
   ];
 }
 
-interface ProductEntity { id?: string; name?: string; status?: string }
+interface ProductEntity { id?: string; name?: string; status?: string; price?: number; currency?: string; billing_period?: string }
 interface CheckoutEntity { id?: string; checkout_url?: string; status?: string }
 
 /**
@@ -208,6 +208,58 @@ function netOf(t: Txn): number {
   const tax = Number(t.tax_amount ?? 0) || 0;
   if (typeof t.amount_paid === 'number') return Math.max(0, t.amount_paid - tax);
   return Number(t.amount ?? 0) || 0;
+}
+
+/**
+ * The recurring product for one plan at one price, made once and remembered.
+ *
+ * Remembered by name, amount, currency and interval (`plan:<name>:<cents>:
+ * <currency>[:year]`), so selling the same plan again reuses it and a price
+ * change makes a new product rather than repricing everybody already on the
+ * old one. A remembered product is used only while Creem still has it at the
+ * same price and currency — one deleted or edited in the dashboard is made
+ * again rather than sold at whatever it now says.
+ *
+ * The caller must hand in a context read fresh from the database: two plans
+ * made in a row from one stale snapshot would each write the map without the
+ * other, and the first product would be forgotten and made again on its
+ * first sale.
+ */
+async function ensureCreemPlan(key: string, req: PlanSpec, ctx: ProviderContext): Promise<PlanProduct> {
+  const no = (error: string, steps: string[] = []): PlanProduct => ({ ok: false, error, steps, productId: '', created: false });
+  const currency = req.currency.toUpperCase();
+  if (!['USD', 'EUR'].includes(currency)) {
+    return no(`Creem can only bill in US dollars or euros, and this plan is priced in ${currency}.`,
+      ['Price the plan in USD or EUR, or bill through Stripe instead.']);
+  }
+  const yearly = req.interval === 'year';
+  /* Monthly slots keep the name they always had, so a product already made for one is found again. */
+  const slot = `plan:${req.planName}:${req.amountCents}:${currency}${yearly ? ':year' : ''}`;
+  const remembered = readRefs(ctx.providerRef);
+  const known = remembered[slot] ?? '';
+  if (known) {
+    const got = await fetchProduct(key, known);
+    const samePrice = got?.id
+      && (got.price === undefined || got.price === Math.max(req.amountCents, 100))
+      && (!got.currency || got.currency.toUpperCase() === currency);
+    if (samePrice) return { ok: true, error: '', steps: [], productId: got!.id!, created: false };
+  }
+  const made = await call<ProductEntity>(key, '/v1/products', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: req.planName.slice(0, 100) || 'Subscription',
+      description: `${req.planName} — billed ${yearly ? 'yearly' : 'monthly'}.`.slice(0, 500),
+      price: Math.max(req.amountCents, 100),
+      currency,
+      billing_type: 'recurring',
+      billing_period: yearly ? 'every-year' : 'every-month',
+    }),
+  });
+  if (!made.ok || !made.data?.id) {
+    return no(made.error || 'Creem would not create the plan.', remedy(made.error, made.status));
+  }
+  await ctx.remember(writeRefs({ ...remembered, [slot]: made.data.id }));
+  return { ok: true, error: '', steps: [], productId: made.data.id, created: true };
 }
 
 export const creem: PaymentProvider = {
@@ -332,38 +384,9 @@ export const creem: PaymentProvider = {
     /* The product is always this app's own, found by its plan, amount and
        currency. A product id from the caller once let anybody buy the $1
        order product while naming Scale. */
-    let productId = '';
-
-    if (!productId) {
-      const yearly = req.interval === 'year';
-      /* Monthly slots keep the name they always had, so a product already made for one is found again. */
-      const slot = `plan:${req.planName}:${req.amountCents}:${currency}${yearly ? ':year' : ''}`;
-      const remembered = readRefs(ctx.providerRef);
-      productId = remembered[slot] ?? '';
-
-      if (productId) {
-        const got = await fetchProduct(key, productId);
-        if (!got?.id) productId = '';
-      }
-      if (!productId) {
-        const made = await call<ProductEntity>(key, '/v1/products', {
-          method: 'POST',
-          body: JSON.stringify({
-            name: req.planName.slice(0, 100) || 'Subscription',
-            description: `${req.planName} — billed ${yearly ? 'yearly' : 'monthly'}.`.slice(0, 500),
-            price: Math.max(req.amountCents, 100),
-            currency,
-            billing_type: 'recurring',
-            billing_period: yearly ? 'every-year' : 'every-month',
-          }),
-        });
-        if (!made.ok || !made.data?.id) {
-          return no(made.error || 'Creem would not create the plan.', remedy(made.error, made.status));
-        }
-        productId = made.data.id;
-        await ctx.remember(writeRefs({ ...remembered, [slot]: productId }));
-      }
-    }
+    const plan = await ensureCreemPlan(key, req, ctx);
+    if (!plan.ok) return no(plan.error, plan.steps);
+    const productId = plan.productId;
 
     const r = await call<CheckoutEntity>(key, '/v1/checkouts', {
       method: 'POST',
@@ -385,6 +408,10 @@ export const creem: PaymentProvider = {
       sessionId: String(r.data.id ?? ''),
       expiresNote: '',
     };
+  },
+
+  ensurePlan(key, req, ctx) {
+    return ensureCreemPlan(key, req, ctx);
   },
 
   async verifySignature(secret, rawBody, headers) {

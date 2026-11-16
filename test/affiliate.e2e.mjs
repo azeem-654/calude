@@ -168,6 +168,15 @@ r = await api('billing.php', { token: other.token, action: 'checkout', accountId
 ok('…JPY too', !r.success && r.field === 'billing.currency', JSON.stringify(r));
 r = await api('billing.php', { token: other.token, action: 'checkout', accountId: acct2, planId: 'scale', currency: 'USD', priceId: 'price_cheap' });
 ok('a USD checkout is not refused for its currency (it reaches the processor)', r.field !== 'billing.currency' && !/billed in/.test(r.message ?? ''), JSON.stringify(r).slice(0, 200));
+/* Making the plans at the processor, and the owner's test checkout: the install owner's alone. */
+r = await api('billing.php', { token: other.token, action: 'prepare_plans' });
+ok('a subscriber cannot set up the operator\'s plans', !r.success && /install owner/.test(r.message ?? r.error ?? ''), JSON.stringify(r));
+r = await api('billing.php', { token: other.token, action: 'test_checkout', planId: 'scale' });
+ok('…nor open the owner\'s test checkout', !r.success && /install owner/.test(r.message ?? r.error ?? ''), JSON.stringify(r));
+r = await api('billing.php', { token: owner.token, action: 'prepare_plans' });
+ok('on Stripe there is nothing to make in advance, and it says so', r.success && Array.isArray(r.plans) && !r.plans.length && /nothing made in advance/.test(r.note ?? ''), JSON.stringify(r));
+r = await api('billing.php', { token: owner.token, action: 'config' });
+ok('…so the screen does not offer to make plans on Stripe', r.billing?.preparesPlans === false, JSON.stringify(r.billing));
 const vnd = invoicePaid('evt_inv_vnd', acct2, 29700); vnd.data.object.currency = 'vnd';
 await stripeEvent(vnd);
 ok('a signed invoice for 29,700 VND sets no plan', !plan('pat@other.test'), JSON.stringify(plan('pat@other.test')));

@@ -414,16 +414,22 @@ key, if one is set), and no subscription money reaches you.
    `subscription.canceled`, `subscription.expired`, `subscription.past_due`,
    `refund.created`, `dispute.created`. Copy its **signing secret**. Webhooks
    are separate in Test and Live mode: the live one is the one that counts.
-4. **Do not create products by hand.** The app makes Advanced and Scale
-   (monthly and yearly) in your Creem catalogue itself, the first time each is
-   bought, at the prices in `lib/allowances.ts`, and reuses them after that.
+4. **Do not create products by hand in Creem** — the app would not use them.
+   It makes its own, at the prices in `lib/allowances.ts` (step B.2).
 
 **B. In the app, signed in as azeem@protectedcentral.com on
 app.protectedcentral.com → Settings → Billing → How this app is paid:**
 
 1. Pick **Creem**, paste the live key and the signing secret, **Save**, then
    **Test**. A green tick without "· test mode" means it is live.
-2. Do one real purchase of Advanced with your own card, from a second account
+2. Press **Create plans in Creem** (the *Plans in Creem* box, added 2026-11-16).
+   It makes Advanced and Scale, monthly and yearly — four products — in your
+   Creem catalogue and lists each with a tick. Pressing it again makes nothing
+   new. Each has **Open test checkout**: Creem's real checkout page for that
+   plan, so you can see the name and price a customer sees. Paying one in live
+   mode charges your card for real (refund it in Creem); it turns on nobody's
+   plan.
+3. Do one real purchase of Advanced with your own card, from a second account
    (not the owner one), and refund it in Creem afterwards. That proves the whole
    loop: the checkout opens, the plan turns on in the app, the product appears
    in Creem, and the refund is matched. Doing it on testing.protectedcentral.com

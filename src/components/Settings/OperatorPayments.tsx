@@ -18,7 +18,8 @@ import { Landmark, Check, AlertTriangle, Copy } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
   fetchOperatorBilling, connectOperatorBilling, testOperatorBilling, disconnectOperatorBilling,
-  EMPTY_OPERATOR_BILLING, type OperatorBilling,
+  prepareOperatorPlans, operatorTestCheckout,
+  EMPTY_OPERATOR_BILLING, type OperatorBilling, type PreparedPlan,
 } from '../../services/operatorBilling';
 import type { Diagnosis } from '../../services/storefront';
 
@@ -42,6 +43,8 @@ export default function OperatorPayments() {
   const [busy, setBusy] = useState(false);
   const [diag, setDiag] = useState<Diagnosis | null>(null);
   const [denied, setDenied] = useState(false);
+  const [plans, setPlans] = useState<PreparedPlan[] | null>(null);
+  const [plansNote, setPlansNote] = useState('');
 
   const load = async () => {
     const r = await fetchOperatorBilling();
@@ -77,6 +80,30 @@ export default function OperatorPayments() {
     apply(r);
     if (!r.success) { setDiag(r.diagnosis ?? { summary: r.error ?? 'That key was refused.', steps: [] }); return; }
     addNotification(`Connected to ${r.account?.name || 'your account'} (${r.account?.mode} mode).`, 'success');
+  };
+
+  /* Every plan made at the processor now, rather than on each plan's first
+     sale; then a real checkout link per plan to look at (or pay, and refund). */
+  const preparePlans = async () => {
+    setBusy(true); setDiag(null);
+    const r = await prepareOperatorPlans();
+    setBusy(false);
+    setPlans(r.plans ?? []); setPlansNote(r.note ?? '');
+    if (!r.success) { setDiag(r.diagnosis ?? { summary: r.error ?? 'The plans could not be made.', steps: [] }); return; }
+    const made = (r.plans ?? []).filter(p => p.created).length;
+    addNotification(r.note ? r.note : made ? `Made ${made} plan${made === 1 ? '' : 's'} in ${state.providerLabel}.` : `All plans were already in ${state.providerLabel}.`, 'success');
+  };
+
+  const openTestCheckout = async (p: PreparedPlan) => {
+    /* Opened before the request, so the browser does not block it as a popup. */
+    const tab = window.open('about:blank', '_blank');
+    const r = await operatorTestCheckout(p.planId, p.interval);
+    if (!r.success || !r.url) {
+      tab?.close();
+      setDiag(r.diagnosis ?? { summary: r.error ?? 'No checkout link came back.', steps: [] });
+      return;
+    }
+    if (tab) tab.location.href = r.url; else window.location.href = r.url;
   };
 
   const disconnect = async () => {
@@ -191,6 +218,35 @@ export default function OperatorPayments() {
                 .catch(() => addNotification('Could not copy — select it and copy by hand.', 'error'))}
                 style={btn()}><Copy size={13} /> Copy</button>
             </div>
+          </div>
+        )}
+
+        {state.connected && state.preparesPlans && (
+          <div data-plans style={{ border: `1px solid ${LINE}`, borderRadius: 11, padding: '11px 13px', display: 'grid', gap: 8, minWidth: 0 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Plans in {state.providerLabel}</span>
+            <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.55 }}>
+              Makes every plan (monthly and yearly, at the prices on your site) in your {state.providerLabel} account now, instead of on each plan's
+              first sale. Pressing it again makes nothing new. Then open a test checkout for any plan to see exactly what a customer sees.
+              {state.mode === 'live'
+                ? ' You are in live mode: paying a test checkout charges your card for real — refund it in the processor afterwards. It turns on nobody\'s plan.'
+                : ' You are in test mode: pay with the processor\'s test card; no real money moves.'}
+            </span>
+            <div><button onClick={() => void preparePlans()} disabled={busy} style={btn()}>{plans ? 'Check plans again' : `Create plans in ${state.providerLabel}`}</button></div>
+            {plansNote && <span style={{ fontSize: 12.5, color: MUTED }}>{plansNote}</span>}
+            {!!plans?.length && (
+              <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 6 }}>
+                {plans.map(p => (
+                  <li key={`${p.planId}:${p.interval}`} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12.5, color: p.ok ? INK : '#b42318' }}>
+                    <span style={{ flex: '1 1 200px', minWidth: 0, overflowWrap: 'anywhere' }}>
+                      {p.ok ? <Check size={12} color="#0f7b3d" style={{ verticalAlign: -1 }} /> : <AlertTriangle size={12} style={{ verticalAlign: -1 }} />}{' '}
+                      <strong>{p.name}</strong> — ${(p.amountCents / 100).toLocaleString()} / {p.interval}
+                      {p.ok ? (p.created ? ' · made just now' : ' · already there') : ` · ${p.error}`}
+                    </span>
+                    {p.ok && <button onClick={() => void openTestCheckout(p)} disabled={busy} style={{ ...btn(), padding: '6px 11px' }}>Open test checkout</button>}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 

@@ -25,12 +25,14 @@ export interface OperatorBilling {
   status: string;
   lastError: string;
   webhookUrl: string;
+  /** The processor sells only plans made beforehand (Creem): offer to make them. */
+  preparesPlans: boolean;
   choices: ProviderChoice[];
 }
 
 export const EMPTY_OPERATOR_BILLING: OperatorBilling = {
   provider: null, providerLabel: null, connected: false, mode: null, webhookSet: false,
-  usingDeploymentSecret: false, status: 'unknown', lastError: '', webhookUrl: '', choices: [],
+  usingDeploymentSecret: false, status: 'unknown', lastError: '', webhookUrl: '', preparesPlans: false, choices: [],
 };
 
 interface Reply {
@@ -59,3 +61,14 @@ export const connectOperatorBilling = (provider: string, apiKey: string, webhook
   call('connect', { provider, apiKey, webhookSecret });
 export const testOperatorBilling = () => call('test');
 export const disconnectOperatorBilling = () => call('disconnect');
+
+/** One plan as made at the processor (`prepare_plans`). Never a product id. */
+export interface PreparedPlan { planId: string; name: string; interval: 'month' | 'year'; amountCents: number; ok: boolean; created: boolean; error: string }
+
+/** Make every plan at the processor ahead of the first sale. Pressing it again makes nothing new. */
+export const prepareOperatorPlans = () =>
+  call('prepare_plans') as Promise<Reply & { plans?: PreparedPlan[]; note?: string; mode?: 'live' | 'test' }>;
+
+/** A real checkout link for one plan; paying it activates nobody's plan. */
+export const operatorTestCheckout = (planId: string, interval: 'month' | 'year') =>
+  call('test_checkout', { planId, interval }) as Promise<Reply & { url?: string; mode?: 'live' | 'test' }>;

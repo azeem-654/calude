@@ -35,6 +35,18 @@ gateway taking most currencies; **Creem is a merchant of record, dollars and
 euros only, and a checkout must name a product that already exists**, so each
 account keeps one reusable product rather than creating one per sale.
 
+**Creem plans are made ahead, and found by the plan's own name.** A checkout
+must name an existing product, so `ensurePlan` (optional on the provider
+interface; Creem only) makes one recurring product per plan, price, currency and
+interval, remembered in `provider_ref` as `plan:<name>:<cents>:<currency>
+[:year]` and remade if Creem no longer has it at that price. Settings → Billing
+→ *Plans in Creem* (`prepare_plans`, owner only, each plan from a fresh read of
+`provider_ref` so one does not overwrite another) makes all of them, and
+`test_checkout` gives the owner a real checkout link per plan whose reference
+(`owner-test-…`) names no workspace. Checkout passes the plan's own name, never
+the caller's label: the workspace billing screen sent "Advanced plan —
+<business>", which would have made a Creem product per customer.
+
 **Creem's webhook signature has no timestamp.** Stripe's is refused after five
 minutes; Creem's is an HMAC over the body alone and never expires, so a captured
 delivery stays valid. The only thing preventing a double credit is that an order

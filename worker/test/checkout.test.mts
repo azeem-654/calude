@@ -281,6 +281,58 @@ const tax = (over: Partial<TaxRate> = {}): TaxRate => ({
   ok('…and names no workspace, so it cancels nobody\'s plan by itself', refund.reference === '');
 }
 
+/* ── Creem: the plans are made once, and found again ── */
+{
+  const products = new Map<string, { id: string; price: number; currency: string }>();
+  const made: string[] = [];
+  const checkouts: string[] = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (u: unknown, init?: { method?: string; body?: unknown }) => {
+    const url = String(u);
+    if (url.includes('/v1/products?product_id=')) {
+      const id = decodeURIComponent(url.split('product_id=')[1]);
+      const p = products.get(id);
+      return p ? Response.json(p) : Response.json({ message: 'not found' }, { status: 404 });
+    }
+    if (url.match(/\/v1\/products\/[^?]+$/)) return Response.json({ message: 'not found' }, { status: 404 });
+    if (url.endsWith('/v1/products') && init?.method === 'POST') {
+      const b = JSON.parse(String(init.body));
+      const id = `prod_${products.size + 1}`;
+      products.set(id, { id, price: b.price, currency: b.currency });
+      made.push(`${b.name}:${b.price}:${b.billing_period}`);
+      return Response.json({ id });
+    }
+    if (url.endsWith('/v1/checkouts')) {
+      checkouts.push(String(init?.body));
+      return Response.json({ id: 'ch_1', checkout_url: 'https://creem.test/c/1' });
+    }
+    return new Response('{}', { status: 599 });
+  }) as typeof fetch;
+  let ref = '';
+  const ctx = () => ({ providerRef: ref, companyName: 'PC', remember: async (r: string) => { ref = r; } });
+  const plans = [
+    { planName: 'Advanced', amountCents: 9700, currency: 'USD', interval: 'month' as const },
+    { planName: 'Advanced', amountCents: 97000, currency: 'USD', interval: 'year' as const },
+    { planName: 'Scale', amountCents: 29700, currency: 'USD', interval: 'month' as const },
+    { planName: 'Scale', amountCents: 297000, currency: 'USD', interval: 'year' as const },
+  ];
+  try {
+    const first = [];
+    for (const p of plans) first.push(await creem.ensurePlan!('creem_test_abcdefghijklmnop', p, ctx()));
+    ok('Creem: every plan is made once, monthly and yearly, at its own price', first.every(r => r.ok && r.created) && made.join() === 'Advanced:9700:every-month,Advanced:97000:every-year,Scale:29700:every-month,Scale:297000:every-year', made);
+    const again = [];
+    for (const p of plans) again.push(await creem.ensurePlan!('creem_test_abcdefghijklmnop', p, ctx()));
+    ok('…pressed again, nothing new is made', again.every(r => r.ok && !r.created) && made.length === 4, { again, made });
+    const sub = await creem.subscribe('creem_test_abcdefghijklmnop', { reference: 'ws1', planName: 'Scale', amountCents: 29700, currency: 'USD', email: '', successUrl: '', cancelUrl: '', interval: 'month' }, ctx());
+    ok('…and a customer\'s checkout uses the product made ahead', sub.ok && made.length === 4 && JSON.parse(checkouts[0]).product_id === first[2].productId, { sub, checkouts });
+    products.get(first[0].productId)!.price = 100;   // edited in the Creem dashboard
+    const edited = await creem.ensurePlan!('creem_test_abcdefghijklmnop', plans[0], ctx());
+    ok('a product edited to another price in Creem is made again, not sold at the wrong price', edited.ok && edited.created && made.length === 5, edited);
+    const eur = await creem.ensurePlan!('creem_test_abcdefghijklmnop', { ...plans[0], currency: 'GBP' }, ctx());
+    ok('a plan in pounds is refused by name', !eur.ok && /dollars or euros/.test(eur.error));
+  } finally { globalThis.fetch = real; }
+}
+
 console.log(out.join('\n'));
 const failed = out.filter(l => l.startsWith('FAIL')).length;
 console.log(`\n${out.length - failed}/${out.length} passed`);

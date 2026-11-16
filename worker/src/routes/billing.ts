@@ -169,6 +169,9 @@ export async function handleBilling(req: Request, env: Env): Promise<Response> {
       status: row?.status ?? 'unknown',
       lastError: row?.last_error ?? '',
       webhookUrl: `${origin}/api/billing-webhook.php`,
+      /* Whether this processor sells only plans made beforehand (Creem), so
+         the screen offers to make them; Stripe's checkouts carry the price. */
+      preparesPlans: !!(current && provider?.ensurePlan),
       choices: providerChoices(),
     };
   };
@@ -262,6 +265,59 @@ export async function handleBilling(req: Request, env: Env): Promise<Response> {
     return json({ success: true, billing: await state() });
   }
 
+  /* ── The plans, made at the processor ahead of the first sale (owner) ──
+     Creem sells only products that already exist. Made here once, in order
+     and each from a fresh read of what is remembered, so a customer's first
+     checkout does not wait on making one — and two first checkouts at once
+     cannot make two. Pressing it again makes nothing new. */
+  if (act === 'prepare_plans' || act === 'test_checkout') {
+    if (!isOwner(user)) return fail('Only the install owner can set up the plans.', 403);
+    const current = await billingProcessor(env);
+    if (!current) return fail('Connect a payment processor first.');
+    const provider = providerFor(current.id);
+    if (!provider) return fail(`"${current.id}" is not a processor this app supports.`);
+    const mode = provider.modeOf(current.key);
+
+    if (act === 'prepare_plans') {
+      if (!provider.ensurePlan) {
+        return json({ success: true, mode, plans: [], note: `${provider.label} needs nothing made in advance: each checkout carries the plan's price from this app.` });
+      }
+      const plans: { planId: string; name: string; interval: 'month' | 'year'; amountCents: number; ok: boolean; created: boolean; error: string }[] = [];
+      for (const [planId, p] of Object.entries(PLAN_CENTS)) {
+        for (const interval of (p.annualCents ? ['month', 'year'] : ['month']) as ('month' | 'year')[]) {
+          const amountCents = interval === 'year' ? p.annualCents : p.cents;
+          const r = await provider.ensurePlan(current.key, { planName: p.name, amountCents, currency: PLAN_CURRENCY, interval }, contextFor(env, await loadRow(env)));
+          plans.push({ planId, name: p.name, interval, amountCents, ok: r.ok, created: r.created, error: r.ok ? '' : r.error });
+        }
+      }
+      const bad = plans.filter(x => !x.ok);
+      return json({
+        success: !bad.length, mode, plans,
+        ...(bad.length ? { error: `${bad.length} of ${plans.length} plans could not be made: ${bad[0].error}`, message: bad[0].error } : {}),
+      });
+    }
+
+    /* A real checkout link for one plan, for the owner to open and look at —
+       or pay, to prove the whole loop. Its reference names no workspace, so
+       paying it activates nobody's plan and earns no commission; the webhook
+       acknowledges it and moves on. */
+    const planId = String(d.planId ?? '').trim();
+    const plan = PLAN_CENTS[planId];
+    if (!plan) return fail('Choose one of the published plans.');
+    const interval = d.interval === 'year' && plan.annualCents ? 'year' as const : 'month' as const;
+    const r = await provider.subscribe(current.key, {
+      reference: `owner-test-${planId}-${interval}`,
+      planName: plan.name,
+      amountCents: interval === 'year' ? plan.annualCents : plan.cents,
+      interval, currency: PLAN_CURRENCY,
+      email: user.email,
+      successUrl: `${origin}/settings?tab=billing&checkout=test`,
+      cancelUrl: `${origin}/settings?tab=billing`,
+    }, contextFor(env, await loadRow(env)));
+    if (!r.ok) return json({ success: false, error: r.error, message: r.error, ...(r.steps.length ? { diagnosis: { summary: r.error, steps: r.steps } } : {}) });
+    return json({ success: true, mode, url: r.url });
+  }
+
   /* ── Starting a subscription ── */
   if (act === 'checkout') {
     const current = await billingProcessor(env);
@@ -314,9 +370,13 @@ export async function handleBilling(req: Request, env: Env): Promise<Response> {
 
     const r = await provider.subscribe(current.key, {
       reference: accountId,
-      /* The label may come from the caller — it is cosmetic and appears on the
-         receipt. The figure beside it may not. */
-      planName: String(d.planName ?? plan.name).slice(0, 200),
+      /* The plan's own name, never the caller's label. It looked cosmetic,
+         but on Creem the name is part of what finds the plan's product
+         (`plan:<name>:<cents>:<currency>`), and the workspace billing screen
+         sent "Advanced plan — <business name>": every customer would have
+         made a new product in the operator's Creem catalogue, and none of the
+         products made ahead (`prepare_plans`) would ever have been used. */
+      planName: plan.name,
       amountCents,
       interval,
       currency,

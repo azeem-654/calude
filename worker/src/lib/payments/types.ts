@@ -74,6 +74,16 @@ export interface SubscriptionRequest {
   interval?: 'month' | 'year';
 }
 
+/** One plan at one price and interval — what a recurring product is. */
+export type PlanSpec = Pick<SubscriptionRequest, 'planName' | 'amountCents' | 'currency' | 'interval'>;
+
+export interface PlanProduct extends Outcome {
+  /** The processor's id for it. Never shown to a customer. */
+  productId: string;
+  /** True when it was made just now; false when it already existed. */
+  created: boolean;
+}
+
 export interface CheckoutResult extends Outcome {
   /** Where to send the buyer. */
   url: string;
@@ -146,6 +156,13 @@ export interface PaymentProvider {
   checkout(key: string, req: CheckoutRequest, ctx: ProviderContext): Promise<CheckoutResult>;
   /** A link somebody can start a subscription through. */
   subscribe(key: string, req: SubscriptionRequest, ctx: ProviderContext): Promise<CheckoutResult>;
+  /**
+   * Make sure the plan exists at the processor, ahead of the first sale — for
+   * a processor where a checkout must name a product made beforehand (Creem).
+   * Absent where every checkout carries its own price (Stripe's `price_data`):
+   * there is nothing to make.
+   */
+  ensurePlan?(key: string, req: PlanSpec, ctx: ProviderContext): Promise<PlanProduct>;
   /** True only when the body genuinely came from this processor. */
   verifySignature(secret: string, rawBody: string, headers: Headers): Promise<boolean>;
   /** What the (already verified) body means. */
