@@ -21,7 +21,7 @@
 | Online shop | Pass — will not open to the public until a payment processor is connected |
 | Websites and Funnels | **Partial** — build and edit work; public publishing is not available yet |
 | AI Prospecting search | **Not verified in this run** (see section 4) |
-| Automated checks | Pass — 13 automated suites, 952 checks, 0 failures (security, account isolation, sign-up, form validation, AppSumo codes and licensing, plan allowances) |
+| Automated checks | Pass — 13 automated suites, more than 930 checks, 0 failures (security, account isolation, sign-up, form validation, AppSumo codes and licensing, plan allowances) |
 
 ## 2. Scenarios run
 
