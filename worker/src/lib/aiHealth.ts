@@ -42,6 +42,7 @@ import { tierOf } from './aiTasks';
 import { installPlacesKey } from './googlePlaces';
 import { scrubSecrets } from './aiToolHealth';
 import { canSend, deliver, fromAddressOf } from './deliver';
+import { lastProbe } from './aiProbe';
 
 export const ALERT_TO = 'azeem@protectedcentral.com';
 export const ALERT_COPY = 'azeem654@gmail.com';
@@ -52,8 +53,8 @@ const MAIL_KEY = 'ai_health_mail';
 const EVERY_MS = 60 * 60_000;
 const QUIET_MS = 24 * 3_600_000;
 
-export type ToolState = 'ok' | 'missing_key' | 'failing' | 'near_quota';
-export type Condition = 'missing_key' | 'failing' | 'quota80' | 'quota95';
+export type ToolState = 'ok' | 'missing_key' | 'failing' | 'near_quota' | 'thin';
+export type Condition = 'missing_key' | 'failing' | 'quota80' | 'quota95' | 'thin';
 
 export interface ToolHealth {
   id: string; name: string; provider: string; powers: string; keyWhere: string; optional: boolean;
@@ -105,13 +106,17 @@ function keyState(t: AiTool, keys: PoolKey[], places: boolean, workersAi: boolea
 export async function checkAiTools(env: Env): Promise<ToolHealth[]> {
   const day = today();
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-  const [keys, pool, limits, caps, inst] = await Promise.all([
+  const [keys, pool, limits, caps, inst, probe] = await Promise.all([
     readInstallKeys(env).catch(() => [] as PoolKey[]),
     describePool(env).catch(() => []),
     freeLimits(env),
     aiCaps(env),
     installPlacesKey(env).catch(() => null),
+    lastProbe(env),
   ]);
+  /* The 15-minute key check (lib/aiProbe.ts), when it is recent enough to speak for now. */
+  const freshProbe = probe && Date.now() - ms(probe.at) < 60 * 60_000 && probe.total > 0 ? probe : null;
+  const fallbackNote = env.AI ? ' Cloudflare Workers AI is answering writing and chat in their place.' : '';
   const [health, recentRows, todayRows, perWorkspace] = await Promise.all([
     rows<HealthRow>(env, 'SELECT tool, last_ok_at, last_error_at, last_error, fail_streak FROM crm_ai_tool_health'),
     rows<UseRow>(env, "SELECT module, SUM(requests) r, SUM(ok) ok, SUM(limited) l FROM crm_ai_usage WHERE day >= ? AND key_fp != 'own' GROUP BY module", yesterday),
@@ -173,6 +178,8 @@ export async function checkAiTools(env: Env): Promise<ToolHealth[]> {
       failing = `Failed ${h.fail_streak} times in a row, last at ${h.last_error_at}, with no success since.`;
     } else if (rc.requests >= 5 && rc.ok === 0) {
       failing = `${rc.requests} requests since yesterday and none answered${rc.limited ? ` (${rc.limited} refused for quota)` : ''}.`;
+    } else if (freshProbe && freshProbe.working === 0 && (t.key === 'pool' || t.key === 'search' || t.key === 'google')) {
+      failing = `None of the ${freshProbe.total} AI keys answered the automatic check at ${freshProbe.at}.${t.id === 'text' ? fallbackNote : ''}`;
     } else if (allResting && (t.key === 'pool' || t.key === 'search' || t.key === 'google')) {
       failing = `All ${pool.length} AI keys are resting after failing.`;
     } else if (t.key === 'places' && inst?.status === 'error') {
@@ -184,11 +191,22 @@ export async function checkAiTools(env: Env): Promise<ToolHealth[]> {
     if (key.configured && failing) conditions.push('failing');
     if (quota && quota.pct >= 0.95) conditions.push('quota95');
     else if (quota && quota.pct >= 0.8) conditions.push('quota80');
+    /* One key between the customers and "at capacity": warned before it is
+       zero, which is when it is cheap to fix. Only the writing tool says it,
+       once — every other key-pool tool rides the same keys. */
+    const working = freshProbe ? freshProbe.working : keys.length;
+    const thin = t.id === 'text' && key.configured && !failing && working === 1
+      ? (keys.length === 1
+        ? 'Only one AI key on this install: when it is refused or runs out, there is no backup key behind it. Add one from a different Google Cloud project.'
+        : `Only 1 of ${keys.length} AI keys answered the automatic check at ${freshProbe?.at}: the rest are failing (see AI keys for each reason).`)
+      : '';
+    if (thin) conditions.push('thin');
 
-    const state: ToolState = !key.configured ? 'missing_key' : failing ? 'failing' : quota && quota.pct >= 0.8 ? 'near_quota' : 'ok';
+    const state: ToolState = !key.configured ? 'missing_key' : failing ? 'failing' : quota && quota.pct >= 0.8 ? 'near_quota' : thin ? 'thin' : 'ok';
     const detail = state === 'missing_key'
       ? `${key.detail} ${t.optional ? 'Customers have a fallback, so this is optional.' : `Set it in ${t.keyWhere}.`}`
       : state === 'failing' ? failing
+        : state === 'thin' ? thin
         : state === 'near_quota' && quota ? `${Math.round(quota.pct * 100)}% of today's free requests used (${quota.used} of ${quota.limit}).`
           : rc.requests ? `Working. ${rc.ok} of ${rc.requests} requests answered since yesterday.` : 'Configured. No requests since yesterday.';
     const extra = t.id === 'text' && nearCap ? ` ${nearCap} workspace${nearCap === 1 ? ' is' : 's are'} at 80% or more of the daily AI cap you set.` : '';
@@ -210,6 +228,7 @@ const SAY: Record<Condition, string> = {
   failing: 'keeps failing',
   quota80: 'has used 80% of today\'s free quota',
   quota95: 'has used 95% of today\'s free quota',
+  thin: 'is down to one working AI key',
 };
 
 export interface AlertRow { tool: string; condition: string; sent_at: string | null; last_attempt_at: string | null; outcome: string; detail: string }

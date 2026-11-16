@@ -165,6 +165,8 @@ export interface Env {
   DOH_BASE?: string;
   /** Where Gemini is asked instead, in tests only (lib/ai.ts). */
   GEMINI_BASE?: string;
+  /** Workers AI's text model for the last resort (lib/ai.ts askWorkersAi). Unset: WORKERS_AI_TEXT. */
+  WORKERS_AI_TEXT_MODEL?: string;
   /** Tests only: where a `*.test` website is fetched from (lib/readSite.ts `wireUrl`). */
   SITE_TEST_ORIGIN?: string;
   /** Where Google's short links (maps.app.goo.gl, g.page…) are asked instead, in tests (lib/mapsLink.ts). */

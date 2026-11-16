@@ -57,7 +57,7 @@ export interface AiTool {
 export const AI_TOOLS: AiTool[] = [
   {
     id: 'text', name: 'AI writing and chat',
-    provider: 'Google Gemini or OpenRouter — the operator\'s AI pool',
+    provider: 'Google Gemini or OpenRouter — the operator\'s AI pool; Cloudflare Workers AI answers when every key fails',
     key: 'pool', keyWhere: 'Settings → Platform services → AI keys',
     powers: 'AI Autopilot writing and planning, inbox replies, the chat widget, the wizard, review replies, Protron, everything typed in the browser',
     modules: [],
@@ -186,6 +186,10 @@ export const AI_CALLERS: Record<string, AiCaller> = {
   'routes/sitePlan.ts': {
     tools: ['text'], gate: 'exempt',
     why: 'The public site\'s planner has no workspace to budget: it is rate-limited per connection and for the whole site per day before the key is loaded.',
+  },
+  'lib/aiProbe.ts': {
+    tools: ['text'], gate: 'exempt',
+    why: 'The 15-minute check on the install\'s own keys: a one-word probe per key not already proved by a customer\'s request, no workspace, spends no customer\'s allowance.',
   },
   'routes/aikeys.ts': {
     tools: ['text'], gate: 'exempt',

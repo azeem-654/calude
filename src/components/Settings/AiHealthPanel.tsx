@@ -18,7 +18,7 @@ const INK = '#0f172a';
 const MUTED = '#64748b';
 const LINE = '#e6e9f0';
 
-type State = 'ok' | 'missing_key' | 'failing' | 'near_quota';
+type State = 'ok' | 'missing_key' | 'failing' | 'near_quota' | 'thin';
 interface Tool {
   id: string; name: string; provider: string; powers: string; keyWhere: string; optional: boolean;
   state: State; detail: string;
@@ -27,9 +27,14 @@ interface Tool {
   lastOkAt: string | null; lastErrorAt: string | null; lastError: string; failStreak: number;
   quota: { used: number; limit: number; pct: number; basis: string } | null;
 }
+/** The 15-minute check on every AI key (worker/src/lib/aiProbe.ts). */
+interface Probe {
+  at: string; total: number; working: number; lastResort: boolean;
+  keys: { label: string; source: string; ok: boolean; how: 'checked' | 'in_use' | 'skipped'; ms: number; error: string }[];
+}
 interface Alert { tool: string; condition: string; sent_at: string | null; last_attempt_at: string | null; outcome: string }
 interface Answer {
-  success?: boolean; error?: string; checkedAt?: string | null;
+  success?: boolean; error?: string; checkedAt?: string | null; probe?: Probe | null;
   tools?: Tool[]; alerts?: Alert[];
   mail?: { at: string; ok: boolean; detail: string } | null;
   recipients?: { to: string; copy: string; from: string };
@@ -40,6 +45,7 @@ const LOOK: Record<State, { label: string; color: string; Icon: typeof CheckCirc
   missing_key: { label: 'Missing key', color: '#b45309', Icon: KeyRound },
   failing: { label: 'Failing', color: '#d92d20', Icon: XCircle },
   near_quota: { label: 'Near quota', color: '#dc8a06', Icon: AlertTriangle },
+  thin: { label: 'One key left', color: '#dc8a06', Icon: AlertTriangle },
 };
 const when = (iso: string | null | undefined) => (iso ? new Date(iso.replace(' ', 'T')).toLocaleString() : '—');
 
@@ -92,6 +98,7 @@ export default function AiHealthPanel() {
           {attention ? `${attention} of ${tools.length} need attention.` : `All ${tools.length} tools are working.`}
         </p>
       )}
+      {a && <ProbeBox probe={a.probe ?? null} />}
       <div style={{ display: 'grid', gap: 10 }}>
         {tools.map(t => {
           const look = LOOK[t.state];
@@ -128,6 +135,45 @@ export default function AiHealthPanel() {
             ))}
           </ul>
         </details>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Every AI key, as the last automatic check found it. Labels only, never a
+ * key. "In use" is a key that answered a customer within 15 minutes, which
+ * proves it without asking it again.
+ */
+function ProbeBox({ probe }: { probe: Probe | null }) {
+  if (!probe) {
+    return (
+      <p data-probe="none" style={{ fontSize: 13, color: MUTED, margin: '0 0 12px', lineHeight: 1.5 }}>
+        AI keys are checked automatically every 15 minutes; the first check has not run yet. Press Check now to run it.
+      </p>
+    );
+  }
+  const down = probe.total > 0 && probe.working === 0;
+  const color = down ? '#d92d20' : probe.working < probe.total || probe.working === 1 ? '#b45309' : '#15803d';
+  return (
+    <div data-probe={down ? 'down' : 'ok'} style={{ border: `1px solid ${LINE}`, borderRadius: 12, padding: '10px 12px', margin: '0 0 12px', display: 'grid', gap: 6, minWidth: 0 }}>
+      <span style={{ fontSize: 13.5, fontWeight: 700, color, overflowWrap: 'anywhere' }}>
+        {probe.total === 0 ? 'No AI keys to check.' : `${probe.working} of ${probe.total} AI key${probe.total === 1 ? '' : 's'} working`} — automatic check, {when(probe.at)}
+      </span>
+      <span style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.5 }}>
+        Each key is asked for one word every 15 minutes, unless a customer's request just proved it. A key that fails is rested and customers go to the others first.
+        {probe.lastResort
+          ? ' If every key fails, Cloudflare Workers AI answers writing and chat instead (no key needed; pictures, recordings and web research still need a Google key), and you are emailed.'
+          : ' There is no Workers AI binding, so if every key fails customers are told the AI is busy.'}
+      </span>
+      {!!probe.keys.length && (
+        <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 3 }}>
+          {probe.keys.map((k, i) => (
+            <li key={`${k.label}:${i}`} style={{ fontSize: 12.5, color: k.ok ? '#334155' : '#b42318', overflowWrap: 'anywhere' }}>
+              <strong>{k.label}</strong> — {k.ok ? (k.how === 'in_use' ? 'working (answering customers)' : `answered in ${(k.ms / 1000).toFixed(1)} s`) : k.error || 'did not answer'}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

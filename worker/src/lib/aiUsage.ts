@@ -55,7 +55,7 @@ async function keyFp(key: string): Promise<string> {
 export const today = () => new Date().toISOString().slice(0, 10);
 
 export interface UseRecord {
-  provider: 'gemini' | 'openrouter';
+  provider: 'gemini' | 'openrouter' | 'workers-ai';
   key: string; model: string; module?: string; accountId?: string;
   ok: boolean; status?: number; tokensIn?: number; tokensOut?: number;
   /** How long the answer took, request to parsed reply (migration 0101). Summed; the dashboard averages it over answers. */

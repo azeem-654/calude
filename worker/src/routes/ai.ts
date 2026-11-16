@@ -30,10 +30,10 @@ import { findPhi, phiRefusal } from '../lib/phiGuard';
 import { fail, json } from '../lib/http';
 import { canAccess, userFromToken, type Env } from '../lib/db';
 import { cleanJob, jobMayFinish, jobTouch } from '../lib/aiJobs';
-import { AI_BUSY, aiBase, forGemma, googleHeaders, isGemma, jsonOnly, loadAiKey, modelsFor, thinkingFor, trialRefusal } from '../lib/ai';
+import { AI_BUSY, aiBase, askWorkersAi, forGemma, googleHeaders, isGemma, jsonOnly, loadAiKey, modelsFor, thinkingFor, trialRefusal } from '../lib/ai';
 import { capRefusal, recordAiUse } from '../lib/aiUsage';
 import { moduleOf, taskOf } from '../lib/aiTasks';
-import { withFailover } from '../lib/aiPool';
+import { hasInstallKeys, withFailover } from '../lib/aiPool';
 import { isOpenRouterKey, askOpenRouter, fromGeminiRequest, asGeminiResponse } from '../lib/openrouter';
 import { check as allowance, record, refusalBody } from '../lib/allowanceStore';
 
@@ -161,7 +161,8 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
     return JSON.stringify({ ...p, generationConfig: { ...(p.generationConfig ?? {}), thinkingConfig: thinkingFor(model) } });
   };
 
-  return withFailover<Response>(key, async k => {
+  let allKeysDown = false;
+  const answered = await withFailover<Response>(key, async k => {
     /* An OpenRouter key: the same request through its adapter, answered in Gemini's shape. */
     if (isOpenRouterKey(k)) {
       const q = fromGeminiRequest(JSON.parse(payload));
@@ -237,5 +238,54 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
       ok: false, status: lastStatus, error: lastError,
       value: fail(lastStatus === 429 ? AI_BUSY : `The AI could not answer: ${msg.slice(0, 240) || 'no response'}`),
     };
-  }, { exhausted: () => fail(AI_BUSY, 200, { code: 'ai_busy' }), ...(fast ? { budgetMs: FAST_ANSWER_BY_MS } : {}) });
+  }, { exhausted: () => { allKeysDown = true; return fail(AI_BUSY, 200, { code: 'ai_busy' }); }, ...(fast ? { budgetMs: FAST_ANSWER_BY_MS } : {}) });
+
+  /* Every key failed for its own reason: the operator's last resort, so the
+     customer is answered rather than told "at capacity" (lib/ai.ts
+     askWorkersAi — text only, behind the operator's own keys only). Counted
+     against the plan like any answer; the owner has already been told the
+     keys are down (withFailover). */
+  if (allKeysDown && hasInstallKeys(key)) {
+    const prompt = promptOf(d.request);
+    if (prompt) {
+      const wantedJson = (d.request?.generationConfig as { responseMimeType?: string } | undefined)?.responseMimeType === 'application/json';
+      const temperature = Number((d.request?.generationConfig as { temperature?: unknown } | undefined)?.temperature ?? 0.5);
+      const left = answerBy - (Date.now() - started);
+      const r = left > 6_000
+        ? await askWorkersAi(prompt, Number.isFinite(temperature) ? temperature : 0.5, { json: wantedJson, module, accountId, timeoutMs: left })
+        : null;
+      if (r) {
+        await record(env, accountId, 'ai_requests', `ai-${crypto.randomUUID()}`, 1, room.standing);
+        return json({ success: true, response: asGeminiResponse(r.text), ...(creditsOut ? { creditsOut } : {}) });
+      }
+    }
+  }
+  return answered;
+}
+
+/**
+ * A Gemini request as one prompt, for the last resort — or '' when it carries
+ * anything but words (a picture, a recording), which only a Google key reads.
+ */
+function promptOf(request: { contents?: unknown; systemInstruction?: unknown } | undefined): string {
+  const textOf = (parts: unknown): string | null => {
+    if (!Array.isArray(parts)) return '';
+    const out: string[] = [];
+    for (const p of parts) {
+      const t = (p as { text?: unknown })?.text;
+      if (typeof t === 'string') out.push(t);
+      else return null;
+    }
+    return out.join('\n');
+  };
+  const sys = textOf((request?.systemInstruction as { parts?: unknown } | undefined)?.parts);
+  const turns = Array.isArray(request?.contents) ? request!.contents as { role?: string; parts?: unknown }[] : [];
+  const lines: string[] = [];
+  for (const c of turns) {
+    const t = textOf(c?.parts);
+    if (t === null) return '';
+    if (t) lines.push(turns.length > 1 ? `${c.role === 'model' ? 'Assistant' : 'User'}: ${t}` : t);
+  }
+  if (sys === null || !lines.length) return '';
+  return [sys, ...lines].filter(Boolean).join('\n\n');
 }

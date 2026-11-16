@@ -225,7 +225,7 @@ const NO_AI = /not available on this install|could not reach the server/i;
 function reasonFor(msg: string, status: number, who: TurnContext['who']): string {
   if (/could not reach the server/i.test(msg) || status === 503) return 'the server could not be reached';
   if (/not available on this install/i.test(msg)) {
-    return who.isOwner ? 'no AI key is answering — Settings → Platform services → AI keys' : 'the AI is not set up on this install yet';
+    return who.isOwner ? 'no AI key is answering — Settings → Platform services → AI keys' : 'the AI is unavailable for a moment — this is on our side and has been reported';
   }
   return msg.slice(0, 160) || 'the AI did not answer';
 }

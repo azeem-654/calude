@@ -163,10 +163,17 @@ export async function installPool(env: Env): Promise<PoolKey[]> {
     const { results } = await env.DB.prepare(
       'SELECT fp, cooldown_until AS until FROM crm_ai_key_health WHERE cooldown_until > ?',
     ).bind(nowIso()).all<{ fp: string; until: string }>().catch(() => ({ results: [] as { fp: string; until: string }[] }));
+    const restingNow = new Set<string>();
     for (const r of results ?? []) {
       const t = Date.parse(r.until);
+      restingNow.add(r.fp);
       if (t > (cooling.get(r.fp) ?? 0)) cooling.set(r.fp, t);
     }
+    /* The database is the record for the install's keys: one that recovered —
+       answered a customer or the 15-minute check (lib/aiProbe.ts) in another
+       isolate — is brought back here too, rather than left resting for the
+       rest of an hour-long cooldown while customers wait on the others. */
+    for (const k of keys) if (!restingNow.has(k.fp)) cooling.delete(k.fp);
     cached = { at: Date.now(), keys };
   }
   return order(env, cached.keys);
@@ -183,6 +190,15 @@ export function remember(env: Env, keys: PoolKey[]): string | null {
   pools.set(keys[0].key, { env, keys });
   if (pools.size > 400) pools.delete(pools.keys().next().value as string);
   return keys[0].key;
+}
+
+/**
+ * Whether the operator's keys stand behind `key` — what makes the operator's
+ * last resort (Workers AI, lib/ai.ts) theirs to spend on this call. A
+ * workspace on its own key alone (an ended trial) is not given it.
+ */
+export function hasInstallKeys(key: string): boolean {
+  return (pools.get(key)?.keys ?? []).some(k => k.source !== 'workspace');
 }
 
 /** A key's pool record (its fingerprint and where it came from), if any pool this isolate has seen holds it. */
@@ -287,7 +303,7 @@ export async function withFailover<T>(apiKey: string, run: (key: string) => Prom
  * mail goes through the system mailbox (lib/deliver.ts, the one door); with
  * none connected it is still stamped, and Platform services shows it.
  */
-async function notePoolDown(env: Env, status: number, raw: string): Promise<void> {
+export async function notePoolDown(env: Env, status: number, raw: string): Promise<void> {
   const last = Date.parse((await metaGet(env.DB, 'ai_pool_down_at').catch(() => null)) ?? '') || 0;
   if (Date.now() - last < 6 * 3_600_000) return;
   let msg = raw;
@@ -299,7 +315,7 @@ async function notePoolDown(env: Env, status: number, raw: string): Promise<void
   await alertOwnerAiDown(env, why);
 }
 
-async function markFailed(env: Env, k: PoolKey, restMs: number, status: number, raw: string): Promise<void> {
+export async function markFailed(env: Env, k: PoolKey, restMs: number, status: number, raw: string): Promise<void> {
   const until = Date.now() + restMs;
   cooling.set(k.fp, until);
   /* A customer's own key is theirs to watch; only the install's keys are
@@ -316,7 +332,7 @@ async function markFailed(env: Env, k: PoolKey, restMs: number, status: number, 
   ).bind(k.fp, nowIso(), error, new Date(until).toISOString()).run().catch(() => undefined);
 }
 
-async function markOk(env: Env, k: PoolKey): Promise<void> {
+export async function markOk(env: Env, k: PoolKey): Promise<void> {
   const wasResting = cooling.delete(k.fp);
   if (k.source === 'workspace') return;
   /* Written when it recovers, and otherwise at most every ten minutes — the

@@ -111,6 +111,7 @@ import { runProspectFinders } from './prospectFinderTick';
 import { runHousekeeping } from './lib/housekeeping';
 import { runStoragePurges, sweepOrphans } from './lib/storageSweep';
 import { runAiHealth } from './lib/aiHealth';
+import { runAiProbe } from './lib/aiProbe';
 import { handleMailWebhook } from './lib/bounces';
 import { handleCustomerView } from './routes/customerView';
 import { handleLogo } from './lib/brandLogo';
@@ -683,6 +684,11 @@ export default {
       /* The owner's AI health check (lib/aiHealth.ts): last, because it
          reports on what this tick's AI calls left behind, and nothing waits
          on it. It gates itself to once an hour and makes no AI call. */
+      /* Every AI key asked for one word, every 15 minutes, before the health
+         check reads the result (lib/aiProbe.ts) — so a dead key is rested
+         and reported before a customer is sent to it. */
+      const probe = await runAiProbe(env).catch(() => null);
+      if (probe && probe.working < probe.total) console.log(`[cron] ai keys: ${probe.working} of ${probe.total} answered`);
       const aiHealth = await runAiHealth(env).catch(e => ({ ran: true, due: 0, sent: false, detail: String(e) }));
       if (aiHealth.due) console.log(`[cron] ai health: ${aiHealth.detail}`);
 

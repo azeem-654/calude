@@ -88,7 +88,9 @@ register('data:text/javascript,' + encodeURIComponent(`export async function res
 const { checkAiTools, runAiHealth, ALERT_TO, ALERT_COPY, ALERT_FROM } = await import('../worker/src/lib/aiHealth');
 const { noteTool, resetToolNotes } = await import('../worker/src/lib/aiToolHealth');
 const { adoptAiBase } = await import('../worker/src/lib/ai');
-const { forgetPool, fingerprint } = await import('../worker/src/lib/aiPool');
+const { forgetPool, fingerprint, remember } = await import('../worker/src/lib/aiPool');
+const { runAiProbe, lastProbe } = await import('../worker/src/lib/aiProbe');
+const { askGemini } = await import('../worker/src/lib/ai');
 const { encryptSecret } = await import('../worker/src/lib/crypto');
 const { installSecret, sessionKey } = await import('../worker/src/lib/db');
 const { handleAiHealth } = await import('../worker/src/routes/aiHealth');
@@ -108,8 +110,16 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     sends.push({ to: [b.to].flat().join(','), from: b.from, subject: b.subject });
     return Response.json({ id: `re-${sends.length}` });
   }
+  /* Google, per key: GOOD answers, anything else is refused as a dead key. */
+  if (url.startsWith('https://generativelanguage.googleapis.com/')) {
+    const key = new Headers(init?.headers).get('x-goog-api-key') ?? new URL(url).searchParams.get('key') ?? '';
+    if (key !== goodKey) return Response.json({ error: { code: 403, message: 'Permission denied: API key not valid.', status: 'PERMISSION_DENIED' } }, { status: 403 });
+    if (/:generateContent/.test(url)) return Response.json({ candidates: [{ content: { parts: [{ text: 'OK' }] } }] });
+    return Response.json({ models: [{ name: 'models/gemini-2.5-flash-lite', supportedGenerationMethods: ['generateContent'] }] });
+  }
   return new Response('not stubbed', { status: 599 });
 }) as typeof fetch;
+let goodKey = '';
 const alerts = () => sql.prepare('SELECT tool, condition, sent_at, outcome FROM crm_ai_alerts ORDER BY tool, condition').all() as { tool: string; condition: string; sent_at: string | null; outcome: string }[];
 const tool = (t: Awaited<ReturnType<typeof checkAiTools>>, id: string) => t.find(x => x.id === id)!;
 
@@ -159,7 +169,8 @@ const tool = (t: Awaited<ReturnType<typeof checkAiTools>>, id: string) => t.find
   ok('96% raises the 95% alert instead', tool(t, 'text').conditions.includes('quota95') && !tool(t, 'text').conditions.includes('quota80'), tool(t, 'text').conditions);
   use('gemini-2.5-flash-lite', 900);
   t = await checkAiTools(env as never);
-  ok('a key that served more than the free figure is paid, and not "near quota"', tool(t, 'text').state === 'ok' && !tool(t, 'text').quota, tool(t, 'text'));
+  ok('a key that served more than the free figure is paid, and not "near quota"', tool(t, 'text').state !== 'near_quota' && !tool(t, 'text').quota, tool(t, 'text'));
+  ok('one key alone is "one key left": no backup behind it', tool(t, 'text').state === 'thin' && tool(t, 'text').conditions.includes('thin') && /no backup key/.test(tool(t, 'text').detail), tool(t, 'text'));
 
   resetToolNotes();
   for (let i = 0; i < 3; i++) await noteTool('search', false, `429: quota exhausted for ${KEY} at https://x.test/?key=${KEY}`);
@@ -172,6 +183,59 @@ const tool = (t: Awaited<ReturnType<typeof checkAiTools>>, id: string) => t.find
   await noteTool('search', true);
   t = await checkAiTools(env as never);
   ok('one success ends the streak', tool(t, 'search').state !== 'failing' && tool(t, 'search').failStreak === 0, tool(t, 'search'));
+}
+
+/* ── 2b · The 15-minute key check, and the last resort ───────────────── */
+console.log('The automatic key check');
+{
+  goodKey = KEY;
+  sql.exec('DELETE FROM crm_ai_key_health');
+  forgetPool();
+  let p = await runAiProbe(env as never);
+  ok('a working key answers the check', p?.total === 1 && p.working === 1 && p.keys[0].how === 'checked' && p.keys[0].ok, p);
+  ok('…the check is gated to every 15 minutes', (await runAiProbe(env as never)) === null);
+  p = await runAiProbe(env as never, { force: true });
+  ok('…and forced, a key proved by recent use is still asked', p?.keys[0].how === 'checked', p);
+  const fp = await fingerprint(KEY);
+  sql.prepare('UPDATE crm_ai_key_health SET last_ok_at = ? WHERE fp = ?').run(new Date().toISOString(), fp);
+  sql.prepare("DELETE FROM crm_meta WHERE k = 'ai_probe_at'").run();
+  p = await runAiProbe(env as never);
+  ok('a key that answered a customer within 15 minutes is not asked again', p?.keys[0].how === 'in_use' && p.working === 1, p);
+
+  goodKey = '';   // the key dies
+  p = await runAiProbe(env as never, { force: true });
+  const h = sql.prepare('SELECT cooldown_until, last_error FROM crm_ai_key_health WHERE fp = ?').get(fp) as { cooldown_until: string | null; last_error: string } | undefined;
+  ok('a dead key is found by the check, rested, and its reason kept', p?.working === 0 && !!h?.cooldown_until && Date.parse(h.cooldown_until) > Date.now() && /403|denied/i.test(h.last_error), { p, h });
+  ok('…with no key in what is stored or shown', !JSON.stringify(p).includes(KEY) && !(h?.last_error ?? '').includes(KEY));
+  ok('…and the run is kept for the owner\'s screen', (await lastProbe(env as never))?.working === 0);
+  let t = await checkAiTools(env as never);
+  ok('no key answering the check is "failing" for writing, at once', tool(t, 'text').state === 'failing' && /automatic check/.test(tool(t, 'text').detail), tool(t, 'text'));
+
+  /* The last resort: Workers AI answers when every key fails, for text, behind the operator's keys only. */
+  const asked: string[] = [];
+  env.AI = { run: async (model: string, input: { messages: { content: string }[] }) => { asked.push(model); return { response: input.messages.some(m => /JSON/.test(m.content)) ? '{"ok":true,"from":"workers-ai"}' : 'Hello from Workers AI' }; } };
+  forgetPool();
+  adoptAiBase(env as never);
+  const pool = [{ key: KEY, fp, source: 'env' as const, label: 'AI_API_KEY' }];
+  const k = remember(env as never, pool)!;
+  const r = await askGemini(k, 'Say hello', 0.5, { json: false, module: 'autopilot', accountId: 'acct-c' });
+  ok('every key down: Workers AI answers the customer instead of "at capacity"', r.ok && r.text === 'Hello from Workers AI' && asked.length === 1, { r, asked });
+  const j = await askGemini(k, 'Give me JSON', 0.5, { module: 'autopilot', accountId: 'acct-c' });
+  ok('…in JSON when JSON was asked for', j.ok && JSON.parse(j.text).from === 'workers-ai', j);
+  const used = sql.prepare("SELECT SUM(requests) n FROM crm_ai_usage WHERE provider = 'workers-ai'").get() as { n: number };
+  ok('…and every answer is counted, under workers-ai', Number(used.n) === 2, used);
+  const own = remember(env as never, [{ key: 'AIzaWorkspaceOwnKey000000000000000000', fp: 'own', source: 'workspace' as const, label: 'Workspace key' }])!;
+  const alone = await askGemini(own, 'Say hello', 0.5, { json: false });
+  ok('a workspace on its own key alone (an ended trial) is not given the operator\'s last resort', !alone.ok && asked.length === 2, { alone, asked });
+  env.AI = { run: async () => { throw new Error('Workers AI down'); } };
+  const both = await askGemini(k, 'Say hello', 0.5, { json: false });
+  ok('…and with Workers AI down too, the plain "at capacity" sentence, not a crash', !both.ok && /at capacity/.test(both.error), both);
+  delete env.AI;
+  goodKey = KEY;
+  await runAiProbe(env as never, { force: true });
+  forgetPool();
+  t = await checkAiTools(env as never);
+  ok('the key back: the check marks it working and writing is no longer failing', tool(t, 'text').state !== 'failing', tool(t, 'text'));
 }
 
 /* ── 3 · The owner's route ────────────────────────────────────────────── */
@@ -188,7 +252,7 @@ console.log('The owner\'s route');
   const own = await ask('tok-owner');
   const body = await own.text();
   const j = JSON.parse(body) as { success: boolean; tools: { id: string; state: string }[]; alerts: unknown[]; recipients: { to: string } };
-  ok('the owner gets every tool with a state', own.status === 200 && j.success && j.tools.length === AI_TOOLS.length && j.tools.every(t => ['ok', 'missing_key', 'failing', 'near_quota'].includes(t.state)), j.tools);
+  ok('the owner gets every tool with a state', own.status === 200 && j.success && j.tools.length === AI_TOOLS.length && j.tools.every(t => ['ok', 'missing_key', 'failing', 'near_quota', 'thin'].includes(t.state)), j.tools);
   ok('…and the answer holds no key material at all', !body.includes(KEY) && !body.includes(MAIL_KEY) && !/AIza[0-9A-Za-z_-]{10,}|sk-or-[\w-]{8,}|re_[\w]{10,}/.test(body), body.slice(0, 300));
   const run = await ask('tok-owner', 'run');
   ok('"Check now" runs the check for the owner', run.status === 200 && (await run.json() as { run?: { ran: boolean } }).run?.ran === true);

@@ -54,6 +54,26 @@ absolute URL (a Stripe return address, the link in the digest) reads
 `env.APP_ORIGIN`, set in `wrangler.jsonc`. Unset, those paths report that they
 were skipped rather than sending something broken.
 
+**Every AI key is checked every 15 minutes, and Workers AI answers when none
+does** (2026-11-16, after the AppSumo reviewer met "at capacity").
+`lib/aiProbe.ts` `runAiProbe` (5-minute cron, before `runAiHealth`, gated to
+15 min) asks each install key for one word — skipping one a customer's request
+proved in the last 15 minutes — and feeds the pool's own `markOk`/`markFailed`,
+so a dead key is rested before a customer is sent to it; a recovered key ends
+its rest in every isolate within 30 s (`installPool` clears local cooldowns the
+database no longer holds). None answering mails the owner (`notePoolDown`); the
+run is kept in `crm_meta` `ai_probe_last` and drawn on Platform services → AI
+health (the key-check box; "Check now" forces it). `lib/aiHealth.ts` reads it:
+no key answering is `failing` at once, one working key (or one key at all) is
+`thin` ("One key left", mailed once a day). When every key fails for its own
+reason, a **text-only** request is answered by Cloudflare Workers AI through the
+`AI` binding (`lib/ai.ts` `askWorkersAi`, model `WORKERS_AI_TEXT`, overridable
+by `WORKERS_AI_TEXT_MODEL`) — in `askGeminiParts` and in `/api/ai.php`
+(`promptOf`) — only behind the operator's own keys (`hasInstallKeys`: an ended
+trial on its own key does not get it), counted in `crm_ai_usage` as
+`workers-ai`. Pictures, recordings, web research and live voice still need a
+Google key. `npm run test:ai-keys` covers the check and the last resort.
+
 **AI keeps going when the keys run out** (2026-11-14). When every AI key is
 resting (lib/aiPool.ts: 2 min after a rate limit, an hour after a daily
 quota), the customer is not shown the busy sentence. `lib/http.ts` `json`

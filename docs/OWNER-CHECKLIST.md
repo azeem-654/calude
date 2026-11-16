@@ -602,6 +602,16 @@ Two things worth knowing:
 
 ### 14. Connect the AI key once, for everybody
 
+**Since 2026-11-16 your keys are checked for you every 15 minutes** (Settings →
+Platform services → AI health shows "N of M AI keys working" and each key's
+reason). A dead key is benched before customers reach it; with only one key
+working you are emailed "One key left"; with none, writing and chat are answered
+by Cloudflare Workers AI (no key) and you are emailed. Pictures, recordings,
+web research and live voice still need a working Google key, so keep at least
+two, from **different Google Cloud projects** (keys in one project share its
+limits and fail together).
+
+
 **Customers are no longer asked for one.** `loadAiKey` now falls back to a key
 you hold for the whole install, so the writing is part of the product rather
 than homework. Three places, in order: the workspace's own key (a customer who

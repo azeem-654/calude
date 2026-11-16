@@ -14,6 +14,7 @@
 import { body, fail, json } from '../lib/http';
 import { metaGet, userFromToken, type Env } from '../lib/db';
 import { ALERT_COPY, ALERT_FROM, ALERT_TO, checkAiTools, lastMail, readAlerts, runAiHealth } from '../lib/aiHealth';
+import { lastProbe, runAiProbe } from '../lib/aiProbe';
 
 interface Req { token?: string; action?: string }
 
@@ -24,10 +25,12 @@ export async function handleAiHealth(req: Request, env: Env): Promise<Response> 
   if (!(user.role === 'agency' && !user.accountId)) return fail('Only the owner of this installation can see its AI health.', 403, { code: 'not_owner' });
   const act = String(d.action ?? 'status');
   if (act !== 'status' && act !== 'run') return fail(`"${act}" is not something this endpoint does.`);
+  /* "Check now" asks every key first, so the table below speaks for this minute. */
+  if (act === 'run') await runAiProbe(env, { force: true }).catch(() => null);
   const run = act === 'run' ? await runAiHealth(env, { force: true }) : null;
-  const [tools, alerts, mail, checkedAt] = await Promise.all([checkAiTools(env), readAlerts(env), lastMail(env), metaGet(env.DB, 'ai_health_checked_at').catch(() => null)]);
+  const [tools, alerts, mail, checkedAt, probe] = await Promise.all([checkAiTools(env), readAlerts(env), lastMail(env), metaGet(env.DB, 'ai_health_checked_at').catch(() => null), lastProbe(env)]);
   return json({
-    success: true, checkedAt, tools, alerts, mail, run,
+    success: true, checkedAt, tools, alerts, mail, run, probe,
     recipients: { to: ALERT_TO, copy: ALERT_COPY, from: ALERT_FROM },
   });
 }

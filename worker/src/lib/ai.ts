@@ -16,13 +16,13 @@
  */
 import { decryptSecret } from './crypto';
 import { installSecret, type Env } from './db';
-import { fingerprint, installPool, remember, withFailover, type Attempt } from './aiPool';
+import { fingerprint, hasInstallKeys, installPool, remember, withFailover, type Attempt } from './aiPool';
 import { isOpenRouterKey, askOpenRouter, verifyOpenRouterKey, adoptOpenRouterBase } from './openrouter';
 import { TRIAL_ENDED_MESSAGE, trialForWorkspace } from './trial';
 import { take as takeAllowance } from './allowanceStore';
 import { cleanJob, jobMayFinish, jobTouch } from './aiJobs';
 import { chainFor, guessTask, taskOf, type AiTask } from './aiTasks';
-import { adoptUsageEnv, capRefusal, freeFirst, recordAiUse } from './aiUsage';
+import { adoptUsageEnv, capRefusal, freeFirst, recordAiUse, usageEnv } from './aiUsage';
 import { noteTool } from './aiToolHealth';
 
 /** The provider's reason for a failed attempt, for the owner's record (never shown to a customer). */
@@ -292,11 +292,80 @@ export async function askGeminiParts(
   });
   /* The tool's health for the owner's monitor (lib/aiToolHealth.ts): a
      success, or every key failing for its own reason — never a request
-     refused for its content. */
+     refused for its content. Noted as failing even when the last resort
+     below answers: the keys are still down, and the owner is told. */
   const tool = o.task === 'vision' ? 'vision' : 'text';
   if (r.ok) await noteTool(tool, true);
   else if (down) await noteTool(tool, false, down);
+  if (!r.ok && down && hasInstallKeys(apiKey) && parts.every(p => 'text' in p)) {
+    const backup = await askWorkersAi(parts.map(p => ('text' in p ? p.text : '')).join('\n\n'), temperature, o);
+    if (backup) return backup;
+  }
   return r;
+}
+
+/**
+ * The last resort when every key failed for its own reason: Cloudflare's own
+ * model, through the Worker's `AI` binding — no key, no quota of Google's.
+ *
+ * ── Why this exists ──
+ *
+ * The AppSumo reviewer was promised AI and shown "at capacity". Backup keys
+ * made that rarer, not impossible: keys on one Google account share its
+ * limits, and a bad day takes them together. Workers AI is a different
+ * company's capacity, already bound for transcription, so writing and chat
+ * keep answering while the owner is mailed that the keys are down.
+ *
+ * Text only — a picture, a PDF or a recording still needs a Google key — and
+ * only behind the operator's own keys (`hasInstallKeys`): it is the
+ * operator's bill (Workers AI neurons past the free daily allowance), so a
+ * workspace whose trial ended, on its own key alone, does not get it. The
+ * caller has already passed `aiBudget()`; the answer is counted in
+ * `crm_ai_usage` under provider `workers-ai`. A failure here returns null and
+ * the customer is told what they were told before (AI_BUSY).
+ *
+ * The model is Cloudflare's catalogue name, overridable without a deploy of
+ * code (`WORKERS_AI_TEXT_MODEL`); Gemini ids are never written down because
+ * Google retires them, and this one is not Google's.
+ */
+export const WORKERS_AI_TEXT = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+
+export const workersAiTextModel = (env: Env): string => (env.WORKERS_AI_TEXT_MODEL ?? '').trim() || WORKERS_AI_TEXT;
+
+export async function askWorkersAi(prompt: string, temperature: number, opts: AskOpts = {}): Promise<AiResult | null> {
+  const env = usageEnv();
+  if (!env?.AI) return null;
+  const model = workersAiTextModel(env);
+  const asJson = opts.json !== false;
+  const started = Date.now();
+  const use = (ok: boolean, tin?: number, tout?: number) => recordAiUse({
+    provider: 'workers-ai', key: 'workers-ai', model, module: opts.module, accountId: opts.accountId,
+    ok, status: ok ? 200 : 500, ms: Date.now() - started, tokensIn: tin, tokensOut: tout,
+  });
+  try {
+    const run = env.AI.run(model, {
+      messages: [
+        ...(asJson ? [{ role: 'system', content: 'Answer with valid JSON only: no prose before or after it, no code fence.' }] : []),
+        { role: 'user', content: prompt },
+      ],
+      temperature,
+      /* The binding's default is 256 tokens — a sentence, not a post. */
+      max_tokens: 4096,
+    }) as Promise<{ response?: unknown; usage?: { prompt_tokens?: number; completion_tokens?: number } }>;
+    const out = await Promise.race([
+      run,
+      new Promise<never>((_, no) => setTimeout(() => no(new Error('timeout')), opts.timeoutMs ?? 60_000)),
+    ]);
+    const raw = typeof out?.response === 'string' ? out.response
+      : out?.response && typeof out.response === 'object' ? JSON.stringify(out.response) : '';
+    const text = asJson ? jsonOnly(raw) : raw.trim();
+    if (!text || (asJson && extractJson<unknown>(text) === null)) { await use(false); return null; }
+    await use(true, out?.usage?.prompt_tokens, out?.usage?.completion_tokens);
+    return { ok: true, text, error: '' };
+  } catch {
+    await use(false);
+    return null;
+  }
 }
 
 /** Gemma on the Gemini API (gemma-4-…-it): the big free reserve, with fewer switches (lib/aiTasks.ts). */
