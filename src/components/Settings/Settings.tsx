@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { ReactNode, ReactElement } from 'react';
 import { User, Bell, Shield, CreditCard, Globe, Palette, Save, Mail, MessageSquare, CheckCircle, XCircle, Loader, Eye, EyeOff, RefreshCw, Send, Phone, Zap, Inbox, ChevronRight, FlaskConical, Flame, Clock, TrendingUp, Sliders, Play, Square, Users, ShieldCheck, Server, Activity, KeyRound } from 'lucide-react';
 import Header from '../Layout/Header';
@@ -927,6 +927,32 @@ export default function Settings() {
   const activeTab = visibleTabs.some(t => t.id === asked) ? asked! : 'email-sms';
   const setActiveTab = (id: string) =>
     setParams(id === 'email-sms' ? {} : { tab: id }, { replace: true });
+
+  /*
+   * The menu stays in view while scrolling only when it sits beside the
+   * panel. Stacked above it (a phone: the row wraps), a sticky menu fourteen
+   * rows tall stayed pinned over the top of the screen and every panel
+   * scrolled underneath it, unreadable. Whether it wraps depends on the
+   * width the row actually has, not the window's, so it is measured — the
+   * menu and the panel starting at the same height means side by side —
+   * rather than guessed with a breakpoint.
+   */
+  const rowRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [beside, setBeside] = useState(false);
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const check = () => {
+      const m = menuRef.current, c = panelRef.current;
+      setBeside(!!m && !!c && Math.abs(m.offsetTop - c.offsetTop) < 2);
+    };
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(row);
+    return () => ro.disconnect();
+  }, []);
   /*
    * These three used to be hardcoded fixtures — "John Doe", "CRMPro Inc.",
    * Stripe and Twilio shown as already connected on a brand-new account — and
@@ -993,9 +1019,9 @@ export default function Settings() {
       {/* The sidebar and the panel sit side by side when there is room and
           stack when there is not — a 220px column that refuses to shrink was
           dragging every settings panel off the side of a phone. */}
-      <div style={{ padding: 'clamp(14px, 3vw, 28px)', display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+      <div ref={rowRef} style={{ padding: 'clamp(14px, 3vw, 28px)', display: 'flex', gap: '24px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         {/* Sidebar */}
-        <div style={{ width: 220, flex: '1 1 220px', maxWidth: '100%', position: 'sticky', top: '24px' }}>
+        <div ref={menuRef} data-testid="settings-menu" style={{ width: 220, flex: '1 1 220px', maxWidth: '100%', ...(beside ? { position: 'sticky' as const, top: '24px' } : {}) }}>
           <div style={{ backgroundColor: 'white', borderRadius: '18px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', padding: '8px' }}>
             {visibleTabs.map(tab => (
               <button key={tab.id} onClick={() => setActiveTab(tab.id)} aria-pressed={activeTab === tab.id}
@@ -1010,7 +1036,7 @@ export default function Settings() {
         </div>
 
         {/* Content */}
-        <div style={{ flex: '999 1 320px', minWidth: 0 }}>
+        <div ref={panelRef} style={{ flex: '999 1 320px', minWidth: 0 }}>
           {activeTab === 'email-sms' && <EmailSMSTab />}
           {/* The AI Sales Agent's prospect search used to have a key card here
               that held a Places key per browser. It searches on the owner's
