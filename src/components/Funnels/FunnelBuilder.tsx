@@ -1,11 +1,12 @@
 import { useState, useRef, Fragment, useEffect, useCallback, useMemo } from 'react';
+import { scrubInvented } from '../shared/scrubInvented';
 import FormPicker from '../shared/FormPicker';
 import type { CSSProperties } from 'react';
 import {
   X, Save, Eye, EyeOff,
   Plus, Trash2, Copy, ChevronUp, ChevronDown,
   Check, Undo2, Redo2,
-  Settings, Search, GitBranch, BarChart2, Users, ShoppingCart, ExternalLink,
+  Settings, Search, Users, ExternalLink,
   Mail, Phone, MousePointerClick, Heart, ArrowRight, List,
 } from 'lucide-react';
 import type { Funnel, FunnelStep, FunnelBlock } from '../../types';
@@ -14,6 +15,7 @@ import { GradientSwatchRow } from '../shared/gradientPresets';
 import { ScaledPage } from '../shared/BlockRender';
 import { TEMPLATE_CATALOG, buildTemplatePages } from '../shared/pageTemplates';
 import { activeAccount } from '../../services/tenancy';
+import PublishControl from '../shared/PublishControl';
 
 /* ─── Step type config ─── */
 const STEP_TYPE_CONFIG: Record<string, { emoji: string; color: string; bg: string; label: string }> = {
@@ -41,15 +43,16 @@ interface FunnelOverviewProps {
   onReorderPage: (from: number, to: number) => void;
   onClose: () => void;
   onSave: () => void;
+  /** Save the current pages to the account (before publishing or previewing). */
+  onPersist: () => void;
+  onPublishedChange: (published: boolean) => void;
 }
 
-function FunnelOverview({ funnel, pages, onEditPage, onAddPage, onDeletePage, onRenamePage, onClose, onSave }: FunnelOverviewProps) {
+function FunnelOverview({ funnel, pages, onEditPage, onAddPage, onDeletePage, onRenamePage, onClose, onSave, onPersist, onPublishedChange }: FunnelOverviewProps) {
   const [activeStep, setActiveStep] = useState(pages[0]?.id ?? '');
-  const [headerTab, setHeaderTab] = useState<'steps' | 'stats' | 'contacts' | 'sales' | 'settings'>('steps');
   const [showAddModal, setShowAddModal] = useState(false);
   const [newStepName, setNewStepName] = useState('');
   const [newStepType, setNewStepType] = useState<FunnelStep['type']>('landing');
-  const [splitTestPage, setSplitTestPage] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState('');
 
@@ -87,23 +90,17 @@ function FunnelOverview({ funnel, pages, onEditPage, onAddPage, onDeletePage, on
         <button onClick={onClose} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>← Back</button>
         <span style={{ color: '#f8fafc', fontWeight: 700, fontSize: 15 }}>{funnel.name}</span>
         <div style={{ flex: 1 }} />
+        <PublishControl kind="funnel" itemId={funnel.id} beforePublish={onPersist} onPublishedChange={onPublishedChange} />
         <button onClick={onSave} style={{ padding: '7px 18px', borderRadius: 6, border: 'none', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
           <Save size={13} /> Save
         </button>
       </div>
 
-      {/* Header tabs */}
-      <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', padding: '0 24px', gap: 0 }}>
-        {(['steps', 'stats', 'contacts', 'sales', 'settings'] as const).map(tab => (
-          <button key={tab} onClick={() => setHeaderTab(tab)}
-            style={{ padding: '12px 18px', border: 'none', borderBottom: `2px solid ${headerTab === tab ? '#6366f1' : 'transparent'}`, background: 'transparent', color: headerTab === tab ? '#6366f1' : '#64748b', fontSize: '13px', fontWeight: headerTab === tab ? 700 : 500, cursor: 'pointer', textTransform: 'capitalize', marginBottom: '-1px' }}>
-            {tab === 'steps' ? '⚡ Steps' : tab === 'stats' ? '📊 Stats' : tab === 'contacts' ? '👥 Contacts' : tab === 'sales' ? '💰 Sales' : '⚙️ Settings'}
-          </button>
-        ))}
-      </div>
-
-      {headerTab === 'steps' && (
-        <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      {/* Stats, Contacts, Sales and Settings tabs stood here and every one
+          read "No data available yet" — Settings had no fields at all (audit
+          H4). Gone until there is something real behind them; the public
+          view count is on the Publish button. */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
           {/* Left: Steps sidebar */}
           <div style={{ width: '240px', background: 'white', borderRight: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
             <div style={{ padding: '14px 14px 10px', borderBottom: '1px solid #f1f5f9', fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -165,7 +162,13 @@ function FunnelOverview({ funnel, pages, onEditPage, onAddPage, onDeletePage, on
                     <p style={{ fontSize: '13px', color: '#64748b', margin: '3px 0 0' }}>/{step.slug} · {stepConfig.label}</p>
                   </div>
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
-                    <button style={{ padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: '8px', background: 'white', color: '#374151', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {/* Had no handler at all. Opens the owner's preview (saved first so it shows this edit). */}
+                    <button onClick={() => {
+                      onPersist();
+                      const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+                      window.open(`${base}/preview-funnel/${funnel.id}`, '_blank', 'noopener');
+                    }} title="Preview in a new tab — only you can see it until you publish"
+                      style={{ padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: '8px', background: 'white', color: '#374151', fontSize: '13px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Eye size={14} /> Preview
                     </button>
                     <button onClick={() => onEditPage(step.id)}
@@ -175,79 +178,10 @@ function FunnelOverview({ funnel, pages, onEditPage, onAddPage, onDeletePage, on
                   </div>
                 </div>
 
-                {/* Stats */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '28px' }}>
-                  {[
-                    { label: 'Visitors', value: step.visitors.toLocaleString(), color: '#6366f1' },
-                    { label: 'Conversions', value: step.conversions.toLocaleString(), color: '#22c55e' },
-                    { label: 'Conversion Rate', value: step.visitors > 0 ? `${((step.conversions / step.visitors) * 100).toFixed(1)}%` : '0%', color: '#f59e0b' },
-                  ].map(m => (
-                    <div key={m.label} style={{ backgroundColor: 'white', borderRadius: '12px', padding: '16px 20px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
-                      <p style={{ fontSize: '22px', fontWeight: 800, color: m.color, margin: '0 0 4px' }}>{m.value}</p>
-                      <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>{m.label}</p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Variants panel */}
-                <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden', marginBottom: '24px' }}>
-                  <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div>
-                      <span style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>Page Variants</span>
-                      <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '8px' }}>Split test your page to maximize conversions</span>
-                    </div>
-                    {splitTestPage !== step.id && (
-                      <button onClick={() => setSplitTestPage(step.id)}
-                        style={{ padding: '7px 14px', border: '1px solid #6366f1', borderRadius: '7px', background: 'white', color: '#6366f1', fontSize: '12px', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <GitBranch size={13} /> Start Split Test
-                      </button>
-                    )}
-                  </div>
-                  <div style={{ padding: '20px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                    {/* Control variant */}
-                    <div style={{ flex: '0 0 200px' }}>
-                      <div style={{ height: '130px', backgroundColor: '#f1f5f9', borderRadius: '8px', border: '2px solid #6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px', position: 'relative', overflow: 'hidden' }}>
-                        <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(135deg, ${stepConfig.bg}, white)`, opacity: 0.7 }} />
-                        <div style={{ position: 'relative', textAlign: 'center' }}>
-                          <div style={{ fontSize: '28px', marginBottom: '4px' }}>{stepConfig.emoji}</div>
-                          <div style={{ fontSize: '11px', fontWeight: 700, color: stepConfig.color }}>Control</div>
-                        </div>
-                        <div style={{ position: 'absolute', top: '6px', left: '6px', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#6366f1', color: 'white', fontSize: '10px', fontWeight: 700 }}>100%</div>
-                      </div>
-                      <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>Control</div>
-                      <div style={{ fontSize: '11px', color: '#64748b' }}>{step.visitors} visitors</div>
-                    </div>
-
-                    {/* Variation (if split test active) */}
-                    {splitTestPage === step.id && (
-                      <div style={{ flex: '0 0 200px' }}>
-                        <div style={{ height: '130px', backgroundColor: '#f1f5f9', borderRadius: '8px', border: '2px dashed #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
-                          <div style={{ textAlign: 'center', color: '#94a3b8' }}>
-                            <Plus size={24} style={{ marginBottom: '4px' }} />
-                            <div style={{ fontSize: '11px', fontWeight: 600 }}>Variation B</div>
-                          </div>
-                        </div>
-                        <div style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>Variation B</div>
-                        <div style={{ fontSize: '11px', color: '#64748b' }}>0 visitors</div>
-                      </div>
-                    )}
-
-                    {splitTestPage !== step.id && (
-                      <div style={{ flex: '0 0 200px' }}>
-                        <div onClick={() => setSplitTestPage(step.id)} style={{ height: '130px', borderRadius: '8px', border: '2px dashed #c4b5fd', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginBottom: '10px', backgroundColor: '#f5f3ff' }}
-                          onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.backgroundColor = '#ede9fe'}
-                          onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.backgroundColor = '#f5f3ff'}>
-                          <div style={{ textAlign: 'center', color: '#7c3aed' }}>
-                            <Plus size={20} style={{ marginBottom: '4px' }} />
-                            <div style={{ fontSize: '11px', fontWeight: 700 }}>Create Variation</div>
-                          </div>
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', textAlign: 'center' }}>Add a B variant to split test</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
+                {/* Per-step Visitors / Conversions / Conversion Rate and a
+                    "Start Split Test" panel stood here. Nothing ever counted
+                    a step's visitors and no split test existed to start, so
+                    the numbers could never move (audit H4). */}
                 {/* Page blocks summary */}
                 <div style={{ backgroundColor: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', padding: '16px 20px' }}>
                   <div style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a', marginBottom: '12px' }}>Page Contents</div>
@@ -272,21 +206,6 @@ function FunnelOverview({ funnel, pages, onEditPage, onAddPage, onDeletePage, on
             )}
           </div>
         </div>
-      )}
-
-      {headerTab !== 'steps' && (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '36px', marginBottom: '12px' }}>
-              {headerTab === 'stats' ? '📊' : headerTab === 'contacts' ? '👥' : headerTab === 'sales' ? '💰' : '⚙️'}
-            </div>
-            <div style={{ fontSize: '16px', fontWeight: 700, color: '#374151', marginBottom: '6px' }}>
-              {headerTab.charAt(0).toUpperCase() + headerTab.slice(1)}
-            </div>
-            <div style={{ fontSize: '13px' }}>No data available yet</div>
-          </div>
-        </div>
-      )}
 
       {/* Add Step Modal */}
       {showAddModal && (
@@ -370,12 +289,14 @@ const DEFAULT_CONTENT: Record<BlockType, string> = {
   divider: '', spacer: '', countdown: 'Limited Time Offer',
 };
 
+/* Every block, from a template or the palette, goes through scrubInvented: the
+   templates' quotes and figures are showcase copy, not the customer's (audit M7). */
 function createBlock(type: BlockType, content = '', extra: FunnelBlock['settings'] = {}): FunnelBlock {
-  return { id: uid(), type, content: content || DEFAULT_CONTENT[type], settings: { ...DEFAULTS[type], ...extra } };
+  return scrubInvented({ id: uid(), type, content: content || DEFAULT_CONTENT[type], settings: { ...DEFAULTS[type], ...extra } });
 }
 let _ti = 0;
 function mk(type: BlockType, content = '', extra: FunnelBlock['settings'] = {}): FunnelBlock {
-  return { id: `t${++_ti}`, type, content: content || DEFAULT_CONTENT[type], settings: { ...DEFAULTS[type], ...extra } };
+  return scrubInvented({ id: `t${++_ti}`, type, content: content || DEFAULT_CONTENT[type], settings: { ...DEFAULTS[type], ...extra } });
 }
 let _pi = 0;
 function mkPage(name: string, type: FunnelStep['type'] = 'landing'): FunnelStep {
@@ -563,7 +484,7 @@ function BlockRender({ block }: { block: FunnelBlock }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
             {(s.testimonialItems ?? []).slice(0, 3).map((t, i) => (
               <div key={i} style={{ background: s.bgColor === '#0f172a' ? '#1e293b' : '#f8fafc', borderRadius: 18, padding: 28, textAlign: 'left', border: `1px solid ${s.bgColor === '#0f172a' ? '#334155' : '#e2e8f0'}` }}>
-                <div style={{ color: '#f59e0b', marginBottom: 14, fontSize: 18, letterSpacing: 2 }}>{'★'.repeat(t.stars ?? 5)}</div>
+                <div style={{ color: '#f59e0b', marginBottom: 14, fontSize: 18, letterSpacing: 2 }}>{'★'.repeat(Math.min(5, t.stars ?? 0))}</div>
                 <p style={{ fontSize: 15, color: s.bgColor === '#0f172a' ? '#cbd5e1' : '#374151', lineHeight: 1.8, marginBottom: 20, fontStyle: 'italic' }}>"{t.quote}"</p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div style={{ width: 42, height: 42, borderRadius: '50%', background: `hsl(${i * 80 + 200},60%,50%)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 15, flexShrink: 0 }}>{t.author[0]}</div>
@@ -1386,6 +1307,8 @@ export default function FunnelBuilder({ funnel, onSave, onClose, onPersist }: Fu
         }}
         onClose={onClose}
         onSave={handleSave}
+        onPersist={() => onPersist?.({ pages, steps: pages.length })}
+        onPublishedChange={on => onPersist?.({ pages, steps: pages.length, status: on ? 'active' : 'draft' })}
       />
     );
   }
@@ -1440,13 +1363,16 @@ export default function FunnelBuilder({ funnel, onSave, onClose, onPersist }: Fu
             const base = import.meta.env.BASE_URL.replace(/\/$/, '');
             window.open(`${base}/preview-funnel/${funnel.id}`, '_blank', 'noopener');
           }}
-          title="Open the live funnel in a new tab"
+          title="Open a preview in a new tab — only you can see it until you publish"
           style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e8ecf0', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
-          <ExternalLink size={13} /> Live preview
+          <ExternalLink size={13} /> Preview tab
         </button>
+        <PublishControl kind="funnel" itemId={funnel.id} tone="light"
+          beforePublish={() => onPersist?.({ pages, steps: pages.length })}
+          onPublishedChange={on => onPersist?.({ pages, steps: pages.length, status: on ? 'active' : 'draft' })} />
         <button onClick={handleSave}
           style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, boxShadow: '0 2px 8px rgba(99,102,241,0.3)' }}>
-          <Save size={13} /> Publish
+          <Save size={13} /> Save
         </button>
       </div>
 

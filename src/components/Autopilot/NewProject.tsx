@@ -58,6 +58,7 @@ import { QUESTIONS, TEMPLATE_COUNT, solutionByKey, CUSTOM, type Question } from 
 import {
   allQuestions, answersOf, applies, applyOps, buildBlueprint, extractKnown, initialState,
   parseEdit, screensOf, urlsIn, validValue, withDefaults, describeAnswer, DESIGN_QUESTION_IDS, designQuestions, designKindsOf,
+  reusablePortfolio, tradeSafeKeys, businessTypesFor,
   type Blueprint, type IntakeState, type KnownSource, type WorkspaceFacts, type Attachment,
 } from '../../services/projectIntake';
 import Describe, { type DescribeValue } from './newProject/Describe';
@@ -385,14 +386,17 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
     setState(null);
     setProfile({ draft: null, readFor: '', reading: false, error: '' });
 
-    const single = ws.portfolios.length === 1 ? ws.portfolios[0].id : undefined;
-    const r = await understand({ prompt, files, urls, portfolioId: single, candidates: base.solutionKeys });
+    /* Only a profile this request is plausibly about goes to the AI: the only
+       one on file was sent before, and the model read a plumber into an
+       electrician's request (audit H2). */
+    const onFile = reusablePortfolio(prompt, ws, urls[0] ?? '')?.id;
+    const r = await understand({ prompt, files, urls, portfolioId: onFile, candidates: base.solutionKeys });
 
     let st: IntakeState = base;
     let readProfile = '';
     if (r.ok && r.understanding) {
       const u = r.understanding;
-      const aiKeys = u.solutionKeys.filter(k => solutionByKey(k));
+      const aiKeys = tradeSafeKeys(prompt, u.solutionKeys.filter(k => solutionByKey(k)));
       let keys = aiKeys.length ? aiKeys : base.solutionKeys;
       if (chosen.length) keys = [...chosen, ...aiKeys.filter(k => !chosen.includes(k))].slice(0, Math.max(2, chosen.length));
       const known = extractKnown(prompt, keys, ws, files, links);
@@ -404,6 +408,14 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
         if (clean !== null && !(id === 'business' && String(clean).startsWith('existing:'))) {
           known[id] = { value: clean, source: 'ai', note: 'understood from what you gave me' };
         }
+      }
+      /* The finder searches business directories: "homeowners" from the AI is
+         put right the same way as from the words (businessTypesFor). */
+      if (known.prospectTrades?.source === 'ai') {
+        const was = String(known.prospectTrades.value);
+        const kinds = businessTypesFor(was, prompt);
+        if (!kinds) delete known.prospectTrades;
+        else if (kinds !== was) known.prospectTrades = { value: kinds, source: 'default', note: 'businesses that hire this kind of work — people like homeowners are not listed in business directories' };
       }
       const hasProfile = !!(u.profile?.companyName || u.profile?.description);
       if (hasProfile) {

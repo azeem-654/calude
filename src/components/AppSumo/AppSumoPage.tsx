@@ -181,9 +181,24 @@ function Redeem() {
   useEffect(() => {
     const claim = pendingLicense();
     if (!claim) {
-      void call('status').then(r => {
-        if (r.client) setClient(true);
-        else if (r.success) setSt(r as unknown as Standing);
+      /* A code typed before sign-up is added now, as the signed-out page
+         promised ("then added for you"). Pre-filling it and waiting for a
+         press left new buyers on a trial without knowing it (audit M1). */
+      const held = pendingAppsumoCode().trim();
+      void call('status').then(async r => {
+        if (r.client) { setClient(true); return; }
+        if (r.success) setSt(r as unknown as Standing);
+        if (!held || !r.success || r.license || Number(r.codes) >= Number(r.max)) return;
+        setBusy(true);
+        const x = await call('redeem', { code: held });
+        setBusy(false);
+        /* Spent or refused, it is not tried again on the next visit; a refusal stays in the box with its reason. */
+        if (x.code !== 'rate_limited') keepCode('');
+        if (!x.success) { setErr(String(x.error ?? 'That code could not be added.')); return; }
+        setCode('');
+        const s = x as unknown as Standing;
+        setSt(s);
+        setDone(`Your code was added — your account is on ${s.tier?.name ?? 'the AppSumo deal'}.`);
       });
       return;
     }
@@ -262,8 +277,8 @@ function Redeem() {
         ) : (
           <>
             <div style={{ fontSize: 22, fontWeight: 800, margin: '4px 0 2px' }}>{st.tier.name}</div>
-            <div style={{ color: MUTED, fontSize: 14, marginBottom: 12 }}>{st.license ? 'Activated from your AppSumo account' : `${st.codes} of ${st.max} codes`}</div>
-            {st.activePlan && st.activePlan.source !== 'appsumo' && st.activePlan.source !== 'default' && (
+            <div style={{ color: MUTED, fontSize: 14, marginBottom: 12 }}>{st.license ? 'Activated from your AppSumo account' : st.reviewer && !st.codes ? 'Reviewer login — given by Protected Central, the same as three codes' : `${st.codes} of ${st.max} codes`}</div>
+            {!st.reviewer && st.activePlan && st.activePlan.source !== 'appsumo' && st.activePlan.source !== 'default' && (
               <p style={{ fontSize: 14, background: '#f6f7f4', padding: 10, borderRadius: 8 }}>
                 A monthly plan is active on this account, so it applies while it lasts. If it ends, you go back to {st.tier.name}.
               </p>

@@ -157,7 +157,17 @@ export function matchSolutions(prompt: string, picked?: string): MatchResult {
   /* The whole "sell my products to …" clause goes, not just the audience:
      "products" there is what they sell to businesses, not a shop to build. */
   const clause = target ? new RegExp(`\\b(?:sell|selling|market|marketing|pitch|offer|offering)\\b[^.]*?\\bto\\s+${target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i') : null;
-  const text = norm((clause ? prompt.replace(clause, ' ') : prompt) + (target ? ' find clients' : ''));
+  let scored = clause ? prompt.replace(clause, ' ') : prompt;
+  /* The same mistake one step further: "Blue Ridge Plumbing … find homeowners
+     and property managers" was set up as Real Estate Lead Generation (audit
+     H7, 2026-11-16) and asked about sellers and buyers. Beside a trade, those
+     words are its customers; the trade wins, and asking to find them is
+     finding customers. A realtor still says so ("realtor", "estate agent"). */
+  if (servesProperty(prompt)) {
+    const wanted = new RegExp(`\\b(?:find|get|reach|target|win|more|new)\\b[^.]{0,40}?${TRADE_CUSTOMERS.source}`, 'i').test(scored);
+    scored = scored.replace(new RegExp(TRADE_CUSTOMERS.source, 'gi'), ' ') + (wanted ? ' find customers lead generation' : '');
+  }
+  const text = norm(scored + (target ? ' find clients' : ''));
   const scores = SOLUTIONS
     .filter(s => s.key !== CUSTOM)
     .map(s => ({ key: s.key, score: s.keywords.reduce((sum, [p, w]) => sum + (has(text, p) ? w : 0), 0) }))
@@ -180,6 +190,138 @@ export function matchSolutions(prompt: string, picked?: string): MatchResult {
     keys.push(second.key);
   }
   return { keys, strength: keys.length > 1 || top.score < 4 ? 'partial' : 'strong', scores };
+}
+
+/* ── A trade is not a property business ──────────────────────────────────── */
+
+/** The trade a sentence puts the business in. First match wins, so "Plumbing & Heating" is plumbing. */
+const TRADES: [RegExp, string][] = [
+  [/\bplumb(?:er|ers|ing)\b|\bwater heaters?\b|\bdrain (?:cleaning|unblocking)\b/i, 'plumbing'],
+  [/\belectricians?\b|\belectrical (?:contractors?|services|work|company)\b|\brewir(?:e|ing)\b/i, 'electrical'],
+  /* A company called "Lone Star Electric" — capitalised, so "electric bikes" is not a trade. */
+  [/\b[A-Z][a-z]+ Electric(?:al)?\b/, 'electrical'],
+  [/\broof(?:er|ers|ing)\b/i, 'roofing'],
+  [/\bhvac\b|\bheating and (?:air|cooling)\b|\bair[- ]condition(?:ing|er)\b|\bfurnaces?\b/i, 'hvac'],
+  [/\bcleaners\b|\bcleaning (?:company|service|services|business)\b|\b(?:office|house|home|commercial|carpet|window|end of tenancy) cleaning\b|\bjanitorial\b|\bmaid service/i, 'cleaning'],
+  [/\blandscap(?:er|ers|ing)\b|\blawn care\b|\btree (?:service|surgeon|removal)\b/i, 'landscaping'],
+  [/\bpainters?\b|\bpainting (?:and decorating|company|contractor)\b|\bdecorators?\b/i, 'painting'],
+  [/\bpest control\b|\bexterminators?\b/i, 'pest control'],
+  [/\blocksmiths?\b/i, 'locksmith'],
+  [/\bhandym[ae]n\b/i, 'handyman'],
+  [/\bcarpenters?\b|\bcarpentry\b|\bjoiners?\b/i, 'carpentry'],
+  [/\bgarage doors?\b/i, 'garage doors'],
+  [/\bgutters?\b/i, 'gutters'],
+  [/\b(?:pressure|power) washing\b/i, 'pressure washing'],
+  [/\bflooring\b|\btilers?\b/i, 'flooring'],
+  [/\bremodel(?:er|ers|ing)\b|\brenovations?\b|\bgeneral contractor\b/i, 'building'],
+  [/\bsolar (?:panels?|installer|installation|company)\b/i, 'solar'],
+  [/\bmovers\b|\bremovals? (?:company|firm)\b|\bmoving company\b/i, 'moving'],
+];
+
+/** "plumbing", "electrical"… or '' when the sentence names no trade. */
+export function tradeIn(text: string): string {
+  return TRADES.find(([re]) => re.test(text))?.[1] ?? '';
+}
+
+/** A property business says what it is. */
+const REALTY = /\b(?:realtors?|realty|real[- ]estate|estate agen\w*|letting agen\w*|lettings|brokerage|property invest\w*|mortgage broker\w*)\b/i;
+
+/** Words that, beside a trade, are who it works for — never what the business is. */
+const TRADE_CUSTOMERS = /\b(?:home ?owners?|house ?holds?|property (?:managers?|management(?: companies| company| firms?)?|owners?)|landlords?|tenants?|renters?|propert(?:y|ies)|listings?|valuations?)\b/;
+
+/** A trade whose customers happen to own or run property — a plumber, not an estate agent. */
+export const servesProperty = (prompt: string): boolean => !!tradeIn(prompt) && !REALTY.test(prompt);
+
+/**
+ * The AI's solutions, put right for a trade. The model was told the rule
+ * (routes/intake.ts) but this is the one place it is enforced, so a plumber
+ * is never handed Sellers / Buyers / Landlords / Tenants however it read.
+ */
+export function tradeSafeKeys(prompt: string, keys: string[]): string[] {
+  if (!keys.includes('real-estate') || !servesProperty(prompt)) return keys;
+  return [...new Set(keys.map(k => (k === 'real-estate' ? 'lead-generation' : k)))];
+}
+
+/** People, not businesses: a directory has no listing for "homeowners". */
+const CONSUMERS = /^(?:home ?owners?|house ?holds?|residents?|families|people|individuals|consumers|tenants?|renters?|locals?|customers?|clients?|homes?|property owners?|patients?)$/i;
+const AS_BUSINESS: [RegExp, string][] = [
+  [/\bhome ?owners'? associations?\b|\bhoas?\b/i, 'homeowners associations'],
+  [/\bproperty (?:managers?|management)\b|\blandlords?\b/i, 'property management companies'],
+  [/\bgeneral contractors?\b|\bhome ?builders?\b/i, 'general contractors'],
+  [/\bapartment (?:complex(?:es)?|buildings?)\b/i, 'apartment complexes'],
+  [/\brealtors?\b|\b(?:real[- ]estate|estate) agen\w*/i, 'real estate agents'],
+];
+
+/**
+ * Kinds of business for the daily finder, from who somebody said they want.
+ *
+ * The finder searches business directories, so "homeowners in Richmond,
+ * Virginia" found nothing a plumber could use (audit H7). People are taken
+ * out; the businesses the request names that do hire the trade (property
+ * managers, landlords, contractors) are put in their directory words; a trade
+ * that named only people gets property management companies — the business
+ * that hires every home-service trade. '' when nothing is left, so the
+ * question is asked rather than guessed.
+ */
+export function businessTypesFor(trade: string, prompt: string): string {
+  const parts = trade.split(/\s*(?:,|;|\/|&|\band\b|\bor\b)\s*/i).map(s => s.trim()).filter(Boolean);
+  const people = (p: string) => CONSUMERS.test(p.replace(/\s+(?:in|near|around|across|throughout)\s+.*$/i, '').replace(/^(?:local|the|new|more|private)\s+/i, ''));
+  if (parts.length && !parts.some(people)) return trade;
+  const kept = parts.filter(p => !people(p));
+  const named = AS_BUSINESS.filter(([re]) => re.test(prompt)).map(([, b]) => b);
+  const out = [...new Set([...kept, ...named])];
+  if (!out.length && servesProperty(prompt)) out.push('property management companies');
+  return out.join(', ');
+}
+
+/* ── Which business a request is for ─────────────────────────────────────── */
+
+/** The business a request names: Protron's "Company:" line, "I run Blue Ridge Plumbing", "my client Lone Star Electric". */
+export function businessNamedIn(prompt: string): string {
+  const labelled = labelledLine(prompt, 'Company').replace(/\.$/, '');
+  if (labelled && !/^my business$/i.test(labelled)) return labelled.slice(0, 120);
+  const NAME = "([A-Z][\\w&'’.-]*(?:\\s+(?:[A-Z0-9&][\\w&'’.-]*|of|and|the|&)){0,5})";
+  const res = [
+    new RegExp(`\\b(?:I|[Ww]e)\\s+(?:run|own|operate)\\s+${NAME}`),
+    new RegExp(`\\b(?:[Mm]y|[Oo]ur)\\s+(?:client|company|business|firm|shop|clinic|practice)(?:\\s+is)?(?:\\s+called|\\s+named)?,?\\s+${NAME}`),
+  ];
+  for (const re of res) {
+    const m = re.exec(prompt);
+    const name = (m?.[1] ?? '').replace(/\s+(?:of|and|the|&)$/i, '').trim();
+    if (name && !/^(?:I|We|My|Our|The|A|An)$/.test(name)) return name.slice(0, 120);
+  }
+  return '';
+}
+
+const bizKey = (s: string) => s.toLowerCase().replace(/&/g, ' and ').replace(/\b(?:llc|inc|ltd|limited|co|corp|company|the)\b/g, ' ').replace(/[^a-z0-9]+/g, '');
+
+/** Two names for one business: "Blue Ridge Plumbing" and "Blue Ridge Plumbing LLC". */
+export function sameBusiness(a: string, b: string): boolean {
+  const x = bizKey(a); const y = bizKey(b);
+  return !!x && !!y && (x === y || (Math.min(x.length, y.length) >= 5 && (x.includes(y) || y.includes(x))));
+}
+
+/**
+ * The business profile already on file that this request is plausibly about,
+ * or null when the customer must choose.
+ *
+ * It used to be "the only profile there is": an agency that built Blue Ridge
+ * Plumbing and then asked for Lone Star Electric got a second business
+ * workspace wearing the plumber's name, voice and logo, and was never asked
+ * (audit H2). Now a profile is reused only when the request points at it —
+ * its website, its name — or names neither a business nor a trade that
+ * differs from it. Anything else asks, with the profiles on file offered.
+ */
+export function reusablePortfolio(prompt: string, ws: WorkspaceFacts, site = ''): WorkspaceFacts['portfolios'][number] | null {
+  const host = (u: string) => u.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+  if (site) return ws.portfolios.find(p => p.website && site.includes(host(p.website))) ?? null;
+  const named = businessNamedIn(prompt);
+  if (named) return ws.portfolios.find(p => sameBusiness(p.name, named)) ?? null;
+  if (ws.portfolios.length !== 1) return null;
+  const p = ws.portfolios[0];
+  const asked = tradeIn(prompt);
+  const theirs = tradeIn(`${p.name}. ${p.description ?? ''}`);
+  return asked && theirs && asked !== theirs ? null : p;
 }
 
 function bringsSomethingNew(a: string, b: string): boolean {
@@ -284,16 +426,16 @@ export function extractKnown(
   /* ── The business ── */
   const site = links.find(l => l.role === 'website')?.url ?? urlsIn(prompt)[0] ?? '';
   const docs = files.filter(f => f.kind === 'pdf' || f.kind === 'text');
-  if (ws.portfolios.length === 1 && !site) {
-    const p = ws.portfolios[0];
-    put('business', `existing:${p.id}`, 'profile', `using ${p.name}, already in Protected Central`);
+  /* A profile on file only when the request points at it (reusablePortfolio,
+     audit H2); a request that names another business asks, with the profiles
+     on file offered beside the new ways in. */
+  const reuse = reusablePortfolio(prompt, ws, site);
+  const named = businessNamedIn(prompt);
+  if (reuse) {
+    put('business', `existing:${reuse.id}`, 'profile', site ? `${reuse.name} — its website matches` : `using ${reuse.name}, already in Protected Central`);
   } else if (site) {
-    const match = ws.portfolios.find(p => p.website && site.includes(p.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')));
-    if (match) put('business', `existing:${match.id}`, 'profile', `${match.name} — its website matches`);
-    else {
-      put('business', 'website', links.some(l => l.role === 'website') ? 'link' : 'prompt', 'read from the website you gave');
-      put('website', site, links.some(l => l.role === 'website') ? 'link' : 'prompt', 'the website you gave');
-    }
+    put('business', 'website', links.some(l => l.role === 'website') ? 'link' : 'prompt', 'read from the website you gave');
+    put('website', site, links.some(l => l.role === 'website') ? 'link' : 'prompt', 'the website you gave');
   } else if (docs.length) {
     put('business', 'upload', 'file', `read from ${docs[0].name}`);
   } else if (asked.has('business') && labelledLine(prompt, 'Company') && labelledLine(prompt, 'Business context').length >= 8) {
@@ -311,8 +453,13 @@ export function extractKnown(
       const who = labelledLine(prompt, 'Customers');
       if (who) out.bizWho = { value: who.slice(0, 300), source: 'prompt', note: 'from your chat with Protron' };
     }
-  } else if (!ws.portfolios.length && ws.workspace?.companyName && ws.workspace.description) {
+  } else if (!ws.portfolios.length && ws.workspace?.companyName && ws.workspace.description && (!named || sameBusiness(named, ws.workspace.companyName))) {
     put('business', 'workspace', 'profile', `your ${ws.workspace.companyName} profile`);
+  }
+  /* A business named in the sentence but not on file: its name is ready in
+     "Type it in", so choosing that does not ask for it again. */
+  if (named && !out.business && asked.has('business') && !out.bizName) {
+    out.bizName = { value: named, source: 'prompt', note: fromYou };
   }
 
   /* ── Schedule ── */
@@ -422,7 +569,11 @@ export function extractKnown(
   const split = who ? splitTradePlace(who) : { trade: '', place: '' };
   const where = placeIn(prompt) ?? (split.place || null);
   if (where) put('location', where, 'prompt', fromYou);
-  if (split.trade) put('prospectTrades', split.trade, 'prompt', 'who you want to sell to, from your request');
+  if (split.trade) {
+    const kinds = businessTypesFor(split.trade, prompt);
+    if (kinds === split.trade) put('prospectTrades', split.trade, 'prompt', 'who you want to sell to, from your request');
+    else if (kinds) put('prospectTrades', kinds, 'default', 'businesses that hire this kind of work — people like homeowners are not listed in business directories');
+  }
   if (where) put('prospectPlaces', where, 'prompt', 'where, from your request');
   if (/\bsms(?:e?s)?\b|\btexts?\b|\btext messages?\b|\btexting\b/.test(t)) put('prospectSms', 'yes', 'prompt', 'you asked for texts too — only to those who opt in');
   const len = /\b(3|three|5|five|7|seven)[- ](?:step |part )?emails?\b/.exec(t);

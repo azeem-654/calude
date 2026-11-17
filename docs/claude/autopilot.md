@@ -216,6 +216,22 @@ about mailboxes. The judgement lives in pure modules:
 - **`services/launchPlan.ts`** — the build order per trade, still used where a
   trade is known; the new wizard's set-up steps become `launchSteps` the same way.
 
+**Which business, and what trade (audit H2/H7, 2026-11-17).** A profile on
+file is reused only when the request points at it (`reusablePortfolio`: its
+website, its name, or no name and no different trade) — "the only profile
+there is" gave an agency's second business the first one's name, voice and
+logo. Otherwise the business question is asked with the profiles offered and
+the named business ready in "Type it in"; only a reused profile is sent to
+`understand`. Beside a trade (`tradeIn`), "homeowners / property managers /
+landlords" are its customers: the keyword match strips them, `tradeSafeKeys`
+turns the AI's `real-estate` into `lead-generation`, and `businessTypesFor`
+keeps people out of the finder's kinds of business (property management
+companies instead). A realtor still says "realtor"/"estate agent".
+The pipeline's setup card sits in its own "Setting up" stage, its sub-tasks
+carry the stage beside the title, and account-level chores (mailbox, sending
+domain, payments, calendar, texting number) are listed once per account
+(`projectPipeline.ts`).
+
 **`crm_projects.brief`** holds the approved blueprint and is shown on the
 project's Overview. The server reads two fields of it. **`plannerChannels`**,
 which `planNext` uses to drop plays in other channels — every play carries

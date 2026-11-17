@@ -11,7 +11,7 @@
  */
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Search, Monitor, Smartphone, Star, Check, Layers } from 'lucide-react';
+import { X, Search, Monitor, Smartphone, Check, Layers } from 'lucide-react';
 import type { FunnelStep } from '../../types';
 import { ScaledPage, PagesStrip, PageBlocks } from './BlockRender';
 import {
@@ -21,15 +21,6 @@ import {
 
 const INK = '#17191c';
 
-function Stars({ n }: { n: number }) {
-  return (
-    <span style={{ display: 'inline-flex', gap: 1 }}>
-      {[1, 2, 3, 4, 5].map(i => (
-        <Star key={i} size={10} strokeWidth={0} fill={i <= n ? '#f59e0b' : '#e2e8f0'} />
-      ))}
-    </span>
-  );
-}
 
 /** Full-screen preview with device toggle and page switching. */
 function PreviewModal({ meta, pages, onClose, onUse }: {
@@ -227,7 +218,8 @@ export default function TemplateGallery({ ctx, kind, onUse, onClose, title = 'Ch
                       <div style={{ padding: '10px 12px 12px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                           <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{meta.name}</span>
-                          <Stars n={meta.popularity} />
+                          {/* A star row stood here, drawn from a number we made up
+                              per template — a rating nobody gave (audit M7). */}
                         </div>
                         <p style={{ fontSize: 11, color: '#64748b', margin: '4px 0 8px', lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{meta.description}</p>
                         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>

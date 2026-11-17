@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
+import { mergeBookings, useRemoteBookings } from '../../services/useRemoteBookings';
 import EventModal, { type EventDraft } from './EventModal';
 import {
   busyBlocks, clock12, dateKey, dayLoad, layOutDay,
@@ -87,6 +88,9 @@ export default function CalendarView() {
     addAppointment, updateAppointment, addCalendarEvent, updateCalendarEvent,
     deleteCalendarEvent, deleteAppointment, addNotification,
   } = useApp();
+  /* Visitors' bookings live on the server; without them the grid never showed one (audit H6). */
+  const remoteBookings = useRemoteBookings();
+  const allBookings = useMemo(() => mergeBookings(bookings, remoteBookings), [bookings, remoteBookings]);
 
   const [view, setView] = useState<View>('week');
   const [anchor, setAnchor] = useState(() => new Date());
@@ -105,8 +109,8 @@ export default function CalendarView() {
   }, []);
 
   const blocks = useMemo(
-    () => busyBlocks({ appointments, bookings, events: calendarEvents }),
-    [appointments, bookings, calendarEvents],
+    () => busyBlocks({ appointments, bookings: allBookings, events: calendarEvents }),
+    [appointments, allBookings, calendarEvents],
   );
 
   const days = useMemo(() => {

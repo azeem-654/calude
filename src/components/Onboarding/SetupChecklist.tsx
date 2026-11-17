@@ -9,10 +9,11 @@
  * Every step reads its own state (services/setup.ts), so this is a view of what
  * is actually configured rather than a list of things somebody clicked past.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, ChevronRight, AlertTriangle, X, Sparkles } from 'lucide-react';
-import { setupProgress, setupHidden, hideSetup, type SetupStep } from '../../services/setup';
+import { setupProgress, setupHidden, hideSetup, type SetupStep, type SetupFacts } from '../../services/setup';
+import { watchPulse } from '../../services/autopilotPulse';
 
 const INK = '#17191c';
 const MUTED = '#6b7280';
@@ -91,8 +92,13 @@ export default function SetupChecklist({ onOpenAiWizard, onOpenFlow, refreshKey 
 
   /* Re-read on every refresh tick: the steps come from storage, and finishing
      one in another tab or on another screen should show here without a reload. */
+  /* The business profiles and business workspaces live on the server; the
+     shared pulse already asks for them, so this reads its answer rather than
+     asking again. Until it is ready the steps read storage as before. */
+  const [facts, setFacts] = useState<SetupFacts | null>(null);
+  useEffect(() => watchPulse(p => setFacts(p.state === 'ready' ? { portfolios: p.portfolios, projects: p.projects } : null)), []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const progress = useMemo(() => setupProgress(), [refreshKey, hidden]);
+  const progress = useMemo(() => setupProgress(facts), [refreshKey, hidden, facts]);
 
   if (hidden || progress.complete) return null;
 

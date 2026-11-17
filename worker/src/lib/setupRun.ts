@@ -405,7 +405,7 @@ async function runWebsite(env: Env, order: OrderRow): Promise<{ ok: boolean; det
   const slug = order.domain.split('.')[0];
 
   if (sites.some(s => String(s.domain ?? '') === order.domain)) {
-    return { ok: true, detail: 'Your starter website is published.', error: '' };
+    return { ok: true, detail: 'Your starter website is made — open Websites to edit it and press Publish.', error: '' };
   }
 
   const company = order.company_name || slug;
@@ -415,11 +415,13 @@ async function runWebsite(env: Env, order: OrderRow): Promise<{ ok: boolean; det
     name: `${company} — website`,
     slug,
     domain: order.domain,
-    status: 'published',
+    /* A draft until the customer presses Publish: a site is public only once
+       it is in crm_public_pages (routes/published.ts), and a domain is not
+       served yet, so "published" here was untrue. */
+    status: 'draft',
     template: 'business',
     createdAt: now,
     updatedAt: now,
-    publishedAt: now,
     source: { origin: 'autopilot', title: 'Digital Business Setup', refId: order.id, route: '/autopilot' },
     pages: [{
       id: rid('pg'),
@@ -428,15 +430,15 @@ async function runWebsite(env: Env, order: OrderRow): Promise<{ ok: boolean; det
       blocks: [
         { id: rid('bl'), type: 'hero', props: {
           heading: company,
-          subheading: 'Get in touch today — we reply the same day.',
+          subheading: 'Tell us what you need.',
           ctaLabel: 'Book a call', ctaHref: '#contact',
         } },
         { id: rid('bl'), type: 'features', props: {
           heading: 'What we do',
           items: [
-            { title: 'Fast response', body: 'Tell us what you need and we come back to you the same day.' },
-            { title: 'Straight prices', body: 'A clear quote before any work starts, with nothing added later.' },
-            { title: 'Work that lasts', body: 'Done properly the first time, and guaranteed.' },
+            { title: 'Your first service', body: 'Describe it here, in your own words.' },
+            { title: 'Your second service', body: 'Describe it here, in your own words.' },
+            { title: 'Your third service', body: 'Describe it here, in your own words.' },
           ],
         } },
         { id: rid('bl'), type: 'contact', props: {
@@ -455,7 +457,7 @@ async function runWebsite(env: Env, order: OrderRow): Promise<{ ok: boolean; det
   const hostingRetail = await retailFor(env, order.id, 'hosting');
   if (hostingRetail > 0) await recordSale(env, order, 'hosting', order.domain, 0, hostingRetail, 'month', '');
 
-  return { ok: true, detail: 'Your starter website is published and ready to edit.', error: '' };
+  return { ok: true, detail: 'Your starter website is made — open Websites to edit it and press Publish.', error: '' };
 }
 
 /**

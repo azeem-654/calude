@@ -6,6 +6,9 @@ import { Globe, Search, Smartphone, Tablet, Monitor, Undo2, Redo2 } from 'lucide
 import type { Website, FunnelStep, FunnelBlock } from '../../types';
 import { useHistory } from '../../hooks/useHistory';
 import { GradientSwatchRow } from '../shared/gradientPresets';
+import PublishControl from '../shared/PublishControl';
+import { customerBusinessName } from '../../services/tenancy';
+import { publicUrl, usePublished } from '../../services/publishedPages';
 
 // ── Reuse block types and uid from shared patterns ───────────────────────────
 let DRAG_TYPE: 'new' | 'move' | null = null;
@@ -17,12 +20,12 @@ const DEFAULTS: Record<BlockType, FunnelBlock['settings']> = {
   navbar: { bgColor: '#ffffff', textColor: '#0f172a', navLogo: 'MySite', buttonText: 'Contact', buttonColor: '#6366f1', buttonTextColor: '#ffffff', navLinks: [{ label: 'Home', url: '#' }, { label: 'About', url: '#about' }, { label: 'Services', url: '#services' }, { label: 'Contact', url: '#contact' }] },
   hero: { bgGradient: 'linear-gradient(135deg,#1e3a5f,#2563eb)', textColor: '#ffffff', subheading: 'We help businesses grow with smart digital strategies.', buttonText: 'Get Started', buttonColor: '#ffffff', buttonTextColor: '#1e3a5f', secondaryButtonText: 'Learn More', align: 'center', minHeight: 520, padding: 80 },
   features: { bgColor: '#f8fafc', textColor: '#0f172a', subtitle: 'Why choose us', align: 'center', iconColor: '#6366f1', columns: 3, padding: 80, featureItems: [{ icon: '⚡', title: 'Fast', desc: 'Lightning-fast results you can count on.' }, { icon: '🔒', title: 'Secure', desc: 'Enterprise-grade security.' }, { icon: '🎯', title: 'Focused', desc: 'Results-driven approach.' }] },
-  testimonials: { bgColor: '#ffffff', textColor: '#0f172a', subtitle: 'What our clients say', align: 'center', padding: 80, testimonialItems: [{ quote: 'Outstanding service and results.', author: 'Jane Smith', role: 'CEO at Acme', stars: 5 }, { quote: 'Highly recommend to any business.', author: 'John Doe', role: 'Founder at Startup', stars: 5 }] },
-  pricing: { bgColor: '#f8fafc', textColor: '#0f172a', subtitle: 'Simple pricing', align: 'center', padding: 80, pricingPlans: [{ name: 'Starter', price: '$29', period: '/mo', features: ['5 pages', 'Basic SEO', 'Email support'], highlighted: false, buttonText: 'Get Started' }, { name: 'Pro', price: '$79', period: '/mo', features: ['Unlimited pages', 'Advanced SEO', 'Priority support', 'Custom domain'], highlighted: true, buttonText: 'Get Pro' }] },
+  testimonials: { bgColor: '#ffffff', textColor: '#0f172a', subtitle: 'Placeholders: add real reviews from your customers, or delete this section.', align: 'center', padding: 80, testimonialItems: [{ stars: 0, placeholder: true, author: 'Customer name', role: 'Placeholder — replace or delete', quote: 'Paste a real review from a customer here (with their permission).' }, { stars: 0, placeholder: true, author: 'Customer name', role: 'Placeholder — replace or delete', quote: 'A second real review — or delete this section.' }] },
+  pricing: { bgColor: '#f8fafc', textColor: '#0f172a', subtitle: 'Simple pricing', align: 'center', padding: 80, pricingPlans: [{ name: 'Option one', price: 'Your price', period: '', features: ['What is included', 'Edit or delete these lines'], highlighted: false, buttonText: 'Get Started' }, { name: 'Option two', price: 'Your price', period: '', features: ['What is included', 'Edit or delete these lines'], highlighted: true, buttonText: 'Get Started' }] },
   columns: { bgColor: '#ffffff', textColor: '#0f172a', subheading: 'We build websites that convert visitors into customers.', buttonText: 'Learn More', buttonColor: '#6366f1', buttonTextColor: '#ffffff', imagePosition: 'right', imageUrl: '', listItems: ['Professional design', 'Mobile-first approach', 'SEO optimized', 'Fast load times'], padding: 80 },
   cta: { bgGradient: 'linear-gradient(135deg,#6366f1,#8b5cf6)', textColor: '#ffffff', subheading: 'Ready to take your business to the next level?', buttonText: 'Get in Touch', buttonColor: '#ffffff', buttonTextColor: '#6366f1', align: 'center', padding: 80 },
-  stats: { bgColor: '#0f172a', textColor: '#ffffff', padding: 60, statItems: [{ value: '500+', label: 'Clients', icon: '🤝' }, { value: '10yr', label: 'Experience', icon: '🏆' }, { value: '99%', label: 'Satisfaction', icon: '⭐' }, { value: '24/7', label: 'Support', icon: '💬' }] },
-  faq: { bgColor: '#ffffff', textColor: '#0f172a', subtitle: 'Common questions', align: 'left', padding: 80, faqItems: [{ q: 'How long does a website take?', a: 'Typically 2–4 weeks for a standard business site.' }, { q: 'Do you offer ongoing support?', a: 'Yes — all plans include monthly maintenance.' }] },
+  stats: { bgColor: '#0f172a', textColor: '#ffffff', padding: 60, statItems: [{ value: '01', label: 'Tell us what you need' }, { value: '02', label: 'Get a clear plan and price' }, { value: '03', label: 'We get it done' }] },
+  faq: { bgColor: '#ffffff', textColor: '#0f172a', subtitle: 'Common questions', align: 'left', padding: 80, faqItems: [{ q: 'A question customers often ask?', a: 'Your answer here.' }, { q: 'Another common question?', a: 'Your answer here.' }] },
   footer: { bgColor: '#0f172a', textColor: '#94a3b8', navLogo: 'MySite', padding: 60, footerColumns: [{ heading: 'Company', links: [{ label: 'About', url: '#' }, { label: 'Services', url: '#' }, { label: 'Blog', url: '#' }] }, { heading: 'Support', links: [{ label: 'Contact', url: '#' }, { label: 'FAQ', url: '#' }] }], footerCopyright: `© ${new Date().getFullYear()} MySite. All rights reserved.` },
   gallery: { bgColor: '#f8fafc', textColor: '#0f172a', subtitle: 'Our work', columns: 3, galleryImages: ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#22c55e', '#0891b2'], padding: 60, align: 'center' },
   heading: { size: 'xl', color: '#0f172a', align: 'center', padding: 16, fontWeight: '700' },
@@ -47,7 +50,12 @@ const DEFAULT_CONTENT: Record<BlockType, string> = {
 };
 
 function createBlock(type: BlockType): FunnelBlock {
-  return { id: uid(), type, content: DEFAULT_CONTENT[type], settings: { ...DEFAULTS[type] } };
+  const settings = { ...DEFAULTS[type] };
+  /* A new nav bar or footer carries the business's own name, not "MySite" (M7). */
+  const biz = customerBusinessName();
+  if (biz && settings.navLogo === 'MySite') settings.navLogo = biz;
+  if (biz && typeof settings.footerCopyright === 'string') settings.footerCopyright = settings.footerCopyright.replace('MySite', biz);
+  return { id: uid(), type, content: DEFAULT_CONTENT[type], settings };
 }
 let _pi = 0;
 function mkPage(name: string, type: FunnelStep['type'] = 'custom'): FunnelStep {
@@ -66,30 +74,30 @@ const WS_TEMPLATES: WSTemplate[] = [
     id: 'business', name: 'Business Website', emoji: '🏢', heroColor: 'linear-gradient(135deg,#1e3a5f,#2563eb)',
     desc: 'Professional multi-page business site with services, about, and contact.',
     pages: [
-      { name: 'Home', type: 'landing', blocks: [mkBlock('navbar'), mkBlock('hero', 'Growing Businesses Through Strategy & Design', { bgGradient: 'linear-gradient(135deg,#1e3a5f,#2563eb)', subheading: 'Full-service digital agency helping companies scale since 2010.', buttonText: 'Get a Free Quote', secondaryButtonText: 'View Our Work' }), mkBlock('stats', '', { bgColor: '#f8fafc', textColor: '#0f172a', statItems: [{ value: '500+', label: 'Clients Served', icon: '🤝' }, { value: '15yr', label: 'In Business', icon: '🏆' }, { value: '98%', label: 'Satisfaction', icon: '⭐' }, { value: '24/7', label: 'Support', icon: '💬' }] }), mkBlock('features', 'What We Do', { featureItems: [{ icon: '💻', title: 'Web Design', desc: 'Stunning, conversion-focused websites.' }, { icon: '📱', title: 'Mobile Apps', desc: 'iOS & Android apps users love.' }, { icon: '📈', title: 'Digital Marketing', desc: 'SEO, PPC, and social media.' }, { icon: '🎨', title: 'Brand Identity', desc: 'Logos and brand systems.' }, { icon: '⚙️', title: 'IT Solutions', desc: 'Cloud, security, and infrastructure.' }, { icon: '📊', title: 'Analytics', desc: 'Data-driven insights and reporting.' }] }), mkBlock('testimonials', 'What Clients Say'), mkBlock('cta', 'Ready to Grow Your Business?', { buttonText: 'Start a Project', secondaryButtonText: 'Schedule a Call' }), mkBlock('footer')] },
-      { name: 'About', type: 'custom', blocks: [mkBlock('navbar'), mkBlock('hero', 'About Our Company', { bgGradient: 'linear-gradient(135deg,#334155,#1e293b)', subheading: 'Founded in 2010, we\'ve helped 500+ businesses grow through smart digital strategies.', buttonText: 'Meet the Team' }), mkBlock('columns', 'Our Mission', { subheading: 'We believe every business deserves a strong digital presence.', listItems: ['Client-first approach', 'Transparent pricing', 'Measurable results', 'Long-term partnerships'], imagePosition: 'right' }), mkBlock('stats'), mkBlock('footer')] },
-      { name: 'Contact', type: 'custom', blocks: [mkBlock('navbar'), mkBlock('hero', 'Get in Touch', { bgGradient: 'linear-gradient(135deg,#1e3a5f,#2563eb)', subheading: 'We\'d love to hear from you. Send us a message and we\'ll get back to you within 24 hours.', buttonText: '' }), mkBlock('form', 'Send Us a Message', { formFields: [{ label: 'Full Name', type: 'text', required: true }, { label: 'Email', type: 'email', required: true }, { label: 'Phone', type: 'phone', required: false }, { label: 'Message', type: 'textarea', required: true }] }), mkBlock('footer')] },
+      { name: 'Home', type: 'landing', blocks: [mkBlock('navbar'), mkBlock('hero', 'Growing Businesses Through Strategy & Design', { bgGradient: 'linear-gradient(135deg,#1e3a5f,#2563eb)', subheading: 'Say what you do, who you do it for, and where.', buttonText: 'Get a Free Quote', secondaryButtonText: 'View Our Work' }), mkBlock('stats', '', { bgColor: '#f8fafc', textColor: '#0f172a' }), mkBlock('features', 'What We Do', { featureItems: [{ icon: '💻', title: 'Web Design', desc: 'Stunning, conversion-focused websites.' }, { icon: '📱', title: 'Mobile Apps', desc: 'iOS & Android apps users love.' }, { icon: '📈', title: 'Digital Marketing', desc: 'SEO, PPC, and social media.' }, { icon: '🎨', title: 'Brand Identity', desc: 'Logos and brand systems.' }, { icon: '⚙️', title: 'IT Solutions', desc: 'Cloud, security, and infrastructure.' }, { icon: '📊', title: 'Analytics', desc: 'Data-driven insights and reporting.' }] }), mkBlock('testimonials', 'What Clients Say'), mkBlock('cta', 'Ready to Grow Your Business?', { buttonText: 'Start a Project', secondaryButtonText: 'Schedule a Call' }), mkBlock('footer')] },
+      { name: 'About', type: 'custom', blocks: [mkBlock('navbar'), mkBlock('hero', 'About Our Company', { bgGradient: 'linear-gradient(135deg,#334155,#1e293b)', subheading: 'Tell visitors your story: when you started, who you serve and why.', buttonText: 'Meet the Team' }), mkBlock('columns', 'Our Mission', { subheading: 'We believe every business deserves a strong digital presence.', listItems: ['Client-first approach', 'Transparent pricing', 'Measurable results', 'Long-term partnerships'], imagePosition: 'right' }), mkBlock('stats'), mkBlock('footer')] },
+      { name: 'Contact', type: 'custom', blocks: [mkBlock('navbar'), mkBlock('hero', 'Get in Touch', { bgGradient: 'linear-gradient(135deg,#1e3a5f,#2563eb)', subheading: 'We\'d love to hear from you. Send us a message and we\'ll get back to you.', buttonText: '' }), mkBlock('form', 'Send Us a Message', { formFields: [{ label: 'Full Name', type: 'text', required: true }, { label: 'Email', type: 'email', required: true }, { label: 'Phone', type: 'phone', required: false }, { label: 'Message', type: 'textarea', required: true }] }), mkBlock('footer')] },
     ],
   },
   {
     id: 'portfolio', name: 'Creative Portfolio', emoji: '✨', heroColor: 'linear-gradient(135deg,#f59e0b,#ec4899)',
     desc: 'Stunning portfolio for designers, developers and creatives.',
     pages: [
-      { name: 'Portfolio', type: 'landing', blocks: [mkBlock('navbar', '', { navLogo: 'Creative.Co', buttonText: 'Hire Me', buttonColor: '#f59e0b', buttonTextColor: '#0f172a' }), mkBlock('hero', "Hi, I Design Beautiful Digital Experiences", { bgGradient: 'linear-gradient(135deg,#fbbf24,#f59e0b,#ec4899)', subheading: 'Award-winning UX/UI designer with 8+ years helping brands stand out.', buttonText: 'View My Work', buttonColor: '#0f172a', buttonTextColor: '#ffffff', secondaryButtonText: 'Get in Touch' }), mkBlock('gallery', 'Selected Work', { galleryImages: ['#6366f1', '#f59e0b', '#ec4899', '#0891b2', '#22c55e', '#f97316', '#8b5cf6', '#14b8a6', '#ef4444'], columns: 3 }), mkBlock('features', 'Skills & Expertise', { featureItems: [{ icon: '🎨', title: 'UI Design', desc: 'Pixel-perfect interfaces.' }, { icon: '🧠', title: 'UX Research', desc: 'Data-driven decisions.' }, { icon: '💻', title: 'Frontend Dev', desc: 'I code my designs in React.' }, { icon: '📱', title: 'Mobile', desc: 'iOS & Android design.' }] }), mkBlock('testimonials', 'Client Feedback', { testimonialItems: [{ quote: 'Alex redesigned our app and engagement jumped 85%.', author: 'Ben Carter', role: 'CEO, AppStartup', stars: 5 }, { quote: 'Best designer I\'ve ever worked with.', author: 'Sarah Kim', role: 'Product Lead', stars: 5 }] }), mkBlock('form', "Let's Work Together", { bgColor: '#fefce8', buttonColor: '#f59e0b', buttonTextColor: '#0f172a' }), mkBlock('footer', '', { navLogo: 'Creative.Co' })] },
+      { name: 'Portfolio', type: 'landing', blocks: [mkBlock('navbar', '', { navLogo: 'Creative.Co', buttonText: 'Hire Me', buttonColor: '#f59e0b', buttonTextColor: '#0f172a' }), mkBlock('hero', "Hi, I Design Beautiful Digital Experiences", { bgGradient: 'linear-gradient(135deg,#fbbf24,#f59e0b,#ec4899)', subheading: 'Award-winning UX/UI designer with 8+ years helping brands stand out.', buttonText: 'View My Work', buttonColor: '#0f172a', buttonTextColor: '#ffffff', secondaryButtonText: 'Get in Touch' }), mkBlock('gallery', 'Selected Work', { galleryImages: ['#6366f1', '#f59e0b', '#ec4899', '#0891b2', '#22c55e', '#f97316', '#8b5cf6', '#14b8a6', '#ef4444'], columns: 3 }), mkBlock('features', 'Skills & Expertise', { featureItems: [{ icon: '🎨', title: 'UI Design', desc: 'Pixel-perfect interfaces.' }, { icon: '🧠', title: 'UX Research', desc: 'Data-driven decisions.' }, { icon: '💻', title: 'Frontend Dev', desc: 'I code my designs in React.' }, { icon: '📱', title: 'Mobile', desc: 'iOS & Android design.' }] }), mkBlock('testimonials', 'Client Feedback'), mkBlock('form', "Let's Work Together", { bgColor: '#fefce8', buttonColor: '#f59e0b', buttonTextColor: '#0f172a' }), mkBlock('footer', '', { navLogo: 'Creative.Co' })] },
     ],
   },
   {
     id: 'blog', name: 'Blog / Magazine', emoji: '📝', heroColor: 'linear-gradient(135deg,#0891b2,#06b6d4)',
     desc: 'Clean editorial layout for content creators and bloggers.',
     pages: [
-      { name: 'Home', type: 'landing', blocks: [mkBlock('navbar', '', { buttonText: 'Subscribe', buttonColor: '#0891b2' }), mkBlock('hero', 'Stories Worth Reading', { bgGradient: 'linear-gradient(135deg,#0891b2,#06b6d4)', subheading: 'Thoughtful articles on technology, design, and business growth.', buttonText: 'Start Reading', secondaryButtonText: 'Subscribe Free' }), mkBlock('features', 'Trending Topics', { bgColor: '#f8fafc', featureItems: [{ icon: '💻', title: 'Technology', desc: 'Latest in tech, AI, and software.' }, { icon: '🎨', title: 'Design', desc: 'UI, UX, and creative inspiration.' }, { icon: '📈', title: 'Business', desc: 'Growth strategies and case studies.' }, { icon: '🧠', title: 'Productivity', desc: 'Work smarter, not harder.' }], columns: 4 }), mkBlock('stats', '', { bgColor: '#0891b2', textColor: '#ffffff', statItems: [{ value: '50K+', label: 'Readers', icon: '👥' }, { value: '500+', label: 'Articles', icon: '📝' }, { value: 'Weekly', label: 'New Posts', icon: '📅' }, { value: 'Free', label: 'Forever', icon: '❤️' }] }), mkBlock('form', 'Get Articles in Your Inbox', { bgColor: '#eff6ff', buttonColor: '#0891b2', buttonText: 'Subscribe Free', formFields: [{ label: 'Email Address', type: 'email', required: true }] }), mkBlock('footer')] },
+      { name: 'Home', type: 'landing', blocks: [mkBlock('navbar', '', { buttonText: 'Subscribe', buttonColor: '#0891b2' }), mkBlock('hero', 'Stories Worth Reading', { bgGradient: 'linear-gradient(135deg,#0891b2,#06b6d4)', subheading: 'Thoughtful articles on technology, design, and business growth.', buttonText: 'Start Reading', secondaryButtonText: 'Subscribe Free' }), mkBlock('features', 'Trending Topics', { bgColor: '#f8fafc', featureItems: [{ icon: '💻', title: 'Technology', desc: 'Latest in tech, AI, and software.' }, { icon: '🎨', title: 'Design', desc: 'UI, UX, and creative inspiration.' }, { icon: '📈', title: 'Business', desc: 'Growth strategies and case studies.' }, { icon: '🧠', title: 'Productivity', desc: 'Work smarter, not harder.' }], columns: 4 }), mkBlock('form', 'Get Articles in Your Inbox', { bgColor: '#eff6ff', buttonColor: '#0891b2', buttonText: 'Subscribe Free', formFields: [{ label: 'Email Address', type: 'email', required: true }] }), mkBlock('footer')] },
     ],
   },
   {
     id: 'restaurant', name: 'Restaurant / Cafe', emoji: '🍽️', heroColor: 'linear-gradient(135deg,#b45309,#92400e)',
     desc: 'Menu, gallery, and reservations all in one beautiful layout.',
     pages: [
-      { name: 'Home', type: 'landing', blocks: [mkBlock('navbar', '', { bgColor: '#1c0a00', textColor: '#f5e6d3', buttonText: 'Reserve a Table', buttonColor: '#b45309', buttonTextColor: '#ffffff' }), mkBlock('hero', 'Authentic Flavors, Unforgettable Experience', { bgGradient: 'linear-gradient(135deg,#78350f,#1c0a00)', subheading: 'Farm-to-table cuisine in the heart of the city. Open daily 11am–10pm.', buttonText: 'Reserve a Table', buttonColor: '#b45309', secondaryButtonText: 'View Menu' }), mkBlock('features', 'Why Dine With Us', { bgColor: '#fffbf5', featureItems: [{ icon: '🌿', title: 'Fresh Ingredients', desc: 'Locally sourced produce, delivered daily.' }, { icon: '👨‍🍳', title: 'Expert Chefs', desc: 'Michelin-trained kitchen team.' }, { icon: '🍷', title: 'Curated Wine List', desc: '200+ wines from around the world.' }, { icon: '🎵', title: 'Live Music', desc: 'Jazz every Friday and Saturday night.' }] }), mkBlock('gallery', 'Our Dishes', { galleryImages: ['#b45309', '#92400e', '#d97706', '#78350f', '#b45309', '#92400e'], columns: 3 }), mkBlock('testimonials', 'Guest Reviews', { testimonialItems: [{ quote: 'Best dining experience in the city. The lamb is extraordinary.', author: 'Maria G.', role: 'Regular Guest', stars: 5 }, { quote: 'Perfect for date night. Service is impeccable.', author: 'Tom & Lisa', role: 'Anniversary Dinner', stars: 5 }] }), mkBlock('form', 'Reserve Your Table', { bgColor: '#fffbf5', buttonColor: '#b45309', buttonText: 'Request Reservation', formFields: [{ label: 'Name', type: 'text', required: true }, { label: 'Email', type: 'email', required: true }, { label: 'Date & Time', type: 'text', required: true }, { label: 'Party Size', type: 'number', required: true }] }), mkBlock('footer', '', { bgColor: '#1c0a00', navLogo: 'La Maison', footerCopyright: `© ${new Date().getFullYear()} La Maison Restaurant. All rights reserved.` })] },
+      { name: 'Home', type: 'landing', blocks: [mkBlock('navbar', '', { bgColor: '#1c0a00', textColor: '#f5e6d3', buttonText: 'Reserve a Table', buttonColor: '#b45309', buttonTextColor: '#ffffff' }), mkBlock('hero', 'Authentic Flavors, Unforgettable Experience', { bgGradient: 'linear-gradient(135deg,#78350f,#1c0a00)', subheading: 'Say what you serve and where to find you. Add your opening hours here.', buttonText: 'Reserve a Table', buttonColor: '#b45309', secondaryButtonText: 'View Menu' }), mkBlock('features', 'Why Dine With Us', { bgColor: '#fffbf5', featureItems: [{ icon: '🌿', title: 'Fresh Ingredients', desc: 'Locally sourced produce, delivered daily.' }, { icon: '👨‍🍳', title: 'Our Kitchen', desc: 'Tell guests about the people cooking for them.' }, { icon: '🍷', title: 'Drinks', desc: 'What you pour, and what goes with the menu.' }, { icon: '🎵', title: 'What Is On', desc: 'Events, music or specials, and when.' }] }), mkBlock('gallery', 'Our Dishes', { galleryImages: ['#b45309', '#92400e', '#d97706', '#78350f', '#b45309', '#92400e'], columns: 3 }), mkBlock('testimonials', 'Guest Reviews'), mkBlock('form', 'Reserve Your Table', { bgColor: '#fffbf5', buttonColor: '#b45309', buttonText: 'Request Reservation', formFields: [{ label: 'Name', type: 'text', required: true }, { label: 'Email', type: 'email', required: true }, { label: 'Date & Time', type: 'text', required: true }, { label: 'Party Size', type: 'number', required: true }] }), mkBlock('footer', '', { bgColor: '#1c0a00', navLogo: 'La Maison', footerCopyright: `© ${new Date().getFullYear()} La Maison Restaurant. All rights reserved.` })] },
     ],
   },
 ];
@@ -187,7 +195,10 @@ function BlockRender({ block }: { block: FunnelBlock }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 24 }}>
           {(s.testimonialItems ?? []).map((t, i) => (
             <div key={i} style={{ padding: 28, borderRadius: 14, background: '#fff', boxShadow: '0 2px 16px rgba(0,0,0,0.07)', border: '1px solid #f1f5f9' }}>
-              <div style={{ color: '#f59e0b', fontSize: 16, marginBottom: 14 }}>{'★'.repeat(t.stars ?? 5)}</div>
+              {/* Stars only when somebody gave them: an unset count drew five (audit M7). */}
+              {t.placeholder
+                ? <div style={{ display: 'inline-block', fontSize: 11, fontWeight: 700, color: '#64748b', background: '#f1f5f9', borderRadius: 999, padding: '2px 9px', marginBottom: 12 }}>Placeholder</div>
+                : (t.stars ?? 0) > 0 && <div style={{ color: '#f59e0b', fontSize: 16, marginBottom: 14 }}>{'★'.repeat(Math.min(5, t.stars ?? 0))}</div>}
               <p style={{ fontSize: 15, color: '#475569', lineHeight: 1.7, margin: '0 0 18px', fontStyle: 'italic' }}>"{t.quote}"</p>
               <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a' }}>{t.author}</div>
               <div style={{ fontSize: 12, color: '#94a3b8' }}>{t.role}</div>
@@ -348,15 +359,42 @@ function PropertiesPanel({ block, onChange }: { block: FunnelBlock; onChange: (b
   /* Written by the server's AI (/api/ai.php), like every other AI feature.
      This used to call OpenAI from the page with a key read from storage that
      nothing ever wrote, so the button could only ever say "add your key". */
+  /*
+   * A section with its own sub-heading and buttons gets each written into its
+   * own box (audit M6). Asked for one block of text, the AI wrote headline,
+   * sub-heading and "[ Get Your Free Estimate ] [ Call 24/7 ]" into the one
+   * headline box, and called a business nobody had rated "top-rated".
+   */
+  const SPLIT = ['hero', 'cta', 'columns', 'countdown'].includes(block.type);
+  const RULES = 'Only say what the request or the business name states. Do not claim ratings, reviews, awards, rankings ("top-rated", "#1", "award-winning", "best"), years in business, customer counts, guarantees, prices or opening hours. No placeholders in brackets, no emoji, no quotes.';
+
   async function generateAiContent() {
     setAiLoading(true);
     try {
-      const prompt = `You are a professional copywriter. Write compelling website copy for a ${block.type} section. Be concise, benefit-focused and conversion-oriented. Return only the text, no quotes or explanations.\n\n${aiPrompt || `Write a strong ${block.type} headline or text for a professional website.`}`;
-      const res = await aiFetch({ body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 300 } }) }, 'website-builder');
+      const biz = customerBusinessName();
+      const ask = aiPrompt || `Write a strong ${block.type} section for a professional website.`;
+      const prompt = SPLIT
+        ? `You are a website copywriter. Write the ${block.type} section of a website${biz ? ` for ${biz}` : ''}. ${RULES}\n\nAnswer with JSON only, no code fences, in exactly this shape: {"headline": "at most 10 words", "subheading": "one or two sentences", "buttonText": "2 to 4 words", "secondaryButtonText": "2 to 4 words, or empty"}\n\nRequest: ${ask}`
+        : `You are a website copywriter. Write the text for a ${block.type} block on a website${biz ? ` for ${biz}` : ''}. Be concise. ${RULES} Return only the text.\n\nRequest: ${ask}`;
+      const res = await aiFetch({ body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 400 } }) }, 'website-builder');
       const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[]; error?: { message?: string } };
       if (!res.ok) { alert(data.error?.message ?? 'The AI could not write that just now.'); return; }
       const text = (data.candidates?.[0]?.content?.parts ?? []).map(x => x.text ?? '').join('').trim();
-      if (text) onChange({ ...block, content: text });
+      if (!text) { alert('The AI sent back nothing. Try again, or describe what you want in more detail.'); return; }
+      if (SPLIT) {
+        const json = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+        let out: { headline?: unknown; subheading?: unknown; buttonText?: unknown; secondaryButtonText?: unknown } | null = null;
+        try { out = JSON.parse(json.slice(json.indexOf('{'), json.lastIndexOf('}') + 1)); } catch { out = null; }
+        const clean = (v: unknown) => (typeof v === 'string' ? v.replace(/[[\]]/g, '').trim() : '');
+        if (!out || !clean(out.headline)) { alert('The AI answer could not be read. Try again.'); return; }
+        const patch: Partial<FunnelBlock['settings']> = {};
+        if (clean(out.subheading)) patch.subheading = clean(out.subheading);
+        if (clean(out.buttonText)) patch.buttonText = clean(out.buttonText);
+        if ('secondaryButtonText' in s || clean(out.secondaryButtonText)) patch.secondaryButtonText = clean(out.secondaryButtonText) || undefined;
+        onChange({ ...block, content: clean(out.headline), settings: { ...s, ...patch } });
+      } else {
+        onChange({ ...block, content: text.replace(/^["“]|["”]$/g, '') });
+      }
       setShowAiInput(false);
       setAiPrompt('');
     } catch { alert('Could not reach the AI. Try again in a moment.'); }
@@ -470,6 +508,7 @@ function PropertiesPanel({ block, onChange }: { block: FunnelBlock; onChange: (b
 
 // ── SEO Panel ─────────────────────────────────────────────────────────────────
 function SeoPanel({ website, onChange }: { website: Website; onChange: (patch: Partial<Website>) => void }) {
+  const live = usePublished().get('site', website.id);
   const inp: CSSProperties = { width: '100%', padding: '7px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, boxSizing: 'border-box', fontFamily: 'inherit' };
   const lbl: CSSProperties = { fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 5 };
   const row: CSSProperties = { marginBottom: 14 };
@@ -487,17 +526,19 @@ function SeoPanel({ website, onChange }: { website: Website; onChange: (patch: P
         <div style={row}><label style={lbl}>Keywords</label><input value={website.seoKeywords ?? ''} onChange={e => onChange({ seoKeywords: e.target.value })} placeholder="keyword1, keyword2..." style={inp} /></div>
         <div style={row}><label style={lbl}>OG Image URL</label><input value={website.ogImage ?? ''} onChange={e => onChange({ ogImage: e.target.value })} placeholder="https://..." style={inp} /></div>
       </div>
+      {/* The public address. "Custom Domain" and "Subdomain" boxes stood
+          here, wired to nothing, with an old brand's address as the hint
+          (audit H3); the status picker set a flag no visitor could see.
+          Publishing is the control in the top bar, and this says where it
+          went. */}
       <div>
-        <div style={{ fontWeight: 700, fontSize: 11, color: '#64748b', textTransform: 'uppercase', marginBottom: 10 }}>Domain</div>
-        <div style={row}><label style={lbl}>Custom Domain</label><input value={website.domain ?? ''} onChange={e => onChange({ domain: e.target.value })} placeholder="www.yourdomain.com" style={inp} /></div>
-        <div style={row}><label style={lbl}>Subdomain</label><input value={website.subdomain ?? ''} onChange={e => onChange({ subdomain: e.target.value })} placeholder="mysite.crmpro.app" style={inp} /></div>
-        <div style={row}>
-          <label style={lbl}>Status</label>
-          <select value={website.status} onChange={e => onChange({ status: e.target.value as 'published' | 'draft' })} style={inp}>
-            <option value="draft">Draft</option>
-            <option value="published">Published</option>
-          </select>
-        </div>
+        <div style={{ fontWeight: 700, fontSize: 11, color: '#64748b', textTransform: 'uppercase', marginBottom: 10 }}>Public link</div>
+        {live ? (
+          <a href={publicUrl(live.slug)} target="_blank" rel="noopener noreferrer" style={{ display: 'block', fontSize: 12.5, color: '#4f46e5', fontWeight: 600, wordBreak: 'break-all', marginBottom: 8 }}>{publicUrl(live.slug)}</a>
+        ) : (
+          <div style={{ fontSize: 12.5, color: '#475569', marginBottom: 8, lineHeight: 1.5 }}>Not published yet. Press <b>Publish</b> at the top to put it on a public link.</div>
+        )}
+        <div style={{ fontSize: 11.5, color: '#94a3b8', lineHeight: 1.5 }}>Connecting your own domain is not available yet.</div>
       </div>
     </div>
   );
@@ -605,10 +646,17 @@ export default function WebsiteBuilder({ website, onSave, onClose, onPersist }: 
             const base = import.meta.env.BASE_URL.replace(/\/$/, '');
             window.open(`${base}/preview/${website.id}`, '_blank', 'noopener');
           }}
-          title="Open the live site in a new tab"
+          title="Open a preview in a new tab — only you can see it until you publish"
           style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-          🔗 Live preview
+          🔗 Preview tab
         </button>
+        <PublishControl kind="site" itemId={website.id}
+          beforePublish={() => onPersist?.({ ...siteData, pages } as Website)}
+          onPublishedChange={on => {
+            const next = { ...siteData, status: on ? 'published' as const : 'draft' as const };
+            setSiteData(next);
+            onPersist?.({ ...next, pages } as Website);
+          }} />
         <button onClick={handleSave} style={{ padding: '7px 18px', borderRadius: 6, border: 'none', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Save</button>
       </div>
 
@@ -730,7 +778,7 @@ export default function WebsiteBuilder({ website, onSave, onClose, onPersist }: 
           <div style={{ width: 272, background: '#fff', borderLeft: '1px solid #e2e8f0', flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0' }}>
               {(['properties', 'seo'] as const).map(tab => (
-                <button key={tab} onClick={() => setRightTab(tab)} style={{ flex: 1, padding: '10px 4px', border: 'none', background: 'transparent', fontSize: 11, fontWeight: rightTab === tab ? 800 : 500, color: rightTab === tab ? '#6366f1' : '#64748b', cursor: 'pointer', borderBottom: rightTab === tab ? '2px solid #6366f1' : '2px solid transparent', textTransform: 'uppercase', letterSpacing: 0.4 }}>{tab === 'seo' ? 'SEO & Domain' : 'Properties'}</button>
+                <button key={tab} onClick={() => setRightTab(tab)} style={{ flex: 1, padding: '10px 4px', border: 'none', background: 'transparent', fontSize: 11, fontWeight: rightTab === tab ? 800 : 500, color: rightTab === tab ? '#6366f1' : '#64748b', cursor: 'pointer', borderBottom: rightTab === tab ? '2px solid #6366f1' : '2px solid transparent', textTransform: 'uppercase', letterSpacing: 0.4 }}>{tab === 'seo' ? 'SEO & Link' : 'Properties'}</button>
               ))}
             </div>
             <div style={{ flex: 1, overflow: 'hidden' }}>

@@ -890,7 +890,7 @@ export default function Contacts() {
                     <td style={{ padding: '14px 16px', fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
                       {contact.value > 0 ? `$${contact.value.toLocaleString()}` : '—'}
                     </td>
-                    <td style={{ padding: '14px 16px', fontSize: '13px', color: '#94a3b8' }}>{contact.lastActivity}</td>
+                    <td style={{ padding: '14px 16px', fontSize: '13px', color: '#94a3b8' }}>{/^\d{4}-\d{2}-\d{2}T/.test(String(contact.lastActivity ?? '')) ? new Date(contact.lastActivity).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : contact.lastActivity}</td>
                     <td style={{ padding: '14px 16px' }} onClick={e => e.stopPropagation()}>
                       <div style={{ display: 'flex', gap: '6px' }}>
                         <button onClick={() => setProfileContact(contact)} style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex' }} title="View Profile"><Eye size={13} color="#17191c" /></button>

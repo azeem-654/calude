@@ -24,9 +24,11 @@ import { addr } from './http';
 import { canSend, cannotSendReason, deliver, fromAddressOf } from './deliver';
 import { loadMailbox, type Mailbox } from '../routes/mailbox';
 import { checkWorkspace, loadProfile, refreshCompetitors, type Profile } from './reputation';
+import { readsThroughSerp } from './serpReviews';
 
 const GATE_KEY = 'reputation_tick_at';
 const EVERY_MS = 15 * 60_000;
+const SERP_EVERY_MS = 3 * 86_400_000;
 const CHECK_EVERY_MS = 6 * 3_600_000;
 const COMPETITORS_EVERY_MS = 24 * 3_600_000;
 const MAX_CHECKS = 15;
@@ -166,14 +168,18 @@ export async function runReputation(env: Env): Promise<ReputationReport> {
 
     const due = new Date(Date.now() - CHECK_EVERY_MS).toISOString();
     const { results } = await env.DB.prepare(
-      `SELECT s.account_id AS accountId, s.competitors_at AS competitorsAt FROM crm_review_sources s
+      `SELECT s.account_id AS accountId, s.competitors_at AS competitorsAt, s.last_checked_at AS lastCheckedAt FROM crm_review_sources s
        WHERE s.auto_check = 1 AND (s.last_checked_at IS NULL OR s.last_checked_at < ?)
          AND (s.place_id != '' OR EXISTS (SELECT 1 FROM crm_gbp_connections g WHERE g.account_id = s.account_id AND g.status = 'connected' AND g.location_name != ''))
        ORDER BY s.last_checked_at IS NOT NULL, s.last_checked_at LIMIT ?`,
-    ).bind(due, MAX_CHECKS).all<{ accountId: string; competitorsAt: string | null }>();
+    ).bind(due, MAX_CHECKS).all<{ accountId: string; competitorsAt: string | null; lastCheckedAt: string | null }>();
 
     for (const w of results ?? []) {
       try {
+        /* Read through SerpApi's small free plan (no Maps key anywhere): every
+           three days rather than six hours, or a handful of workspaces would
+           spend the month's reads in a week (lib/serpReviews.ts). */
+        if (w.lastCheckedAt && Date.now() - Date.parse(w.lastCheckedAt) < SERP_EVERY_MS && await readsThroughSerp(env, w.accountId)) continue;
         const r = await checkWorkspace(env, w.accountId);
         report.checked++;
         report.added += r.added;

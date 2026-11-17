@@ -262,7 +262,16 @@ export const saveSettings = (record: Record<string, unknown>) => call('save_sett
  * `mark_merged` only ever fills a blank, so a second run of the same batch
  * changes nothing.
  */
-export async function mergeCaptured(): Promise<{ added: number; matched: number; deals?: number; enrolled?: number; problems?: string[]; error?: string }> {
+type MergeResult = { added: number; matched: number; deals?: number; enrolled?: number; problems?: string[]; error?: string };
+/* One pass at a time: the top bar's timer (Layout/CaptureMerger) and Customer
+   Engagement both call this, and two passes over the same batch would each add
+   the same person before either had marked them merged. */
+let mergeInFlight: Promise<MergeResult> | null = null;
+export function mergeCaptured(): Promise<MergeResult> {
+  if (!mergeInFlight) mergeInFlight = mergeOnce().finally(() => { mergeInFlight = null; });
+  return mergeInFlight;
+}
+async function mergeOnce(): Promise<MergeResult> {
   const res = await call('unmerged_people');
   if (!res.success) return { added: 0, matched: 0, error: res.error ?? 'Could not read new captures.' };
 

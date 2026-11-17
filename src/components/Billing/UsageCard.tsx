@@ -106,7 +106,8 @@ export default function UsageCard() {
 }
 
 /** The four meters the AI Autopilot board is about, on one line. Nothing at all when unreadable. */
-const STRIP: MeterId[] = ['autopilot_projects', 'social_posts', 'ai_shorts', 'prospects_found'];
+/* Shorts only where Video Studio is switched on (`video-studio`, the incubator): live read "Shorts this month 0/100" for a feature it hides. */
+const STRIP: MeterId[] = ['autopilot_projects', 'social_posts', ...(featureReady('video-studio') ? ['ai_shorts' as MeterId] : []), 'prospects_found'];
 const SHORT: Partial<Record<MeterId, string>> = { autopilot_projects: 'Business Workspaces', social_posts: 'Posts', ai_shorts: 'Shorts', prospects_found: 'Prospects' };
 
 export function MeterStrip() {

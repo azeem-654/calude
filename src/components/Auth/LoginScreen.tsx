@@ -13,6 +13,7 @@ import InviteChoice from './InviteChoice';
 import type { InviteOffer } from '../../services/auth';
 import AutopilotScene from '../shared/AutopilotScene';
 import WorksWith from '../shared/WorksWith';
+import { pendingAppsumo } from '../AppSumo/pending';
 import './auth.css';
 
 /**
@@ -313,16 +314,23 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
   const [sitePlan] = useState(() => pendingPlan());
   /* The funnel's "signup started": the sign-up form shown (services/funnel.ts). */
   useEffect(() => { if (mode === 'register') track('signup_started', { solution: sitePlan?.solutionKeys[0] }); }, [mode, sitePlan]);
+  /* An AppSumo buyer arrives here from /appsumo with a code held in this
+     browser: telling them "7-day free trial" read as the wrong deal (audit M2). */
+  const [appsumo] = useState(() => !!pendingAppsumo());
   const title = view === 'code'
-    ? (mode === 'register' ? 'Start your free trial' : 'Sign in with an instant code')
+    ? (mode === 'register' ? (appsumo ? 'Create your account for your AppSumo deal' : 'Start your free trial') : 'Sign in with an instant code')
     : mode === 'setup' ? 'Create your owner account'
-      : mode === 'register' ? 'Start your 7-day free trial'
+      : mode === 'register' ? (appsumo ? 'Create your account for your AppSumo deal' : 'Start your 7-day free trial')
         : `Welcome back to ${brand.appName}`;
   /* A plan brought from the site's "Find my solution": said here, so the
      visitor knows the answers they gave are not lost behind the form. */
   const plan = sitePlan;
   const planName = plan ? (plan.name || solutionByKey(plan.solutionKeys[0])?.label || 'your business workspace') : '';
-  const sub = view === 'code'
+  const sub = appsumo && mode !== 'setup'
+    ? (view === 'code'
+      ? 'We email you a six-digit code — no password needed. Your AppSumo code is kept in this browser and added the moment you are in. Nothing to pay here.'
+      : 'Your AppSumo code is kept in this browser and added to your account the moment it exists. Paid once on AppSumo — nothing to pay here.')
+    : view === 'code'
     ? 'We email you a six-digit code — no password needed. A new address gets its own workspace and a 7-day free trial.'
     : mode === 'setup' ? 'Set up the agency owner login to get started.'
       : mode === 'register' ? (plan ? `Create your account and “${planName}” is built for you straight away. 7 days free, no card needed.` : `Your own ${brand.appName} workspace in under a minute. No card needed.`)

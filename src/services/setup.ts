@@ -70,7 +70,17 @@ function countList(key: string): number {
  * they are what makes sending possible at all. Contacts, then the first
  * campaign, which is the point of the other five.
  */
-export function setupSteps(): SetupStep[] {
+/**
+ * What the server knows that storage does not: the business profiles and
+ * business workspaces (autopilotPulse). Absent while it is still being asked,
+ * and the two steps then read storage as before.
+ */
+export interface SetupFacts {
+  portfolios: { name: string }[];
+  projects: { name: string }[];
+}
+
+export function setupSteps(facts: SetupFacts | null = null): SetupStep[] {
   const ob = loadOnboarding();
   const p = ob.profile ?? { companyName: '', industry: '', description: '', audience: '', website: '' };
   const brand = activeBranding();
@@ -83,6 +93,13 @@ export function setupSteps(): SetupStep[] {
   /* A business flow that has run counts: it creates a sequence and an SMS
      campaign, so the step it ticks is the one about having a campaign. */
   const campaigns = countList('crm_campaigns') + countList('crm_ai_campaigns') + countList('crm_flow_runs');
+
+  /* The wizard saves each business as a portfolio on the server and each
+     business workspace as a project; neither is in storage. The checklist read
+     only storage and said "Nothing yet" / "None yet" above two built business
+     workspaces (audit M8). */
+  const profiles = facts?.portfolios.map(x => x.name).filter(Boolean) ?? [];
+  const workspaces = facts?.projects.length ?? 0;
 
   const mailbox = isEmailConfigured();
   const domain = (deliver.sendingDomain ?? '').trim();
@@ -117,8 +134,10 @@ export function setupSteps(): SetupStep[] {
          them. SetupChecklist opens it as a modal. */
       route: '/settings?tab=profile',
       action: 'Add your details',
-      state: portfolioFilled >= 4 ? 'done' : portfolioFilled > 0 ? 'partial' : 'todo',
-      detail: portfolioFilled >= 4
+      state: portfolioFilled >= 4 || profiles.length ? 'done' : portfolioFilled > 0 ? 'partial' : 'todo',
+      detail: profiles.length
+        ? `${profiles.slice(0, 3).join(', ')}${profiles.length > 3 ? ` and ${profiles.length - 3} more` : ''}`
+        : portfolioFilled >= 4
         ? p.companyName
         : portfolioFilled > 0
           ? `${portfolioFilled} of 4 filled in — name, industry, what you sell, who you sell to`
@@ -174,9 +193,11 @@ export function setupSteps(): SetupStep[] {
       why: 'Say what you want to happen. Everything — emails, texts, posts, the blog, the landing page — is written from that client\u2019s portfolio and shown to you before anything is sent.',
       /* Was /ai-sales-agent, which is no longer a place you can get to. */
       route: '/autopilot',
-      action: campaigns > 0 ? 'Open the board' : 'Start a business workspace',
-      state: campaigns > 0 ? 'done' : 'todo',
-      detail: campaigns > 0 ? `${campaigns} campaign${campaigns === 1 ? '' : 's'}` : 'None yet',
+      action: workspaces || campaigns > 0 ? 'Open the board' : 'Start a business workspace',
+      state: workspaces || campaigns > 0 ? 'done' : 'todo',
+      detail: workspaces
+        ? `${workspaces} business workspace${workspaces === 1 ? '' : 's'}`
+        : campaigns > 0 ? `${campaigns} campaign${campaigns === 1 ? '' : 's'}` : 'None yet',
       blocking: false,
     },
   ];
@@ -193,8 +214,8 @@ export interface SetupProgress {
   complete: boolean;
 }
 
-export function setupProgress(): SetupProgress {
-  const steps = setupSteps();
+export function setupProgress(facts: SetupFacts | null = null): SetupProgress {
+  const steps = setupSteps(facts);
   const done = steps.filter(s => s.state === 'done').length;
   return {
     steps,

@@ -105,8 +105,11 @@ export async function trialFor(env: Env, email: string): Promise<TrialState> {
   }
 
   if (row.role === 'agency' && !row.accountId) return { kind: 'owner', endsAt: null, daysLeft: 0 };
-  if (!row.trialEndsAt) return { kind: 'legacy', endsAt: null, daysLeft: 0 };
+  /* Paid is asked before "no trial date": an account made by hand — AppSumo's
+     reviewer logins (routes/appsumo.ts makeReviewers) — has a plan but never
+     had a trial, and reading it as legacy showed it "Not subscribed". */
   if (await hasPaid(env, row.email)) return { kind: 'paid', endsAt: row.trialEndsAt, daysLeft: 0 };
+  if (!row.trialEndsAt) return { kind: 'legacy', endsAt: null, daysLeft: 0 };
 
   const left = Date.parse(row.trialEndsAt) - Date.now();
   return left > 0

@@ -211,8 +211,15 @@ async function standing(env: Env, email: string) {
   const row = await env.DB.prepare('SELECT plan_id AS planId, source FROM crm_plans WHERE owner_email = ?')
     .bind(email).first<{ planId: string; source: string }>();
   const plans = effectivePlans(await loadOverrides(env));
-  const tier = planId ? plans.find(p => p.id === planId) : undefined;
+  /* A reviewer login holds the top tier given by hand, not by codes: without
+     this its /appsumo card said "No code redeemed yet" and Plan & billing did
+     not name the tier AppSumo's team is testing. */
+  const reviewer = (await reviewersOf(env)).some(r => r.email.toLowerCase() === email.toLowerCase());
+  const givenDeal = row && row.source === 'manual' && /^appsumo_\d$/.test(row.planId) ? row.planId : null;
+  const shownId = planId ?? (reviewer ? givenDeal : null);
+  const tier = shownId ? plans.find(p => p.id === shownId) : undefined;
   return {
+    reviewer,
     codes,
     max: APPSUMO_MAX_CODES,
     /* Activated through AppSumo's own button: the tier is AppSumo's, so codes do not stack on it. */

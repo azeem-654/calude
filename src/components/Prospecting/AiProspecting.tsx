@@ -417,7 +417,7 @@ export default function AiProspecting() {
     { name: 'Websites', detail: s.reading.size ? `reading ${s.reading.size}…` : read.length ? `${read.length} read · ${up} up` : withSite ? 'Waiting' : 'None to read', state: s.reading.size ? 'running' : read.length ? 'done' : 'waiting' },
     { name: 'Contact checks', detail: s.checking.size ? 'checking…' : checked ? `${checked} checked · ${takes} take mail` : 'Waiting', state: s.checking.size ? 'running' : checked ? 'done' : 'waiting' },
     ...(s.steps.some(x => x.id === 'web') ? [{ name: 'People search', detail: `${s.steps.find(x => x.id === 'web')?.count ?? 0} found`, state: s.finding ? 'running' as const : 'done' as const }] : []),
-    { name: 'Mailbox verification', detail: deepReady ? (verifiedN ? `${verifiedN} verified` : 'Not run yet') : 'Not connected', state: deepReady ? (verifiedN ? 'done' : 'waiting') : 'off' },
+    { name: 'Mailbox verification', detail: deepReady ? (verifiedN ? `${verifiedN} verified` : 'Not run yet') : 'Free domain checks only', state: deepReady ? (verifiedN ? 'done' : 'waiting') : 'off' },
   ];
   const insights: Insight[] = [
     ...(checked ? [{ Icon: ShieldCheck, title: `${takes} address${takes === 1 ? '' : 'es'} take mail`, sub: `${Math.round((takes / checked) * 100)}% of ${checked} checked${verifiedN ? ` · ${verifiedN} mailboxes verified` : ''}`, act: () => setFilter('checked') }] : []),

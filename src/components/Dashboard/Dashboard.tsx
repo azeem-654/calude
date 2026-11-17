@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { bookingsAsAppointments, useRemoteBookings } from '../../services/useRemoteBookings';
 import {
   MessageSquare, ShoppingBag, CornerUpLeft, UserPlus, Briefcase,
   Check, CheckCheck, Calendar as CalIcon, MoreHorizontal,
@@ -535,6 +536,9 @@ function StageBar({ stages, total }: {
 /* ── Main dashboard ── */
 export default function Dashboard() {
   const { contacts, pipelines, appointments, reviews, campaigns, conversations, funnels, websites, videoProjects, socialPosts, addNotification, addSequence, addCampaign, addSocialPost, updatePipeline, updateAppointment, schedule, addContactTask, addContactActivity } = useApp();
+  /* Visitors' bookings from the public page, which live on the server (audit H6). */
+  const remoteBookings = useRemoteBookings();
+  const dayAppointments = useMemo(() => [...appointments, ...bookingsAsAppointments(remoteBookings, appointments)], [appointments, remoteBookings]);
   const navigate = useNavigate();
 
   /*
@@ -888,7 +892,7 @@ export default function Dashboard() {
       {/* The hero says good morning; the day bar inside it, under the film,
           says what the day holds — in the hero's own light (owner, 2026-11-14). */}
       <DashHero greeting={greeting} firstName={firstName}>
-        <DayBar appointments={appointments} greeting="Here’s your day" firstName=""
+        <DayBar appointments={dayAppointments} greeting="Here’s your day" firstName=""
           line={`${openDeals} deal${openDeals === 1 ? '' : 's'} in motion · ${contacts.length} contact${contacts.length === 1 ? '' : 's'} on the books`} />
       </DashHero>
       <div className="dash-stack" style={{ padding: '18px clamp(18px, 3.2vw, 46px) 0', display: 'flex', flexDirection: 'column', gap: 26 }}>
@@ -945,7 +949,7 @@ export default function Dashboard() {
         {/* ── Today, and the goals behind it ── */}
         <div className="dash-block wide slide-up" style={{ animationDelay: '0.08s' }}>
           <DayBoard
-            appointments={appointments}
+            appointments={dayAppointments}
             actions={book.actions.slice(0, 8)}
             onStatusChange={(id, status) => updateAppointment(id, { status })}
           />

@@ -965,7 +965,7 @@ export interface RequirementInfo {
 export const REQUIREMENT_INFO: Record<RequirementId, RequirementInfo> = {
   ai: { label: 'Protected Central AI', why: 'Writes, researches and designs. Included — no key of your own needed.', kind: 'included', route: '' },
   profile: { label: 'Business profile', why: 'What every piece of writing starts from.', kind: 'included', route: '/autopilot' },
-  socialCreator: { label: 'Content Studio — Graphics Designer & Editor', why: 'Where finished posts are saved, ready for you to publish.', kind: 'included', route: '/social-creator' },
+  socialCreator: { label: 'Graphics Designer & Editor', why: 'Where your prepared posts are saved, ready for you to post.', kind: 'included', route: '/social-creator' },
   videoStudio: { label: 'AI Video Studio', why: 'Where each recording is processed and the finished videos, captions and thumbnails are kept.', kind: 'included', route: '/video-studio' },
   blog: { label: 'Blog', why: 'Where drafted articles are kept.', kind: 'included', route: '/blog-automation' },
   shorts: { label: 'AI Video Studio', why: 'Where video scripts are kept (Quick Shorts).', kind: 'included', route: '/video-studio?tab=quick-shorts' },
@@ -1112,12 +1112,14 @@ function socialPart(a: Answers): Partial<Contribution> {
   return {
     workflows: [{
       key: 'social',
-      name: 'Social Media Content Automation',
+      /* "Prepared", not "automation": it makes the design and caption and the
+         customer posts them (audit M3) — it does not post to any network. */
+      name: 'Social Posts, Prepared for You',
       /* The gallery's own social template, personalised: its schedule, its
          platforms and its handoff come from the answers. Attributed so the
          gallery's usage count stays a count. */
       templateKey: list.length > 1 ? 'multi-platform-social' : 'daily-posts',
-      purpose: `${words}, a finished post for ${list.map(p => PLATFORM_LABEL[p]).join(', ')}${Number(count) > 1 ? ` — ${count} versions to choose from` : ''}.`,
+      purpose: `${words}, prepares a post for ${list.map(p => PLATFORM_LABEL[p]).join(', ')} — design and caption, ready for you to post${Number(count) > 1 ? ` — ${count} versions to choose from` : ''}.`,
       origin: 'template',
       nodes,
       schedule: words,
@@ -1135,9 +1137,9 @@ function socialPart(a: Answers): Partial<Contribution> {
       outputs.includes('hashtags') ? 'Hashtags' : '',
       list.length > 1 ? `A version for each of ${list.map(p => PLATFORM_LABEL[p]).join(', ')}` : '',
     ].filter(Boolean),
-    destinations: [{ label: 'Content Studio → Graphics Designer & Editor', route: '/social-creator' }],
-    approvals: [ready ? 'None needed — each post is marked ready to publish' : 'You review each post in the Graphics Designer & Editor'],
-    manual: ['Publish each finished post to your social accounts — AI Autopilot prepares them but does not post to social networks'],
+    destinations: [{ label: 'Graphics Designer & Editor', route: '/social-creator' }],
+    approvals: [ready ? 'None needed — each post is marked ready to post' : 'You review each post in the Graphics Designer & Editor'],
+    manual: ['Post each prepared post to your social accounts — AI Autopilot prepares them but does not post to social networks'],
     requirements: ['socialCreator'],
     limits: ['The image is a branded design with the headline on it, not a photograph.'],
   };

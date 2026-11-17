@@ -156,7 +156,7 @@ for (const width of [1280, 390]) {
   ok(`T1@${width} asked which platforms`, asked.some(q => /platforms/.test(q)), asked.join(' | '));
   ok(`T1@${width} did not re-ask how often`, !asked.some(q => /^How often\?$/.test(q)), asked.join(' | '));
   const bp = await d.innerText();
-  ok(`T1@${width} blueprint names the social workflow`, /Social Media Content Automation/.test(bp));
+  ok(`T1@${width} blueprint names the social workflow`, /Social Posts, Prepared for You/.test(bp));
   ok(`T1@${width} blueprint says publishing is manual`, /does not post to social networks/.test(bp));
   ok(`T1@${width} blueprint runs every weekday`, /Every weekday/.test(bp));
   ok(`T1@${width} no horizontal overflow on the blueprint`, (await overflow(p)) === 0, String(await overflow(p)));

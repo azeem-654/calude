@@ -11,7 +11,13 @@
  *
  * installTenantStorage() MUST run before any module reads storage (see main.tsx).
  */
-import { PLAN_DEFS, SOLD_PLANS, featureLines, type PlanKey } from '../../worker/src/lib/allowances';
+import { PLAN_DEFS, SOLD_PLANS, featureLines as everyLine, type PlanKey } from '../../worker/src/lib/allowances';
+import { featureReady } from './features';
+
+/* As services/allowances.ts: while AI Shorts is in the incubator (`video-studio`),
+   a plan card on live does not list it (New Sub-Account showed "100 AI Shorts"). */
+const featureLines = (p: Parameters<typeof everyLine>[0]) =>
+  featureReady('video-studio') ? everyLine(p) : everyLine(p).filter(l => !/AI Shorts?\b/.test(l));
 
 /* The plan table's own ids, so a plan added there (AppSumo's tiers) is a plan here too. */
 export type PlanId = PlanKey;

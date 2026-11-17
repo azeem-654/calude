@@ -42,6 +42,8 @@ const WKEY = K('W'), IKEY = K('I'), WKEY2 = K('M');
    switched on in their project, and a quota run dry. */
 const DKEY = K('D'), QKEY = K('Q');
 const VALID = new Set([WKEY, IKEY, WKEY2]);
+/* SerpApi's keys are 64 hex characters (lib/serpReviews.ts). */
+const SERPKEY = 'ab'.repeat(32);
 const PLACE = 'ChIJplaceAAAA0001', COMP = 'ChIJcompetitor01', ZERO = 'ChIJzeroReviews0001';
 const T0 = '2026-09-20T10:00:00.000000Z';
 const seen = [];
@@ -86,6 +88,21 @@ const httpSrv = http.createServer((req, res) => {
       const to = SHORT[u.pathname];
       if (!to) { res.writeHead(404); return res.end('Dynamic Link Not Found'); }
       res.writeHead(302, { Location: to }); return res.end();
+    }
+    /* SerpApi: reviews while there is no Maps key anywhere (lib/serpReviews.ts). */
+    if (u.pathname === '/search.json') {
+      if (u.searchParams.get('api_key') !== SERPKEY) return send(res, 401, { error: 'Invalid API key. Your API key should be here: https://serpapi.com/manage-api-key' });
+      const eng = u.searchParams.get('engine'), type = u.searchParams.get('type');
+      const info = { title: 'Acme Bakery', place_id: PLACE, address: '1 High St, Town', rating: 4.6, reviews: 120 };
+      if (eng === 'google_maps' && type === 'search') return send(res, 200, { local_results: [info] });
+      if (eng === 'google_maps' && type === 'place') return send(res, 200, { place_results: info });
+      if (eng === 'google_maps_reviews' && u.searchParams.get('place_id') === PLACE) {
+        return send(res, 200, { place_info: info, reviews: [
+          { review_id: 'sr1', rating: 5, iso_date: '2026-11-01T10:00:00Z', snippet: 'Lovely bread.', user: { name: 'Sam Serp', thumbnail: 'https://lh3.example.com/s.png' }, link: 'https://www.google.com/maps/reviews/sr1' },
+          { review_id: 'sr2', rating: 3, iso_date: '2026-11-02T10:00:00Z', snippet: 'OK coffee.', user: { name: 'Pat Serp' }, response: { snippet: 'Thanks Pat', iso_date: '2026-11-03T00:00:00Z' } },
+        ] });
+      }
+      return send(res, 200, { error: "Google hasn't returned any results for this query." });
     }
     if (u.pathname.startsWith('/v1/places')) {
       const key = String(req.headers['x-goog-api-key'] ?? '');
@@ -173,7 +190,7 @@ await new Promise(r => server.listen(MOCK, '127.0.0.1', r));
 const persist = fs.mkdtempSync(path.join(os.tmpdir(), 'rep-d1-'));
 const sql = q => JSON.parse(execSync(`npx wrangler d1 execute crmpro --local --persist-to ${persist} --json --command ${JSON.stringify(q)}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }))[0].results;
 execSync(`npx wrangler d1 migrations apply crmpro --local --persist-to ${persist}`, { stdio: 'ignore', env: { ...process.env, CI: '1' } });
-const vars = [`APP_ORIGIN:${B}`, `GOOGLE_LINK_BASE:${G}`, `GOOGLE_PLACES_BASE:${G}`, `GOOGLE_GBP_ACCOUNTS_BASE:${G}`, `GOOGLE_GBP_INFO_BASE:${G}`, `GOOGLE_GBP_V4_BASE:${G}`, `GOOGLE_TOKEN_URL:${G}/token`];
+const vars = [`APP_ORIGIN:${B}`, `GOOGLE_LINK_BASE:${G}`, `GOOGLE_PLACES_BASE:${G}`, `GOOGLE_GBP_ACCOUNTS_BASE:${G}`, `GOOGLE_GBP_INFO_BASE:${G}`, `GOOGLE_GBP_V4_BASE:${G}`, `GOOGLE_TOKEN_URL:${G}/token`, `SERPAPI_BASE:${G}`];
 /* Its own process group (detached), so stopping it stops workerd as well. */
 const wr = spawn('npx', ['wrangler', 'dev', '--local', '--port', String(PORT), '--persist-to', persist, '--test-scheduled', ...vars.flatMap(v => ['--var', v])], { detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
 let wlog = '';
@@ -220,6 +237,30 @@ let r = await rep('status');
 ok('status: nothing set up, no install key', r.success && r.source === null && r.installKey === false, JSON.stringify(r));
 r = await rep('find_place', { query: 'Acme Bakery' });
 ok('a missing key is reported by name', !r.success && r.code === 'no_key' && /No Google Places key/.test(r.error), JSON.stringify(r));
+
+/* ── SerpApi, with no Maps key anywhere ── */
+r = await rep('save_serp_key', { apiKey: 'short' });
+ok('SerpApi: a key of the wrong shape is refused at its box', !r.success && r.field === 'serpapi.key', JSON.stringify(r));
+r = await rep('serp_status', {}, A, TB);
+ok('SerpApi: a customer cannot read or set the owner\'s key', !r.success, JSON.stringify(r));
+seen.length = 0;
+r = await rep('save_serp_key', { apiKey: SERPKEY });
+ok('SerpApi: the owner saves the key and it is tested at once', r.success && r.set && r.status === 'ok' && r.inUse === true && seen.some(x => x.path === '/search.json'), JSON.stringify(r));
+ok('…it never comes back, and is encrypted at rest', !JSON.stringify(r).includes(SERPKEY) && !JSON.stringify(sql("SELECT credentials FROM crm_install_providers WHERE kind = 'serpapi'")).includes(SERPKEY));
+r = await rep('find_place', { query: 'Acme Bakery Town' });
+ok('SerpApi: find_place returns Google\'s own place id', r.success && r.places?.[0]?.placeId === PLACE && r.places[0].rating === 4.6, JSON.stringify(r));
+ok('…and the screen is told which service reads', (await rep('status')).reads === 'serpapi');
+await rep('save_source', { placeId: PLACE, placeName: 'Acme Bakery' });
+r = await rep('check_now');
+const serpRevs = (await rep('reviews')).reviews ?? [];
+ok('SerpApi: check_now reads the newest reviews, with the owner\'s reply', r.success && r.via === 'google_places' && r.added === 2
+  && serpRevs.some(x => x.author === 'Sam Serp' && x.rating === 5) && serpRevs.some(x => x.author === 'Pat Serp' && x.reply === 'Thanks Pat'), JSON.stringify(r).slice(0, 300));
+ok('…and counts against the month', (await rep('serp_status')).usage?.used >= 3);
+r = await rep('clear_serp_key');
+ok('SerpApi: the owner removes the key, and "no key" is said again', r.success && !r.set && (await rep('find_place', { query: 'Acme Bakery' })).code === 'no_key', JSON.stringify(r));
+/* Back to how the rest of this file expects to find the workspace. */
+sql(`DELETE FROM crm_reviews WHERE account_id = '${A}'`);
+sql(`DELETE FROM crm_review_sources WHERE account_id = '${A}'`);
 r = await rep('save_source', { placesKey: 'not-a-key' });
 ok('a key of the wrong shape is refused at its box', !r.success && r.field === 'rep.placesKey', JSON.stringify(r));
 r = await rep('save_source', { placesKey: WKEY });

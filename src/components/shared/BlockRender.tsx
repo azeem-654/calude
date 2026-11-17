@@ -88,7 +88,10 @@ export function BlockRender({ block }: { block: FunnelBlock }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 24, maxWidth: 1100, margin: '0 auto' }}>
           {(s.testimonialItems ?? []).map((t, i) => (
             <div key={i} style={{ padding: 30, borderRadius: 14, background: '#fff', boxShadow: '0 2px 16px rgba(0,0,0,0.07)', border: '1px solid #f1f5f9' }}>
-              <div style={{ color: '#f59e0b', fontSize: 18, marginBottom: 14 }}>{'★'.repeat(t.stars ?? 5)}</div>
+              {/* Stars only when somebody gave them: an unset count drew five (audit M7). */}
+              {t.placeholder
+                ? <div style={{ display: 'inline-block', fontSize: 11, fontWeight: 700, color: '#64748b', background: '#f1f5f9', borderRadius: 999, padding: '2px 9px', marginBottom: 12 }}>Placeholder</div>
+                : (t.stars ?? 0) > 0 && <div style={{ color: '#f59e0b', fontSize: 18, marginBottom: 14 }}>{'★'.repeat(Math.min(5, t.stars ?? 0))}</div>}
               <p style={{ fontSize: 15, color: '#475569', lineHeight: 1.75, margin: '0 0 18px', fontStyle: 'italic' }}>"{t.quote}"</p>
               <div style={{ fontWeight: 700, fontSize: 14 }}>{t.author}</div>
               <div style={{ fontSize: 12, color: '#94a3b8' }}>{t.role}</div>
@@ -349,7 +352,9 @@ function FormBlock({ block, bg, pad }: { block: FunnelBlock; bg: CSSProperties; 
 
   const modern = s.look === 'modern';
   return (
-    <section className={modern ? 'bm' : undefined} style={modern ? bg : { ...bg, padding: `${pad}px 60px` }}>
+    /* data-pp-form: a published funnel (PublicPage) moves to the next step on
+       a button press — but never on this one, which sends the form. */
+    <section data-pp-form="" className={modern ? 'bm' : undefined} style={modern ? bg : { ...bg, padding: `${pad}px 60px` }}>
       <div className={modern ? 'bm-in' : undefined} style={modern ? padY(pad) : undefined}>
       {block.content && (modern
         ? <h2 className="bm-h2" style={{ textAlign: s.align ?? 'center', color: s.textColor ?? '#0f172a', margin: '0 auto 28px', maxWidth: 760 }}>{block.content}</h2>

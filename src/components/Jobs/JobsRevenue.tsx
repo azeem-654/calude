@@ -138,19 +138,26 @@ export function Ledger({ accountId, ownerTools }: { accountId: string; ownerTool
   const toConfirm = o.payments.filter(p => p.verification === 'reported').length;
   const pending = o.approvals.filter(a => a.status === 'pending').length;
   const openQ = o.queries.filter(q => !q.answered_at).length;
+  /* The performance-fee machinery is for a workspace under a growth-service
+     agreement, and for the operator's desk (ownerTools). Every other customer
+     saw "Eligible collections", "Fee under review" and two fee tabs for a
+     service they never bought (audit M10). */
+  const fees = !!o.agreement || !!ownerTools;
   const tabs: { id: typeof tab; label: string; badge?: number }[] = [
     { id: 'leads', label: 'Leads & jobs' },
     { id: 'payments', label: 'Payments', badge: o.as.contractor ? toConfirm : 0 },
-    { id: 'statements', label: 'Fee statements', badge: o.as.owner ? openQ : 0 },
-    { id: 'approvals', label: 'Approvals', badge: o.as.contractor ? pending : 0 },
+    ...(fees ? [
+      { id: 'statements' as const, label: 'Fee statements', badge: o.as.owner ? openQ : 0 },
+      { id: 'approvals' as const, label: 'Approvals', badge: o.as.contractor ? pending : 0 },
+    ] : []),
     { id: 'calls', label: 'Calls & do-not-call' },
   ];
 
   return (
     <div style={{ display: 'grid', gap: 14, minWidth: 0 }} data-testid="ledger">
-      <AgreementLine o={o} />
+      {fees && <AgreementLine o={o} />}
       {ownerTools?.(o, reload)}
-      <Metrics o={o} days={days} setDays={setDays} />
+      <Metrics o={o} days={days} setDays={setDays} fees={fees} />
       <div role="tablist" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {tabs.map(t => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} data-testid={`tab-${t.id}`}
@@ -161,8 +168,8 @@ export function Ledger({ accountId, ownerTools }: { accountId: string; ownerTool
       </div>
       {tab === 'leads' && <Leads o={o} accountId={accountId} reload={reload} />}
       {tab === 'payments' && <Payments o={o} accountId={accountId} reload={reload} />}
-      {tab === 'statements' && <Statements o={o} accountId={accountId} reload={reload} />}
-      {tab === 'approvals' && <Approvals o={o} accountId={accountId} reload={reload} />}
+      {fees && tab === 'statements' && <Statements o={o} accountId={accountId} reload={reload} />}
+      {fees && tab === 'approvals' && <Approvals o={o} accountId={accountId} reload={reload} />}
       {tab === 'calls' && <Calls o={o} accountId={accountId} reload={reload} />}
     </div>
   );
@@ -190,7 +197,7 @@ function AgreementLine({ o }: { o: Overview }) {
   );
 }
 
-function Metrics({ o, days, setDays }: { o: Overview; days: number; setDays: (n: number) => void }) {
+function Metrics({ o, days, setDays, fees }: { o: Overview; days: number; setDays: (n: number) => void; fees: boolean }) {
   const [explain, setExplain] = useState(false);
   const m = o.metrics, cur = o.agreement?.currency ?? 'USD';
   const tiles: { k: keyof typeof DEFINITIONS; label: string; value: string }[] = [
@@ -200,9 +207,11 @@ function Metrics({ o, days, setDays }: { o: Overview; days: number; setDays: (n:
     { k: 'quoted', label: 'Quoted (not money)', value: money(m.quotedCents, cur) },
     { k: 'completed', label: 'Completed jobs', value: money(m.completedCents, cur) },
     { k: 'collected', label: 'Collected', value: money(m.collectedCents, cur) },
-    { k: 'eligible', label: 'Eligible collections', value: money(m.eligibleCents, cur) },
-    { k: 'feeApproved', label: 'Fees approved', value: money(m.feeApprovedCents, cur) },
-    { k: 'feePending', label: 'Fee under review', value: money(m.feePendingCents, cur) },
+    ...(fees ? [
+      { k: 'eligible' as const, label: 'Eligible collections', value: money(m.eligibleCents, cur) },
+      { k: 'feeApproved' as const, label: 'Fees approved', value: money(m.feeApprovedCents, cur) },
+      { k: 'feePending' as const, label: 'Fee under review', value: money(m.feePendingCents, cur) },
+    ] : []),
   ];
   return (
     <div style={box} data-testid="metrics">

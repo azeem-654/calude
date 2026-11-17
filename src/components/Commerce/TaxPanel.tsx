@@ -130,7 +130,7 @@ export default function TaxPanel({
         <span style={lbl}>Your listed prices</span>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {[
-            { on: true, title: 'Already include tax', hint: 'UK and EU. £120 on the page is £120 at the till.' },
+            { on: true, title: 'Already include tax', hint: 'UK and EU. £120 on the page is £120 at checkout.' },
             { on: false, title: 'Have tax added at checkout', hint: 'US sales tax, and most B2B pricing.' },
           ].map(o => (
             <button key={String(o.on)} onClick={() => void setMode(o.on)} disabled={busy === 'mode'}

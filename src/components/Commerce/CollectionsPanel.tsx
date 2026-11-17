@@ -98,7 +98,7 @@ export default function CollectionsPanel({
       </div>
       <p style={{ fontSize: 13, color: MUTED, margin: '0 0 16px', lineHeight: 1.6 }}>
         A product can be in as many as you like — &ldquo;New in&rdquo; and &ldquo;Gifts&rdquo; and
-        &ldquo;Under £20&rdquo; all at once. That is what these are for; the category on a product is
+        &ldquo;Under $20&rdquo; all at once. That is what these are for; the category on a product is
         for filing it, and stays as it is.
       </p>
 

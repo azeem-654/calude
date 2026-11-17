@@ -92,13 +92,16 @@ Mock businesses used: **Blue Ridge Plumbing** (plumber, Richmond, Virginia), **L
 
 ## 3. Not ready, or changed since the first submission
 
-1. **Websites and Funnels cannot yet be opened by the public.** They can be built, edited and previewed inside the app. Booking pages, lead forms and shops are public and work.
-2. **Content Studio has been taken out of this submission.** Video editing and AI Shorts had bugs and are being fixed; on the live app that area is a Media Library only. The Graphics Designer (formerly part of it) is in and tested above. Our listing and tier table need the video allowances removed to match.
-3. **A booking made on the public page shows under Booking pages but not yet on the Calendar grid.**
-4. **AI Autopilot set-up, two known faults:** a plumber's request was started from our real-estate template and asked two real-estate questions; and a second business in the same account picked up the first business's profile. Both are being fixed.
-5. **Social posts are prepared, not posted.** The app designs the post and writes the caption; the customer downloads it and posts it. Some screens still say "posts to social" and are being reworded.
-6. **Reviewer logins show "Not subscribed" on Plan & billing** although they are on Tier 3. Accounts that redeem a real code show the correct lifetime-deal card.
-7. **Voice** (live spoken conversation with the assistant, phone answering) is not switched on.
+*Updated 2026-11-17, after the fix session (`docs/audit/2026-11-17-fix-session.md`).*
+
+1. **Websites and funnels now publish to a public link** (`/s/<name>`), open to anyone without signing in, with Publish / Publish changes / Unpublish in both builders. Connecting a customer's own domain is not available yet and the builder says so.
+2. **Content Studio is out of this submission.** Video editing and AI Shorts are being fixed; on the live app that area is a Media Library only. Every price card, usage line, the Autopilot header and the reviewer email no longer mention Shorts or video on the live app. **The AppSumo listing's tier table must drop the video allowances too** (owner, in the Partner Portal).
+3. Fixed: a booking made on the public page now shows on the Calendar and in Today's schedule, and the visitor becomes a contact.
+4. Fixed: a second business workspace gets its own business profile, and a tradesperson is no longer set up from the real-estate template.
+5. **Social posts are prepared, not posted.** The app designs the post and writes the caption; the customer downloads it and posts it. Screens now say so.
+6. Fixed: reviewer logins show "AppSumo lifetime deal — AppSumo Tier 3" on Plan & billing and /appsumo.
+7. **Voice** (live spoken conversation with the assistant, phone answering) is not switched on. Voice *messages* (record, transcribed, sent) work.
+8. **Google reviews** read through SerpApi's free plan until the owner adds a Google Maps key (rating, count and the ten newest reviews). Replying from the app needs Google Business Profile access, which Google has not granted yet.
 
 ## 4. Not verified in this run
 

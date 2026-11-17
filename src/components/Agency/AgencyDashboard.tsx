@@ -88,7 +88,7 @@ export default function AgencyDashboard() {
   const accounts = useMemo(() => descendantsOf(parentId), [parentId, version]);
   const reload = () => setVersion(v => v + 1);
   const [limitError, setLimitError] = useState('');
-  const allowance = resellAllowance(parentId);
+  const local = resellAllowance(parentId);
   const { addNotification } = useApp();
 
   /*
@@ -109,6 +109,16 @@ export default function AgencyDashboard() {
     })();
     return () => { alive = false; };
   }, [version]);
+  /* The server's figure wins once it has answered: the browser's copy reads the
+     plan from the local sub-account record, which knows nothing of an AppSumo
+     tier or a plan given by hand, and said "0 of 2" on Tier 3's 15 (audit M4). */
+  const allowance = usage && parentId !== null && parentId === home
+    ? {
+      allowed: usage.limit, used: usage.used, remaining: usage.remaining,
+      canCreate: usage.limit < 0 || usage.remaining > 0,
+      reason: usage.limit >= 0 && usage.remaining <= 0 ? usage.note : '',
+    }
+    : local;
   const [agency, setAgencyState] = useState(loadAgency);
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<SubAccount | undefined>();
@@ -274,7 +284,7 @@ export default function AgencyDashboard() {
 
         {/* Shown only when the two counts disagree, so the ordinary case stays
             quiet and the exceptional one is impossible to miss. */}
-        {usage && usage.limit >= 0 && usage.remaining === 0 && allowance.canCreate && (
+        {usage && usage.limit >= 0 && usage.remaining === 0 && local.canCreate && parentId === null && (
           <div style={{ ...FROST, padding: '11px 16px', border: '1px solid #f6e2a8', background: '#fff9e6', color: '#8a6d00', fontSize: 12.5, fontWeight: 600 }}>
             {usage.note} The server will refuse another one until you close one or upgrade — Settings → Automation has the
             same figure.
@@ -474,7 +484,7 @@ function SubAccountModal({ account, creating, onSave, onClose }: { account: SubA
           <div style={{ borderTop: '1px solid #f2f3f5', paddingTop: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}><Palette size={14} color={INK} /><span style={{ fontSize: 13, fontWeight: 700, color: INK }}>White-label branding</span><span style={{ fontSize: 11, color: MUTED }}>— what this client sees</span></div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <div><label style={lbl}>App name</label><input style={inp} value={a.branding?.appName ?? ''} onChange={e => setBrand({ appName: e.target.value })} placeholder="crmpro (default)" /></div>
+              <div><label style={lbl}>App name</label><input style={inp} value={a.branding?.appName ?? ''} onChange={e => setBrand({ appName: e.target.value })} placeholder="Protected Central (default)" /></div>
               <div><label style={lbl}>Logo image URL</label><input style={inp} value={a.branding?.logoUrl ?? ''} onChange={e => setBrand({ logoUrl: e.target.value })} placeholder="https://…/logo.png" /></div>
               <div style={{ gridColumn: '1 / 3' }}><label style={lbl}>Login headline</label><input style={inp} value={a.branding?.loginHeadline ?? ''} onChange={e => setBrand({ loginHeadline: e.target.value })} placeholder="Sign in to your workspace" /></div>
             </div>

@@ -737,6 +737,17 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
       answers[String(k).slice(0, 60)] = String(v ?? '').slice(0, 2000);
     }
 
+    /* A required box is required here too, not only in the page's own check,
+       and a submission with nothing in it is refused: it made a contact
+       "New enquiry" with an open deal from an empty form (audit M14). */
+    let defs: { key?: string; label?: string; required?: boolean }[] = [];
+    try { defs = JSON.parse(String(form.fields ?? '[]')); } catch { defs = []; }
+    const missing = (Array.isArray(defs) ? defs : []).find(f => f?.required && f.key && !String(answers[f.key] ?? '').trim());
+    if (missing) return withCors(fail(`Please fill in ${String(missing.label || 'this box').slice(0, 60)}.`, 422, { code: 'required', field: String(missing.key) }));
+    if (!Object.values(answers).some(v => v.trim())) {
+      return withCors(fail('Please fill in the form before sending.', 422, { code: 'empty' }));
+    }
+
     const joined = Object.values(answers).join(' \n');
     const gated = await contentGate(env, accountId, 'form', joined);
     if (!gated.ok) return withCors(fail(gated.message, 422, { code: 'blocked' }));
@@ -745,7 +756,8 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     const now = nowIso();
 
     let personId = '';
-    if (Number(form.createPerson ?? 1) === 1) {
+    /* No way to reach them, no contact: the submission is still kept. */
+    if (Number(form.createPerson ?? 1) === 1 && (email || String(answers.phone ?? '').trim())) {
       const person = await upsertPerson(env, accountId, {
         email, phone: answers.phone, name: answers.name, company: answers.company,
         source: 'form', sourceRef: String(form.id), context: d.context,

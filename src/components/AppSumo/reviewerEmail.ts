@@ -28,7 +28,7 @@ What it is, in one line: a CRM and marketing-automation platform where you descr
 What it does beyond the AI. We know you're careful about AI wrappers, so here is what the product itself does:
 - CRM, pipeline and contacts, with email and SMS sequences sent from the customer's own mailbox and domain. Nothing sends until they approve it.
 - AI Prospecting: "dentists in Austin with a website" becomes a list of businesses. It searches our business contacts database first, then live business directories, and each lead carries the email it publishes, checked before sending, with where it was found.
-- Booking pages, websites and funnels, Google reviews, a support widget with chat and tickets, and an AI Video Studio.
+- Booking pages, websites and funnels published at their own public link, Google reviews, Blog & SEO articles, a Graphics Designer that prepares social posts, and a support widget with chat and tickets.
 - Agency mode: a workspace per client under the agency's own brand. Protected Central itself is our own software, built in-house. It is not a rebranded platform.
 
 Ready for your review:

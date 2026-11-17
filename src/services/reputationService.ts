@@ -97,6 +97,8 @@ export interface RepStatus {
   gbp: { configured: boolean; status: 'none' | 'connected' | 'error' | string; ownerEmail: string; location: { id: string; title: string } | null; lastError: string };
   counts: { total: number; unanswered: number; attention: number };
   placesReviewLimit: number;
+  /** Which service reads Google here: Places, SerpApi (no Maps key anywhere), or none. */
+  reads?: 'places' | 'serpapi' | 'none';
 }
 
 export type Res<T> = T & { success: boolean; error?: string; message?: string; code?: string; field?: string; link?: string };
@@ -169,6 +171,17 @@ async function ownerCall(action: string, extra: Record<string, unknown> = {}) {
 export const installKeyStatus = () => ownerCall('install_key_status');
 export const saveInstallKey = (apiKey: string) => ownerCall('save_install_key', { apiKey });
 export const testInstallKey = () => ownerCall('test_install_key');
+
+/* ── SerpApi: Google reviews while there is no Maps key (worker/src/lib/serpReviews.ts) ── */
+export interface SerpKeyState {
+  set: boolean; status: string; lastError: string; checkedAt?: string | null;
+  /** False when a Maps key is saved: SerpApi is then not used at all. */
+  inUse?: boolean; usage?: { used: number; cap: number };
+}
+export const serpKeyStatus = () => ownerCall('serp_status') as Promise<Res<SerpKeyState>>;
+export const saveSerpKey = (apiKey: string) => ownerCall('save_serp_key', { apiKey }) as Promise<Res<SerpKeyState>>;
+export const testSerpKey = () => ownerCall('test_serp_key') as Promise<Res<SerpKeyState>>;
+export const clearSerpKey = () => ownerCall('clear_serp_key') as Promise<Res<SerpKeyState>>;
 
 /* ── What the customer writes: synced workspace storage ── */
 const PROFILE_KEY = 'crm_reputation_profile';

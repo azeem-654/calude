@@ -158,7 +158,7 @@ const NEVER = /mailbox|send from|who should the emails come from|which contact l
   ok('2 · nothing about sending, contacts or offers', !seen.some(q => NEVER.test(q) || /contacts|offering|reply lead/i.test(q)), seen.join(' / '));
   await business(page, '', '');
   const plan = await page.locator('.sw-solution').innerText();
-  ok('2 · a content workflow, nothing to connect first', /Social Media Content Automation/.test(plan) && /Nothing to connect first/.test(plan), plan.slice(0, 500));
+  ok('2 · a content workflow, nothing to connect first', /Social Posts, Prepared for You/.test(plan) && /Nothing to connect first/.test(plan), plan.slice(0, 500));
   const who = { name: 'Dee Dent', email: 'dee@brightsmile.test', pw: 'Another-horse-7-teeth' };
   await signUp(page, who);
   await page.getByText('Your plan from the website is here').waitFor({ timeout: 20_000 });

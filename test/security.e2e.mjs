@@ -804,6 +804,52 @@ console.log('\nLive voice — /api/live.php is a same-site WebSocket for the ses
   check('Without an upgrade it answers 426', plain.status === 426, String(plain.status));
 }
 
+console.log('\nPublished websites and funnels — /s/<slug> (H3/H4)');
+{
+  /* B saves a site to its own storage the way the builder does; the server
+     reads it from there on publish, never from the request. */
+  const siteId = `ws-sec-${run}`;
+  const site = { id: siteId, name: `Sec Site ${run}`, status: 'draft', visitors: 0, pageViews: 0, seoTitle: 'Sec title',
+    pages: [{ id: 'pg1', name: 'Home', type: 'landing', slug: 'home', visitors: 0, conversions: 0,
+      blocks: [{ id: 'b1', type: 'heading', content: 'JavaScript: the good parts', styles: {} },
+        { id: 'b2', type: 'navbar', content: '', styles: { navLinks: [{ label: 'x', url: 'java\tscript:alert(1)' }] } }] }] };
+  const put = await api('data.php', { action: 'put', token: B.token, accountId: B.acct, key: 'crm_websites', value: JSON.stringify([site]) });
+  const pubB = await api('published.php', { action: 'publish', token: B.token, accountId: B.acct, kind: 'site', id: siteId });
+  check('B publishes its own site from its stored data', put.ok && pubB.ok && !!pubB.data.slug, JSON.stringify([put.data, pubB.data]).slice(0, 200));
+  const slug = pubB.data.slug;
+  const again = await api('published.php', { action: 'publish', token: B.token, accountId: B.acct, kind: 'site', id: siteId });
+  check('republishing keeps the same address', again.ok && again.data.slug === slug, JSON.stringify(again.data).slice(0, 160));
+
+  const cPub = await api('published.php', { action: 'publish', token: C.token, accountId: B.acct, kind: 'site', id: siteId });
+  check("C cannot publish B's site naming B's workspace", !cPub.ok && cPub.status === 403, `${cPub.status} ${JSON.stringify(cPub.data).slice(0, 120)}`);
+  const cUn = await api('published.php', { action: 'unpublish', token: C.token, accountId: B.acct, kind: 'site', id: siteId });
+  check("C cannot unpublish B's site naming B's workspace", !cUn.ok && cUn.status === 403, `${cUn.status} ${JSON.stringify(cUn.data).slice(0, 120)}`);
+  const cUnOwn = await api('published.php', { action: 'unpublish', token: C.token, accountId: C.acct, kind: 'site', id: siteId });
+  check("C naming its own workspace with B's id removes nothing", cUnOwn.ok && cUnOwn.data.removed === 0, JSON.stringify(cUnOwn.data).slice(0, 120));
+  const cPubOwn = await api('published.php', { action: 'publish', token: C.token, accountId: C.acct, kind: 'site', id: siteId });
+  check("C cannot publish B's site into its own workspace", !cPubOwn.ok && cPubOwn.data.code === 'not_saved', JSON.stringify(cPubOwn.data).slice(0, 120));
+  const cStatus = await api('published.php', { action: 'status', token: C.token, accountId: C.acct });
+  check("C's status does not list B's page", cStatus.ok && !(cStatus.data.pages ?? []).some(p => p.slug === slug), JSON.stringify(cStatus.data).slice(0, 160));
+  const anonStatus = await api('published.php', { action: 'status', accountId: B.acct });
+  check('status needs a session', !anonStatus.ok && anonStatus.status === 401, String(anonStatus.status));
+
+  const got = await api('published.php', { action: 'get', slug });
+  const nav = JSON.stringify(got.data.page?.pages ?? []);
+  check("B's page is served to a visitor with no session", got.ok && got.data.page?.name === site.name && got.data.page?.seo?.title === 'Sec title', JSON.stringify(got.data).slice(0, 160));
+  check('a script URL in the page is emptied, plain words are kept', got.ok && !/script:/i.test(nav.replace('JavaScript: the good parts', '')) && nav.includes('JavaScript: the good parts'), nav.slice(0, 200));
+  check('get does not reveal the owning workspace', got.ok && !JSON.stringify(got.data).includes(B.acct), '');
+  const unknown = await api('published.php', { action: 'get', slug: `no-such-page-${run}` });
+  check('get of an unknown slug fails cleanly', !unknown.ok && unknown.status === 200 && unknown.data.code === 'not_found', `${unknown.status} ${JSON.stringify(unknown.data).slice(0, 120)}`);
+  const bad = await api('published.php', { action: 'get', slug: "x' OR 1=1 --" });
+  check('get of a malformed slug fails cleanly', !bad.ok && bad.data.code === 'not_found', JSON.stringify(bad.data).slice(0, 120));
+  const page = await fetch(`${BASE}/s/${slug}`, { headers: { Connection: 'close' } });
+  check('/s/<slug> is served by the app (200)', page.status === 200, String(page.status));
+
+  const bUn = await api('published.php', { action: 'unpublish', token: B.token, accountId: B.acct, kind: 'site', id: siteId });
+  const gone = await api('published.php', { action: 'get', slug });
+  check('after B unpublishes, the address says not found', bUn.ok && bUn.data.removed === 1 && !gone.ok && gone.data.code === 'not_found', JSON.stringify([bUn.data, gone.data]).slice(0, 160));
+}
+
 console.log('\nThe retired Stripe callback (M-6)');
 const oldHook = await fetch(`${BASE}/api/stripe-webhook.php`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': 't=1,v1=00', Connection: 'close' }, body: JSON.stringify({ type: 'checkout.session.completed', data: { object: { metadata: { accountId: C2.acct } } } }) });
 check('/api/stripe-webhook.php answers 410 and changes nothing', oldHook.status === 410, String(oldHook.status));

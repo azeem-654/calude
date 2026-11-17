@@ -239,7 +239,7 @@ export default function Commerce() {
               anything you have already tried — and this suggests things you could realistically start.
             </p>
             <textarea value={about} onChange={e => setAbout(e.target.value)} rows={3}
-              placeholder="I am a joiner, I have evenings and weekends free, and about £500 to start with."
+              placeholder="I am a carpenter, I have evenings and weekends free, and about $500 to start with."
               style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <div style={{ maxWidth: 200 }}>

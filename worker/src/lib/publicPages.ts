@@ -15,7 +15,7 @@ export const isPublicSiteHost = (hostname: string): boolean => /^(www\.)?protect
 /** Addresses that are not the pitch but are real on that host. /login and
     /signup stay: older emails and bookmarks link them on this host, and the
     home page they land on has both buttons. */
-const PREFIXES = ['/book/', '/shop/', '/p/', '/f/', '/auth/', '/api/', '/assets/', '/.well-known/'];
+const PREFIXES = ['/book/', '/shop/', '/p/', '/f/', '/s/', '/auth/', '/api/', '/assets/', '/.well-known/'];
 const EXTRA = ['/appsumo', '/sitemap.xml', '/robots.txt', '/login', '/signup'];
 
 /** Is this a page the public site has? A file (anything with an extension) is the platform's to answer. */

@@ -262,16 +262,23 @@ for (const width of [1280, 390]) {
   await p.getByRole('button', { name: 'Sign in' }).click();
   await p.waitForTimeout(3000);
   if (!p.url().endsWith('/appsumo')) await p.goto(`${B}/appsumo`, { waitUntil: 'domcontentloaded' });
-  await p.waitForSelector('[data-field="appsumo.code"]', { timeout: 15000 });
-  const filled = await p.inputValue('[data-field="appsumo.code"]');
-  ok(`${width}: after sign-in the code is waiting in its box`, width === 1280 ? filled === codes[4] : true, filled);
-  if (width === 390) await p.fill('[data-field="appsumo.code"]', codes[5]);
-  await p.getByRole('button', { name: 'Redeem code' }).click();
-  await p.waitForSelector('[role="status"]', { timeout: 15000 });
+  /* 1280: the code typed before signing in is added on its own, as the
+     signed-out page promises (audit M1). 390: that code is already spent by
+     the 1280 buyer, so the refusal is shown and a fresh one is typed. */
+  if (width === 1280) {
+    await p.waitForFunction(() => /Your code was added/.test(document.body.innerText), null, { timeout: 20000 }).catch(() => {});
+  } else {
+    await p.waitForSelector('[data-field="appsumo.code"]', { timeout: 15000 });
+    await p.waitForSelector('[role="alert"]', { timeout: 15000 }).catch(() => {});
+    ok('390: a held code that is already spent is refused by name after sign-in', /already|another account|redeemed/i.test(await p.evaluate(() => document.querySelector('[role="alert"]')?.textContent ?? '')));
+    await p.fill('[data-field="appsumo.code"]', codes[5]);
+    await p.getByRole('button', { name: 'Redeem code' }).click();
+    await p.waitForSelector('[role="status"]', { timeout: 15000 });
+  }
   const t2 = await p.evaluate(() => document.body.innerText);
   const over2 = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   const expect = width === 1280 ? /AppSumo Tier 1/ : /monthly plan is active/;
-  ok(`${width}: redeemed from the page`, /Code redeemed/.test(t2) && expect.test(t2) && over2 === 0 && !errs.length, { over2, errs, t: t2.slice(0, 300) });
+  ok(`${width}: ${width === 1280 ? 'the code held across sign-in is added without a press' : 'redeemed from the page'}`, (width === 1280 ? /Your code was added/ : /Code redeemed/).test(t2) && expect.test(t2) && over2 === 0 && !errs.length, { over2, errs, t: t2.slice(0, 300) });
   if (width === 1280) {
     /* Plan & billing names the deal and offers no payment portal: there is no subscription behind it. */
     await p.goto(`${B}/billing`, { waitUntil: 'domcontentloaded' });

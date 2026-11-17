@@ -253,6 +253,29 @@ export async function ensureProjectPipeline(
     deals: [],
     playbook: (tasks[i] ?? []).map(text => ({ id: rid('tsk'), text })),
   }));
+  /* The setup card is not a lead. On a lead-generation board the first stage
+     is "New lead", and "Get Blue Ridge Plumbing live" sat there as one, its
+     chores titled "New lead: …" (audit M9). Every board whose first stage is
+     not already about setting up gets a "Setting up" column for it. */
+  if (!/set ?up/i.test(shape[0]?.name ?? '')) {
+    stages.unshift({ id: rid('stg'), name: 'Setting up', color: '#94a3b8', deals: [], playbook: [] });
+  }
+
+  /* Chores that belong to the account, not to one business — connecting the
+     mailbox, the sending domain, a way to take payment, the calendar, the
+     texting number — are listed once. A second business workspace used to
+     add "Connect the mailbox…" again, so the dashboard counted the same task
+     twice (M9). A business's own chores (its booking page, its review link)
+     stay on its own card. */
+  const ACCOUNT_LEVEL = /\b(?:mailbox(?:es)?|sending domains?|take (?:money|payments?)|google calendar|number for texting|texting number|sms number)\b/i;
+  /* By subject, not wording: "Connect the mailbox…" and "Check the mailbox
+     sends and receives" are one chore on one account. */
+  const subjectOf = (t: string) => (ACCOUNT_LEVEL.exec(t)?.[0] ?? '').toLowerCase().replace(/(?:es|s)$/, '');
+  const openElsewhere = new Set(
+    pipelines.filter(p => p.projectId && p.projectId !== project.id)
+      .flatMap(p => p.stages.flatMap(st => (st.deals as Array<{ subtasks?: Array<{ title?: string; done?: boolean }> }>)
+        .flatMap(d => (d.subtasks ?? []).filter(x => !x.done).map(x => subjectOf(String(x.title ?? '')))))).filter(Boolean),
+  );
 
   /*
    * A first card, holding the setup work.
@@ -277,7 +300,9 @@ export async function ensureProjectPipeline(
   const agreed = parse<Array<{ label?: string }>>(project.launchSteps ?? '[]', [])
     .map(s => String(s.label ?? '').trim())
     .filter(Boolean);
-  const setupChecklist = agreed.length ? agreed : (tasks[0] ?? []);
+  const setupChecklist = (agreed.length ? agreed : (tasks[0] ?? []))
+    .filter(t => !openElsewhere.has(subjectOf(t)));
+  const covered = new Set([...openElsewhere, ...setupChecklist.map(subjectOf).filter(Boolean)]);
 
   const now = nowIso();
 
@@ -302,8 +327,11 @@ export async function ensureProjectPipeline(
   shape.forEach((st, i) => {
     /* The first stage's own tasks are the setup list when one was agreed. */
     if (i === 0 && agreed.length === 0) return;
+    /* The stage is kept beside the title, not in it: "New lead: Monitor
+       Google Local Services ads" read as a lead, not as a job to do (M9). */
     for (const text of tasks[i] ?? []) {
-      subtasks.push({ id: rid('sub'), title: `${st.name}: ${text}`, done: false, priority: 'normal', dueDate: day(offset), createdAt: now, source: 'autopilot' });
+      if (covered.has(subjectOf(text))) continue;
+      subtasks.push({ id: rid('sub'), title: text, stage: st.name, done: false, priority: 'normal', dueDate: day(offset), createdAt: now, source: 'autopilot' });
     }
     if ((tasks[i] ?? []).length) offset += 3;
   });

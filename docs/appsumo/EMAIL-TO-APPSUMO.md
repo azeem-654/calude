@@ -40,8 +40,9 @@ here is what the product itself does:
   businesses. It searches our business contacts database first, then live
   business directories, and each lead carries the email it publishes,
   checked before sending, with where it was found.
-- Booking pages, websites and funnels, Google reviews, a support widget with
-  chat and tickets, and an AI Video Studio.
+- Booking pages, websites and funnels published at their own public link,
+  Google reviews, Blog & SEO articles, a Graphics Designer that prepares
+  social posts, and a support widget with chat and tickets.
 - Agency mode: a workspace per client under the agency's own brand.
   Protected Central itself is our own software, built in-house. It is not a
   rebranded platform.

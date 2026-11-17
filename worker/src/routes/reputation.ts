@@ -21,9 +21,12 @@ import { canSend, cannotSendReason } from '../lib/deliver';
 import { loadMailbox } from './mailbox';
 import {
   PLACE_ID_RE, checkWorkspace, resolvePlaceLink, draftReply, encryptKey, gbpAuthUrl, gbpConnect, gbpLive, gbpLocations, gbpReply,
-  installPlacesKey, loadProfile, markInstallKey, placeDetails, placesKeyFor, refreshCompetitors, saveInstallPlacesKey, searchPlaces,
+  installPlacesKey, loadProfile, markInstallKey, placeDetails, refreshCompetitors, saveInstallPlacesKey, searchPlaces,
 } from '../lib/reputation';
 import { KEY_RE, meterPlaces, placesUsage } from '../lib/googlePlaces';
+import {
+  SERP_KEY_RE, clearInstallSerpKey, installSerpKey, isSerpKey, markSerpKey, reviewKeyFor, saveInstallSerpKey, serpUsedThisMonth, testSerpKey,
+} from '../lib/serpReviews';
 import { REQ_KEY, reviewLinkFor, sendReviewRequest } from '../lib/reputationTick';
 
 interface Req {
@@ -75,6 +78,33 @@ export async function handleReputation(req: Request, env: Env): Promise<Response
     });
   }
 
+  /* ── SerpApi: reads Google reviews while there is no Google Maps key (lib/serpReviews.ts) ── */
+  if (act === 'serp_status' || act === 'save_serp_key' || act === 'test_serp_key' || act === 'clear_serp_key') {
+    if (!isOwner(user)) return fail('Only the owner of this installation can set this.', 403);
+    if (act === 'save_serp_key') {
+      const k = String(d.apiKey ?? '').trim();
+      if (!k) return fail('Paste the SerpApi key first.', 200, { field: 'serpapi.key' });
+      if (!SERP_KEY_RE.test(k)) return fail('That does not look like a SerpApi key — it is 64 letters and digits, on serpapi.com → Your account → API key.', 200, { field: 'serpapi.key' });
+      await saveInstallSerpKey(env, k);
+    }
+    if (act === 'clear_serp_key') await clearInstallSerpKey(env);
+    if (act === 'test_serp_key' || act === 'save_serp_key') {
+      const inst = await installSerpKey(env);
+      if (!inst) return fail('No SerpApi key is saved yet.', 200, { field: 'serpapi.key' });
+      const r = await testSerpKey(env, inst.key);
+      await markSerpKey(env, r.ok, r.ok ? '' : (r.error ?? ''));
+      if (!r.ok) return fail(r.error ?? 'SerpApi refused the key.', 200, { code: r.code, field: 'serpapi.key' });
+    }
+    const inst = await installSerpKey(env);
+    const places = await installPlacesKey(env);
+    return json({
+      success: true, set: !!inst, status: inst?.status ?? 'none', lastError: inst?.lastError ?? '',
+      checkedAt: inst && inst.status !== 'unknown' ? inst.updatedAt : null,
+      /* With a Maps key saved, SerpApi is not used at all — said so the owner is not left wondering. */
+      inUse: !!inst && !places, usage: await serpUsedThisMonth(env),
+    });
+  }
+
   const accountId = String(d.accountId ?? '').trim();
   const access = await workspaceAccess(env.DB, user, accountId);
   if (!access.ok) return fail(access.message ?? 'That workspace is not yours.', 403);
@@ -94,16 +124,17 @@ export async function handleReputation(req: Request, env: Env): Promise<Response
     const q = String(d.query ?? '').trim().slice(0, 2000);
     const field = d.field === 'rep.competitorSearch' ? 'rep.competitorSearch' : 'rep.search';
     if (q.length < 3) return fail('Type the business name and town, or paste its Google Maps link.', 200, { field });
-    const key = await placesKeyFor(env, accountId);
+    const key = await reviewKeyFor(env, accountId);
     if (!key.ok) return fail(key.error, 200, { code: key.code });
-    const linked = await resolvePlaceLink(env, key.key, q);
+    const serp = isSerpKey(key.key);
+    const linked = await resolvePlaceLink(env, key.key, q, accountId);
     if (linked) {
-      await meterPlaces(env, accountId, 'reviews', key.whose, linked.calls);
+      if (!serp) await meterPlaces(env, accountId, 'reviews', key.whose, linked.calls);
       if (!linked.ok) return fail(linked.error ?? 'That link could not be read.', 200, { code: linked.code, field });
       return json({ success: true, places: linked.data ?? [], fromLink: true });
     }
-    const r = await searchPlaces(env, key.key, q);
-    if (r.ok) await meterPlaces(env, accountId, 'reviews', key.whose);
+    const r = await searchPlaces(env, key.key, q, undefined, accountId);
+    if (r.ok && !serp) await meterPlaces(env, accountId, 'reviews', key.whose);
     if (!r.ok) return fail(r.error ?? 'Google could not search.', 200, { code: r.code });
     return json({ success: true, places: r.data ?? [] });
   }
@@ -145,7 +176,7 @@ export async function handleReputation(req: Request, env: Env): Promise<Response
     /* A read with reviews is Google's dearest Places request. On the owner's
        key a person pressing Refresh is welcome; a script is not — the cron
        already reads every workspace on its own. */
-    const k = await placesKeyFor(env, accountId);
+    const k = await reviewKeyFor(env, accountId);
     if (k.ok && k.whose === 'install' && !(await gbpLive(env, accountId))) {
       const v = await rateLimit(env, { what: 'reputation-check', who: accountId, max: 30, windowSeconds: 3600 });
       if (!v.allowed) return fail('Google has been checked a lot in the last hour for this workspace — new reviews are still read on their own every six hours. Try Refresh again later.', 429, { code: 'check_budget' });
@@ -247,10 +278,10 @@ export async function handleReputation(req: Request, env: Env): Promise<Response
     if (!PLACE_ID_RE.test(placeId)) return fail('Pick the business from the search results.', 200, { field: 'rep.competitorSearch' });
     const have = await env.DB.prepare('SELECT COUNT(*) AS n FROM crm_review_competitors WHERE account_id = ?').bind(accountId).first<{ n: number }>();
     if ((have?.n ?? 0) >= 5) return fail('Up to five competitors can be compared. Remove one first.');
-    const key = await placesKeyFor(env, accountId);
+    const key = await reviewKeyFor(env, accountId);
     if (!key.ok) return fail(key.error, 200, { code: key.code });
-    const p = await placeDetails(env, key.key, placeId, false);
-    if (p.ok) await meterPlaces(env, accountId, 'reviews', key.whose);
+    const p = await placeDetails(env, key.key, placeId, false, accountId);
+    if (p.ok && !isSerpKey(key.key)) await meterPlaces(env, accountId, 'reviews', key.whose);
     if (!p.ok || !p.data) return fail(p.error ?? 'Google could not find that business.', 200, { code: p.code });
     await env.DB.prepare(
       `INSERT INTO crm_review_competitors (account_id, place_id, name, rating, review_count, maps_url, updated_at) VALUES (?,?,?,?,?,?,?)
@@ -379,6 +410,8 @@ async function statusOf(env: Env, accountId: string) {
       rating: (src.rating as number | null) ?? null, reviewCount: (src.reviewCount as number | null) ?? null,
     } : null,
     installKey: !!(await installPlacesKey(env)),
+    /* Read through SerpApi (no Maps key anywhere): the screen says so, and that up to ten of the newest reviews are read. */
+    reads: await (async () => { const k = await reviewKeyFor(env, accountId); return k.ok ? (isSerpKey(k.key) ? 'serpapi' : 'places') : 'none'; })(),
     gbp: {
       configured: !!(await googleCreds(env)),
       status: gbp?.status ?? 'none',

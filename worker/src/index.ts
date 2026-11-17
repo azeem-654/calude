@@ -88,6 +88,7 @@ import { handleTrack } from './routes/track';
 import { handleUnsubscribe } from './routes/unsubscribe';
 import { handleBooking } from './routes/booking';
 import { handleBookingMedia } from './routes/bookingMedia';
+import { handlePublished } from './routes/published';
 import { handleStrategyCall, strategyReminders, strategyReviewAsks } from './routes/strategyCall';
 import { handleLeadRevenue } from './routes/leadRevenue';
 import { handleRcm } from './routes/rcm';
@@ -252,6 +253,8 @@ const ROUTES: Record<string, Handler> = {
   '/api/booking.php': handleBooking,
   /* The booking page's photo, logo and short clip — public by random key. */
   '/api/booking-media.php': handleBookingMedia,
+  /* Published websites and funnels (/s/<slug>): public `get`, signed-in publish. */
+  '/api/published.php': handlePublished,
   /* The install owner's own strategy call — public booking, owner-only settings. */
   '/api/strategy-call.php': handleStrategyCall,
   '/api/lead-revenue.php': handleLeadRevenue,

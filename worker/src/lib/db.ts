@@ -149,6 +149,10 @@ export interface Env {
    * sends can be checked, not just a mock of this module's own answers.
    */
   GOOGLE_PLACES_BASE?: string;
+  /** SerpApi's address (lib/serpReviews.ts) — a test points it at a mock. */
+  SERPAPI_BASE?: string;
+  /** How many SerpApi searches the install may spend a calendar month (its free plan is 250). */
+  SERPAPI_MONTHLY?: string;
   GOOGLE_GBP_ACCOUNTS_BASE?: string;
   GOOGLE_GBP_INFO_BASE?: string;
   GOOGLE_GBP_V4_BASE?: string;

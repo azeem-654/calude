@@ -249,7 +249,9 @@ export default function Reputation() {
         {gbp?.status === 'error' && <Banner tone="error">{gbp.lastError || 'The Business Profile connection stopped working.'} <button onClick={() => setSetupOpen('sources')} style={linkBtn}>Connect again</button></Banner>}
         {!gbpLive && src?.placeId && (
           <Banner tone="info">
-            Reading through Google Places, which shows at most {status?.placesReviewLimit ?? 5} reviews, chosen by Google, and cannot post replies.{' '}
+            {status?.reads === 'serpapi'
+              ? 'Reading your Google listing through SerpApi: the rating, the count and the ten newest reviews, every three days. Replies cannot be posted this way.'
+              : `Reading through Google Places, which shows at most ${status?.placesReviewLimit ?? 5} reviews, chosen by Google, and cannot post replies.`}{' '}
             <button onClick={() => setSetupOpen('sources')} style={linkBtn}>Connect Google Business Profile</button> to read all of them and reply from here.
           </Banner>
         )}

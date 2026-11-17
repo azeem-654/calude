@@ -20,6 +20,18 @@ migration 0057 (`crm_review_sources`, `crm_gbp_connections`, `crm_reviews`,
   and the only way Google accepts a reply. Until Google approves the app's API
   access every GBP call is 403 / quota 0 and says `NOT_APPROVED`; the check then
   falls back to Places.
+- **SerpApi fallback** (`lib/serpReviews.ts`, 2026-11-17): with no Places
+  key anywhere (workspace or install), `reviewKeyFor` hands Reputation the
+  owner's SerpApi key (`crm_install_providers` kind `serpapi`, Settings →
+  Platform services → *Google reviews without a Maps key*) as
+  `serpapi:<key>`; `searchPlaces`/`placeDetails` dispatch on that prefix.
+  Place ids stay Google's own, so the Maps key later takes over with no
+  migration. Reviews come from `google_maps_reviews` (newest first, ten, with
+  the owner's reply), stored as `google_places` with `serp:` ext ids. Budget:
+  `SERPAPI_MONTHLY` (default 230) install-wide a calendar month + 15/day per
+  workspace, refused as `serp_budget`; the cron reads such a workspace every
+  three days. Not metered in `crm_places_usage`. Prospect search keeps
+  `placesKeyFor` (never SerpApi). `SERPAPI_BASE` points tests at the mock.
 - **Reply** posts only for a `google_business` review with a live connection;
   anything else is refused with the review's link, and "Mark as replied" records
   `posted_elsewhere`. The legacy `/api/reviews-fetch.php` answers 410.

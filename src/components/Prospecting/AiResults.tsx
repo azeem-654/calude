@@ -128,7 +128,7 @@ export function ProgressCard({ s, sources }: { s: ProspectSearch; sources: strin
           const step = s.steps.find(x => x.id === st.id) ?? (st.also ? s.steps.find(x => x.id === st.also) : undefined);
           const state = step?.state ?? (st.id === 'search' && s.busy ? 'running' : 'waiting');
           const detail = state === 'waiting'
-            ? (st.id === 'deep' && !s.google?.verifier.available ? 'Needs a verifier' : 'Waiting…')
+            ? (st.id === 'deep' && !s.google?.verifier.available ? 'Free domain checks only' : 'Waiting…')
             : step?.state === 'running' ? (s.progress ? `${s.progress.done} of ${s.progress.total}` : 'In progress')
               : typeof step?.count === 'number' ? `${step.count} ${st.id === 'search' ? 'found' : st.id === 'read' ? 'addresses' : st.id === 'verify' ? 'take mail' : 'confirmed'}`
                 : step?.state === 'skipped' ? 'Not needed' : step?.state === 'failed' ? 'Stopped' : 'Done';
@@ -193,7 +193,7 @@ const PALETTE = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#94a3b8
 function PinMap({ rows, place }: { rows: LeadRow[]; place: string }) {
   const pts = rows.filter(r => r.p.lat && r.p.lon && Math.abs(r.p.lat) <= 90);
   if (!pts.length) {
-    return <div className="aip-map aip-map-empty"><MapPin size={16} /> No coordinates for these — the register lists addresses, not points.</div>;
+    return <div className="aip-map aip-map-empty"><MapPin size={16} /> No map for these — the source lists addresses, not map points.</div>;
   }
   const lats = pts.map(r => r.p.lat), lons = pts.map(r => r.p.lon);
   const [la0, la1, lo0, lo1] = [Math.min(...lats), Math.max(...lats), Math.min(...lons), Math.max(...lons)];
@@ -272,7 +272,7 @@ export function InsightsRail({ s, rows, insights, scanned }: {
     <aside className="aip-rail" aria-label="About these results">
       <section className="aip-card aip-rail-card">
         <div className="aip-rail-head"><Users size={14} /> <b>Businesses found</b><span className="aip-rail-n">{(s.results ?? []).length}</span></div>
-        <PinMap rows={rows} place={place} />
+        {rows.length > 0 && <PinMap rows={rows} place={place} />}
       </section>
       <section className="aip-card aip-rail-card">
         <div className="aip-rail-head"><ShieldCheck size={14} /> <b>What was searched</b></div>

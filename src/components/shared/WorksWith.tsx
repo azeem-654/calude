@@ -33,6 +33,7 @@
  * list once, still. With reduced motion the rows are drawn once, still.
  */
 import { BRAND_PATHS } from './brandPaths';
+import { featureReady } from '../../services/features';
 import './worksWith.css';
 
 interface Brand { id: string; name: string; role: string }
@@ -86,11 +87,15 @@ const WRITES_FOR: Brand[] = [
   { id: 'youtube', name: 'YouTube', role: 'Titles & descriptions' },
   { id: 'pinterest', name: 'Pinterest', role: 'Pins' },
   { id: 'meta', name: 'Meta', role: 'Facebook ad videos' },
-  { id: 'youtube', name: 'YouTube Shorts', role: 'Vertical clips, captioned' },
-  { id: 'instagram', name: 'Instagram Reels', role: 'Vertical clips, captioned' },
   { id: 'wordpress', name: 'WordPress', role: 'Articles, published on schedule' },
   { id: 'google', name: 'Google Search', role: 'Articles checked against nine SEO rules' },
   { id: 'googlebusiness', name: 'Google Business Profile', role: 'Replies to reviews' },
+  /* Vertical clips come from AI Video Studio's Shorts, in the incubator
+     (`video-studio`): named only where it is switched on. */
+  ...(featureReady('video-studio') ? [
+    { id: 'youtube', name: 'YouTube Shorts', role: 'Vertical clips, captioned' },
+    { id: 'instagram', name: 'Instagram Reels', role: 'Vertical clips, captioned' },
+  ] : []),
 ];
 
 const PARTNERS: Brand[] = [

@@ -36,9 +36,10 @@ import { googleCreds } from './googleAuth';
 import { aiBudget, askGemini, extractJson, loadAiKey } from './ai';
 import { cidOfMapsUri, followShortLink, parseMapsLink } from './mapsLink';
 import {
-  KEY_FAULT, PLACE_ID_RE, httpsOnly, markInstallKey, meterPlaces, placesBase, placesError, placesKeyFor,
+  KEY_FAULT, PLACE_ID_RE, httpsOnly, markInstallKey, meterPlaces, placesBase, placesError,
   type GResult, type GoogleError,
 } from './googlePlaces';
+import { isSerpKey, markSerpKey, reviewKeyFor, serpPlaceDetails, serpSearchPlaces, SERP_PREFIX } from './serpReviews';
 
 export const GBP_SCOPE = 'https://www.googleapis.com/auth/business.manage';
 
@@ -87,7 +88,9 @@ export interface IncomingReview {
   time: string | null; link: string; reply: string; replyTime: string | null;
 }
 
-export async function searchPlaces(env: Env, key: string, query: string, near?: { lat: number; lng: number }): Promise<GResult<PlaceSummary[]>> {
+export async function searchPlaces(env: Env, key: string, query: string, near?: { lat: number; lng: number }, accountId = ''): Promise<GResult<PlaceSummary[]>> {
+  /* No Places key anywhere: the same search through SerpApi (lib/serpReviews.ts). */
+  if (isSerpKey(key)) return serpSearchPlaces(env, accountId, key.slice(SERP_PREFIX.length), query);
   const req: Record<string, unknown> = { textQuery: query.slice(0, 200), pageSize: 8 };
   /* Where a pasted link put the pin: the branch of a chain the customer meant,
      not the most famous one. A bias, so a slightly-off pin still finds it. */
@@ -123,7 +126,8 @@ export async function searchPlaces(env: Env, key: string, query: string, near?: 
  * Reviews are asked for only when they will be read: they move the request to
  * Google's dearer SKU, and a competitor's rating does not need them.
  */
-export async function placeDetails(env: Env, key: string, placeId: string, withReviews: boolean): Promise<GResult<PlaceSummary & { reviews: IncomingReview[] }>> {
+export async function placeDetails(env: Env, key: string, placeId: string, withReviews: boolean, accountId = ''): Promise<GResult<PlaceSummary & { reviews: IncomingReview[] }>> {
+  if (isSerpKey(key)) return serpPlaceDetails(env, accountId, key.slice(SERP_PREFIX.length), placeId, withReviews);
   if (!PLACE_ID_RE.test(placeId)) return { ok: false, code: 'bad_place', error: 'That is not a Google place ID.' };
   const mask = 'id,displayName,rating,userRatingCount,googleMapsUri,formattedAddress' + (withReviews ? ',reviews' : '');
   const { res, body, netError } = await gfetch(`${urls(env).places}/v1/places/${encodeURIComponent(placeId)}`, {
@@ -168,7 +172,7 @@ export async function placeDetails(env: Env, key: string, placeId: string, withR
  * and should be searched for as typed. `calls` is how many requests reached
  * Places, for the meter. lib/mapsLink.ts says which shape carries what.
  */
-export async function resolvePlaceLink(env: Env, key: string, raw: string): Promise<GResult<PlaceSummary[]> & { calls: number } | null> {
+export async function resolvePlaceLink(env: Env, key: string, raw: string, accountId = ''): Promise<GResult<PlaceSummary[]> & { calls: number } | null> {
   let link = parseMapsLink(raw);
   if (!link) return null;
   if (link.notGoogle) return { ok: false, calls: 0, code: 'not_google', error: 'That link is not a Google Maps link. Paste the link from Google Maps (Share → Copy link), or type the business name and town.' };
@@ -186,14 +190,14 @@ export async function resolvePlaceLink(env: Env, key: string, raw: string): Prom
     if (link.notGoogle) return { ok: false, calls: 0, code: 'not_google', error: 'That short link leads away from Google Maps. Paste the link from Google Maps itself, or type the business name and town.' };
   }
   if (link.placeId) {
-    const p = await placeDetails(env, key, link.placeId, false);
+    const p = await placeDetails(env, key, link.placeId, false, accountId);
     if (!p.ok || !p.data) return { ok: false, calls: 1, code: p.code, error: p.code === 'not_found' ? 'Google has no business with the place ID in that link. Type the business name and town instead.' : p.error };
     const { reviews: _r, ...summary } = p.data;
     return { ok: true, calls: 1, data: [summary] };
   }
   if (link.query) {
     const near = link.lat != null && link.lng != null ? { lat: link.lat, lng: link.lng } : undefined;
-    const r = await searchPlaces(env, key, link.query, near);
+    const r = await searchPlaces(env, key, link.query, near, accountId);
     if (!r.ok) return { ok: false, calls: 1, code: r.code, error: r.error };
     const hits = r.data ?? [];
     /* The CID names exactly one place; a name search can return its
@@ -660,14 +664,15 @@ export async function checkWorkspace(env: Env, accountId: string): Promise<Check
   }
 
   if (!out.ok && src?.placeId) {
-    const key = await placesKeyFor(env, accountId);
+    const key = await reviewKeyFor(env, accountId);
     if (!key.ok) {
       out.code = out.code || key.code;
       out.error = gbpError ? `${gbpError} ${key.error}` : key.error;
     } else {
       const initial = !(await hadAny('google_places')) && prevCount !== 0;
-      const p = await placeDetails(env, key.key, src.placeId, true);
-      if (p.ok) await meterPlaces(env, accountId, 'reviews', key.whose);
+      const serp = isSerpKey(key.key);
+      const p = await placeDetails(env, key.key, src.placeId, true, accountId);
+      if (p.ok && !serp) await meterPlaces(env, accountId, 'reviews', key.whose);
       if (p.ok && p.data) {
         out.ok = true; out.via = 'google_places';
         rating = p.data.rating; count = p.data.count ?? 0; mapsUrl = p.data.mapsUrl;
@@ -681,11 +686,14 @@ export async function checkWorkspace(env: Env, accountId: string): Promise<Check
          */
         const grew = prevCount != null && prevCount > 0 ? count - prevCount : 0;
         const unseen = grew - (out.added - before);
-        if (unseen > 0) {
+        /* SerpApi reads the newest reviews, so a gap there is only older ones edited; not worth a note. */
+        if (unseen > 0 && !serp) {
           out.notes.push(`Google now counts ${count} reviews, ${grew} more than at the last check, but ${grew - unseen} of the ${grew} new ${grew === 1 ? 'one is' : 'ones are'} among the five Google lets Places show. Connect Google Business Profile to read every review, or open your listing on Google Maps to see ${unseen === 1 ? 'it' : 'them'}.`);
         }
         if (gbpError) out.notes.push(gbpError);
-        if (key.whose === 'workspace') {
+        if (serp) {
+          await markSerpKey(env, true);
+        } else if (key.whose === 'workspace') {
           await env.DB.prepare('UPDATE crm_review_sources SET key_verified_at = COALESCE(key_verified_at, ?) WHERE account_id = ?').bind(nowIso(), accountId).run();
         } else {
           await markInstallKey(env, true);
@@ -693,7 +701,7 @@ export async function checkWorkspace(env: Env, accountId: string): Promise<Check
       } else {
         out.code = p.code ?? 'google';
         out.error = gbpError ? `${gbpError} Places also failed: ${p.error}` : (p.error ?? 'Google Places could not be read.');
-        if (key.whose === 'install' && KEY_FAULT.test(out.code)) await markInstallKey(env, false, p.error ?? '');
+        if (key.whose === 'install' && KEY_FAULT.test(out.code)) await (serp ? markSerpKey(env, false, p.error ?? '') : markInstallKey(env, false, p.error ?? ''));
       }
     }
   } else if (!out.ok) {
@@ -716,13 +724,13 @@ export async function checkWorkspace(env: Env, accountId: string): Promise<Check
 
 /** Refresh every competitor's rating and count. One request each, no reviews. */
 export async function refreshCompetitors(env: Env, accountId: string): Promise<GResult<number>> {
-  const key = await placesKeyFor(env, accountId);
+  const key = await reviewKeyFor(env, accountId);
   if (!key.ok) return { ok: false, code: key.code, error: key.error };
   const { results } = await env.DB.prepare('SELECT place_id AS placeId FROM crm_review_competitors WHERE account_id = ? LIMIT 10').bind(accountId).all<{ placeId: string }>();
   let n = 0;
   for (const c of results ?? []) {
-    const d = await placeDetails(env, key.key, c.placeId, false);
-    if (d.ok) await meterPlaces(env, accountId, 'reviews', key.whose);
+    const d = await placeDetails(env, key.key, c.placeId, false, accountId);
+    if (d.ok && !isSerpKey(key.key)) await meterPlaces(env, accountId, 'reviews', key.whose);
     if (d.ok && d.data) {
       await env.DB.prepare('UPDATE crm_review_competitors SET name = ?, rating = ?, review_count = ?, maps_url = ?, last_error = \'\', updated_at = ? WHERE account_id = ? AND place_id = ?')
         .bind(d.data.name, d.data.rating, d.data.count, d.data.mapsUrl, nowIso(), accountId, c.placeId).run();

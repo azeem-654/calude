@@ -26,6 +26,7 @@ import { AlertTriangle, CheckCircle, ChevronRight, Circle, Loader, RefreshCw, XC
 import { API_BASE } from '../../services/apiBase';
 import { sessionToken } from '../../services/auth';
 import PlacesKeyPanel from './PlacesKeyPanel';
+import SerpReviewsPanel from './SerpReviewsPanel';
 import AiKeysPanel from './AiKeysPanel';
 import OpenAiKeysPanel from './OpenAiKeysPanel';
 import AiEngineCard from './AiEngineCard';
@@ -170,6 +171,7 @@ export default function PlatformServices({ openTab }: { openTab: (id: string) =>
       <div id="platform-source-policy" style={{ scrollMarginTop: 16 }}><SourcePolicyPanel /></div>
       <div id="platform-lead-directory" style={{ scrollMarginTop: 16 }}><LeadDirectoryAdmin /></div>
       <div id="platform-google-maps" style={{ scrollMarginTop: 16 }}><PlacesKeyPanel /></div>
+      <div id="platform-serpapi" style={{ scrollMarginTop: 16 }}><SerpReviewsPanel /></div>
       <div id="platform-google-signin" style={{ scrollMarginTop: 16 }}><GoogleSignInPanel /></div>
     </div>
   );

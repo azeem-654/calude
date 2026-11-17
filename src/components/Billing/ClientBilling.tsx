@@ -117,6 +117,8 @@ export default function ClientBilling() {
       ? { Icon: ShieldCheck, label: 'Install owner', color: '#047857', bg: '#d1fae5', line: 'You run this installation, so this account is never billed. How your customers pay you is set in Settings → Billing.' }
       : onDeal
         ? { Icon: CheckCircle2, label: 'AppSumo lifetime deal', color: '#047857', bg: '#d1fae5', line: `${deal?.tier?.name ?? 'Your AppSumo tier'} — ${deal?.license ? 'activated from your AppSumo account' : `${deal?.codes ?? 0} of ${deal?.max ?? 3} codes redeemed`}. Paid once on AppSumo: nothing to pay here, and it does not renew or expire.` }
+      : given && deal?.reviewer
+        ? { Icon: CheckCircle2, label: 'AppSumo lifetime deal', color: '#047857', bg: '#d1fae5', line: `${deal.tier?.name ?? 'AppSumo Tier 3'} — a reviewer login, given by Protected Central with the same allowances a buyer with three codes has. Nothing to pay here, and it does not renew or expire. Redeeming a code on /appsumo still works and counts.` }
       : given
         ? { Icon: CheckCircle2, label: 'Plan active', color: '#047857', bg: '#d1fae5', line: 'Your plan was arranged with Protected Central directly, so there is no card or subscription to manage here.' }
       : paid

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Globe, Plus, Trash2, Eye, ExternalLink, Edit3, Copy, BarChart3, Search, CheckCircle2, Users } from 'lucide-react';
+import { Globe, Plus, Trash2, Eye, ExternalLink, Edit3, Copy, BarChart3, Search, CheckCircle2 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import type { Website } from '../../types';
@@ -7,9 +7,10 @@ import WebsiteBuilder from './WebsiteBuilder';
 import { buildWebsiteTemplatePages } from '../shared/pageTemplates';
 import TemplateGallery from '../shared/TemplateGallery';
 import { ScaledPage } from '../shared/BlockRender';
-import { activeAccount } from '../../services/tenancy';
+import { activeAccount, customerBusinessName } from '../../services/tenancy';
 import SourceTag from '../shared/SourceTag';
 import Shops from './Shops';
+import { publicUrl, unpublishItem, usePublished } from '../../services/publishedPages';
 
 const STARTER_TEMPLATES = [
   { id: 'blank',       name: 'Blank Site',          emoji: '📄', desc: 'Start from scratch with an empty canvas.',           color: '#f1f5f9' },
@@ -24,8 +25,11 @@ const STARTER_TEMPLATES = [
   { id: 'nonprofit',   name: 'Nonprofit / Charity',  emoji: '❤️', desc: 'Mission-driven layout with donation CTA.',         color: 'linear-gradient(135deg,#dc2626,#7f1d1d)' },
 ];
 
-function StatusBadge({ status }: { status: Website['status'] }) {
-  const published = status === 'published';
+/* What the server says, not the site's own `status` flag: the flag read
+   "Published" while no visitor could open the site (audit H3). `null` while
+   the server has not answered — nothing is claimed either way. */
+function StatusBadge({ published }: { published: boolean | null }) {
+  if (published === null) return null;
   return (
     <span style={{ padding: '3px 9px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: published ? '#dcfce7' : '#f1f5f9', color: published ? '#16a34a' : '#64748b' }}>
       {published ? '● Published' : '○ Draft'}
@@ -117,6 +121,9 @@ function DeleteConfirm({ name, onConfirm, onCancel }: { name: string; onConfirm:
 export default function Websites() {
   const { websites, addWebsite, updateWebsite, deleteWebsite } = useApp();
   const navigate = useNavigate();
+  const pub = usePublished();
+  const liveOf = (id: string) => pub.get('site', id);
+  const isLive = (id: string): boolean | null => (pub.loaded && !pub.error ? !!liveOf(id) : null);
   const [showNew, setShowNew] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   /* The Analytics button on each card had no handler at all, unlike every
@@ -149,9 +156,9 @@ export default function Websites() {
     // Generate the template's REAL pages so the new site opens fully designed
     // (it previously created an empty site and ignored the chosen template).
     const pages = buildWebsiteTemplatePages(template, {
-      name: name.trim() || acct?.businessName || 'Your Business',
+      name: name.trim() || customerBusinessName() || 'Your Business',
       color: acct?.color || '#6366f1',
-      tagline: acct?.industry ? `Trusted ${acct.industry.toLowerCase()} experts` : undefined,
+      tagline: acct?.industry ? `${acct.industry} services` : undefined,
     });
     addWebsite({
       name,
@@ -241,8 +248,10 @@ export default function Websites() {
           /* Line icons like every other screen's stat cards (Funnels beside
              it): emoji drew differently on every machine and dated the page. */
           { label: 'Total Sites', value: websites.length, icon: Globe, color: '#6366f1' },
-          { label: 'Published', value: websites.filter(w => w.status === 'published').length, icon: CheckCircle2, color: '#16a34a' },
-          { label: 'Total Visitors', value: websites.reduce((a, w) => a + (w.visitors ?? 0), 0).toLocaleString(), icon: Users, color: '#d97706' },
+          /* Both from the server. "Total Visitors" summed a counter nothing
+             ever incremented. */
+          { label: 'Published', value: pub.loaded && !pub.error ? websites.filter(w => liveOf(w.id)).length : '—', icon: CheckCircle2, color: '#16a34a' },
+          { label: 'Public page views', value: pub.loaded && !pub.error ? websites.reduce((a, w) => a + (liveOf(w.id)?.views ?? 0), 0).toLocaleString() : '—', icon: Eye, color: '#d97706' },
         ].map(s => (
           <div key={s.label} style={{ background: '#fff', borderRadius: 16, padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ width: 44, height: 44, borderRadius: 12, background: `${s.color}14`, color: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><s.icon size={20} strokeWidth={2} /></div>
@@ -295,7 +304,7 @@ export default function Websites() {
                       <span style={{ fontSize: 52 }}>{tpl.emoji}</span>
                     </div>
                   )}
-                  <div style={{ position: 'absolute', top: 10, right: 10 }}><StatusBadge status={w.status} /></div>
+                  <div style={{ position: 'absolute', top: 10, right: 10 }}><StatusBadge published={isLive(w.id)} /></div>
                 </div>
 
                 {/* Card body */}
@@ -304,17 +313,20 @@ export default function Websites() {
                     <div>
                       <h3 style={{ margin: '0 0 2px', fontSize: 16, fontWeight: 800, color: '#0f172a' }}>{w.name}</h3>
                       {w.source && <div style={{ margin: '4px 0 2px' }}><SourceTag source={w.source} size="compact" /></div>}
-                      {w.domain && <div style={{ fontSize: 12, color: '#6366f1', fontWeight: 600 }}>{w.domain}</div>}
-                      {!w.domain && <div style={{ fontSize: 12, color: '#94a3b8' }}>{tpl.name}</div>}
+                      {/* The public link when there is one. A stored `domain`
+                          was shown here as if the site lived there; nothing
+                          serves a site on a domain yet. */}
+                      {liveOf(w.id)
+                        ? <a href={publicUrl(liveOf(w.id)!.slug)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#6366f1', fontWeight: 600, wordBreak: 'break-all', textDecoration: 'none' }}>{publicUrl(liveOf(w.id)!.slug).replace(/^https?:\/\//, '')}</a>
+                        : <div style={{ fontSize: 12, color: '#94a3b8' }}>{tpl.name}</div>}
                     </div>
                   </div>
 
                   {w.description && <p style={{ margin: '0 0 12px', fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>{w.description}</p>}
 
                   <div style={{ display: 'flex', gap: 16, marginBottom: 14, flexWrap: 'wrap' }}>
-                    <StatChip icon="👥" value={(w.visitors ?? 0).toLocaleString()} label="visitors" />
                     <StatChip icon="📄" value={(w.pages?.length ?? 0)} label="pages" />
-                    <StatChip icon="📊" value={(w.pageViews ?? 0).toLocaleString()} label="views" />
+                    {liveOf(w.id) && <StatChip icon="📊" value={liveOf(w.id)!.views.toLocaleString()} label="public views" />}
                   </div>
 
                   {/* Action buttons */}
@@ -323,14 +335,19 @@ export default function Websites() {
                       style={{ flex: 1, padding: '8px 0', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
                       <Edit3 size={14} /> Open Builder
                     </button>
-                    <button title="Preview site" onClick={() => navigate(`/preview/${w.id}`)}
+                    <button title="Preview (only you can see this)" onClick={() => navigate(`/preview/${w.id}`)}
                       style={{ padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#6366f1' }}>
-                      <ExternalLink size={15} />
-                    </button>
-                    <button title="Toggle published" onClick={() => updateWebsite(w.id, { status: w.status === 'published' ? 'draft' : 'published' })}
-                      style={{ padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: w.status === 'published' ? '#22c55e' : '#94a3b8' }}>
                       <Eye size={15} />
                     </button>
+                    {/* The old eye button flipped a flag that changed nothing a
+                        visitor could see. Publishing is in the builder; this
+                        opens what visitors see once it is live. */}
+                    {liveOf(w.id) && (
+                      <a title="Open the public page" href={publicUrl(liveOf(w.id)!.slug)} target="_blank" rel="noopener noreferrer"
+                        style={{ padding: '8px 10px', border: '1px solid #bbf7d0', borderRadius: 8, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#16a34a' }}>
+                        <ExternalLink size={15} />
+                      </a>
+                    )}
                     <button title="Duplicate" onClick={() => handleDuplicate(w)}
                       style={{ padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#64748b' }}>
                       <Copy size={15} />
@@ -355,9 +372,11 @@ export default function Websites() {
       {showNew && (
         <TemplateGallery
           ctx={{
-            name: activeAccount()?.businessName || 'Your Business',
+            /* The business profile's name (onboarding, branding), not just the
+               sub-account's: new sites said "Your Business" though one was set (M7). */
+            name: customerBusinessName() || 'Your Business',
             color: activeAccount()?.color || '#6366f1',
-            tagline: activeAccount()?.industry ? `Trusted ${activeAccount()!.industry.toLowerCase()} experts` : undefined,
+            tagline: activeAccount()?.industry ? `${activeAccount()!.industry} services` : undefined,
           }}
           kind="website"
           title="Choose a website template"
@@ -384,26 +403,29 @@ export default function Websites() {
           onClick={() => setStatsSite(null)}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 26, width: 'min(520px,100%)', boxShadow: '0 24px 60px rgba(15,23,42,0.3)' }}>
             <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{statsSite.name}</h3>
-            <p style={{ margin: '0 0 18px', fontSize: 12.5, color: '#64748b' }}>
-              {statsSite.status === 'published' ? 'Published' : 'Draft'} · {statsSite.pages?.length ?? 0} page{(statsSite.pages?.length ?? 0) === 1 ? '' : 's'}
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 18 }}>
-              {[
-                { l: 'Visitors', v: (statsSite.visitors ?? 0).toLocaleString(), c: '#17191c' },
-                { l: 'Page views', v: (statsSite.pageViews ?? 0).toLocaleString(), c: '#6366f1' },
-                { l: 'Views / visitor', v: statsSite.visitors > 0 ? (statsSite.pageViews / statsSite.visitors).toFixed(1) : '—', c: '#22c55e' },
-              ].map(m => (
-                <div key={m.l} style={{ background: '#f8fafc', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: m.c }}>{m.v}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{m.l}</div>
-                </div>
-              ))}
-            </div>
-            <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '0 0 16px', lineHeight: 1.55 }}>
-              {statsSite.status === 'published'
-                ? 'Counted from real visits to this site.'
-                : 'This site is still a draft, so there is nothing to count yet — publish it to start recording visits.'}
-            </p>
+            {(() => {
+              /* Real numbers only: public page loads counted by the Worker.
+                 Visitors and views-per-visitor were counters nothing moved. */
+              const live = liveOf(statsSite.id);
+              return (
+                <>
+                  <p style={{ margin: '0 0 18px', fontSize: 12.5, color: '#64748b' }}>
+                    {live ? `Published ${new Date(live.publishedAt).toLocaleDateString()}` : 'Draft'} · {statsSite.pages?.length ?? 0} page{(statsSite.pages?.length ?? 0) === 1 ? '' : 's'}
+                  </p>
+                  {live ? (
+                    <div style={{ background: '#f8fafc', borderRadius: 12, padding: '14px 12px', textAlign: 'center', marginBottom: 18 }}>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: '#6366f1' }}>{live.views.toLocaleString()}</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Public page views</div>
+                    </div>
+                  ) : null}
+                  <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '0 0 16px', lineHeight: 1.55 }}>
+                    {live
+                      ? 'Each time somebody opens the public link counts as one view. Your own previews are not counted.'
+                      : 'This site is not published, so there is nothing to count yet. Open the builder and press Publish to put it on a public link.'}
+                  </p>
+                </>
+              );
+            })()}
             <button onClick={() => setStatsSite(null)} style={{ width: '100%', padding: '10px 0', borderRadius: 9, border: 'none', background: '#17191c', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Close</button>
           </div>
         </div>
@@ -412,7 +434,11 @@ export default function Websites() {
       {deletingId && (
         <DeleteConfirm
           name={websites.find(w => w.id === deletingId)?.name ?? ''}
-          onConfirm={() => { deleteWebsite(deletingId); setDeletingId(null); }}
+          onConfirm={() => {
+            /* A deleted site must not stay on the web under its old link. */
+            if (liveOf(deletingId)) void unpublishItem('site', deletingId);
+            deleteWebsite(deletingId); setDeletingId(null);
+          }}
           onCancel={() => setDeletingId(null)}
         />
       )}

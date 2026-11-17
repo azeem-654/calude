@@ -3,6 +3,7 @@ import TaskBadge from './TaskBadge';
 import SupportBadge from './SupportBadge';
 import CloudBadge from './CloudBadge';
 import AppointmentsBadge from './AppointmentsBadge';
+import CaptureMerger from './CaptureMerger';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Search, Mail, Bell, ChevronDown, ChevronLeft,
@@ -598,6 +599,7 @@ export default function TopNav() {
 
         <TaskBadge style={circleBtn} />
         <AppointmentsBadge style={circleBtn} />
+        <CaptureMerger />
         <SupportBadge style={circleBtn} />
 
         {/* The bell used to carry a hardcoded red dot and open nothing at all —

@@ -160,7 +160,7 @@ export default function Shops() {
           <div>
             <label style={lbl}>Headline</label>
             <input value={draft.headline ?? ''} onChange={e => setDraft({ ...draft, headline: e.target.value })}
-              placeholder="Marine fittings, next-day across the UK" style={inp} />
+              placeholder="Marine fittings, shipped next day across the US" style={inp} />
           </div>
 
           <div>
@@ -261,7 +261,7 @@ export default function Shops() {
             <div>
               <label style={lbl}>Delivery</label>
               <textarea value={draft.shippingNote ?? ''} onChange={e => setDraft({ ...draft, shippingNote: e.target.value })}
-                rows={3} placeholder="Next day across the UK, £4.95." style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
+                rows={3} placeholder="Free shipping over $50; next-day delivery $4.95." style={{ ...inp, resize: 'vertical', lineHeight: 1.5 }} />
             </div>
             <div>
               <label style={lbl}>Returns</label>

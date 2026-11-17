@@ -67,7 +67,7 @@ const answerAll = (s: IntakeState): IntakeState => {
   ok('T1 still asks which platforms', q.includes('platforms'), q.join());
   const bp = buildBlueprint(answerAll(s), CTX);
   ok('T1 builds the social content workflow', bp.workflows.some(w => w.channel === 'social' && !w.sends));
-  ok('T1 hands off for manual publishing', bp.manual.some(m => /publish/i.test(m)), bp.manual.join('|'));
+  ok('T1 hands off for manual publishing', bp.manual.some(m => /publish|post each/i.test(m)), bp.manual.join('|'));
   ok('T1 never needs a mailbox', !bp.requirements.includes('mailbox'), bp.requirements.join());
   ok('T1 keeps the planner out of email', !bp.plannerChannels.includes('email'), bp.plannerChannels.join());
   const trig = bp.workflows[0].nodes?.[0];
@@ -216,6 +216,52 @@ const answerAll = (s: IntakeState): IntakeState => {
   ok('…and the brief tells the planner its own sequences offer texts too', vaBrief.smsOptIn === true, JSON.stringify(vaBrief).slice(0, 300));
   const dn = initialState('I want to sell my dental supplies to dentists in Leeds and find customers by email and SMS.', undefined, EMPTY, [], []);
   ok('"sell my dental supplies to dentists" is lead generation too', dn.solutionKeys[0] === 'lead-generation', JSON.stringify(dn.solutionKeys));
+}
+
+/* ── A trade's customers are not a property business (audit H7) ── */
+{
+  const plumber = 'I run Blue Ridge Plumbing in Richmond, Virginia. Find homeowners and property managers who need emergency plumbing and water heater replacement, follow up every enquiry, and post on social media every day.';
+  const p = initialState(plumber, undefined, EMPTY, [], []);
+  ok('H7 a plumber "finding homeowners and property managers" is not real estate', !p.solutionKeys.includes('real-estate') && p.solutionKeys.includes('lead-generation'), JSON.stringify(p.solutionKeys));
+  ok('H7 …and is never asked about sellers and buyers', !ids(p).includes('propertySide'), ids(p).join());
+  const pt = String(p.known.prospectTrades?.value ?? '');
+  ok('H7 …and the finder looks for businesses, never "homeowners"', /property management/i.test(pt) && !/homeowner/i.test(pt), pt);
+  ok('H7 …in Richmond, Virginia', /Richmond/.test(String(p.known.prospectPlaces?.value ?? '')), JSON.stringify(p.known.prospectPlaces));
+  const el = initialState("I'm an electrician in Austin, Texas. Find homeowners and landlords who need rewiring and panel upgrades, and email them.", undefined, EMPTY, [], []);
+  ok('H7 an electrician for homeowners and landlords is lead generation', !el.solutionKeys.includes('real-estate') && el.solutionKeys[0] === 'lead-generation', JSON.stringify(el.solutionKeys));
+  ok('H7 …landlords become property management companies', /property management/i.test(String(el.known.prospectTrades?.value ?? '')), JSON.stringify(el.known.prospectTrades));
+  const roof = initialState('I own a roofing company. Get me more roofing jobs from homeowners in Dallas, Texas.', undefined, EMPTY, [], []);
+  ok('H7 a roofer "for homeowners" is not real estate', !roof.solutionKeys.includes('real-estate'), JSON.stringify(roof.solutionKeys));
+  const clean = initialState('We are a commercial cleaning company in Leeds. Find property managers who need office cleaning and email them about a free quote.', undefined, EMPTY, [], []);
+  ok('H7 a cleaner "for property managers" is not real estate', !clean.solutionKeys.includes('real-estate'), JSON.stringify(clean.solutionKeys));
+  ok('H7 …and looks for property managers', /property manag/i.test(String(clean.known.prospectTrades?.value ?? '')), JSON.stringify(clean.known.prospectTrades));
+  const realtor = initialState("I'm a realtor in Austin. Find homeowners thinking of selling their property and book valuations.", undefined, EMPTY, [], []);
+  ok('H7 a realtor is still real estate', realtor.solutionKeys[0] === 'real-estate', JSON.stringify(realtor.solutionKeys));
+  ok('H7 the catalogue\'s own real-estate example is still real estate', initialState('Find homeowners thinking of selling in my area and book valuations.', undefined, EMPTY, [], []).solutionKeys[0] === 'real-estate');
+  const { tradeSafeKeys, businessTypesFor } = await import('../src/services/projectIntake.ts');
+  ok('H7 the AI\'s real-estate is put right for a trade', JSON.stringify(tradeSafeKeys(plumber, ['real-estate', 'social-growth'])) === '["lead-generation","social-growth"]');
+  ok('H7 …but not for a realtor', tradeSafeKeys(realtor.prompt, ['real-estate'])[0] === 'real-estate');
+  ok('H7 an AI "homeowners" becomes a kind of business', /property management/.test(businessTypesFor('homeowners in Richmond', plumber)) && businessTypesFor('dentists', plumber) === 'dentists');
+}
+
+/* ── A second business is not the first one (audit H2) ── */
+{
+  const BR: WorkspaceFacts = { portfolios: [{ id: 'pf-br', name: 'Blue Ridge Plumbing', description: 'Emergency plumbing and water heaters in Richmond, VA' }], workspace: null };
+  const ls = initialState('I run Lone Star Electric in Austin, Texas. Find property managers who need electrical work and post on social media every day.', undefined, BR, [], []);
+  ok('H2 a request naming another business does not take the one on file', !String(ls.known.business?.value ?? '').startsWith('existing:'), JSON.stringify(ls.known.business));
+  ok('H2 …so the business question is asked', ids(ls).includes('business'), ids(ls).join());
+  ok('H2 …with its own name ready to type in', ls.known.bizName?.value === 'Lone Star Electric', JSON.stringify(ls.known.bizName));
+  const bp = buildBlueprint(answerAll(ls), { ...CTX, companyName: 'Lone Star Electric' });
+  ok('H2 …and the blueprint never names the first business', !JSON.stringify(bp).includes('Blue Ridge'), bp.inputs.join(' | '));
+  const proton = initialState('Company: Lone Star Electric\nBusiness context: Electrician in Austin, Texas — rewiring and panel upgrades.\nGoal: more jobs', undefined, BR, [], []);
+  ok('H2 Protron\'s "Company:" for another business is typed in, not the profile on file', proton.known.business?.value === 'manual' && proton.known.bizName?.value === 'Lone Star Electric', JSON.stringify(proton.known.business));
+  const trade = initialState("I'm an electrician. Get me more leads in Austin, Texas.", undefined, BR, [], []);
+  ok('H2 a different trade with no name asks too', !String(trade.known.business?.value ?? '').startsWith('existing:'), JSON.stringify(trade.known.business));
+  const same = initialState('I run Blue Ridge Plumbing LLC. Post on social media every weekday.', undefined, BR, [], []);
+  ok('H2 the same business by name is reused', same.known.business?.value === 'existing:pf-br', JSON.stringify(same.known.business));
+  const two: WorkspaceFacts = { portfolios: [...BR.portfolios, { id: 'pf-ls', name: 'Lone Star Electric' }], workspace: null };
+  const picked = initialState('Create SEO blog content every week for Lone Star Electric. Our company is Lone Star Electric.', undefined, two, [], []);
+  ok('H2 with several on file, the one named is used', picked.known.business?.value === 'existing:pf-ls', JSON.stringify(picked.known.business));
 }
 
 /* ── Video: recordings into AI Video Studio ── */

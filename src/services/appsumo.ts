@@ -22,6 +22,8 @@ export async function appsumoCall(action: string, extra: Record<string, unknown>
 
 export interface AppsumoTier { id: string; name: string; lines: string[]; support: string }
 export interface AppsumoStanding {
+  /** One of the logins the owner made for AppSumo's reviewers: the top tier, given by hand. */
+  reviewer?: boolean;
   codes: number;
   max: number;
   tier: AppsumoTier | null;

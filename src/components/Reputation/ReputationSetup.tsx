@@ -234,7 +234,7 @@ function PlacesSource({ status, onStatus }: { status: RepStatus | null; onStatus
         </div>
         <p style={{ fontSize: 11.5, color: MUTED, margin: '6px 0 0', lineHeight: 1.55 }}>
           {src?.ownKey ? (src.ownKeyVerified ? 'Your own key is in use and has worked.' : 'Your own key is saved; it has not been used successfully yet.')
-            : status?.installKey ? 'Not needed — this app\'s own key is used when you have none.'
+            : status?.installKey || status?.reads === 'serpapi' ? 'Not needed — this app reads Google for you when you have none.'
             : 'This app has no Google key of its own yet, so searching and reading need yours (Places API (New) enabled).'}
           {' '}Encrypted on the server and never shown again.
         </p>

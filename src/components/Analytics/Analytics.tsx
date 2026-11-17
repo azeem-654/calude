@@ -134,7 +134,7 @@ export default function Analytics() {
               <LineChart data={trendData}>
                 <CartesianGrid vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                <YAxis yAxisId="left" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={v => `$${v / 1000}k`} />
+                <YAxis yAxisId="left" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={v => (Math.abs(Number(v)) >= 1000 ? `$${Math.round(Number(v) / 100) / 10}k` : `$${Math.round(Number(v))}`)} allowDecimals={false} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                 <Tooltip contentStyle={tooltipStyle} cursor={{ stroke: '#e6e9f0', strokeWidth: 1 }} />
                 <Line yAxisId="left" type="monotone" dataKey="revenue" stroke="#17191c" strokeWidth={2.5} dot={false} activeDot={{ r: 4, fill: '#17191c', stroke: '#fff', strokeWidth: 2 }} name="Revenue" />

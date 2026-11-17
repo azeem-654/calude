@@ -137,7 +137,7 @@ export default function DayBoard({ appointments, actions, onStatusChange }: Prop
       {/* ── Bigger goals ── */}
       <Rail
         title="What to do next"
-        count="Ranked by lift"
+        count="Biggest gain first"
         ink={INK}
         muted={MUTED}
         chrome={CHROME}
@@ -558,7 +558,7 @@ function GoalCard({ action, best, highlight, index, barFill, card, line, ink, mu
         <ModuleMark symbol={action.symbol} size={30} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: 0, fontSize: 10.5, fontWeight: 700, color: sub }}>{action.module}</p>
-          <p style={{ margin: 0, fontSize: 10.5, color: sub }}>Now at {Math.round(action.current)}/100</p>
+          <p style={{ margin: 0, fontSize: 10.5, color: sub }} title="How set up and active this area of your workspace is, out of 100">Set-up score {Math.round(action.current)}/100</p>
         </div>
         <span style={{
           display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
@@ -566,7 +566,7 @@ function GoalCard({ action, best, highlight, index, barFill, card, line, ink, mu
           backgroundColor: highlight ? 'rgba(14,17,23,0.12)' : `${muted}1f`,
           fontSize: 10, fontWeight: 800, color: fg, whiteSpace: 'nowrap',
         }}>
-          <Target size={10} /> +{action.lift.toFixed(2)}
+          <Target size={10} /> +{Math.max(1, Math.round(action.lift))} pts
         </span>
       </div>
 

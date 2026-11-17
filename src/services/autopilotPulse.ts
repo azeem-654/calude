@@ -15,12 +15,14 @@
  * an empty board: "no projects" and "could not ask" look identical in a zero,
  * and only one of them means the customer has nothing set up.
  */
-import { fetchBoard, type Card, type Project } from './projects';
+import { fetchBoard, type Card, type Portfolio, type Project } from './projects';
 import { getActiveAccountId } from './tenancy';
 
 export interface Pulse {
   state: 'loading' | 'ready' | 'unreadable';
   projects: Project[];
+  /** The business profiles on file — the dashboard checklist reads them (setup.ts). */
+  portfolios: Portfolio[];
   /** Every card, by project id — the shape the endpoint returns. */
   board: Record<string, Card[]>;
   /** The same cards flattened, for the counts that do not care whose they are. */
@@ -33,7 +35,7 @@ export interface Pulse {
 }
 
 const EMPTY: Pulse = {
-  state: 'loading', projects: [], board: {}, cards: [], awaiting: 0, running: 0, fetchedAt: 0,
+  state: 'loading', projects: [], portfolios: [], board: {}, cards: [], awaiting: 0, running: 0, fetchedAt: 0,
 };
 
 /* Half a minute. Long enough that moving between screens does not re-ask,
@@ -58,6 +60,7 @@ async function load(): Promise<Pulse> {
     : {
       state: 'ready',
       projects: r.projects,
+      portfolios: r.portfolios,
       board: r.board,
       cards,
       awaiting: cards.filter(c => c.status === 'awaiting').length,

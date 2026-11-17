@@ -106,6 +106,7 @@ const Commerce = screen(() => import('./components/Commerce/Commerce'));
 const ShopPage = screen(() => import('./components/Shop/ShopPage'));
 const Engagement = screen(() => import('./components/Engagement/Engagement'));
 const FormPage = screen(() => import('./components/Engagement/FormPage'));
+const PublicPage = screen(() => import('./components/Websites/PublicPage'));
 const ClientReport = screen(() => import('./components/Portal/ClientReport'));
 const GoogleCallback = screen(() => import('./components/Auth/GoogleCallback'));
 const ReviewQueue = screen(() => import('./components/Moderation/ReviewQueue'));
@@ -594,6 +595,19 @@ function AppTrees() {
    */
   if (window.location.pathname === `${base}/auth/google`) {
     return <GoogleCallback onAuthed={signedIn} />;
+  }
+  /* A published website or funnel (/s/<slug>, routes/published.ts). The
+     visitor's page on every host, signed in or not — before either tree, so
+     neither the login screen nor the app's catch-all can take it. */
+  if (window.location.pathname.startsWith(`${base}/s/`)) {
+    return (
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
+        <Routes>
+          <Route path="/s/:slug/*" element={<PublicPage />} />
+          <Route path="*" element={<PublicPage />} />
+        </Routes>
+      </BrowserRouter>
+    );
   }
   /*
    * The service sites — /hvac, /roofing, /medical-billing and

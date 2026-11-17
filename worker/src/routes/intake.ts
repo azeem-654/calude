@@ -472,7 +472,9 @@ export async function understand(env: Env, key: string, accountId: string, d: In
     ...templates.map(t => `- ${t.key}: ${t.name}`),
     '',
     d.candidates?.length ? `A keyword match suggested: ${d.candidates.slice(0, 3).join(', ')}. Use your own judgement.` : '',
-    portfolio ? `THE BUSINESS, ALREADY ON FILE: ${portfolio}` : '',
+    /* Sent only when the request plausibly is this business (reusablePortfolio
+       on the client); still, the request's own name and trade win (audit H2). */
+    portfolio ? `A BUSINESS PROFILE ALREADY ON FILE (use it only if the request is about this business; if the request names a different business or trade, ignore it): ${portfolio}` : '',
     '',
     'Return JSON with exactly these keys:',
     '{',
@@ -492,6 +494,9 @@ export async function understand(env: Env, key: string, accountId: string, d: In
     '- facts values must be one of the listed option values for single/multi/layout/theme/logo questions. For "business" use "website" if a website was given, "upload" if an attached file describes the business.',
     '- Design (theme, postLayout, pageLayout, emailLayout, blogLayout, designStyle): only when the request says how it should look ("luxury", "a sale post", "plain emails"). Otherwise leave them out — the customer is asked.',
     '- profile: fill ONLY from the material (website text, files, prompt). Empty strings when not stated. Never invent.',
+    '- Classify by the business\'s OWN trade. "Homeowners", "property managers", "landlords" or "tenants" named as who a plumber, electrician, roofer, cleaner or other trade serves are its customers: that is lead-generation (or local-business), never real-estate. real-estate is only for realtors, estate or letting agents and property investors.',
+    '- prospectTrades is a kind of BUSINESS a directory lists (e.g. "property management companies"), never people such as homeowners.',
+    '- The product prepares social posts for the customer to post; never say it posts or publishes them.',
     '- extraQuestions: only when match is "custom" or something essential is not covered by the listed questions. At most 3. Plain words. Prefer options with a sensible default.',
     '- customWorkflows: only for "custom" or for a clearly requested piece no solution covers. At most 3. Each must be something the product can do.',
     '- Everything in the customer\'s language and spelling.',

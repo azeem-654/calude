@@ -248,7 +248,7 @@ const CHAIN = [
 /* ── What it actually does, in place of testimonials ─────────────────────── */
 
 const CAPABILITIES: { group: string; icon: typeof Send; items: string[] }[] = [
-  { group: 'Automate', icon: Bot, items: ['AI Autopilot Business Workspaces', `${TEMPLATES.length} workflow templates`, 'Branching workflows', 'Scheduled AI agents', 'Voice prompts'] },
+  { group: 'Automate', icon: Bot, items: ['AI Autopilot Business Workspaces', `${TEMPLATES.length} workflow templates`, 'Branching workflows', 'Scheduled AI agents', 'Voice messages, written out'] },
   {
     group: 'Reach', icon: Send,
     /* Prospect search is held back on the live site (services/features.ts). A

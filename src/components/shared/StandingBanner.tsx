@@ -59,10 +59,12 @@ export default function StandingBanner() {
         display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap',
         padding: '10px clamp(14px, 3vw, 22px)',
         background: '#eef2ff', borderBottom: '1px solid #c7d2fe', color: '#3730a3',
+        /* Above the dashboard's hero, which drew over it at 1280 px so "I accept" could not be pressed (audit L1). */
+        position: 'relative', zIndex: 40,
       }}>
         <FileText size={15} style={{ flexShrink: 0 }} />
         <span style={{ flex: 1, minWidth: 200, fontSize: 12.5, lineHeight: 1.6 }}>
-          The acceptable use policy has been updated. Please read it and confirm you are happy to carry on.{' '}
+          Please read the acceptable use policy and confirm you are happy to carry on.{' '}
           <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: '#3730a3', fontWeight: 700 }}>
             Read it
           </a>

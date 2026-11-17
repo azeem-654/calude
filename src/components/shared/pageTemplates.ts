@@ -868,7 +868,7 @@ export const TEMPLATE_CATALOG: TemplateMeta[] = [
 const HERO_COPY: Record<string, { title: string; eyebrow?: string; cta?: string }> = {
   'lc-ebook': { title: 'The free ebook that turns strangers into customers', eyebrow: 'Free ebook', cta: 'Send me the ebook' },
   'lc-checklist': { title: 'The one-page checklist we use before every project', eyebrow: 'Free checklist', cta: 'Get the checklist' },
-  'lc-quote': { title: 'Get a straight, no-nonsense quote in 24 hours', eyebrow: 'Free quote', cta: 'Get my free quote' },
+  'lc-quote': { title: 'Tell us about the job and get a straight, free quote', eyebrow: 'Free quote', cta: 'Request my free quote' },
   'lc-consult': { title: 'Book a free 30-minute strategy call', eyebrow: 'Free consultation', cta: 'Book my free call' },
   'lc-newsletter': { title: 'One useful email a week. Nothing else.', eyebrow: 'Newsletter', cta: 'Subscribe free' },
   'lc-trial': { title: 'Try it free for 14 days — no card required', eyebrow: 'Free trial', cta: 'Start my free trial' },
@@ -1094,5 +1094,54 @@ function buildTemplatePagesBare(meta: TemplateMeta, ctx: BrandContext, opts: { b
       : [main, buildFunnelPage('Thank You', 'thankyou', withAccent)];
   }
   if (meta.kind === 'website') return buildWebsiteTemplatePages(meta.websiteTemplate ?? 'business', withAccent);
-  return (meta.steps ?? [{ name: 'Landing', type: 'landing' as const }]).map(s => buildFunnelPage(s.name, s.type, withAccent));
+  const pages = (meta.steps ?? [{ name: 'Landing', type: 'landing' as const }]).map(s => buildFunnelPage(s.name, s.type, withAccent));
+  /* A quote request asks for the job, not an email address for a guide: the
+     shared opt-in page ("Inside the guide — The 10-minute setup… Send me the
+     free guide") was built for an AI Autopilot plumber's "Free Quote
+     Request" (audit M11). */
+  return meta.id === 'lc-quote'
+    ? pages.map(pg => ({ ...pg, blocks: pg.type === 'optin' ? quoteRequestBlocks(withAccent) : pg.type === 'thankyou' ? quoteThanksBlocks(withAccent) : pg.blocks }))
+    : pages;
+}
+
+/** A quote request: who, how to reach them, where, and what the job is. No figures, no promised times. */
+function quoteRequestBlocks(ctx: BrandContext): FunnelBlock[] {
+  const g = heroGrad(ctx.color);
+  return [
+    blk('hero', ctx.heroTitle || 'Tell us about the job and get a straight, free quote', {
+      eyebrow: ctx.heroEyebrow || 'Free quote', subheading: ctx.tagline || `${ctx.name} looks at what you need and comes back with a clear price.`,
+      bgGradient: g, textColor: '#ffffff', buttonText: ctx.heroCta || 'Request my free quote', buttonColor: '#c7f441', buttonTextColor: '#17191c',
+      minHeight: 440, align: 'center', padding: 72,
+    }),
+    blk('features', 'How it works', {
+      eyebrow: 'Three steps', bgGradient: soft(ctx.color), bgColor: '#f8fafc', padding: 64, columns: 3, iconColor: ctx.color,
+      featureItems: [
+        { icon: '📝', title: '1. Tell us what you need', desc: 'A few lines about the job and where it is.' },
+        { icon: '🔍', title: '2. We look at the details', desc: 'We may call to ask a question or arrange a visit.' },
+        { icon: '✅', title: '3. You get your quote', desc: 'A clear price for the work, with no obligation to go ahead.' },
+      ],
+    }),
+    blk('form', 'Request your free quote', {
+      bgColor: '#ffffff', padding: 64, buttonText: 'Request my free quote', buttonColor: ctx.color, buttonTextColor: '#ffffff',
+      formFields: [
+        { label: 'Full name', type: 'text', required: true },
+        { label: 'Phone number', type: 'tel', required: true },
+        { label: 'Email address', type: 'email', required: false },
+        { label: 'Address or ZIP code', type: 'text', required: true },
+        { label: 'What do you need done?', type: 'textarea', required: true },
+      ],
+      redirectUrl: '/thank-you',
+    }),
+    footer(ctx),
+  ];
+}
+
+function quoteThanksBlocks(ctx: BrandContext): FunnelBlock[] {
+  return [
+    blk('hero', 'Thanks — your quote request is in', {
+      eyebrow: 'Received', subheading: `${ctx.name} will look at the details and get back to you with your quote.`,
+      bgGradient: heroGrad(ctx.color), textColor: '#ffffff', buttonText: '', minHeight: 360, padding: 72, align: 'center',
+    }),
+    footer(ctx),
+  ];
 }

@@ -36,7 +36,7 @@ import { rateLimit } from './rateLimit';
 import { trialForWorkspace } from './trial';
 import type { Prospect } from './prospects';
 
-const SECRET_KEY = 'mailbox_key';
+export const SECRET_KEY = 'mailbox_key';
 const INSTALL_KIND = 'google_places';
 
 export const placesBase = (env: Env): string => (env.GOOGLE_PLACES_BASE || 'https://places.googleapis.com').replace(/\/+$/, '');

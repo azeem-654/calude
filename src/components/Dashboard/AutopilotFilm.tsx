@@ -139,7 +139,7 @@ const CAPS: { icon: Icon; label: string; t: string }[] = [
   { icon: Search, label: 'Finds customers', t: 'Searches for the kind of customer you describe' },
   { icon: Mail, label: 'Writes & sends emails', t: 'From your own mailbox, in your voice' },
   { icon: MessageSquare, label: 'Answers replies', t: 'Drafts an answer to every reply' },
-  { icon: Share2, label: 'Posts to social', t: 'On the days your plan says' },
+  { icon: Share2, label: 'Social posts, ready to post', t: 'Designed and captioned on the days your plan says' },
   { icon: LayoutTemplate, label: 'Builds pages & funnels', t: 'Pages and forms that capture leads' },
   { icon: CalendarCheck, label: 'Books appointments', t: 'Straight into your calendar' },
   { icon: Receipt, label: 'Invoices & chases payment', t: 'With a payment link, then a reminder' },

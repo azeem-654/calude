@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Eye, TrendingUp, DollarSign, MousePointer, ExternalLink, Edit2, Trash2, Copy, BarChart2, X, Search, Check, Rocket } from 'lucide-react';
+import { Plus, Eye, Globe, Layers, ExternalLink, Edit2, Trash2, Copy, BarChart2, X, Search, Check, Rocket } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import FunnelBuilder from './FunnelBuilder';
@@ -8,9 +8,10 @@ import type { Funnel as FunnelType, FunnelStep } from '../../types';
 import { buildFunnelPage, type BrandContext, type TemplateMeta } from '../shared/pageTemplates';
 import TemplateGallery from '../shared/TemplateGallery';
 import { PagesStrip, ScaledPage } from '../shared/BlockRender';
-import { activeAccount } from '../../services/tenancy';
+import { activeAccount, customerBusinessName } from '../../services/tenancy';
 import SourceTag from '../shared/SourceTag';
 import { WizardBackdrop } from '../shared/WizardChrome';
+import { publicUrl, unpublishItem, usePublished } from '../../services/publishedPages';
 
 /* ─── Funnel type definitions (ClickFunnels-style) ─── */
 
@@ -70,9 +71,9 @@ function defaultPages(steps: { name: string; type: FunnelStep['type'] }[], ctx: 
 function brandContext(): BrandContext {
   const acct = activeAccount();
   return {
-    name: acct?.businessName?.trim() || acct?.name?.trim() || 'Your Business',
+    name: customerBusinessName() || acct?.name?.trim() || 'Your Business',
     color: acct?.color || '#6366f1',
-    tagline: acct?.industry ? `Trusted ${acct.industry.toLowerCase()} experts` : undefined,
+    tagline: acct?.industry ? `${acct.industry} services` : undefined,
   };
 }
 
@@ -452,12 +453,14 @@ export default function Funnels() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [statsFunnel, setStatsFunnel] = useState<FunnelType | null>(null);
 
-  // Records written by older versions (or a partial import) can be missing
-  // these counters; a NaN here used to blank the whole page.
-  const totalRevenue = funnels.reduce((s, f) => s + (f.revenue ?? 0), 0);
-  const totalVisitors = funnels.reduce((s, f) => s + (f.visitors ?? 0), 0);
-  const totalConversions = funnels.reduce((s, f) => s + f.conversions, 0);
-  const avgCvr = totalVisitors > 0 ? ((totalConversions / totalVisitors) * 100).toFixed(1) : '0';
+  /* Published and views come from the server (published.php). Revenue,
+     visitors, conversions and conversion rate were counters on the funnel
+     record that no visitor ever moved (audit H4), so they are not shown. */
+  const pub = usePublished();
+  const liveOf = (id: string) => pub.get('funnel', id);
+  const known = pub.loaded && !pub.error;
+  const publishedCount = funnels.filter(f => liveOf(f.id)).length;
+  const totalViews = funnels.reduce((s, f) => s + (liveOf(f.id)?.views ?? 0), 0);
 
   const handleCreate = (name: string, type: FunnelTypeConfig) => {
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -504,12 +507,10 @@ export default function Funnels() {
   };
 
   const handleDelete = (id: string) => {
+    /* A deleted funnel must not stay on the web under its old link. */
+    if (liveOf(id)) void unpublishItem('funnel', id);
     deleteFunnel(id);
     setDeleteConfirm(null);
-  };
-
-  const handleToggleStatus = (f: FunnelType) => {
-    updateFunnel(f.id, { status: f.status === 'active' ? 'draft' : 'active' });
   };
 
   if (builderFunnel) {
@@ -532,12 +533,11 @@ export default function Funnels() {
       <Header title="Funnels & Sites" subtitle="Build and manage your marketing funnels" />
       <div style={{ flex: 1, overflowY: 'auto', padding: '28px' }}>
         {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(180px, 100%), 1fr))', gap: '16px', marginBottom: '24px' }}>
           {[
-            { label: 'Total Revenue', value: `$${totalRevenue.toLocaleString()}`, icon: DollarSign, color: '#22c55e' },
-            { label: 'Total Visitors', value: totalVisitors.toLocaleString(), icon: Eye, color: '#17191c' },
-            { label: 'Conversions', value: totalConversions, icon: MousePointer, color: '#3b82f6' },
-            { label: 'Avg Conversion Rate', value: `${avgCvr}%`, icon: TrendingUp, color: '#f59e0b' },
+            { label: 'Funnels', value: funnels.length, icon: Layers, color: '#17191c' },
+            { label: 'Published', value: known ? publishedCount : '—', icon: Globe, color: '#22c55e' },
+            { label: 'Public page views', value: known ? totalViews.toLocaleString() : '—', icon: Eye, color: '#3b82f6' },
           ].map(item => (
             <div key={item.label}
               style={{ backgroundColor: 'white', borderRadius: '18px', padding: '20px', border: '1px solid #e6e9f0', boxShadow: '0 1px 2px rgba(16,24,40,0.04)', display: 'flex', gap: '14px', alignItems: 'center', transition: 'box-shadow 0.15s' }}
@@ -575,7 +575,7 @@ export default function Funnels() {
         {/* Funnel cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))', gap: '20px', marginBottom: '24px' }}>
           {funnels.map(funnel => {
-            const cvr = funnel.visitors > 0 ? ((funnel.conversions / funnel.visitors) * 100).toFixed(1) : '0';
+            const live = liveOf(funnel.id);
             const ftype = FUNNEL_TYPES.find(t => funnel.goal === t.category);
             return (
               <div key={funnel.id}
@@ -605,10 +605,13 @@ export default function Funnels() {
                       <p style={{ fontSize: '12px', color: '#94a3b8', margin: 0 }}>{pageCount(funnel)} pages · {funnel.goal ?? 'Lead Generation'}</p>
                     </div>
                     <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-                      <button onClick={() => handleToggleStatus(funnel)}
-                        style={{ padding: '3px 10px', borderRadius: '9999px', fontSize: '11px', fontWeight: 600, backgroundColor: funnel.status === 'active' ? '#ecfdf5' : '#f1f5f9', color: funnel.status === 'active' ? '#16a34a' : '#64748b', border: 'none', cursor: 'pointer' }}>
-                        {funnel.status === 'active' ? 'Active' : 'Draft'}
-                      </button>
+                      {/* The server's answer, not a flag: "Active" toggled a value no
+                          visitor could see. Publish from the builder. */}
+                      {known && (
+                        <span style={{ padding: '3px 10px', borderRadius: '9999px', fontSize: '11px', fontWeight: 600, backgroundColor: live ? '#ecfdf5' : '#f1f5f9', color: live ? '#16a34a' : '#64748b' }}>
+                          {live ? 'Published' : 'Draft'}
+                        </span>
+                      )}
                       <button onClick={() => setBuilderFunnel(funnel)} title="Edit"
                         style={{ padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', backgroundColor: 'white', cursor: 'pointer', display: 'flex', color: '#17191c' }}>
                         <Edit2 size={14} />
@@ -637,25 +640,17 @@ export default function Funnels() {
                   </div>
                 )}
 
-                <div style={{ padding: '14px 20px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-                  {[
-                    { label: 'Visitors', value: (funnel.visitors ?? 0).toLocaleString(), color: '#17191c' },
-                    { label: 'Conversions', value: (funnel.conversions ?? 0).toLocaleString(), color: '#22c55e' },
-                    { label: 'Revenue', value: `$${(funnel.revenue ?? 0).toLocaleString()}`, color: '#f59e0b' },
-                  ].map(m => (
-                    <div key={m.label} style={{ textAlign: 'center' }}>
-                      <p style={{ fontSize: '20px', fontWeight: 700, color: m.color, margin: 0, letterSpacing: '-0.02em' }}>{m.value}</p>
-                      <p style={{ fontSize: '11px', color: '#94a3b8', margin: '3px 0 0', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px' }}>{m.label}</p>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ padding: '0 20px 14px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#64748b', marginBottom: '6px' }}>
-                    <span>Conversion Rate</span><span style={{ fontWeight: 700, color: '#0f172a' }}>{cvr}%</span>
-                  </div>
-                  <div style={{ height: '6px', backgroundColor: '#f1f5f9', borderRadius: '9999px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${Math.min(parseFloat(cvr) * 5, 100)}%`, background: '#17191c', borderRadius: '9999px' }} />
-                  </div>
+                <div style={{ padding: '12px 20px', fontSize: '12px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                  {live ? (
+                    <>
+                      <a href={publicUrl(live.slug)} target="_blank" rel="noopener noreferrer" style={{ color: '#4f46e5', fontWeight: 600, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                        {publicUrl(live.slug).replace(/^https?:\/\//, '')}
+                      </a>
+                      <span style={{ marginLeft: 'auto', whiteSpace: 'nowrap', fontWeight: 600, color: '#0f172a' }}>{live.views.toLocaleString()} view{live.views === 1 ? '' : 's'}</span>
+                    </>
+                  ) : (
+                    <span>{known ? 'Not published — open the builder and press Publish.' : ''}</span>
+                  )}
                 </div>
                 <div style={{ padding: '14px 20px', borderTop: '1px solid #f1f5f9', display: 'flex', gap: '8px' }}>
                   <button onClick={() => setBuilderFunnel(funnel)}
@@ -666,7 +661,7 @@ export default function Funnels() {
                     style={{ flex: 1, padding: '8px', borderRadius: '9px', border: '1px solid #e2e8f0', backgroundColor: 'white', color: '#374151', fontSize: '12px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
                     <BarChart2 size={13} /> Analytics
                   </button>
-                  <button onClick={() => navigate(`/preview-funnel/${funnel.id}`)} title="Preview funnel"
+                  <button onClick={() => navigate(`/preview-funnel/${funnel.id}`)} title="Preview (only you can see this)"
                     style={{ padding: '8px 10px', borderRadius: '9px', border: '1px solid #e2e8f0', backgroundColor: 'white', color: '#374151', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <ExternalLink size={13} />
                   </button>
@@ -694,22 +689,27 @@ export default function Funnels() {
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={() => setStatsFunnel(null)}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 16, padding: 26, width: 'min(520px,100%)', boxShadow: '0 24px 60px rgba(15,23,42,0.3)' }}>
             <h3 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{statsFunnel.name}</h3>
-            <p style={{ margin: '0 0 18px', fontSize: 12.5, color: '#64748b' }}>Performance across {statsFunnel.pages?.length ?? 0} pages</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 18 }}>
-              {[
-                { l: 'Visitors', v: (statsFunnel.visitors ?? 0).toLocaleString(), c: '#17191c' },
-                { l: 'Conversions', v: (statsFunnel.conversions ?? 0).toLocaleString(), c: '#22c55e' },
-                { l: 'Conv. rate', v: statsFunnel.visitors > 0 ? `${((statsFunnel.conversions / statsFunnel.visitors) * 100).toFixed(1)}%` : '0%', c: '#6366f1' },
-              ].map(m => (
-                <div key={m.l} style={{ background: '#f8fafc', borderRadius: 12, padding: '14px 12px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: m.c }}>{m.v}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{m.l}</div>
-                </div>
-              ))}
-            </div>
-            <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '0 0 16px', lineHeight: 1.55 }}>
-              Conversions increment when a visitor submits a form on the funnel preview or published page.
-            </p>
+            {(() => {
+              const live = liveOf(statsFunnel.id);
+              return (
+                <>
+                  <p style={{ margin: '0 0 18px', fontSize: 12.5, color: '#64748b' }}>
+                    {live ? `Published ${new Date(live.publishedAt).toLocaleDateString()}` : 'Draft'} · {statsFunnel.pages?.length ?? 0} page{(statsFunnel.pages?.length ?? 0) === 1 ? '' : 's'}
+                  </p>
+                  {live && (
+                    <div style={{ background: '#f8fafc', borderRadius: 12, padding: '14px 12px', textAlign: 'center', marginBottom: 18 }}>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: '#6366f1' }}>{live.views.toLocaleString()}</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Public page views</div>
+                    </div>
+                  )}
+                  <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '0 0 16px', lineHeight: 1.55 }}>
+                    {live
+                      ? 'Each time somebody opens the public link counts as one view; your own previews are not counted. Enquiries from its forms arrive in Contacts and Customer Engagement.'
+                      : 'This funnel is not published, so there is nothing to count yet. Open the builder and press Publish to put it on a public link.'}
+                  </p>
+                </>
+              );
+            })()}
             <button onClick={() => setStatsFunnel(null)} style={{ width: '100%', padding: '10px 0', borderRadius: 9, border: 'none', background: '#17191c', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Close</button>
           </div>
         </div>

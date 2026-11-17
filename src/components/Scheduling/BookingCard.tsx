@@ -101,7 +101,10 @@ const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec %
 
 /** "Jane Bright" → "JB": what the photo's circle shows until there is a photo. */
 export function initialsOf(name: string): string {
-  const words = name.replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+  const all = name.replace(/[^\p{L}\p{N}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+  /* Words that start with a letter: "30 Minute Meeting" is "MM", not "3" (audit L11). */
+  const lettered = all.filter(w => /^\p{L}/u.test(w));
+  const words = lettered.length ? lettered : all;
   return ((words[0]?.[0] ?? '') + (words.length > 1 ? words[words.length - 1][0] : '')).toUpperCase() || '?';
 }
 
