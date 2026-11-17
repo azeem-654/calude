@@ -293,11 +293,20 @@ export async function runAiHealth(env: Env, opts: { force?: boolean } = {}): Pro
 
   const origin = (env.APP_ORIGIN ?? '').replace(/\/$/, '');
   const names = [...new Set(due.map(d => d.t.name))];
-  const subject = `AI health: ${names.slice(0, 3).join(', ')}${names.length > 3 ? ` and ${names.length - 3} more` : ''} ${due.length === 1 ? SAY[due[0].c] : 'need attention'}`;
+  /* Which site, and each key's own reason: the owner got "none of the 3 keys
+     answered" after adding 4 keys and could not tell from the mail whether it
+     was the live site or testing (which checks only its own keys), nor why. */
+  const site = /testing\./.test(origin) ? 'testing site' : 'live site';
+  const probe = await lastProbe(env).catch(() => null);
+  const keyLines = probe?.keys?.length
+    ? `<p style="margin:14px 0 4px"><b>Each key at the last check (${esc(probe.at)}):</b></p><ul>${probe.keys.map(k => `<li>${esc(k.label || k.source)} — ${k.ok ? 'answered' : esc(k.error || 'did not answer')}</li>`).join('')}</ul>`
+    : '';
+  const subject = `AI health (${site}): ${names.slice(0, 3).join(', ')}${names.length > 3 ? ` and ${names.length - 3} more` : ''} ${due.length === 1 ? SAY[due[0].c] : 'need attention'}`;
   const sentFrom = box.from.toLowerCase() === ALERT_FROM ? '' : `<p style="color:#64748b">Sent from ${esc(box.from)} because ${ALERT_FROM} is not a connected, validated mailbox in your workspaces.</p>`;
   const html = `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#17191c;max-width:620px">
-<p>The AI health check found ${due.length === 1 ? 'one problem' : `${due.length} problems`} on your installation:</p>
+<p>The AI health check found ${due.length === 1 ? 'one problem' : `${due.length} problems`} on the <b>${site}</b>${origin ? ` (${esc(origin)})` : ''}:</p>
 <ul>${due.map(({ t, c }) => `<li style="margin:0 0 10px"><b>${esc(t.name)}</b> ${esc(SAY[c])}. ${esc(t.detail)}${t.lastError && c === 'failing' ? `<br><span style="color:#64748b">Last reason: ${esc(t.lastError)}</span>` : ''}<br><span style="color:#64748b">Affects: ${esc(t.powers)}. Fix it in ${esc(t.keyWhere)}.</span></li>`).join('')}</ul>
+${keyLines}
 ${origin ? `<p><a href="${origin}/settings?tab=platform">Open Platform services → AI health</a></p>` : ''}
 <p style="color:#64748b">You will not be mailed about the same tool and problem again for 24 hours. This went to ${ALERT_TO}, with a copy to ${ALERT_COPY}.</p>${sentFrom}</div>`;
 
