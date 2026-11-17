@@ -86,6 +86,8 @@ control panel, or money. An assistant cannot do any of it, and has tried.
 
 **Done, and no longer on the list:**
 
+- **Promoted testing to live on 2026-11-17** at the owner's request (the pre-AppSumo fixes, `docs/audit/2026-11-17-fix-session.md`, and the AI health mail naming the site and each key's reason). The incubator stays off on live by itself. Rows 52 and 59's "promote" steps are done; their other steps stand.
+
 - Item 16 — **the help button** is on (owner, 2026-11-04).
 
 - Item 12 — **the Privacy Policy and Terms of Service**: the owner confirmed
