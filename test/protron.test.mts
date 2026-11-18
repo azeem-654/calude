@@ -192,7 +192,9 @@ const owner = { isClient: false, isOwner: true };
   const socialOnly = I.FALLBACK_QUESTIONS.filter(q => !q.when || q.when({ ...I.EMPTY_BRIEF, company: b.company, cards: ['social'] })).length;
   ok('P7 a social-only project is not asked about mailboxes', socialOnly === sendsQs - 1);
   const recs = I.offlineRecommend({ ...I.EMPTY_BRIEF, cards: ['social'], custom: 'We want more Google reviews from happy customers' });
-  ok('P7 offline recommendation finds a solution not yet chosen', recs.some(r => r.key === 'reputation'), JSON.stringify(recs));
+  /* Reputation Management is in the incubator (`reviews`, 2026-11-18): where it is held back it is never suggested. */
+  const { featureReady } = await import('../src/services/features.ts');
+  ok('P7 offline recommendation finds a solution not yet chosen — never an incubated one', featureReady('reviews') ? recs.some(r => r.key === 'reputation') : !recs.some(r => r.key === 'reputation'), JSON.stringify(recs));
   ok('P7 the brief quotes the customer\'s words as data', /"""We want/.test(I.briefText({ ...I.EMPTY_BRIEF, custom: 'We want x' })));
 }
 

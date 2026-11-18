@@ -117,6 +117,31 @@ Before release: the owner's list of Video Studio problems fixed
 (`docs/claude/video-studio-overhaul.md`), `test:studio` and the Video Studio
 e2e green at 390 and 1280 on the testing site.
 
+### `reviews`, `jobs-revenue`, `online-shop`, `trade-services`, `medical-billing` (since 2026-11-18)
+
+Owner, 2026-11-18: move Reviews into the incubator, because reading Google
+reviews needs the Google Maps (Places) key, which Google refuses until a $30
+deposit is paid ("by the time I'll arrange this money, then we'll get that
+module live"). In the same message, Jobs & revenue, the e-commerce set-up, the
+plumbing/electrician (trade) contracts and medical billing are "not part of
+our current structure now" and go with it.
+
+With them off (live): no menu row, rail button, palette result or dashboard
+tip (`navModel.ts` `HELD`, `Sidebar.tsx`, `TopNav.tsx`, `Dashboard.tsx`); the
+addresses `/reputation`, `/jobs`, `/sell`, `/growth`, `/snapshots`, `/rcm`
+show "… is coming soon" (`shared/Incubated.tsx`, `App.tsx`); AI Autopilot
+neither offers nor accepts the Reputation Management or E-commerce Store
+solutions (`isOffered` in `projectSolutions.ts` — the catalogue keeps them so
+a business workspace saved on testing still reads) and Local Business Growth
+drops "More reviews"; the market feed has no Reputation instrument; Protron's
+screen notes and the help button's facts (`houseKnowledge.ts`) neither list
+nor sell them. The Worker's routes are unchanged.
+
+Before release (`reviews`): the Google Maps key accepted (Settings →
+Platform services shows it Working), or SerpApi carrying review reads on its
+own — a refused Maps key now hands over to SerpApi (`serpReviews.ts`); the
+Reviews e2e at 390 and 1280 on testing. The others: the owner asks for them.
+
 ## Parked (off on both sites)
 
 - **`protron-speaks-first`** — the panel opening by itself after 10 s idle,

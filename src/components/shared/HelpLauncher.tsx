@@ -82,6 +82,8 @@ function inject(key: string, who: { name: string; email: string; workspace: stri
      thing in the corner of somebody who is working. */
   if (!who) s.setAttribute('data-pc-teaser', '');
   if (who) {
+    /* The small in-app launcher (public/widget.js `APP`); the site keeps its size. */
+    s.setAttribute('data-pc-app', '');
     s.setAttribute('data-pc-name', who.name);
     s.setAttribute('data-pc-email', who.email);
     s.setAttribute('data-pc-workspace', who.workspace);

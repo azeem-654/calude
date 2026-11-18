@@ -26,6 +26,18 @@ import {
 /* The incubator (docs/INCUBATOR.md): AI Video Studio's editing and Shorts are on the testing site only. */
 const VIDEO_STUDIO = featureReady('video-studio');
 
+/* Also incubated (2026-11-18): Reviews, Jobs & revenue, the shop, the trade
+   growth service and medical billing. A module that is not open is not in the
+   menu, the palette or the rail — its address says "coming soon" (App.tsx). */
+const HELD: Record<string, boolean> = {
+  '/reputation': !featureReady('reviews'),
+  '/jobs': !featureReady('jobs-revenue'),
+  '/sell': !featureReady('online-shop'),
+  '/growth': !featureReady('trade-services'),
+  '/snapshots': !featureReady('trade-services'),
+  '/rcm': !featureReady('medical-billing'),
+};
+
 export interface NavItem {
   path: string;
   label: string;
@@ -80,9 +92,6 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Customers',
     items: [
       { path: '/contacts', label: 'Contacts', desc: 'Everyone you know, with their whole history — and your lists, one folder per AI Autopilot business workspace', icon: Users, aka: ['people', 'leads', 'crm', 'customers', 'lists', 'contact lists', 'lead lists', 'my leads', 'folders', 'export leads', 'lead directory', 'segments'] },
-      /* Beside Contacts, because that is where what it finds goes — and the
-         word somebody types looking for it is rarely "prospecting". */
-      { path: '/prospecting', label: 'AI Prospecting', desc: 'Say who to sell to — find businesses, their published emails, checked', icon: Crosshair, aka: ['prospecting', 'find customers', 'prospects', 'leads', 'lead generation', 'find businesses', 'google maps', 'directory', 'lists', 'email finder', 'verify email', 'email verification', 'apollo', 'linkedin'] },
       { path: '/conversations', label: 'Unified Inbox', desc: 'Every mailbox, plus SMS and chat, in one shared thread', icon: Inbox, aka: ['conversations', 'messages', 'chat', 'email', 'inbox', 'unified'] },
       { path: '/reputation', label: 'Reviews', desc: 'Watch what people say and answer it', icon: Star, aka: ['reputation', 'ratings', 'google reviews'] },
       /* Beside the inbox on purpose: this is where the conversations in that
@@ -163,6 +172,16 @@ export const NAV_GROUPS: NavGroup[] = [
       { path: '/moderation', label: 'Content review', desc: 'Anything held before it went out, and what became of the account', icon: ShieldAlert, aka: ['moderation', 'review', 'held', 'approve', 'suspend', 'abuse', 'policy'], ownerOnly: true },
     ],
   },
+].map(g => ({ ...g, items: g.items.filter(i => !HELD[i.path]) })).filter(g => g.items.length > 0);
+
+/**
+ * Modules with their own button on the top bar rather than a row in a menu.
+ * AI Prospecting was in both — its lit button beside AI Autopilot and a row
+ * under Customers — and the owner asked on 2026-11-18 for the duplicate to go.
+ * Still listed here so the command palette finds it by any of its names.
+ */
+const BAR_ONLY: NavItem[] = [
+  { path: '/prospecting', label: 'AI Prospecting', desc: 'Say who to sell to — find businesses, their published emails, checked', icon: Crosshair, aka: ['prospecting', 'find customers', 'prospects', 'leads', 'lead generation', 'find businesses', 'google maps', 'directory', 'lists', 'email finder', 'verify email', 'email verification', 'apollo', 'linkedin'] },
 ];
 
 /** The path with any query string taken off, for matching against the router. */
@@ -180,7 +199,7 @@ function basePath(path: string): string {
  * showing every customer the one that moderates them.
  */
 export function allModules(isClient: boolean, isOwner = false): NavItem[] {
-  return NAV_GROUPS.flatMap(g => g.items)
+  return [...NAV_GROUPS.flatMap(g => g.items), ...BAR_ONLY]
     .filter(i => !(i.agencyOnly && isClient))
     .filter(i => !(i.ownerOnly && !isOwner));
 }

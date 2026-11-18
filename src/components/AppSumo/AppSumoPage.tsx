@@ -299,7 +299,7 @@ interface Licensing {
   lastRejected: { at: string; signed: boolean } | null;
 }
 interface ReviewerRow { email: string; createdAt: string; resetAt?: string }
-interface Summary { counts: { unused: number; redeemed: number; revoked: number }; redeemers: { email: string; codes: number; planId: string | null; lastAt: string }[]; licensing?: Licensing; reviewers?: ReviewerRow[] }
+interface Summary { counts: { unused: number; redeemed: number; revoked: number }; batches?: { batch: string; total: number; unused: number; redeemed: number; revoked: number; madeAt: string }[]; redeemers: { email: string; codes: number; planId: string | null; lastAt: string }[]; licensing?: Licensing; reviewers?: ReviewerRow[] }
 
 /**
  * Logins for AppSumo's reviewers, and the email that hands them over. The
@@ -466,6 +466,30 @@ function OwnerTools() {
                 <div style={{ fontSize: 13, color: MUTED, textTransform: 'capitalize' }}>{k}</div>
               </div>
             ))}
+            <div style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: '10px 14px', minWidth: 110 }}>
+              <div style={{ fontSize: 22, fontWeight: 800 }}>{(sum.counts.unused + sum.counts.redeemed + sum.counts.revoked).toLocaleString('en-US')}</div>
+              <div style={{ fontSize: 13, color: MUTED }}>Made in all</div>
+            </div>
+          </div>
+        )}
+        {/* Each batch's own numbers: the totals above are across every batch,
+            so a test batch's redeemed codes counted beside the 1,000 for AppSumo. */}
+        {sum?.batches && sum.batches.length > 1 && (
+          <div style={{ marginTop: 14, overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', fontSize: 13, minWidth: 420 }}>
+              <thead><tr style={{ color: MUTED, textAlign: 'left' }}>{['Batch', 'Made', 'Unused', 'Redeemed', 'Revoked'].map(h => <th key={h} style={{ padding: '4px 12px 4px 0', fontWeight: 700 }}>{h}</th>)}</tr></thead>
+              <tbody>
+                {sum.batches.map(b => (
+                  <tr key={b.batch} style={{ borderTop: `1px solid ${LINE}` }}>
+                    <td style={{ padding: '5px 12px 5px 0', fontWeight: 700 }}>{b.batch || '—'}</td>
+                    <td style={{ padding: '5px 12px 5px 0' }}>{b.total.toLocaleString('en-US')}</td>
+                    <td style={{ padding: '5px 12px 5px 0' }}>{b.unused.toLocaleString('en-US')}</td>
+                    <td style={{ padding: '5px 12px 5px 0' }}>{b.redeemed.toLocaleString('en-US')}</td>
+                    <td style={{ padding: '5px 12px 5px 0' }}>{b.revoked.toLocaleString('en-US')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

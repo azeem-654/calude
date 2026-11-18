@@ -43,13 +43,14 @@ export const MODULE_NOTES: Record<string, string> = {
   '/funnels': 'Landing pages built to capture a lead; connect every form block to a list before launch.',
   '/scheduling': 'Booking pages: set days and hours, share the link; Google Calendar is optional (Settings → Integrations).',
   '/calendar': 'Meetings, bookings and your own time on one grid.',
-  '/reputation': 'Watch reviews and answer them; AI drafts a reply you can edit.',
-  '/sell': 'Online shop: products, orders, discounts, shipping and a storefront. Taking payment needs a processor connected in Settings → Billing.',
+  /* The incubator (2026-11-18): these two and /jobs say "coming soon" on live. */
+  '/reputation': featureReady('reviews') ? 'Watch reviews and answer them; AI drafts a reply you can edit.' : 'Reviews is coming soon: it is being tested and is not open yet.',
+  '/sell': featureReady('online-shop') ? 'Online shop: products, orders, discounts, shipping and a storefront. Taking payment needs a processor connected in Settings → Billing.' : 'The online shop is coming soon: it is being tested and is not open yet.',
   '/blog-automation': 'A planned blog that drafts articles for your own pages; publishing to WordPress is optional.',
   '/billing': 'Your plan, invoices and what you have used of each allowance this month.',
   '/settings': 'Profile, Email & SMS, integrations, team, security and domains.',
   '/analytics': 'Reports on how each module is performing.',
-  '/jobs': 'Every inquiry followed to the job and the money collected.',
+  '/jobs': featureReady('jobs-revenue') ? 'Every inquiry followed to the job and the money collected.' : 'Jobs & revenue is coming soon: it is being tested and is not open yet.',
 };
 
 /** The commonest stuck points, with the real way out. */

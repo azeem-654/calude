@@ -1,8 +1,11 @@
 /**
  * Protron, large and alive: the portrait (ProtronAvatar) inside a ring of
  * light that turns, a second ring carrying two orbiting sparks, a halo that
- * breathes, a scan line passing over the faceplate and sparks rising — the
- * owner's brief, 2026-11-15: "the true bot, with more animation, lighting,
+ * breathes and slowly changes colour, a light that glints across the face now
+ * and then, and sparks rising. The face itself turns to one side, then the
+ * other, and nods (a nod also says "done"); it no longer bobs, and the scan
+ * line that swept top to bottom is gone — together they read as the face
+ * "flapping up and down" (owner, 2026-11-18). The first brief, 2026-11-15: "the true bot, with more animation, lighting,
  * tech-savvy moves, AI vibes". Used where Protron has the stage: the AI
  * Autopilot wizard's side pane and the "Building your AI Autopilot" screen,
  * which until now showed the older two-eyed AI Autopilot bot.

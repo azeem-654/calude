@@ -180,6 +180,12 @@ export function buildFolders(input: FolderInput): LeadFolder[] {
 
   const prospecting = input.lists.filter(l => !claimed.has(l.id) && l.origin === 'prospecting');
   prospecting.forEach(l => claimed.add(l.id));
+  /* A list Prospecting saved is made with people in it; one that is empty and
+     no longer any business workspace's is what a deleted workspace left
+     behind ("Blue Ridge Plumbing Sales F… 0", live check 2026-11-18). It is
+     not shown — the list itself is kept, in case anything still points at it. */
+  const keep = prospecting.filter(l => membersOf(l).length > 0);
+  prospecting.length = 0; prospecting.push(...keep);
   out.push(folder('prospecting', 'prospecting', 'Saved from AI Prospecting', prospecting.map(l => view(l, membersOf(l)))));
 
   const other = input.lists.filter(l => !claimed.has(l.id));

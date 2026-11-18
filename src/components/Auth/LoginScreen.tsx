@@ -1,4 +1,5 @@
 import { pendingPlan } from '../../services/sitePlan';
+import { usePageTitle } from '../../services/pageTitle';
 import { track } from '../../services/funnel';
 import { solutionByKey } from '../../services/projectSolutions';
 import { inNativeApp } from '../../services/nativeApp';
@@ -94,9 +95,14 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
      default the Worker itself uses, so a status call that never lands leaves a
      working sign-up on every deployment but the one that closed it. */
   const [signupsOpen, setSignupsOpen] = useState(true);
-  const [mode, setMode] = useState<'login' | 'setup' | 'register'>(
-    hasAnyUser() ? (intent === 'signup' ? 'register' : 'login') : 'setup',
-  );
+  /* The first-run screen only once the server says nobody has set this up
+     (the effect below). Starting on it whenever this browser had never seen
+     a user flashed "Create your owner account" at every new visitor of the
+     live app before the sign-in form (live check, 2026-11-18). */
+  const [mode, setMode] = useState<'login' | 'setup' | 'register'>(intent === 'signup' ? 'register' : 'login');
+  /* The tab names the page: "Protected Central — Every step, in the open." on
+     the sign-up form told nobody which tab was which (live check, 2026-11-18). */
+  usePageTitle(mode === 'register' ? `Start your free trial — ${brand.appName}` : mode === 'setup' ? `Set up ${brand.appName}` : `Sign in — ${brand.appName}`);
   const [email, setEmail] = useState(magic?.email ?? '');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');

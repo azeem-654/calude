@@ -11,6 +11,8 @@ import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Copy, ExternalLink, Globe, Check } from 'lucide-react';
 import { publicUrl, publishItem, unpublishItem, usePublished, type PublishKind } from '../../services/publishedPages';
+import { cleanUrlPart, rememberUrlName, savedUrlName, suggestPagePart, suggestUrlName } from '../../services/pageAddress';
+import { customerBusinessName } from '../../services/tenancy';
 
 interface Props {
   kind: PublishKind;
@@ -20,9 +22,13 @@ interface Props {
   onPublishedChange?: (published: boolean) => void;
   /** The top bar it sits in: the website builder's is dark, the funnel page editor's light. */
   tone?: 'dark' | 'light';
+  /** The site or funnel's name, for the page part of its address. */
+  itemName?: string;
+  /** The short company name AI Autopilot set on it, if any. */
+  urlName?: string;
 }
 
-export default function PublishControl({ kind, itemId, beforePublish, onPublishedChange, tone = 'dark' }: Props) {
+export default function PublishControl({ kind, itemId, beforePublish, onPublishedChange, tone = 'dark', itemName = '', urlName }: Props) {
   const pub = usePublished();
   const live = pub.get(kind, itemId);
   const [open, setOpen] = useState(false);
@@ -32,16 +38,54 @@ export default function PublishControl({ kind, itemId, beforePublish, onPublishe
   const [copied, setCopied] = useState(false);
   const what = kind === 'site' ? 'website' : 'funnel';
   const url = live ? publicUrl(live.slug) : '';
+  /* The address: /s/<company>/<page> (owner, 2026-11-18 — an address like
+     /s/business-website read as Protected Central's own page). Suggested from
+     what AI Autopilot set, the name used last time, or the business name. */
+  const defaultBrand = cleanUrlPart(urlName ?? '') || savedUrlName() || suggestUrlName(customerBusinessName());
+  const [brand, setBrand] = useState(defaultBrand);
+  const [pagePart, setPagePart] = useState(() => suggestPagePart(itemName, defaultBrand, kind, customerBusinessName()));
+  const [editAddress, setEditAddress] = useState(false);
+  const [badField, setBadField] = useState('');
+  const origin = typeof window !== 'undefined' ? window.location.host : '';
 
   async function publish() {
-    setBusy('publish'); setError(''); setNote('');
+    /* Every new page goes under the business's own name (owner, 2026-11-18). */
+    if ((!live || editAddress) && !cleanUrlPart(brand)) {
+      setError('Type your business’s short name for the address first — for example lone-star.'); setBadField('publish.brand'); return;
+    }
+    setBusy('publish'); setError(''); setNote(''); setBadField('');
     beforePublish?.();
-    const r = await publishItem(kind, itemId);
+    /* A page already live keeps its address unless they chose to change it. */
+    const address = brand && (!live || editAddress) ? { brand: cleanUrlPart(brand), page: cleanUrlPart(pagePart, 40) || suggestPagePart(itemName, brand, kind) } : undefined;
+    const r = await publishItem(kind, itemId, address);
     setBusy('');
-    if (!r.ok) { setError(r.error ?? 'That could not be published.'); return; }
+    if (!r.ok) { setError(r.error ?? 'That could not be published.'); setBadField(r.field ?? ''); return; }
+    if (address) rememberUrlName(address.brand);
+    setEditAddress(false);
     onPublishedChange?.(true);
     setNote(live ? 'Your changes are live.' : `Your ${what} is live.`);
   }
+
+  const addressFields = (
+    <div style={{ display: 'grid', gap: 6, marginBottom: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>Its address</div>
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, fontSize: 12.5, color: '#64748b' }}>
+        <span style={{ wordBreak: 'break-all' }}>{origin}/s/</span>
+        <input data-field="publish.brand" aria-label="Your business's short name" value={brand} maxLength={30}
+          onChange={e => setBrand(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+          placeholder="your-business"
+          style={{ width: 110, padding: '5px 7px', borderRadius: 6, border: `1px solid ${badField === 'publish.brand' ? '#ef4444' : '#cbd5e1'}`, fontSize: 12.5, color: '#0f172a', background: '#fff' }} />
+        <span>/</span>
+        <input data-field="publish.page" aria-label="This page's name in the address" value={pagePart} maxLength={40}
+          onChange={e => setPagePart(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+          placeholder={kind === 'site' ? 'website' : 'offer'}
+          style={{ width: 110, padding: '5px 7px', borderRadius: 6, border: `1px solid ${badField === 'publish.page' ? '#ef4444' : '#cbd5e1'}`, fontSize: 12.5, color: '#0f172a', background: '#fff' }} />
+      </div>
+      <div style={{ fontSize: 11.5, color: '#64748b', lineHeight: 1.45 }}>
+        Your business&rsquo;s short name, then this page — for example <b>lone-star/free-quote</b>. Every page you publish can use the same short name.
+      </div>
+    </div>
+  );
 
   async function unpublish() {
     setBusy('unpublish'); setError(''); setNote('');
@@ -96,8 +140,17 @@ export default function PublishControl({ kind, itemId, beforePublish, onPublishe
                   <a href={url} target="_blank" rel="noopener noreferrer" style={{ ...btn(), textDecoration: 'none' }}><ExternalLink size={13} /> Open</a>
                 </div>
                 <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10, lineHeight: 1.5 }}>
-                  Edits in the builder stay private until you publish them.
+                  Edits in the builder stay private until you publish them.{' '}
+                  <button type="button" onClick={() => setEditAddress(v => !v)} style={{ border: 0, background: 'none', padding: 0, color: '#4f46e5', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>
+                    {editAddress ? 'Keep this address' : 'Change the address'}
+                  </button>
                 </div>
+                {editAddress && (
+                  <>
+                    {addressFields}
+                    <div style={{ fontSize: 11.5, color: '#b45309', marginBottom: 10 }}>The link above stops working once you publish under the new address.</div>
+                  </>
+                )}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button type="button" disabled={!!busy} onClick={() => void publish()} style={btn(true)} data-testid="publish-changes">
                     {busy === 'publish' ? 'Publishing…' : 'Publish changes'}
@@ -114,6 +167,7 @@ export default function PublishControl({ kind, itemId, beforePublish, onPublishe
                   It goes on a public link anybody can open without signing in. You can publish changes or take it down at any time.
                 </div>
                 {pub.error && <div style={{ fontSize: 12, color: '#b45309', marginBottom: 10 }}>{pub.error}</div>}
+                {addressFields}
                 <button type="button" disabled={!!busy} onClick={() => void publish()} style={btn(true)} data-testid="publish-now">
                   {busy === 'publish' ? 'Publishing…' : 'Publish now'}
                 </button>

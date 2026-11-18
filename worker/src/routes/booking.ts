@@ -11,7 +11,7 @@
  * Here the account owns its row, and a visitor reaches it by slug.
  *
  * Actions split three ways by who is allowed to call them:
- *   owner   publish, list, set_status          — session required
+ *   owner   publish, list, set_status, delete  — session required
  *   visitor config, slots, create              — public, by slug
  *   guest   get, cancel, reschedule            — proven by the booking's key
  */
@@ -799,7 +799,7 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
   }
 
   /* ── Owner: see and manage the bookings taken ── */
-  if (action === 'list' || action === 'set_status') {
+  if (action === 'list' || action === 'set_status' || action === 'delete') {
     const user = await userFromToken(env.DB, d.token);
     if (!user) return fail('Sign in again — this action needs a current session.', 401, { code: 'unauthorised' });
     const accountId = String(d.accountId ?? '').trim();
@@ -817,6 +817,21 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
           createdAt: r.created_at, ...JSON.parse(r.data || '{}'),
         })),
       });
+    }
+
+    /* Delete: only a booking already cancelled or past, so a live meeting is
+       never removed without the guest being told (Cancel does that). The
+       trash button on a cancelled booking did nothing before (live check,
+       2026-11-18) — it asked to cancel what was already cancelled. */
+    if (action === 'delete') {
+      const id = String(d.id ?? '');
+      const row = await env.DB.prepare('SELECT status, slot_date FROM crm_bookings WHERE id = ? AND account_id = ?')
+        .bind(id, accountId).first<{ status: string; slot_date: string }>();
+      if (!row) return fail('Booking not found.');
+      const past = row.slot_date < new Date().toISOString().slice(0, 10);
+      if (row.status === 'confirmed' && !past) return fail('Cancel this booking first — the guest is told — then it can be deleted.');
+      await env.DB.prepare('DELETE FROM crm_bookings WHERE id = ? AND account_id = ?').bind(id, accountId).run();
+      return ok();
     }
 
     const status = String(d.status ?? '');

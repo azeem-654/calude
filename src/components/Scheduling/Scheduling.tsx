@@ -10,7 +10,7 @@ import { useApp } from '../../context/AppContext';
 import type { DayAvailability, EventType, SchedulingAutomations, Booking } from '../../types';
 import { getSession } from '../../services/auth';
 import { customerBusinessName } from '../../services/tenancy';
-import { publishBookingConfig, listRemoteBookings, setRemoteBookingStatus } from '../../services/booking';
+import { publishBookingConfig, listRemoteBookings, setRemoteBookingStatus, deleteRemoteBooking } from '../../services/booking';
 import { fetchSmsState, saveSmsConfig, type SmsStatus } from '../../services/smsStore';
 
 const ET_COLORS = ['#17191c', '#6366f1', '#22c55e', '#f59e0b', '#ec4899', '#0ea5e9'];
@@ -112,8 +112,12 @@ export default function Scheduling() {
       setPubState(res.ok ? 'published' : 'refused');
     }, 1200);
     return () => window.clearTimeout(pubTimer.current);
+    /* Keyed on what the schedule says, not the object: a sync after a booking
+       arrived handed over an equal schedule again and again, each one
+       cancelling the pending publish, so "Publishing booking page…" never
+       ended (live check, 2026-11-18). */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schedule]);
+  }, [JSON.stringify(schedule)]);
 
   /* Event type helpers */
   const addEventType = () => {
@@ -168,6 +172,18 @@ export default function Scheduling() {
     } else {
       updateBooking(b.id, { status });
     }
+  };
+
+  /* The trash: cancels a live booking (the guest is told), deletes one that
+     is already cancelled. */
+  const removeBooking = async (b: Booking) => {
+    if (!b.remote) { deleteBooking(b.id); return; }
+    if (b.status !== 'cancelled') { setBookingStatus(b, 'cancelled'); return; }
+    const token = getSession()?.token || 'cookie';
+    const r = await deleteRemoteBooking(token, b.id);
+    if (!r.ok) { addNotification(r.error ?? 'The booking could not be deleted.', 'error'); return; }
+    setRemoteBookings(prev => prev.filter(x => x.id !== b.id));
+    addNotification('Booking deleted.', 'success');
   };
 
   const filteredBookings = merged.filter(b => bookingFilter === 'all' || b.status === bookingFilter);
@@ -320,7 +336,8 @@ export default function Scheduling() {
                             Cancel
                           </button>
                         )}
-                        <button onClick={() => booking.remote ? setBookingStatus(booking, 'cancelled') : deleteBooking(booking.id)}
+                        <button onClick={() => void removeBooking(booking)}
+                          title={booking.status === 'cancelled' ? 'Delete this booking' : 'Cancel this booking'} aria-label={booking.status === 'cancelled' ? 'Delete this booking' : 'Cancel this booking'}
                           style={{ padding: 7, border: '1px solid #e2e8f0', borderRadius: 9, backgroundColor: 'white', cursor: 'pointer', display: 'flex' }}>
                           <Trash2 size={13} color="#94a3b8" />
                         </button>

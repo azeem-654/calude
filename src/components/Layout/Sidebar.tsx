@@ -40,7 +40,8 @@ const navGroups = [
     label: 'Insights',
     items: [
       { path: '/analytics',  icon: BarChart3, label: 'Analytics' },
-      { path: '/reputation', icon: Star,      label: 'Reputation' },
+      /* The incubator (`reviews`, 2026-11-18). */
+      ...(featureReady('reviews') ? [{ path: '/reputation', icon: Star, label: 'Reputation' }] : []),
     ],
   },
 ];

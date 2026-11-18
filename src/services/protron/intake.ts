@@ -28,7 +28,7 @@
  * answers. Both are labelled as such on screen.
  */
 import { aiFetch, aiStream } from '../../lib/gemini';
-import { SOLUTIONS, CUSTOM, solutionByKey } from '../projectSolutions';
+import { SOLUTIONS, CUSTOM, solutionByKey, isOffered } from '../projectSolutions';
 import { matchSolutions } from '../projectIntake';
 import { tidySpoken } from '../spoken';
 import { featureReady } from '../features';
@@ -169,12 +169,21 @@ export function openingMessage(b: Brief, firstName = ''): Talk {
   };
 }
 
+/** "I run Blue Ridge Plumbing" → "Blue Ridge Plumbing": the opening verbs are not the name. */
+export const withoutOpener = (s: string) => s
+  .replace(/^\s*(?:i|we)\s+(?:run|own|manage|operate|have|started|founded)\s+(?:a\s+(?:company|business)\s+called\s+)?/i, '')
+  .replace(/^\s*(?:i|we)\s+(?:work|am|are)\s+(?:at|for|with)\s+/i, '');
+
 /** Without the AI: a name and a website out of the answer to the opening, when it plainly gives them. */
 export function guessIntroFacts(answer: string): { company: string; website: string; nature: string } {
   const words = answer.trim().split(/\s+/);
   const site = words.map(w => w.replace(/[,;)(]+$/, '')).find(w => /\.[a-z]{2,}(\/|$)/i.test(w) && siteAddress(w));
   let rest = answer.replace(site ?? '\u0000', ' ').replace(/\b(?:and )?(?:our |the )?(?:website|site|web site)(?: is)?\b/gi, ' ');
   rest = rest.replace(/^\s*(?:yes|yeah|hi|hello)[,.!]?\s*/i, '').replace(/^(?:it'?s|it is|we are|we're|i am|i'm|my (?:company|business)(?: name)? is|the (?:company|business )?name is|called)\s+/i, '');
+  /* "I run Blue Ridge Plumbing" — the live check of 2026-11-18 took the whole
+     sentence as the name ("What would you most like … for I run Blue Ridge
+     Plumbing first?"). The verbs people open with are not part of the name. */
+  rest = withoutOpener(rest);
   /* A dash or colon ends the name too: "Azeem Dental — a family dental
      practice in Richmond" was seven words, so no name was taken and the
      next fixed question asked for the name they had just given (local
@@ -208,7 +217,7 @@ export function sitePlaces(b: Brief): string[] {
 /** The catalogue solutions the brief asks for, custom last, no repeats. */
 export function chosenKeys(b: Brief): string[] {
   const keys = [...b.cards.flatMap(id => START_CARDS.find(c => c.id === id)?.keys ?? []), ...b.more];
-  const real = [...new Set(keys.filter(k => k !== CUSTOM && solutionByKey(k)))];
+  const real = [...new Set(keys.filter(k => k !== CUSTOM && isOffered(k)))];
   return keys.includes(CUSTOM) && !real.length ? [CUSTOM] : real;
 }
 
@@ -302,7 +311,10 @@ function readJson(raw: string): Record<string, unknown> | null {
   const a = t.indexOf('{');
   const z = t.lastIndexOf('}');
   if (a < 0 || z <= a) return null;
-  try { return JSON.parse(t.slice(a, z + 1)) as Record<string, unknown>; } catch { return null; }
+  try { return JSON.parse(t.slice(a, z + 1)) as Record<string, unknown>; } catch { /* below */ }
+  /* Small fallback models put raw line breaks inside strings, which JSON does
+     not allow; between tokens a space means the same, inside a string nearly so. */
+  try { return JSON.parse(t.slice(a, z + 1).replace(/[\u0000-\u001f]+/g, ' ')) as Record<string, unknown>; } catch { return null; }
 }
 
 async function ask(system: string, user: string, module: string, json: boolean, maxTokens = json ? 600 : 1400, timeoutMs?: number, onText?: (soFar: string) => void): Promise<{ ok: true; text: string } | { ok: false; error: string; noAi: boolean }> {
@@ -450,7 +462,12 @@ export async function nextStep(b: Brief, onReply?: (soFar: string) => void): Pro
   const r = await ask(interviewSystem(b), briefText(b), 'protron', true, 900, REPLY_WITHIN_MS,
     onReply ? (soFar => { const t = partialReply(soFar); if (t) onReply(t); }) : undefined);
   if (!r.ok) return offline(r.noAi ? undefined : /took too long/i.test(r.error) ? 'The AI is slow right now' : r.error);
-  const j = readJson(r.text);
+  /* An answer cut off before its closing brace (the model ran out of room) or
+     otherwise broken still usually has its "reply" whole at the front — the
+     same reading the streamed words use. Live check 2026-11-18: "The AI answer
+     could not be read" on almost every question. The question is kept; only
+     the facts and chips it would have carried are lost. */
+  const j = readJson(r.text) ?? (partialReply(r.text).trim().length >= 12 ? { reply: partialReply(r.text) } : null);
   const said = typeof j?.reply === 'string' ? j.reply : typeof j?.ask === 'string' ? j.ask : '';
   if (!j || !said.trim()) return offline('The AI answer could not be read, so I am asking the standard questions.');
   const f = (j.facts && typeof j.facts === 'object' ? j.facts : {}) as Record<string, unknown>;
@@ -458,11 +475,11 @@ export async function nextStep(b: Brief, onReply?: (soFar: string) => void): Pro
   const chosen = new Set(chosenKeys(b));
   const recommend = (Array.isArray(j.recommend) ? j.recommend : [])
     .map(x => ({ key: String((x as { key?: unknown })?.key ?? ''), why: String((x as { why?: unknown })?.why ?? '').slice(0, 160) }))
-    .filter(x => x.key !== CUSTOM && solutionByKey(x.key) && !chosen.has(x.key))
+    .filter(x => x.key !== CUSTOM && isOffered(x.key) && !chosen.has(x.key))
     .slice(0, 2);
   return {
     ask: said.trim().slice(0, 900),
-    facts: { company: fact('company', 120), website: siteAddress(fact('website', 200)) ? fact('website', 200) : '', nature: fact('nature', 600), place: fact('place', 200) },
+    facts: { company: withoutOpener(fact('company', 120)), website: siteAddress(fact('website', 200)) ? fact('website', 200) : '', nature: fact('nature', 600), place: fact('place', 200) },
     quick: (Array.isArray(j.quick) ? j.quick : []).filter((q): q is string => typeof q === 'string').map(q => q.trim()).filter(q => q && q.length <= 60).slice(0, 4),
     done: j.done === true,
     recommend,

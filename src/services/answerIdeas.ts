@@ -71,17 +71,6 @@ const TRADES: Trade[] = [
     feel: ['bright, friendly, reassuring', 'clean, modern, clinical', 'warm and family-friendly'],
   },
   {
-    re: /\b(real estate|realtor|estate agent|property|properties|homes? for sale|mortgage|letting)/i,
-    name: 'real estate', photo: 'photo-1560518883-ce09059eeffa',
-    audience: ['Homeowners thinking of selling in the next 6 months', 'First-time buyers', 'Landlords with 2+ rental properties',
-      'People who asked for a valuation but never listed', 'Relocating families', 'Investors looking for rental yield'],
-    offer: ['A free home valuation', 'A free market report for their street', 'A first-time buyer guide and call',
-      'A rental appraisal for landlords', 'An off-market property list', 'A 15-minute selling strategy call'],
-    trades: ['real estate agents', 'mortgage brokers', 'property managers', 'home builders', 'interior designers', 'moving companies'],
-    topics: ['What your home is worth this month', 'First-time buyer mistakes to avoid', 'Staging tips that sell faster', 'The local market in 60 seconds', 'Renting vs buying'],
-    feel: ['premium, clean, confident', 'warm, local, trustworthy', 'modern and minimal'],
-  },
-  {
     re: /\b(plumb|hvac|heating|boiler|roof|electric|contractor|builder|landscap|cleaning|pest|handyman|remodel|renovat)/i,
     name: 'home services', photo: 'photo-1621905251189-08b45d6a269e',
     audience: ['Homeowners within 20 miles', 'Landlords and property managers', 'Past customers due for a service',
@@ -91,7 +80,23 @@ const TRADES: Trade[] = [
     trades: ['property managers', 'letting agents', 'real estate agents', 'facilities managers', 'home builders', 'insurance brokers'],
     topics: ['Signs your system needs a service', 'How to avoid a winter breakdown', 'What a fair quote looks like', 'Seasonal maintenance checklist', 'DIY or call a pro?'],
     feel: ['bold, practical, dependable', 'clean and trustworthy', 'friendly and local'],
+  },  {
+    /* No bare "property"/"properties": a plumber's or electrician's own site
+       says "homes and properties", and that matched here first — the live check
+       of 2026-11-18 gave an electrician "What your home is worth this month"
+       and a plumber "A free home valuation". Home services are also listed
+       before real estate, so a trade's own words decide first. */
+    re: /\b(real estate|realtor|estate agent|property (?:management|manager|agent|sales|investor)|homes? for sale|mortgage|letting agent|lettings|homebuyer|home buyers?|sell (?:your|their|my) home)/i,
+    name: 'real estate', photo: 'photo-1560518883-ce09059eeffa',
+    audience: ['Homeowners thinking of selling in the next 6 months', 'First-time buyers', 'Landlords with 2+ rental properties',
+      'People who asked for a valuation but never listed', 'Relocating families', 'Investors looking for rental yield'],
+    offer: ['A free home valuation', 'A free market report for their street', 'A first-time buyer guide and call',
+      'A rental appraisal for landlords', 'An off-market property list', 'A 15-minute selling strategy call'],
+    trades: ['real estate agents', 'mortgage brokers', 'property managers', 'home builders', 'interior designers', 'moving companies'],
+    topics: ['What your home is worth this month', 'First-time buyer mistakes to avoid', 'Staging tips that sell faster', 'The local market in 60 seconds', 'Renting vs buying'],
+    feel: ['premium, clean, confident', 'warm, local, trustworthy', 'modern and minimal'],
   },
+
   {
     re: /\b(restaurants?|cafes?|café|coffee|bakery|bars?|pubs?|takeaway|catering|food truck)\b/i,
     name: 'restaurant', photo: 'photo-1517248135467-4c7edcad34c4',

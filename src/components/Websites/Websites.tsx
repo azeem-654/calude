@@ -7,7 +7,7 @@ import WebsiteBuilder from './WebsiteBuilder';
 import { buildWebsiteTemplatePages } from '../shared/pageTemplates';
 import TemplateGallery from '../shared/TemplateGallery';
 import { ScaledPage } from '../shared/BlockRender';
-import { activeAccount, customerBusinessName } from '../../services/tenancy';
+import { activeAccount, templateBusinessName } from '../../services/tenancy';
 import SourceTag from '../shared/SourceTag';
 import Shops from './Shops';
 import { publicUrl, unpublishItem, usePublished } from '../../services/publishedPages';
@@ -156,7 +156,7 @@ export default function Websites() {
     // Generate the template's REAL pages so the new site opens fully designed
     // (it previously created an empty site and ignored the chosen template).
     const pages = buildWebsiteTemplatePages(template, {
-      name: name.trim() || customerBusinessName() || 'Your Business',
+      name: name.trim() || templateBusinessName(),
       color: acct?.color || '#6366f1',
       tagline: acct?.industry ? `${acct.industry} services` : undefined,
     });
@@ -374,7 +374,7 @@ export default function Websites() {
           ctx={{
             /* The business profile's name (onboarding, branding), not just the
                sub-account's: new sites said "Your Business" though one was set (M7). */
-            name: customerBusinessName() || 'Your Business',
+            name: templateBusinessName(),
             color: activeAccount()?.color || '#6366f1',
             tagline: activeAccount()?.industry ? `${activeAccount()!.industry} services` : undefined,
           }}

@@ -16,6 +16,7 @@
  * opens the sequence. Nothing here is a copy: the card is the ledger entry and
  * the link is where the thing actually lives.
  */
+import { refreshAllowances } from '../../services/allowances';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -361,6 +362,11 @@ export default function ProjectBoard({ onNewProject }: { onNewProject: () => voi
     const r = await deleteProject(p.id);
     if (!r.success) { addNotification(r.error ?? 'Could not delete that.', 'error'); return; }
     setMenu(null);
+    /* Off the screen at once: the live check of 2026-11-18 saw a deleted
+       business workspace stay until the page was reloaded. The reload below
+       confirms it; the allowance count follows. */
+    setProjects(prev => prev.filter(x => x.id !== p.id));
+    refreshAllowances();
     addNotification(`"${p.name}" deleted.`, 'success');
     void load();
   };

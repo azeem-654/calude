@@ -270,6 +270,12 @@ export async function setRemoteBookingStatus(token: string, id: string, status: 
   return !!(res && res.success);
 }
 
+/** Delete a cancelled or past booking. The server refuses an upcoming one that is still confirmed. */
+export async function deleteRemoteBooking(token: string, id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await call({ action: 'delete', token, accountId: getActiveAccountId() ?? '', id });
+  return res && res.success ? { ok: true } : { ok: false, error: String((res as { error?: string } | null)?.error ?? 'The booking could not be deleted.') };
+}
+
 /* ── Calendar helpers (confirmation screen) ── */
 
 /*

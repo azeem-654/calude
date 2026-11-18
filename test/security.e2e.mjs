@@ -456,6 +456,11 @@ check("B cannot overwrite A's portfolio by id", !hijackPortfolio.ok, JSON.string
   check("B cannot upload a picture into A's booking page", !intoA.data.success && intoA.status === 403, JSON.stringify(intoA.data));
   const clearA = await api('booking-media.php', { action: 'clear', token: B.token, accountId: A.acct, kind: 'photo' });
   check("B cannot remove A's booking picture", !clearA.ok && clearA.status === 403, JSON.stringify(clearA.data));
+  /* Deleting a booking (routes/booking.ts `delete`) names a workspace and an id: B reaches neither of A's. */
+  const delA = await api('booking.php', { action: 'delete', token: B.token, accountId: A.acct, id: 'bk_anything' });
+  check("B cannot delete a booking in A's workspace", delA.status === 403 && !delA.ok, JSON.stringify(delA.data).slice(0, 120));
+  const delOwn = await api('booking.php', { action: 'delete', token: B.token, accountId: B.acct, id: 'bk_anything' });
+  check("B naming an id that is not B's deletes nothing", !delOwn.ok, JSON.stringify(delOwn.data).slice(0, 120));
   const slugA = await api('booking.php', { action: 'slug_check', token: B.token, accountId: A.acct, slug: 'anything-here' });
   check("B cannot ask about addresses as A's workspace", !slugA.ok && slugA.status === 403, JSON.stringify(slugA.data));
   const svg = await put(B.token, B.acct, 'logo', Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'));
@@ -842,7 +847,27 @@ console.log('\nPublished websites and funnels — /s/<slug> (H3/H4)');
   check('get of an unknown slug fails cleanly', !unknown.ok && unknown.status === 200 && unknown.data.code === 'not_found', `${unknown.status} ${JSON.stringify(unknown.data).slice(0, 120)}`);
   const bad = await api('published.php', { action: 'get', slug: "x' OR 1=1 --" });
   check('get of a malformed slug fails cleanly', !bad.ok && bad.data.code === 'not_found', JSON.stringify(bad.data).slice(0, 120));
-  const page = await fetch(`${BASE}/s/${slug}`, { headers: { Connection: 'close' } });
+  /* Under the company's short name (/s/<brand>/<page>): the first account to
+     use a name keeps it; nobody else publishes under it, and names that read
+     as ours are refused (routes/published.ts). */
+  const brand = `bco${run}`.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 24);
+  const bBrand = await api('published.php', { action: 'publish', token: B.token, accountId: B.acct, kind: 'site', id: siteId, brand, page: 'home' });
+  check('B moves its page under its own short name', bBrand.ok && bBrand.data.slug === `${brand}/home`, JSON.stringify(bBrand.data).slice(0, 160));
+  const twoPart = await api('published.php', { action: 'get', slug: `${brand}/home` });
+  check('a visitor reaches it at /s/<brand>/<page>', twoPart.ok && twoPart.data.page?.name === site.name, JSON.stringify(twoPart.data).slice(0, 120));
+  const oldGone = await api('published.php', { action: 'get', slug });
+  check('the address it moved from no longer answers', !oldGone.ok && oldGone.data.code === 'not_found', JSON.stringify(oldGone.data).slice(0, 120));
+  const cSite = { ...site, id: `ws-sec-c-${run}` };
+  await api('data.php', { action: 'put', token: C.token, accountId: C.acct, key: 'crm_websites', value: JSON.stringify([cSite]) });
+  const cBrand = await api('published.php', { action: 'publish', token: C.token, accountId: C.acct, kind: 'site', id: cSite.id, brand, page: 'offer' });
+  check("C cannot publish under B's short name", !cBrand.ok && cBrand.data.code === 'brand_taken' && cBrand.data.field === 'publish.brand', JSON.stringify(cBrand.data).slice(0, 160));
+  const ours = await api('published.php', { action: 'publish', token: C.token, accountId: C.acct, kind: 'site', id: cSite.id, brand: 'protected-central', page: 'offer' });
+  check('nobody publishes under "protected-central"', !ours.ok && ours.data.field === 'publish.brand', JSON.stringify(ours.data).slice(0, 160));
+  /* Put B back at its first address for the checks below. */
+  await api('published.php', { action: 'unpublish', token: B.token, accountId: B.acct, kind: 'site', id: siteId });
+  const back = await api('published.php', { action: 'publish', token: B.token, accountId: B.acct, kind: 'site', id: siteId });
+  check('without a short name it publishes at a plain address, as before', back.ok && !String(back.data.slug).includes('/'), JSON.stringify(back.data).slice(0, 120));
+  const page = await fetch(`${BASE}/s/${back.data.slug}`, { headers: { Connection: 'close' } });
   check('/s/<slug> is served by the app (200)', page.status === 200, String(page.status));
 
   const bUn = await api('published.php', { action: 'unpublish', token: B.token, accountId: B.acct, kind: 'site', id: siteId });

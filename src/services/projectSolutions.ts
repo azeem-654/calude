@@ -46,6 +46,10 @@ import { featureReady } from './features';
    on the testing site only, so on live the Video Content solution offers just
    the YouTube channel → articles and posts, which needs neither. */
 const VIDEO_STUDIO = featureReady('video-studio');
+/* The incubator (2026-11-18): Reviews and the online shop are not open on live,
+   so AI Autopilot must not plan a business workspace around them. */
+const REVIEWS = featureReady('reviews');
+const SHOP = featureReady('online-shop');
 
 /* ── Vocabulary ────────────────────────────────────────────────────────────── */
 
@@ -277,6 +281,16 @@ const Q: Record<string, Question> = {
     help: 'Shown in your name and colours. It is built as a draft you can change block by block — the words are placeholders until you or AI Autopilot write them.',
     options: [{ value: 'ai', label: 'Let AI design it' }, { value: 'none', label: 'No website or funnel' }, ...TEMPLATE_CATALOG.map(t => ({ value: t.id, label: t.name }))],
     aiDecides: 'ai',
+  },
+  /* The short company name in the page's public address — /s/<urlName>/<page>
+     (owner, 2026-11-18). Suggested from the business name in the question
+     itself (Questions.tsx); blank means that suggestion. */
+  urlName: {
+    id: 'urlName', group: 'pages', type: 'text', need: 'optional',
+    prompt: 'A short name for your page addresses',
+    help: 'Your pages go live at an address with this name in it, so they read as yours. Short and recognisable is best — letters, numbers and hyphens.',
+    placeholder: 'lone-star',
+    showIf: { id: 'pageTemplate', in: ['ai', ...TEMPLATE_CATALOG.map(t => t.id)] },
   },
   pageLayout: {
     id: 'pageLayout', group: 'layout', type: 'layout', need: 'required',
@@ -811,13 +825,13 @@ const Q: Record<string, Question> = {
     id: 'localPriorities', group: 'deliverable', type: 'multi', need: 'required',
     prompt: 'What would help most?',
     options: [
-      { value: 'reviews', label: 'More reviews' },
+      ...(REVIEWS ? [{ value: 'reviews', label: 'More reviews' }] : []),
       { value: 'missed', label: 'Answering missed calls' },
       { value: 'enquiries', label: 'Replying to enquiries fast' },
       { value: 'posts', label: 'Posting regularly' },
       { value: 'search', label: 'Being found on Google' },
     ],
-    aiDecides: ['reviews', 'enquiries', 'posts'],
+    aiDecides: REVIEWS ? ['reviews', 'enquiries', 'posts'] : ['enquiries', 'posts', 'search'],
   },
   product: {
     id: 'product', group: 'offer', type: 'text', need: 'required',
@@ -1320,7 +1334,7 @@ function outreachPart(a: Answers, opts: { page?: boolean } = {}): Partial<Contri
 
 /* ── The catalogue ────────────────────────────────────────────────────────── */
 
-export const SOLUTIONS: Solution[] = [
+const CATALOGUE: Solution[] = [
   {
     key: 'social-growth',
     label: 'Social Media Growth',
@@ -1772,10 +1786,10 @@ export const SOLUTIONS: Solution[] = [
   {
     key: 'local-business',
     label: 'Local Business Growth',
-    blurb: 'Reviews, fast replies, local posts and being found — the basics, done every week.',
-    example: 'Help my local business get more reviews and reply to every enquiry fast.',
+    blurb: REVIEWS ? 'Reviews, fast replies, local posts and being found — the basics, done every week.' : 'Fast replies, local posts and being found — the basics, done every week.',
+    example: REVIEWS ? 'Help my local business get more reviews and reply to every enquiry fast.' : 'Help my local business reply to every enquiry fast and get found on Google.',
     keywords: [['local business', 4.5], ['local', 2.5], ['near me', 3.5], ['my area', 2.5], ['missed call', 4], ['missed calls', 4], ['plumber', 2], ['salon', 2], ['dentist', 2], ['restaurant', 2], ['trades', 2]],
-    channels: ['reviews', 'social', 'blog', 'sms', 'email'],
+    channels: REVIEWS ? ['reviews', 'social', 'blog', 'sms', 'email'] : ['social', 'blog', 'sms', 'email'],
     questions: ['business', 'website', 'location', 'localPriorities', 'platforms', 'frequency'],
     build: a => {
       const p = many(a.localPriorities);
@@ -1784,7 +1798,7 @@ export const SOLUTIONS: Solution[] = [
       const add = (k: string, s: string, ch: Channel) => { const w = fromTemplate(k, s, ch); if (w) c = merge(c, { workflows: [w] }); };
       if (all || p.includes('missed')) { add('missed-call', 'missed', 'sms'); c = merge(c, { requirements: ['sms'], setup: [{ key: 'sms', label: 'Connect a number for texting back', by: 'you', route: '/settings?tab=email-sms' }] }); }
       if (all || p.includes('enquiries')) add('speed-to-lead', 'reply', 'email');
-      if (all || p.includes('reviews')) { add('review-request', 'reviews', 'reviews'); c = merge(c, { planner: ['reviews'], outputs: ['Review requests after each job'] }); }
+      if ((all && REVIEWS) || p.includes('reviews')) { add('review-request', 'reviews', 'reviews'); c = merge(c, { planner: ['reviews'], outputs: ['Review requests after each job'] }); }
       if (all || p.includes('posts')) c = merge(c, socialPart(a));
       if (all || p.includes('search')) c = merge(c, blogPart({ ...a, blogFrequency: 'weekly', topics: one(a.location) ? `${one(a.location)} customers` : '' }));
       return merge(c, {
@@ -1847,5 +1861,13 @@ export const SOLUTIONS: Solution[] = [
 /** How many gallery templates the matcher searches. */
 export const TEMPLATE_COUNT = TEMPLATES.length;
 
-export const solutionByKey = (key: string): Solution | null => SOLUTIONS.find(s => s.key === key) ?? null;
+/** What AI Autopilot offers here. Incubated solutions are kept in CATALOGUE so a
+ *  business workspace saved on the testing site still finds its own. */
+const HELD_SOLUTIONS = new Set([...(REVIEWS ? [] : ['reputation']), ...(SHOP ? [] : ['ecommerce-store'])]);
+export const SOLUTIONS: Solution[] = CATALOGUE.filter(s => !HELD_SOLUTIONS.has(s.key));
+
+export const solutionByKey = (key: string): Solution | null => CATALOGUE.find(s => s.key === key) ?? null;
+/** Whether a key the AI or a keyword match proposed may be planned here — the
+ *  door every new choice goes through, so an incubated solution is never added. */
+export const isOffered = (key: string): boolean => SOLUTIONS.some(s => s.key === key);
 export const CUSTOM = 'custom';

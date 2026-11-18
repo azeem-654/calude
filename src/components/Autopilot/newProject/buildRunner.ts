@@ -19,6 +19,7 @@
  * still opened, because a partial project the customer can see and fix beats a
  * wizard that threw away everything they answered.
  */
+import { rememberUrlName } from '../../../services/pageAddress';
 import { checkAllowance, isAllowanceRefusal, refreshAllowances } from '../../../services/allowances';
 import { buildTemplatePages, type BrandContext, type TemplateMeta } from '../../shared/pageTemplates';
 import type { Funnel, Website } from '../../../types';
@@ -80,6 +81,8 @@ export interface BuildInput {
   page?: {
     template: TemplateMeta;
     brand: BrandContext;
+    /** The short company name for its public address (/s/<urlName>/<page>). */
+    urlName?: string;
     addWebsite: (w: Omit<Website, 'id'>) => void;
     addFunnel: (f: Omit<Funnel, 'id'>) => void;
   };
@@ -411,6 +414,9 @@ async function runBuildOnce(
     return result;
   }
   result.projectId = p.id;
+  /* The board's "Business Workspaces n/25" read 0 after two builds in the
+     live check of 2026-11-18: the count was only re-asked on a refusal. */
+  refreshAllowances();
   set('project', { state: 'done', detail: bp.name });
   /* The dashboard's 12-month card reads the plan back from this workspace's
      brief (ContentPipelineCard), so deleting the workspace removes it there too. */
@@ -539,15 +545,17 @@ async function runBuildOnce(
      Built here rather than by the planner: the planner only builds a page
      for a workspace with none, so once this exists it does not add another. */
   if (inp.page && steps.some(st => st.key === 'page')) {
-    const { template, brand, addWebsite, addFunnel } = inp.page;
+    const { template, brand, urlName, addWebsite, addFunnel } = inp.page;
+    /* Remembered for the account too, so the publish panel offers it for every page after this one. */
+    if (urlName) rememberUrlName(urlName);
     set('page', { state: 'now' }, `I’m building your ${template.kind} from “${template.name}”.`);
     try {
       const pages = buildTemplatePages(template, brand, { brand: true });
       const source = { origin: 'autopilot' as const, title: bp.name, refId: p.id, route: '/autopilot', at: new Date().toISOString() };
       if (template.kind === 'funnel') {
-        addFunnel({ name: `${brand.name} — ${template.name}`.slice(0, 90), status: 'draft', steps: pages.length, pages, visitors: 0, conversions: 0, revenue: 0, goal: bp.objective.slice(0, 200), source, createdAt: new Date().toISOString() });
+        addFunnel({ name: `${brand.name} — ${template.name}`.slice(0, 90), urlName, status: 'draft', steps: pages.length, pages, visitors: 0, conversions: 0, revenue: 0, goal: bp.objective.slice(0, 200), source, createdAt: new Date().toISOString() });
       } else {
-        addWebsite({ name: brand.name.slice(0, 90), status: 'draft', template: template.id, pages, visitors: 0, pageViews: 0, source, description: brand.tagline ?? '', createdAt: new Date().toISOString() });
+        addWebsite({ name: brand.name.slice(0, 90), urlName, status: 'draft', template: template.id, pages, visitors: 0, pageViews: 0, source, description: brand.tagline ?? '', createdAt: new Date().toISOString() });
       }
       set('page', {
         state: 'done',

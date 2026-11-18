@@ -23,7 +23,7 @@ import {
   PLACE_ID_RE, checkWorkspace, resolvePlaceLink, draftReply, encryptKey, gbpAuthUrl, gbpConnect, gbpLive, gbpLocations, gbpReply,
   installPlacesKey, loadProfile, markInstallKey, placeDetails, refreshCompetitors, saveInstallPlacesKey, searchPlaces,
 } from '../lib/reputation';
-import { KEY_RE, meterPlaces, placesUsage } from '../lib/googlePlaces';
+import { KEY_FAULT, KEY_RE, meterPlaces, placesUsage } from '../lib/googlePlaces';
 import {
   SERP_KEY_RE, clearInstallSerpKey, installSerpKey, isSerpKey, markSerpKey, reviewKeyFor, saveInstallSerpKey, serpUsedThisMonth, testSerpKey,
 } from '../lib/serpReviews';
@@ -100,8 +100,9 @@ export async function handleReputation(req: Request, env: Env): Promise<Response
     return json({
       success: true, set: !!inst, status: inst?.status ?? 'none', lastError: inst?.lastError ?? '',
       checkedAt: inst && inst.status !== 'unknown' ? inst.updatedAt : null,
-      /* With a Maps key saved, SerpApi is not used at all — said so the owner is not left wondering. */
-      inUse: !!inst && !places, usage: await serpUsedThisMonth(env),
+      /* With a Maps key Google accepts, SerpApi is not used — said so the owner
+         is not left wondering. A refused Maps key hands over (reviewKeyFor). */
+      inUse: !!inst && (!places || places.status === 'error'), usage: await serpUsedThisMonth(env),
     });
   }
 
@@ -133,8 +134,16 @@ export async function handleReputation(req: Request, env: Env): Promise<Response
       if (!linked.ok) return fail(linked.error ?? 'That link could not be read.', 200, { code: linked.code, field });
       return json({ success: true, places: linked.data ?? [], fromLink: true });
     }
-    const r = await searchPlaces(env, key.key, q, undefined, accountId);
+    let r = await searchPlaces(env, key.key, q, undefined, accountId);
     if (r.ok && !serp) await meterPlaces(env, accountId, 'reviews', key.whose);
+    /* The install's Maps key refused: say so on Platform services and try the
+       same search through SerpApi at once, rather than show the customer
+       Google's refusal of a key that is not theirs. */
+    if (!r.ok && !serp && key.whose === 'install' && KEY_FAULT.test(r.code ?? '')) {
+      await markInstallKey(env, false, r.error ?? '');
+      const again = await reviewKeyFor(env, accountId);
+      if (again.ok && isSerpKey(again.key)) r = await searchPlaces(env, again.key, q, undefined, accountId);
+    }
     if (!r.ok) return fail(r.error ?? 'Google could not search.', 200, { code: r.code });
     return json({ success: true, places: r.data ?? [] });
   }

@@ -36,6 +36,7 @@
  * name something that exists. Nothing is written until "Build My Autopilot",
  * so abandoning halfway leaves nothing behind.
  */
+import { cleanUrlPart, suggestUrlName } from '../../services/pageAddress';
 import ResultPreview from './newProject/ResultPreview';
 import { FinderReview } from './newProject/ProspectFields';
 import { DEFAULT_THEME, resolveTheme } from '../../services/designOptions';
@@ -867,6 +868,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
       page: template ? {
         template,
         brand: { name: brandWords.name || 'Your business', color: pal.accent, tagline: brandWords.tagline, heroTitle: brandWords.heroTitle, heroImage: brandWords.heroImage },
+        urlName: cleanUrlPart(said('urlName')) || suggestUrlName(brandWords.name || company || ''),
         addWebsite, addFunnel,
       } : undefined,
       bookingPage: bookingDraft ? { pageId: bookingDraft.pageId, schedule: bookingDraft.schedule, businessName: company } : undefined,
@@ -1148,7 +1150,7 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
 
   return (
     <WizardBackdrop label="New business workspace" onClose={close}>
-      <div className="wz-card np-card" onKeyDown={e => { if (e.key === 'Escape') close(); }}>
+      <div className="wz-card np-card" data-chat={phase === 'describe' && intake.step === 'talk' ? '1' : '0'} onKeyDown={e => { if (e.key === 'Escape') close(); }}>
         <header className="np-head">
           <button type="button" onClick={close} disabled={building} style={{
             background: 'none', border: 0, padding: '4px 2px', cursor: building ? 'default' : 'pointer',
@@ -1191,7 +1193,10 @@ export default function NewProject({ portfolios, onClose, onCreated, presetListI
                     return withPreset({ ...s, solutionKeys: keys, known, strength: keys.length > 1 ? 'partial' : s.strength });
                   })}
                   openGroups={state ? [...new Set(allQuestions(state).filter(q => applies(q, state.known) && !state.known[q.id]).map(q => q.group))] : []}
-                  questionCount={state ? allQuestions(state).filter(q => applies(q, state.known) && !state.known[q.id]).length : 0}
+                  /* Screens, not questions: the next screen counts "1 OF 12", and
+                     "Next: 21 quick questions" before it read as a mistake (live
+                     check, 2026-11-18). */
+                  questionCount={state ? (allQuestions(state).some(q => applies(q, state.known) && !state.known[q.id]) ? screens.length : 0) : 0}
                   onChangeSolution={keys => setState(s => {
                     if (!s) return s;
                     const known = { ...extractKnown(s.prompt, keys, ws, files, links) };

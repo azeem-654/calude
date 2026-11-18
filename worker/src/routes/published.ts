@@ -41,6 +41,9 @@ interface Req {
   kind?: string;
   id?: string;
   slug?: string;
+  /** The short company name and the page part of the address (`/s/<brand>/<page>`). */
+  brand?: string;
+  page?: string;
 }
 
 type Kind = 'site' | 'funnel';
@@ -48,7 +51,12 @@ const STORE: Record<Kind, string> = { site: 'crm_websites', funnel: 'crm_funnels
 
 const ACCOUNT_OK = /^[A-Za-z0-9_.-]{1,64}$/;
 const ITEM_OK = /^[A-Za-z0-9_.\-:]{1,120}$/;
-const SLUG_OK = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
+/* A page under a company name: "lone-star/free-quote" (pageAddress.ts). */
+const PART_OK = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
+const BRAND_OK = /^[a-z0-9](?:[a-z0-9-]{0,28}[a-z0-9])$/;
+const PATH_OK = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?(?:\/[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?)?$/;
+/* Names nobody may take: ours, and words a visitor would read as ours. */
+const RESERVED_BRANDS = new Set(['protected-central', 'protectedcentral', 'protected', 'app', 'api', 'www', 'admin', 'support', 'help', 'login', 'signup', 'billing', 'security', 'official', 'appsumo', 'testing', 'staging']);
 /* Under D1's 2 MB row cap with room for the other columns. A site this big
    is almost always pictures pasted in as data URLs; the refusal says so. */
 const MAX_PAGES_BYTES = 1_500_000;
@@ -135,18 +143,26 @@ export async function handlePublished(req: Request, env: Env): Promise<Response>
 
   /* ── The visitor ── */
   if (action === 'get') {
-    const slug = String(d.slug ?? '').trim().toLowerCase();
-    if (!SLUG_OK.test(slug)) return fail('There is no page at this address.', 200, { code: 'not_found' });
+    const asked = String(d.slug ?? '').trim().toLowerCase().replace(/\/+$/, '');
+    if (!PATH_OK.test(asked)) return fail('There is no page at this address.', 200, { code: 'not_found' });
     const ip = req.headers.get('CF-Connecting-IP') ?? 'unknown';
     /* Generous: a page load is one call. It bounds what one address can do to
        the view count and to the database, nothing more. */
     const limit = await rateLimit(env, { what: 'public-page', who: ip, max: 600, windowSeconds: 600 });
     if (!limit.allowed) return fail('Too many requests from this connection. Try again shortly.', 429);
-    const row = await env.DB.prepare('SELECT kind, name, pages, seo, updated_at FROM crm_public_pages WHERE slug = ?')
+    /* "brand/page" first; then the first part alone, which is an older
+       one-part address followed by one of its own pages ("/s/site/about"). */
+    let slug = asked;
+    let row = await env.DB.prepare('SELECT kind, name, pages, seo, updated_at FROM crm_public_pages WHERE slug = ?')
       .bind(slug).first<{ kind: string; name: string; pages: string; seo: string; updated_at: string }>();
+    if (!row && asked.includes('/')) {
+      slug = asked.split('/')[0];
+      row = await env.DB.prepare('SELECT kind, name, pages, seo, updated_at FROM crm_public_pages WHERE slug = ?')
+        .bind(slug).first<{ kind: string; name: string; pages: string; seo: string; updated_at: string }>();
+    }
     if (!row) return fail('There is no page at this address.', 200, { code: 'not_found' });
     await env.DB.prepare('UPDATE crm_public_pages SET views = views + 1 WHERE slug = ?').bind(slug).run();
-    return json({ success: true, page: { kind: row.kind, name: row.name, pages: parseOr(row.pages, []), seo: parseOr(row.seo, {}), updatedAt: row.updated_at } });
+    return json({ success: true, slug, page: { kind: row.kind, name: row.name, pages: parseOr(row.pages, []), seo: parseOr(row.seo, {}), updatedAt: row.updated_at } });
   }
 
   /* Checked before the workspace: reaching an unowned workspace claims it,
@@ -212,8 +228,44 @@ export async function handlePublished(req: Request, env: Env): Promise<Response>
     : { title: '', description: str(item.goal, 320), keywords: '', image: '' });
   const now = nowIso();
 
+  /* ── Under the company's short name (`/s/<brand>/<page>`) ──
+     Asked for when the browser sends one: AI Autopilot's wizard and the
+     publish panel both do. The name belongs to the first account to use it;
+     anybody else is told to choose another, never quietly given a variant
+     that looks like the same business. */
+  const brand = String(d.brand ?? '').trim().toLowerCase();
+  const pagePart = String(d.page ?? '').trim().toLowerCase() || slugBase(name).slice(0, 40).replace(/-+$/, '');
+  let wanted = '';
+  if (brand) {
+    if (!BRAND_OK.test(brand)) return fail('Use 2 to 30 lower-case letters, numbers and hyphens for the name in the address — for example lone-star.', 200, { field: 'publish.brand' });
+    if (RESERVED_BRANDS.has(brand)) return fail(`"${brand}" cannot be used in an address. Use your own business's short name.`, 200, { field: 'publish.brand' });
+    if (!PART_OK.test(pagePart)) return fail('Use lower-case letters, numbers and hyphens for the page part of the address — for example free-quote.', 200, { field: 'publish.page' });
+    await env.DB.prepare('INSERT OR IGNORE INTO crm_page_brands (brand, account_id, created_at) VALUES (?, ?, ?)').bind(brand, ws, nowIso()).run();
+    const owner = await env.DB.prepare('SELECT account_id FROM crm_page_brands WHERE brand = ?').bind(brand).first<{ account_id: string }>();
+    if (owner?.account_id !== ws) return fail(`Another account already publishes under "${brand}". Choose a different short name — add your town, for example.`, 200, { field: 'publish.brand', code: 'brand_taken' });
+    wanted = `${brand}/${pagePart}`;
+  }
+
   const existing = await env.DB.prepare('SELECT slug, published_at FROM crm_public_pages WHERE account_id = ? AND kind = ? AND item_id = ?')
     .bind(ws, kind, itemId).first<{ slug: string; published_at: string }>();
+  if (existing && wanted && existing.slug !== wanted) {
+    /* A new address for a page that was already live: the old link stops
+       working, which the panel says before the button is pressed. */
+    const clash = await env.DB.prepare('SELECT 1 AS x FROM crm_public_pages WHERE slug = ?').bind(wanted).first();
+    if (clash) return fail(`/s/${wanted} is already one of your pages. Choose a different page name.`, 200, { field: 'publish.page', code: 'slug_taken' });
+    await env.DB.prepare('UPDATE crm_public_pages SET slug = ?, name = ?, pages = ?, seo = ?, updated_at = ? WHERE slug = ? AND account_id = ?')
+      .bind(wanted, name, pagesJson, JSON.stringify(seo), now, existing.slug, ws).run();
+    return json({ success: true, slug: wanted, publishedAt: existing.published_at, updatedAt: now, republished: true, moved: existing.slug });
+  }
+  if (!existing && wanted) {
+    const clash = await env.DB.prepare('SELECT 1 AS x FROM crm_public_pages WHERE slug = ?').bind(wanted).first();
+    if (clash) return fail(`/s/${wanted} is already one of your pages. Choose a different page name.`, 200, { field: 'publish.page', code: 'slug_taken' });
+    await env.DB.prepare(
+      `INSERT INTO crm_public_pages (slug, account_id, kind, item_id, name, pages, seo, views, published_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+    ).bind(wanted, ws, kind, itemId, name, pagesJson, JSON.stringify(seo), now, now).run();
+    return json({ success: true, slug: wanted, publishedAt: now, updatedAt: now, republished: false });
+  }
   if (existing) {
     await env.DB.prepare('UPDATE crm_public_pages SET name = ?, pages = ?, seo = ?, updated_at = ? WHERE slug = ? AND account_id = ?')
       .bind(name, pagesJson, JSON.stringify(seo), now, existing.slug, ws).run();

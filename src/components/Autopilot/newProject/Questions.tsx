@@ -9,6 +9,7 @@
  * The business question is the one with a shape of its own, because there are
  * five honest ways to answer it and a dropdown would hide four.
  */
+import { cleanUrlPart, suggestUrlName } from '../../../services/pageAddress';
 import TemplatePicker from './TemplatePicker';
 import BookingSetup from './BookingSetup';
 import { useMemo, useRef } from 'react';
@@ -406,6 +407,22 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
           onFile={f => { answer(q.id, 'upload', 'you'); design.onFile(f); }}
           onNone={() => answer(q.id, 'none', 'you')}
           onAi={() => answer(q.id, byAi ? null : 'auto', 'default')} />
+      </div>
+    );
+  }
+  if (q.id === 'urlName') {
+    /* Filled with a suggestion from the business name, so most people only
+       look and move on; what they type is cleaned as they type it. */
+    const suggested = suggestUrlName(company ?? '');
+    const shown = String(val ?? '') || suggested;
+    return (
+      <div className="np-q">
+        {head}{help}
+        <input className="np-input" data-field="urlName" value={shown} placeholder={q.placeholder} maxLength={30}
+          onChange={e => answer(q.id, cleanUrlPart(e.target.value.replace(/\s+/g, '-')) || null, 'you')} />
+        <p style={{ margin: '6px 0 0', fontSize: 12.5, color: '#64748b' }}>
+          Your pages: <b>{window.location.host}/s/{shown || 'your-business'}/…</b> — for example /s/{shown || 'your-business'}/free-quote
+        </p>
       </div>
     );
   }

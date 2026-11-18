@@ -53,6 +53,11 @@
   if (!KEY) return;
   var COMPACT = script.hasAttribute('data-pc-compact');
   var TEASER = script.hasAttribute('data-pc-teaser');
+  /* Inside Protected Central, signed in (HelpLauncher sets it, and appMode()
+     on a sign-in without reload). The owner, 2026-11-18: the full-size "Help"
+     pill sat over AI Autopilot's buttons while it worked. Signed in, the
+     launcher is a small pill; the marketing site keeps its size. */
+  var APP = script.hasAttribute('data-pc-app');
   var KNOWN = {
     name: script.getAttribute('data-pc-name') || '',
     email: script.getAttribute('data-pc-email') || '',
@@ -2370,6 +2375,7 @@
 
     root.appendChild(panel); root.appendChild(launcher);
     document.body.appendChild(root);
+    if (APP) appSize();
     siteLauncher();
     teaser();
     /* The widget arrives after the page; a page waiting to offer its options
@@ -2655,6 +2661,23 @@
     launcher.classList.add('pc-launch-site');
     window.addEventListener('scroll', onScrollBlur, { passive: true });
   }
+  /* The signed-in launcher: about two thirds the size, closer to the corner,
+     and on a phone only its round icon — the label is in its accessible name. */
+  function appSize() {
+    if (!launcher || !root) return;
+    if (!document.getElementById('pc-app-size')) {
+      var st = document.createElement('style');
+      st.id = 'pc-app-size';
+      st.textContent = '.pc-launch-app{min-height:34px!important;padding:4px 12px 4px 4px!important;gap:6px!important;font-size:12.5px!important;box-shadow:0 6px 16px -6px rgba(15,23,42,.45)!important}'
+        + '.pc-launch-app .pc-launch-ic,.pc-launch-app>img{width:26px!important;height:26px!important}'
+        + '.pc-launch-app .pc-launch-ic svg{width:14px;height:14px}'
+        + '@media (max-width:760px){.pc-launch-app{padding:4px!important}.pc-launch-app>span:not(.pc-launch-ic):not(.pc-online-dot){display:none}}';
+      document.head.appendChild(st);
+    }
+    launcher.classList.add('pc-launch-app');
+    root.style.bottom = '12px';
+    root.style[root.style.left ? 'left' : 'right'] = '12px';
+  }
   /* What the lens replaced, put back by appMode. */
   var siteLead = null;
 
@@ -2672,6 +2695,8 @@
         var orb = launcher.querySelector('.pc-launch-orb');
         if (orb && siteLead) launcher.replaceChild(siteLead, orb);
       }
+      APP = true;
+      appSize();
     },
     open: function (view) {
       if (!panel) return;

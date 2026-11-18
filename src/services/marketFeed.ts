@@ -266,7 +266,11 @@ const EVERY_MODULE: Module[] = [
 /* AI Shorts is in the incubator (`video-studio`, docs/INCUBATOR.md): on live
    it is neither a tile nor part of the index — a score for a module the
    customer cannot open would only pull their number down. */
-export const MODULES: Module[] = featureReady('video-studio') ? EVERY_MODULE : EVERY_MODULE.filter(m => m.symbol !== 'SHORTS');
+/* Incubated modules have no instrument on live: AI Shorts (`video-studio`) and,
+   since 2026-11-18, Reputation (`reviews`). */
+export const MODULES: Module[] = EVERY_MODULE
+  .filter(m => featureReady('video-studio') || m.symbol !== 'SHORTS')
+  .filter(m => featureReady('reviews') || m.symbol !== 'REP');
 export const ALL_INSTRUMENTS: Module[] = [INDEX, ...MODULES];
 const BY_SYMBOL = new Map(ALL_INSTRUMENTS.map(m => [m.symbol, m]));
 

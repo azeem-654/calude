@@ -23,7 +23,7 @@
  * rather than understanding them, and the screen says which it did.
  */
 import {
-  CUSTOM, GROUP_ORDER, QUESTIONS, REQUIREMENT_INFO, SOLUTIONS, cadenceOf, solutionByKey,
+  CUSTOM, GROUP_ORDER, QUESTIONS, REQUIREMENT_INFO, SOLUTIONS, cadenceOf, solutionByKey, isOffered,
   type Answers, type Channel, type Contribution, type Question, type QuestionGroup,
   type RequirementId, type SetupStep, type WorkflowSpec,
 } from './projectSolutions';
@@ -175,7 +175,7 @@ export function matchSolutions(prompt: string, picked?: string): MatchResult {
     .sort((a, b) => b.score - a.score);
 
   /* A picked card is the customer telling us, and it outranks a word match. */
-  if (picked && picked !== CUSTOM && solutionByKey(picked)) {
+  if (picked && picked !== CUSTOM && isOffered(picked)) {
     const second = scores.find(s => s.key !== picked);
     const keys = [picked];
     if (second && second.score >= 4 && bringsSomethingNew(picked, second.key)) keys.push(second.key);
@@ -384,8 +384,13 @@ export function audienceIn(text: string): string | null {
   for (const re of patterns) {
     const m = re.exec(text);
     if (!m) continue;
-    const phrase = m[1].replace(STOP, '').trim().replace(/^(the|some|more|them)\s+/i, '');
+    /* How often is not who: "find leads daily" gave the live check of
+       2026-11-18 "Who it is for — leads daily". */
+    const phrase = m[1].replace(STOP, '').trim().replace(/^(the|some|more|them)\s+/i, '')
+      .replace(/\s+(?:daily|weekly|monthly|every ?(?:day|week|month)|each (?:day|week|month)|a (?:day|week|month)|per (?:day|week|month))\b.*$/i, '').trim();
     const words = phrase.split(/\s+/);
+    /* A bare "leads" or "new prospects" says nothing about who they are. */
+    if (/^(?:new\s+|good\s+|quality\s+|qualified\s+|more\s+)?(?:leads?|prospects?|contacts?|businesses|companies|sales|deals|clients?|customers?)$/i.test(phrase)) continue;
     /* A channel is never an audience: "…every day to email" is how, not who. */
     if (!phrase || words.length > 6 || /^(them|it|us|me|you|people|customers|clients|out|e-?mails?|texts?|sms|calls?|phone|whatsapp|messages?)$/i.test(phrase)) continue;
     if (/^(a|an|one|five|three|seven|\d)\b/i.test(phrase)) continue;
@@ -575,7 +580,12 @@ export function extractKnown(
     else if (kinds) put('prospectTrades', kinds, 'default', 'businesses that hire this kind of work — people like homeowners are not listed in business directories');
   }
   if (where) put('prospectPlaces', where, 'prompt', 'where, from your request');
-  if (/\bsms(?:e?s)?\b|\btexts?\b|\btext messages?\b|\btexting\b/.test(t)) put('prospectSms', 'yes', 'prompt', 'you asked for texts too — only to those who opt in');
+  /* Only an actual ask for texts: a bare "text" is as often "the text of the
+     email", and the live check of 2026-11-18 was told "you asked for texts
+     too" when nobody had. Never when they said not to. */
+  const wantsTexts = /\bsms(?:e?s)?\b|\btext messages?\b|\btexting\b|\b(?:send|by|via|and|or|with)\s+(?:a\s+)?texts?\b|\btexts?\s+(?:them|people|prospects|customers|leads|clients)\b/.test(t);
+  const noTexts = /\b(?:no|not|never|don'?t|do not|without)\s+(?:\w+\s+){0,2}(?:texts?|sms|texting)\b/.test(t);
+  if (wantsTexts && !noTexts) put('prospectSms', 'yes', 'prompt', 'you asked for texts too — only to those who opt in');
   const len = /\b(3|three|5|five|7|seven)[- ](?:step |part )?emails?\b/.exec(t);
   if (len) put('sequenceLength', String(numberIn(len[1])), 'prompt', fromYou);
   if (/\b(book|booking|meeting|call|calls|appointment)s?\b/.test(t)) put('emailGoal', 'booking', 'prompt', fromYou);
@@ -729,7 +739,7 @@ export function designQuestions(state: QuestionSource): Question[] {
   }
   /* Pages start from a real template, shown in the client's colours; the
      layout question is only asked if they leave the design to Autopilot. */
-  if (kinds.includes('page')) out.push(QUESTIONS.pageTemplate);
+  if (kinds.includes('page')) out.push(QUESTIONS.pageTemplate, QUESTIONS.urlName);
   for (const k of kinds) out.push(QUESTIONS[LAYOUT_QUESTION[k]]);
   if (kinds.includes('email')) out.push(QUESTIONS.emailStyle);
   return out.filter(Boolean);
@@ -1020,7 +1030,8 @@ export function buildBlueprint(state: IntakeState, ctx: BlueprintContext): Bluep
     strength: full.strength,
     channels,
     inputs,
-    outputs: uniq(c.outputs),
+    /* "No website or funnel" removes the page from what it promises, too (live check 2026-11-18). */
+    outputs: uniq(c.outputs).filter(o => !(noPage && /\bpage for\b|\bwebsite\b|\bfunnel\b|\blanding\b/i.test(o))),
     workflows,
     agents,
     schedules: uniq(workflows.filter(w => w.schedule).map(w => `${w.name}: ${w.schedule}`)),
@@ -1233,7 +1244,7 @@ export function validValue(q: Question, v: unknown): string | string[] | null {
 
 export function applyOps(state: IntakeState, ops: EditOps): IntakeState {
   let keys = [...state.solutionKeys];
-  for (const k of ops.addSolutions ?? []) if (solutionByKey(k) && !keys.includes(k)) keys.push(k);
+  for (const k of ops.addSolutions ?? []) if (isOffered(k) && !keys.includes(k)) keys.push(k);
   for (const k of ops.removeSolutions ?? []) keys = keys.filter(x => x !== k);
   if (!keys.length) keys = [CUSTOM];
   if (keys.length > 1) keys = keys.filter(k => k !== CUSTOM);

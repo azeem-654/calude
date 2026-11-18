@@ -650,7 +650,7 @@ export default function WebsiteBuilder({ website, onSave, onClose, onPersist }: 
           style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid #334155', background: 'transparent', color: '#cbd5e1', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
           🔗 Preview tab
         </button>
-        <PublishControl kind="site" itemId={website.id}
+        <PublishControl kind="site" itemId={website.id} itemName={siteData.name} urlName={siteData.urlName}
           beforePublish={() => onPersist?.({ ...siteData, pages } as Website)}
           onPublishedChange={on => {
             const next = { ...siteData, status: on ? 'published' as const : 'draft' as const };

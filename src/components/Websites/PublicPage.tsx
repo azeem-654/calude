@@ -1,5 +1,6 @@
 /**
- * A published website or funnel — `/s/<slug>` (audit H3/H4).
+ * A published website or funnel — `/s/<brand>/<page>`, or `/s/<slug>` for
+ * one published before addresses carried the company's name (audit H3/H4).
  *
  * Reached signed out and signed in, on the app host and on a reseller's own
  * domain: it is the visitor's page, so no app chrome, no login and nothing
@@ -48,7 +49,10 @@ function useMeta(attr: 'name' | 'property', key: string, value: string) {
 const norm = (s: string) => s.toLowerCase().replace(/^[#/]+|\/+$/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 export default function PublicPage() {
-  const { slug = '' } = useParams<{ slug: string }>();
+  /* `/s/<brand>/<page>` (a page under the company's short name) or an older
+     `/s/<slug>`; the server tries the two-part address first. */
+  const { slug: first = '', '*': rest = '' } = useParams<{ slug: string; '*': string }>();
+  const slug = [first, rest.split('/')[0]].filter(Boolean).join('/');
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'missing' | 'unreachable'>('loading');
   const [idx, setIdx] = useState(0);

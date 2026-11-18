@@ -202,7 +202,7 @@ export default function Understanding({ stages, state, finished, questionCount, 
           )}
 
           <section className="np-next" aria-label="What happens next">
-            <b>{questionCount === 0 ? 'Next: the plan' : `Next: ${questionCount} quick question${questionCount === 1 ? '' : 's'}`}</b>
+            <b>{questionCount === 0 ? 'Next: the plan' : `Next: ${questionCount} short step${questionCount === 1 ? '' : 's'} of questions`}</b>
             <span>
               {questionCount === 0 ? 'I have everything I need to draw up the plan.'
                 : topics.length ? `About ${topics.join(', ').toLowerCase()} — each with suggestions and “Let AI decide”.`

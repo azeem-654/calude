@@ -303,6 +303,20 @@ export function activeBranding(): Required<Branding> {
  * signed by somebody else: an empty string here leaves the sign-off off
  * entirely, which every caller already handles.
  */
+/**
+ * The name to put on a page template: the business's own, never the
+ * workspace's default label. The live check of 2026-11-18 found a funnel
+ * saying "My workspace looks at what you need and comes back with a clear
+ * price" — the account's name, not a business. Unknown: "Your Business",
+ * which reads as a blank to fill.
+ */
+export function templateBusinessName(): string {
+  const own = customerBusinessName().trim();
+  const acct = (activeAccount()?.name ?? '').trim();
+  const generic = (s: string) => !s || /^(my|our|the)\s+(workspace|business|account|company)$/i.test(s) || /^workspace\b/i.test(s);
+  return (!generic(own) && own) || (!generic(acct) && acct) || 'Your Business';
+}
+
 export function customerBusinessName(): string {
   const account = activeAccount();
   const fromAccount = (account?.businessName || '').trim();

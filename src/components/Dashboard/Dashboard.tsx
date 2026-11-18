@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { featureReady } from '../../services/features';
 import { bookingsAsAppointments, useRemoteBookings } from '../../services/useRemoteBookings';
 import {
   MessageSquare, ShoppingBag, CornerUpLeft, UserPlus, Briefcase,
@@ -846,7 +847,7 @@ export default function Dashboard() {
     desc: 'Qualify harder before quoting: verify budget, decision maker, and timeline on the first call to cut losses early.',
     action: { label: 'See lost deals', path: '/pipelines' },
   });
-  if (unrepliedReviews > 0) insights.push({
+  if (unrepliedReviews > 0 && featureReady('reviews')) insights.push({
     kind: 'flaw', title: `${unrepliedReviews} review${unrepliedReviews > 1 ? 's' : ''} still unanswered`,
     desc: 'A reply shows the next reader you are listening. Even a two-line thank-you helps.',
     action: { label: 'Reply now', path: '/reputation' },
@@ -872,11 +873,12 @@ export default function Dashboard() {
       desc: 'The sooner a new lead hears back, the likelier they are to buy. Keep an eye on Conversations, or let AI Autopilot reply for you.',
       action: { label: 'Open conversations', path: '/conversations' },
     },
-    {
-      kind: 'growth', title: 'Ask every happy customer for a review',
+    /* Reviews is in the incubator (2026-11-18): no tip that leads to "coming soon". */
+    ...(featureReady('reviews') ? [{
+      kind: 'growth' as const, title: 'Ask every happy customer for a review',
       desc: 'Recent reviews are what new customers read first. Automate the ask right after a won deal.',
       action: { label: 'Reputation hub', path: '/reputation' },
-    },
+    }] : []),
     {
       kind: 'growth', title: 'Follow up at least 5 times',
       desc: 'Many sales need several touches, and most people stop after one or two. A short email sequence with a few days between steps keeps you in mind.',

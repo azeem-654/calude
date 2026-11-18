@@ -79,6 +79,10 @@ export function useProtronIntake(initialCompany: string, start: IntroStep, mode:
   const [doing, setDoing] = useState<string[]>([]);
   const [note, setNote] = useState('');
   const [recs, setRecs] = useState<{ key: string; why: string }[]>([]);
+  /* Each suggestion is made once. The live check of 2026-11-18 saw "Protron
+     suggests adding Social Media Growth" under every question, included or
+     turned down: every turn re-matched the same words. */
+  const offered = useRef(new Set<string>());
   const [cardWhy, setCardWhy] = useState('');
   const [instruction, setInstruction] = useState('');
   const [talkDone, setTalkDone] = useState(false);
@@ -146,8 +150,11 @@ export function useProtronIntake(initialCompany: string, start: IntroStep, mode:
     if (f.place && !(cur.place ?? '').trim()) upd.place = f.place;
     if (Object.keys(upd).length) setBrief({ ...cur, ...upd });
     if (upd.website && (!cur.site || upd.site === null)) void readWebsite(upd.website);
-    setNote(r.offline ? (r.error ? `${r.error} — asking the standard questions instead.` : 'The AI is not answering, so I am asking the standard questions.') : '');
-    if (r.recommend.length) setRecs(prev => [...prev, ...r.recommend.filter(x => !prev.some(p => p.key === x.key))]);
+    setNote(r.offline ? (r.error ? (/standard questions/i.test(r.error) ? r.error : `${r.error} — asking the standard questions instead.`) : 'The AI is not answering, so I am asking the standard questions.') : '');
+    const chosenNow = new Set(chosenKeys({ ...cur, ...upd }));
+    const fresh = r.recommend.filter(x => !offered.current.has(x.key) && !chosenNow.has(x.key));
+    fresh.forEach(x => offered.current.add(x.key));
+    if (fresh.length) setRecs(prev => [...prev, ...fresh.filter(x => !prev.some(p => p.key === x.key))]);
     if (r.done || !r.ask) {
       setTalkDone(true);
       /* Always said, in the chat itself: the interview is over and which button is next. */
@@ -513,7 +520,7 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
   const liveOn = live.state === 'live' || live.state === 'connecting';
 
   const head = (title: React.ReactNode, sub: string) => (
-    <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+    <div className="np-intake-head" style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
       <span className="np-protron-face"><ProtronAvatar size={48} state={live.who.who === 'protron' ? 'speaking' : live.who.who === 'you' ? 'listening' : busy ? 'thinking' : 'idle'} /></span>
       <div style={{ minWidth: 0 }}>
         <h2 className="wz-title">{title}</h2>
@@ -685,7 +692,9 @@ export default function ProtronIntake({ p, onManual }: { p: ProtronIntakeState; 
     );
     const what = brief.site?.industry || (brief.nature ?? '').split(/[.,]/)[0] || brief.company;
     return (
-      <div style={{ display: 'grid', gap: 14, gridTemplateColumns: 'minmax(0, 1fr)', minWidth: 0 }}>
+      /* `np-talk-step`: the title and the composer stay where they are and only
+         the conversation scrolls (newProject.css, owner 2026-11-18). */
+      <div className="np-talk-step" style={{ display: 'grid', gap: 14, gridTemplateColumns: 'minmax(0, 1fr)', minWidth: 0 }}>
         {head(
           p.mode === 'year'
             ? <>Your <span className="wz-accent">12-month</span> business execution plan</>

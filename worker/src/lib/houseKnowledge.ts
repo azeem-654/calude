@@ -111,6 +111,10 @@ export async function houseFacts(env: Env): Promise<string> {
      developer's machine, off on live — so the live help button does not
      sell them. The same hosts as isRehearsal() in src/services/hosts.ts. */
   const video = /^(testing\.|localhost$|127\.0\.0\.1$)|\.workers\.dev$/.test(host);
+  /* The same switch holds back what went into the incubator on 2026-11-18:
+     Reviews, Jobs & revenue, the online shop, industry snapshots and the
+     managed trade, shop and medical-billing services. */
+  const held = !video;
 
   return `WHAT IT IS
 Protected Central is a CRM and marketing-automation platform where you describe the result you want and AI builds the system to get it. It is our own software, written and run by us, not a rebranded platform. Website: ${SITE}. Sign in: ${APP}.
@@ -123,9 +127,8 @@ MAIN FEATURES
 - Nothing sends unasked: every email or text starts as a draft until you approve it, and you choose what each business workspace may do on its own.
 - Content: social posts with images in your brand colours (Facebook, Instagram, LinkedIn, X, TikTok, Pinterest, YouTube) and SEO blog articles published to WordPress on a schedule, each waiting for approval.${video ? ' AI Video Studio for short videos and editing recordings by their transcript.' : ''}
 - Booking pages with reminders and rebooking for no-shows; a calendar.
-- Websites and funnels whose forms put leads straight into the CRM; an online shop.
-- Reviews: keep track of what people say about you on Google.
-- Customer Engagement: an AI chat widget, forms and tickets for your own website.
+- Websites and funnels whose forms put leads straight into the CRM${held ? '' : '; an online shop'}.
+${held ? '' : '- Reviews: keep track of what people say about you on Google.\n'}- Customer Engagement: an AI chat widget, forms and tickets for your own website.
 - Agencies: a workspace per client (sub-accounts) under your own brand and login address (white-label), and reports clients open without a login.
 - Works in a phone browser.
 
@@ -139,7 +142,7 @@ ${deal.map(p => planBlock(p, video)).join('\n')}
 
 AI CREDITS (what the "AI credits a month" on every plan means)
 ${AI_CREDITS_GUIDE}
-${services ? `
+${services && !held ? `
 MANAGED SERVICES (our team does the work, separate from the software plans, each with written terms)
 - ${ECOMMERCE_OFFER.name}: ${ecommerceLine()}. ${SITE}/ecommerce-management-services
 - ${TRADE_GROWTH_OFFER.name}: ${growthLine()}. ${SITE}/hvac and ${SITE}/roofing; terms at ${SITE}/growth-service-terms
@@ -147,10 +150,10 @@ MANAGED SERVICES (our team does the work, separate from the software plans, each
 ` : ''}
 WHERE THINGS ARE IN THE APP (menu name — address; say the name, give the address)
 - Dashboard — ${APP}/ · AI Autopilot (business workspaces) — ${APP}/autopilot · Contacts — ${APP}/contacts · AI Prospecting — ${APP}/prospecting · Lead library — ${APP}/lead-directory
-- Unified Inbox — ${APP}/conversations · Customer Engagement (chat widget, forms, tickets) — ${APP}/engagement · Reviews — ${APP}/reputation
-- Deals (pipelines) — ${APP}/pipelines · Jobs & revenue — ${APP}/jobs · Calendar — ${APP}/calendar · Booking pages — ${APP}/scheduling · Online shop — ${APP}/sell
+- Unified Inbox — ${APP}/conversations · Customer Engagement (chat widget, forms, tickets) — ${APP}/engagement${held ? '' : ` · Reviews — ${APP}/reputation`}
+- Deals (pipelines) — ${APP}/pipelines${held ? '' : ` · Jobs & revenue — ${APP}/jobs`} · Calendar — ${APP}/calendar · Booking pages — ${APP}/scheduling${held ? '' : ` · Online shop — ${APP}/sell`}
 - Email campaigns — ${APP}/marketing · Funnels — ${APP}/funnels · Websites — ${APP}/websites · Blog & SEO — ${APP}/blog-automation · Graphics Designer & Editor — ${APP}/social-creator · Media Library — ${APP}/video-studio · Reports — ${APP}/analytics
-- Settings — ${APP}/settings · Email & SMS setup (connect a mailbox or domain) — ${APP}/settings?tab=email-sms · Plan & billing — ${APP}/billing · Agency & clients — ${APP}/agency · Industry snapshots — ${APP}/snapshots · Affiliate program — ${APP}/affiliate
+- Settings — ${APP}/settings · Email & SMS setup (connect a mailbox or domain) — ${APP}/settings?tab=email-sms · Plan & billing — ${APP}/billing · Agency & clients — ${APP}/agency${held ? '' : ` · Industry snapshots — ${APP}/snapshots`} · Affiliate program — ${APP}/affiliate
 
 GETTING HELP
 - This chat; on this same help button, "Report a problem" (with a screenshot), "Submit a ticket" (we reply by email) and "Check ticket status" (by the email they wrote from — signed in, it shows their tickets at once); email ${SUPPORT_EMAIL}.

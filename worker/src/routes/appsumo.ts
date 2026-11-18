@@ -316,6 +316,15 @@ export async function handleAppsumo(req: Request, env: Env): Promise<Response> {
         WHERE status = 'redeemed' GROUP BY owner_email ORDER BY lastAt DESC LIMIT 500`,
     ).all<{ email: string; codes: number; lastAt: string }>();
     const by = Object.fromEntries((counts.results ?? []).map(r => [r.status, Number(r.n)]));
+    /* By batch: the owner read "996 unused" beside "7 redeemed" for 1,000 codes
+       and asked where three went (live check, 2026-11-18). They were in other
+       batches — a test batch or an import — and the totals were across all of
+       them. Each batch's own numbers make that visible. */
+    const batches = await env.DB.prepare(
+      `SELECT batch, COUNT(*) AS total, SUM(status = 'unused') AS unused, SUM(status = 'redeemed') AS redeemed, SUM(status = 'revoked') AS revoked,
+              MIN(created_at) AS madeAt
+         FROM crm_appsumo_codes GROUP BY batch ORDER BY madeAt`,
+    ).all<{ batch: string; total: number; unused: number; redeemed: number; revoked: number; madeAt: string }>().catch(() => ({ results: [] as never[] }));
     const lc = await env.DB.prepare('SELECT status, COUNT(*) AS n FROM crm_appsumo_licenses WHERE parent_key IS NULL GROUP BY status').all<{ status: string; n: number }>();
     const holders = await env.DB.prepare(
       `SELECT owner_email AS email, tier, updated_at AS lastAt FROM crm_appsumo_licenses
@@ -326,6 +335,7 @@ export async function handleAppsumo(req: Request, env: Env): Promise<Response> {
     return json({
       success: true,
       counts: { unused: by.unused ?? 0, redeemed: by.redeemed ?? 0, revoked: by.revoked ?? 0 },
+      batches: (batches.results ?? []).map(b => ({ batch: b.batch, total: Number(b.total), unused: Number(b.unused), redeemed: Number(b.redeemed), revoked: Number(b.revoked), madeAt: b.madeAt })),
       redeemers: (who.results ?? []).map(r => ({ ...r, codes: Number(r.codes), planId: appsumoPlanFor(Number(r.codes)) })),
       licensing: {
         ...licensingReady(env),

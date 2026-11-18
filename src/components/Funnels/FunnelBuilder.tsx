@@ -14,7 +14,7 @@ import { useHistory } from '../../hooks/useHistory';
 import { GradientSwatchRow } from '../shared/gradientPresets';
 import { ScaledPage } from '../shared/BlockRender';
 import { TEMPLATE_CATALOG, buildTemplatePages } from '../shared/pageTemplates';
-import { activeAccount } from '../../services/tenancy';
+import { activeAccount, templateBusinessName } from '../../services/tenancy';
 import PublishControl from '../shared/PublishControl';
 
 /* ─── Step type config ─── */
@@ -90,7 +90,7 @@ function FunnelOverview({ funnel, pages, onEditPage, onAddPage, onDeletePage, on
         <button onClick={onClose} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #334155', background: 'transparent', color: '#94a3b8', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>← Back</button>
         <span style={{ color: '#f8fafc', fontWeight: 700, fontSize: 15 }}>{funnel.name}</span>
         <div style={{ flex: 1 }} />
-        <PublishControl kind="funnel" itemId={funnel.id} beforePublish={onPersist} onPublishedChange={onPublishedChange} />
+        <PublishControl kind="funnel" itemId={funnel.id} itemName={funnel.name} urlName={funnel.urlName} beforePublish={onPersist} onPublishedChange={onPublishedChange} />
         <button onClick={onSave} style={{ padding: '7px 18px', borderRadius: 6, border: 'none', background: '#6366f1', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
           <Save size={13} /> Save
         </button>
@@ -1167,7 +1167,7 @@ export default function FunnelBuilder({ funnel, onSave, onClose, onPersist }: Fu
   const editorThemes = useMemo(() => {
     const acct = activeAccount();
     const ctx = {
-      name: acct?.businessName?.trim() || acct?.name?.trim() || 'Your Business',
+      name: templateBusinessName(),
       color: acct?.color || '#6366f1',
       tagline: acct?.industry ? `Trusted ${acct.industry.toLowerCase()} experts` : undefined,
     };
@@ -1367,7 +1367,7 @@ export default function FunnelBuilder({ funnel, onSave, onClose, onPersist }: Fu
           style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e8ecf0', background: 'white', color: '#374151', fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}>
           <ExternalLink size={13} /> Preview tab
         </button>
-        <PublishControl kind="funnel" itemId={funnel.id} tone="light"
+        <PublishControl kind="funnel" itemId={funnel.id} tone="light" itemName={funnel.name} urlName={funnel.urlName}
           beforePublish={() => onPersist?.({ pages, steps: pages.length })}
           onPublishedChange={on => onPersist?.({ pages, steps: pages.length, status: on ? 'active' : 'draft' })} />
         <button onClick={handleSave}

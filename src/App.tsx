@@ -1,4 +1,5 @@
 import { featureReady } from './services/features';
+import Incubated from './components/shared/Incubated';
 import { useState, useEffect, lazy, Suspense, type ComponentType } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
@@ -361,12 +362,13 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           <Route path="/social-creator/design/:id" element={<Suspense fallback={null}><DesignStudio /></Suspense>} />
           <Route path="/social-creator/editor/:id" element={<PostEditor />} />
           <Route path="/analytics" element={<Analytics />} />
-          <Route path="/reputation" element={<Reputation />} />
+          {/* The incubator (docs/INCUBATOR.md): these say "coming soon" on live. */}
+          <Route path="/reputation" element={featureReady('reviews') ? <Reputation /> : <Incubated name="Reviews" why="Reading your Google reviews needs a Google Maps connection that is being switched on. It is built and being tested, and opens soon." />} />
           {/* Agency dashboard is off-limits to client logins */}
           <Route path="/agency" element={isClient ? <Navigate to="/" replace /> : <AgencyDashboard />} />
           <Route path="/billing" element={<ClientBilling />} />
           <Route path="/autopilot" element={<Autopilot />} />
-          <Route path="/sell" element={<Commerce />} />
+          <Route path="/sell" element={featureReady('online-shop') ? <Commerce /> : <Incubated name="The online shop" />} />
           <Route path="/settings" element={<Settings />} />
           {/* The screen itself checks who is asking, and so does every action
               behind it — a client login that guesses the address gets a
@@ -375,11 +377,11 @@ function AppLayout({ isClient }: { isClient: boolean }) {
           {/* The owner's list of who signed up; the server refuses anybody else. */}
           <Route path="/signups" element={<Signups />} />
           {/* The owner's growth-service desk; the server refuses anybody else. */}
-          <Route path="/growth" element={<GrowthService />} />
+          <Route path="/growth" element={featureReady('trade-services') ? <GrowthService /> : <Incubated name="The growth service" />} />
           {/* The owner installs snapshots for customers; nobody else reaches the screen, and the server refuses them anyway. */}
-          <Route path="/snapshots" element={isInstallOwner() ? <Snapshots /> : <Navigate to="/" replace />} />
-          <Route path="/jobs" element={<JobsRevenue />} />
-          <Route path="/rcm" element={<MedicalBilling />} />
+          <Route path="/snapshots" element={!isInstallOwner() ? <Navigate to="/" replace /> : featureReady('trade-services') ? <Snapshots /> : <Incubated name="Industry snapshots" />} />
+          <Route path="/jobs" element={featureReady('jobs-revenue') ? <JobsRevenue /> : <Incubated name="Jobs & revenue" />} />
+          <Route path="/rcm" element={featureReady('medical-billing') ? <MedicalBilling /> : <Incubated name="Medical billing" />} />
           <Route path="/affiliate" element={<Affiliate />} />
           <Route path="/terms" element={<PolicyPage />} />
           <Route path="/security" element={<TrustCenter />} />

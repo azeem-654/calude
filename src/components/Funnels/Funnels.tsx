@@ -8,7 +8,7 @@ import type { Funnel as FunnelType, FunnelStep } from '../../types';
 import { buildFunnelPage, type BrandContext, type TemplateMeta } from '../shared/pageTemplates';
 import TemplateGallery from '../shared/TemplateGallery';
 import { PagesStrip, ScaledPage } from '../shared/BlockRender';
-import { activeAccount, customerBusinessName } from '../../services/tenancy';
+import { activeAccount, customerBusinessName, templateBusinessName } from '../../services/tenancy';
 import SourceTag from '../shared/SourceTag';
 import { WizardBackdrop } from '../shared/WizardChrome';
 import { publicUrl, unpublishItem, usePublished } from '../../services/publishedPages';
@@ -71,7 +71,7 @@ function defaultPages(steps: { name: string; type: FunnelStep['type'] }[], ctx: 
 function brandContext(): BrandContext {
   const acct = activeAccount();
   return {
-    name: customerBusinessName() || acct?.name?.trim() || 'Your Business',
+    name: templateBusinessName(),
     color: acct?.color || '#6366f1',
     tagline: acct?.industry ? `${acct.industry} services` : undefined,
   };

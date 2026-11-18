@@ -227,7 +227,10 @@ export function placesError(status: number, body: GoogleError): { error: string;
 }
 
 /** Codes that mean the key itself is wrong, so its status should say so. */
-export const KEY_FAULT = /^(bad_key|api_disabled|key_restricted|billing)$/;
+/* `denied` is Google's 403 "Permission denied on the service" — what an
+   install key says while the Maps API waits on its billing deposit (live,
+   2026-11-18). It is the key's fault, not the request's, so it counts. */
+export const KEY_FAULT = /^(bad_key|api_disabled|key_restricted|billing|denied)$/;
 
 export const httpsOnly = (u: unknown): string => {
   const s = String(u ?? '');

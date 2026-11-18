@@ -12,6 +12,7 @@ import {
   CheckCircle, XCircle, Info, BellOff, Crosshair, Sparkles, Users, Lock, ShieldCheck, LayoutGrid,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { featureReady } from '../../services/features';
 import CommandPalette from './CommandPalette';
 import { NAV_GROUPS, activeGroupId, isItemActive } from './navModel';
 import { watchPulse, type Pulse } from '../../services/autopilotPulse';
@@ -790,7 +791,8 @@ export function IconRail() {
     [
       { icon: Phone, tip: 'Inbox', path: '/conversations', onClick: () => navigate('/conversations') },
       { icon: TriangleAlert, tip: 'Reports', path: '/analytics', onClick: () => navigate('/analytics') },
-      { icon: Star, tip: 'Reviews', path: '/reputation', onClick: () => navigate('/reputation') },
+      /* Reviews is in the incubator (2026-11-18): no button where it is not open. */
+      ...(featureReady('reviews') ? [{ icon: Star, tip: 'Reviews', path: '/reputation', onClick: () => navigate('/reputation') }] : []),
     ],
   ];
 

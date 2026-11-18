@@ -26,7 +26,7 @@ import { decryptSecret, encryptSecret } from './crypto';
 import { installSecret, nowIso, type Env } from './db';
 import { rateLimit } from './rateLimit';
 import { trialForWorkspace } from './trial';
-import { NO_KEY, PLACE_ID_RE, PLACES_TRIAL_ENDED, SECRET_KEY, httpsOnly, placesKeyFor, type GResult, type PlacesKey } from './googlePlaces';
+import { NO_KEY, PLACE_ID_RE, PLACES_TRIAL_ENDED, SECRET_KEY, httpsOnly, installPlacesKey, placesKeyFor, type GResult, type PlacesKey } from './googlePlaces';
 
 const KIND = 'serpapi';
 /** Carried in the key string so the existing Places calls can tell which service to ask. */
@@ -75,9 +75,16 @@ export async function markSerpKey(env: Env, ok: boolean, error = ''): Promise<vo
  */
 export async function reviewKeyFor(env: Env, accountId: string): Promise<PlacesKey> {
   const k = await placesKeyFor(env, accountId);
-  if (k.ok || k.code !== 'no_key') return k;
+  /* The install's Maps key counts only while Google accepts it. Live check
+     2026-11-18: the stored key was refused ("Permission denied on the
+     service") and every review search failed, with a working SerpApi key
+     beside it marked "Not in use". A refused install key now hands over to
+     SerpApi; a workspace's own key is the customer's choice and stays. */
+  const refusedInstall = k.ok && k.whose === 'install' && (await installPlacesKey(env))?.status === 'error';
+  if (k.ok && !refusedInstall) return k;
+  if (!k.ok && k.code !== 'no_key') return k;
   const serp = await installSerpKey(env);
-  if (!serp) return k;
+  if (!serp || serp.status === 'error') return k;
   if ((await trialForWorkspace(env, accountId).catch(() => null))?.kind === 'ended') {
     return { ok: false, code: 'trial_ended', error: PLACES_TRIAL_ENDED };
   }

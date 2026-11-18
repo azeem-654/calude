@@ -284,6 +284,22 @@ const answerAll = (s: IntakeState): IntakeState => {
   const who = audienceIn('The clinic welcomes new leads by email, follows up until they book, and also find new local partner businesses every day to email.');
   ok('a channel is never the audience', who === 'local partner businesses', String(who));
 }
+/* ── The live check of 2026-11-18 ── */
+{
+  const { tradeOf } = await import('../src/services/answerIdeas.ts');
+  const { audienceIn } = await import('../src/services/projectIntake.ts');
+  const { guessIntroFacts } = await import('../src/services/protron/intake.ts');
+  const { suggestUrlName, suggestPagePart } = await import('../src/services/pageAddress.ts');
+  ok('an electrician whose site says "homes and properties" is home services, not real estate',
+    tradeOf('Lone Star Electric — licensed electricians for homes and properties in Austin').name === 'home services');
+  ok('a plumber is never offered a home valuation', !tradeOf('Blue Ridge Plumbing serves homes and commercial properties').offer.some(o => /valuation/i.test(o)));
+  ok('a realtor is still real estate', tradeOf('Realtor selling homes for sale in Richmond').name === 'real estate');
+  ok('"I run Blue Ridge Plumbing" names the business without "I run"', guessIntroFacts('I run Blue Ridge Plumbing').company === 'Blue Ridge Plumbing', guessIntroFacts('I run Blue Ridge Plumbing').company);
+  ok('"find leads daily" is not an audience', audienceIn('Find leads daily and email them') === null, String(audienceIn('Find leads daily and email them')));
+  ok('a short address name from the business name', suggestUrlName('Lone Star Electric LLC') === 'lone-star' && suggestUrlName('I run Blue Ridge Plumbing') === 'blue-ridge', `${suggestUrlName('Lone Star Electric LLC')} ${suggestUrlName('I run Blue Ridge Plumbing')}`);
+  ok('the page part drops the business words', suggestPagePart('Lone Star Electric — Free Quote Request', 'lone-star', 'funnel', 'Lone Star Electric') === 'free-quote-request', suggestPagePart('Lone Star Electric — Free Quote Request', 'lone-star', 'funnel', 'Lone Star Electric'));
+  ok('a website named only after the business is "website"', suggestPagePart('Lone Star Electric', 'lone-star', 'site', 'Lone Star Electric') === 'website');
+}
 /* ── Suggested answers without the AI (services/answerIdeas.ts) ── */
 {
   const { ideasFor } = await import('../src/services/answerIdeas.ts');

@@ -531,7 +531,11 @@
 .pth-orbit b + b { top: auto; bottom: -3.5px; background: var(--pth-c2); box-shadow: 0 0 10px 2px var(--pth-c2); width: 5px; height: 5px; left: calc(50% - 2.5px); }
 .pth-face { position: relative; display: grid; place-items: center; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 1px color-mix(in srgb, var(--pth-c) 40%, transparent), 0 0 26px -4px var(--pth-c); }
 .pth-face .pt-av { display: block; }
-.pth-scan { position: absolute; left: 0; right: 0; height: 32%; top: -35%; background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--pth-c) 38%, transparent) 70%, color-mix(in srgb, #fff 55%, var(--pth-c)) 96%, transparent); mix-blend-mode: screen; opacity: 0; pointer-events: none; }
+/* A light that comes on now and then across the face — it used to be a bar
+   sweeping top to bottom, which with the bob read as the face "flapping up and
+   down" (owner, 2026-11-18). Now a soft glint, still the state's colour. */
+.pth-scan { position: absolute; inset: 0; background: radial-gradient(circle at 30% 28%, color-mix(in srgb, #fff 70%, var(--pth-c)) 0, color-mix(in srgb, var(--pth-c) 45%, transparent) 26%, transparent 58%); mix-blend-mode: screen; opacity: 0; pointer-events: none; }
+.pth { perspective: 240px; }
 .pth-sparks b { position: absolute; bottom: 12%; width: 4px; height: 4px; border-radius: 50%; background: var(--pth-c); box-shadow: 0 0 8px var(--pth-c); opacity: 0; }
 .pth-sparks b:nth-child(1) { left: 14%; } .pth-sparks b:nth-child(2) { left: 30%; background: var(--pth-c2); }
 .pth-sparks b:nth-child(3) { left: 52%; } .pth-sparks b:nth-child(4) { left: 70%; background: var(--pth-c2); } .pth-sparks b:nth-child(5) { left: 86%; }
@@ -551,17 +555,22 @@
 :root[data-theme="dark"] .pth-thought-cloud { color: #e9e4ff; background: linear-gradient(135deg, rgba(139, 92, 246, .22), rgba(34, 211, 238, .14)); }
 
 @media (prefers-reduced-motion: no-preference) {
-  .pth { animation: pth-bob 6s ease-in-out infinite; }
+  /* No bob: the face stays put and now and then looks to one side, then the
+     other, and nods — present, not bouncing — while the halo slowly changes
+     colour. The pause between moves is most of the cycle on purpose. */
+  .pth-face { animation: pth-look 11s ease-in-out infinite; transform-style: preserve-3d; }
+  .pth-halo { animation: pth-breathe 3.6s ease-in-out infinite, pth-hue 14s ease-in-out infinite; }
   .pth-ring { animation: pth-spin 7s linear infinite; }
   .pth-orbit { animation: pth-spin 11s linear infinite reverse; }
-  .pth-halo { animation: pth-breathe 3.6s ease-in-out infinite; }
-  .pth-scan { animation: pth-scan 4.8s ease-in-out infinite; }
+  .pth-scan { animation: pth-glint 7s ease-in-out infinite; }
   .pth-sparks b { animation: pth-spark 3.8s ease-in infinite; }
   .pth-sparks b:nth-child(2) { animation-delay: .7s; } .pth-sparks b:nth-child(3) { animation-delay: 1.5s; }
   .pth-sparks b:nth-child(4) { animation-delay: 2.2s; } .pth-sparks b:nth-child(5) { animation-delay: 3s; }
   .pth[data-state="thinking"] .pth-ring, .pth[data-state="working"] .pth-ring { animation-duration: 2.6s; }
   .pth[data-state="thinking"] .pth-orbit, .pth[data-state="working"] .pth-orbit { animation-duration: 4.5s; }
-  .pth[data-state="thinking"] .pth-scan, .pth[data-state="working"] .pth-scan { animation-duration: 2.4s; }
+  .pth[data-state="thinking"] .pth-scan, .pth[data-state="working"] .pth-scan { animation-duration: 3.2s; }
+  .pth[data-state="thinking"] .pth-face { animation-duration: 6s; }
+  .pth[data-state="done"] .pth-face { animation: pth-nod 1.4s ease-in-out 1; }
   .pth[data-state="done"] .pth-ring { animation-duration: 14s; }
   .pth-thought-line { animation: pth-line 0.9s cubic-bezier(.2, .8, .2, 1); }
   .pth-thought-dots b { animation: pth-dot 1.4s ease-in-out infinite; }
@@ -569,9 +578,22 @@
   .pth-thought-dot-1 { animation: pth-pop 2.4s ease-in-out infinite; } .pth-thought-dot-2 { animation: pth-pop 2.4s ease-in-out .3s infinite; }
 }
 @keyframes pth-spin { to { transform: rotate(360deg); } }
-@keyframes pth-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes pth-look {
+  0%, 52%, 100% { transform: none; }
+  58% { transform: rotateY(16deg) translateX(1px); }
+  64% { transform: rotateY(16deg) translateX(1px); }
+  70% { transform: rotateY(-16deg) translateX(-1px); }
+  76% { transform: rotateY(-16deg) translateX(-1px); }
+  82% { transform: none; }
+  86% { transform: rotateX(16deg) translateY(1.5px); }
+  89% { transform: none; }
+  92% { transform: rotateX(12deg) translateY(1px); }
+  95% { transform: none; }
+}
+@keyframes pth-nod { 0%, 100% { transform: none; } 25% { transform: rotateX(18deg) translateY(2px); } 50% { transform: none; } 75% { transform: rotateX(12deg) translateY(1px); } }
+@keyframes pth-hue { 0%, 100% { filter: none; } 33% { filter: hue-rotate(50deg) saturate(1.2); } 66% { filter: hue-rotate(-40deg); } }
+@keyframes pth-glint { 0%, 60%, 100% { opacity: 0; } 68% { opacity: .85; } 80% { opacity: 0; } }
 @keyframes pth-breathe { 0%, 100% { opacity: .55; transform: scale(.96); } 50% { opacity: 1; transform: scale(1.05); } }
-@keyframes pth-scan { 0% { top: -35%; opacity: 0; } 15% { opacity: .9; } 70% { opacity: .7; } 100% { top: 105%; opacity: 0; } }
 @keyframes pth-spark { 0% { transform: translateY(0) scale(.6); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(-120%) scale(1.1); opacity: 0; } }
 @keyframes pth-line { from { opacity: 0; transform: translateY(6px); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
 @keyframes pth-dot { 0%, 100% { opacity: .3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }

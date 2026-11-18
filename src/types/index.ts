@@ -534,6 +534,8 @@ export interface Funnel {
   revenue: number;
   status: 'active' | 'draft';
   slug?: string;
+  /** The company's short name in its public address (/s/<urlName>/<page>; services/pageAddress.ts). */
+  urlName?: string;
   pages?: FunnelStep[];
   createdAt?: string;
 }
@@ -548,6 +550,8 @@ export interface Website {
   subdomain?: string;
   status: 'published' | 'draft';
   template?: string;
+  /** The company's short name in its public address (/s/<urlName>/<page>; services/pageAddress.ts). */
+  urlName?: string;
   pages?: FunnelStep[];
   favicon?: string;
   seoTitle?: string;

@@ -1,6 +1,6 @@
 /**
  * publishedPages.ts — client for api/published.php: websites and funnels on
- * the open web at /s/<slug> (audit H3/H4).
+ * the open web at /s/<company>/<page>, or /s/<slug> for older ones (audit H3/H4).
  *
  * The server is the only record of what is public. The `status` flag on a
  * Website or Funnel in synced storage is kept in step for older readers, but
@@ -97,15 +97,15 @@ export function usePublished(): PublishedState & { get: (kind: PublishKind, item
  * queue is pushed first — otherwise "Publish changes" would publish the edit
  * before last.
  */
-export async function publishItem(kind: PublishKind, itemId: string): Promise<{ ok: boolean; slug?: string; error?: string }> {
+export async function publishItem(kind: PublishKind, itemId: string, address?: { brand: string; page: string }): Promise<{ ok: boolean; slug?: string; error?: string; field?: string }> {
   /* The builder's save runs inside a React state updater, which React may
      run on the next render rather than at the call — so give it that render
      before pushing the queue, or the flush can go out without the edit. */
   await new Promise(r => setTimeout(r, 60));
   await flushNow().catch(() => undefined);
-  const res = await call({ action: 'publish', kind, id: itemId, ...signedIn() });
+  const res = await call({ action: 'publish', kind, id: itemId, ...(address ? { brand: address.brand, page: address.page } : {}), ...signedIn() });
   if (!res) return { ok: false, error: 'The server could not be reached. Nothing was published.' };
-  if (!res.success) return { ok: false, error: String(res.error ?? 'That could not be published.') };
+  if (!res.success) return { ok: false, error: String(res.error ?? 'That could not be published.'), field: res.field ? String(res.field) : undefined };
   await refreshPublished();
   return { ok: true, slug: String(res.slug ?? '') };
 }
