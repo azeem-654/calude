@@ -408,6 +408,38 @@ capability `needs` strings stopped mentioning it in the same commit that added
 the fallback — removing the ask before supplying the thing would have been a
 promise the product could not keep.
 
+## Page addresses and the live check of 2026-11-18
+
+- **`/s/<company>/<page>`.** The wizard asks `urlName` ("A short name for
+  your page addresses") on the website/funnel screen whenever a page is being
+  made, prefilled from the business name (`services/pageAddress.ts`
+  `suggestUrlName`: "Lone Star Electric LLC" → `lone-star`). The build stamps
+  it on the Website/Funnel (`urlName`) and remembers it (`crm_page_brand`); the
+  publish panel (`shared/PublishControl.tsx`) shows `…/s/[name]/[page]`, refuses
+  a blank name, and can move a live page (the old link stops). The Worker
+  (`routes/published.ts`) keeps each name to the first account
+  (`crm_page_brands`, migration 0103), refuses names that read as ours, and
+  `get` tries `brand/page` then the first part, so older one-part addresses
+  still work. `/s/<slug>` remains the prefix — a bare `/<company>` would
+  collide with app routes.
+- **Chat layout.** In the talk step the card has one height
+  (`.np-card[data-chat='1']`); the title, composer and notes hold still and
+  only `.np-chat-log` scrolls (newProject.css).
+- **Trades.** `answerIdeas.ts` lists home services before real estate and
+  real estate no longer matches a bare "property" — an electrician got
+  "What your home is worth this month" from his own site's "homes and
+  properties".
+- **Interview robustness.** A truncated or newline-broken AI answer keeps its
+  `reply` (`partialReply`) instead of "The AI answer could not be read"; "I
+  run X" is not the name (`withoutOpener`); each recommendation is offered
+  once; "find leads daily" is not an audience; texts are inferred only from a
+  real ask; "No website or funnel" removes page outputs; "Next: N short steps
+  of questions" counts screens, matching "1 OF N".
+- **Not done:** "Email past customers a monthly maintenance reminder" still
+  maps to Customer Reactivation (tag-triggered). A recurring monthly email to
+  existing customers needs a scheduled-reminder workflow type the cron can
+  run; there is none yet.
+
 ## Fairness, authenticated domains and managed buying
 
 - **Every live project is visited** (F-2): `runAutopilot` walks projects in id

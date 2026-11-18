@@ -238,3 +238,21 @@ business), publishes it as edited, and the build links it to the project and
 marks the set-up step `done` (launch steps carry `done`; Overview ticks it).
 `test:security` covers take-over by id, address clashes, foreign projects,
 listing and deleting across accounts.
+
+## 2026-11-18 — Reviews incubated; SerpApi takes over from a refused Maps key; bookings can be deleted
+
+- Reviews (`/reputation`) is in the incubator (`reviews`, docs/INCUBATOR.md)
+  until the Google Maps key is paid for.
+- `reviewKeyFor` (lib/serpReviews.ts) no longer lets a stored install Maps key
+  that Google refuses (`crm_install_providers.status = 'error'`) block
+  SerpApi: a refused install key hands over. `find_place` marks the install
+  key refused on a key fault (`KEY_FAULT` now includes `denied`, Google's 403
+  "Permission denied on the service") and retries the same search through
+  SerpApi. Platform services' "Not in use" badge follows the same rule. A
+  workspace's own key is never overridden.
+- Booking pages → Bookings: the trash cancels a live booking (the guest is
+  told) and deletes one already cancelled (`booking.php` `delete`, which
+  refuses an upcoming confirmed booking). Covered in `test:security`.
+- The booking page's auto-publish is keyed on the schedule's content, so a
+  sync handing over an equal schedule no longer leaves "Publishing booking
+  page…" on screen.

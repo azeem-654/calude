@@ -445,3 +445,11 @@ keys alone (no Gemini key). Not shared testing ← live (LIVE_VAULT carries the
 Google pool only). Tests: `test:aikeys` (OpenAI stand-in on `OPENAI_BASE`),
 `test:forms`.
 
+
+## The help button's size inside the app (2026-11-18)
+
+Signed in, HelpLauncher adds `data-pc-app` to the widget script (and
+`appMode()` does the same on a sign-in without reload): `public/widget.js`
+draws the launcher as a small pill (34 px high, 12 px from the corner; icon
+only under 760 px) so it no longer covers AI Autopilot's buttons. The
+marketing site and customers' own sites keep the full-size launcher.
