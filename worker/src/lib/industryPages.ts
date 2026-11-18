@@ -212,7 +212,9 @@ export const SITEMAP_PATHS = ['/', '/pricing', '/ecommerce-management-services',
 
 /** The sitemap, without the service sites where they are not public (servicesPublic). */
 export function sitemapXml(withServices = true): string {
-  const urls = SITEMAP_PATHS.filter(p => withServices || !industryFor(p)).map(p => `  <url><loc>${SITE_ORIGIN}${p}</loc></url>`).join('\n');
+  /* The growth service's terms go with the service sites: a page in the
+     sitemap about an offer the site does not make would be found and read. */
+  const urls = SITEMAP_PATHS.filter(p => withServices || (!industryFor(p) && p !== '/growth-service-terms')).map(p => `  <url><loc>${SITE_ORIGIN}${p}</loc></url>`).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
 }
 

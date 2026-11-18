@@ -21,6 +21,7 @@ import { CARD_PLANS, isUnlimited, sendEnquiry, type EnquiryNeed } from '../../se
 import { BillingToggle, ComparisonTable, PlanCards, usePlanTable } from './PricingParts';
 import { BILLING_CLAUSE, hasYearly } from './pricingTerms';
 import { servicesPublic } from '../../../worker/src/lib/industryPages';
+import { anyServiceShown } from './siteFeatures';
 import './site.css';
 import { featureReady } from '../../services/features';
 
@@ -55,7 +56,7 @@ export default function PricingPage() {
     { q: 'How am I billed?', a: `Monthly, in US dollars: ${sold.map(p => `${p.name} $${(p.monthlyCents / 100).toLocaleString('en-US')} a month`).join(', ')}. The first charge is at the end of the 7-day trial, when you choose a plan in Plan & billing, and the plan renews each month until you cancel. Taxes, if any apply, are shown at checkout.` },
     { q: 'I already subscribe on an older plan. Does anything change?', a: 'No. If you are on Starter, Pro, Agency or a yearly plan, you keep your price and your allowance for as long as you stay subscribed. The new prices apply to new subscriptions.' },
     { q: 'Can I cancel?', a: 'Yes. Plan & billing → Manage billing & payment method opens the payment provider’s own portal, where you change your card, see invoices and cancel. When the provider tells us the subscription has ended, the AI and automations stop as they do at the end of a trial; your records stay yours.' },
-    { q: 'What happens when I reach an allowance?', a: 'That one thing waits — a new business workspace, the month’s next Short or post — and the app says which allowance it is, how much is used and which plan raises it. Nothing is charged extra, and monthly allowances start again on the 1st.' },
+    { q: 'What happens when I reach an allowance?', a: `That one thing waits — a new business workspace, the month’s next ${featureReady('video-studio') ? 'Short or post' : 'post'} — and the app says which allowance it is, how much is used and which plan raises it. Nothing is charged extra, and monthly allowances start again on the 1st.` },
     { q: 'Can I change plan?', a: 'Choose a larger plan from Plan & billing before you subscribe, or, once subscribed, write to us with the form below and we move you.' },
     { q: 'Who sees my card?', a: 'Nobody here. You pay on the payment provider’s own secure checkout; this app never sees or stores your card.' },
   ];
@@ -80,8 +81,8 @@ export default function PricingPage() {
             7 days free, no card required; then {BILLING_CLAUSE}.
           </p>
         </div>
-        {/* Points at the managed services, so it goes where they go (servicesPublic). */}
-        {servicesPublic(window.location.hostname) && <p className="pcp-service" data-testid="pricing-service-note">
+        {/* Points at the managed services, so it goes where they go (siteFeatures.ts). */}
+        {anyServiceShown() && <p className="pcp-service" data-testid="pricing-service-note">
           These are self-serve software subscriptions. Want us to do the work for you? Our managed services —
           e-commerce management, HVAC and roofing growth, and medical billing — are separate offers with their own
           prices and written terms.

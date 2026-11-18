@@ -4,8 +4,8 @@
  *
  * ── What it shows ──
  *
- * The screens are photographs of the running product (`REELS.prospecting`,
- * taken by scripts/site-reels.mts against a mock directory of invented
+ * The demo is a recording of the running product (`CLIPS.prospecting`,
+ * recorded by scripts/site-clips.mts against a mock directory of invented
  * businesses on `.example` addresses — it cannot be anybody's data). They used
  * to be a drawing with three rows; the owner asked for the section to look as
  * busy as a real account and to speak to every kind of business somebody
@@ -28,7 +28,7 @@ import {
   Monitor, PartyPopper, PawPrint, Repeat, Scale, Scissors, Search, ShieldCheck, Sparkles, Stethoscope, UtensilsCrossed, Zap,
 } from 'lucide-react';
 import FeatureStage from './FeatureStage';
-import { REELS } from './reels';
+import { CLIPS } from './clips';
 import { useReveal } from './useReveal';
 import { motionReduced } from '../../services/motion';
 
@@ -132,7 +132,7 @@ export default function ProspectingShowcase() {
       body={<>One sentence finds the businesses, reads the email address each one publishes on its own website, and
         checks it before you send. <b>Every lead is found live, the moment you ask</b> — and stamped with when.</>}
       label="AI Prospecting"
-      shots={REELS.prospecting}
+      clips={[CLIPS.prospecting]}
       features={PROSPECTING}
       chips={CHIPS}
       after={<>

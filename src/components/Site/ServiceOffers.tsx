@@ -13,32 +13,33 @@
  */
 import { ArrowRight, Home, ShoppingBag, Stethoscope, Thermometer } from 'lucide-react';
 import { MEDICAL_BILLING_OFFER, TRADE_GROWTH_OFFER, ecommerceLine, growthLine, medicalLine } from '../../../worker/src/lib/offers';
-import { INDUSTRY_PAGES } from '../../../worker/src/lib/industryPages';
+import { INDUSTRY_PAGES, type IndustrySlug } from '../../../worker/src/lib/industryPages';
+import { serviceShown } from './siteFeatures';
 
 const SERVICES = [
   {
-    id: 'ecommerce', icon: ShoppingBag, title: 'E-commerce business setup & management', href: INDUSTRY_PAGES.ecommerce.path,
+    id: 'ecommerce', slug: 'ecommerce', icon: ShoppingBag, title: 'E-commerce business setup & management', href: INDUSTRY_PAGES.ecommerce.path,
     line: ecommerceLine(), basis: 'for the agreed monthly managed-service scope',
     body: 'Shopify, Amazon, eBay and Walmart store setup and management, advertising management, and your CRM, email, SMS, reviews and support run for you.',
     separate: 'ad spend, inventory, marketplace and payment fees, shipping and third-party apps.',
     link: 'E-commerce management services',
   },
   {
-    id: 'hvac', icon: Thermometer, title: 'HVAC business services', href: INDUSTRY_PAGES.hvac.path,
+    id: 'hvac', slug: 'hvac', icon: Thermometer, title: 'HVAC business services', href: INDUSTRY_PAGES.hvac.path,
     line: growthLine(), basis: 'performance fee on eligible collected revenue from qualifying jobs',
     body: 'Inquiries captured with their source, estimates followed up, and every job tracked to the payment in your account.',
     separate: TRADE_GROWTH_OFFER.costDisclosure.replace(/^You are responsible for /, '').replace(/\. These costs.*$/, '.'),
     link: 'HVAC growth service',
   },
   {
-    id: 'roofing', icon: Home, title: 'Roofing business services', href: INDUSTRY_PAGES.roofing.path,
+    id: 'roofing', slug: 'roofing', icon: Home, title: 'Roofing business services', href: INDUSTRY_PAGES.roofing.path,
     line: growthLine(), basis: 'performance fee on eligible collected revenue from qualifying jobs',
     body: 'Inspections, estimates and insurance jobs followed through, with each job tracked to the payment collected.',
     separate: TRADE_GROWTH_OFFER.costDisclosure.replace(/^You are responsible for /, '').replace(/\. These costs.*$/, '.'),
     link: 'Roofing growth service',
   },
   {
-    id: 'medical', icon: Stethoscope, title: 'Medical billing & RCM services', href: INDUSTRY_PAGES['medical-billing'].path,
+    id: 'medical', slug: 'medical-billing', icon: Stethoscope, title: 'Medical billing & RCM services', href: INDUSTRY_PAGES['medical-billing'].path,
     line: medicalLine(), basis: 'on claims handled under the signed agreement, subject to legal and compliance review',
     body: 'Claims, denials, remittances and A/R followed through for medical practices, with a practice portal and reporting.',
     separate: MEDICAL_BILLING_OFFER.separate.map(s => s.charAt(0).toLowerCase() + s.slice(1)).join('; ') + '.',
@@ -47,6 +48,10 @@ const SERVICES = [
 ] as const;
 
 export default function ServiceOffers() {
+  /* Each service only where its switch is on (siteFeatures.ts): an offer the
+     live site does not sell has no card, no price and no link here. */
+  const shown = SERVICES.filter(s => serviceShown(s.slug as IndustrySlug));
+  if (!shown.length) return null;
   return (
     <section className="ind-sec so" id="services" aria-label="Managed services">
       <div className="dc-chapter-head">
@@ -55,8 +60,8 @@ export default function ServiceOffers() {
         <p>Each service is run by our team in Protected Central, on its own written terms and at its own price. The software supports the delivery; the service fee pays for the agreed managed-service work — it is not a software plan, and you do not need one as well.</p>
       </div>
 
-      <div className="so-cards so-cards-4">
-        {SERVICES.map(s => (
+      <div className={`so-cards so-cards-${shown.length}`}>
+        {shown.map(s => (
           <article key={s.id} className="so-card" data-testid={`offer-${s.id}`}>
             <div className="so-head">
               <span className="dc-tile-icon"><s.icon size={16} /></span>

@@ -7,7 +7,7 @@
  * every page shared the home page's title and description. Pure, so the Worker
  * (status and head) and the app (which screen) read the same list.
  */
-import { PAGE_ALIASES, SITEMAP_PATHS, industryFor } from './industryPages';
+import { PAGE_ALIASES, SITEMAP_PATHS, industryFor, servicesPublic } from './industryPages';
 
 /** The live public host only — never localhost, the app, staging or a white label. */
 export const isPublicSiteHost = (hostname: string): boolean => /^(www\.)?protectedcentral\.com$/i.test(hostname);
@@ -18,10 +18,22 @@ export const isPublicSiteHost = (hostname: string): boolean => /^(www\.)?protect
 const PREFIXES = ['/book/', '/shop/', '/p/', '/f/', '/s/', '/auth/', '/api/', '/assets/', '/.well-known/'];
 const EXTRA = ['/appsumo', '/sitemap.xml', '/robots.txt', '/login', '/signup'];
 
-/** Is this a page the public site has? A file (anything with an extension) is the platform's to answer. */
-export function isKnownPublicPath(pathname: string): boolean {
+/**
+ * Is this a page the public site has? A file (anything with an extension) is
+ * the platform's to answer.
+ *
+ * The service sites (/hvac, /roofing, /medical-billing, the e-commerce page
+ * and its aliases) are pages only where the services are shown — the testing
+ * site and a developer's machine (`servicesPublic`, the same hosts as the
+ * incubator's switches, docs/INCUBATOR.md). On the live site they are a real
+ * 404 (owner, 2026-11-18), not a redirect home: a page that is not offered
+ * does not exist there. `hostname` defaults to the browser's own, so App.tsx's
+ * call needs no change; the Worker passes the request's.
+ */
+export function isKnownPublicPath(pathname: string, hostname: string = (globalThis as { location?: { hostname?: string } }).location?.hostname ?? ''): boolean {
   const p = (pathname.replace(/\/+$/, '') || '/').toLowerCase();
-  if (p === '/' || SITEMAP_PATHS.includes(p) || EXTRA.includes(p) || p in PAGE_ALIASES || industryFor(p)) return true;
+  if ((p in PAGE_ALIASES || industryFor(p)) && !servicesPublic(hostname)) return false;
+  if (p === '/' || (SITEMAP_PATHS.includes(p) && !industryFor(p)) || EXTRA.includes(p) || p in PAGE_ALIASES || industryFor(p)) return true;
   if (PREFIXES.some(x => `${p}/`.startsWith(x))) return true;
   return /\/[^/]+\.[a-z0-9]{1,8}$/i.test(p);
 }

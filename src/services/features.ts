@@ -47,6 +47,14 @@ const REHEARSING = new Set<string>([
   /* 2026-11-14 — owner: "hide the features of video editing and creating
      shorts from the live site … several problems there need fixing". */
   'video-studio',    // AI Video Studio's editing and Shorts (projects, editor, Quick Shorts, Repurpose). Off: only its Media Library is open
+  /* 2026-11-18 — owner: reviews need a paid Google Maps key ("that needs $30 …
+     by the time I arrange this money"), and the trade, shop and medical-billing
+     side is not part of the current product. */
+  'reviews',         // Reputation / Reviews (Google reviews read through the Maps key). Off: no menu, no Autopilot review solution
+  'jobs-revenue',    // Jobs & revenue — the contractor lead-to-revenue ledger
+  'online-shop',     // the Online shop and Autopilot's e-commerce store set-up
+  'trade-services',  // the growth service for plumbers, electricians, HVAC and roofing: agreements, performance fee, industry snapshots, the trade microsites
+  'medical-billing', // Medical billing (RCM) and its microsite
 ]);
 
 /**
@@ -57,7 +65,8 @@ const PARKED = new Set<string>([
   'protron-speaks-first',  // the panel opening by itself (idle, errors, a frozen page) — owner, 2026-11-14: "only when it's clicked"
 ]);
 
-export type Feature = 'prospects' | 'protron' | 'protron-live' | 'protron-hands' | 'protron-acts' | 'protron-speaks-first' | 'video-studio';
+export type Feature = 'prospects' | 'protron' | 'protron-live' | 'protron-hands' | 'protron-acts' | 'protron-speaks-first' | 'video-studio'
+  | 'reviews' | 'jobs-revenue' | 'online-shop' | 'trade-services' | 'medical-billing';
 
 /** Whether this visitor, on this hostname, may actually use it. */
 export function featureReady(name: Feature): boolean {

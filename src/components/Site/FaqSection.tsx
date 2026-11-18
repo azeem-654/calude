@@ -7,6 +7,12 @@
 import type { ReactNode } from 'react';
 import { Plus } from 'lucide-react';
 import { AI_CREDITS_GUIDE } from '../../services/allowances';
+import { featureReady } from '../../services/features';
+
+/* Answers name only what this host's app offers: the online shop and AI
+   Shorts are in the incubator (docs/INCUBATOR.md) and off on the live site. */
+const shop = featureReady('online-shop');
+const shorts = featureReady('video-studio');
 
 export interface FaqItem { q: string; a: string }
 
@@ -25,7 +31,7 @@ const FAQ: FaqItem[] = [
   },
   {
     q: 'What do I need to connect?',
-    a: 'Only what your plan uses. Content, workflows, the CRM and the AI work as soon as you sign up. Sending email needs your own mailbox (Gmail, Microsoft 365, Brevo or any SMTP); texts need a number; a shop needs a payment account. The plan tells you which, before you sign up.',
+    a: `Only what your plan uses. Content, workflows, the CRM and the AI work as soon as you sign up. Sending email needs your own mailbox (Gmail, Microsoft 365, Brevo or any SMTP); texts need a number${shop ? '; a shop needs a payment account' : ''}. The plan tells you which, before you sign up.`,
   },
   {
     q: 'Is the AI included?',
@@ -45,7 +51,7 @@ const FAQ: FaqItem[] = [
   },
   {
     q: 'What happens when I reach a plan’s allowance?',
-    a: 'That one thing waits — a new business workspace, the month’s next Short or post — and the app says which allowance it is, how much is used and which plan raises it. Everything you made stays, nothing is charged extra, and monthly allowances start again on the 1st. Plan & billing shows what is left.',
+    a: `That one thing waits — a new business workspace, the month’s next ${shorts ? 'Short or post' : 'post'} — and the app says which allowance it is, how much is used and which plan raises it. Everything you made stays, nothing is charged extra, and monthly allowances start again on the 1st. Plan & billing shows what is left.`,
   },
   {
     q: 'Is my business data safe?',

@@ -11,6 +11,8 @@
  * for "active roadmaps, changelogs, and responsive teams") judge whether a
  * product is alive by whether it visibly ships.
  */
+import type { Feature } from '../../services/features';
+
 export interface Release {
   /** ISO date the work landed. */
   date: string;
@@ -18,8 +20,14 @@ export interface Release {
   /** Which part of the product, as the menu names it. */
   area: string;
   points: string[];
-  /** Points about the managed services: shown only where they are public (servicesPublic). */
+  /** Points about the managed services: shown only where they are (siteFeatures.ts). */
   servicePoints?: string[];
+  /**
+   * A release of something the incubator holds back again (docs/INCUBATOR.md):
+   * listed only where that switch is on, so the live changelog does not tell
+   * a visitor about a module the live app does not offer.
+   */
+  feature?: Feature;
 }
 
 export const RELEASES: Release[] = [
@@ -55,14 +63,14 @@ export const RELEASES: Release[] = [
     ],
   },
   {
-    date: '2026-11-01', area: 'Video Studio', title: 'Video processing in the cloud',
+    date: '2026-11-01', area: 'Video Studio', title: 'Video processing in the cloud', feature: 'video-studio',
     points: [
       'Video Studio processes in the cloud, so a long render no longer depends on your browser staying open.',
       'Cleaner sound, and Shorts with the camera below the screen recording.',
     ],
   },
   {
-    date: '2026-10-30', area: 'Video Studio', title: 'Screen Recorder and editor upgrades',
+    date: '2026-10-30', area: 'Video Studio', title: 'Screen Recorder and editor upgrades', feature: 'video-studio',
     points: [
       'Screen Recorder: camera on by itself, frames and rings, scenes, an automatic look and your logo anywhere on the picture.',
       'The editor undoes one press at a time, shows progress beside your work, and exports from its own dialog.',
@@ -86,7 +94,7 @@ export const RELEASES: Release[] = [
     ],
   },
   {
-    date: '2026-10-26', area: 'Sales', title: 'Jobs & revenue, and industry pages',
+    date: '2026-10-26', area: 'Sales', title: 'Jobs & revenue, and industry pages', feature: 'jobs-revenue',
     points: [
       'Jobs & revenue: follow a lead from first contact to estimate, quote, invoice and money collected — only what you confirm counts.',
     ],
@@ -96,7 +104,7 @@ export const RELEASES: Release[] = [
     ],
   },
   {
-    date: '2026-10-21', area: 'Video Studio', title: 'Edit video by editing its transcript',
+    date: '2026-10-21', area: 'Video Studio', title: 'Edit video by editing its transcript', feature: 'video-studio',
     points: [
       'Delete words in the transcript to cut them from the video; restore them just as easily.',
       'Studio Sound: noise reduction, de-essing, EQ, compression and loudness evened out to −16 LUFS.',
@@ -104,7 +112,7 @@ export const RELEASES: Release[] = [
     ],
   },
   {
-    date: '2026-10-16', area: 'Video Studio', title: 'Start a video from a YouTube link',
+    date: '2026-10-16', area: 'Video Studio', title: 'Start a video from a YouTube link', feature: 'video-studio',
     points: [
       'Paste a YouTube link to start a project, and plan its thumbnails with the Graphics Designer & Editor.',
       'Contact lists sit beside the contacts table instead of on a screen of their own.',
@@ -135,7 +143,7 @@ export const RELEASES: Release[] = [
     ],
   },
   {
-    date: '2026-10-09', area: 'Video Studio', title: 'AI Video Studio',
+    date: '2026-10-09', area: 'Video Studio', title: 'AI Video Studio', feature: 'video-studio',
     points: [
       'An editor, transcription, Shorts and a content library, connected to AI Autopilot.',
       '“Find my solution” on the website: see the plan before you sign up, and it is built when you arrive.',

@@ -3,9 +3,12 @@ import { NOT_FOUND_HEAD, headFor, isKnownPublicPath, isPublicSiteHost } from '..
 import { SITEMAP_PATHS } from '../worker/src/lib/industryPages';
 let pass = 0, fail = 0;
 const ok = (n: string, c: boolean, d: unknown = '') => { if (c) pass++; else fail++; console.log(`${c ? '  ✓' : '  ✗'} ${n}${c ? '' : ` — ${JSON.stringify(d)}`}`); };
-ok('every sitemap page is known', SITEMAP_PATHS.every(isKnownPublicPath), SITEMAP_PATHS.filter(p => !isKnownPublicPath(p)));
+ok('every sitemap page is known (where the services are shown)', SITEMAP_PATHS.every(p => isKnownPublicPath(p, 'localhost')), SITEMAP_PATHS.filter(p => !isKnownPublicPath(p, 'localhost')));
+/* Owner, 2026-11-18: the service sites are in the incubator — a real 404 on the live site. */
+ok('the service sites are a 404 on the live site', ['/hvac', '/roofing', '/medical-billing', '/ecommerce-management-services', '/ecommerce'].every(p => !isKnownPublicPath(p, 'protectedcentral.com')) && isKnownPublicPath('/pricing', 'protectedcentral.com'));
+ok('…and pages on the testing site', ['/hvac', '/medical-billing', '/ecommerce-management-services'].every(p => isKnownPublicPath(p, 'testing.protectedcentral.com')));
 ok('…with or without a trailing slash, in any case', isKnownPublicPath('/Pricing/') && isKnownPublicPath('/privacy/'));
-ok('booking, shop, reports, forms, sign-in callbacks and files are known', ['/book/strategy-call', '/shop/tees', '/p/abc', '/f/form', '/auth/google', '/favicon.ico', '/logo.svg', '/.well-known/security.txt', '/appsumo', '/ecommerce'].every(isKnownPublicPath));
+ok('booking, shop, reports, forms, sign-in callbacks and files are known', ['/book/strategy-call', '/shop/tees', '/p/abc', '/f/form', '/auth/google', '/favicon.ico', '/logo.svg', '/.well-known/security.txt', '/appsumo', '/ecommerce'].every(p => isKnownPublicPath(p, 'localhost')));
 ok('a mistyped or retired address is not', !isKnownPublicPath('/pricng') && !isKnownPublicPath('/features') && !isKnownPublicPath('/contacts'));
 ok('only the live public host does this', isPublicSiteHost('protectedcentral.com') && isPublicSiteHost('www.protectedcentral.com') && !isPublicSiteHost('app.protectedcentral.com') && !isPublicSiteHost('localhost') && !isPublicSiteHost('testing.protectedcentral.com'));
 ok('each public page has its own title and description', ['/pricing', '/privacy', '/refund-policy', '/cookie-policy', '/terms-of-service', '/security'].every(p => { const h = headFor(p); return !!h && h.title.includes('Protected Central') && h.description.length > 30; }));

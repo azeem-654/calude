@@ -41,7 +41,9 @@ interface Brand { id: string; name: string; role: string }
 const CONNECTS: Brand[] = [
   { id: 'google', name: 'Google', role: 'Sign-in · Calendar' },
   { id: 'googlegemini', name: 'Gemini', role: 'AI writing and planning' },
-  { id: 'googlemaps', name: 'Google Maps', role: 'Business search · reviews' },
+  /* Reviews, the online shop (and its print-on-demand supplier) are in the
+     incubator since 2026-11-18 (docs/INCUBATOR.md): named only where they are on. */
+  { id: 'googlemaps', name: 'Google Maps', role: featureReady('reviews') ? 'Business search · reviews' : 'Business search' },
   { id: 'googlemeet', name: 'Google Meet', role: 'Live-help meetings' },
   { id: 'stripe', name: 'Stripe', role: 'Payments' },
   { id: 'creem', name: 'Creem', role: 'Payments' },
@@ -55,7 +57,7 @@ const CONNECTS: Brand[] = [
   { id: 'postmark', name: 'Postmark', role: 'Email sending' },
   { id: 'twilio', name: 'Twilio', role: 'Text messages' },
   { id: 'wordpress', name: 'WordPress', role: 'Blog publishing' },
-  { id: 'printful', name: 'Printful', role: 'Print-on-demand orders' },
+  ...(featureReady('online-shop') ? [{ id: 'printful', name: 'Printful', role: 'Print-on-demand orders' }] : []),
   { id: 'hunter', name: 'Hunter', role: 'Email finding & checks' },
   { id: 'zerobounce', name: 'ZeroBounce', role: 'Email checks' },
   { id: 'millionverifier', name: 'MillionVerifier', role: 'Email checks' },
@@ -89,7 +91,7 @@ const WRITES_FOR: Brand[] = [
   { id: 'meta', name: 'Meta', role: 'Facebook ad videos' },
   { id: 'wordpress', name: 'WordPress', role: 'Articles, published on schedule' },
   { id: 'google', name: 'Google Search', role: 'Articles checked against nine SEO rules' },
-  { id: 'googlebusiness', name: 'Google Business Profile', role: 'Replies to reviews' },
+  ...(featureReady('reviews') ? [{ id: 'googlebusiness', name: 'Google Business Profile', role: 'Replies to reviews' }] : []),
   /* Vertical clips come from AI Video Studio's Shorts, in the incubator
      (`video-studio`): named only where it is switched on. */
   ...(featureReady('video-studio') ? [

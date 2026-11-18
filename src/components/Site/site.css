@@ -2364,6 +2364,56 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 .dc-stage-show .dc-reel-caption { max-width: 1240px; margin-left: auto; margin-right: auto; }
 .dc-stage-show .dc-reel-text { color: var(--text); }
 
+/* ── A module demo (ClipPlayer.tsx) ──
+   The recording is 1280×800 (16:10), so the frame is that shape and never
+   crops it: a demo with its pointer cut off at the edge explains nothing. As
+   wide as the stage up to 1240px — the width the recording was made at, so it
+   is never blown up past its own pixels — and, on a short window, no taller
+   than the room under the nav. */
+.dc-mclip { --clip-w: min(100%, 1240px, calc((var(--dc-vh, 100vh) - var(--dc-nav-h) - 150px) * 1.6)); width: var(--clip-w); min-width: min(100%, 520px); margin: 0 auto; }
+.dc-mclip-frame {
+  position: relative; aspect-ratio: 16 / 10; border-radius: 14px; overflow: hidden;
+  background: #0a0605; border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 30px 70px -34px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 120, 60, 0.06);
+}
+.dc-mclip-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; background: #0a0605; }
+.dc-mclip-tag {
+  position: absolute; left: 10px; bottom: 10px; padding: 4px 9px; border-radius: 999px; pointer-events: none;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.01em; color: rgba(255, 255, 255, 0.82);
+  background: rgba(0, 0, 0, 0.55); border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.dc-mclip-tools { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 6px; }
+.dc-mclip-tools button, .dc-mclip-play {
+  display: grid; place-items: center; border-radius: 999px; cursor: pointer; color: #fff;
+  background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.dc-mclip-tools button { width: 32px; height: 32px; }
+.dc-mclip-tools button:hover, .dc-mclip-play:hover { background: rgba(0, 0, 0, 0.8); border-color: rgba(200, 242, 77, 0.55); }
+.dc-mclip-tools button:focus-visible, .dc-mclip-play:focus-visible, .dc-mclip-tabs button:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+.dc-mclip-play { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; transform: translate(-50%, -50%); }
+.dc-mclip-tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 14px auto 0; }
+.dc-mclip-tabs button {
+  position: relative; overflow: hidden; padding: 8px 14px 10px; border-radius: 10px; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--muted);
+  background: var(--glass); border: 1px solid var(--edge);
+}
+.dc-mclip-tabs button.on { color: var(--text); border-color: rgba(200, 242, 77, 0.45); background: rgba(200, 242, 77, 0.07); }
+.dc-mclip-tabs i { position: absolute; left: 10px; right: 10px; bottom: 4px; height: 2px; border-radius: 2px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.dc-mclip-tabs i b { position: absolute; inset: 0; background: var(--lime); transform-origin: left center; transform: scaleX(0); }
+.dc-mclip-caption { max-width: 860px; margin: 12px auto 0; text-align: center; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.dc-mclip-caption b { color: var(--text); }
+@media (max-width: 600px) {
+  .dc-mclip { min-width: 0; }
+  .dc-mclip-tag { font-size: 10px; left: 6px; bottom: 6px; }
+  .dc-mclip-tools { right: 6px; bottom: 6px; }
+  .dc-mclip-tabs { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .dc-mclip-tabs::-webkit-scrollbar { display: none; }
+  .dc-mclip-tabs button { flex: 0 0 auto; }
+}
+/* A module's block that plays its clip. */
+.dc-stage-feat.is-btn { font: inherit; color: var(--text); text-align: left; cursor: pointer; width: 100%; }
+.dc-stage-feat.is-btn:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+
 .dc-stage-chips { position: absolute; inset: 0 0 64px; pointer-events: none; display: none; }
 .dc-stage-chip {
   position: absolute; display: flex; align-items: center; gap: 10px; width: 214px; padding: 10px 12px;

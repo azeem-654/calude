@@ -301,4 +301,11 @@ a.ptn-new-card:hover { border-color: rgba(200, 242, 77, 0.4); background: var(--
 @keyframes ptn-up-press { 0%, 69% { transform: none; } 71% { transform: scale(0.94); } 75%, 100% { transform: none; } }
 
 @media (max-width: 760px) { .ptn-up-grid { grid-template-columns: 1fr; } }
+/* The incubator's other modules: a row of small cards under the two big ones. */
+.ptn-up-also { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 14px; text-align: left; }
+.ptn-up-mini { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 14px; background: rgba(255, 255, 255, 0.035); border: 1px solid rgba(255, 255, 255, 0.08); min-width: 0; }
+.ptn-up-mini b { color: var(--text); font-size: 14.5px; }
+.ptn-up-mini small { color: var(--muted); font-size: 13px; line-height: 1.5; }
+@media (max-width: 1000px) { .ptn-up-also { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .ptn-up-also { grid-template-columns: 1fr; } }
 @media (max-width: 420px) { .ptn-up-face { width: 70px; height: 70px; } .ptn-up-art { height: 176px; } }

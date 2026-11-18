@@ -26,7 +26,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { ArrowRight, Target, Repeat, Image as ImageIcon, Calendar, RefreshCw, FileText, Store, Building2, Sparkles } from 'lucide-react';
 import { useReveal, useRevealGroup } from './useReveal';
-import { featureReady } from '../../services/features';
+import { featureReady, type Feature } from '../../services/features';
 /* The card's look is wanted before its code (the still first screen below). */
 import './solutionWizard.css';
 
@@ -45,7 +45,7 @@ export interface FindRequest { pick: string; n: number; call: number }
 
 type Step = string | { ask: string; yes: string; no: string };
 
-const CASES: { key: string; icon: typeof Target; title: string; body: string; flow: Step[]; see: string }[] = [
+const CASES: { key: string; icon: typeof Target; title: string; body: string; flow: Step[]; see: string; feature?: Feature }[] = [
   {
     key: 'lead-generation', icon: Target, title: 'Find new customers',
     body: 'Searches for the businesses you sell to every day, reads their websites for a published address, checks it, and adds the good ones to your CRM.',
@@ -83,7 +83,8 @@ const CASES: { key: string; icon: typeof Target; title: string; body: string; fl
     see: '#leads',
   },
   {
-    key: 'ecommerce-store', icon: Store, title: 'Build an online store',
+    /* The online shop is in the incubator (docs/INCUBATOR.md): no recipe for it where it is off. */
+    key: 'ecommerce-store', icon: Store, title: 'Build an online store', feature: 'online-shop',
     body: 'Your products from a spreadsheet into a shop page with checkout, then a thank-you and a review request after each order.',
     flow: ['Your products', 'Shop page', 'Order paid', 'Ask for a review'],
     see: '#leads',
@@ -147,7 +148,7 @@ export default function SolutionsSection({ find, onBuild }: { find: FindRequest;
         <p>Each one is a plan the wizard above can build. Press <b>Build this</b> and it opens there with that outcome picked.</p>
       </div>
       <div className="dc-uc-grid stagger" ref={grid}>
-        {CASES.map(c => (
+        {CASES.filter(c => !c.feature || featureReady(c.feature)).map(c => (
           <article key={c.key} className="dc-uc">
             <span className="dc-tile-icon"><c.icon size={16} /></span>
             <h3>{c.title}</h3>

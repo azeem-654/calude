@@ -1,14 +1,17 @@
 /**
- * The launch film, full length, as the second thing on the page.
+ * The platform film, full length, as the second thing on the page.
  *
- * About five and a half minutes, rendered from marketing/launch-film and re-encoded for
- * the web (public/site/launch/: an HLS ladder, and one MP4). It is drawn for 16:9 — the
- * product window on the right, the words on the left. A phone gets the same
- * film laid out 9:16 (`hls-9x16/`, `launch-9x16.mp4`, made by
- * marketing/launch-film/vertical.mjs): the film's own words stacked above its
- * product window, title and end cards whole, nothing cropped — the owner found
- * the 16:9 film "a small rectangle" in a tall screen. Same timeline, same
- * sound, same captions; only the picture is re-laid.
+ * Since 2026-11-18 it is the real app, recorded (scripts/site-film.mts, cut
+ * from the module recordings of scripts/site-clips.mts): AI Autopilot first,
+ * then every module being used, dark, the module's name and one line beside
+ * each — the owner asked for the site's film to show the current app, and the
+ * drawn launch film (marketing/launch-film) showed modules the live app now
+ * holds back. It is laid out for 16:9 — the product window on the right, the
+ * words on the left — and a phone gets the same film laid out 9:16
+ * (`hls-9x16/`, `launch-9x16.*`): the words stacked above the window, nothing
+ * cropped — the owner found a 16:9 film "a small rectangle" in a tall screen.
+ * It is silent: the words are in the picture, so there is no sound button
+ * and no captions track to say them twice.
  *
  * On a wide, short window — a laptop — the film is fitted to the height under
  * the nav and may lose up to 11% of itself top and bottom to fill more of the
@@ -20,12 +23,9 @@
  *
  * Nothing downloads until the section is nearly on screen (`preload="none"`
  * and the source set only then): a film most visitors scroll past should not
- * be the slowest thing on the page. On arrival it plays muted, because a
- * browser refuses sound nobody asked for, with the voiceover as captions so
- * the muted version still says everything. "Watch with sound" starts it again
- * from the beginning with sound and the player's own controls — somebody who
- * asked to listen wants the whole thing, not the second half. It pauses when
- * scrolled away.
+ * be the slowest thing on the page. It plays muted and inline while on
+ * screen and pauses when scrolled away; "Watch from the start" restarts it
+ * with the player's own controls.
  *
  * Somebody whose system asks for less motion gets the poster and the button,
  * and nothing moves until they press it.
@@ -46,11 +46,12 @@
  * Safari and iOS play HLS themselves, with their own switching. Elsewhere
  * hls.js does it over Media Source Extensions — the light build, loaded only
  * once the film is nearly on screen, so the page does not carry it. A
- * browser with neither, or a stream that fails beyond recovery, gets the MP4.
+ * browser with neither, or a stream that fails beyond recovery, gets the
+ * single file — WebM first (a browser without H.264 still plays it), then MP4.
  */
 import { useEffect, useRef, useState } from 'react';
 import type HlsType from 'hls.js';
-import { ArrowRight, Volume2 } from 'lucide-react';
+import { ArrowRight, RotateCcw } from 'lucide-react';
 import { appHref, isCrossOrigin } from '../../services/hosts';
 import { motionReduced } from '../../services/motion';
 
@@ -172,26 +173,24 @@ export default function LaunchFilm() {
     if (v.paused && !v.ended) v.play().catch(() => { /* refused: the poster and button remain */ });
   }, [armed, ready, inView, sound]);
 
+  /* `sound` is kept as the name of "the visitor asked to watch": the film
+     has no sound now, but the same press restarts it with controls. */
   const withSound = () => {
     const v = video.current;
     setArmed(true);
     setSound(true);
     if (!v) return;
-    v.muted = false;
     v.currentTime = 0;
-    /* All of it on screen before it speaks: the frame is sized to fit under
-       the nav, and the section's scroll margin (site.css) centres it there. */
+    /* The frame is sized to fit under the nav, and the section's scroll
+       margin (site.css) centres it there. */
     wrap.current?.scrollIntoView({ behavior: motionReduced() ? 'auto' : 'smooth', block: 'start' });
-    /* The captions stay available from the controls, but with the voice
-       audible they would say everything twice. */
-    for (const t of Array.from(v.textTracks)) t.mode = 'hidden';
     v.play().catch(() => { /* the controls are showing now; the play button is there */ });
   };
 
   const signup = appHref('/signup');
 
   return (
-    <section className={`dc-film${tall ? ' tall' : ''}`} id="film" aria-label="Protected Central in five and a half minutes" ref={wrap}>
+    <section className={`dc-film${tall ? ' tall' : ''}`} id="film" aria-label="Protected Central, module by module" ref={wrap}>
       {/* The band is the full width; the frame inside it is as wide as the
           crop allows, and the band's own ground carries on from the film's. */}
       <div className="dc-film-band">
@@ -200,30 +199,30 @@ export default function LaunchFilm() {
             ref={video}
             className="dc-film-video"
             poster={poster}
-            muted={!sound}
+            muted
             playsInline
             preload="none"
             controls={sound}
             data-stream={mode ?? undefined}
-            aria-label="Protected Central — a five-minute tour of the product, AI Autopilot first"
+            aria-label="Protected Central — the app recorded module by module, AI Autopilot first, each module named beside it"
           >
             {/* Only when there is no stream: a <source> beside an attached
                 stream would be what the element falls back to. */}
+            {mode === 'mp4' && <source src={`${base}/${file}.webm`} type="video/webm" />}
             {mode === 'mp4' && <source src={`${base}/${file}.mp4`} type="video/mp4" />}
-            {armed && <track kind="captions" src={`${base}/captions.vtt`} srcLang="en" label="English" default />}
           </video>
           {!sound && (
             <button type="button" className="dc-film-sound" onClick={withSound}>
-              <Volume2 size={16} /> Watch with sound
+              <RotateCcw size={16} /> Watch from the start
             </button>
           )}
         </div>
       </div>
       <div className="dc-film-foot">
-        <p>Protected Central in five and a half minutes. Screens show a demo workspace with example data and example figures.</p>
+        <p>Protected Central, module by module — recorded in the app, in a sample workspace with example data.</p>
         {!sound && (
           <button type="button" className="dc-film-sound" onClick={withSound}>
-            <Volume2 size={16} /> Watch with sound
+            <RotateCcw size={16} /> Watch from the start
           </button>
         )}
         <a className="dc-btn dc-btn-primary" href={signup} {...(isCrossOrigin(signup) ? { rel: 'noopener' } : {})}>
