@@ -532,7 +532,14 @@ function ensureDefaultAccount(_get: (k: string) => string | null, _set: (k: stri
     if (!_get('crm_active_account')) _set('crm_active_account', JSON.parse(existing)[0].id);
     return;
   }
-  const id = `acct-${Date.now()}`;
+  /* A workspace already chosen — the one the server issued at sign-in — is
+     registered, never replaced. Sign-in selects an agency owner's workspace
+     without adding it to this list, and the next page load used to invent
+     "acct-<timestamp>" over it: an empty workspace the server had never heard
+     of, so the owner's Reviews, contacts and settings seemed to vanish and
+     every call answered 403 (test:reputation, 2026-11-18). */
+  const chosen = _get('crm_active_account');
+  const id = chosen && !chosen.startsWith('__') ? chosen : `acct-${Date.now()}`;
   const def: SubAccount = {
     id, name: 'Main Workspace', businessName: 'My Business', contactName: '', contactEmail: '',
     phone: '', industry: '', color: '#3e63dd', plan: 'agency', price: 0, status: 'active', createdAt: new Date().toISOString(),

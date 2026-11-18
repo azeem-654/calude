@@ -15,7 +15,7 @@ import { execSync } from 'node:child_process';
 const B = process.env.BASE ?? 'http://localhost:8787';
 let fail = 0;
 const ok = (name, cond, detail = '') => { if (!cond) fail++; console.log(`${cond ? '  ✓' : '  ✗'} ${name}${cond ? '' : ` — ${detail}`}`); };
-execSync('npx wrangler d1 execute crmpro --local --command "DELETE FROM crm_signup_attempts; DELETE FROM crm_rate_limits WHERE bucket LIKE \'login%\'"', { stdio: 'ignore' });
+execSync('npx wrangler d1 execute crmpro --local' + (process.env.PERSIST ? ` --persist-to ${process.env.PERSIST}` : '') + ' --command "DELETE FROM crm_signup_attempts; DELETE FROM crm_rate_limits WHERE bucket LIKE \'login%\'"', { stdio: 'ignore' });
 
 const email = `cookie-${Date.now()}@example.test`;
 const pw1 = 'Correct-horse-9';
@@ -103,7 +103,7 @@ const b = await pw.chromium.launch();
 /* 4 · Signing up through the form keeps you signed in — across a reload and
    a browser closed and opened again. */
 {
-  execSync('npx wrangler d1 execute crmpro --local --command "DELETE FROM crm_signup_attempts"', { stdio: 'ignore' });
+  execSync('npx wrangler d1 execute crmpro --local' + (process.env.PERSIST ? ` --persist-to ${process.env.PERSIST}` : '') + ' --command "DELETE FROM crm_signup_attempts"', { stdio: 'ignore' });
   const ctx = await b.newContext({ viewport: { width: 1280, height: 900 } });
   const p = await ctx.newPage();
   const signupEmail = `stay-${Date.now()}@example.test`;
@@ -135,7 +135,7 @@ const b = await pw.chromium.launch();
   ok('the cookie is kept for longer than the session (the server decides)', (state.cookies.find(c => c.name === 'pc_session')?.expires ?? 0) > Date.now() / 1000 + 300 * 86400);
 
   /* 5 · A session in use is renewed. */
-  const q = sql => JSON.parse(execSync(`npx wrangler d1 execute crmpro --local --json --command ${JSON.stringify(sql)}`, { encoding: 'utf8' }))[0].results;
+  const q = sql => JSON.parse(execSync(`npx wrangler d1 execute crmpro --local${process.env.PERSIST ? ` --persist-to ${process.env.PERSIST}` : ""} --json --command ${JSON.stringify(sql)}`, { encoding: 'utf8' }))[0].results;
   const soon = Math.floor(Date.now() / 1000) + 2 * 86400;
   q(`UPDATE crm_sessions SET expires_at = ${soon} WHERE email = '${signupEmail}'`);
   await p2.evaluate(async () => { await fetch('/api/auth.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'me', token: 'cookie' }) }); });

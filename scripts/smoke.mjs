@@ -132,14 +132,20 @@ try {
 
   /* ── 2. Put real work in ───────────────────────────────────────────────── */
   step('Filling in the company portfolio');
-  await p.getByRole('button', { name: 'Add your details' }).click();
-  await p.waitForTimeout(800);
-  const dlg = p.locator('[role=dialog][aria-label="Company onboarding"]');
-  await dlg.locator('input[placeholder="Acme Fitness Studio"]').fill(COMPANY);
-  await dlg.locator('textarea').nth(0).fill('Emergency plumbing, boiler servicing and bathroom installation across Leeds.');
-  await dlg.locator('textarea').nth(1).fill('Homeowners in Leeds with a boiler that has stopped working, and landlords needing gas safety checks.');
-  await dlg.locator('select').first().selectOption('Home Services');
-  await dlg.getByRole('button', { name: 'Continue' }).click();
+  /* The "Add your details" dialog this step used to click is gone — a new
+     customer now starts in the AI Autopilot wizard — so the portfolio is
+     written the way every screen writes it: the plain key through the app's
+     own storage layer, which scopes it to the workspace and queues the push.
+     What this file proves is that the push and the pull work, not a form. */
+  await p.evaluate((company) => {
+    let cur = {};
+    try { cur = JSON.parse(localStorage.getItem('crm_onboarding') || '{}') || {}; } catch { cur = {}; }
+    localStorage.setItem('crm_onboarding', JSON.stringify({
+      ...cur, version: 1,
+      profile: { ...(cur.profile || {}), companyName: company, industry: 'Home Services',
+        description: 'Emergency plumbing, boiler servicing and bathroom installation across Leeds.' },
+    }));
+  }, COMPANY);
   await p.waitForTimeout(1500);
 
   const saved = await p.evaluate(() => {

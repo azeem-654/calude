@@ -212,6 +212,13 @@ const OWNER = 'owner@rep.test', PW = 'Tq9!vX2#pLm7wZ-rep';
 const boot = await api('auth.php', { action: 'bootstrap', email: OWNER, password: PW, name: 'Owner' });
 if (!boot.success) { console.log('bootstrap failed', boot, wlog.slice(-2000)); stop(); process.exit(2); }
 
+/* The owner's own business workspace, as the Agency screen makes one. A fresh
+   install no longer invents an "acct-<timestamp>" workspace for the owner in
+   the browser (that id was unknown to the server and every call answered
+   403), so without this the owner signs in to the reserved agency bucket,
+   which Reviews rightly refuses, and every check below failed with it. */
+sql(`INSERT INTO crm_workspaces (account_id, owner_email, created_at) VALUES ('acct-rep-owner', '${OWNER}', '2026-11-01T00:00:00Z')`);
+
 /* Sign in in a browser first: the screen's own workspace is the one tested. */
 const br = await pw.chromium.launch();
 const page = await br.newPage({ viewport: { width: 1280, height: 900 } });
