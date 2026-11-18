@@ -354,16 +354,17 @@ async function serve(req: Request, env: Env, ctx: ExecutionContext, url: URL): P
 
   /* A typed short address for a service page: one permanent redirect, so the canonical page is the only copy. */
   const alias = PAGE_ALIASES[url.pathname.replace(/\/+$/, '').toLowerCase()];
-  /* A service site where the services are not public yet (servicesPublic): a
-     temporary redirect home, so neither a visitor nor a crawler finds a page
-     the owner is still testing, and nothing is cached for good. */
-  if ((alias || industryFor(url.pathname)) && speaksAsUs(url.hostname) && !servicesPublic(url.hostname)) {
-    return Response.redirect(`${url.origin}/`, 302);
-  }
-  if (alias && speaksAsUs(url.hostname)) return Response.redirect(`${url.origin}${alias}${url.search}`, 301);
+  /* A service site where the services are not shown (servicesPublic — the
+     incubator's hosts): on the public site a real 404 with the not-found head
+     (below, isKnownPublicPath says no), since the owner took them off live on
+     2026-11-18; on our other hosts (the app) a temporary redirect home, so
+     neither a visitor nor a crawler finds a page the owner is still testing. */
+  const hiddenService = !!(alias || industryFor(url.pathname)) && speaksAsUs(url.hostname) && !servicesPublic(url.hostname);
+  if (hiddenService && !isPublicSiteHost(url.hostname)) return Response.redirect(`${url.origin}/`, 302);
+  if (alias && !hiddenService && speaksAsUs(url.hostname)) return Response.redirect(`${url.origin}${alias}${url.search}`, 301);
 
   /* The trade pages' head, for crawlers and link previews (lib/industryPages.ts). */
-  const trade = industryFor(url.pathname);
+  const trade = hiddenService ? null : industryFor(url.pathname);
   if (trade) {
     const res = await env.ASSETS.fetch(req);
     const html = (res.headers.get('content-type') ?? '').includes('text/html');
@@ -381,7 +382,7 @@ async function serve(req: Request, env: Env, ctx: ExecutionContext, url: URL): P
   /* The public site: its own head for each page, and a real 404 for an
      address it does not have (PUB-4, lib/publicPages.ts). */
   if (isPublicSiteHost(url.hostname) && (req.method === 'GET' || req.method === 'HEAD') && !url.pathname.startsWith('/api/')) {
-    const known = isKnownPublicPath(url.pathname);
+    const known = isKnownPublicPath(url.pathname, url.hostname);
     const head = known ? headFor(url.pathname) : NOT_FOUND_HEAD;
     if (head) {
       const res = await env.ASSETS.fetch(req);

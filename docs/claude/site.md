@@ -97,15 +97,21 @@ three.
 
 ## The industry microsites — /hvac, /roofing, /medical-billing, /ecommerce-management-services
 
-**Not on the live site (owner, 2026-11-07).** The four service sites, the home
-page's *What we offer* (`#industries`) and *Managed services* (`#services`)
-sections, the nav's "Services", the footer's service links, the pricing page's
-service note and the changelog's `servicePoints` show only where
-`servicesPublic(hostname)` (`lib/industryPages.ts`) says so: the testing site
-(behind the owner's lock) and a developer's machine, where every test runs.
-On live the Worker sends the four paths and their aliases home (302) and
-leaves them out of the sitemap, and the support bot leaves the services out of
-what it knows. To publish them, add the live hosts there — one place.
+**In the incubator (owner, 2026-11-18; off live since 2026-11-07).** The site
+asks `featureReady` (`Site/siteFeatures.ts`: `serviceShown(slug)` — hvac and
+roofing hang on `trade-services`, medical billing on `medical-billing`, the
+e-commerce service on `online-shop`; `anyServiceShown()`): the four service
+sites' cards in *What we offer* (`#industries`), *Managed services*
+(`#services`, one card per shown service), the nav's "Services", the footer's
+links, the pricing page's service note and the changelog's `servicePoints`.
+On the live site (protectedcentral.com) the four paths and their aliases are a
+**real 404** (`isKnownPublicPath(path, host)` in `lib/publicPages.ts`, the
+not-found head, `SiteNotFound`); on the app host they still redirect home;
+the sitemap leaves them and `/growth-service-terms` out. The Worker cannot
+read `featureReady`, so it reads `servicesPublic(hostname)`
+(`lib/industryPages.ts`), which must name the same hosts as `isRehearsal()`.
+To publish one, take its name out of `REHEARSING` and add the live hosts to
+`servicesPublic`.
 
 Each reads as a site of its own: `Site/Microsite.tsx` (`MicrositeLayout`) is
 the only nav and footer they have — logo and "Home" go to the microsite's own
@@ -220,6 +226,53 @@ path check. `npm run test:industry` fails if a menu entry leaves the site;
   these pages needs `.dc .x { margin: … auto }`, or it sits left.
 - **The microsites' module sections still show the sample agency**; the
   trade- and practice-specific pictures are the "See it working" ones above.
+
+## The module demos and the platform film (2026-11-18)
+
+Owner: the home page shows the **current app, dark**, and each module as a
+short looping demo — a pointer moving, clicking and typing — not stills.
+
+- **`Site/clips.ts`** is the one list: per module a recording
+  (`public/site/clips/<id>.webm` VP9, `.mp4` H.264 for Safari,
+  `-poster.webp` a 2× still of where it ends), its module name, a caption and
+  alt text. `ClipPlayer.tsx` plays them like a GIF (muted, inline, no
+  controls), loads nothing until near the screen, plays only on screen with
+  the tab visible, a pause button always; a chapter's clips play one after
+  another with a tab per module, and a module's block under the section is a
+  button that plays its own. **Reduced motion: the poster and a Play button**;
+  pressed, that clip plays once. `FeatureStage` takes `clips` (home page) or
+  `shots` (the microsites, still stills).
+- **Recorded from the real app**: `npx tsx scripts/site-clips.mts [id…]` after
+  a `VITE_BASE=/` build. It starts `site-reels.mts` with `HOLD=1` (the same
+  seeded sample agency, `.example` addresses) and drives Chromium at
+  1280×800, 1×, dark, through the Worker reached as `app.protectedcentral.com`
+  (a host-resolver rule), so `isRehearsal()` is false and the incubator is off
+  as on live. `LIVE_LOOK` also hides menu entries for the modules incubated
+  on 2026-11-18 in case the checkout does not gate them yet, and the
+  no-AI-key notices (the Worker has no key; live does). The pointer is a page
+  element following the real mouse; frames come from the DevTools
+  screencast, motions are played back at their planned pace, waits for the
+  server can be marked faster (`speed`). A clip with no recipe is skipped;
+  a recipe that misses its target refuses the clip and saves `-fail.png`.
+  Near-lossless masters stay in `/tmp/site-clips-master` for the film.
+- **The platform film is the same recordings** (`npx tsx scripts/site-film.mts`):
+  a title card, the twelve modules in `ORDER` with the module's name and
+  caption beside the window (16:9) or above it (9:16, phones), an end card;
+  silent, the words in the picture. It writes the files LaunchFilm already
+  reads (`public/site/launch/`: HLS ladders with 4 s keyframes, a 720p MP4
+  and WebM of each shape, posters). LaunchFilm lost its sound button and
+  captions; "Watch from the start" restarts it with controls. The drawn
+  launch film (`marketing/launch-film`) showed the shop, reputation, revenue
+  and AI Shorts and is no longer on the site.
+- The hero's reel, the agents section and the ownership tabs are still the
+  stills of `site-reels.mts` (light until retaken).
+- Gating on the home page besides the services: the online-shop recipe
+  card, "Online shop & checkout", the cloud section's Reviews line, the
+  logo strip's review and Printful roles, the comparison's shop row, the FAQ's
+  shop and Shorts words, and the changelog's Jobs & revenue and Video Studio
+  releases (`Release.feature`) appear only where their switch is on. **Coming
+  soon** gained four small cards: Reviews, Jobs & revenue, Online shop,
+  Managed services.
 
 ## The closing demonstration — AutopilotDemo
 

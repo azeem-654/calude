@@ -15,11 +15,21 @@
  *
  * Every icon breathes in a small loop of its own, staggered so they never move
  * together. Nothing moves with reduced motion asked for (site.css).
+ *
+ * ── Clips instead of stills (2026-11-18) ──
+ *
+ * The home page's sections now show each module being used — a short looping
+ * recording per module (`clips`, ClipPlayer) — in place of the slideshow of
+ * its screens; the microsites still pass `shots`. With clips, a module's
+ * block is a button that plays its clip.
  */
-import { useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import ShotReel from './ShotReel';
+import ClipPlayer from './ClipPlayer';
 import type { ReelShot } from './reels';
+import type { ModuleClip } from './clips';
 import { useReveal, useRevealGroup } from './useReveal';
+import { motionReduced } from '../../services/motion';
 
 type Icon = (p: { size?: number }) => ReactNode;
 /**
@@ -32,7 +42,7 @@ export interface StageFeature { icon: Icon; title: string; body: string; module?
 export interface StageChip { icon: Icon; title: string; sub: string }
 
 export default function FeatureStage({
-  id, className = '', eyebrow, title, body, label, shots, features, chips, children, after,
+  id, className = '', eyebrow, title, body, label, shots = [], clips, features, chips, children, after,
 }: {
   id?: string;
   className?: string;
@@ -41,7 +51,9 @@ export default function FeatureStage({
   body: ReactNode;
   /** What the slideshow is of, for a screen reader. */
   label: string;
-  shots: ReelShot[];
+  shots?: ReelShot[];
+  /** The modules being used, one recording each; shown instead of `shots`. */
+  clips?: ModuleClip[];
   features: StageFeature[];
   chips?: StageChip[];
   /** Under the intro: a button, pills. */
@@ -52,7 +64,10 @@ export default function FeatureStage({
   const head = useReveal<HTMLDivElement>();
   const show = useReveal<HTMLDivElement>();
   const feats = useRevealGroup<HTMLDivElement>('.dc-stage-feat');
-  const [showing, setShowing] = useState<string | undefined>(shots[0]?.module);
+  const [showing, setShowing] = useState<string | undefined>(clips?.[0]?.module ?? shots[0]?.module);
+  const [pick, setPick] = useState<{ module: string; n: number } | undefined>();
+  const onClip = useCallback((c: ModuleClip) => setShowing(c.module), []);
+  const hasClip = (m?: string) => !!m && !!clips?.some(c => c.module === m);
   return (
     <section className={`dc-stage ${className}`} id={id} aria-label={label}>
       <div className="dc-stage-head reveal" ref={head}>
@@ -63,7 +78,9 @@ export default function FeatureStage({
       </div>
 
       <div className={`dc-stage-show reveal${chips?.length ? ' has-chips' : ''}`} ref={show}>
-        <ShotReel shots={shots} label={label} onShow={s => setShowing(s.module)} />
+        {clips?.length
+          ? <ClipPlayer clips={clips} label={label} pick={pick} onShow={onClip} />
+          : <ShotReel shots={shots} label={label} onShow={s => setShowing(s.module)} />}
         {!!chips?.length && (
           <div className="dc-stage-chips" aria-hidden="true">
             {chips.slice(0, 4).map((c, i) => (
@@ -77,12 +94,19 @@ export default function FeatureStage({
       </div>
 
       <div className={`dc-stage-feats stagger${features.length % 3 === 0 ? ' three' : features.length === 4 ? ' four' : ''}`} ref={feats}>
-        {features.map(f => (
-          <div key={f.title} className={`dc-stage-feat${f.module && f.module === showing ? ' on' : ''}`}>
+        {features.map(f => {
+          const cls = `dc-stage-feat${f.module && f.module === showing ? ' on' : ''}`;
+          const inner = <>
             <span className="dc-stage-ic"><span className="dc-stage-ic-in"><f.icon size={17} /></span></span>
             <div><b>{f.title}</b><span>{f.body}</span></div>
-          </div>
-        ))}
+          </>;
+          /* A block with a clip plays it — and brings the player into view on a
+             phone, where the blocks sit under it. */
+          return hasClip(f.module) && clips!.length > 1
+            ? <button key={f.title} type="button" className={`${cls} is-btn`} aria-pressed={f.module === showing}
+                onClick={e => { setPick(p => ({ module: f.module!, n: (p?.n ?? 0) + 1 })); (e.currentTarget.closest('.dc-stage')?.querySelector('.dc-mclip') as HTMLElement | null)?.scrollIntoView({ block: 'nearest', behavior: motionReduced() ? 'auto' : 'smooth' }); }}>{inner}</button>
+            : <div key={f.title} className={cls}>{inner}</div>;
+        })}
       </div>
       {after}
     </section>

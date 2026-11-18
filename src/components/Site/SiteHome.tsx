@@ -10,12 +10,15 @@
  * shape for a reason: a visitor deciding between platforms is counting, and a
  * wall of tiles each containing a real screen answers "how much is in here"
  * faster than any paragraph. So the spine of the page is AI Autopilot, then
- * three chapters of bento grid — get leads, close deals, scale — each tile a
- * module, each module shown as a reel of its screens that matter (ShotReel).
+ * three chapters — get leads, close deals, scale — each a module per block,
+ * each module shown being used: a short looping recording of the real app in
+ * dark mode, a pointer clicking and typing (clips.ts, ClipPlayer; owner,
+ * 2026-11-18, in place of the reels of stills).
  *
- * Every screenshot is a photograph of the running application, taken by
- * scripts/site-reels.mts against a seeded workspace. Nothing here is a mock-up,
- * and when a module's look changes the picture is re-taken rather than redrawn.
+ * Every recording and screenshot is of the running application against a
+ * seeded sample workspace (scripts/site-clips.mts, scripts/site-reels.mts).
+ * Nothing here is a mock-up, and when a module changes it is re-recorded
+ * rather than redrawn.
  *
  * What this page will not do is invent evidence. There are no customer counts,
  * no star ratings and no testimonials, because there is nothing yet to base
@@ -43,6 +46,8 @@ import ShotReel from './ShotReel';
 import WorksWith from '../shared/WorksWith';
 import { AiOrb, EventChips, TypedPrompt } from '../shared/AutopilotScene';
 import { REELS } from './reels';
+import { CLIPS, type ClipKey } from './clips';
+import { serviceShown, anyServiceShown } from './siteFeatures';
 import HelpLauncher from '../shared/HelpLauncher';
 import LaunchFilm from './LaunchFilm';
 import AutopilotDemo from './AutopilotDemo';
@@ -60,7 +65,7 @@ import ServiceOffers from './ServiceOffers';
 import { rememberArrival, strategyCallHref } from '../../services/strategyCall';
 import { track } from '../../services/funnel';
 import { motionReduced } from '../../services/motion';
-import { INDUSTRY_PAGES, servicesPublic } from '../../../worker/src/lib/industryPages';
+import { INDUSTRY_PAGES } from '../../../worker/src/lib/industryPages';
 import './site.css';
 import './industry.css';
 
@@ -75,14 +80,14 @@ type Reel = keyof typeof REELS;
  * data rather than taste: a grid where every tile is the same size and colour
  * reads as a table, and the eye needs somewhere to land first in each row.
  *
- * `reel` names the module's screens in reels.ts — what it is for, a picture at
- * a time — rather than one clip of its page scrolling past.
+ * `clip` names the module's recording in clips.ts: the module being used,
+ * not a photograph of its page.
  */
 interface Tile {
   id: string;
   title: string;
   body: string;
-  reel: Reel;
+  clip: ClipKey;
   tone: 'ink' | 'lime' | 'mint' | 'forest' | 'slate' | 'moss' | 'paper';
   span?: 2 | 3;
   icon: typeof Send;
@@ -105,36 +110,26 @@ const CHAPTERS: Chapter[] = [
     eyebrow: 'Find the work',
     lead: 'Get more',
     emph: 'leads.',
-    body: 'Every place a lead can come from — pages, sites, posts and articles — with the people '
+    body: 'Every place a lead can come from — sites, funnels, posts and forms — with the people '
       + 'they bring in kept in one list.',
     pills: ['Pages on your own domain', 'Posts drafted for you', 'Everyone in one list'],
     tiles: [
       {
-        id: 'contacts', title: 'Contacts', tone: 'slate', span: 3, icon: Users,
+        id: 'contacts', title: 'Contacts', tone: 'slate', icon: Users, clip: 'contacts',
         body: 'Everyone you have spoken to, with custom fields, notes, tasks and the full history on '
-          + 'one page — and the next thing worth doing for each of them. Imports deduplicate on the way in.',
-        reel: 'contacts',
+          + 'one page — and the next thing worth doing for each of them.',
       },
       {
-        id: 'funnels', title: 'Funnels', tone: 'lime', icon: MousePointerClick,
-        body: 'Multi-step funnels with real pages behind them, published on your own domain.',
-        reel: 'funnels',
+        id: 'websites', title: 'Websites & funnels', tone: 'paper', icon: LayoutTemplate, clip: 'websites',
+        body: 'Whole sites and multi-step funnels from templates, edited in place and published on your own domain.',
       },
       {
-        id: 'websites', title: 'Websites', tone: 'paper', icon: LayoutTemplate,
-        body: 'Whole sites, built and published from the same place the campaigns run.',
-        reel: 'websites',
-      },
-      {
-        id: 'social', title: 'Graphics Designer & Editor', tone: 'moss', icon: ImageIcon,
+        id: 'social', title: 'Graphics Designer & Editor', tone: 'moss', icon: ImageIcon, clip: 'graphics',
         body: 'Posts on the right canvas for each platform, in your colours, editable before they go.',
-        reel: 'social',
       },
       {
-        id: 'blog', title: 'Blog automation', tone: 'forest', span: 3, icon: FileText,
-        body: 'A topic plan from your own portfolio, written to the search terms your buyers use — '
-          + 'or a post a week, written by an AI Autopilot agent and waiting for you to publish.',
-        reel: 'blog',
+        id: 'engagement', title: 'Customer Engagement', tone: 'lime', icon: ClipboardList, clip: 'engagement',
+        body: 'Forms that file the contact, live help on your website, and a ticket for anybody who needs help.',
       },
     ],
   },
@@ -143,31 +138,27 @@ const CHAPTERS: Chapter[] = [
     eyebrow: 'Do the work',
     lead: 'Close more',
     emph: 'deals.',
-    body: 'The pipeline, the follow-up and the calendar in one place — so the next step happens '
-      + 'whether or not anybody remembers it.',
+    body: 'The pipeline, the follow-up, the calendar and every reply in one place — so the next step '
+      + 'happens whether or not anybody remembers it.',
     pills: ['Stages you define', 'Replies end the cadence', 'Sends with nobody logged in'],
     tiles: [
       {
-        id: 'pipelines', title: 'Pipelines', tone: 'ink', span: 3, icon: BarChart3,
+        id: 'pipelines', title: 'Pipelines', tone: 'ink', icon: BarChart3, clip: 'pipelines',
         body: 'Stages you define, dragged straight across. Open value and the same value weighted by '
-          + 'probability, counted from your own records rather than estimated.',
-        reel: 'pipelines',
+          + 'probability, counted from your own records.',
       },
       {
-        id: 'marketing', title: 'Email & sequences', tone: 'lime', icon: Mail,
-        body: 'Multi-step cadences on your own mailbox that stop the moment somebody answers. '
+        id: 'marketing', title: 'Email campaigns', tone: 'lime', icon: Mail, clip: 'campaigns',
+        body: 'Campaigns and multi-step cadences on your own mailbox that stop the moment somebody answers. '
           + 'The server sends them, so a scheduled campaign goes out with every tab closed.',
-        reel: 'marketing',
       },
       {
-        id: 'engagement', title: 'Forms & tickets', tone: 'paper', icon: ClipboardList,
-        body: 'A form that files the contact and starts the follow-up, and a ticket for anybody who needs help.',
-        reel: 'engagement',
+        id: 'calendar', title: 'Booking pages', tone: 'mint', icon: Calendar, clip: 'booking',
+        body: 'Your own booking page in your visitors’ time zones, edited beside the real thing, with every booking on the calendar.',
       },
       {
-        id: 'calendar', title: 'Calendar', tone: 'mint', icon: Calendar,
-        body: 'The week on one grid, with what is booked, who booked it, and a public booking link.',
-        reel: 'calendar',
+        id: 'inbox', title: 'Unified Inbox', tone: 'paper', icon: MessageSquare, clip: 'inbox',
+        body: 'Every mailbox in one list, each message with its contact, answered without leaving it.',
       },
     ],
   },
@@ -181,17 +172,14 @@ const CHAPTERS: Chapter[] = [
     pills: ['A sub-account per client', 'White-label per client', 'Enforced on the server'],
     tiles: [
       {
-        id: 'agency', title: 'Agency & sub-accounts', tone: 'forest', span: 3, icon: Building2,
-        body: 'Its own contacts, pipelines, campaigns and calendar for every client, switched between '
-          + 'in one click. A workspace you do not own is refused by the API, not merely hidden by the '
-          + 'interface — and each sub-account carries its own plan and its own price.',
-        reel: 'agency',
+        id: 'agency', title: 'Agency & white-label', tone: 'forest', icon: Building2, clip: 'agency',
+        body: 'Its own contacts, pipelines, campaigns and calendar for every client, under your product name. '
+          + 'A workspace you do not own is refused by the API, not merely hidden by the interface.',
       },
       {
-        id: 'analytics', title: 'Analytics', tone: 'slate', span: 3, icon: BarChart3,
-        body: 'Every figure read live from the module that owns it — revenue, leads and where they came '
+        id: 'analytics', title: 'Reports', tone: 'slate', icon: BarChart3, clip: 'reports',
+        body: 'Every figure read live from the module that owns it — leads, deliverability and where they came '
           + 'from. A rate over four sends is not shown as a rate.',
-        reel: 'analytics',
       },
     ],
   },
@@ -210,7 +198,7 @@ const AUTOPILOT = [
   { icon: Workflow, title: 'Approve the blueprint', body: 'You read exactly what it will build — every workflow, every step — and change it in a sentence before anything exists.' },
   { icon: GitBranch, title: 'See every branch', body: 'Workflows are drawn the way they run, each fork labelled Yes or No and every path joined up.' },
   { icon: PenLine, title: 'Edit any step in place', body: 'The pen on a step opens that step alone, with your real forms, tags and stages to pick from — or a new form made on the spot.' },
-  { icon: LayoutTemplate, title: `${TEMPLATES.length} ready-made workflows`, body: 'Filed by the problem they solve — missed calls, quotes gone quiet, reviews, daily posts — each previewed in full first.' },
+  { icon: LayoutTemplate, title: `${TEMPLATES.length} ready-made workflows`, body: 'Filed by the problem they solve — missed calls, quotes gone quiet, missed appointments, daily posts — each previewed in full first.' },
   { icon: ShieldCheck, title: 'Nothing sends unasked', body: 'Anything that emails or texts starts as a draft. What each business workspace may do on its own is a setting you can change.' },
 ];
 
@@ -261,7 +249,8 @@ const CAPABILITIES: { group: string; icon: typeof Send; items: string[] }[] = [
     group: 'Prospect', icon: Search,
     items: ['AI Prospecting from one sentence', 'Business directories & Google Maps', 'The emails businesses publish', 'Email verification', 'Daily prospecting on AI Autopilot'],
   }] : []),
-  { group: 'Convert', icon: MousePointerClick, items: ['Funnels', 'Websites', 'Forms & surveys', 'Booking pages', 'Online shop & checkout'] },
+  /* The online shop is in the incubator (docs/INCUBATOR.md): listed only where it is on. */
+  { group: 'Convert', icon: MousePointerClick, items: ['Funnels', 'Websites', 'Forms & surveys', 'Booking pages', ...(featureReady('online-shop') ? ['Online shop & checkout'] : [])] },
   { group: 'Manage', icon: Users, items: ['Contacts', 'Pipelines', 'Conversations', 'Calendar', 'Support tickets'] },
   /* AI Shorts is in the incubator (`video-studio`): named only where it is switched on. */
   { group: 'Create', icon: Sparkles, items: ['Graphics Designer & Editor', 'Blog automation', ...(featureReady('video-studio') ? ['AI Shorts'] : []), 'Content library', 'Brand overlays'] },
@@ -318,12 +307,9 @@ export const TrialNote = ({ light = false }: { light?: boolean }) => (
   </p>
 );
 
-/* A chapter is a feature stage: its modules' screens in one wide slideshow,
-   and each module as a block under it — the screens get the page's width
-   instead of a tile's. */
+/* A chapter is a feature stage: its modules' recordings in one wide player,
+   one after another, and each module as a block under it that plays its own. */
 function ChapterBlock({ c, onFind }: { c: Chapter; onFind: () => void }) {
-  const seen = new Set<string>();
-  const shots = c.tiles.flatMap(t => REELS[t.reel]).filter(x => (seen.has(x.file) ? false : (seen.add(x.file), true)));
   return (
     <FeatureStage
       id={c.id}
@@ -332,8 +318,8 @@ function ChapterBlock({ c, onFind }: { c: Chapter; onFind: () => void }) {
       title={<>{c.lead} <em>{c.emph}</em></>}
       body={c.body}
       label={`${c.lead} ${c.emph}`}
-      shots={shots}
-      features={c.tiles.map(t => ({ icon: t.icon, title: t.title, body: t.body, module: t.title }))}
+      clips={c.tiles.map(t => CLIPS[t.clip])}
+      features={c.tiles.map(t => ({ icon: t.icon, title: t.title, body: t.body, module: CLIPS[t.clip].module }))}
     >
       <div className="dc-cta-pair">
         <StartFree />
@@ -351,7 +337,9 @@ function ChapterBlock({ c, onFind }: { c: Chapter; onFind: () => void }) {
 export default function SiteHome() {
   /* Campaign tags this visit arrived with, for the strategy call's source. */
   useEffect(() => { rememberArrival(); }, []);
-  const services = servicesPublic(window.location.hostname);
+  /* The managed services are in the incubator (siteFeatures.ts): each card and
+     link only where its switch is on. */
+  const services = anyServiceShown();
   /* Protron on every screen is held back to the testing site (features.ts);
      the Protron, film and What's new sections say only what this host's app does. */
   const agent = featureReady('protron-hands');
@@ -546,7 +534,7 @@ export default function SiteHome() {
           </div>
           {/* The figures in every screen on this page are example data. Said
               once, plainly, where the first of them appears. */}
-          <p className="dc-sample-note">Screens show a sample workspace with example data.</p>
+          <p className="dc-sample-note">Screens and recordings show a sample workspace with example data.</p>
         </div>
       </section>
 
@@ -596,30 +584,30 @@ export default function SiteHome() {
             <span>Self-serve subscriptions: Advanced, Scale or Custom — you run it yourself.</span>
             <i>See software pricing <ArrowRight size={13} /></i>
           </a>
-          <a className="ind-strip-card" href={INDUSTRY_PAGES.ecommerce.path}>
+          {serviceShown('ecommerce') && <a className="ind-strip-card" href={INDUSTRY_PAGES.ecommerce.path}>
             <span className="dc-tile-icon"><ShoppingBag size={16} /></span>
             <b>E-commerce management</b>
             <span>Shopify, Amazon, eBay and Walmart stores set up and managed for you.</span>
             <i>E-commerce services <ArrowRight size={13} /></i>
-          </a>
-          <a className="ind-strip-card" href={INDUSTRY_PAGES.hvac.path}>
+          </a>}
+          {serviceShown('hvac') && <a className="ind-strip-card" href={INDUSTRY_PAGES.hvac.path}>
             <span className="dc-tile-icon"><Thermometer size={16} /></span>
             <b>HVAC</b>
             <span>Enquiries, estimate follow-up and seasonal reactivation for heating and cooling businesses.</span>
             <i>See the HVAC page <ArrowRight size={13} /></i>
-          </a>
-          <a className="ind-strip-card" href={INDUSTRY_PAGES.roofing.path}>
+          </a>}
+          {serviceShown('roofing') && <a className="ind-strip-card" href={INDUSTRY_PAGES.roofing.path}>
             <span className="dc-tile-icon"><Home size={16} /></span>
             <b>Roofing</b>
             <span>Inquiries, inspections and estimate follow-up for roofing contractors.</span>
             <i>See the roofing page <ArrowRight size={13} /></i>
-          </a>
-          <a className="ind-strip-card" href={INDUSTRY_PAGES['medical-billing'].path}>
+          </a>}
+          {serviceShown('medical-billing') && <a className="ind-strip-card" href={INDUSTRY_PAGES['medical-billing'].path}>
             <span className="dc-tile-icon"><Stethoscope size={16} /></span>
             <b>Medical billing</b>
             <span>Claims, denials, payments and A/R followed through for medical practices.</span>
             <i>See the medical billing page <ArrowRight size={13} /></i>
-          </a>
+          </a>}
         </div>
       </section>}
 
@@ -659,11 +647,11 @@ export default function SiteHome() {
         className="dc-autopilot-stage"
         eyebrow="AI Autopilot"
         title={<>Describe it once. <em>It builds and runs it.</em></>}
-        body={<>Say what the business needs — more reviews, quotes that do not go quiet, a post every
+        body={<>Say what the business needs — more enquiries, quotes that do not go quiet, a post every
           morning — and AI Autopilot turns it into workflows you can read, then runs them on the
           server every five minutes, whether or not anybody is logged in.</>}
         label="AI Autopilot"
-        shots={REELS.autopilot}
+        clips={[CLIPS.autopilot]}
         features={AUTOPILOT}
         chips={AUTOPILOT_CHIPS}
       />
@@ -835,26 +823,24 @@ export default function SiteHome() {
           <div>
             <h5>Find</h5>
             <a href="#autopilot">AI Autopilot</a><a href="#autopilot">Workflow templates</a>
-            <a href="#leads">Contacts</a><a href="#leads">Funnels</a>
+            <a href="#leads">Contacts</a><a href="#leads">Websites &amp; funnels</a>
           </div>
           <div>
             <h5>Do</h5>
-            <a href="#deals">Pipelines</a><a href="#deals">Email &amp; sequences</a>
-            <a href="#deals">Forms &amp; tickets</a><a href="#deals">Calendar</a>
+            <a href="#deals">Pipelines</a><a href="#deals">Email campaigns</a>
+            <a href="#deals">Booking pages</a><a href="#deals">Unified Inbox</a>
           </div>
           <div>
             <h5>Sell</h5>
             <a href="#scale">Sub-accounts</a><a href="#scale">White-label</a>
-            <a href="#scale">Analytics</a><a href="#pricing">Software pricing</a>
+            <a href="#scale">Reports</a><a href="#pricing">Software pricing</a>
           </div>
           <div>
             <h5>{services ? 'Managed services' : 'Talk to us'}</h5>
-            {services && <>
-              <a href={INDUSTRY_PAGES.ecommerce.path}>E-commerce management</a>
-              <a href={INDUSTRY_PAGES.hvac.path}>HVAC</a>
-              <a href={INDUSTRY_PAGES.roofing.path}>Roofing</a>
-              <a href={INDUSTRY_PAGES['medical-billing'].path}>Medical billing</a>
-            </>}
+            {serviceShown('ecommerce') && <a href={INDUSTRY_PAGES.ecommerce.path}>E-commerce management</a>}
+            {serviceShown('hvac') && <a href={INDUSTRY_PAGES.hvac.path}>HVAC</a>}
+            {serviceShown('roofing') && <a href={INDUSTRY_PAGES.roofing.path}>Roofing</a>}
+            {serviceShown('medical-billing') && <a href={INDUSTRY_PAGES['medical-billing'].path}>Medical billing</a>}
             <a href={strategyCallHref('main')}>Book a Strategy Call</a>
           </div>
           <div>

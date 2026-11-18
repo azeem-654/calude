@@ -21,7 +21,7 @@
  * move only while on screen and never under reduced motion.
  */
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { AudioLines, MousePointer2, Sparkles } from 'lucide-react';
+import { AudioLines, MousePointer2, Sparkles, Star, Receipt, ShoppingBag, Wrench } from 'lucide-react';
 import { useRevealGroup } from './useReveal';
 import { motionReduced } from '../../services/motion';
 import { featureReady, type Feature } from '../../services/features';
@@ -46,6 +46,20 @@ const UPCOMING: Upcoming[] = [
     points: ['Builds your business workspace in AI Autopilot', 'Fills forms and drafts social posts on screen', 'Sending, paying and deleting stay your buttons'],
     art: 'hands',
   },
+];
+
+/*
+ * Also built and held back (owner, 2026-11-18): short cards, no pictures —
+ * each names what the module is, never a date or a price. A card's switches
+ * are all the incubator names it stands for; its badge reads "In testing now"
+ * only where every one is on. When one is released, its card leaves with it.
+ */
+type Also = { features: Feature[]; icon: typeof Sparkles; title: string; body: string };
+const ALSO: Also[] = [
+  { features: ['reviews'], icon: Star, title: 'Reviews', body: 'Your Google reviews in one place, review requests after a job, and replies drafted for you to approve.' },
+  { features: ['jobs-revenue'], icon: Receipt, title: 'Jobs & revenue', body: 'Follow a lead through estimate, quote, invoice and payment — only what you confirm counts.' },
+  { features: ['online-shop'], icon: ShoppingBag, title: 'Online shop', body: 'Your products on a shop page with checkout, paid into your own payment account.' },
+  { features: ['trade-services', 'medical-billing'], icon: Wrench, title: 'Managed services', body: 'Done-for-you growth for contractors, and medical billing for practices, run by our team.' },
 ];
 
 function useOnScreen<T extends HTMLElement>() {
@@ -103,6 +117,7 @@ function HandsArt() {
 
 export function UpcomingSection() {
   const grid = useRevealGroup<HTMLDivElement>('.ptn-up-card');
+  const also = useRevealGroup<HTMLDivElement>('.ptn-up-mini');
   return (
     <section className="dc-process ptn-up" id="coming-soon" aria-label="Coming soon">
       <div className="dc-chapter-head">
@@ -124,6 +139,21 @@ export function UpcomingSection() {
               <b>{u.title}</b>
               <small>{u.body}</small>
               <ul>{u.points.map(p => <li key={p}><Sparkles size={12} /> {p}</li>)}</ul>
+            </article>
+          );
+        })}
+      </div>
+      <div className="ptn-up-also stagger" ref={also}>
+        {ALSO.map(a => {
+          const testing = a.features.every(f => featureReady(f));
+          return (
+            <article key={a.title} className="ptn-up-mini">
+              <span className="ptn-new-top">
+                <span className="dc-tile-icon"><a.icon size={14} /></span>
+                <i className="ptn-up-badge" data-testing={testing ? '1' : '0'}>{testing ? 'In testing now' : 'Coming soon'}</i>
+              </span>
+              <b>{a.title}</b>
+              <small>{a.body}</small>
             </article>
           );
         })}

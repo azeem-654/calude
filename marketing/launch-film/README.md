@@ -1,5 +1,11 @@
 # Launch film — 16:9, about five and a half minutes (v4, 5:31)
 
+**Off the site since 2026-11-18.** It showed the light app and modules the live
+app now holds back (the shop, reputation, revenue, AI Shorts); the home page's
+film is now cut from the real app's recordings (`scripts/site-film.mts`,
+`docs/claude/site.md`), into the same `public/site/launch/` files. This kit
+stays for the paid-social cuts and as the record of how it was made.
+
 The long product film on protectedcentral.com (`public/site/launch/launch-16x9.*`).
 It is not part of the app build. It lives here so it can be re-rendered when the
 product or the offer changes, instead of being redrawn.

@@ -13,6 +13,7 @@
  */
 import { Bell, Bot, Cloud, Inbox, Laptop, Mail, Search, Star, Workflow } from 'lucide-react';
 import { useReveal } from './useReveal';
+import { featureReady } from '../../services/features';
 
 const RUNS = [
   { icon: Bot, label: 'AI Autopilot Business Workspaces', where: 'plan and act on their own' },
@@ -20,7 +21,8 @@ const RUNS = [
   { icon: Mail, label: 'Follow-ups', where: 'emails and texts go out' },
   { icon: Inbox, label: 'Inbox replies', where: 'leads answered' },
   { icon: Search, label: 'Prospect finders', where: 'new leads every day' },
-  { icon: Star, label: 'Reviews', where: 'checked and answered' },
+  /* Reviews are in the incubator (docs/INCUBATOR.md): listed only where they are on. */
+  ...(featureReady('reviews') ? [{ icon: Star, label: 'Reviews', where: 'checked and answered' }] : []),
   { icon: Bell, label: 'Morning digest', where: 'what happened overnight' },
 ];
 

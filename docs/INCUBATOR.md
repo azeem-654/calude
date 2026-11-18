@@ -142,6 +142,18 @@ Platform services shows it Working), or SerpApi carrying review reads on its
 own — a refused Maps key now hands over to SerpApi (`serpReviews.ts`); the
 Reviews e2e at 390 and 1280 on testing. The others: the owner asks for them.
 
+### The public site's side of the 2026-11-18 five
+
+On protectedcentral.com (`Site/siteFeatures.ts`): the service sites /hvac,
+/roofing (`trade-services`), /medical-billing (`medical-billing`) and
+/ecommerce-management-services (`online-shop`) are a real 404 on live
+(`isKnownPublicPath(path, host)`; the Worker reads `servicesPublic`, the same
+hosts) and their cards, prices, links, FAQ words, logo roles and changelog
+lines are gone; Reviews leaves the cloud list and the logo strip; the module
+recordings are made with the incubator off. **Coming soon** carries a small
+card for Reviews, Jobs & revenue, Online shop and Managed services — remove a
+card when its switch is released.
+
 ## Parked (off on both sites)
 
 - **`protron-speaks-first`** — the panel opening by itself after 10 s idle,

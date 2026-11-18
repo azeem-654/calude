@@ -19,6 +19,7 @@ import { BILLING_TERMS, hasYearly } from './pricingTerms';
 /* The plan cards are drawn with site.css's classes. Every page used to get it
    from the one bundle; with each page loaded on its own, the parts bring it. */
 import './site.css';
+import { featureReady } from '../../services/features';
 import {
   CARD_PLANS, COMPARE_NOTES, CUSTOM_OFFER, DEFAULT_TABLE, annualSaving, comparison, dollars, featureLines, fetchPlans,
   type Cell, type PlanDef, type PlanTable,
@@ -50,6 +51,12 @@ export function CellView({ v }: { v: Cell }) {
   return <>{v}</>;
 }
 
+/* The online shop is in the incubator (`online-shop`, docs/INCUBATOR.md): the
+   live site's comparison does not list it. Display only, as with Video
+   Studio in services/allowances.ts — the plan table itself is unchanged. */
+const siteComparison = (plans: PlanDef[]) => (featureReady('online-shop') ? comparison(plans)
+  : comparison(plans).map(g => ({ ...g, rows: g.rows.filter(r => !/\bshop\b/i.test(r.label)) })));
+
 /**
  * The four cards. `customHref` is where Custom's button goes — the enquiry
  * form on /pricing, or that page from the home page.
@@ -59,7 +66,7 @@ export function PlanCards({ table, yearly: askedYearly = false, customHref, onCu
 }) {
   const plans = CARD_PLANS(table.plans);
   const yearly = askedYearly && hasYearly(table);
-  const groups = comparison(plans);
+  const groups = siteComparison(plans);
   const [open, setOpen] = useState<string>('');
   const signup = appHref('/signup');
 
@@ -118,7 +125,7 @@ export function PlanCards({ table, yearly: askedYearly = false, customHref, onCu
  */
 export function ComparisonTable({ table }: { table: PlanTable }) {
   const plans = CARD_PLANS(table.plans);
-  const groups = comparison(plans);
+  const groups = siteComparison(plans);
   const [pick, setPick] = useState<string>(plans.find(p => p.featured)?.id ?? plans[0].id);
   const price = (p: PlanDef) => (p.kind === 'custom' ? 'Let’s talk' : `$${dollars(p.monthlyCents)}/mo`);
 
