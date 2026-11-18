@@ -54,6 +54,7 @@
     "test:emailstyle": "npx --yes tsx test/emailStyle.test.mts",
     "test:wizard": "node test/newProject.e2e.mjs",
     "test:security": "node test/security.e2e.mjs",
+    "test:whitelabel": "node test/whiteLabel.e2e.mjs",
     "test:blogpublish": "node test/blogPublish.e2e.mjs",
     "test:blogimages": "npx --yes tsx worker/test/blogPictures.test.mts",
     "test:models": "npx --yes tsx worker/test/models.test.mts",

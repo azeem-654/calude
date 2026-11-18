@@ -72,6 +72,18 @@ let whiteLabelled = false;
 /** Called once at boot, by the resolver. */
 export function markWhiteLabelHost(on: boolean): void { whiteLabelled = on; }
 
+/**
+ * Whether this hostname could be a reseller's: none of our own names, nor a
+ * development or preview address. Only these are worth asking the server about
+ * before the signed-out screens draw — the sign-in page must not paint our name
+ * first and theirs a moment later, or ours at all.
+ */
+export function mayBeWhiteLabel(): boolean {
+  const h = host();
+  if (!h || APP_HOSTS.has(h) || MARKETING_HOSTS.has(h) || STAGING_HOSTS.has(h)) return false;
+  return !(h === 'localhost' || h === '127.0.0.1' || h.endsWith('.workers.dev'));
+}
+
 /** A reseller's own address — where Protected Central does not speak as itself. */
 export const isWhiteLabelHost = (): boolean => whiteLabelled;
 

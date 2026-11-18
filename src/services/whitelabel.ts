@@ -18,7 +18,7 @@
  */
 import { API_BASE } from './apiBase';
 import { sessionToken } from './auth';
-import { getActiveAccountId } from './tenancy';
+import { RESOLVED_HOST_KEY, activeAccount, getActiveAccountId, updateSubAccount, type Branding } from './tenancy';
 
 export interface ResolvedHost {
   accountId: string;
@@ -72,7 +72,7 @@ async function call(action: string, extra: Record<string, unknown> = {}): Promis
   }
 }
 
-const CACHE_KEY = 'crm_resolved_host';
+const CACHE_KEY = RESOLVED_HOST_KEY;
 
 /** What was resolved for this hostname, if anything, without asking again. */
 export function cachedHost(): ResolvedHost | null {
@@ -117,14 +117,39 @@ export async function resolveHost(): Promise<ResolvedHost | null> {
   return match;
 }
 
-/** The four fields a login screen paints, taken from the local account. */
-export function brandingPayload(b: { appName?: string; logoUrl?: string; color?: string; loginHeadline?: string }) {
+/** The fields a login screen paints. Pass the workspace's own branding, not
+ *  activeBranding(): that falls back to our name, and on a reseller's address
+ *  it is the address's copy, which is what is being updated. */
+export function brandingPayload(b: Branding = activeAccount()?.branding ?? {}) {
   return {
     appName: b.appName ?? '',
     logoUrl: b.logoUrl ?? '',
-    accent: b.color ?? '',
     loginHeadline: b.loginHeadline ?? '',
   };
+}
+
+/**
+ * Save the active workspace's branding on the server, which re-copies it to
+ * every address the workspace owns. Settings → Branding calls this; until
+ * 2026-11-18 the name and logo stayed in the one browser that set them.
+ */
+export async function saveBranding(b: Branding): Promise<{ error: string; field: string; addresses: number }> {
+  const r = await call('save_branding', { branding: brandingPayload(b) });
+  return { error: r.success ? '' : (r.error ?? 'Could not save the branding.'), field: String(r.field ?? ''), addresses: Number(r.addresses ?? 0) };
+}
+
+/** Bring the server's branding into this browser's copy of the workspace, so
+ *  a second device shows the same name and logo. Quiet on any failure: the
+ *  local copy (or our default) is still a correct thing to paint. */
+export async function pullBranding(): Promise<void> {
+  const id = getActiveAccountId();
+  if (!id || !sessionToken()) return;
+  const r = await call('get_branding');
+  const b = r.success ? r.branding as Branding | null : null;
+  if (!b) return;
+  const cur = activeAccount()?.branding ?? {};
+  if (cur.appName === b.appName && cur.logoUrl === b.logoUrl && cur.loginHeadline === b.loginHeadline) return;
+  updateSubAccount(id, { branding: { appName: b.appName ?? '', logoUrl: b.logoUrl ?? '', loginHeadline: b.loginHeadline ?? '' } });
 }
 
 export async function listDomains(): Promise<DomainList> {
@@ -159,9 +184,6 @@ export async function removeDomain(hostname: string): Promise<{ domains: CustomD
   return { domains: (r.domains as CustomDomain[]) ?? [], error: r.success ? '' : (r.error ?? 'Could not remove that address.') };
 }
 
-export async function refreshBranding(branding: ReturnType<typeof brandingPayload>): Promise<void> {
-  await call('refresh_branding', { branding });
-}
 
 /* ── Owner only ── */
 

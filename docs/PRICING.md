@@ -108,6 +108,13 @@ Only what the code does (`routes/whitelabel.ts`, `routes/resell.ts`,
   with one DNS record — **only once the owner has set up Cloudflare for SaaS**
   (Platform services); until then the screen offers the subdomain alone and
   the site says the own-domain option is "offered once switched on".
+- **What the address shows** (fixed and covered by `npm run test:whitelabel`,
+  2026-11-18): signed out, a reseller's address is their sign-in page at every
+  path — their name in the tab and heading, their logo, their headline; none of
+  our pricing, AppSumo, legal pages, partner strip, shield or sign-up link.
+  Branding is saved on the server (`crm_workspace_branding`, migration 0104),
+  so every device shows it, and every address the workspace owns is updated the
+  moment it is saved. Uploaded logos are scaled to 480×160 before saving.
 - **Client sub-accounts** (`sub_accounts`) — each client's own workspace.
 - **Reseller billing** — the customer's own Stripe or Creem, their own price
   per client; the money never passes through the operator. Every plan.

@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react';
 import { Sparkles, Mail, CalendarCheck, Image as ImageIcon, Users, Check, MessageSquare, Workflow } from 'lucide-react';
 import { motionReduced } from '../../services/motion';
 import { LogoMark } from './Logo';
+import { isWhiteLabelHost } from '../../services/hosts';
 import './autopilotScene.css';
 
 export const PROMPTS = [
@@ -115,7 +116,7 @@ export function AiOrb({ size = 168 }: { size?: number }) {
         <i><ImageIcon size={12} /></i>
         <i><Users size={12} /></i>
       </span>
-      <span className="aps-core"><LogoMark size={Math.round(size * 0.3)} tile={false} /></span>
+      <span className="aps-core">{/* our shield, never on a reseller's address */}{isWhiteLabelHost() ? <Sparkles size={Math.round(size * 0.26)} /> : <LogoMark size={Math.round(size * 0.3)} tile={false} />}</span>
     </div>
   );
 }

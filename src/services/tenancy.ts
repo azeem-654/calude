@@ -285,12 +285,37 @@ export function activeAccount(): SubAccount | null {
   return loadSubAccounts().find(a => a.id === id) ?? null;
 }
 /** White-label branding for the active account (falls back to defaults). */
+/** Where whitelabel.ts remembers whose address this is (sessionStorage, keyed
+ *  by hostname). Declared here so this file can read it without importing
+ *  whitelabel.ts, which imports this one. */
+export const RESOLVED_HOST_KEY = 'crm_resolved_host';
+
+/** The branding of the reseller whose address this is, if it is one. */
+function hostBranding(): Branding | null {
+  try {
+    const raw = window.sessionStorage.getItem(RESOLVED_HOST_KEY);
+    if (!raw) return null;
+    const c = JSON.parse(raw) as { hostname?: string; match?: Branding | null };
+    return c.hostname === window.location.hostname.toLowerCase() ? c.match ?? null : null;
+  } catch { return null; }
+}
+
+/**
+ * The name, logo and headline to paint.
+ *
+ * On a reseller's own address their branding wins over this browser's: a
+ * client arriving there has never seen the workspace, and on a shared computer
+ * the local copy belongs to whoever signed in last. Before 2026-11-18 only the
+ * loading screen honoured that, and the sign-in page itself said "Protected
+ * Central" on every reseller's address (test/whiteLabel.e2e.mjs).
+ */
 export function activeBranding(): Required<Branding> {
   const a = activeAccount();
+  const h = hostBranding();
   return {
-    appName: a?.branding?.appName || 'Protected Central',
-    logoUrl: a?.branding?.logoUrl || '',
-    loginHeadline: a?.branding?.loginHeadline || 'Sign in to your workspace',
+    appName: h?.appName || a?.branding?.appName || 'Protected Central',
+    logoUrl: h?.logoUrl || a?.branding?.logoUrl || '',
+    loginHeadline: h?.loginHeadline || a?.branding?.loginHeadline || 'Sign in to your workspace',
   };
 }
 

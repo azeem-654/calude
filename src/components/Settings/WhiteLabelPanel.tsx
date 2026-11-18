@@ -24,7 +24,6 @@ import {
   Globe, Plus, Loader, Check, Copy, Trash2, AlertCircle, RefreshCw, Clock, ExternalLink,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { activeBranding } from '../../services/tenancy';
 import {
   addDomain, brandingPayload, checkDomain, listDomains, removeDomain,
   type CustomDomain, type DomainList,
@@ -75,7 +74,7 @@ export default function WhiteLabelPanel() {
   const [hostname, setHostname] = useState('');
   const [busy, setBusy] = useState('');
 
-  const branding = () => brandingPayload(activeBranding());
+  const branding = () => brandingPayload();
 
   const load = useCallback(async () => {
     const r = await listDomains();

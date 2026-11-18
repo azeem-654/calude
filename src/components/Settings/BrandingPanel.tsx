@@ -20,6 +20,7 @@ import { useRef, useState } from 'react';
 import { Palette, Upload, Check, AlertTriangle, RotateCcw, Layers } from 'lucide-react';
 import { activeAccount, updateSubAccount, activeBranding } from '../../services/tenancy';
 import { useApp } from '../../context/AppContext';
+import { saveBranding } from '../../services/whitelabel';
 
 const CARD: React.CSSProperties = {
   backgroundColor: 'white', borderRadius: 18, border: '1px solid #e6e9f0',
@@ -35,6 +36,32 @@ const INPUT: React.CSSProperties = {
    third, and far more than a logo needs. */
 const MAX_LOGO_BYTES = 512 * 1024;
 const ALLOWED_LOGO = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp', 'image/gif'];
+
+/**
+ * A logo is drawn at most 170×30 (sign-in) and 96×32 (top bar), so an upload
+ * is scaled to fit 480×160 — three times that, sharp on any screen — and kept
+ * as PNG for transparency. A 400KB photograph becomes a few KB, which is what
+ * lets the server keep it and send it to the sign-in page of the reseller's
+ * address. An image the browser cannot draw keeps its original bytes, and the
+ * server's own limit then says so by name.
+ */
+function shrinkLogo(dataUrl: string): Promise<string> {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const w = img.naturalWidth || 480, h = img.naturalHeight || 160;
+      const k = Math.min(1, 480 / w, 160 / h);
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+      const g = c.getContext('2d');
+      if (!g) { resolve(dataUrl); return; }
+      g.drawImage(img, 0, 0, c.width, c.height);
+      try { const out = c.toDataURL('image/png'); resolve(out.length < dataUrl.length || k < 1 ? out : dataUrl); } catch { resolve(dataUrl); }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
 
 export default function BrandingPanel() {
   const { addNotification } = useApp();
@@ -71,22 +98,21 @@ export default function BrandingPanel() {
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => setLogoUrl(String(reader.result || ''));
+    reader.onload = () => { void shrinkLogo(String(reader.result || '')).then(setLogoUrl); };
     reader.onerror = () => setErr('That file could not be read.');
     reader.readAsDataURL(file);
   };
 
-  const save = () => {
+  const save = async () => {
     setErr('');
-    updateSubAccount(account.id, {
-      branding: {
-        appName: appName.trim(),
-        logoUrl: logoUrl.trim(),
-        loginHeadline: headline.trim(),
-      },
-    });
+    const branding = { appName: appName.trim(), logoUrl: logoUrl.trim(), loginHeadline: headline.trim() };
+    /* The server first: it is what other devices and the sign-in page of every
+       address this workspace owns read. Refused there, nothing changes here. */
+    const r = await saveBranding(branding);
+    if (r.error) { setErr(r.error); return; }
+    updateSubAccount(account.id, { branding });
     setSaved(true);
-    addNotification('Branding saved', 'success');
+    addNotification(r.addresses ? `Branding saved — your sign-in address${r.addresses > 1 ? 'es show' : ' shows'} it now` : 'Branding saved', 'success');
     /* The bar reads its branding once at mount, so the change is only fully
        visible after a reload — said plainly rather than leaving someone
        wondering why the header still shows the old name. */
@@ -116,7 +142,7 @@ export default function BrandingPanel() {
           <div>
             <label style={LABEL} htmlFor="brand-name">Product name</label>
             <input id="brand-name" value={appName} onChange={e => { setAppName(e.target.value); setSaved(false); }}
-              maxLength={40} placeholder="crmpro" style={INPUT} />
+              maxLength={40} placeholder="Acme Marketing" style={INPUT} />
             <p style={{ fontSize: 11, color: '#94a3b8', margin: '4px 0 0' }}>Replaces the wordmark in the top bar.</p>
           </div>
           <div>
@@ -130,7 +156,7 @@ export default function BrandingPanel() {
         <div style={{ marginTop: 14 }}>
           <label style={LABEL} htmlFor="brand-logo">Logo</label>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <input id="brand-logo" value={logoUrl.startsWith('data:') ? '' : logoUrl}
+            <input id="brand-logo" data-field="brand.logo" value={logoUrl.startsWith('data:') ? '' : logoUrl}
               onChange={e => { setLogoUrl(e.target.value); setSaved(false); }}
               placeholder={logoUrl.startsWith('data:') ? 'Uploaded image' : 'https://…/logo.png'}
               disabled={logoUrl.startsWith('data:')}
@@ -183,7 +209,7 @@ export default function BrandingPanel() {
         </div>
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 18 }}>
-          <button onClick={save}
+          <button onClick={() => void save()}
             style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 18px', border: 'none', borderRadius: 9, backgroundColor: '#17191c', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             {saved ? <><Check size={14} /> Saved</> : 'Save branding'}
           </button>

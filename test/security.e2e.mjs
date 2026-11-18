@@ -875,6 +875,21 @@ console.log('\nPublished websites and funnels — /s/<slug> (H3/H4)');
   check('after B unpublishes, the address says not found', bUn.ok && bUn.data.removed === 1 && !gone.ok && gone.data.code === 'not_found', JSON.stringify([bUn.data, gone.data]).slice(0, 160));
 }
 
+console.log('\nWhite-label branding is the workspace owner\'s (2026-11-18)');
+{
+  /* Fresh accounts: A's session was signed out everywhere further up. */
+  const A = await signUp('wla');
+  const B = await signUp('wlb');
+  const aSave = await api('whitelabel.php', { action: 'save_branding', token: A.token, accountId: A.acct, branding: { appName: 'A Brand' } });
+  check('A saves A\'s branding', aSave.ok, JSON.stringify(aSave.data).slice(0, 160));
+  const bSave = await api('whitelabel.php', { action: 'save_branding', token: B.token, accountId: A.acct, branding: { appName: 'Hijacked' } });
+  check('B cannot save branding on A\'s workspace', !bSave.ok && bSave.status === 403, JSON.stringify(bSave.data).slice(0, 160));
+  const bGet = await api('whitelabel.php', { action: 'get_branding', token: B.token, accountId: A.acct });
+  check('B cannot read A\'s branding through get_branding', !bGet.ok && !JSON.stringify(bGet.data).includes('A Brand'), JSON.stringify(bGet.data).slice(0, 160));
+  const anon = await api('whitelabel.php', { action: 'save_branding', accountId: A.acct, branding: { appName: 'Anon' } });
+  check('nobody signed out can save branding', !anon.ok && anon.status === 401, String(anon.status));
+}
+
 console.log('\nThe retired Stripe callback (M-6)');
 const oldHook = await fetch(`${BASE}/api/stripe-webhook.php`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': 't=1,v1=00', Connection: 'close' }, body: JSON.stringify({ type: 'checkout.session.completed', data: { object: { metadata: { accountId: C2.acct } } } }) });
 check('/api/stripe-webhook.php answers 410 and changes nothing', oldHook.status === 410, String(oldHook.status));

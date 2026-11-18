@@ -43,11 +43,6 @@ interface Req {
 
 const isOwner = (u: SessionUser) => u.accountId === null && u.role === 'agency';
 
-function parse<T>(raw: string | null | undefined, fallback: T): T {
-  if (!raw) return fallback;
-  try { return JSON.parse(raw) as T; } catch { return fallback; }
-}
-
 /**
  * Hostnames nobody may claim.
  *
@@ -95,6 +90,28 @@ function cleanHost(raw: unknown): string {
 }
 
 const HOST_OK = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+interface Brand { appName: string; logoUrl: string; loginHeadline: string }
+
+/* A logo is shown at most 170×30 on the sign-in page and 96×32 in the top bar;
+   Settings scales an upload down before saving, so a real one is a few KB.
+   The cap is generous for that and still keeps the one public, unauthenticated
+   answer (`resolve`) small. Over it is refused by name, never clipped — a
+   clipped data URL is an image that silently draws nothing. */
+const MAX_LOGO_CHARS = 200_000;
+const LOGO_OK = /^(https:\/\/[^\s"'<>]{4,600}|data:image\/(png|jpeg|webp|gif|svg\+xml);base64,[A-Za-z0-9+/=]+)$/;
+
+function cleanBrand(raw: unknown): { brand: Brand; error?: string; field?: string } {
+  const b = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const brand: Brand = {
+    appName: String(b.appName ?? '').trim().slice(0, 80),
+    logoUrl: String(b.logoUrl ?? '').trim(),
+    loginHeadline: String(b.loginHeadline ?? '').trim().slice(0, 160),
+  };
+  if (brand.logoUrl.length > MAX_LOGO_CHARS) return { brand: { ...brand, logoUrl: '' }, error: 'That logo is too large. Use a smaller image (under about 150KB).', field: 'brand.logo' };
+  if (brand.logoUrl && !LOGO_OK.test(brand.logoUrl)) return { brand: { ...brand, logoUrl: '' }, error: 'A logo must be an https:// address or an uploaded PNG, JPEG, SVG, WebP or GIF.', field: 'brand.logo' };
+  return { brand };
+}
 
 export async function handleWhitelabel(req: Request, env: Env): Promise<Response> {
   const d = await body<Req>(req);
@@ -176,20 +193,25 @@ export async function handleWhitelabel(req: Request, env: Env): Promise<Response
   /**
    * Copy the workspace's branding to where an anonymous visitor can read it.
    *
-   * ── Why the client supplies it ──
+   * ── Why it comes from the server's own row ──
    *
-   * Branding lives inside `crm_subaccounts`, which is a *global* storage key —
-   * per browser, not per workspace, and not reliably on the server at all. The
-   * server digging through that blob would be guessing at a location that is
-   * not guaranteed to hold anything.
-   *
-   * So the browser sends the four fields it is already rendering. It can only
-   * write them against a hostname this workspace owns, which is checked above,
-   * and all four are cosmetic — a name, a logo, a colour and a headline. There
-   * is nothing here worth lying about that lying about would gain.
+   * It used to be whatever the browser sent with the request, because branding
+   * lived only in that browser's `crm_subaccounts`. The copy was then taken
+   * once, at claim time, and never again: a reseller who renamed afterwards
+   * kept the old name on their sign-in page, and a logo uploaded as a data URL
+   * was cut to 600 characters and drew nothing. `crm_workspace_branding`
+   * (migration 0104) is now the one source; a browser's copy is used only for
+   * a workspace that has never saved one, so addresses claimed before it still
+   * carry their name.
    */
+  const storedBranding = async (): Promise<Brand | null> => {
+    const r = await env.DB.prepare(
+      'SELECT app_name, logo_url, login_headline FROM crm_workspace_branding WHERE account_id = ?',
+    ).bind(accountId).first<{ app_name: string; logo_url: string; login_headline: string }>();
+    return r ? { appName: r.app_name, logoUrl: r.logo_url, loginHeadline: r.login_headline } : null;
+  };
   const syncBranding = async (hostname: string) => {
-    const b = parse<Record<string, string>>(JSON.stringify(d.branding ?? {}), {});
+    const b = (await storedBranding()) ?? cleanBrand(d.branding).brand;
     await env.DB.prepare(
       `INSERT INTO crm_domain_branding (hostname, app_name, logo_url, accent, login_headline, updated_at)
        VALUES (?,?,?,?,?,?)
@@ -197,15 +219,28 @@ export async function handleWhitelabel(req: Request, env: Env): Promise<Response
          app_name = excluded.app_name, logo_url = excluded.logo_url,
          accent = excluded.accent, login_headline = excluded.login_headline,
          updated_at = excluded.updated_at`,
-    ).bind(
-      hostname,
-      String(b.appName ?? '').slice(0, 80),
-      String(b.logoUrl ?? '').slice(0, 600),
-      String(b.accent ?? b.color ?? '').slice(0, 20),
-      String(b.loginHeadline ?? '').slice(0, 160),
-      nowIso(),
-    ).run();
+    ).bind(hostname, b.appName, b.logoUrl, '', b.loginHeadline, nowIso()).run();
   };
+
+  /* The workspace's branding: read on sign-in so every device shows it, saved
+     from Settings → Branding, and copied to each of its addresses at once. */
+  if (act === 'get_branding') {
+    return json({ success: true, branding: await storedBranding() });
+  }
+  if (act === 'save_branding') {
+    const c = cleanBrand(d.branding);
+    if (c.error) return fail(c.error, 200, { field: c.field });
+    await env.DB.prepare(
+      `INSERT INTO crm_workspace_branding (account_id, app_name, logo_url, login_headline, updated_at)
+       VALUES (?,?,?,?,?)
+       ON CONFLICT(account_id) DO UPDATE SET app_name = excluded.app_name, logo_url = excluded.logo_url,
+         login_headline = excluded.login_headline, updated_at = excluded.updated_at`,
+    ).bind(accountId, c.brand.appName, c.brand.logoUrl, c.brand.loginHeadline, nowIso()).run();
+    const { results } = await env.DB.prepare('SELECT hostname FROM crm_custom_domains WHERE account_id = ?')
+      .bind(accountId).all<{ hostname: string }>();
+    for (const r of results ?? []) await syncBranding(r.hostname);
+    return json({ success: true, branding: c.brand, addresses: (results ?? []).length });
+  }
 
   if (act === 'list') {
     return json({

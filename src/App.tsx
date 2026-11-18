@@ -11,9 +11,9 @@ import { pendingPlan } from './services/sitePlan';
 import { trackKnown } from './services/funnel';
 import { getActiveAccountId, setActiveAccountId, activeBranding } from './services/tenancy';
 import { isKnownPublicPath } from '../worker/src/lib/publicPages';
-import { isAppHost, isMarketingHost, isStagingHost, isWhiteLabelHost, markWhiteLabelHost, siteAtRoot } from './services/hosts';
+import { isAppHost, isMarketingHost, isStagingHost, isWhiteLabelHost, markWhiteLabelHost, mayBeWhiteLabel, siteAtRoot } from './services/hosts';
 import { industryFor, servicesPublic, speaksAsUs } from '../worker/src/lib/industryPages';
-import { cachedHost, resolveHost, type ResolvedHost } from './services/whitelabel';
+import { cachedHost, pullBranding, resolveHost, type ResolvedHost } from './services/whitelabel';
 import { initCloudSync, startCloudRefresh } from './services/serverData';
 import { retireBrowserTwilio } from './services/legacyTwilio';
 import { Loader } from 'lucide-react';
@@ -461,6 +461,10 @@ function SyncGate({ children }: { children: React.ReactNode }) {
       if (!alive) return;
       await initCloudSync();
       if (!alive) return;
+      /* The workspace's white-label name and logo live on the server; without
+         this a reseller's second device showed our name in the top bar. */
+      await pullBranding();
+      if (!alive) return;
       /* Before the workspace mounts, so nothing reads the old plaintext Twilio
          token into state. After the pull, so a copy the cloud held is the one
          handed to the server rather than overwritten by an empty one. */
@@ -490,10 +494,33 @@ function SyncGate({ children }: { children: React.ReactNode }) {
 
 /* One boundary for every tree below that is not the signed-in shell (which
    keeps its own inside main): the public pages, sign-in, the booking page. */
+/**
+ * Signed out on an address that may be a reseller's: ask whose it is before
+ * drawing anything. SyncGate did this only after sign-in, so a reseller's
+ * client met a sign-in page saying "Protected Central" — and /pricing and
+ * /appsumo advertised the platform — on every white-label address
+ * (test/whiteLabel.e2e.mjs, 2026-11-18). A plain page while it asks; the answer
+ * is cached for the session, so only the first load waits.
+ */
+function HostGate({ children }: { children: React.ReactNode }) {
+  const [ready, setReady] = useState(() => {
+    if (!mayBeWhiteLabel()) return true;
+    if (cachedHost()) { markWhiteLabelHost(true); return true; }
+    return false;
+  });
+  useEffect(() => {
+    if (ready) return;
+    let alive = true;
+    void resolveHost().then(match => { if (!alive) return; if (match) markWhiteLabelHost(true); setReady(true); });
+    return () => { alive = false; };
+  }, [ready]);
+  return ready ? <>{children}</> : <div style={{ minHeight: '100vh', background: 'var(--surface-page)' }} />;
+}
+
 export default function App() {
   return (
     <Suspense fallback={<ScreenLoading full />}>
-      <AppTrees />
+      <HostGate><AppTrees /></HostGate>
     </Suspense>
   );
 }
@@ -728,6 +755,18 @@ function AppTrees() {
    * address, so a signed-out visitor gets the login form wherever they landed
    * rather than a second copy of the pitch under the wrong domain.
    */
+  if (!session && isWhiteLabelHost()) {
+    /* A reseller's address is their sign-in page at every path. Our pricing,
+       AppSumo deal, trust and legal pages name Protected Central; on their
+       address those would undo the white label at the first click. */
+    return (
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
+        <Routes>
+          <Route path="*" element={<LoginScreen onAuthed={signedIn} intent="signin" />} />
+        </Routes>
+      </BrowserRouter>
+    );
+  }
   if (!session) {
     return (
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>

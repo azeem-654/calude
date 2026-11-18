@@ -14,6 +14,7 @@ import InviteChoice from './InviteChoice';
 import type { InviteOffer } from '../../services/auth';
 import AutopilotScene from '../shared/AutopilotScene';
 import WorksWith from '../shared/WorksWith';
+import { isWhiteLabelHost } from '../../services/hosts';
 import { pendingAppsumo } from '../AppSumo/pending';
 import './auth.css';
 
@@ -369,20 +370,23 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
               : <><LogoMark size={30} /><b>{brand.appName}</b></>}
           </div>
           {children}
-          <div className="au-mobile-strip"><WorksWith title="" compact /></div>
+          {/* On a reseller's address: no strip of the platform's partners and no
+              shield of ours — "Runs Protected Central on…" in a client's sign-in
+              page names the product the reseller is white-labelling. */}
+          {!isWhiteLabelHost() && <div className="au-mobile-strip"><WorksWith title="" compact /></div>}
         </div>
         {/* Decoration and a claim about what the software connects to; the
             form is complete without it, so screen readers skip the scene. */}
         <aside className="au-visual">
           <div className="au-visual-scene" aria-hidden="true"><AutopilotScene /></div>
-          <div className="au-visual-brand" aria-hidden="true"><LogoMark size={24} tile={false} /> AI Autopilot</div>
+          <div className="au-visual-brand" aria-hidden="true">{!isWhiteLabelHost() && <LogoMark size={24} tile={false} />} AI Autopilot</div>
           <p className="au-visual-head">
             {mode === 'login'
               ? 'Your business workspaces kept running while you were away — posts written, leads followed up, replies caught.'
               : 'Describe your business once. AI Autopilot builds the workflows, writes the posts and follows up every lead.'}
           </p>
           <div className="au-visual-gap" />
-          <div className="au-visual-foot"><WorksWith compact /></div>
+          {!isWhiteLabelHost() && <div className="au-visual-foot"><WorksWith compact /></div>}
         </aside>
       </div>
     </div>
@@ -651,7 +655,9 @@ export default function LoginScreen({ onAuthed, intent = 'signin' }: { onAuthed:
 
       {/* Whichever form is showing, the other one is a click away. Arriving at
           the wrong door is the commonest thing that happens here. */}
-      {mode !== 'setup' && (signupsOpen || mode === 'register') && (
+      {/* Not on a reseller's address: sign-up there makes a trial of ours, not a
+          client of theirs — their clients are added by them (Agency → clients). */}
+      {mode !== 'setup' && !isWhiteLabelHost() && (signupsOpen || mode === 'register') && (
         <p className="au-switch">
           {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
           <button type="button" className="au-link"
