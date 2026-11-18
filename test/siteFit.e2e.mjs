@@ -62,7 +62,10 @@ for (const sz of sizes) {
   const desk = w >= 1000 && w > h && h >= 420;
   const p = await b.newPage({ viewport: { width: w, height: h } });
   const errs = []; p.on('pageerror', e => errs.push(String(e)));
-  await p.goto(`${B}/`, { waitUntil: 'networkidle' });
+  /* 'load', not 'networkidle': the film streams and the module demos load as
+     they near the screen, so at a tablet's size the network was never quiet
+     and the run stopped on a timeout with every size before it fitting. */
+  await p.goto(`${B}/`, { waitUntil: 'load' });
   await p.waitForTimeout(3500);
   const navH = await p.evaluate(() => document.querySelector('.dc-nav').getBoundingClientRect().height);
 

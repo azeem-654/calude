@@ -143,7 +143,11 @@ const CAPS: { icon: Icon; label: string; t: string }[] = [
   { icon: LayoutTemplate, label: 'Builds pages & funnels', t: 'Pages and forms that capture leads' },
   { icon: CalendarCheck, label: 'Books appointments', t: 'Straight into your calendar' },
   { icon: Receipt, label: 'Invoices & chases payment', t: 'With a payment link, then a reminder' },
-  { icon: Star, label: 'Asks for reviews', t: 'Once the job is done' },
+  /* Reviews is in the incubator on live (docs/INCUBATOR.md); there the eighth
+     card is something live does today. */
+  featureReady('reviews')
+    ? { icon: Star, label: 'Asks for reviews', t: 'Once the job is done' }
+    : { icon: FileText, label: 'Writes blog articles', t: 'For your website, on the schedule you pick' },
 ];
 
 const MANUAL = [

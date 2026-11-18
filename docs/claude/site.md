@@ -264,8 +264,14 @@ short looping demo — a pointer moving, clicking and typing — not stills.
   captions; "Watch from the start" restarts it with controls. The drawn
   launch film (`marketing/launch-film`) showed the shop, reputation, revenue
   and AI Shorts and is no longer on the site.
-- The hero's reel, the agents section and the ownership tabs are still the
-  stills of `site-reels.mts` (light until retaken).
+- The hero's reel, the agents section and the ownership tabs are the stills
+  of `site-reels.mts`, **dark since 2026-11-18**: it now sets `crm_theme` dark,
+  reaches the pages as `app.protectedcentral.com` (incubator off, as on live)
+  and applies the same `LIVE_LOOK` as the clips (`scripts/live-look.mts`).
+  With `AI_API_KEY` / `OPENROUTER_API_KEY` in the shell its Worker has an AI
+  key, so the email-campaign demo now goes on to the AI writing the three
+  emails. The platform film was not re-rendered and still ends that module
+  at the brief.
 - Gating on the home page besides the services: the online-shop recipe
   card, "Online shop & checkout", the cloud section's Reviews line, the
   logo strip's review and Printful roles, the comparison's shop row, the FAQ's

@@ -43,6 +43,7 @@
  * HOLD=1 seeds the workspace and stops before photographing, with the sign-in
  * written to /tmp/site-reel-raw/session.json, for working out a new recipe.
  */
+import { LIVE_LOOK } from './live-look.mts';
 import pw from '/opt/node22/lib/node_modules/playwright/index.js';
 import { execSync, spawn } from 'node:child_process';
 import http from 'node:http';
@@ -150,7 +151,12 @@ await new Promise<void>(r => mock.listen(MOCK, '127.0.0.1', () => r()));
 const persist = path.resolve('.wrangler-reels');
 fs.rmSync(persist, { recursive: true, force: true });
 execSync(`npx wrangler d1 migrations apply crmpro --local --persist-to ${persist}`, { stdio: 'ignore', env: { ...process.env, CI: '1' } });
-const vars = [`APP_ORIGIN:${B}`, `GEOAPIFY_BASE:${G}`, `DOH_BASE:${G}/dns-query`, `EMAIL_VERIFIER_BASE:${G}`];
+const vars = [`APP_ORIGIN:${B}`, `GEOAPIFY_BASE:${G}`, `DOH_BASE:${G}/dns-query`, `EMAIL_VERIFIER_BASE:${G}`,
+  /* An AI key, when one is in this shell's environment, so screens that write
+     with AI (the email campaign's drafts) are pictured doing it, as on live.
+     Never stored: it lives only on this wrangler's command line. */
+  ...(process.env.AI_API_KEY ? [`AI_API_KEY:${process.env.AI_API_KEY}`] : []),
+  ...(process.env.OPENROUTER_API_KEY ? [`OPENROUTER_API_KEY:${process.env.OPENROUTER_API_KEY}`] : [])];
 /* Local `wrangler dev` can exit when a browser drops a request mid-flight —
    it took the whole phone pass down with it once, every shot after it
    "connection refused". So it is started again whenever it exits, on the
@@ -686,7 +692,11 @@ if (process.env.HOLD) {
   await new Promise(() => {});
 }
 
-const browser = await pw.chromium.launch();
+/* The pages are reached as app.protectedcentral.com (a host-resolver rule;
+   nothing leaves the machine) so isRehearsal() is false and the incubator is
+   off as on live — the testing-only modules never reach a public picture. */
+const APP = 'http://app.protectedcentral.com';
+const browser = await pw.chromium.launch({ args: [`--host-resolver-rules=MAP app.protectedcentral.com:80 127.0.0.1:${PORT}`] });
 const ctx = await browser.newContext({ viewport: VIEW, deviceScaleFactor: SCALE });
 const phoneCtx = await browser.newContext({ viewport: PHONE, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
 const signIn = ([token, acct]: string[]) => {
@@ -707,11 +717,18 @@ const signIn = ([token, acct]: string[]) => {
     { id: 'reel-c7', parentId: acct, name: 'Tenby Roofing', plan: 'starter', status: 'trial', price: 897, createdAt: '2026-09-10T09:00:00Z' },
   ]));
   localStorage.setItem('crm_sidebar_mode', JSON.stringify('hidden'));
+  /* The site shows the app dark (owner, 2026-11-18), said outright so a
+     default changing cannot quietly turn the stills light. */
+  localStorage.setItem('crm_theme', 'dark');
   /* Still frames: nothing mid-animation in a photograph. */
   localStorage.setItem('crm_motion', 'reduced');
 };
+await ctx.addInitScript({ content: 'window.__name = (f) => f;' });
+await phoneCtx.addInitScript({ content: 'window.__name = (f) => f;' });
 await ctx.addInitScript(signIn, [TOK, ACCT]);
 await phoneCtx.addInitScript(signIn, [TOK, ACCT]);
+await ctx.addInitScript(LIVE_LOOK);
+await phoneCtx.addInitScript(LIVE_LOOK);
 /* The recipes drive whichever window is being photographed. */
 let page = await ctx.newPage();
 const errs: string[] = [];
@@ -724,7 +741,7 @@ const hideNoise = async () => {
 };
 const go = async (route: string, settle = 2000) => {
   await ready();
-  await page.goto(`${B}${route}`, { waitUntil: 'networkidle' });
+  await page.goto(`${APP}${route}`, { waitUntil: 'networkidle' });
   await hideNoise();
   await page.waitForTimeout(settle);
 };
@@ -1170,6 +1187,12 @@ async function photograph(suffix: string) {
         const r = el.getBoundingClientRect();
         const pinned = el.getAttribute('role') === 'dialog' ? r.height > 200
           : getComputedStyle(el).position === 'fixed' && getComputedStyle(el).visibility !== 'hidden'
+            /* Not a backdrop: the dark theme paints a fixed full-window layer
+               behind everything, and taking it for a drawer turned every dark
+               picture into the window alone (2026-11-18). A drawer has words
+               in it and takes the pointer. */
+            && getComputedStyle(el).pointerEvents !== 'none' && el.getAttribute('aria-hidden') !== 'true'
+            && (el.innerText || '').trim().length > 0
             /* On screen across its middle — not a drawer slid away to the side. */
             && r.height > innerHeight * 0.6 && r.width > innerWidth * 0.4 && r.left < innerWidth / 2 && r.right > innerWidth / 2;
         if (pinned) { el.setAttribute('data-reel-overlay', ''); found = true; }
