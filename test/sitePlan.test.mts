@@ -11,7 +11,7 @@
  */
 import { allQuestions, applies, buildBlueprint, initialState, withDefaults, DESIGN_QUESTION_IDS, type IntakeState, type WorkspaceFacts } from '../src/services/projectIntake';
 import { SITE_SHORTCUTS, MAX_SCREENS, answerOnSite, arrivalDefaults, buyersFor, cleanPlan, decodePlan, encodePlan, planOf, seedState, siteAskable, siteScreens, stillNeeded, withUnderstanding, yourTradeIn } from '../src/services/sitePlan';
-import { CUSTOM, solutionByKey } from '../src/services/projectSolutions';
+import { CUSTOM, isOffered, solutionByKey } from '../src/services/projectSolutions';
 import type { Understanding } from '../src/services/intake';
 
 const out: string[] = [];
@@ -69,13 +69,21 @@ function finish(st: IntakeState): IntakeState {
   ok('…and builds a content workflow', bp.workflows.some(w => w.channel === 'social'), bp.workflows.map(w => w.name).join(' · '));
 }
 
-/* ── Test 3: a store ── */
-{
+/* ── Test 3: a store ──
+   The online shop is in the incubator (docs/INCUBATOR.md): off the testing
+   host it must be neither offered nor planned; where it is open, the store
+   journey still holds. Node has no hostname, so CI runs the held branch. */
+if (isOffered('ecommerce-store')) {
   const st = start('I have 70 products and want an online store.');
   ok('70 products → E-commerce Store, about 51–100', st.solutionKeys[0] === 'ecommerce-store' && st.known.productCount?.value === '51-100');
   const q = asked(st);
   ok('…asks where the products are', q.includes('productSource'), q.join(','));
   ok('…asks nothing about leads', !q.some(id => ['audience', 'prospectTrades', 'contactSource', 'offer', 'mailbox'].includes(id)), q.join(','));
+} else {
+  const st = start('I have 70 products and want an online store.');
+  ok('shop incubated: a store request plans no E-commerce Store', !st.solutionKeys.includes('ecommerce-store'), JSON.stringify(st.solutionKeys));
+  ok('…and the site offers no "Build an online store" shortcut', !SITE_SHORTCUTS.some(s => s.key === 'ecommerce-store'));
+  ok('…nor a picked one', !start('Build an online store for my products.', 'ecommerce-store').solutionKeys.includes('ecommerce-store'));
 }
 
 /* ── Test 4: old customers ── */

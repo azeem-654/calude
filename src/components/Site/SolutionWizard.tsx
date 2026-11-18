@@ -42,6 +42,7 @@ import {
   Workflow, ShieldCheck, Wand2, PenLine, CircleDashed,
 } from 'lucide-react';
 import { appHref } from '../../services/hosts';
+import { featureReady } from '../../services/features';
 import {
   applies, applyOps, buildBlueprint, initialState, parseEdit, withDefaults, urlsIn,
   type Attachment, type Blueprint, type IntakeState, type KnownSource, type LinkRef, type WorkspaceFacts,
@@ -70,7 +71,8 @@ const ICONS: Record<string, (p: { size?: number }) => ReactNode> = {
 const EXAMPLES = [
   'I need more commercial roofing leads in Dallas.',
   'I want daily social posts for my dental clinic.',
-  'I have 70 products and want an online store.',
+  /* The shop is in the incubator on live; no example promises it there. */
+  ...(featureReady('online-shop') ? ['I have 70 products and want an online store.'] : []),
   'Follow up automatically with old customers.',
 ];
 

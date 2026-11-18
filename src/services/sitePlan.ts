@@ -31,7 +31,7 @@ import {
   type Attachment, type CustomWorkflow, type IntakeState, type KnownMap, type LinkRef, type Screen, type WorkspaceFacts,
 } from './projectIntake';
 import type { Understanding } from './intake';
-import { GROUP_ORDER, QUESTIONS, solutionByKey, CUSTOM, type Question } from './projectSolutions';
+import { GROUP_ORDER, QUESTIONS, solutionByKey, isOffered, CUSTOM, type Question } from './projectSolutions';
 
 /* ── The shortcuts under the box ─────────────────────────────────────────── */
 
@@ -39,7 +39,10 @@ import { GROUP_ORDER, QUESTIONS, solutionByKey, CUSTOM, type Question } from './
  * The popular outcomes, each a solution in the catalogue and a sentence that
  * starts the visitor off. Shortcuts, not a menu: typing anything else works.
  */
-export const SITE_SHORTCUTS: { key: string; label: string; icon: string; seed: string }[] = [
+/* Filtered by isOffered so an incubated solution (today the online store,
+   docs/INCUBATOR.md) is never offered on the live site — the shortcut would
+   start a plan the app then refuses to build. */
+export const SITE_SHORTCUTS: { key: string; label: string; icon: string; seed: string }[] = ([
   { key: 'lead-generation', label: 'Get more leads', icon: 'target', seed: 'I want more leads for my business.' },
   { key: 'sales-followup', label: 'Automate sales follow-up', icon: 'repeat', seed: 'Follow up with every lead and quote automatically.' },
   { key: 'social-growth', label: 'Create content', icon: 'image', seed: 'Create social media posts for my business every weekday.' },
@@ -51,7 +54,7 @@ export const SITE_SHORTCUTS: { key: string; label: string; icon: string; seed: s
   { key: 'blog-seo', label: 'SEO & blog growth', icon: 'file', seed: 'Write SEO blog articles for my website every week.' },
   { key: 'customer-reactivation', label: 'Re-engage old customers', icon: 'refresh', seed: 'Win back customers who have not bought in a while.' },
   { key: CUSTOM, label: 'Something custom', icon: 'sparkles', seed: '' },
-];
+] as { key: string; label: string; icon: string; seed: string }[]).filter(s => s.key === CUSTOM || isOffered(s.key));
 
 /* ── What the site asks ──────────────────────────────────────────────────── */
 
