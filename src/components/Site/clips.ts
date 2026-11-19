@@ -43,11 +43,11 @@ const C = (id: string, module: string, caption: string, alt: string): ModuleClip
 
 export const CLIPS = {
   autopilot: C('clip-autopilot', 'AI Autopilot',
-    'Say what you want, answer a few questions, read the blueprint — and AI Autopilot builds the business workspace.',
-    'AI Autopilot: a request typed, a ready-made solution picked, the questions answered, the blueprint approved and the business workspace built with its workflow switched on'),
+    'Business workspaces that run by themselves: workflows walked node by node, guardrails you set, agents, a daily finder — and a new one built from a sentence.',
+    'AI Autopilot: the board of business workspaces; a branching workflow on its canvas, scrolled; each step opened in turn, one dry-run against a sample contact; the whole workflow opened for editing with the step menu; the guardrails of what it may do by itself; its AI agents and activity; Brightline Realty’s daily search and the leads it found; then a new business workspace described, its blueprint read and built'),
   prospecting: C('clip-prospecting', 'AI Prospecting',
-    'One sentence, and AI Prospecting searches live, reads the websites and checks every address it finds.',
-    'AI Prospecting: a search typed for real estate agents in Richmond, Virginia, the stages running and the results arriving with checked addresses'),
+    'One sentence: it searches live, reads the websites, checks every address — then runs the search every day for a business workspace.',
+    'AI Prospecting: dentists in Richmond, Virginia typed and searched, the stages running, the step-by-step log and totals, the results filtered to addresses that take mail, then the search connected to the Parkway Dental business workspace in five steps — every day, what counts as a lead, the checks, where prospects go — and shown connected'),
   contacts: C('clip-contacts', 'Contacts',
     'Lists for every business workspace, smart filters, checked addresses, contacts sent to AI Autopilot and new prospects found without leaving Contacts.',
     'Contacts: a contact added at speed; a business workspace’s daily-finder list opened; filtered by email health and source; the address checks; three contacts ticked and sent to an AI Autopilot business workspace; dentists in Leeds found and added to a new list; a profile opened with its health score, a note added and its deals'),

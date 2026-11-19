@@ -121,6 +121,6 @@ motion; `test:sitefit` and `test:reeltour` must stay green.
 |---|---|
 | 1 Pointer | built (`scripts/clip-cursor.mts`), in use; captions, fast-forward badge and sample tag added (`scripts/clip-frame.mts`) |
 | 2 Hero (+ past-due reminder, receipts, keyword highlight) | not started |
-| 3 Module demos | **Contacts** (97 s) and **Pipelines** (70 s) re-made feature-led per the second note — waiting for the owner's review; the other 12 next, same method |
+| 3 Module demos | Feature-led per the second note, in four rounds (2026-11-19). Before: **Contacts** (97 s), **Pipelines** (70 s). Round 1: **AI Autopilot** (114 s — the canvas, each step opened in turn with a dry-run, the editor, guardrails, agents, activity, Brightline's daily finder, then a new business workspace from a sentence) and **AI Prospecting** (58 s — a search live, the step log, filters, then the search connected to a business workspace as a daily finder in five steps). Rounds 2–4: Websites, Graphics, Engagement; Campaigns, Booking, Inbox; Agency, Reports |
 | 4 Remaining stills → clips | not started |
 | 5 Platform film | not started |

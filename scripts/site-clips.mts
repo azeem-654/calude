@@ -216,6 +216,13 @@ class Hand {
     });
     await sleep(250);
   }
+  /** Scrolls the page smoothly, by the wheel, until `target` sits `top` px under the window's top. */
+  async reach(target: Loc, top = 150) {
+    const b = await target.boundingBox({ timeout: 8000 }).catch(() => null);
+    if (!b) throw new Error(`nothing to scroll to: ${String(target)}`);
+    const dy = Math.round(b.y - top);
+    if (Math.abs(dy) > 8) await this.scroll(dy, Math.min(1700, 600 + Math.abs(dy) * 0.45));
+  }
   async scroll(dy: number, ms = 700) {
     const n = Math.max(6, Math.round(ms / 16));
     let done = 0;
@@ -365,9 +372,114 @@ const RECIPES: Record<string, Recipe> = {
     },
   },
 
+  /* AI Autopilot — the owner's brief: walk its workflows step by step. The
+     seeded business workspaces are the subject (a branching nine-step
+     workflow, its guardrails, its agents, Brightline's daily finder); the
+     wizard comes last, briskly, so the clip ends on a new one built. Cards
+     are found by their business workspace's id, so workspaces a retake has
+     already added on top do not move the targets. */
   'clip-autopilot': {
-    route: '/autopilot?new=1',
+    route: '/autopilot',
     async act(h, p) {
+      const card = (name: string) => {
+        const pj = S.projects.find(x => x.name.startsWith(name));
+        if (!pj) throw new Error(`no business workspace ${name} in the sample`);
+        return p.locator(`#project-${pj.id}`);
+      };
+      const tab = (c: Loc, t: string) => c.getByRole('tab', { name: t, exact: true }).or(c.getByRole('button', { name: t, exact: true })).first();
+      const vine = card('Vine Street Kitchen');
+      await h.say('AI Autopilot runs your clients’ businesses', 'A business workspace per client, working on the server every five minutes');
+      await h.pause(2800);
+
+      /* The canvas. */
+      await h.say('Workflows drawn the way they run', 'Every fork labelled Yes or No, every path joined up');
+      const canvas = vine.getByRole('group', { name: 'Workflow diagram' }).first();
+      await h.reach(canvas, 200);
+      await h.pause(700);
+      for (const n of ['A deal moves to Won', 'How did we do?', 'Happy (4–5 stars)?']) {
+        await h.to(vine.getByRole('button', { name: `Edit step: ${n}` }).first(), { dx: -150, dy: 30 });
+        await h.pause(600);
+      }
+      const right = vine.getByRole('button', { name: 'Scroll the workflow right' }).first();
+      await h.click(right);
+      await h.pause(2600);
+      await h.click(vine.getByRole('button', { name: 'Scroll the workflow left' }).first());
+      await h.pause(600);
+
+      /* Node by node. */
+      await h.say('Walk the workflow node by node', 'The real message and condition — your own forms, tags and stages');
+      await h.click(vine.getByRole('button', { name: 'Edit step: A deal moves to Won' }).first());
+      await h.pause(1600);
+      const next = p.getByRole('button', { name: 'Next step' });
+      await h.click(next);
+      await h.pause(1900);
+      await h.click(next);
+      await h.say('Branches: Yes carries on, No goes where you choose');
+      await h.pause(2200);
+      await h.say('Dry-run any step against a real contact', 'Nothing is sent — it shows which way they would go, and why');
+      await h.click(p.locator('button,[role=tab]', { hasText: /^\s*Test\s*$/ }).last());
+      await h.pause(2800);
+      await h.say('Walk the workflow node by node', 'Each step tried against the same contact');
+      for (let i = 0; i < 6; i++) {
+        await h.click(next);
+        await h.pause(1100);
+      }
+      await h.click(p.getByRole('button', { name: 'Cancel' }).last());
+      await h.pause(500);
+
+      /* The whole workflow, editable. */
+      await h.say('Change the whole workflow in place', 'Add a step anywhere, reorder them, change what starts it');
+      await h.click(vine.getByRole('button', { name: /^Edit$/ }).first());
+      await h.pause(1300);
+      await h.click(p.getByRole('button', { name: 'Add a step after How did we do?' }));
+      await h.pause(1800);
+      await h.to(p.getByRole('button', { name: /^Their deal moves stage/ }).first());
+      await h.pause(900);
+      await h.to(p.getByRole('button', { name: /^They book an appointment/ }).first());
+      await h.pause(1100);
+      await h.click(p.getByRole('button', { name: 'Cancel' }).last());
+      await h.pause(500);
+
+      /* Guardrails. */
+      await h.say('You decide what it may do by itself', 'Off, asks first, or on its own — set for each business workspace');
+      await h.reach(vine, 90);
+      await h.click(tab(vine, 'Business Workspace Settings'));
+      await h.pause(900);
+      await h.scroll(300, 800);
+      await h.to(text(p, 'Write workflows'));
+      await h.pause(700);
+      await h.to(vine.getByRole('radio', { name: 'Asks first' }).nth(1));
+      await h.pause(900);
+      await h.to(vine.getByRole('radio', { name: 'On its own' }).nth(4));
+      await h.pause(1200);
+
+      /* Agents and what they did. */
+      await h.reach(vine, 90);
+      await h.say('AI agents on a schedule', 'They read the business and write for it — everything they make is a draft');
+      await h.click(tab(vine, 'AI Agents'));
+      await h.pause(2600);
+      await h.say('Everything it did, in the open', 'From your own mailbox, logged as it happens');
+      await h.click(tab(vine, 'Activity'));
+      await h.pause(2400);
+
+      /* A daily finder. */
+      const bright = card('Brightline Realty');
+      await h.say('New leads found for it every day', 'A daily search reads each website, checks the address and adds the new ones');
+      await h.fast(3);
+      await h.reach(bright, 90);
+      await h.fast(1);
+      await h.click(tab(bright, 'Prospects'));
+      await h.pause(1600);
+      await h.scroll(380, 900);
+      await h.pause(1600);
+      await h.scroll(560, 1000);
+      await h.pause(2400);
+
+      /* A new one, from a sentence. */
+      await h.say('A new business workspace from one sentence', 'Answer what it could not work out, read the blueprint, build');
+      await h.fast(4);
+      await h.reach(btn(p, /New business workspace/), 260);
+      await h.click(btn(p, /New business workspace/));
       await h.pause(700);
       await h.click(text(p, 'I’d rather describe it myself'));
       await h.pause(500);
@@ -380,57 +492,102 @@ const RECIPES: Record<string, Recipe> = {
       await h.pause(800);
       await h.click(text(p, 'My Rivera Studio profile'));
       await h.click(btn(p, /^Next$/));
-      /* The questions, briskly: each screen answered the quickest honest
-         way, by letting AI Autopilot choose. */
-      h.speed(3.5);
+      /* The questions: each screen answered the quickest honest way, by
+         letting AI Autopilot choose. */
       for (let i = 0; i < 8; i++) {
         await h.pause(500);
         if (await p.getByRole('button', { name: /Looks good/ }).count()) break;
         const all = p.getByRole('button', { name: /Let AI decide all/ }).locator('visible=true').first();
-        const next = p.locator('button').filter({ hasText: /^(Next|Answer:|See the blueprint)/ }).locator('visible=true').last();
-        if (await next.isDisabled().catch(() => false)) {
+        const nx = p.locator('button').filter({ hasText: /^(Next|Answer:|See the blueprint)/ }).locator('visible=true').last();
+        if (await nx.isDisabled().catch(() => false)) {
           if (await all.count()) await h.click(all);
           else await h.click(p.getByRole('button', { name: /Let AI decide/ }).locator('visible=true').first());
         }
-        await h.click(next);
+        await h.click(nx);
       }
-      h.speed(1);
-      await h.pause(1600);
-      await h.scroll(380, 900);
-      await h.pause(700);
+      await h.fast(1);
+      await h.say('Read exactly what it will build', 'Every workflow and every step, before anything exists');
+      await h.pause(1800);
+      await h.scroll(380, 1100);
+      await h.pause(1400);
       await h.click(btn(p, /Looks good/));
-      await h.pause(900);
+      await h.fast(3);
+      await h.pause(700);
       await h.click(btn(p, /^Review$/));
-      await h.pause(900);
+      await h.pause(700);
       await h.click(btn(p, /Build My AI Autopilot/));
-      h.speed(2);
       await p.getByRole('button', { name: /Open the business workspace/ }).locator('visible=true').first().waitFor({ timeout: 60_000 });
-      h.speed(1);
-      await h.pause(900);
+      await h.fast(1);
+      await h.say('The business workspace is built', 'Open it to see every workflow it made');
+      await h.pause(1200);
       await h.click(btn(p, /Open the business workspace/));
       await h.pause(1200);
-      /* The new business workspace is the newest, at the top of the board. */
       await p.evaluate(() => window.scrollTo({ top: 0 }));
       await h.pause(3000);
     },
   },
 
+  /* AI Prospecting — what makes it more than a directory: one sentence,
+     searched live with every stage shown, each website read for its
+     address and every address checked, and the search handed to an AI
+     Autopilot business workspace to run by itself on a schedule. */
   'clip-prospecting': {
     route: '/prospecting',
     async act(h, p) {
-      await h.pause(600);
-      const box = p.getByLabel('Who to look for').first();
-      await h.click(box);
-      await h.type('real estate agents in Richmond, Virginia', 38);
+      await h.say('AI Prospecting: say who you sell to', 'One sentence — no filters to learn');
+      await h.pause(2200);
+      await h.click(p.getByLabel('Who to look for').first());
+      await h.type('dentists in Richmond, Virginia', 46);
+      await h.pause(400);
       await h.click(btn(p, /^Search$/));
+      await h.say('It searches live, reads the websites and checks every address', 'Each stage shown as it runs');
       h.speed(2.5);
       await p.getByText(/Checked \d+ (address|contact)/).first().waitFor({ timeout: 90_000 });
       h.speed(1);
-      await h.pause(1500);
-      await h.scroll(520, 1400);
       await h.pause(1200);
-      await h.scroll(520, 1400);
+      await h.to(text(p, 'What was searched'), { dy: 40 });
       await h.pause(1800);
+
+      await h.say('What it did, step by step', 'What it searched, what it read, what it checked — and what would bounce');
+      await h.scroll(470, 1100);
+      await h.pause(2600);
+
+      await h.say('Only addresses worth sending to', 'Filter to the ones that take mail, have a phone or a website');
+      await h.scroll(420, 1000);
+      await h.click(btn(p, /^Takes mail$/));
+      await h.pause(1400);
+      await h.scroll(380, 1000);
+      await h.pause(1800);
+      await h.scroll(-380, 900);
+      await h.click(btn(p, /^All$/));
+      await h.pause(600);
+
+      /* The search, run every weekday by an AI Autopilot business workspace. */
+      await h.say('Turn the search into a daily finder', 'An AI Autopilot business workspace runs it on a schedule, by itself');
+      const connect = p.getByTestId('connect-autopilot-btn');
+      await h.reach(connect, 380);
+      await h.click(connect);
+      await h.pause(1200);
+      await h.click(p.getByRole('radio', { name: /Parkway Dental/ }));
+      await h.pause(900);
+      const go = p.getByTestId('connect-next');
+      await h.click(go);
+      await h.say('Decide what counts as a lead', 'Website, email or phone required — and what to leave out');
+      await h.pause(2400);
+      await h.click(go);
+      await h.say('How often, and how many', 'Every day, weekdays or days you pick');
+      await h.pause(700);
+      await h.click(p.getByRole('radio', { name: /^Every day$/ }));
+      await h.pause(1600);
+      await h.click(go);
+      await h.say('Every prospect checked before it is added', 'Duplicates, unsubscribes and bad domains turned away');
+      await h.pause(2600);
+      await h.click(go);
+      await h.say('Where the new prospects go', 'A contact list, tags, a pipeline — or straight into the next workflow');
+      await h.pause(2600);
+      await h.click(go);
+      await h.say('Connected — new prospects every day', 'Nobody has to remember to search again');
+      await h.pause(3400);
     },
   },
 
@@ -781,8 +938,8 @@ async function record(id: string) {
   fs.writeFileSync(`${dir}/list.txt`, list.join('\n'));
   const fade = `fps=${FPS},format=yuv420p,fade=t=in:st=0:d=0.35,fade=t=out:st=${Math.max(0, total - 0.5).toFixed(2)}:d=0.5`;
   const input = ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', `${dir}/list.txt`, '-vf', fade, '-an'];
-  /* A long clip is squeezed a little harder, to stay near 1.5 MB. */
-  const q = total > 30 ? 2 : 0;
+  /* A long clip is squeezed a little harder, to stay under ~4 MB. */
+  const q = total > 90 ? 4 : total > 30 ? 2 : 0;
   execFileSync(FF, [...input, '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', String(38 + q), '-row-mt', '1', '-deadline', 'good', '-cpu-used', '2', '-g', '250', `${OUT}/${id}.webm`]);
   execFileSync(FF, [...input, '-c:v', 'libx264', '-preset', 'slow', '-crf', String(28 + q), '-tune', 'animation', '-profile:v', 'high', '-level', '4.0', '-movflags', '+faststart', `${OUT}/${id}.mp4`]);
   execFileSync(FF, ['-y', '-loglevel', 'error', '-i', `${dir}/poster.png`, '-vf', 'scale=1920:-1:flags=lanczos', '-c:v', 'libwebp', '-quality', '78', `${OUT}/${id}-poster.webp`]);
