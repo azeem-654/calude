@@ -462,6 +462,19 @@ function FieldEditor({ value, onChange }: { value: string; onChange: (v: string)
   try { fields = JSON.parse(value || '[]') as typeof fields; } catch { fields = []; }
 
   const write = (next: typeof fields) => onChange(JSON.stringify(next));
+  /* A question's key is what its answer is stored under, and what the
+     Submissions list shows beside it. It used to be taken from the label at
+     the first keystroke and then frozen, so "Best time to call you" was
+     stored as "b". A question added in this edit follows its label until
+     the form is closed; a saved one keeps its key, so the answers already
+     stored under it still line up. */
+  const fresh = useRef(new Set<number>());
+  const keyFor = (label: string, i: number) => {
+    const base = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || `question_${i + 1}`;
+    let k = base;
+    for (let n = 2; fields.some((g, x) => x !== i && g.key === k); n++) k = `${base}_${n}`;
+    return k;
+  };
   const inp: React.CSSProperties = {
     padding: '7px 9px', border: `1px solid ${LINE}`, borderRadius: 8, fontSize: 12.5,
     fontFamily: 'inherit', outline: 'none', minWidth: 0,
@@ -473,7 +486,7 @@ function FieldEditor({ value, onChange }: { value: string; onChange: (v: string)
         {fields.map((f, i) => (
           <span key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <input style={{ ...inp, flex: '1 1 140px' }} value={f.label} placeholder="Question"
-              onChange={e => { const n = [...fields]; n[i] = { ...f, label: e.target.value, key: f.key || e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 40) }; write(n); }} />
+              onChange={e => { const n = [...fields]; n[i] = { ...f, label: e.target.value, key: fresh.current.has(i) || !f.key ? keyFor(e.target.value, i) : f.key }; write(n); }} />
             <select style={{ ...inp, flex: '0 0 110px' }} value={f.type}
               onChange={e => { const n = [...fields]; n[i] = { ...f, type: e.target.value }; write(n); }}>
               {['text', 'email', 'phone', 'number', 'textarea', 'select', 'checkbox', 'date'].map(t => <option key={t} value={t}>{t}</option>)}
@@ -482,14 +495,14 @@ function FieldEditor({ value, onChange }: { value: string; onChange: (v: string)
               <input type="checkbox" checked={!!f.required}
                 onChange={e => { const n = [...fields]; n[i] = { ...f, required: e.target.checked }; write(n); }} /> required
             </label>
-            <button type="button" onClick={() => write(fields.filter((_, x) => x !== i))}
+            <button type="button" onClick={() => { fresh.current = new Set([...fresh.current].filter(x => x !== i).map(x => (x > i ? x - 1 : x))); write(fields.filter((_, x) => x !== i)); }}
               style={{ ...smallBtn, color: '#b42318', padding: '5px 8px' }} aria-label={`Remove ${f.label}`}>
               <Trash2 size={11} />
             </button>
           </span>
         ))}
       </span>
-      <button type="button" onClick={() => write([...fields, { key: '', label: '', type: 'text' }])}
+      <button type="button" onClick={() => { fresh.current.add(fields.length); write([...fields, { key: '', label: '', type: 'text' }]); }}
         style={{ ...smallBtn, marginTop: 8 }}>
         <Plus size={11} /> Add a question
       </button>

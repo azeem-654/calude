@@ -95,7 +95,9 @@ export default function EngageSubmissions() {
             <div style={{ display: 'grid', gap: 4 }}>
               {Object.entries(answers).map(([k, v]) => (
                 <div key={k} style={{ display: 'flex', gap: 10, fontSize: 13, alignItems: 'baseline' }}>
-                  <span style={{ color: MUTED, width: 110, flexShrink: 0, fontSize: 11.5, fontWeight: 700 }}>{k}</span>
+                  {/* The key a question's answer is stored under, read back as words
+                      ("best_time_to_call_you" → "Best time to call you"). */}
+                  <span style={{ color: MUTED, width: 150, flexShrink: 0, fontSize: 11.5, fontWeight: 700, overflowWrap: 'anywhere' }}>{k.replace(/_+/g, ' ').trim().replace(/^./, c => c.toUpperCase())}</span>
                   <span style={{ color: INK, minWidth: 0, whiteSpace: 'pre-wrap' }}>{v}</span>
                 </div>
               ))}

@@ -591,18 +591,33 @@ const RECIPES: Record<string, Recipe> = {
     },
   },
 
+  /* Websites — what a visitor asks of a builder: whole sites to start
+     from, editing on the page itself, sections in a click, every page and
+     screen size, search settings and publishing. "Generate with AI" is
+     left alone (the recording's Worker has no AI key). */
   'clip-websites': {
     route: '/websites',
     async act(h, p) {
-      await h.pause(600);
-      await h.click(btn(p, /^New Website$/));
-      await h.pause(1500);
-      await h.to(p.getByText('Business Website', { exact: true }).last(), { dy: -120 });
+      await h.say('Websites & funnels for every client', 'Whole sites and multi-step funnels, built and hosted in the app');
+      await h.pause(2400);
+      await h.click(btn(p, /^Funnels$/));
+      await h.pause(1600);
+      await h.click(btn(p, /^Websites$/));
       await h.pause(500);
-      await h.click(p.getByText('Consulting Firm', { exact: true }).last(), { dy: -110 });
+
+      await h.say('Start from a whole site, not a blank page', 'Multi-page templates — hover one to scroll through it');
+      await h.click(btn(p, /^New Website$/));
+      await h.pause(1300);
+      await h.to(p.getByText('Business Website', { exact: true }).last(), { dy: -120 });
+      await h.pause(1600);
+      await h.to(p.getByText('Digital Agency', { exact: true }).last(), { dy: -120 });
       await h.pause(1200);
+      await h.click(p.getByText('Consulting Firm', { exact: true }).last(), { dy: -110 });
+      await h.pause(1300);
       await h.click(btn(p, /Use this template/));
       await h.pause(2000);
+
+      await h.say('Click anything on the page to change it', 'Its words and buttons in the panel beside it');
       await h.click(p.getByText(/Expert guidance, without/).first());
       await h.pause(800);
       /* The block's text in the properties panel: the box holding the headline. */
@@ -611,63 +626,223 @@ const RECIPES: Record<string, Recipe> = {
           .find(el => el.getBoundingClientRect().width > 0 && /Expert guidance/.test(el.value));
         box?.setAttribute('data-clip-target', '1');
       });
-      const field = p.locator('[data-clip-target="1"]');
-      if (await field.count()) {
-        await h.click(field);
-        await p.keyboard.press('ControlOrMeta+A');
-        await h.type('Clear advice for growing firms', 40);
-        await h.pause(900);
-      }
-      await h.click(btn(p, /^Publish$/));
+      await h.click(p.locator('[data-clip-target="1"]'));
+      await p.keyboard.press('ControlOrMeta+A');
+      await h.type('Clear advice for growing firms', 40);
       await h.pause(700);
+      /* The button's words beside it. (The colour swatches change the
+         block's gradient, which the template's hero picture covers, so
+         nothing would be seen to change.) */
+      await p.evaluate(() => {
+        const box = Array.from(document.querySelectorAll<HTMLInputElement>('input'))
+          .find(el => el.getBoundingClientRect().width > 0 && el.value === 'Book a free consult');
+        box?.setAttribute('data-clip-target', '2');
+      });
+      await h.click(p.locator('[data-clip-target="2"]'));
+      await p.keyboard.press('ControlOrMeta+A');
+      await h.type('Book a 20-minute call', 45);
+      await h.pause(1500);
+
+      await h.say('Add a section in one click', 'Sections, content and forms, straight onto the page');
+      await h.click(p.getByText('FAQ', { exact: true }).first());
+      await h.pause(900);
+      await h.to({ x: 620, y: 480 });
+      await h.scroll(2600, 1700);
+      await h.pause(2000);
+      await h.scroll(-2600, 1400);
+      await h.pause(400);
+
+      await h.say('Every page, on every screen', 'Add pages; check it on a tablet and a phone before it goes live');
+      await h.click(btn(p, /^pages$/i));
+      await h.pause(1300);
+      await h.click(p.locator('button:has(svg.lucide-tablet)').first());
+      await h.pause(1500);
+      await h.click(p.locator('button:has(svg.lucide-smartphone)').first());
+      await h.pause(1900);
+      await h.click(p.locator('button:has(svg.lucide-monitor)').first());
+      await h.pause(600);
+
+      await h.say('Ready for search engines', 'Its title, description and the link people will share');
+      await h.click(btn(p, /^seo & link$/i));
+      await h.pause(700);
+      await h.click(p.getByPlaceholder(/title for search/i).first());
+      await h.type('Halden Consulting — clear advice for growing firms', 30);
+      await h.pause(900);
+
+      await h.say('Publish — live in a click', 'On a public link under your business’s name, ready to share');
+      await h.click(btn(p, /^Publish$/));
+      await h.pause(800);
       await h.click(btn(p, /^Publish now$/));
-      await h.pause(2600);
+      await h.pause(3000);
     },
   },
 
+  /* Graphics Designer & Editor — templates drawn in the client's own name
+     and colours, words that fit their box, every format re-laid, brand and
+     picture in a click, variations, and the post itself. "Rewrite the
+     words" (AI) is left alone. */
   'clip-graphics': {
     route: '/social-creator',
     async act(h, p) {
-      await h.pause(600);
+      const tab = (t: string) => p.getByRole('tab', { name: t }).or(p.getByRole('button', { name: t, exact: true })).locator('visible=true').first();
+      const fmt = (t: RegExp) => p.getByRole('radio', { name: t }).or(p.getByRole('button', { name: t })).or(p.getByRole('tab', { name: t })).locator('visible=true').first();
+      await h.say('Graphics Designer & Editor', 'Every template drawn with your client’s name and colours');
+      await h.pause(2600);
+      await h.say('Templates for what you are posting', 'Offers, launches, tips, announcements and more');
+      await h.click(btn(p, /^Offers & discounts$/));
+      await h.pause(1500);
+      await h.click(btn(p, /^Tips & education$/));
+      await h.pause(1500);
+      await h.click(btn(p, /^All templates$/));
+      await h.pause(500);
+
+      await h.say('Pick one and say what it is about', 'Offers and prices only ever come from what you type');
       await h.scroll(330, 900);
       await h.to(text(p, 'Bauhaus News'));
       await h.pause(300);
       await h.click(btn(p, /^Use template$/));
-      await h.pause(500);
+      await h.pause(600);
       await h.click(p.getByPlaceholder('e.g. our new spring range'));
       await h.type('Spring garden consultations', 40);
       await h.click(btn(p, /Create design/));
       await p.getByRole('button', { name: /Rewrite the words/ }).first().waitFor({ timeout: 30_000 });
-      await h.pause(900);
+      await h.pause(1000);
+
+      await h.say('Change the words — the design keeps its shape', 'Every line measured and fitted to its box');
       await h.click(p.getByPlaceholder('A line about it'));
       await h.type('Book a free walk-through this April', 36);
-      await h.pause(500);
-      await h.click(btn(p, /^Square 1:1$/));
-      await h.pause(1100);
-      await h.click(text(p, 'Seasonal Check-up'));
+      await h.pause(1200);
+
+      await h.say('Every format, re-laid — never stretched', 'Feed, square, story, landscape');
+      for (const f of [/^Square/, /^Story/, /^Landscape/, /^Portrait/]) {
+        await h.click(fmt(f));
+        await h.pause(1400);
+      }
+
+      await h.say('Your client’s brand in a click', 'Their colours, and a font style to suit');
+      await h.click(tab('Brand'));
+      await h.pause(900);
+      await h.click(p.getByRole('button', { name: /^Editorial\b.*magazine/ }).first());
+      await h.pause(1500);
+      await h.click(p.getByRole('button', { name: /^Friendly/ }).first());
+      await h.pause(1500);
+
+      await h.say('Swap the picture', 'A curated photo library — or upload your own');
+      await h.click(tab('Pictures'));
+      await h.pause(800);
+      await h.click(p.locator('button[aria-pressed][title]').locator('visible=true').nth(4));
       await h.pause(2000);
+
+      await h.say('The same words, another composition', 'Pick a variation — your words and pictures come with you');
+      await h.click(text(p, 'Seasonal Check-up'));
+      await h.pause(2200);
+
+      await h.say('Ready to post', 'Caption, hashtags and a reminder date — download it or save it to the Media Center');
+      await h.scroll(420, 1000);
+      await h.click(p.getByPlaceholder(/hvac|hashtag/i).first());
+      await h.type('springgarden gardendesign', 45);
+      await h.pause(800);
+      await h.scroll(-420, 900);
+      await h.to(btn(p, /Download PNG/));
+      await h.pause(2400);
     },
   },
 
+  /* Customer Engagement — one place for every way a customer reaches the
+     business: a ticket worked with a private note, a form changed and then
+     really filled in on the business's own page and filed, an AI agent
+     told what it may and may not do, and the chat widget's one line. The
+     agent's answers need an AI key, so its chat is not shown. */
   'clip-engagement': {
     route: '/engagement',
+    toasts: true,
     async act(h, p) {
-      await h.pause(1000);
-      await h.click(btn(p, /^Tickets/));
-      await h.pause(900);
+      const tab = (t: string) => p.getByRole('tab', { name: new RegExp(`^${t}`) }).or(p.getByRole('button', { name: new RegExp(`^${t}`) })).locator('visible=true').first();
+      const field = (label: string) => p.getByLabel(label, { exact: true }).or(p.getByText(label, { exact: true }).locator('xpath=following::*[self::input or self::textarea][1]')).locator('visible=true').first();
+      await h.say('Customer Engagement', 'Chat, forms, tickets and live help — every way a customer reaches you');
+      await h.pause(2600);
+
+      await h.say('A ticket for anybody who needs help', 'Its status, your reply — and notes the customer never sees');
+      await h.click(tab('Tickets'));
+      await h.pause(800);
       await h.click(text(p, 'Booking link shows the wrong clinic hours'));
-      await h.pause(1500);
-      await h.click(btn(p, /^Forms$/));
-      await h.pause(900);
-      await h.click(btn(p, /^Edit$/));
-      await h.pause(900);
-      await h.scroll(420, 900);
-      await h.click(btn(p, /Add a question/));
+      await h.pause(1000);
+      await h.click(btn(p, /^In progress$/));
+      await h.pause(700);
+      await h.click(p.getByPlaceholder(/^Reply to the customer/).first());
+      await h.type('Fixed the Saturday hours on the booking page — checking the reminder emails next.', 26);
+      await h.click(p.getByText(/Internal note/).first());
       await h.pause(500);
+      await h.click(btn(p, /^Send$/));
+      await h.pause(1600);
+
+      await h.say('Forms for any website', 'Change one in the app — every answer is kept and becomes a contact');
+      await h.click(tab('Forms'));
+      await h.pause(800);
+      await h.click(p.getByRole('button', { name: /^Edit$/ }).nth(1));
+      await h.pause(900);
+      await h.scroll(380, 900);
+      await h.click(btn(p, /Add a question/));
+      await h.pause(400);
       await h.click(p.getByPlaceholder('Question', { exact: true }).last());
       await p.keyboard.press('ControlOrMeta+A');
       await h.type('Best time to call you', 45);
-      await h.pause(1800);
+      await h.pause(500);
+      await h.click(btn(p, /Save and make it live/));
+      await h.pause(1400);
+
+      await h.say('A visitor fills it in on the business’s page…');
+      await p.goto(`${BASE}/f/book-a-consultation`, { waitUntil: 'networkidle' });
+      await h.pause(1000);
+      await h.fast(3);
+      const f = (n: number) => p.locator(`#pf-${n}`);
+      await h.click(f(0)); await h.type('Priya Natarajan', 40);
+      await h.click(f(1)); await h.type('priya@larkspur.example', 26);
+      await h.click(f(2)); await h.type('Weekday mornings', 40);
+      const consent = p.locator('input[type=checkbox]').first();
+      if (await consent.count()) await h.click(consent);
+      await h.fast(1);
+      await h.click(p.getByRole('button', { name: /^(Send|Submit)/ }).first());
+      await h.pause(1600);
+      await p.goto(`${BASE}/engagement`, { waitUntil: 'networkidle' });
+      await h.say('…and it is filed with the contact', 'Every answer kept, word for word');
+      await h.click(tab('Submissions'));
+      await h.pause(2800);
+
+      await h.say('An AI agent for the website’s chat', 'It answers only from what you publish — and hands over to a person');
+      await h.click(tab('AI agents'));
+      await h.pause(700);
+      await h.click(p.getByRole('button', { name: /New/ }).locator('visible=true').last());
+      await h.pause(700);
+      await h.fast(3);
+      await h.click(field('What it is called'));
+      await h.type('Front desk', 50);
+      await h.click(field('Describe the business'));
+      await h.type('A family dental practice in Leeds. Check-ups, hygiene and cosmetic work; open weekdays 8 to 6.', 22);
+      await h.fast(1);
+      await h.scroll(420, 900);
+      await h.pause(500);
+      await h.click(text(p, 'Offer your real booking times'));
+      await h.pause(500);
+      await h.click(text(p, 'Hand over to a person'));
+      await h.pause(1400);
+      await h.scroll(-420, 900);
+      await h.click(p.getByRole('button', { name: /^Cancel$/ }).locator('visible=true').last());
+      await h.pause(500);
+
+      await h.say('One line of HTML puts it on any site', 'The chat window in your brand, with your name and photo');
+      await h.click(tab('Widgets'));
+      await h.pause(700);
+      await h.click(p.getByRole('button', { name: /New/ }).locator('visible=true').last());
+      await h.pause(700);
+      await h.click(field('Name it'));
+      await h.type('Parkway Dental chat', 45);
+      await h.click(field('Title in the window'));
+      await h.type('Questions? Ask us', 45);
+      await h.click(btn(p, /Save and make it live/));
+      await h.pause(1500);
+      await h.to(p.getByLabel('Embed code').first());
+      await h.pause(2600);
     },
   },
 
@@ -906,8 +1081,14 @@ async function record(id: string) {
   await sleep(400);
   const t0 = Date.now() / 1000;
   hand.marks.push({ t: t0, f: 1 });
+  /* A recipe that waits on something that never comes is refused, not
+     left hanging: every wait has a ceiling, and so does the whole clip. */
+  page.setDefaultTimeout(20_000);
   try {
-    await r.act(hand, page);
+    await Promise.race([
+      r.act(hand, page),
+      new Promise((_, no) => setTimeout(() => no(new Error('the recipe took over 6 minutes')), 360_000)),
+    ]);
   } catch (e) {
     await page.screenshot({ path: `${RAW}/${id}-fail.png` }).catch(() => {});
     throw e;
@@ -945,6 +1126,10 @@ async function record(id: string) {
   execFileSync(FF, ['-y', '-loglevel', 'error', '-i', `${dir}/poster.png`, '-vf', 'scale=1920:-1:flags=lanczos', '-c:v', 'libwebp', '-quality', '78', `${OUT}/${id}-poster.webp`]);
   /* The film is cut from a near-lossless master, not from the web copies. */
   execFileSync(FF, [...input, '-c:v', 'libx264', '-preset', 'fast', '-crf', '12', `${MASTER}/${id}.mp4`]);
+  /* The frames are ~1 GB a clip at 25 fps; a run of several fills the disk
+     (and a full disk stalls the screencast without an error), so they go
+     once the clip is encoded. The master above is what is kept. */
+  fs.rmSync(dir, { recursive: true, force: true });
   const kb = (f: string) => Math.round(fs.statSync(f).size / 1024);
   report.push(`${id}: ${total.toFixed(1)} s · webm ${kb(`${OUT}/${id}.webm`)} KB · mp4 ${kb(`${OUT}/${id}.mp4`)} KB · poster ${kb(`${OUT}/${id}-poster.webp`)} KB`);
 }
