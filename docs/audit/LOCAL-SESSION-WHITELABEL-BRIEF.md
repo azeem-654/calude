@@ -56,6 +56,10 @@ Check 11 above then shows a form instead of "not switched on". Test domain:
 **wildwestcorp.com** (DNS at GoDaddy), lent by the owner and to be handed back
 exactly as it was.
 
+**The owner's answers (2026-11-19):** wildwestcorp.com serves no website and
+no email today; forwarding its root to `www` during the test is approved, and
+must be undone afterwards. Cloudflare for SaaS is connected on live.
+
 **Before touching it (B0):** in GoDaddy → *My Products* → wildwestcorp.com →
 **DNS** → **⋯ / Export zone file**, save it as
 `docs/audit/wildwestcorp-dns-before.txt` (records only — no account details);
@@ -72,7 +76,7 @@ nameservers. Do not touch MX/email records.
 | 14a | As wl1, build any website and publish it with short name `testco-<random>`, page `home`; publish a funnel under the same name, page `sales` | The publish panel shows the address as `protectedcentral.com/testco-<random>/…`; on a phone, `https://protectedcentral.com/testco-<random>` is the website and `/testco-<random>/sales` the funnel; no "Protected Central" wording on either page |
 | 14b | Settings → Branding → `sales.wildwestcorp.com` → **Visitors see** → *Your website — the pages published as testco-<random>* | Phone, private tab: `https://sales.wildwestcorp.com` is the website's home page, `/sales` is the funnel, the tab shows the page's title; switching back to *Your client sign-in* brings the sign-in back |
 | 15 | **The root.** Type `wildwestcorp.com` in Your own domain (do not add yet) | The yellow note says a root cannot hold a CNAME at GoDaddy and suggests www + forwarding — report the wording |
-| 16 | Add `www.wildwestcorp.com` instead, add its CNAME + TXT at GoDaddy, **Check** until Live; then GoDaddy → Forwarding → forward `wildwestcorp.com` to `https://www.wildwestcorp.com` (301) **only if the owner said the root serves nothing important** | `https://www.wildwestcorp.com` is Testco's sign-in with a valid padlock; `http://wildwestcorp.com` ends there too |
+| 16 | Add `www.wildwestcorp.com` instead, add its CNAME + TXT at GoDaddy, **Check** until Live; then GoDaddy → Forwarding → forward `wildwestcorp.com` to `https://www.wildwestcorp.com` (301) (approved by the owner on 2026-11-19) | `https://www.wildwestcorp.com` is Testco's sign-in with a valid padlock; `http://wildwestcorp.com` ends there too |
 | 17 | Remove `sales.` and `www.` in the app (trash icon) | Both disappear from the list; within a few minutes neither serves Testco (a Cloudflare error page or nothing is expected) |
 | 18 | **Hand the domain back**: delete every record you added at GoDaddy, switch forwarding back to how it was, export the zone file again as `wildwestcorp-dns-after.txt` and diff it with the before file; repeat the three `dig`s | The diff is empty (apart from GoDaddy's serial/SOA line) and the `dig` answers match the before ones |
 
