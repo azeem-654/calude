@@ -133,7 +133,10 @@ export default function ClipPlayer({ clips, label, pick, onShow, eager = false }
             <source src={`${base}/${clip.id}.mp4`} type="video/mp4" />
           </video>
         )}
-        <span className="dc-mclip-tag">Recorded in the app · sample workspace</span>
+        {/* No tag of the player's own: every recording carries "Sample
+            workspace · real app, demonstration data" in its corner and its
+            captions along the bottom (scripts/clip-frame.mts), and a second
+            label here sat on top of both. */}
         {near && still && !asked && (
           <button type="button" className="dc-mclip-play" onClick={() => setAsked(true)} aria-label={`Play the ${clip.module} demo`}>
             <Play size={22} />

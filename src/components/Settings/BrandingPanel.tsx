@@ -67,6 +67,11 @@ export default function BrandingPanel() {
   const { addNotification } = useApp();
   const account = activeAccount();
   const live = activeBranding();
+  /* What the top bar is showing now, read once: the top bar only re-reads
+     the branding on a page load, and after Save `activeBranding()` already
+     returns the new name — the note below used to say the top bar "still
+     shows" the name just typed, when it still showed the old one. */
+  const [shownName] = useState(() => live.appName);
 
   const [appName, setAppName] = useState(account?.branding?.appName ?? '');
   const [logoUrl, setLogoUrl] = useState(account?.branding?.logoUrl ?? '');
@@ -221,7 +226,7 @@ export default function BrandingPanel() {
 
         {saved && (
           <p style={{ fontSize: 11.5, color: '#64748b', margin: '12px 0 0', lineHeight: 1.55 }}>
-            Saved. The top bar picks this up on the next page load — it currently still shows &ldquo;{live.appName}&rdquo;.
+            Saved. The top bar picks this up on the next page load{shownName !== activeBranding().appName && <> — until then it still shows &ldquo;{shownName}&rdquo;</>}.
           </p>
         )}
       </div>

@@ -237,7 +237,9 @@ short looping demo — a pointer moving, clicking and typing — not stills.
   `-poster.webp` a 2× still of where it ends), its module name, a caption and
   alt text. `ClipPlayer.tsx` plays them like a GIF (muted, inline, no
   controls), loads nothing until near the screen, plays only on screen with
-  the tab visible, a pause button always; a chapter's clips play one after
+  the tab visible, a pause and a full-screen button top right (the bottom of
+  every recording is its caption and its sample tag, so the player adds no
+  label of its own); a chapter's clips play one after
   another with a tab per module, and a module's block under the section is a
   button that plays its own. **Reduced motion: the poster and a Play button**;
   pressed, that clip plays once. `FeatureStage` takes `clips` (home page) or
@@ -256,8 +258,15 @@ short looping demo — a pointer moving, clicking and typing — not stills.
   sample tag are `scripts/clip-frame.mts` (`h.say`, `h.fast`; how a recipe
   is made: `site-demos-overhaul.md`); frames come from the DevTools
   screencast, motions are played back at their planned pace, waits for the
-  server can be marked faster (`speed`). A clip with no recipe is skipped;
-  a recipe that misses its target refuses the clip and saves `-fail.png`.
+  server can be marked faster (`speed`); `h.reach` wheel-scrolls a target
+  into place. A clip with no recipe is skipped; a recipe that misses its
+  target refuses the clip and saves `-fail.png`; every wait has a ceiling and
+  a recipe over six minutes is refused. Raw frames (~1 GB a clip) are deleted
+  once encoded — a full disk stalled the screencast with no error. The
+  sample sign-in applies on `app.protectedcentral.com` only and every
+  `*.protectedcentral.com` host maps to the local Worker, so a recipe can
+  open a client's own sign-in address signed out; `ownClients` keeps the
+  five browser-only sample clients out (the agency clip makes a real one).
   Near-lossless masters stay in `/tmp/site-clips-master` for the film.
 - **The platform film is the same recordings** (`npx tsx scripts/site-film.mts`):
   a title card, the twelve modules in `ORDER` with the module's name and

@@ -83,12 +83,17 @@ const S = JSON.parse(fs.readFileSync(SESSION, 'utf8')) as { token: string; accou
 
 /* ── What every page gets ──────────────────────────────────────────────── */
 
-const signIn = ([token, acct]: string[]) => {
+const signIn = ([token, acct, subs]: string[]) => {
+  /* The sample agency is signed in on the app's own host only: a clip that
+     opens a client's sign-in address (clip-agency) shows that page as a
+     visitor sees it, signed out. */
+  if (location.hostname !== 'app.protectedcentral.com') return;
   localStorage.setItem('crm_session', JSON.stringify({
     token, backend: 'php', user: { email: 'alex@riverastudio.com', name: 'Alex Rivera', role: 'agency', accountId: acct },
   }));
   localStorage.setItem('crm_active_account', acct);
-  localStorage.setItem('crm_subaccounts', JSON.stringify([
+  if (subs === 'off') localStorage.setItem('crm_subaccounts', JSON.stringify([{ id: acct, name: 'Rivera Studio', plan: 'agency', status: 'active', price: 0 }]));
+  else localStorage.setItem('crm_subaccounts', JSON.stringify([
     { id: acct, name: 'Rivera Studio', plan: 'agency', status: 'active', price: 0 },
     { id: 'reel-c1', parentId: acct, name: 'Brightline Realty', plan: 'pro', status: 'active', price: 2497, createdAt: '2026-05-12T09:00:00Z' },
     { id: 'reel-c2', parentId: acct, name: 'Parkway Dental', plan: 'growth', status: 'active', price: 1497, createdAt: '2026-06-19T09:00:00Z' },
@@ -244,7 +249,11 @@ class Hand {
 /* `toasts`: the app's own notices stay on screen — for a clip whose point
    is one ("1 deal on the board from your forms"); otherwise they are hidden
    as noise. */
-type Recipe = { route: string; toasts?: boolean; act: (h: Hand, p: Page) => Promise<void> };
+/* `ownClients`: the server's own client list, not the five sample clients
+   put in the browser for the account switcher — for the agency clip, which
+   makes a client on camera and must not show figures for clients that do
+   not exist on the server. */
+type Recipe = { route: string; toasts?: boolean; ownClients?: boolean; act: (h: Hand, p: Page) => Promise<void> };
 /* A tab strip may draw its tabs as `tab` or as plain buttons; either will do. */
 const btn = (p: Page, name: string | RegExp) => p.getByRole('button', { name }).or(p.getByRole('tab', { name })).or(p.getByRole('radio', { name })).locator('visible=true').first();
 const text = (p: Page, t: string | RegExp) => p.getByText(t).locator('visible=true').first();
@@ -1145,32 +1154,116 @@ const RECIPES: Record<string, Recipe> = {
     },
   },
 
+  /* Agency & white-label — a client workspace made on camera, with its
+     price and the name on its sign-in page; the agency's own product name
+     across the app; a sign-in address claimed and live; and that address
+     opened, signed out, as a client sees it. Own domains are not shown:
+     whether they are switched on differs between this recording and live. */
   'clip-agency': {
-    route: '/settings?tab=branding',
+    route: '/agency',
+    ownClients: true,
     async act(h, p) {
+      await h.say('Agency & white-label', 'A workspace for every client, under your own name');
+      await h.pause(2600);
+
+      await h.say('A client workspace in a minute', 'Its own contacts, pipelines and campaigns — and the price they pay you');
+      await h.click(btn(p, /New Sub-Account/));
+      await h.pause(900);
+      await h.fast(3);
+      await h.click(p.getByPlaceholder('Acme — Main Location'));
+      await h.type('Harbour Law — Leeds', 40);
+      await h.click(p.getByPlaceholder('Acme Inc.'));
+      await h.type('Harbour Law LLP', 40);
+      await h.click(p.getByPlaceholder('jane@acme.com'));
+      await h.type('office@harbourlaw.example', 26);
+      await h.click(p.getByPlaceholder(/Dental · Real estate/));
+      await h.type('Law firm', 45);
+      await h.fast(1);
+      await h.click(text(p, 'Scale'));
+      await h.pause(600);
+      const price = p.locator('input[type=number]').filter({ visible: true }).first();
+      await h.click(price);
+      await p.keyboard.press('ControlOrMeta+A');
+      await h.type('497', 90);
+      await h.choose(p.locator('select').filter({ hasText: 'Trial' }).locator('visible=true').first(), 'Active');
+      await h.pause(500);
+
+      await h.say('Your name on their sign-in page', 'Each client can carry the product name you sell it under');
+      const name = p.getByPlaceholder('Protected Central (default)');
+      await h.reach(name, 360);
+      await h.click(name);
+      await h.type('Rivera Growth', 55);
+      await h.click(p.getByPlaceholder('Sign in to your workspace'));
+      await h.type('Sign in to Rivera Growth', 42);
+      await h.pause(700);
+      await h.click(btn(p, /^Create Sub-Account$/));
+      await h.pause(2600);
+
+      await h.say('Your product name across the app', 'The top bar, the sign-in screen, the emails’ sender name');
+      await p.goto(`${BASE}/settings?tab=branding`, { waitUntil: 'networkidle' });
       await h.pause(900);
       await h.click(p.locator('#brand-name'));
       await p.keyboard.press('ControlOrMeta+A');
       await h.type('Rivera Growth', 60);
-      await h.pause(500);
       await h.click(p.locator('#brand-headline'));
       await p.keyboard.press('ControlOrMeta+A');
       await h.type('Sign in to Rivera Growth', 45);
-      await h.pause(2200);
+      await h.pause(700);
+      await h.click(btn(p, /Save branding/));
+      await h.pause(1600);
+
+      /* The "Your own domain" card under it says whether own domains are
+         switched on, which differs between this recording (off) and live
+         (on) — so the box is brought to the foot of the window, the card
+         below the fold, and the caption clears while it is used. */
+      await h.say('Your own sign-in address, live at once', 'Nothing to set up — your clients sign in there');
+      await h.pause(1600);
+      await h.say('');
+      const sub = p.getByPlaceholder('youragency');
+      await h.reach(sub, 700);
+      await h.click(sub);
+      await h.type('rivera-growth', 60);
+      await h.click(btn(p, /Claim it/));
+      await h.pause(2600);
+
+      await h.say('What your client sees', 'Your name and your headline — signed out, at your address');
+      await p.goto('http://rivera-growth.protectedcentral.com/login', { waitUntil: 'networkidle' });
+      await h.pause(3600);
     },
   },
 
+  /* Reports — every figure read from the module that owns it, over the
+     period chosen: the overview, where contacts came from, deals by stage
+     and owner, campaigns and deliverability. */
   'clip-reports': {
     route: '/analytics',
     async act(h, p) {
-      await h.pause(1200);
+      await h.say('Reports read live from every module', 'Revenue, new contacts and conversion — counted from your own records');
+      await h.pause(2800);
+      await h.say('Any period you like', 'Seven days to twelve months');
       await h.click(btn(p, /^90d$/));
       await h.pause(1400);
-      await h.scroll(420, 1100);
-      await h.pause(900);
-      await h.scroll(-420, 900);
+      await h.click(btn(p, /^12m$/));
+      await h.pause(1600);
+
+      await h.say('Where every contact came from', 'Each source counted — forms, finders, the booking page');
+      await h.scroll(330, 1000);
+      await h.pause(2400);
+      await h.say('Deals by stage, and who is winning them');
+      await h.scroll(420, 1000);
+      await h.pause(2400);
+      await h.say('Every campaign side by side', 'Sent, opened and clicked');
+      await h.scroll(380, 1000);
+      await h.pause(2400);
+      await h.scroll(-1130, 1200);
+
+      /* Not "Revenue by business workspace": it counts shop orders, and the
+         online shop is held back on live (docs/INCUBATOR.md). */
+      await h.say('Is your mail arriving?', 'Delivery and bounce rates, list health and sender reputation');
       await h.click(btn(p, /^Deliverability$/));
-      await h.pause(2600);
+      await h.pause(1500);
+      await h.scroll(380, 1000);
+      await h.pause(2400);
     },
   },
 };
@@ -1182,7 +1275,9 @@ if (!only.length && missing.length) console.log(`No recipe yet for: ${missing.jo
 
 /* ── Recording ─────────────────────────────────────────────────────────── */
 
-const browser = await pw.chromium.launch({ args: [`--host-resolver-rules=MAP ${HOST}:80 127.0.0.1:8797`] });
+/* Every protectedcentral.com host goes to the local Worker, so a client's
+   own sign-in address (rivera-growth.protectedcentral.com) opens too. */
+const browser = await pw.chromium.launch({ args: [`--host-resolver-rules=MAP ${HOST}:80 127.0.0.1:8797, MAP *.protectedcentral.com:80 127.0.0.1:8797`] });
 const failed: string[] = [];
 const report: string[] = [];
 
@@ -1192,7 +1287,7 @@ async function record(id: string) {
   /* tsx names every function it compiles with a `__name` helper the page
      does not have; these run in the page, so they get a stand-in. */
   await ctx.addInitScript({ content: 'window.__name = (f) => f;' });
-  await ctx.addInitScript(signIn, [S.token, S.accountId]);
+  await ctx.addInitScript(signIn, [S.token, S.accountId, r.ownClients ? 'off' : 'on']);
   await ctx.addInitScript(CLIP_CURSOR);
   await ctx.addInitScript(LIVE_LOOK);
   await ctx.addInitScript(CLIP_FRAME);

@@ -73,11 +73,11 @@ export const CLIPS = {
     'Every mailbox in one list, the urgent and unhappy first, answered in place, tagged, noted for the team and closed.',
     'Unified Inbox: the sales, campaigns and support mailboxes; the urgent filter and an urgent, negative message; a pricing question answered with a ready reply and a line typed; a tag, an internal note and the conversation marked resolved; then a search for invoice'),
   agency: C('clip-agency', 'Agency & white-label',
-    'Your own product name on it: the top bar and the sign-in screen change as you type.',
-    'Settings, Branding: a product name and sign-in headline typed, the preview changing with them'),
+    'A client workspace made in a minute with its price and your name on it, your product name across the app, and a sign-in address of your own.',
+    'Agency & white-label: a new client workspace for Harbour Law filled in at speed, the Scale plan, a $497 monthly price, active, with Rivera Growth as the product name on its sign-in page; the agency’s own branding saved as Rivera Growth; the address rivera-growth.protectedcentral.com claimed and live; then that address opened signed out, showing the Rivera Growth sign-in page'),
   reports: C('clip-reports', 'Reports',
-    'Reports read live from the modules that own the numbers, over the period you choose.',
-    'Reports: the overview, the period changed to 90 days and the deliverability tab opened'),
+    'Every figure read live from the module that owns it, over the period you choose — down to whether your mail is arriving.',
+    'Reports: the overview over 90 days and 12 months; where contacts came from; deals by stage and by owner; campaigns side by side; then deliverability — sender reputation, eight weeks of sending and list health'),
 } satisfies Record<string, ModuleClip>;
 
 export type ClipKey = keyof typeof CLIPS;
