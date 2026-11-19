@@ -296,7 +296,7 @@ async function afterAdded(env: Env, f: FinderRow, conn: Connection, rows: PPRow[
       const at = nowIso();
       for (const r of rows) {
         st.deals.push({
-          id: rid('deal'), title: r.name, contactId: `pf-${r.id}`, contactName: r.name, value: 0, stage: st.id, probability: 10,
+          id: rid('deal'), title: r.name, contactId: `pf-${r.id}`, contactName: r.name, value: 0, stage: st.name ?? st.id, probability: 10,
           expectedClose: '', assignedTo: d.owner, createdAt: at, priority: 'normal', status: 'active', source: 'autopilot',
           description: `Found by "${conn.searchName}" (AI Prospecting) — confidence ${Number(r.confidence) || 0}%.`,
         });

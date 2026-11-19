@@ -252,7 +252,9 @@ short looping demo — a pointer moving, clicking and typing — not stills.
   no-AI-key notices (the Worker has no key; live does). The pointer is the
   3D one in `scripts/clip-cursor.mts` (bevelled, lifts and tilts as it moves,
   sinks and ripples on a click, an I-beam over text), a page element
-  following the real mouse; frames come from the DevTools
+  following the real mouse; captions, the fast-forward badge and the
+  sample tag are `scripts/clip-frame.mts` (`h.say`, `h.fast`; how a recipe
+  is made: `site-demos-overhaul.md`); frames come from the DevTools
   screencast, motions are played back at their planned pace, waits for the
   server can be marked faster (`speed`). A clip with no recipe is skipped;
   a recipe that misses its target refuses the clip and saves `-fail.png`.

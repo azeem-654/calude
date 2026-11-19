@@ -40,6 +40,7 @@
  */
 import { LIVE_LOOK } from './live-look.mts';
 import { CLIP_CURSOR } from './clip-cursor.mts';
+import { CLIP_FRAME } from './clip-frame.mts';
 import pw from '/opt/node22/lib/node_modules/playwright/index.js';
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -131,15 +132,44 @@ class Hand {
   }
   /** How much faster than recorded the moment `t` plays. */
   factor(t: number) {
-    const seg = this.segs.find(x => t >= x.a && t < x.b);
-    if (seg) return seg.f;
     let f = 1;
     for (const m of this.marks) if (m.t <= t) f = m.f;
-    return f;
+    /* A motion inside a fast stretch is first brought back to its planned
+       pace, then sped up with the rest — so `fast` hurries the typing and the
+       moves too, not only the pauses between them. */
+    const seg = this.segs.find(x => t >= x.a && t < x.b);
+    return seg ? seg.f * f : f;
   }
   /** A stretch where only waiting happens, played `f` times as fast. */
   speed(f: number) { this.marks.push({ t: Date.now() / 1000, f }); }
+  /**
+   * A routine stretch played `f` times as fast, with a badge saying so —
+   * the owner's note of 2026-11-19: speed through the ordinary steps, take
+   * time over the features. `fast(1)` ends it.
+   */
+  async fast(f: number) {
+    this.speed(f);
+    await this.page.evaluate(l => (window as unknown as { __clipFast: (l: string) => void }).__clipFast(l), f > 1 ? `⏩ ${f}× speed` : '').catch(() => {});
+  }
+  /** A caption over the frame naming what is on screen; '' clears it. Read by a viewer at 1×, so not inside a fast stretch. */
+  async say(title: string, sub = '') {
+    await this.page.evaluate(([t, s]) => (window as unknown as { __clipSay: (t: string, s: string) => void }).__clipSay(t, s), [title, sub]).catch(() => {});
+    await sleep(350);
+  }
   async pause(ms: number) { await sleep(ms); }
+  /* A native <select>: pointed at and pressed like anything else, then set.
+     Its open list is drawn by the browser outside the page, so a screencast
+     would never show it — the value simply changes, which is what is seen. */
+  async choose(sel: Loc, label: string) {
+    await this.to(sel);
+    await this.page.mouse.down();
+    await sleep(90);
+    await this.page.mouse.up();
+    await sleep(250);
+    await this.page.keyboard.press('Escape').catch(() => {});
+    await sel.selectOption({ label });
+    await sleep(300);
+  }
   async to(target: Loc | { x: number; y: number }, opts: { dx?: number; dy?: number } = {}) {
     let tx: number, ty: number;
     if ('x' in target) { tx = target.x; ty = target.y; } else {
@@ -204,18 +234,30 @@ class Hand {
 
 /* ── The recipes ───────────────────────────────────────────────────────── */
 
-type Recipe = { route: string; act: (h: Hand, p: Page) => Promise<void> };
+/* `toasts`: the app's own notices stay on screen — for a clip whose point
+   is one ("1 deal on the board from your forms"); otherwise they are hidden
+   as noise. */
+type Recipe = { route: string; toasts?: boolean; act: (h: Hand, p: Page) => Promise<void> };
 /* A tab strip may draw its tabs as `tab` or as plain buttons; either will do. */
 const btn = (p: Page, name: string | RegExp) => p.getByRole('button', { name }).or(p.getByRole('tab', { name })).or(p.getByRole('radio', { name })).locator('visible=true').first();
 const text = (p: Page, t: string | RegExp) => p.getByText(t).locator('visible=true').first();
 
 const RECIPES: Record<string, Recipe> = {
+  /* Contacts — the owner's note of 2026-11-19: not "a contact added" but
+     what the module does that others do not. Adding one is shown, sped up;
+     the time goes to lists per business workspace, filters, the address
+     checks, acting on many at once, handing people to AI Autopilot, finding
+     businesses from inside Contacts, and the one-page profile. */
   'clip-contacts': {
     route: '/contacts',
     async act(h, p) {
-      await h.pause(600);
+      await h.say('Contacts that work for you', 'Every person and business, scored, segmented and ready to act on');
+      await h.pause(2600);
+
+      /* The everyday step, quickly. */
+      await h.say('Adding a contact takes seconds');
+      await h.fast(4);
       await h.click(btn(p, /^Add Contact$/));
-      await h.pause(400);
       await h.click(p.getByPlaceholder('John Smith'));
       await h.type('Jordan Example', 40);
       await h.click(p.getByPlaceholder('john@example.com'));
@@ -223,12 +265,103 @@ const RECIPES: Record<string, Recipe> = {
       await h.click(p.getByPlaceholder('Acme Inc.'));
       await h.type('Northwind Studio', 30);
       await h.click(p.getByRole('button', { name: /^Add Contact$/ }).locator('visible=true').last());
-      await h.pause(700);
-      await h.click(p.getByPlaceholder(/Search name/).first());
-      await h.type('Jordan', 60);
       await h.pause(600);
-      await h.click(p.getByText('Jordan Example', { exact: true }).first());
+      await h.fast(1);
+
+      /* Lists that belong to a business workspace. */
+      const lists = p.getByLabel('Contact lists').first();
+      await h.say('A list for every business workspace', 'AI Autopilot fills them — here, a daily finder adding Virginia realtors');
+      await h.scroll(330, 900);
+      await h.pause(500);
+      await h.click(lists.getByText(/Virginia realtors/).first());
+      await h.pause(2600);
+      await h.scroll(-330, 900);
+      await h.click(lists.getByText('All contacts', { exact: true }).first());
+      await h.pause(600);
+
+      /* Segmenting. */
+      await h.say('Filter and segment in a click', 'By stage, owner, email health — or any field you like');
+      await h.choose(p.locator('select').filter({ hasText: 'All Email Health' }).locator('visible=true').first(), 'Valid');
+      await h.pause(1100);
+      await h.click(btn(p, /Filter$/));
+      await h.pause(500);
+      await h.click(btn(p, /Add Filter/));
+      await h.pause(400);
+      await h.choose(p.locator('select').filter({ hasText: 'Job Title' }).locator('visible=true').first(), 'Source');
+      await h.click(p.getByPlaceholder('Value...').locator('visible=true').first());
+      await h.type('Website', 60);
+      await h.pause(1800);
+
+      /* Deliverability. */
+      await h.say('Every address checked before you send', 'Risky and invalid ones cleared out in one click');
+      await h.to(btn(p, /Verify these addresses/));
+      await h.pause(1300);
+      await h.to(btn(p, /One-click clean/));
+      await h.pause(1500);
+      await p.goto(`${BASE}/contacts`, { waitUntil: 'networkidle' });
+      await h.pause(900);
+
+      /* Acting on many, and handing them to AI Autopilot. */
+      await h.say('Push contacts straight into an AI Autopilot workflow', 'Tick them, pick a business workspace, done');
+      const rows = p.locator('tbody input[type=checkbox]');
+      for (let i = 0; i < 3; i++) await h.click(rows.nth(i));
+      await h.pause(900);
+      await h.to(p.locator('select').filter({ hasText: 'Move deals to stage' }).locator('visible=true').first());
+      await h.pause(500);
+      await h.click(btn(p, /Send to AI Autopilot/));
+      await h.pause(1200);
+      const sd = p.getByTestId('cl-send-dialog');
+      await h.click(sd.locator('label').filter({ hasText: 'Brightline Realty' }).first());
+      await h.pause(700);
+      await h.click(p.getByTestId('cl-send-go'));
       await h.pause(2400);
+      await p.keyboard.press('Escape');
+      await p.goto(`${BASE}/contacts`, { waitUntil: 'networkidle' });
+      await h.pause(700);
+
+      /* New prospects without leaving the screen. */
+      await h.say('Find new prospects from inside Contacts', 'Search the business directories and add them to a list');
+      await h.click(btn(p, /Find businesses/));
+      await h.pause(700);
+      await h.click(p.getByPlaceholder(/What kind/));
+      await h.type('dentists', 55);
+      await h.click(p.getByPlaceholder(/Where/));
+      await h.type('Leeds', 60);
+      await h.click(p.getByRole('button', { name: /^Search$/ }).locator('visible=true').first());
+      h.speed(2);
+      await text(p, /\d+ found/).waitFor({ timeout: 60_000 });
+      h.speed(1);
+      await h.pause(900);
+      const dlg = p.getByRole('dialog', { name: 'Find businesses' });
+      const picks = dlg.locator('input[type=checkbox][aria-label^="Tick "]:not([aria-label="Tick all"])');
+      for (let i = 0; i < 3; i++) await h.click(picks.nth(i));
+      await h.pause(600);
+      await h.click(dlg.getByText('A new list', { exact: true }));
+      await h.click(dlg.getByLabel('Name of the new list'));
+      await p.keyboard.press('Control+A');
+      await h.type('Dentists — Leeds', 45);
+      await h.click(dlg.locator('label').filter({ hasText: /acceptable use|agree|allowed/i }).locator('input[type=checkbox]').first());
+      await h.click(dlg.getByRole('button', { name: /^Add 3 to/ }));
+      await h.pause(2200);
+      await p.keyboard.press('Escape');
+      await h.pause(500);
+
+      /* The profile. */
+      await h.say('One page per contact', 'Health score, lifecycle, next best action and the whole history');
+      await h.click(p.getByPlaceholder(/Search name/).first());
+      await h.type('Aisha', 70);
+      await h.pause(500);
+      await h.click(p.getByText('Aisha Khan', { exact: true }).first());
+      await h.pause(1600);
+      await h.click(p.getByTitle('How this score is calculated').locator('visible=true').first());
+      await h.pause(2400);
+      await h.click(btn(p, /^Notes/));
+      await h.click(p.getByPlaceholder('Add a note about this contact...'));
+      await h.type('Wants the booking page live before March.', 32);
+      await h.click(btn(p, /^\+ Note$/));
+      await h.pause(1000);
+      await h.click(btn(p, /^Deals/));
+      await h.pause(2800);
     },
   },
 
@@ -381,32 +514,97 @@ const RECIPES: Record<string, Recipe> = {
     },
   },
 
+  /* Pipelines — the owner's note of 2026-11-19: show what is unusual. A
+     pipeline per business workspace with its first tasks already written,
+     a real enquiry on the business's own form arriving as a deal, an
+     automation acting on the board, the deal itself, and the views. */
   'clip-pipelines': {
     route: '/pipelines',
+    toasts: true,
     async act(h, p) {
+      const pipe = () => p.locator('select').filter({ hasText: 'New business' }).locator('visible=true').first();
+      const view = (t: string) => p.locator('button', { hasText: new RegExp(`^\\s*${t}\\s*$`) }).locator('visible=true').first();
+      await h.say('Pipelines: every deal, from first enquiry to won');
+      await h.pause(2600);
+
+      /* One per business workspace. */
+      await h.say('A separate pipeline for every business workspace', 'Made with the workspace, its first tasks written for that business');
+      await h.choose(pipe(), 'Parkway Dental — new patients');
+      await h.pause(1400);
+      await h.click(text(p, 'Get Parkway Dental live'));
+      await h.pause(1300);
+      await h.scroll(260, 800);
+      await h.pause(2000);
+      await p.keyboard.press('Escape');
+      await h.pause(500);
+      await h.choose(pipe(), 'Harbour Law — consultations');
+      await h.pause(1600);
+      await h.choose(pipe(), 'New business');
+      await h.pause(800);
+
+      /* A visitor's enquiry on the business's website. */
+      await h.say('Website enquiries become deals by themselves', 'A visitor asks for a quote on the business’s website…');
+      await p.goto(`${BASE}/f/get-a-quote`, { waitUntil: 'networkidle' });
       await h.pause(900);
-      /* A deal card dragged one stage on, the way a person does it. */
-      const drag = async (k: number, dx: number) => {
-        const card = p.locator('[draggable="true"]').locator('visible=true').nth(k);
-        const b = await card.boundingBox();
-        if (!b) throw new Error('no deal card on the board');
-        await h.to({ x: b.x + b.width / 2, y: b.y + 24 });
-        await p.mouse.down();
-        await h.pause(180);
-        await h.to({ x: b.x + b.width / 2 + dx, y: b.y + 70 });
-        await h.pause(180);
-        await p.mouse.up();
-        await h.pause(1000);
-        return { x: b.x + b.width / 2 + dx, y: b.y + 40 };
-      };
-      const at = await drag(0, 300);
-      await h.click(at);
+      await h.fast(3);
+      const f = (n: number) => p.locator(`#pf-${n}`);
+      await h.click(f(0)); await h.type('Maya Collins', 40);
+      await h.click(f(1)); await h.type('maya@harbourview.example', 26);
+      await h.click(f(3)); await h.type('A new website and online booking', 30);
+      await h.click(f(4)); await h.type('1200', 60);
+      await h.click(p.locator('input[type=checkbox]').first());
+      await h.fast(1);
+      await h.click(p.getByRole('button', { name: 'Send' }));
+      await h.pause(1500);
+      await p.goto(`${BASE}/pipelines`, { waitUntil: 'networkidle' });
+      if (!(await pipe().inputValue().catch(() => '')).startsWith('p1')) await pipe().selectOption({ label: 'New business' });
+      await h.say('…and it is on the board in seconds', 'A contact and a deal, in the first stage, nobody typing anything');
+      h.speed(1.6);
+      await p.getByText('Maya Collins', { exact: true }).locator('visible=true').first().waitFor({ timeout: 30_000 });
+      h.speed(1);
+      await h.to(p.getByText('Maya Collins', { exact: true }).locator('visible=true').first());
+      await h.pause(2600);
+
+      /* An automation on the board. */
+      await h.say('Automations that work the board for you', 'Here: any deal idle for 14 days is flagged urgent and stale');
+      await h.click(p.locator('button', { hasText: /^\s*Automations/ }).locator('visible=true').first());
+      await h.pause(1100);
+      await h.click(text(p, 'Flag stale deals'));
+      await h.pause(1600);
+      await p.keyboard.press('Escape');
+      await h.pause(400);
+      /* The idle sweep runs when a pipeline is opened. */
+      await h.choose(pipe(), 'Renewals & upsells');
+      await h.pause(500);
+      await h.choose(pipe(), 'New business');
+      await h.pause(2800);
+
+      /* Moving a deal, and what is inside one. */
+      await h.say('Drag a deal on — open it for sub-tasks, deadlines and comments');
+      const card = p.locator('[draggable="true"]').locator('visible=true').nth(1);
+      const b = await card.boundingBox();
+      if (!b) throw new Error('no deal card on the board');
+      await h.to({ x: b.x + b.width / 2, y: b.y + 24 });
+      await p.mouse.down();
+      await h.pause(180);
+      await h.to({ x: b.x + b.width / 2 + 300, y: b.y + 70 });
+      await h.pause(180);
+      await p.mouse.up();
+      await h.pause(1000);
+      await h.click({ x: b.x + b.width / 2 + 300, y: b.y + 50 });
       await h.pause(1200);
       await h.click(text(p, 'Send the proposal'), { dx: -40 });
-      await h.pause(1300);
+      await h.pause(2200);
       await p.keyboard.press('Escape');
-      await h.pause(900);
-      await drag(2, 300);
+      await h.pause(600);
+
+      /* The views. */
+      await h.say('See it your way', 'Board, list, table, funnel or timeline');
+      for (const v of ['List', 'Table', 'Funnel', 'Gantt']) {
+        await h.click(view(v));
+        await h.pause(1700);
+      }
+      await h.click(view('Board'));
       await h.pause(1800);
     },
   },
@@ -523,6 +721,11 @@ async function record(id: string) {
   await ctx.addInitScript(signIn, [S.token, S.accountId]);
   await ctx.addInitScript(CLIP_CURSOR);
   await ctx.addInitScript(LIVE_LOOK);
+  await ctx.addInitScript(CLIP_FRAME);
+  if (r.toasts) await ctx.addInitScript(() => {
+    const on = () => document.documentElement.setAttribute('data-clip-toasts', '');
+    if (document.documentElement) on(); else addEventListener('DOMContentLoaded', on);
+  });
   const page = await ctx.newPage();
   const errs: string[] = [];
   page.on('pageerror', e => errs.push(e.message));

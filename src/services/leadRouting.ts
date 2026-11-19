@@ -129,7 +129,8 @@ export function routeLeads(leads: ArrivingLead[]): RoutingResult {
             contactEmail: lead.email,
             contactPhone: lead.phone ?? '',
             value: Math.max(0, Math.round(routing.dealValue)),
-            stage: stage.id,
+            /* The stage's name: what the board writes and its deal panel reads. */
+            stage: stage.name,
             probability: 10,
             expectedClose: '',
             assignedTo: '',

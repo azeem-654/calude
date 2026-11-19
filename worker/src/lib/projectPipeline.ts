@@ -342,7 +342,9 @@ export async function ensureProjectPipeline(
     contactId: '',
     contactName: pf.name || project.name,
     value: 0,
-    stage: stages[0].id,
+    /* The stage's name, as the board writes it — its deal panel looks a
+       stage up by name, and showed an id here. */
+    stage: stages[0].name,
     probability: 0,
     expectedClose: subtasks.length ? String(subtasks[subtasks.length - 1].dueDate) : '',
     assignedTo: '',

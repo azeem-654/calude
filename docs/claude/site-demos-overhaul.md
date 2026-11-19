@@ -32,6 +32,39 @@ Ledger at the bottom: tick a phase when it lands on `staging`.
    new recordings, including **upcoming (incubator) modules** as well as live
    ones.
 
+## The owner's second note (2026-11-19): demos that sell
+
+Reviewing the first re-recorded clips, the owner said a demo must not be a
+basic task ("a contact added", "a deal added"). It is marketing: it shows the
+features that make the module better than its competitors, slowly, and runs
+the routine steps fast. Their examples — Contacts: filters, lists, export,
+finding businesses from inside Contacts, notes, pushing contacts into a
+workflow, finding prospects. Pipelines: a separate pipeline per business
+workspace, deals created by themselves from the website's forms, the
+automations.
+
+So every module recipe is made like this:
+
+1. **Research the module first** — its code (`src/components/<Module>`) and
+   the real screens against the sample workspace (`site-reels.mts HOLD=1`,
+   drive it with a scratch Playwright script and look at screenshots). List
+   what is distinctive, and record only what works there: an AI-backed button
+   (Design stages, Brain) is skipped, because the local Worker has no AI key.
+2. **Caption each feature** while it is on screen: `h.say(title, sub)`
+   (`scripts/clip-frame.mts`) — bottom-centre, read at 1×.
+3. **Routine steps at speed**: `h.fast(4)` … `h.fast(1)` plays a stretch
+   faster, typing and moves included, with a "⏩ 4× speed" badge, so it reads
+   as an edit and not as an app quicker than it is.
+4. **Show the real thing happening** where it can be: Pipelines fills in the
+   business's public quote form (`/f/get-a-quote`) and the deal appears on
+   the board ~5 s later, with the app's own notice (`toasts: true` keeps
+   notices on for that recipe; they are hidden otherwise).
+5. Every frame carries the "Sample workspace · real app, demonstration data"
+   tag (clip-frame.mts). 60–120 s; still under ~2 MB per clip.
+6. Re-record against a **fresh** workspace for the take you keep: a recipe
+   changes the data (an automation rule saved, a contact added), and a retry
+   against the same one shows duplicates or skips a step.
+
 ## What is real today, and what must be built first (checked 2026-11-19)
 
 | Hero beat | Real? | Where / gap |
@@ -86,8 +119,8 @@ motion; `test:sitefit` and `test:reeltour` must stay green.
 
 | Phase | State |
 |---|---|
-| 1 Pointer | built (`scripts/clip-cursor.mts`); `clip-contacts` and `clip-pipelines` re-recorded with it — **waiting for the owner's approval** before the other clips are retaken |
+| 1 Pointer | built (`scripts/clip-cursor.mts`), in use; captions, fast-forward badge and sample tag added (`scripts/clip-frame.mts`) |
 | 2 Hero (+ past-due reminder, receipts, keyword highlight) | not started |
-| 3 Module demos | not started |
+| 3 Module demos | **Contacts** (97 s) and **Pipelines** (70 s) re-made feature-led per the second note — waiting for the owner's review; the other 12 next, same method |
 | 4 Remaining stills → clips | not started |
 | 5 Platform film | not started |

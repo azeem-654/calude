@@ -1777,9 +1777,15 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
   const status = deal.status ?? 'active';
   const timeTracked = deal.timeTracked ?? 0;
 
-  const currentStageIdx = stages.findIndex(s => s.name === deal.stage);
+  /* `stage` is the stage's name everywhere the board writes it. Deals made by
+     lead routing, the daily finder and the business-workspace pipeline
+     builder before 2026-11-19 carry its id, which showed raw ("stg-…") here
+     and left the previous/next buttons with no stage to step from — so
+     either is accepted, and the name is what is shown. */
+  const currentStageIdx = stages.findIndex(s => s.name === deal.stage || s.id === deal.stage);
+  const stageName = stages[currentStageIdx]?.name ?? deal.stage;
   const prevStage = currentStageIdx > 0 ? stages[currentStageIdx - 1] : null;
-  const nextStage = currentStageIdx < stages.length - 1 ? stages[currentStageIdx + 1] : null;
+  const nextStage = currentStageIdx >= 0 && currentStageIdx < stages.length - 1 ? stages[currentStageIdx + 1] : null;
   const currentStage = stages[currentStageIdx];
 
   const moveToStage = (targetStage: Stage) => {
@@ -1857,7 +1863,7 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
     ? { text: 'Won', bg: '#dcfce7', color: '#16a34a' }
     : status === 'lost'
       ? { text: 'Lost', bg: '#f1f5f9', color: '#8a8f98' }
-      : { text: deal.stage || 'In Progress', bg: `${currentStage?.color ?? '#f59e0b'}1a`, color: currentStage?.color ?? '#b45309' };
+      : { text: stageName || 'In Progress', bg: `${currentStage?.color ?? '#f59e0b'}1a`, color: currentStage?.color ?? '#b45309' };
 
   const iconField = (icon: React.ReactNode, label: string, children: React.ReactNode) => (
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '11px 0' }}>
@@ -1877,7 +1883,7 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
             <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13.5, color: '#8a8f98', fontWeight: 500, minWidth: 0 }}>
               <span style={{ color: '#17191c', fontWeight: 600 }}>Pipeline</span>
               <ChevronRight size={13} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.stage}</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stageName}</span>
             </span>
           </div>
           <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
