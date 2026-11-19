@@ -66,10 +66,17 @@ function queue(accountId: string, key: string, value: string | null) {
  * scheduling a campaign the server has not seen yet gets refused, correctly,
  * for not existing. This closes that gap without making every keystroke a
  * round trip.
+ *
+ * Says whether everything queued has landed: false when the server could not
+ * be reached (the writes are kept and retried) or a conflict left a merged
+ * copy still to send. A caller about to tell the server something that is
+ * only true once these writes exist — `mergeCaptured` marking a capture as
+ * merged — must not go ahead on false.
  */
-export async function flushNow(): Promise<void> {
+export async function flushNow(): Promise<boolean> {
   window.clearTimeout(flushTimer);
   await flush();
+  return Object.keys(pending).length === 0;
 }
 
 /** Listeners told when the server refuses a write, so the UI can say so. */
@@ -77,7 +84,17 @@ type RejectionHandler = (message: string, keys: string[]) => void;
 let onRejected: RejectionHandler | null = null;
 export function onServerRejection(fn: RejectionHandler | null) { onRejected = fn; }
 
-async function flush() {
+/* One push at a time. A flush asked for while the timer's is still on its
+   way waits for it, so `flushNow` cannot report "landed" for writes the
+   earlier request carried and has not yet had answered. */
+let inflight: Promise<void> = Promise.resolve();
+function flush(): Promise<void> {
+  const run = inflight.then(flushOnce);
+  inflight = run.catch(() => undefined);
+  return run;
+}
+
+async function flushOnce() {
   const items = pending;
   pending = {};
   if (Object.keys(items).length === 0) return;

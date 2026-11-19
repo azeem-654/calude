@@ -21,6 +21,7 @@ import { API_BASE } from './apiBase';
 import { getSession } from './auth';
 import { getActiveAccountId } from './tenancy';
 import { routeLeads, type ArrivingLead } from './leadRouting';
+import { flushNow } from './serverData';
 
 export interface EngageCounts {
   openConversations: number; waitingOnHuman: number; openTickets: number;
@@ -349,8 +350,20 @@ async function mergeOnce(): Promise<MergeResult> {
      only when a contact was newly created — a capture whose contact already
      existed still has to reach the board. */
   routed = routeLeads(arrived);
+  const result = { added, matched, deals: routed.deals, enrolled: routed.enrolled, problems: routed.problems };
+  /*
+   * Marked merged only once the contacts and deals just written are on the
+   * server. They go up on a 900 ms debounce; marking straight away meant a
+   * reload or a closed tab inside that window lost the contact and the deal,
+   * and the server, told the capture was merged, never offered it again — an
+   * enquiry gone for good (found 2026-11-19 reloading right after a form
+   * arrived). Left unmarked, the next pass (on open, then every three
+   * minutes) finds them again: by email as a contact if the write survived
+   * locally, and routing will not make a second deal.
+   */
+  if ((added || routed.deals || routed.enrolled) && !(await flushNow())) return result;
   await call('mark_merged', { record: { pairs } });
-  return { added, matched, deals: routed.deals, enrolled: routed.enrolled, problems: routed.problems };
+  return result;
 }
 
 /* ── Automations ────────────────────────────────────────────────────────── */
