@@ -25,9 +25,10 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import {
-  addDomain, brandingPayload, checkDomain, listDomains, removeDomain,
-  type CustomDomain, type DomainList,
+  addDomain, brandingPayload, checkDomain, domainOf, isRootDomain, listDomains, removeDomain,
+  saasState, saveSaas, type CustomDomain, type DomainList, type SaasState,
 } from '../../services/whitelabel';
+import { isInstallOwner } from '../../services/moderation';
 
 const INK = '#17191c';
 const MUTED = '#6b7280';
@@ -63,6 +64,118 @@ function Record({ type, name, value, onCopy }: {
         <Copy size={11} />
       </button>
     </div>
+  );
+}
+
+/**
+ * The installation owner's Cloudflare for SaaS connection.
+ *
+ * The API existed (provider_save) but no screen called it, so the step the
+ * owner checklist sent people to could not be done. It sits here, beside the
+ * reseller's own-domain form it switches on, rather than in a settings tab of
+ * its own: this is the one place its effect is visible. Shown only to the
+ * install owner; the server refuses everybody else anyway.
+ */
+function SaasProviderCard({ onChange }: { onChange: () => void }) {
+  const { addNotification } = useApp();
+  const [st, setSt] = useState<SaasState | null>(null);
+  const [zoneId, setZoneId] = useState('');
+  const [token, setToken] = useState('');
+  const [target, setTarget] = useState('');
+  const [busy, setBusy] = useState('');
+
+  useEffect(() => {
+    void saasState().then(x => {
+      setSt(x);
+      if (x) { setZoneId(x.zoneId); setTarget(x.cnameTarget); }
+    });
+  }, []);
+
+  const save = async () => {
+    setBusy('save');
+    const r = await saveSaas({ zoneId, apiToken: token, cnameTarget: target });
+    setBusy('');
+    if (r.error) { addNotification(r.error, 'error'); return; }
+    setToken('');
+    setSt(r.state);
+    onChange();
+    addNotification(r.state?.verified
+      ? 'Connected. Cloudflare accepted the token — resellers can now add their own domain.'
+      : 'Saved, but Cloudflare said no — see the message on the card.', r.state?.verified ? 'success' : 'error');
+  };
+
+  const recheck = async () => {
+    setBusy('check');
+    const x = await saasState(true);
+    setBusy('');
+    if (x) setSt(x);
+    onChange();
+  };
+
+  const field = (label: string, name: string, value: string, set: (v: string) => void, placeholder: string, secret = false) => (
+    <label style={{ display: 'grid', gap: 4, fontSize: 11.5, fontWeight: 700, color: '#475569' }}>
+      {label}
+      <input data-field={name} value={value} placeholder={placeholder} type={secret ? 'password' : 'text'}
+        autoComplete="off" spellCheck={false} onChange={e => set(e.target.value.trim())} style={{ ...inp, width: '100%' }} />
+    </label>
+  );
+
+  const tone = !st?.connected ? null : st.verified
+    ? { bg: '#e8f6ee', fg: '#0f7b3d', text: 'Connected — Cloudflare accepted it.' }
+    : { bg: '#fdf3f3', fg: '#b42318', text: `Cloudflare said no: ${st.lastError || 'no reason given.'}` };
+
+  return (
+    <div data-testid="saas-provider" style={{ border: `1px dashed ${ACCENT}`, borderRadius: 12, background: '#fbfaff', padding: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: INK }}>Cloudflare for SaaS — installation owner only</div>
+      <p style={{ margin: '4px 0 10px', fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>
+        Switches on &ldquo;Your own domain&rdquo; for every reseller. Set up the zone first
+        (docs/CLOUDFLARE-SAAS-SETUP.md): Custom Hostnames enabled, a fallback origin, and a Worker route
+        <code> */* </code>. The token needs <b>Zone → SSL and Certificates → Edit</b> on protectedcentral.com.
+      </p>
+      {tone && (
+        <p style={{ margin: '0 0 10px', fontSize: 11.5, padding: '7px 10px', borderRadius: 8, background: tone.bg, color: tone.fg, lineHeight: 1.5 }}>
+          {tone.text}
+        </p>
+      )}
+      <div style={{ display: 'grid', gap: 9 }}>
+        {field('Zone ID', 'saas.zoneId', zoneId, setZoneId, '32 characters, from the zone’s Overview page')}
+        {field(st?.hasToken ? 'API token (leave blank to keep the saved one)' : 'API token', 'saas.apiToken', token, setToken, st?.hasToken ? '•••••••• saved' : 'Paste the token', true)}
+        {field('CNAME target (the fallback origin)', 'saas.cnameTarget', target, setTarget, 'customers.protectedcentral.com')}
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+        <button onClick={() => void save()} disabled={!!busy}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 15px', border: 'none', borderRadius: 9, background: busy ? '#c7c9d3' : INK, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+          {busy === 'save' ? <Loader size={13} className="spin" /> : <Check size={13} />} Save and test
+        </button>
+        {st?.connected && (
+          <button onClick={() => void recheck()} disabled={!!busy}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 15px', border: `1px solid ${LINE}`, borderRadius: 9, background: '#fff', color: INK, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+            {busy === 'check' ? <Loader size={13} className="spin" /> : <RefreshCw size={13} />} Test again
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What to tell somebody connecting the bare root of their domain.
+ *
+ * The CNAME we hand everybody else is one most DNS hosts will not put on a
+ * root (it would clash with the domain's own MX and NS records). Cloudflare's
+ * free DNS "flattens" it and some hosts have ALIAS/ANAME records that do the
+ * same; GoDaddy and Namecheap have neither. Saying so before they fight their
+ * registrar's form is the difference between a five-minute job and a support
+ * ticket.
+ */
+function RootDomainNote({ host }: { host: string }) {
+  return (
+    <p style={{ margin: '8px 0 0', fontSize: 11, color: '#78350f', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '8px 10px', lineHeight: 1.6 }}>
+      <b>{host}</b> is the root of the domain. Most DNS hosts (GoDaddy and Namecheap included) cannot put a CNAME on
+      a root. It works if the domain&rsquo;s DNS is on Cloudflare (free — it flattens the CNAME for you) or a host
+      with ALIAS / ANAME records — use one of those for the CNAME below. Otherwise connect <b>www.{host}</b> here
+      instead and forward {host} to it at your registrar.
+    </p>
   );
 }
 
@@ -173,9 +286,9 @@ export default function WhiteLabelPanel() {
             {d.kind === 'custom' && d.status !== 'active' && (
               <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: '#fafbfc', border: `1px solid ${LINE}` }}>
                 <div style={{ fontSize: 11.5, fontWeight: 700, color: '#475569', marginBottom: 4 }}>
-                  Add these two records where {d.hostname.split('.').slice(-2).join('.')} is managed
+                  Add these two records where {domainOf(d.hostname)} is managed
                 </div>
-                <Record type="CNAME" name={d.hostname} value={d.dnsTarget} onCopy={copy} />
+                <Record type={isRootDomain(d.hostname) ? 'CNAME (@)' : 'CNAME'} name={d.hostname} value={d.dnsTarget} onCopy={copy} />
                 <Record type="TXT" name={d.dnsTxtName} value={d.dnsTxtValue} onCopy={copy} />
                 <p style={{ margin: '6px 0 0', fontSize: 11, color: MUTED, lineHeight: 1.6, display: 'flex', gap: 6, alignItems: 'flex-start' }}>
                   <Clock size={11} style={{ flexShrink: 0, marginTop: 2 }} />
@@ -185,6 +298,7 @@ export default function WhiteLabelPanel() {
                 {d.lastError && (
                   <p style={{ margin: '7px 0 0', fontSize: 11, color: '#b42318', lineHeight: 1.5 }}>{d.lastError}</p>
                 )}
+                {isRootDomain(d.hostname) && <RootDomainNote host={d.hostname} />}
               </div>
             )}
           </div>
@@ -220,8 +334,8 @@ export default function WhiteLabelPanel() {
       <div style={{ border: `1px solid ${LINE}`, borderRadius: 12, background: '#fff', padding: 14, opacity: s.customAvailable ? 1 : 0.75 }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: INK }}>Your own domain</div>
         <p style={{ margin: '4px 0 10px', fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>
-          Put your clients on an address you own, like <code>app.youragency.com</code>. You add two DNS
-          records; we handle the certificate.
+          Put your clients on an address you own — a name under it like <code>app.youragency.com</code>,
+          or the root, <code>youragency.com</code>. You add two DNS records; we handle the certificate.
         </p>
 
         {s.customAvailable ? (
@@ -239,6 +353,7 @@ export default function WhiteLabelPanel() {
               }}>
               {busy === 'custom' ? <Loader size={13} className="spin" /> : <Plus size={13} />} Add it
             </button>
+            {isRootDomain(hostname) && <div style={{ flexBasis: '100%' }}><RootDomainNote host={hostname} /></div>}
           </div>
         ) : (
           /* Shown as unavailable rather than hidden: somebody deciding whether
@@ -252,6 +367,8 @@ export default function WhiteLabelPanel() {
           </div>
         )}
       </div>
+
+      {isInstallOwner() && <SaasProviderCard onChange={() => void load()} />}
 
       <p style={{ margin: 0, fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>
         Whichever address your clients use, they see the name, logo and colour you set under Branding.

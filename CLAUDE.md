@@ -65,6 +65,7 @@ Studio jobs (`VIDEO_CRON`). A scheduled run has no origin: absolute URLs read
 | Top bar, dashboard, industry snapshots (`/snapshots`, sign-up industry) | `docs/claude/app-ui.md` |
 | Public site, industry microsites, service pricing (`lib/offers.ts`), its funnel, logo strip | `docs/claude/site.md` |
 | **AI Video Studio overhaul in progress** (Shorts wizard, intelligent reframing, thumbnail themes, live preview) — phase ledger and plan | `docs/claude/video-studio-overhaul.md` |
+| **Site demos overhaul** (no stills on the site, 3D pointer, hero tour, per-module demos, new platform film) — brief, gaps and ledger | `docs/claude/site-demos-overhaul.md` |
 | AI Video Studio | `docs/claude/video-studio.md` |
 | Graphics Designer & Editor: the social template library, its renderer, AI copy rules, Media Center pictures (`/api/media.php`) | `docs/claude/graphics.md` |
 | Commands, deploying, staging and live, the testing site's password lock; **the incubator** — what is held back on testing by choice (`docs/INCUBATOR.md`; "what is in the incubator?" is answered there) | `docs/claude/deploying.md` |

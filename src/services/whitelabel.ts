@@ -55,6 +55,36 @@ export interface SaasState {
   cnameTarget: string;
   hasToken: boolean;
   subdomainSuffix: string;
+  /** Cloudflare answered yes to the stored credentials; only then are resellers offered their own domain. */
+  verified: boolean;
+  /** Cloudflare's own words when it said no. */
+  lastError: string;
+  checkedAt: string;
+}
+
+/** Suffixes under which the registrable name has three labels (example.co.uk). */
+const TWO_PART = /\.(co|com|org|net|gov|ac|edu|ltd|plc|me)\.[a-z]{2}$/;
+
+/**
+ * Whether a hostname is the bare root of a domain (abccompany.com), not a
+ * name under it (sales.abccompany.com).
+ *
+ * It matters because a root cannot hold a CNAME at most DNS hosts — GoDaddy
+ * and Namecheap among them — so the one record we tell everybody else to add
+ * is one these customers cannot add. A heuristic, not the public-suffix list:
+ * a wrong guess only changes which advice is shown, never what is served.
+ */
+export function isRootDomain(host: string): boolean {
+  const h = host.trim().toLowerCase().replace(/\.$/, '');
+  const labels = h.split('.').filter(Boolean);
+  if (labels.length < 2) return false;
+  return labels.length === (TWO_PART.test(h) ? 3 : 2);
+}
+
+/** The registrable domain a hostname sits under — where its DNS is managed. */
+export function domainOf(host: string): string {
+  const labels = host.toLowerCase().split('.').filter(Boolean);
+  return labels.slice(TWO_PART.test(host.toLowerCase()) ? -3 : -2).join('.');
 }
 
 interface Reply { success: boolean; error?: string; code?: string; [k: string]: unknown }
@@ -187,8 +217,8 @@ export async function removeDomain(hostname: string): Promise<{ domains: CustomD
 
 /* ── Owner only ── */
 
-export async function saasState(): Promise<SaasState | null> {
-  const r = await call('provider_get');
+export async function saasState(recheck = false): Promise<SaasState | null> {
+  const r = await call('provider_get', recheck ? { recheck: true } : {});
   return r.success ? (r.saas as SaasState) : null;
 }
 

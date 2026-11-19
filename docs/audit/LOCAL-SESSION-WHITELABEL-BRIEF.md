@@ -1,7 +1,9 @@
 # Brief for the local Claude Code session — white-label on the real internet
 
-Paste this file (or its path) into the local session **after** the 2026-11-18
+Paste this file (or its path) into the local session **after** the latest
 promotion to live has finished (Actions → *Deploy to Cloudflare* is green).
+Part A (checks 1–11) needs nothing from the owner; Part B (12–18) needs
+`docs/CLOUDFLARE-SAAS-SETUP.md` done and the owner's go-ahead on wildwestcorp.com.
 
 ## What the cloud session already proved (do not repeat)
 
@@ -32,7 +34,7 @@ domain other than protectedcentral.com.
    other Workers on the same Cloudflare account. Use a domain that serves
    nothing today.
 
-## The checks
+## The checks — Part A, the free address and branding
 
 | # | Check | Pass when |
 |---|---|---|
@@ -48,24 +50,33 @@ domain other than protectedcentral.com.
 | 10 | Settings → Branding → remove the address (trash icon) | The address stops showing Testco within a new private tab |
 | 11 | Settings → Branding → **Your own domain** | Says it is not switched on yet (see below) — it must **not** accept a hostname |
 
-### Only after the owner switches on Cloudflare for SaaS
+### Part B — the customer's own domain (only after `docs/CLOUDFLARE-SAAS-SETUP.md` is done)
 
-The zone does not have it today (Cloudflare answered "This feature is available
-with SSL for SaaS" on 2026-11-18), so customers' own domains cannot work yet and
-the app correctly offers only the free subdomain. Once the owner enables
-**SSL/TLS → Custom Hostnames** on protectedcentral.com (check the price the
-dashboard shows first) and fills Settings → Platform services → Domains & Email
-(zone id, token with *SSL and Certificates: Edit*, CNAME target):
+Check 11 above then shows a form instead of "not switched on". Test domain:
+**wildwestcorp.com** (DNS at GoDaddy), lent by the owner and to be handed back
+exactly as it was.
+
+**Before touching it (B0):** in GoDaddy → *My Products* → wildwestcorp.com →
+**DNS** → **⋯ / Export zone file**, save it as
+`docs/audit/wildwestcorp-dns-before.txt` (records only — no account details);
+also note whether **Forwarding** is on and where to. Run
+`dig +short wildwestcorp.com A`, `dig +short www.wildwestcorp.com`,
+`dig +short wildwestcorp.com MX` and keep the answers. Do not change the
+nameservers. Do not touch MX/email records.
 
 | # | Check | Pass when |
 |---|---|---|
-| 12 | Settings → Branding → Your own domain: `app.<a spare domain you own>` → Add | DNS records shown (CNAME + TXT) |
-| 13 | Add those records at that domain's DNS → **Check** (repeat after a few minutes) | Turns active; `https://app.<spare domain>` opens Testco's sign-in with a valid padlock |
-| 14 | Remove it | Released; the hostname no longer serves Testco |
+| 12 | **Subdomain of their domain.** Settings → Branding → Your own domain: `sales.wildwestcorp.com` → Add it | A CNAME (`sales` → `customers.protectedcentral.com`) and a TXT are shown, each with a copy button; status "Waiting for DNS" — never "Live" yet |
+| 13 | At GoDaddy DNS add exactly those two records (CNAME name `sales`; TXT name as shown **without** the trailing `.wildwestcorp.com`, GoDaddy adds it) → in the app press **Check** every few minutes | Turns **Live**; on a phone, private tab, `https://sales.wildwestcorp.com` has a valid padlock and shows Testco's name, logo and headline, no "Protected Central"; `/pricing` is Testco's sign-in |
+| 14 | Sign in at `https://sales.wildwestcorp.com` as wl1, then as wl2 | Each lands in their workspace with Testco branding; no page errors |
+| 15 | **The root.** Type `wildwestcorp.com` in Your own domain (do not add yet) | The yellow note says a root cannot hold a CNAME at GoDaddy and suggests www + forwarding — report the wording |
+| 16 | Add `www.wildwestcorp.com` instead, add its CNAME + TXT at GoDaddy, **Check** until Live; then GoDaddy → Forwarding → forward `wildwestcorp.com` to `https://www.wildwestcorp.com` (301) **only if the owner said the root serves nothing important** | `https://www.wildwestcorp.com` is Testco's sign-in with a valid padlock; `http://wildwestcorp.com` ends there too |
+| 17 | Remove `sales.` and `www.` in the app (trash icon) | Both disappear from the list; within a few minutes neither serves Testco (a Cloudflare error page or nothing is expected) |
+| 18 | **Hand the domain back**: delete every record you added at GoDaddy, switch forwarding back to how it was, export the zone file again as `wildwestcorp-dns-after.txt` and diff it with the before file; repeat the three `dig`s | The diff is empty (apart from GoDaddy's serial/SOA line) and the `dig` answers match the before ones |
 
 ## The report
 
 One table: check number, pass/fail, what you saw (a sentence), and a
 screenshot name for every fail. Put it in
-`docs/audit/2026-11-18-local-whitelabel-results.md` and tell the owner to
+`docs/audit/<date>-local-whitelabel-results.md` and tell the owner to
 paste it into the cloud session.

@@ -170,6 +170,26 @@ await p.locator('[data-testid="hosted-mail-settings"]').getByRole('button', { na
 await settle();
 ok('Platform services: email on customers\' domains refuses at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
 
+/* ── 2c · Cloudflare for SaaS (owner, Branding): a missing token and a missing
+   CNAME target each name their own box ── */
+await resetDeadEnds();
+await p.goto(`${B}/settings?tab=branding`, { waitUntil: 'networkidle' });
+await settle();
+{
+  const card = p.locator('[data-testid="saas-provider"]');
+  ok('Branding: the owner sees the Cloudflare for SaaS card', await card.count() > 0, 'card not found');
+  if (await card.count()) {
+    await card.locator('[data-field="saas.zoneId"]').fill('0123456789abcdef0123456789abcdef');
+    await card.getByRole('button', { name: /Save and test/ }).click();
+    await settle();
+    await card.locator('[data-field="saas.apiToken"]').fill('not-a-real-token');
+    await card.locator('[data-field="saas.cnameTarget"]').fill('');
+    await card.getByRole('button', { name: /Save and test/ }).click();
+    await settle();
+    ok('Branding: Cloudflare for SaaS refuses at a box on screen', (await deadEnds()).length === 0, JSON.stringify(await deadEnds()));
+  }
+}
+
 /* ── 2b · Sign-ups & trials: the booking link and a message's button ──
    Both refuse anything that is not https by naming their box; both boxes must
    be on screen when they do. */

@@ -30,7 +30,7 @@ import {
 } from '../lib/db';
 import {
   checkCustomHostname, cnameTarget, createCustomHostname,
-  deleteCustomHostname, saasCreds, saveSaasCreds,
+  deleteCustomHostname, saasCreds, saasReady, saasStatus, saveSaasCreds, verifySaas,
 } from '../lib/cloudflareSaas';
 import { check as allowance, refusalBody } from '../lib/allowanceStore';
 
@@ -71,6 +71,10 @@ const RESERVED_SLUGS = new Set([
   'password', 'reset', 'verify', 'secure', 'security', 'trust', 'support', 'help', 'status', 'docs',
   'billing', 'pay', 'payment', 'payments', 'checkout', 'invoice', 'invoices',
   'mail', 'email', 'smtp', 'imap', 'webmail', 'mx', 'dashboard', 'portal', 'protectedcentral', 'protected-central',
+  /* The names the Cloudflare for SaaS fallback origin may take
+     (docs/CLOUDFLARE-SAAS-SETUP.md): a reseller's brand must never sit on the
+     hostname every customer's domain CNAMEs to. */
+  'customers', 'customer', 'cname', 'fallback', 'origin', 'saas', 'domains', 'proxy', 'edge',
 ]);
 
 /** The suffix a free subdomain lives under. */
@@ -156,15 +160,23 @@ export async function handleWhitelabel(req: Request, env: Env): Promise<Response
         apiToken: String(d.apiToken ?? ''),
         cnameTarget: String(d.cnameTarget ?? ''),
       });
-      if (!r.ok) return fail(r.error);
+      if (!r.ok) return fail(r.error, 200, r.field ? { field: r.field } : {});
+      await verifySaas(env);
     }
+    if (act === 'provider_get' && d.recheck) await verifySaas(env);
 
     const creds = await saasCreds(env);
+    const st = await saasStatus(env);
     return json({
       success: true,
       saas: {
         /* Whether it is set, never the token itself. */
         connected: !!creds,
+        /* Saved is not working: resellers are offered their own domain only
+           when Cloudflare said yes (saasReady). The owner sees why not. */
+        verified: !!creds && st.status === 'ok',
+        lastError: st.lastError,
+        checkedAt: st.checkedAt,
         zoneId: creds?.zoneId ?? '',
         cnameTarget: creds?.cnameTarget ?? '',
         hasToken: !!creds?.apiToken,
@@ -248,7 +260,7 @@ export async function handleWhitelabel(req: Request, env: Env): Promise<Response
       domains: await listDomains(),
       /* So the screen can tell a reseller whether the custom tier is even on
          offer, rather than letting them type a hostname that cannot work. */
-      customAvailable: !!(await saasCreds(env)),
+      customAvailable: !!(await saasReady(env)),
       cnameTarget: await cnameTarget(env),
       subdomainSuffix: SUBDOMAIN_SUFFIX,
     });
@@ -289,7 +301,7 @@ export async function handleWhitelabel(req: Request, env: Env): Promise<Response
     }
 
     if (kind === 'custom') {
-      const creds = await saasCreds(env);
+      const creds = await saasReady(env);
       if (!creds) {
         return fail('Your own domain is not available on this installation yet. The free subdomain works now.', 200, { code: 'not_available' });
       }

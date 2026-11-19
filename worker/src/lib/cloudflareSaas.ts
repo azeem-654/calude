@@ -72,7 +72,7 @@ export async function saasCreds(env: Env): Promise<SaasCreds | null> {
 
 export async function saveSaasCreds(
   env: Env, patch: Partial<SaasCreds>,
-): Promise<{ ok: boolean; error: string }> {
+): Promise<{ ok: boolean; error: string; field?: string }> {
   const existing = await saasCreds(env);
   const merged: SaasCreds = {
     zoneId: (patch.zoneId ?? '').trim() || existing?.zoneId || '',
@@ -81,7 +81,13 @@ export async function saveSaasCreds(
     cnameTarget: (patch.cnameTarget ?? '').trim() || existing?.cnameTarget || '',
   };
   if (!merged.zoneId || !merged.apiToken) {
-    return { ok: false, error: 'Both the zone id and an API token are needed.' };
+    return { ok: false, error: 'Both the zone id and an API token are needed.', field: merged.zoneId ? 'saas.apiToken' : 'saas.zoneId' };
+  }
+  /* Without a target every customer would be shown a CNAME pointing at
+     nothing, and their address would sit at "Waiting for DNS" for ever. */
+  merged.cnameTarget = merged.cnameTarget.toLowerCase().replace(/^https?:\/\//, '').replace(/[/.]+$/, '');
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(merged.cnameTarget)) {
+    return { ok: false, error: 'Add the CNAME target — the fallback origin hostname, e.g. customers.protectedcentral.com.', field: 'saas.cnameTarget' };
   }
   const key = await installSecret(env.DB, SECRET_KEY);
   const blob = await encryptSecret(key, JSON.stringify(merged));
@@ -230,6 +236,47 @@ export async function deleteCustomHostname(env: Env, id: string): Promise<{ ok: 
   const r = await call<unknown>(creds, 'DELETE', `/zones/${creds.zoneId}/custom_hostnames/${encodeURIComponent(id)}`);
   if (!r.ok && !/not found|does not exist/i.test(r.error)) return { ok: false, error: r.error };
   return { ok: true, error: '' };
+}
+
+/**
+ * Ask Cloudflare whether these credentials can actually issue certificates,
+ * and stamp the answer on the row.
+ *
+ * ── Why on save, and why it gates the offer ──
+ *
+ * Saving used to store whatever was typed and switch "Your own domain" on for
+ * every reseller. A wrong zone id, a token missing *SSL and Certificates:
+ * Edit*, or a zone where Cloudflare for SaaS was never enabled ("This feature
+ * is available with SSL for SaaS", 2026-11-18) all look identical until the
+ * first customer adds a hostname and is told it failed. Listing one custom
+ * hostname exercises exactly the permission and the product the feature
+ * needs, and changes nothing.
+ */
+export async function verifySaas(env: Env): Promise<{ ok: boolean; error: string }> {
+  const creds = await saasCreds(env);
+  if (!creds) return { ok: false, error: 'Not set up.' };
+  const r = await call<unknown[]>(creds, 'GET', `/zones/${encodeURIComponent(creds.zoneId)}/custom_hostnames?per_page=1`);
+  await env.DB.prepare('UPDATE crm_install_providers SET status = ?, last_error = ?, updated_at = ? WHERE kind = ?')
+    .bind(r.ok ? 'ok' : 'error', r.ok ? '' : r.error.slice(0, 500), nowIso(), KIND).run();
+  return { ok: r.ok, error: r.error };
+}
+
+/** The stored check, for the owner's screen. */
+export async function saasStatus(env: Env): Promise<{ status: string; lastError: string; checkedAt: string }> {
+  const row = await env.DB.prepare('SELECT status, last_error, updated_at FROM crm_install_providers WHERE kind = ?')
+    .bind(KIND).first<{ status: string; last_error: string; updated_at: string }>();
+  return { status: row?.status ?? '', lastError: row?.last_error ?? '', checkedAt: row?.updated_at ?? '' };
+}
+
+/**
+ * Credentials that passed `verifySaas`, or null. This — not `saasCreds` — is
+ * what decides whether resellers are offered their own domain: a saved but
+ * failing token must not put a form in front of them that cannot work.
+ */
+export async function saasReady(env: Env): Promise<SaasCreds | null> {
+  const creds = await saasCreds(env);
+  if (!creds?.cnameTarget) return null;
+  return (await saasStatus(env)).status === 'ok' ? creds : null;
 }
 
 /** What a customer CNAMEs to, for the instructions screen. */
