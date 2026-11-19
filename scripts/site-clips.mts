@@ -941,65 +941,207 @@ const RECIPES: Record<string, Recipe> = {
     },
   },
 
+  /* Email campaigns — what is sent and what came back: results counted
+     from real sends, sequences with steps days apart that wait for no
+     reply, an A/B step, a step read as one real contact will get it, the
+     activity log and a list brought in. The AI-written parts (the brief's
+     emails, "Write with AI", automations described in a sentence) are left
+     out: they need an AI model the recording cannot count on. */
   'clip-campaigns': {
     route: '/marketing',
     async act(h, p) {
-      await h.pause(700);
-      await h.click(btn(p, /^Create Campaign$/));
-      await h.pause(900);
-      await h.click(text(p, 'From a template'));
-      await h.pause(1000);
-      await h.click(btn(p, /^Use this$/));
-      await h.pause(900);
-      await h.click(p.getByPlaceholder(/Summer Product Launch/));
-      await h.type('Spring check-in', 45);
-      await h.click(text(p, 'Re-engage'));
-      await h.click(p.getByPlaceholder(/We're launching/));
-      await h.type('A friendly note to past clients: book your spring review.', 26);
-      await h.click(text(p, 'Friendly'));
+      const tab = (t: string) => p.getByRole('tab', { name: new RegExp(`^${t}`) }).or(p.getByRole('button', { name: new RegExp(`^${t}`) })).locator('visible=true').first();
+      const sub = (t: string) => p.getByRole('tab', { name: t, exact: true }).or(p.getByRole('button', { name: t, exact: true })).locator('visible=true').last();
+      await h.say('Email campaigns from your own mailbox', 'Sent by the server — a scheduled campaign goes out with every tab closed');
+      await h.pause(2600);
+
+      await h.say('Every figure counted from real sends', 'Opened, clicked, replied and bounced — campaign by campaign');
+      await h.click(text(p, 'North Texas outreach'));
+      await h.pause(3200);
+      await h.click(p.getByRole('button', { name: /^←?\s*Back$/ }).locator('visible=true').last());
       await h.pause(600);
-      /* Then the AI writes the emails from that brief — with a key in the
-         shell (site-reels.mts passes AI_API_KEY / OPENROUTER_API_KEY to its
-         Worker), as on live. Without one, "Regenerate" never appears and the
-         clip is refused rather than ending on a "no AI" notice. */
-      await h.click(btn(p, /^Next/));
-      h.speed(3);
-      await btn(p, /Regenerate/).waitFor({ timeout: 120_000 });
-      h.speed(1);
-      await h.pause(1400);
-      await h.scroll(420, 1400);
+
+      await h.say('Sequences: several emails, days apart', 'Each step goes when its turn comes, from your own address');
+      await h.click(tab('Sequences'));
+      await h.pause(1000);
+      await h.click(text(p, /^Step 2$/));
+      await h.pause(1300);
+      await h.to(p.getByText(/^Send in$/).first(), { dx: 30 });
+      await h.pause(1200);
+
+      await h.say('It stops the moment somebody answers', 'A step can wait for no reply, no open or no click');
+      await h.reach(p.locator('select').filter({ hasText: 'Proceed regardless' }).locator('visible=true').first(), 380);
+      /* The select sits at the foot of the editor, where the caption is:
+         read the caption, then it clears for the change to be seen. */
+      await h.pause(1500);
+      await h.say('');
+      await h.choose(p.locator('select').filter({ hasText: 'Proceed regardless' }).locator('visible=true').first(), 'If no reply');
       await h.pause(1800);
+      await h.reach(p.getByText('Enable A/B test').first(), 260);
+
+      await h.say('A/B test any step', 'Two versions of the same email, side by side');
+      await h.click(p.getByText('Enable A/B test').first());
+      await h.pause(800);
+      await h.click(btn(p, /^Test B$/));
+      await h.pause(1400);
+      await h.click(btn(p, /^Test A$/));
+      await h.pause(600);
+
+      await h.say('Read it as one real contact will get it', 'Every merge field filled in before it goes');
+      await h.click(p.locator('button:has(svg.lucide-eye)').locator('visible=true').first());
+      await h.pause(700);
+      await h.scroll(340, 900);
+      await h.pause(900);
+      await h.pause(1200);
+      await h.say('');
+      await h.pause(1000);
+      await h.choose(p.locator('select').filter({ hasText: /Alderman/ }).locator('visible=true').first(), 'Blue Ridge Real Estate Group');
+      await h.pause(2200);
+
+      await h.say('Everything it did, logged', 'Who was added, what was switched on, every change');
+      await h.scroll(-600, 900);
+      await h.click(sub('Activity'));
+      await h.pause(2200);
+
+      await h.say('Bring your own list', 'Any spreadsheet — they become contacts you can use anywhere');
+      await h.click(tab('Import a list'));
+      await h.pause(2600);
     },
   },
 
+  /* Booking pages — the page edited beside the real thing (words, look,
+     a visitor's own time zone, a phone), the bookings it brings in, the
+     working hours behind it and the emails that go out by themselves.
+     "Fill it in from my website" (AI) is left alone. */
   'clip-booking': {
     route: '/scheduling',
     async act(h, p) {
-      await h.pause(700);
-      await h.click(btn(p, /^Booking pages$/));
-      await h.pause(900);
+      const tab = (t: string) => p.getByRole('tab', { name: new RegExp(`^${t}`) }).or(p.getByRole('button', { name: new RegExp(`^${t}`) })).locator('visible=true').first();
+      const byValue = async (re: RegExp, id: string) => {
+        await p.evaluate(([src, tag]) => {
+          const rx = new RegExp(src);
+          const box = Array.from(document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea'))
+            .find(el => el.getBoundingClientRect().width > 0 && rx.test(el.value));
+          box?.setAttribute('data-clip-v', tag);
+        }, [re.source, id]);
+        return p.locator(`[data-clip-v="${id}"]`);
+      };
+      await h.say('Booking pages that fill your calendar', 'Every booking in one list — confirmed, completed or cancelled in a click');
+      await h.pause(2800);
+
+      await h.say('Edit it beside the real thing', 'The page your visitors see changes as you type');
+      await h.click(tab('Booking pages'));
+      await h.pause(1200);
       await h.scroll(470, 1000);
-      const tag = p.getByPlaceholder('Helping local businesses grow');
-      await h.click(tag);
+      await h.click(await byValue(/^Free 30-minute (growth audit|website review)$/, 'title'));
+      await p.keyboard.press('ControlOrMeta+A');
+      await h.type('Free 30-minute website review', 42);
+      await h.pause(600);
+      await h.click(p.getByPlaceholder('Helping local businesses grow'));
       await p.keyboard.press('ControlOrMeta+A');
       await h.type('Websites and booking for local firms', 42);
-      await h.pause(700);
-      await h.click(p.getByRole('button', { name: /, \d+ times$/ }).locator('visible=true').first());
-      await h.pause(2400);
+      await h.pause(1200);
+
+      await h.say('Your look in one click', 'Four themes, the same page');
+      await h.reach(p.getByRole('button', { name: 'Light theme' }).first(), 420);
+      for (const t of ['Light theme', 'Midnight blue theme', 'Royal purple theme', 'Midnight lime theme']) {
+        await h.click(p.getByRole('button', { name: t }).first());
+        await h.pause(1300);
+      }
+
+      await h.say('How long, where, and which days', 'Video call, phone or in person — set once, shown on the page');
+      await h.reach(btn(p, /^45 min$/), 330);
+      await h.click(btn(p, /^45 min$/));
+      await h.pause(900);
+      await h.click(btn(p, /In person$/));
+      await h.pause(1400);
+
+      /* The visitor's own zone is the picker on the page itself (the
+         preview, on the right) — not "Your time zone" in the editor, which
+         is the host's. */
+      await h.say('Times shown in each visitor’s own time zone', 'They pick a day and a time — no back-and-forth emails');
+      await p.evaluate(() => {
+        const sel = Array.from(document.querySelectorAll('select'))
+          .find(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.left > 900 && r.top > 0 && r.top < innerHeight && el.querySelector('option') && /\//.test(el.options[0]?.text || ''); });
+        sel?.setAttribute('data-clip-v', 'zone');
+      });
+      const zone = p.locator('[data-clip-v="zone"]');
+      const ny = (await zone.locator('option', { hasText: 'New York' }).first().innerText()).trim();
+      await h.choose(zone, ny);
+      await h.pause(1200);
+      await h.click(p.getByRole('button', { name: /^Monday, November 23, \d+ times$/ }).locator('visible=true').first());
+      await h.pause(1600);
+
+      await h.say('Check it on a phone before you share it');
+      /* The preview sticks while the editor scrolls, so its own toolbar is
+         reached by going back to the top of the editor beside it. */
+      await h.reach(p.getByText('Your booking page', { exact: true }).first(), 170);
+      await h.click(p.getByRole('button', { name: 'Phone', exact: true }).first());
+      await h.pause(2200);
+      await h.click(p.getByRole('button', { name: 'Desktop', exact: true }).first());
+      await h.pause(500);
+
+      await h.say('Your hours, and the emails that go by themselves', 'Confirmations with reschedule links, and a note to you for every booking');
+      await h.scroll(-2000, 1100);
+      await h.click(tab('Availability'));
+      await h.pause(1800);
+      await h.click(tab('Automations'));
+      await h.pause(2600);
     },
   },
 
+  /* Unified Inbox — every mailbox in one list, each message read for its
+     mood and urgency, answered in place with a ready reply, tagged, noted
+     for the team and closed. "AI draft reply" is left alone. */
   'clip-inbox': {
     route: '/conversations',
     async act(h, p) {
-      await h.pause(800);
+      await h.say('Every mailbox in one list', 'Sales, campaigns and support — each message with its contact');
+      await h.pause(2400);
+      await h.click(btn(p, /^Support/));
+      await h.pause(1100);
+      await h.click(btn(p, /^Campaigns/));
+      await h.pause(1100);
+      await h.click(btn(p, /^All inboxes/));
+      await h.pause(600);
+
+      await h.say('The urgent and the unhappy, first', 'Each message read for its mood and how urgent it is');
+      await h.click(p.locator('button, [role=tab], [role=radio]', { hasText: /^\s*urgent\s*$/i }).locator('visible=true').last());
+      await h.pause(1300);
+      await h.click(text(p, 'URGENT: cannot access my account'));
+      await h.pause(2000);
+      await h.click(p.locator('button, [role=tab], [role=radio]', { hasText: /^\s*all\s*$/i }).locator('visible=true').last());
+      await h.pause(600);
+
+      await h.say('Answer without leaving it', 'A ready reply in a click, then your own words — from your own address');
       await h.click(text(p, 'Question about your pricing'));
       await h.pause(1200);
+      await h.click(btn(p, /^Book a call$/));
+      await h.pause(900);
       await h.click(p.getByPlaceholder(/^Reply to /));
-      await h.type('Thanks, Emily — happy to walk you through it. Does Thursday at 10 suit you?', 26);
-      await h.pause(600);
-      await h.to(btn(p, /^Send reply$/));
+      await p.keyboard.press('End');
+      await h.type(' Thursday at 10 suits us.', 34);
+      await h.pause(700);
+      await h.to(p.getByText(/Sending as /).locator('visible=true').first());
+      await h.pause(1400);
+
+      await h.say('Tag it, note it, close it', 'A private note your team sees and the customer never does');
+      /* Tag and Note ask with the browser's own prompt box, which a
+         screencast never shows (like a native <select>); it is answered
+         here and what it adds appears on the conversation. */
+      p.once('dialog', d => { void d.accept('pricing'); });
+      await h.click(btn(p, /^\+?\s*Tag$/));
+      await h.pause(1300);
+      p.once('dialog', d => { void d.accept('Asked about annual pricing — send the agency rate sheet.'); });
+      await h.click(btn(p, /Note$/));
       await h.pause(1800);
+      await h.click(p.getByTitle('Mark resolved').first());
+      await h.pause(1600);
+
+      await h.say('Find any conversation', 'Search every mailbox at once');
+      await h.click(p.getByPlaceholder('Search inbox…'));
+      await h.type('invoice', 70);
+      await h.pause(2600);
     },
   },
 
