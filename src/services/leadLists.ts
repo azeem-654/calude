@@ -76,6 +76,35 @@ export function checkOf(c: Contact): CheckState {
 
 export const LICENSED = SOURCE_NAME.library;
 
+/* What Customer Engagement captured somebody through, by the channel its
+   server stamps on them (worker upsertPerson's `source`). */
+const CAPTURED: Record<string, string> = {
+  form: 'Website form',
+  chat: 'Chat assistant',
+  booking: 'Booking page',
+  live: 'Live help',
+  ticket: 'Support ticket',
+  report: 'Problem report',
+};
+
+/**
+ * A stored source stamp in words, for a contact or a deal.
+ *
+ * People captured on public pages are stamped `engagement:<channel>`
+ * (services/engagement.ts mergeCaptured, leadRouting.ts), and deals made by the
+ * daily finder or a business workspace's pipeline `autopilot` — codes kept so
+ * a record can be traced, which the list, the profile and the deal panel
+ * showed as they were ("engagement:form"). The stored value is left alone;
+ * only what is shown changes. Anything else is somebody's own words and is
+ * returned as it is.
+ */
+export function sourceLabel(raw: string | undefined | null): string {
+  const s = (raw ?? '').trim();
+  if (s.toLowerCase().startsWith('engagement:')) return CAPTURED[s.slice(11).toLowerCase()] ?? 'Customer Engagement';
+  if (s.toLowerCase() === 'autopilot') return 'AI Autopilot';
+  return s;
+}
+
 /**
  * Where a lead came from, in words a customer can repeat to the person
  * themselves. Contacts once loaded from the owner's library by hand said
@@ -87,7 +116,7 @@ export function sourceOf(c: Contact): string {
   if (s.includes('daily prospecting')) return 'Found by daily prospecting';
   if (s.startsWith('ai prospecting')) return 'AI Prospecting';
   if (s.startsWith('ai autopilot')) return 'AI Autopilot';
-  return c.source || 'Added by you';
+  return sourceLabel(c.source) || 'Added by you';
 }
 
 export const foundAtOf = (c: Contact): string => c.customFields?.foundAt || c.createdAt || '';

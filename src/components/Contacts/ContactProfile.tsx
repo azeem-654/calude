@@ -17,6 +17,7 @@ import SchedulingTab from './SchedulingTab';
 import type { Contact, ContactActivity } from '../../types';
 import { sendEmail, loadEmailConfig } from '../../services/emailService';
 import { featureReady } from '../../services/features';
+import { sourceLabel, sourceOf } from '../../services/leadLists';
 
 const ACTIVITY_ICONS: Record<ContactActivity['type'], string> = {
   email_sent: '📧', email_opened: '👁', note: '📝', task_completed: '✅',
@@ -129,7 +130,9 @@ export default function ContactProfile({ contact, onClose }: Props) {
   const firstOf = (c: Contact) => c.firstName || c.name.split(' ')[0] || '';
   const lastOf = (c: Contact) => c.lastName || c.name.split(' ').slice(1).join(' ') || '';
   const startEdit = () => {
-    setEditForm({ ...contact, firstName: firstOf(contact), lastName: lastOf(contact) });
+    /* The source box shows words, not a capture stamp ("engagement:form") — and
+       saving keeps those words, which say the same thing. */
+    setEditForm({ ...contact, firstName: firstOf(contact), lastName: lastOf(contact), source: sourceLabel(contact.source) });
     setEditing(true);
   };
 
@@ -305,7 +308,7 @@ export default function ContactProfile({ contact, onClose }: Props) {
                   {fieldRow('Phone', contact.phone, 'phone')}
                   {fieldRow('Company', contact.company || '', 'company')}
                   {fieldRow('Job Title', contact.jobTitle || '', 'jobTitle')}
-                  {fieldRow('Source', contact.source, 'source')}
+                  {fieldRow('Source', sourceOf(contact), 'source')}
                   {fieldRow('Address', contact.address || '', 'address')}
                 </div>
               </div>

@@ -22,6 +22,7 @@ import type { AutomationRule, AutomationRunResult } from './Automations';
 import PipelineDesigner from './PipelineDesigner';
 import { playbookChecklist, seedExistingDeals } from '../../services/pipelineAI';
 import { fireEvent } from '../../services/engagement';
+import { sourceLabel } from '../../services/leadLists';
 
 type Priority = 'urgent' | 'high' | 'normal' | 'low';
 
@@ -436,7 +437,7 @@ function DealCard({
           chip('prio', <span style={{ ...base, background: `${pc.color}14`, color: pc.color }}>{pc.label}</span>);
         }
         if (vf.has('source') && deal.source) {
-          chip('source', <span style={{ ...base, background: '#f2f3f5', color: '#6b7280' }}>{deal.source}</span>);
+          chip('source', <span style={{ ...base, background: '#f2f3f5', color: '#6b7280' }}>{sourceLabel(deal.source)}</span>);
         }
         return chips.length > 0 ? (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, margin: '8px 0 0 29px' }}>{chips}</div>
@@ -1624,6 +1625,10 @@ function DealForm({ deal, stages, defaultStageId, contacts, onSave, onClose }: D
               <label style={lbl}>Source</label>
               <select value={source} onChange={e => setSource(e.target.value)} style={{ ...inp }}>
                 <option value="">Select source...</option>
+                {/* A deal made by a form or by AI Autopilot carries a stamp that is not
+                    one of these; offered as itself, in words, so the box does not
+                    read "Select source..." for a deal that has one. */}
+                {source && !SOURCES.includes(source) && <option value={source}>{sourceLabel(source)}</option>}
                 {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
@@ -1978,7 +1983,7 @@ function DealDetailPanel({ deal, stages, onClose, onEdit, onUpdateDeal, onMoveDe
                 { label: 'Deal value', value: fmt(deal.value) },
                 { label: 'Probability', value: `${deal.probability}%` },
                 { label: 'Contact', value: deal.contactName || '—' },
-                { label: 'Source', value: deal.source || '—' },
+                { label: 'Source', value: sourceLabel(deal.source) || '—' },
                 { label: 'Priority', value: pc.label },
                 { label: 'Time tracked', value: fmtTime(Math.round(timeTracked / 60)) },
               ].map(f => (

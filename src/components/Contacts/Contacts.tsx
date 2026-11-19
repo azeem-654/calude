@@ -351,7 +351,7 @@ export default function Contacts() {
   const exportCSV = () => {
     const sel = selected.size > 0 ? contacts.filter(c => selected.has(c.id)) : filtered;
     const headers = ['Name', 'Email', 'Phone', 'Company', 'Job Title', 'Status', 'Source', 'Tags', 'Value'];
-    const rows = sel.map(c => [c.name, c.email, c.phone, c.company || '', c.jobTitle || '', c.status, c.source, c.tags.join(';'), c.value]);
+    const rows = sel.map(c => [c.name, c.email, c.phone, c.company || '', c.jobTitle || '', c.status, sourceOf(c), c.tags.join(';'), c.value]);
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
     const a = document.createElement('a');
     a.href = 'data:text/csv,' + encodeURIComponent(csv);
@@ -780,7 +780,7 @@ export default function Contacts() {
                           {/* Where they came from, in words a customer can repeat to
                               the person (services/leadLists.ts `sourceOf`); the full
                               provenance on hover. */}
-                          <p title={contact.customFields?.provenance || `${contact.source}${contact.company ? ` · ${contact.company}` : ''}`}
+                          <p title={contact.customFields?.provenance || `${sourceOf(contact)}${contact.company ? ` · ${contact.company}` : ''}`}
                             style={{ fontSize: '12px', color: '#94a3b8', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><span data-testid="contact-source">{sourceOf(contact)}</span>{contact.company ? ` · ${contact.company}` : ''}</p>
                           {/* Which campaign produced this contact, resolved live
                               so a renamed one reads correctly and a deleted one
