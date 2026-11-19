@@ -27,9 +27,10 @@
  * ── The recording ──
  *
  * A 1280×800 window at 1×, the app's own dark theme, motion on. The pointer is
- * an element drawn into the page (`CURSOR`) that follows the real mouse
- * events, since a headless capture shows none; it moves on an arc with a
- * minimum-jerk profile, the way a hand does, and pulses where it clicks.
+ * a 3D one drawn into the page (`CLIP_CURSOR`, clip-cursor.mts) that follows
+ * the real mouse events, since a headless capture shows none; it moves on an
+ * arc with a minimum-jerk profile, the way a hand does, lifts and tilts as it
+ * travels, sinks and ripples where it clicks, and is an I-beam over text.
  * Frames come from the DevTools screencast with their own timestamps, so a
  * slow API answer is a pause in the clip rather than a jump; a recipe may run
  * a stretch faster (`speed`) where only waiting happens. Each clip is written
@@ -38,6 +39,7 @@
  * ends — what a visitor who asked for less motion sees instead.
  */
 import { LIVE_LOOK } from './live-look.mts';
+import { CLIP_CURSOR } from './clip-cursor.mts';
 import pw from '/opt/node22/lib/node_modules/playwright/index.js';
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -99,36 +101,6 @@ const signIn = ([token, acct]: string[]) => {
   localStorage.setItem('crm_theme', 'dark');
   localStorage.removeItem('crm_motion');
 };
-
-/* The pointer. Inside the page so the screencast sees it; `data-noinvert` so
-   the dark theme's page-wide inversion leaves it its own colours. */
-const CURSOR = () => {
-  const put = () => {
-    if (document.getElementById('clip-cursor')) return;
-    const st = document.createElement('style');
-    st.textContent = `
-      #clip-cursor{position:fixed;left:0;top:0;z-index:2147483647;pointer-events:none;will-change:transform;transition:none}
-      #clip-cursor svg{display:block;filter:drop-shadow(0 2px 3px rgba(0,0,0,.55));transform-origin:3px 2px;transition:transform .09s ease-out}
-      #clip-cursor.down svg{transform:scale(.86)}
-      #clip-cursor i{position:absolute;left:-17px;top:-17px;width:36px;height:36px;border-radius:50%;border:2.5px solid #ff7a3d;opacity:0;transform:scale(.3)}
-      #clip-cursor i.go{animation:clipring .55s ease-out}
-      @keyframes clipring{0%{opacity:.95;transform:scale(.3)}100%{opacity:0;transform:scale(1.35)}}
-      .toast-stack,[data-trialbar],.trial-bar,[aria-label="Help"],[data-corner-help]{display:none!important}`;
-    document.documentElement.appendChild(st);
-    const c = document.createElement('div');
-    c.id = 'clip-cursor';
-    c.setAttribute('data-noinvert', '');
-    c.innerHTML = '<i></i><svg width="26" height="28" viewBox="0 0 24 26"><path d="M3 2.5 L3 21 L8.2 16.4 L11.6 23.6 L15 22 L11.7 15 L19.2 14.6 Z" fill="#fff" stroke="#111" stroke-width="1.6" stroke-linejoin="round"/></svg>';
-    const at = JSON.parse(sessionStorage.getItem('clip-at') || '[640,420]');
-    c.style.transform = `translate(${at[0]}px,${at[1]}px)`;
-    document.documentElement.appendChild(c);
-    addEventListener('mousemove', e => { c.style.transform = `translate(${e.clientX}px,${e.clientY}px)`; sessionStorage.setItem('clip-at', JSON.stringify([e.clientX, e.clientY])); }, true);
-    addEventListener('mousedown', () => { c.classList.add('down'); const r = c.querySelector('i')!; r.classList.remove('go'); void (r as HTMLElement).offsetWidth; r.classList.add('go'); }, true);
-    addEventListener('mouseup', () => c.classList.remove('down'), true);
-  };
-  if (document.documentElement) put(); else addEventListener('DOMContentLoaded', put);
-};
-
 
 /* ── The hand ──────────────────────────────────────────────────────────── */
 
@@ -549,7 +521,7 @@ async function record(id: string) {
      does not have; these run in the page, so they get a stand-in. */
   await ctx.addInitScript({ content: 'window.__name = (f) => f;' });
   await ctx.addInitScript(signIn, [S.token, S.accountId]);
-  await ctx.addInitScript(CURSOR);
+  await ctx.addInitScript(CLIP_CURSOR);
   await ctx.addInitScript(LIVE_LOOK);
   const page = await ctx.newPage();
   const errs: string[] = [];

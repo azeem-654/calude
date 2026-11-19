@@ -249,8 +249,10 @@ short looping demo — a pointer moving, clicking and typing — not stills.
   (a host-resolver rule), so `isRehearsal()` is false and the incubator is off
   as on live. `LIVE_LOOK` also hides menu entries for the modules incubated
   on 2026-11-18 in case the checkout does not gate them yet, and the
-  no-AI-key notices (the Worker has no key; live does). The pointer is a page
-  element following the real mouse; frames come from the DevTools
+  no-AI-key notices (the Worker has no key; live does). The pointer is the
+  3D one in `scripts/clip-cursor.mts` (bevelled, lifts and tilts as it moves,
+  sinks and ripples on a click, an I-beam over text), a page element
+  following the real mouse; frames come from the DevTools
   screencast, motions are played back at their planned pace, waits for the
   server can be marked faster (`speed`). A clip with no recipe is skipped;
   a recipe that misses its target refuses the clip and saves `-fail.png`.

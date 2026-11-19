@@ -86,7 +86,7 @@ motion; `test:sitefit` and `test:reeltour` must stay green.
 
 | Phase | State |
 |---|---|
-| 1 Pointer | not started |
+| 1 Pointer | built (`scripts/clip-cursor.mts`); `clip-contacts` and `clip-pipelines` re-recorded with it — **waiting for the owner's approval** before the other clips are retaken |
 | 2 Hero (+ past-due reminder, receipts, keyword highlight) | not started |
 | 3 Module demos | not started |
 | 4 Remaining stills → clips | not started |
