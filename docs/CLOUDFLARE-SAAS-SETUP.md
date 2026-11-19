@@ -1,19 +1,32 @@
 # Switching on customers' own domains (Cloudflare for SaaS)
 
-Owner-only, done once, about 15 minutes. Until it is done the app offers
-resellers only the free address (`theirname.protectedcentral.com`) and says so.
+Owner-only, done once, about 15 minutes.
 
-After it, a reseller can put their branded sign-in on:
+## How customers' addresses work (2026-11-19)
 
-| What they want | Example | What they add at their DNS |
+| Where | Example | Needs Cloudflare for SaaS? |
 |---|---|---|
-| A name under their domain | `sales.abccompany.com`, `app.abccompany.com` | CNAME → `customers.protectedcentral.com`, plus one TXT |
-| The root of their domain | `abccompany.com` | The same CNAME **on the root** — only possible if their DNS is on Cloudflare (free) or a host with ALIAS/ANAME. GoDaddy and Namecheap cannot: connect `www.abccompany.com` and forward the root to it. The app says this when somebody types a root. |
-| No domain at all | `abc.protectedcentral.com` | Nothing — works today |
+| **Free, on our site** — every business's pages | `protectedcentral.com/abcplumbing` (home page), `protectedcentral.com/abcplumbing/sales` | No — works as soon as they publish |
+| **Free address for a reseller's client sign-in** | `abcagency.protectedcentral.com` | No |
+| **Their own domain, a name under it** | `sales.abcplumbing.com` | Yes |
+| **Their own domain, the root** | `abcplumbing.com` | Yes — and their DNS must allow it (below) |
 
-Why the root is special: DNS forbids a CNAME on a root at most hosts.
-Cloudflare offers static IPs for roots ("apex proxying") only on Enterprise,
-so on our plan the routes above are the honest options.
+For each own-domain or free address, the customer picks in **Settings →
+Branding → Visitors see** whether it shows **their website** (the home page at
+`/`, each published page at `/page-name`) or **their client sign-in** (the CRM
+with their logo).
+
+`whitelabel.protectedcentral.com` is a behind-the-scenes landing spot, not a
+place anybody visits: every customer's domain points at it with one DNS record
+(`sales.abcplumbing.com → whitelabel.protectedcentral.com`), Cloudflare puts
+the padlock on *their* name, and the app looks up whose name it is. Visitors
+only ever see the customer's own address.
+
+**The root of a domain**: DNS forbids a CNAME on a root at most hosts.
+Cloudflare DNS (free) flattens it, and some hosts have ALIAS/ANAME records;
+GoDaddy and Namecheap have neither — those customers connect
+`www.abcplumbing.com` and forward the root to it. The app says this when
+somebody types a root. (Cloudflare's static IPs for roots are Enterprise-only.)
 
 ## Step 1 — Turn on Custom Hostnames
 
@@ -32,7 +45,7 @@ so on our plan the routes above are the honest options.
 Cloudflare needs a hostname on our zone that customers' domains are pointed at.
 
 1. Left menu → **DNS** → **Records** → **Add record**.
-2. Type **AAAA**. Name **customers**. IPv6 address **100::** (that is
+2. Type **AAAA**. Name **whitelabel**. IPv6 address **100::** (that is
    "one hundred, colon, colon" — a placeholder that means "the Worker answers").
 3. Proxy status: **Proxied** (orange cloud **on**). TTL Auto.
 4. **Save**.
@@ -40,7 +53,7 @@ Cloudflare needs a hostname on our zone that customers' domains are pointed at.
 ## Step 3 — Set it as the fallback origin
 
 1. Back on **SSL/TLS → Custom Hostnames**.
-2. In **Fallback Origin**, type `customers.protectedcentral.com` →
+2. In **Fallback Origin**, type `whitelabel.protectedcentral.com` →
    **Add Fallback Origin**.
 3. Wait until it shows **Active** (refresh after a minute).
 
@@ -71,7 +84,7 @@ staging site's more specific `testing.protectedcentral.com/*` route still wins.
 2. **Settings → Branding** → scroll to **Cloudflare for SaaS — installation
    owner only**.
 3. Paste the **Zone ID**, the **API token**, and CNAME target
-   `customers.protectedcentral.com` → **Save and test**.
+   `whitelabel.protectedcentral.com` → **Save and test**.
 4. Green "Connected — Cloudflare accepted it" means done: every reseller now
    sees **Your own domain**. Red shows Cloudflare's own reason (usually: step 1
    not finished, or the token is missing *SSL and Certificates: Edit*).
@@ -84,4 +97,4 @@ separately (same zone, same token is fine).
 
 Settings → Branding → remove every custom domain; delete the `*/*` Workers
 route; SSL/TLS → Custom Hostnames → delete the fallback origin; DNS → delete
-`customers`; My Profile → API Tokens → **Roll** or **Delete** the token.
+`whitelabel`; My Profile → API Tokens → **Roll** or **Delete** the token.

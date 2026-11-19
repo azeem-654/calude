@@ -55,8 +55,26 @@ async function call(body: Record<string, unknown>): Promise<{ success?: boolean;
 
 const signedIn = () => ({ token: getSession()?.token || 'cookie', accountId: getActiveAccountId() ?? '' });
 
-/** The public address of a slug, on whichever host the owner is using (a reseller's domain keeps its own). */
+/**
+ * Where a page under a short name lives, without the scheme — what the
+ * publish panel and the wizard print before "<brand>/<page>".
+ *
+ * On the live product it is the public site, protectedcentral.com/<brand>/
+ * (owner, 2026-11-19): a business's pages read as an address of its own, not
+ * as a screen of the app, and they sit on a host with no session cookie. A
+ * reseller's own address, the testing site and a developer's machine keep
+ * <host>/s/ — the public site is not theirs to send people to.
+ */
+export function pageAddressBase(): string {
+  const h = window.location.hostname.toLowerCase();
+  if (h === 'app.protectedcentral.com') return 'protectedcentral.com/';
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+  return `${window.location.host}${base}/s/`;
+}
+
+/** The public address of a slug. Older one-part slugs keep their /s/ address on the host they were made on. */
 export function publicUrl(slug: string): string {
+  if (slug.includes('/')) return `https://${pageAddressBase()}${slug}`;
   const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
   return `${window.location.origin}${base}/s/${slug}`;
 }

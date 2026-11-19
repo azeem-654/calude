@@ -25,6 +25,7 @@ import { aiChoice } from '../../../services/projectIntake';
 import { DEFAULT_THEME, KIND_OF, resolveTheme } from '../../../services/designOptions';
 import { SuggestChips, useIdeas, isOpenChoice, type IdeaInputs } from './Suggest';
 import type { Ideas } from '../../../services/answerIdeas';
+import { pageAddressBase } from '../../../services/publishedPages';
 
 /** The ideas for one screen, as Field reads them. */
 interface ScreenIdeas { ideas: Record<string, Ideas>; busy: boolean; byAi: boolean }
@@ -421,7 +422,7 @@ function Field({ q, state, ws, files, answer, onFiles, onLink, design, company, 
         <input className="np-input" data-field="urlName" value={shown} placeholder={q.placeholder} maxLength={30}
           onChange={e => answer(q.id, cleanUrlPart(e.target.value.replace(/\s+/g, '-')) || null, 'you')} />
         <p style={{ margin: '6px 0 0', fontSize: 12.5, color: '#64748b' }}>
-          Your pages: <b>{window.location.host}/s/{shown || 'your-business'}/…</b> — for example /s/{shown || 'your-business'}/free-quote
+          Your pages: <b>{pageAddressBase()}{shown || 'your-business'}/…</b> — for example {pageAddressBase()}{shown || 'your-business'}/free-quote
         </p>
       </div>
     );

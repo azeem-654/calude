@@ -10,10 +10,10 @@ import { attributeIfPending } from './services/referral';
 import { pendingPlan } from './services/sitePlan';
 import { trackKnown } from './services/funnel';
 import { getActiveAccountId, setActiveAccountId, activeBranding } from './services/tenancy';
-import { isKnownPublicPath } from '../worker/src/lib/publicPages';
+import { brandPath, isKnownPublicPath } from '../worker/src/lib/publicPages';
 import { isAppHost, isMarketingHost, isStagingHost, isWhiteLabelHost, markWhiteLabelHost, mayBeWhiteLabel, siteAtRoot } from './services/hosts';
 import { industryFor, servicesPublic, speaksAsUs } from '../worker/src/lib/industryPages';
-import { cachedHost, pullBranding, resolveHost, type ResolvedHost } from './services/whitelabel';
+import { cachedHost, isSiteHost, pullBranding, resolveHost, type ResolvedHost } from './services/whitelabel';
 import { initCloudSync, startCloudRefresh } from './services/serverData';
 import { retireBrowserTwilio } from './services/legacyTwilio';
 import { Loader } from 'lucide-react';
@@ -628,6 +628,16 @@ function AppTrees() {
   /* A published website or funnel (/s/<slug>, routes/published.ts). The
      visitor's page on every host, signed in or not — before either tree, so
      neither the login screen nor the app's catch-all can take it. */
+  /* A customer's domain (or free address) set to show their website: every
+     page on it is theirs — no sign-in, nothing of ours. Their forms, booking
+     and shop links (/f/, /book/, /shop/) keep their own screens below. */
+  if (isSiteHost() && !/^\/(f|book|shop|p)\//.test(window.location.pathname.slice(base.length))) {
+    return (
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
+        <PublicPage scope="host" />
+      </BrowserRouter>
+    );
+  }
   if (window.location.pathname.startsWith(`${base}/s/`)) {
     return (
       <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '') || '/'}>
@@ -740,7 +750,11 @@ function AppTrees() {
           <Route path="/appsumo" element={<AppSumoPage />} />
           {/* The home page for the site's own addresses; anything else says it
               is not there, as the Worker's 404 does (lib/publicPages.ts). */}
-          <Route path="*" element={isKnownPublicPath(window.location.pathname.slice(base.length) || '/') ? <SiteHome /> : <SiteNotFound />} />
+          {/* …then a customer's pages, protectedcentral.com/<brand>/<page>
+              (2026-11-19); PublicPage says "not found" for a brand nobody
+              published, as the Worker's 404 does. */}
+          <Route path="*" element={isKnownPublicPath(window.location.pathname.slice(base.length) || '/') ? <SiteHome />
+            : brandPath(window.location.pathname.slice(base.length)) ? <PublicPage scope="brand" /> : <SiteNotFound />} />
         </Routes>
       </BrowserRouter>
     );

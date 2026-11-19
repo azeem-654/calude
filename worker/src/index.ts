@@ -88,7 +88,7 @@ import { handleTrack } from './routes/track';
 import { handleUnsubscribe } from './routes/unsubscribe';
 import { handleBooking } from './routes/booking';
 import { handleBookingMedia } from './routes/bookingMedia';
-import { handlePublished } from './routes/published';
+import { findBrandPage, handlePublished, hostPage } from './routes/published';
 import { handleStrategyCall, strategyReminders, strategyReviewAsks } from './routes/strategyCall';
 import { handleLeadRevenue } from './routes/leadRevenue';
 import { handleRcm } from './routes/rcm';
@@ -119,11 +119,11 @@ import { handleLogo } from './lib/brandLogo';
 import { handleWidgetAvatar } from './lib/widgetAvatar';
 import { handleUserAvatar } from './routes/userAvatar';
 import { PAGE_ALIASES, industryFor, isSiteHost, robotsTxt, servicesPublic, sitemapXml, speaksAsUs } from './lib/industryPages';
-import { NOT_FOUND_HEAD, headFor, isKnownPublicPath, isPublicSiteHost } from './lib/publicPages';
+import { NOT_FOUND_HEAD, brandPath, headFor, isKnownPublicPath, isPublicSiteHost } from './lib/publicPages';
 import { markGated, stagingGate } from './lib/stagingGate';
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { readInstallKeys } from './lib/aiPool';
-import { rewriteIndustryHead, rewritePageHead } from './lib/industryHead';
+import { rewriteHostHead, rewriteIndustryHead, rewritePageHead } from './lib/industryHead';
 
 type Handler = (req: Request, env: Env, ctx: ExecutionContext) => Promise<Response>;
 
@@ -383,6 +383,20 @@ async function serve(req: Request, env: Env, ctx: ExecutionContext, url: URL): P
      address it does not have (PUB-4, lib/publicPages.ts). */
   if (isPublicSiteHost(url.hostname) && (req.method === 'GET' || req.method === 'HEAD') && !url.pathname.startsWith('/api/')) {
     const known = isKnownPublicPath(url.pathname, url.hostname);
+    /* A customer's page — protectedcentral.com/<brand>/<page> (2026-11-19).
+       A 200 with the page's own title and description for a crawler or a
+       link preview, and still a real 404 for a brand nobody published. */
+    if (!known && brandPath(url.pathname)) {
+      const hit = await findBrandPage(env, url.pathname).catch(() => null);
+      if (hit) {
+        const seo = (() => { try { return JSON.parse(hit.seo) as { title?: string; description?: string }; } catch { return {}; } })();
+        const res = await env.ASSETS.fetch(req);
+        if ((res.headers.get('content-type') ?? '').includes('text/html')) {
+          return rewritePageHead(res, { title: seo.title || hit.name, description: seo.description || '' }, url.pathname, false);
+        }
+        return res;
+      }
+    }
     const head = known ? headFor(url.pathname) : NOT_FOUND_HEAD;
     if (head) {
       const res = await env.ASSETS.fetch(req);
@@ -392,6 +406,24 @@ async function serve(req: Request, env: Env, ctx: ExecutionContext, url: URL): P
   }
 
   if (!url.pathname.startsWith('/api/')) {
+    /* A customer's domain (or free address) set to show their website: the
+       served HTML carries their page's title and description, not ours.
+       Asked only for hosts that are not our own fixed names, and only for
+       pages, so the product's own navigations never pay a lookup. */
+    const h = url.hostname.toLowerCase();
+    const ours = h === 'localhost' || h === '127.0.0.1' || h.endsWith('.workers.dev')
+      || /^(www\.|app\.|testing\.)?protectedcentral\.com$/.test(h);
+    if (!ours && (req.method === 'GET' || req.method === 'HEAD') && !/\.[a-z0-9]{1,8}$/i.test(url.pathname)) {
+      const hit = await hostPage(env, h, url.pathname).catch(() => null);
+      if (hit) {
+        const seo = (() => { try { return JSON.parse(hit.seo) as { title?: string; description?: string }; } catch { return {}; } })();
+        const res = await env.ASSETS.fetch(req);
+        if ((res.headers.get('content-type') ?? '').includes('text/html')) {
+          return rewriteHostHead(res, { title: seo.title || hit.name, description: seo.description || '' }, `https://${h}${url.pathname}`);
+        }
+        return res;
+      }
+    }
     /* Not ours: static assets and the SPA fallback are the platform's job. */
     return env.ASSETS.fetch(req);
   }

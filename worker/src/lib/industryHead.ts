@@ -41,3 +41,21 @@ export function rewritePageHead(res: Response, h: { title: string; description: 
     .on('head', { element(el) { if (notFound) el.append('<meta name="robots" content="noindex">', { html: true }); } })
     .transform(out);
 }
+
+/**
+ * The head for a page on a customer's own domain: their title, description
+ * and canonical address. Unlike rewritePageHead the canonical is *their*
+ * address — pointing it at protectedcentral.com would hand their search
+ * ranking to us, the reason they connected a domain at all.
+ */
+export function rewriteHostHead(res: Response, h: { title: string; description: string }, url: string): Response {
+  return new HTMLRewriter()
+    .on('title', { element(el) { el.setInnerContent(h.title); } })
+    .on('meta[name="description"]', { element(el) { el.setAttribute('content', h.description); } })
+    .on('link[rel="canonical"]', { element(el) { el.setAttribute('href', url); } })
+    .on('meta[property="og:url"]', { element(el) { el.setAttribute('content', url); } })
+    .on('meta[property="og:title"]', { element(el) { el.setAttribute('content', h.title); } })
+    .on('meta[property="og:description"]', { element(el) { el.setAttribute('content', h.description); } })
+    .on('meta[property="og:site_name"]', { element(el) { el.setAttribute('content', h.title); } })
+    .transform(res);
+}

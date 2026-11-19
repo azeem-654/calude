@@ -11,7 +11,9 @@ import type { FunnelBlock, FunnelStep } from '../../types';
 import './blockModern.css';
 
 export function BlockRender({ block }: { block: FunnelBlock }) {
-  const s = block.settings;
+  /* A block saved without settings (older data, an import) draws with the
+     defaults rather than taking the whole public page down with it. */
+  const s = block.settings ?? ({} as FunnelBlock['settings']);
   const bg: CSSProperties = s.bgGradient
     ? { background: s.bgGradient }
     : s.bgImage

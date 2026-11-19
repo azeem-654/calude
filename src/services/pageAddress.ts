@@ -1,6 +1,6 @@
 /**
  * The short company name in a published page's address —
- * app.protectedcentral.com/s/<company>/<page>.
+ * protectedcentral.com/<company>/<page> (app.protectedcentral.com/s/… before 2026-11-19).
  *
  * Owner, 2026-11-18: an address like /s/business-website read as one of
  * Protected Central's own pages. Under the customer's short name it reads as

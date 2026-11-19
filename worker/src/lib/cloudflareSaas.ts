@@ -87,7 +87,7 @@ export async function saveSaasCreds(
      nothing, and their address would sit at "Waiting for DNS" for ever. */
   merged.cnameTarget = merged.cnameTarget.toLowerCase().replace(/^https?:\/\//, '').replace(/[/.]+$/, '');
   if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(merged.cnameTarget)) {
-    return { ok: false, error: 'Add the CNAME target — the fallback origin hostname, e.g. customers.protectedcentral.com.', field: 'saas.cnameTarget' };
+    return { ok: false, error: 'Add the CNAME target — the fallback origin hostname, e.g. whitelabel.protectedcentral.com.', field: 'saas.cnameTarget' };
   }
   const key = await installSecret(env.DB, SECRET_KEY);
   const blob = await encryptSecret(key, JSON.stringify(merged));

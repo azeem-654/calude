@@ -1,6 +1,8 @@
 /**
- * A published website or funnel — `/s/<brand>/<page>`, or `/s/<slug>` for
- * one published before addresses carried the company's name (audit H3/H4).
+ * A published website or funnel. Three ways to arrive:
+ *   protectedcentral.com/<brand>[/<page>]   `scope="brand"` (2026-11-19, the owner's address)
+ *   a customer's own domain showing their site   `scope="host"` — the path under the brand they chose
+ *   …/s/<brand>/<page> or /s/<slug>          the older addresses, kept so links already sent still work
  *
  * Reached signed out and signed in, on the app host and on a reseller's own
  * domain: it is the visitor's page, so no app chrome, no login and nothing
@@ -48,11 +50,14 @@ function useMeta(attr: 'name' | 'property', key: string, value: string) {
 
 const norm = (s: string) => s.toLowerCase().replace(/^[#/]+|\/+$/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-export default function PublicPage() {
+export default function PublicPage({ scope }: { scope?: 'brand' | 'host' }) {
   /* `/s/<brand>/<page>` (a page under the company's short name) or an older
-     `/s/<slug>`; the server tries the two-part address first. */
+     `/s/<slug>`; the server tries the two-part address first. On the public
+     site and a customer's domain the address is the path itself. */
   const { slug: first = '', '*': rest = '' } = useParams<{ slug: string; '*': string }>();
-  const slug = [first, rest.split('/')[0]].filter(Boolean).join('/');
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+  const path = window.location.pathname.slice(base.length).toLowerCase().replace(/^\/+|\/+$/g, '').split('/').slice(0, 2).join('/');
+  const slug = scope ? path : [first, rest.split('/')[0]].filter(Boolean).join('/');
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'missing' | 'unreachable'>('loading');
   const [idx, setIdx] = useState(0);
@@ -61,7 +66,7 @@ export default function PublicPage() {
     let live = true;
     fetch(`${API_BASE}/api/published.php`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'get', slug }),
+      body: JSON.stringify(scope ? { action: 'get', slug, scope, hostname: window.location.hostname } : { action: 'get', slug }),
     })
       .then(r => r.json())
       .then((d: { success?: boolean; page?: Snapshot }) => {
@@ -73,7 +78,7 @@ export default function PublicPage() {
       })
       .catch(() => { if (live) setState('unreachable'); });
     return () => { live = false; };
-  }, [slug]);
+  }, [slug, scope]);
 
   const title = snap ? (snap.seo.title || snap.name) : state === 'missing' ? 'Page not found' : '';
   useEffect(() => {

@@ -33,6 +33,7 @@
 import { body, fail, json } from '../lib/http';
 import { dataGet, nowIso, storageWorkspace, userFromToken, workspaceAccess, type Env } from '../lib/db';
 import { rateLimit } from '../lib/rateLimit';
+import { BRAND_OK, PART_OK, brandNameFree, brandPath } from '../lib/publicPages';
 
 interface Req {
   action?: string;
@@ -44,6 +45,9 @@ interface Req {
   /** The short company name and the page part of the address (`/s/<brand>/<page>`). */
   brand?: string;
   page?: string;
+  /** 'brand' (protectedcentral.com/<brand>/<page>) or 'host' (a domain showing a site). */
+  scope?: string;
+  hostname?: string;
 }
 
 type Kind = 'site' | 'funnel';
@@ -51,12 +55,58 @@ const STORE: Record<Kind, string> = { site: 'crm_websites', funnel: 'crm_funnels
 
 const ACCOUNT_OK = /^[A-Za-z0-9_.-]{1,64}$/;
 const ITEM_OK = /^[A-Za-z0-9_.\-:]{1,120}$/;
-/* A page under a company name: "lone-star/free-quote" (pageAddress.ts). */
-const PART_OK = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
-const BRAND_OK = /^[a-z0-9](?:[a-z0-9-]{0,28}[a-z0-9])$/;
+/* A page under a company name: "lone-star/free-quote" (pageAddress.ts);
+   BRAND_OK and PART_OK live in lib/publicPages.ts with the address shape. */
 const PATH_OK = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?(?:\/[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?)?$/;
 /* Names nobody may take: ours, and words a visitor would read as ours. */
-const RESERVED_BRANDS = new Set(['protected-central', 'protectedcentral', 'protected', 'app', 'api', 'www', 'admin', 'support', 'help', 'login', 'signup', 'billing', 'security', 'official', 'appsumo', 'testing', 'staging']);
+const RESERVED_BRANDS = new Set(['protected-central', 'protectedcentral', 'protected', 'app', 'api', 'www', 'admin', 'support', 'help', 'login', 'signup', 'billing', 'security', 'official', 'appsumo', 'testing', 'staging',
+  /* Since brands sit at protectedcentral.com/<brand> (2026-11-19): pages the
+     public site may grow, so a customer never holds the address of one of
+     ours before we publish it. The site's existing pages are refused by
+     brandNameFree, from the same list the site routes by. */
+  'about', 'blog', 'contact', 'features', 'careers', 'jobs', 'partners', 'partner', 'docs', 'status', 'legal', 'news', 'press', 'faq',
+  'site', 'sites', 'home', 'index', 'demo', 'compare', 'integrations', 'solutions', 'resources', 'templates', 'customers', 'affiliate', 'affiliates',
+  'whitelabel', 'white-label', 'reseller', 'resellers', 'agency', 'agencies', 'enterprise', 'trust', 'privacy', 'terms', 'refunds', 'cookies', 'checkout', 'pay', 'auth']);
+
+type PageRow = { slug: string; kind: string; name: string; pages: string; seo: string; updated_at: string };
+
+/**
+ * A customer's page by "brand" or "brand/page" — the address on
+ * protectedcentral.com, and the path on a domain that shows their site.
+ *
+ * The brand alone is their home page: the page they called `home`, else their
+ * first published website, else their first page of any kind. A home page that
+ * has to be named would leave every business that published "free-quote"
+ * first with nothing at its own name.
+ */
+export async function findBrandPage(env: Env, path: string): Promise<PageRow | null> {
+  const p = brandPath(path);
+  if (!p) return null;
+  const q = 'SELECT slug, kind, name, pages, seo, updated_at FROM crm_public_pages';
+  if (p.includes('/')) return env.DB.prepare(`${q} WHERE slug = ?`).bind(p).first<PageRow>();
+  return (await env.DB.prepare(`${q} WHERE slug = ?`).bind(`${p}/home`).first<PageRow>())
+    ?? env.DB.prepare(`${q} WHERE slug LIKE ? ORDER BY (kind = 'site') DESC, published_at LIMIT 1`).bind(`${p}/%`).first<PageRow>();
+}
+
+/**
+ * The page a connected domain shows at this path, for the served HTML's head
+ * (so a crawler and a link preview read the customer's title, not ours), or
+ * null when the domain does not show a site. The app draws the page itself.
+ */
+export async function hostPage(env: Env, hostname: string, path: string): Promise<PageRow | null> {
+  const brand = await hostBrand(env, hostname);
+  if (!brand) return null;
+  const first = path.toLowerCase().replace(/^\/+|\/+$/g, '').split('/')[0];
+  return findBrandPage(env, first ? `${brand}/${first}` : brand);
+}
+
+/** The brand a connected domain shows, when it shows a website. */
+async function hostBrand(env: Env, hostname: string): Promise<string> {
+  const row = await env.DB.prepare(
+    `SELECT site_brand FROM crm_custom_domains WHERE hostname = ? AND status = 'active' AND serves = 'site'`,
+  ).bind(hostname.toLowerCase().slice(0, 253)).first<{ site_brand: string }>();
+  return row?.site_brand ?? '';
+}
 /* Under D1's 2 MB row cap with room for the other columns. A site this big
    is almost always pictures pasted in as data URLs; the refusal says so. */
 const MAX_PAGES_BYTES = 1_500_000;
@@ -144,12 +194,31 @@ export async function handlePublished(req: Request, env: Env): Promise<Response>
   /* ── The visitor ── */
   if (action === 'get') {
     const asked = String(d.slug ?? '').trim().toLowerCase().replace(/\/+$/, '');
-    if (!PATH_OK.test(asked)) return fail('There is no page at this address.', 200, { code: 'not_found' });
+    const scope = String(d.scope ?? '');
     const ip = req.headers.get('CF-Connecting-IP') ?? 'unknown';
     /* Generous: a page load is one call. It bounds what one address can do to
        the view count and to the database, nothing more. */
     const limit = await rateLimit(env, { what: 'public-page', who: ip, max: 600, windowSeconds: 600 });
     if (!limit.allowed) return fail('Too many requests from this connection. Try again shortly.', 429);
+
+    /* protectedcentral.com/<brand>[/<page>] ('brand'), or a customer's own
+       domain showing their site ('host': its path under the brand the domain
+       was set to). The hostname is the one the page is on — a visitor can only
+       ever reach a brand some domain was pointed at by its owner. */
+    if (scope === 'brand' || scope === 'host') {
+      let path = asked;
+      if (scope === 'host') {
+        const brand = await hostBrand(env, String(d.hostname ?? ''));
+        if (!brand) return fail('There is no page at this address.', 200, { code: 'not_found' });
+        path = asked ? `${brand}/${asked.split('/')[0]}` : brand;
+      }
+      const hit = await findBrandPage(env, path);
+      if (!hit) return fail('There is no page at this address.', 200, { code: 'not_found' });
+      await env.DB.prepare('UPDATE crm_public_pages SET views = views + 1 WHERE slug = ?').bind(hit.slug).run();
+      return json({ success: true, slug: hit.slug, page: { kind: hit.kind, name: hit.name, pages: parseOr(hit.pages, []), seo: parseOr(hit.seo, {}), updatedAt: hit.updated_at } });
+    }
+
+    if (!PATH_OK.test(asked)) return fail('There is no page at this address.', 200, { code: 'not_found' });
     /* "brand/page" first; then the first part alone, which is an older
        one-part address followed by one of its own pages ("/s/site/about"). */
     let slug = asked;
@@ -238,7 +307,7 @@ export async function handlePublished(req: Request, env: Env): Promise<Response>
   let wanted = '';
   if (brand) {
     if (!BRAND_OK.test(brand)) return fail('Use 2 to 30 lower-case letters, numbers and hyphens for the name in the address — for example lone-star.', 200, { field: 'publish.brand' });
-    if (RESERVED_BRANDS.has(brand)) return fail(`"${brand}" cannot be used in an address. Use your own business's short name.`, 200, { field: 'publish.brand' });
+    if (RESERVED_BRANDS.has(brand) || !brandNameFree(brand)) return fail(`"${brand}" cannot be used in an address. Use your own business's short name.`, 200, { field: 'publish.brand' });
     if (!PART_OK.test(pagePart)) return fail('Use lower-case letters, numbers and hyphens for the page part of the address — for example free-quote.', 200, { field: 'publish.page' });
     await env.DB.prepare('INSERT OR IGNORE INTO crm_page_brands (brand, account_id, created_at) VALUES (?, ?, ?)').bind(brand, ws, nowIso()).run();
     const owner = await env.DB.prepare('SELECT account_id FROM crm_page_brands WHERE brand = ?').bind(brand).first<{ account_id: string }>();
@@ -252,14 +321,14 @@ export async function handlePublished(req: Request, env: Env): Promise<Response>
     /* A new address for a page that was already live: the old link stops
        working, which the panel says before the button is pressed. */
     const clash = await env.DB.prepare('SELECT 1 AS x FROM crm_public_pages WHERE slug = ?').bind(wanted).first();
-    if (clash) return fail(`/s/${wanted} is already one of your pages. Choose a different page name.`, 200, { field: 'publish.page', code: 'slug_taken' });
+    if (clash) return fail(`${wanted} is already one of your pages. Choose a different page name.`, 200, { field: 'publish.page', code: 'slug_taken' });
     await env.DB.prepare('UPDATE crm_public_pages SET slug = ?, name = ?, pages = ?, seo = ?, updated_at = ? WHERE slug = ? AND account_id = ?')
       .bind(wanted, name, pagesJson, JSON.stringify(seo), now, existing.slug, ws).run();
     return json({ success: true, slug: wanted, publishedAt: existing.published_at, updatedAt: now, republished: true, moved: existing.slug });
   }
   if (!existing && wanted) {
     const clash = await env.DB.prepare('SELECT 1 AS x FROM crm_public_pages WHERE slug = ?').bind(wanted).first();
-    if (clash) return fail(`/s/${wanted} is already one of your pages. Choose a different page name.`, 200, { field: 'publish.page', code: 'slug_taken' });
+    if (clash) return fail(`${wanted} is already one of your pages. Choose a different page name.`, 200, { field: 'publish.page', code: 'slug_taken' });
     await env.DB.prepare(
       `INSERT INTO crm_public_pages (slug, account_id, kind, item_id, name, pages, seo, views, published_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,

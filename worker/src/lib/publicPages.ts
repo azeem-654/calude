@@ -38,6 +38,35 @@ export function isKnownPublicPath(pathname: string, hostname: string = (globalTh
   return /\/[^/]+\.[a-z0-9]{1,8}$/i.test(p);
 }
 
+/* A customer's page on the public site: protectedcentral.com/<brand>/<page>
+   (owner, 2026-11-19 — replacing app.protectedcentral.com/s/<brand>/<page>).
+   One copy of the shape, read by the Worker (status, head, and what a brand
+   may be called) and by the app (which screen). */
+export const BRAND_OK = /^[a-z0-9](?:[a-z0-9-]{0,28}[a-z0-9])$/;
+export const PART_OK = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
+
+/**
+ * "brand" or "brand/page" when the address could be a customer's page, else ''.
+ * Only called for addresses the site does not have itself — the site's own
+ * pages always win, and `brandNameFree` keeps a brand from ever being named
+ * like one of them.
+ */
+export function brandPath(pathname: string): string {
+  const parts = pathname.toLowerCase().replace(/^\/+|\/+$/g, '').split('/');
+  if (parts.length > 2 || !BRAND_OK.test(parts[0] ?? '')) return '';
+  if (parts.length === 2 && !PART_OK.test(parts[1])) return '';
+  return parts.join('/');
+}
+
+/**
+ * May a customer publish under this short name? Not if protectedcentral.com
+ * already has, or could show, a page at /<name> — on any host, which is why
+ * it asks as localhost, where every incubated page (/hvac, /roofing…) is on.
+ */
+export function brandNameFree(brand: string): boolean {
+  return !isKnownPublicPath(`/${brand}`, 'localhost');
+}
+
 export interface PageHead { title: string; description: string }
 
 /** Each public page's own title and description, as a crawler or link preview reads them. Plain facts only. */

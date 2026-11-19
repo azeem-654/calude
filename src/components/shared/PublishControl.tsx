@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Copy, ExternalLink, Globe, Check } from 'lucide-react';
-import { publicUrl, publishItem, unpublishItem, usePublished, type PublishKind } from '../../services/publishedPages';
+import { pageAddressBase, publicUrl, publishItem, unpublishItem, usePublished, type PublishKind } from '../../services/publishedPages';
 import { cleanUrlPart, rememberUrlName, savedUrlName, suggestPagePart, suggestUrlName } from '../../services/pageAddress';
 import { customerBusinessName } from '../../services/tenancy';
 
@@ -38,15 +38,14 @@ export default function PublishControl({ kind, itemId, beforePublish, onPublishe
   const [copied, setCopied] = useState(false);
   const what = kind === 'site' ? 'website' : 'funnel';
   const url = live ? publicUrl(live.slug) : '';
-  /* The address: /s/<company>/<page> (owner, 2026-11-18 — an address like
-     /s/business-website read as Protected Central's own page). Suggested from
+  /* The address: protectedcentral.com/<company>/<page> (owner, 2026-11-18,
+     moved off /s/ on the app host 2026-11-19 — pageAddressBase). Suggested from
      what AI Autopilot set, the name used last time, or the business name. */
   const defaultBrand = cleanUrlPart(urlName ?? '') || savedUrlName() || suggestUrlName(customerBusinessName());
   const [brand, setBrand] = useState(defaultBrand);
   const [pagePart, setPagePart] = useState(() => suggestPagePart(itemName, defaultBrand, kind, customerBusinessName()));
   const [editAddress, setEditAddress] = useState(false);
   const [badField, setBadField] = useState('');
-  const origin = typeof window !== 'undefined' ? window.location.host : '';
 
   async function publish() {
     /* Every new page goes under the business's own name (owner, 2026-11-18). */
@@ -70,7 +69,7 @@ export default function PublishControl({ kind, itemId, beforePublish, onPublishe
     <div style={{ display: 'grid', gap: 6, marginBottom: 12 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>Its address</div>
       <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4, fontSize: 12.5, color: '#64748b' }}>
-        <span style={{ wordBreak: 'break-all' }}>{origin}/s/</span>
+        <span style={{ wordBreak: 'break-all' }}>{pageAddressBase()}</span>
         <input data-field="publish.brand" aria-label="Your business's short name" value={brand} maxLength={30}
           onChange={e => setBrand(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
           placeholder="your-business"

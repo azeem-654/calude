@@ -26,7 +26,7 @@ const sql = (q) => JSON.parse(execSync(`npx wrangler d1 execute crmpro --local${
 
 /* A real 64×64 PNG, so the logo is well over the few hundred characters a
    careless column would keep, and an <img> can prove it decoded. */
-const browser = await pw.chromium.launch({ args: ['--host-resolver-rules=MAP *.protectedcentral.com 127.0.0.1'] });
+const browser = await pw.chromium.launch({ args: ['--host-resolver-rules=MAP *.protectedcentral.com 127.0.0.1, MAP protectedcentral.com 127.0.0.1'] });
 const LOGO = await (async () => {
   const p = await browser.newPage();
   const url = await p.evaluate(() => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); g.fillStyle = '#e11d48'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#fff'; g.font = 'bold 34px sans-serif'; g.fillText('A', 18, 45); for (let i = 0; i < 400; i++) { g.fillStyle = `rgb(${i % 255},${(i * 7) % 255},${(i * 13) % 255})`; g.fillRect(i % 64, (i * 3) % 64, 1, 1); } return c.toDataURL('image/png'); });
@@ -170,11 +170,74 @@ for (const slug of ['app', 'testing', 'login', 'billing', 'protectedcentral']) {
 r = await api('whitelabel.php', { token: bob.token, accountId: bobWs, action: 'add', kind: 'custom', hostname: 'app.protectedcentral.com', branding: {} });
 ok('the product\'s own address cannot be claimed as a custom domain', !r.success);
 r = await api('whitelabel.php', { action: 'resolve', hostname: 'acme-growth.protectedcentral.com' });
-ok('the public answer is the sign-in branding and nothing else', r.match && Object.keys(r.match).sort().join() === 'accent,accountId,appName,kind,loginHeadline,logoUrl,status', JSON.stringify(Object.keys(r.match ?? {})));
+ok('the public answer is the sign-in branding and nothing else', r.match && Object.keys(r.match).sort().join() === 'accent,accountId,appName,kind,loginHeadline,logoUrl,serves,siteBrand,status', JSON.stringify(Object.keys(r.match ?? {})));
 r = await api('whitelabel.php', { action: 'resolve', hostname: 'nobody-here.protectedcentral.com' });
 ok('an unclaimed address resolves to nothing, without an error', r.success && r.match === null);
 r = await api('whitelabel.php', { action: 'list' });
 ok('listing addresses needs a session', !r.success && r.code === 'unauthorised');
+
+/* ── Her pages: protectedcentral.com/<brand>/<page>, and her address showing
+   her website instead of the sign-in (owner, 2026-11-19) ── */
+{
+  const mk = (id, name, words) => ({ id, name, status: 'draft', visitors: 0, pageViews: 0, seoTitle: `${name} title`, seoDescription: `${name} description`,
+    pages: [{ id: 'pg1', name: 'Home', type: 'landing', slug: 'home', visitors: 0, conversions: 0, blocks: [{ id: 'b1', type: 'heading', content: words, settings: {} }] }] });
+  const sites = [mk('ws-acme-1', 'Acme Plumbing', 'Acme fixes leaks fast'), mk('ws-acme-2', 'Acme Offer', 'Free quote from Acme today')];
+  r = await api('data.php', { action: 'put', token: ann.token, accountId: annWs, key: 'crm_websites', value: JSON.stringify(sites) });
+  const p1 = await api('published.php', { action: 'publish', token: ann.token, accountId: annWs, kind: 'site', id: 'ws-acme-1', brand: 'acmeplumb', page: 'welcome' });
+  const p2 = await api('published.php', { action: 'publish', token: ann.token, accountId: annWs, kind: 'site', id: 'ws-acme-2', brand: 'acmeplumb', page: 'sales' });
+  ok('Ann publishes two pages under her short name', p1.success && p2.success && p2.slug === 'acmeplumb/sales', JSON.stringify([r, p1, p2]).slice(0, 240));
+  for (const brand of ['pricing', 'security', 'about', 'whitelabel']) {
+    r = await api('published.php', { action: 'publish', token: ann.token, accountId: annWs, kind: 'site', id: 'ws-acme-2', brand, page: 'x' });
+    ok(`nobody publishes as protectedcentral.com/${brand}`, !r.success && r.field === 'publish.brand', JSON.stringify(r).slice(0, 160));
+  }
+
+  const APEX = `http://protectedcentral.com:${PORT}`;
+  const look = async (url, w = 1280) => {
+    const ctx = await browser.newContext({ viewport: { width: w, height: 900 } });
+    const p = await ctx.newPage();
+    const perr = []; p.on('pageerror', e => perr.push(String(e)));
+    const res = await p.goto(url, { waitUntil: 'networkidle' });
+    await p.waitForTimeout(1200);
+    const out = { status: res?.status(), body: await p.locator('body').innerText(), title: await p.title(), perr,
+      overflow: await p.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1),
+      password: await p.getByLabel('Password', { exact: true }).isVisible().catch(() => false) };
+    await ctx.close();
+    return out;
+  };
+  let v = await look(`${APEX}/acmeplumb/sales`, 390);
+  ok('protectedcentral.com/acmeplumb/sales is her offer page (200, its own title)', v.status === 200 && /Free quote from Acme/.test(v.body) && /Acme Offer title/.test(v.title), `${v.status} ${v.title} ${v.body.slice(0, 120)}`);
+  ok('…readable at 390 with no page errors', !v.overflow && !v.perr.length, v.perr.join(' | '));
+  v = await look(`${APEX}/acmeplumb`);
+  ok('protectedcentral.com/acmeplumb is her home page (her first website)', v.status === 200 && /Acme fixes leaks/.test(v.body), `${v.status} ${v.body.slice(0, 120)}`);
+  v = await look(`${APEX}/nobody-published-this`);
+  ok('a name nobody published is a real 404', v.status === 404, String(v.status));
+  v = await look(`${APEX}/pricing`);
+  ok('our own pages still win: /pricing is our pricing page', v.status === 200 && /pricing/i.test(v.title), `${v.status} ${v.title}`);
+
+  r = await api('whitelabel.php', { token: bob.token, accountId: bobWs, action: 'set_serves', hostname: 'acme-growth.protectedcentral.com', serves: 'site', brand: 'acmeplumb' });
+  ok('Bob cannot change what Ann\'s address shows', !r.success, JSON.stringify(r));
+  r = await api('whitelabel.php', { token: ann.token, accountId: annWs, action: 'set_serves', hostname: 'acme-growth.protectedcentral.com', serves: 'site', brand: 'someone-else' });
+  ok('Ann cannot point her address at pages that are not hers', !r.success && r.field === 'domain.serves', JSON.stringify(r));
+
+  /* On the screen: Settings → Branding → "Visitors see" → her website. */
+  await pa.goto(`${B}/settings?tab=branding`, { waitUntil: 'networkidle' });
+  await pa.waitForTimeout(1000);
+  const sel = pa.locator('[data-field="domain.serves"]').first();
+  ok('each address has a "Visitors see" choice', await sel.isVisible().catch(() => false));
+  await sel.selectOption('site:acmeplumb').catch(() => {});
+  await pa.waitForTimeout(1200);
+  ok('…stored: her address now shows her website', sql("SELECT serves, site_brand FROM crm_custom_domains WHERE hostname = 'acme-growth.protectedcentral.com'")[0]?.site_brand === 'acmeplumb');
+
+  v = await look(`${HOST}/`, 390);
+  ok('her address opens her home page, not a sign-in', /Acme fixes leaks/.test(v.body) && !v.password, v.body.slice(0, 160));
+  ok('…with her page\'s title in the served HTML', /Acme Plumbing title/.test(v.title), v.title);
+  ok('…and nothing of ours on it', !/Protected\s*Central/i.test(v.body + v.title), v.body.match(/.{0,40}Protected\s*Central.{0,40}/i)?.[0] ?? v.title);
+  v = await look(`${HOST}/sales`);
+  ok('her-address/sales is her offer page', /Free quote from Acme/.test(v.body), v.body.slice(0, 160));
+  r = await api('whitelabel.php', { token: ann.token, accountId: annWs, action: 'set_serves', hostname: 'acme-growth.protectedcentral.com', serves: 'signin' });
+  v = await look(`${HOST}/login`);
+  ok('switched back, her address is her sign-in again', r.success && v.password, JSON.stringify(r));
+}
 
 /* ── An unclaimed name under ours is the plain product, not somebody's brand ── */
 {

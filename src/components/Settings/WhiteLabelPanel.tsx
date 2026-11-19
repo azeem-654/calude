@@ -26,7 +26,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import {
   addDomain, brandingPayload, checkDomain, domainOf, isRootDomain, listDomains, removeDomain,
-  saasState, saveSaas, type CustomDomain, type DomainList, type SaasState,
+  saasState, saveSaas, setServes, type CustomDomain, type DomainList, type SaasState,
 } from '../../services/whitelabel';
 import { isInstallOwner } from '../../services/moderation';
 
@@ -140,7 +140,7 @@ function SaasProviderCard({ onChange }: { onChange: () => void }) {
       <div style={{ display: 'grid', gap: 9 }}>
         {field('Zone ID', 'saas.zoneId', zoneId, setZoneId, '32 characters, from the zone’s Overview page')}
         {field(st?.hasToken ? 'API token (leave blank to keep the saved one)' : 'API token', 'saas.apiToken', token, setToken, st?.hasToken ? '•••••••• saved' : 'Paste the token', true)}
-        {field('CNAME target (the fallback origin)', 'saas.cnameTarget', target, setTarget, 'customers.protectedcentral.com')}
+        {field('CNAME target (the fallback origin)', 'saas.cnameTarget', target, setTarget, 'whitelabel.protectedcentral.com')}
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
         <button onClick={() => void save()} disabled={!!busy}
@@ -235,6 +235,17 @@ export default function WhiteLabelPanel() {
     );
   };
 
+  /* What an address shows. A refusal names the select (data-field), as every
+     form here does. */
+  const changeServes = async (h: string, value: string) => {
+    setBusy(h);
+    const r = value.startsWith('site:') ? await setServes(h, 'site', value.slice(5)) : await setServes(h, 'signin');
+    setBusy('');
+    if (r.error) { addNotification(r.error, 'error'); return; }
+    await load();
+    addNotification(value.startsWith('site:') ? `${h} now shows your website.` : `${h} now shows your client sign-in.`, 'success');
+  };
+
   const drop = async (h: string) => {
     if (!await askConfirm({ title: `Stop serving ${h}?`, message: 'Anybody using that address will no longer be able to sign in there.', confirmLabel: 'Stop serving it', danger: true })) return;
     setBusy(h);
@@ -281,6 +292,26 @@ export default function WhiteLabelPanel() {
                 <Trash2 size={13} />
               </button>
             </div>
+
+            {/* What visitors get at this address: the white-labelled sign-in
+                for clients, or the workspace's published website. */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: '#475569' }}>Visitors see</span>
+              <select data-field="domain.serves" aria-label={`What ${d.hostname} shows`} disabled={busy === d.hostname}
+                value={d.serves === 'site' && d.siteBrand ? `site:${d.siteBrand}` : 'signin'}
+                onChange={e => void changeServes(d.hostname, e.target.value)}
+                style={{ ...inp, padding: '6px 9px', fontSize: 12, minWidth: 200, maxWidth: '100%' }}>
+                <option value="signin">Your client sign-in (your logo and name)</option>
+                {s.brands.map(b => <option key={b} value={`site:${b}`}>Your website — the pages published as {b}</option>)}
+                {s.brands.length === 0 && <option value="site:" disabled>Your website (publish one first)</option>}
+              </select>
+            </div>
+            {d.serves === 'site' && d.siteBrand && (
+              <p style={{ margin: '6px 0 0', fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
+                {d.hostname} opens your home page; {d.hostname}/<i>page-name</i> opens each page you published as{' '}
+                <b>{d.siteBrand}/page-name</b>.
+              </p>
+            )}
 
             {/* The records, and only while they still matter. */}
             {d.kind === 'custom' && d.status !== 'active' && (
@@ -334,8 +365,9 @@ export default function WhiteLabelPanel() {
       <div style={{ border: `1px solid ${LINE}`, borderRadius: 12, background: '#fff', padding: 14, opacity: s.customAvailable ? 1 : 0.75 }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: INK }}>Your own domain</div>
         <p style={{ margin: '4px 0 10px', fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>
-          Put your clients on an address you own — a name under it like <code>app.youragency.com</code>,
-          or the root, <code>youragency.com</code>. You add two DNS records; we handle the certificate.
+          Use an address you own — the root, <code>yourbusiness.com</code>, or a name under it like
+          <code> sales.yourbusiness.com</code> — for your website or your client sign-in. You add two DNS
+          records; we handle the certificate.
         </p>
 
         {s.customAvailable ? (

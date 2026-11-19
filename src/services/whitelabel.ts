@@ -28,6 +28,9 @@ export interface ResolvedHost {
   logoUrl: string;
   accent: string;
   loginHeadline: string;
+  /** 'site' when the address shows the workspace's published website instead of the sign-in. */
+  serves?: 'signin' | 'site';
+  siteBrand?: string;
 }
 
 export interface CustomDomain {
@@ -40,6 +43,9 @@ export interface CustomDomain {
   lastError: string;
   checkedAt: string | null;
   createdAt: string;
+  /** What the address shows: the client sign-in, or the website under `siteBrand`. */
+  serves: 'signin' | 'site';
+  siteBrand: string;
 }
 
 export interface DomainList {
@@ -47,6 +53,8 @@ export interface DomainList {
   customAvailable: boolean;
   cnameTarget: string;
   subdomainSuffix: string;
+  /** The short names this workspace publishes pages under — what a domain can show. */
+  brands: string[];
 }
 
 export interface SaasState {
@@ -105,7 +113,13 @@ async function call(action: string, extra: Record<string, unknown> = {}): Promis
 const CACHE_KEY = RESOLVED_HOST_KEY;
 
 /** What was resolved for this hostname, if anything, without asking again. */
+/* The answer in memory too: a browser that refuses sessionStorage would
+   otherwise forget it between HostGate and the routes, and a customer's
+   website would fall back to the sign-in page. */
+let memo: { hostname: string; match: ResolvedHost | null } | null = null;
+
 export function cachedHost(): ResolvedHost | null {
+  if (memo && memo.hostname === window.location.hostname.toLowerCase()) return memo.match;
   try {
     const raw = window.sessionStorage.getItem(CACHE_KEY);
     if (!raw) return null;
@@ -141,6 +155,7 @@ export async function resolveHost(): Promise<ResolvedHost | null> {
     return null;
   }
 
+  memo = { hostname, match };
   try {
     window.sessionStorage.setItem(CACHE_KEY, JSON.stringify({ hostname, match }));
   } catch { /* a private window simply asks again */ }
@@ -189,7 +204,22 @@ export async function listDomains(): Promise<DomainList> {
     customAvailable: !!r.customAvailable,
     cnameTarget: String(r.cnameTarget ?? ''),
     subdomainSuffix: String(r.subdomainSuffix ?? ''),
+    brands: (r.brands as string[]) ?? [],
   };
+}
+
+/** Choose what an address shows: the client sign-in, or the website published under `brand`. */
+export async function setServes(hostname: string, serves: 'signin' | 'site', brand = ''): Promise<{ error: string; field?: string }> {
+  const r = await call('set_serves', { hostname, serves, brand });
+  return r.success ? { error: '' } : { error: r.error ?? 'Could not change that.', field: (r as { field?: string }).field };
+}
+
+/**
+ * True when this address shows a customer's website rather than the app —
+ * known once HostGate has resolved it. Every path is then their page.
+ */
+export function isSiteHost(): boolean {
+  return cachedHost()?.serves === 'site';
 }
 
 export async function addDomain(input: {

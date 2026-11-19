@@ -333,3 +333,27 @@ film, not above the recipes, so Find my solution keeps its place.
   tool each hour"), the security shield (only SECURITY.md §7 claims) are
   live everywhere.
 - `#film` is LaunchFilm's id; the platform film is `#platform-film`.
+
+## Customers' pages on the public site and on their own domains (2026-11-19)
+
+Owner: a business's published pages live at **protectedcentral.com/<brand>/<page>**
+(the brand alone is their home page: the page named `home`, else their first
+website, else their first page), not app.protectedcentral.com/s/… The old
+`/s/` addresses keep working everywhere. On the live app the publish panel and
+the wizard print `protectedcentral.com/` (`pageAddressBase()`); a reseller's
+host, testing and localhost keep `<host>/s/`.
+
+- **Our pages always win**: the Worker and App.tsx try `isKnownPublicPath`
+  first; only then `brandPath()` → `findBrandPage` (200 with the page's own
+  head, or a real 404). `brandNameFree()` refuses a brand named like any page
+  the site has on any host, and `RESERVED_BRANDS` (routes/published.ts) holds
+  names the site may grow (about, blog, careers…). **A new public page must
+  not collide with an existing brand** — check `crm_page_brands` first.
+- **A connected address can show the website** (`crm_custom_domains.serves`
+  = `site`, `site_brand`; Settings → Branding → *Visitors see*). `set_serves`
+  checks the brand is the workspace's own. The Worker rewrites the served head
+  with the page's title and *the customer's* canonical URL (`hostPage`,
+  `rewriteHostHead`); App.tsx renders `PublicPage scope="host"` at every path
+  except `/f/ /book/ /shop/ /p/`. Tested in `test:whitelabel`.
+- Cloudflare side: `docs/CLOUDFLARE-SAAS-SETUP.md` (fallback origin
+  `whitelabel.protectedcentral.com`, Workers route `*/*`).

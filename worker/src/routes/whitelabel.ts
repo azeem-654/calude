@@ -25,7 +25,7 @@
  */
 import { body, fail, json, ok } from '../lib/http';
 import {
-  nowIso, userFromToken, workspaceAccess,
+  nowIso, storageWorkspace, userFromToken, workspaceAccess,
   type Env, type SessionUser,
 } from '../lib/db';
 import {
@@ -75,6 +75,7 @@ const RESERVED_SLUGS = new Set([
      (docs/CLOUDFLARE-SAAS-SETUP.md): a reseller's brand must never sit on the
      hostname every customer's domain CNAMEs to. */
   'customers', 'customer', 'cname', 'fallback', 'origin', 'saas', 'domains', 'proxy', 'edge',
+  'whitelabel', 'white-label', 'whitelabeling', 'connect',
 ]);
 
 /** The suffix a free subdomain lives under. */
@@ -132,7 +133,8 @@ export async function handleWhitelabel(req: Request, env: Env): Promise<Response
               COALESCE(b.app_name, '') AS appName,
               COALESCE(b.logo_url, '') AS logoUrl,
               COALESCE(b.accent, '') AS accent,
-              COALESCE(b.login_headline, '') AS loginHeadline
+              COALESCE(b.login_headline, '') AS loginHeadline,
+              d.serves, d.site_brand AS siteBrand
        FROM crm_custom_domains d
        LEFT JOIN crm_domain_branding b ON b.hostname = d.hostname
        WHERE d.hostname = ? AND d.status = 'active'`,
@@ -194,7 +196,7 @@ export async function handleWhitelabel(req: Request, env: Env): Promise<Response
 
   const listDomains = async () => {
     const { results } = await env.DB.prepare(
-      `SELECT hostname, kind, status, dns_target AS dnsTarget,
+      `SELECT hostname, kind, status, serves, site_brand AS siteBrand, dns_target AS dnsTarget,
               dns_txt_name AS dnsTxtName, dns_txt_value AS dnsTxtValue,
               last_error AS lastError, checked_at AS checkedAt, created_at AS createdAt
        FROM crm_custom_domains WHERE account_id = ? ORDER BY created_at`,
@@ -254,10 +256,46 @@ export async function handleWhitelabel(req: Request, env: Env): Promise<Response
     return json({ success: true, branding: c.brand, addresses: (results ?? []).length });
   }
 
+  /* The short names this workspace publishes under (routes/published.ts) —
+     what a domain set to "show my website" can show. */
+  const ws = storageWorkspace(user, accountId);
+  const listBrands = async () => {
+    const { results } = await env.DB.prepare('SELECT brand FROM crm_page_brands WHERE account_id = ? ORDER BY created_at')
+      .bind(ws).all<{ brand: string }>();
+    return (results ?? []).map(r => r.brand);
+  };
+
+  /**
+   * What an address shows: the client sign-in (white label of the app) or the
+   * workspace's published website under one of its short names.
+   *
+   * ── Why the brand is checked here and not at visit time only ──
+   * A visitor's request names nothing but the hostname; the brand behind it
+   * was chosen by whoever set this. So this is the one place a workspace could
+   * point its domain at somebody else's pages — "show lone-star's site on my
+   * domain" — and it is refused here, against crm_page_brands.
+   */
+  if (act === 'set_serves') {
+    const hostname = cleanHost(d.hostname);
+    const serves = String(d.serves ?? '') === 'site' ? 'site' : 'signin';
+    const brand = serves === 'site' ? String(d.brand ?? '').trim().toLowerCase() : '';
+    const mine = await env.DB.prepare('SELECT 1 AS x FROM crm_custom_domains WHERE hostname = ? AND account_id = ?')
+      .bind(hostname, accountId).first();
+    if (!mine) return fail('That address is not one of yours.', 403);
+    if (serves === 'site') {
+      if (!brand) return fail('Publish a website first — then choose it here.', 200, { field: 'domain.serves' });
+      if (!(await listBrands()).includes(brand)) return fail('Those pages are not published from this workspace.', 200, { field: 'domain.serves' });
+    }
+    await env.DB.prepare('UPDATE crm_custom_domains SET serves = ?, site_brand = ?, updated_at = ? WHERE hostname = ? AND account_id = ?')
+      .bind(serves, brand, nowIso(), hostname, accountId).run();
+    return json({ success: true, domains: await listDomains(), brands: await listBrands() });
+  }
+
   if (act === 'list') {
     return json({
       success: true,
       domains: await listDomains(),
+      brands: await listBrands(),
       /* So the screen can tell a reseller whether the custom tier is even on
          offer, rather than letting them type a hostname that cannot work. */
       customAvailable: !!(await saasReady(env)),
