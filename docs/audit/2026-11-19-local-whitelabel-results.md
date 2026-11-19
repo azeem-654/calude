@@ -1,4 +1,4 @@
-# Local white-label check — 2026-11-19 (Part A done, Part B on hold)
+# Local white-label check — 2026-11-19 (Part A done; Part B blocked at 13, domain restored)
 
 Run by the local session against **live** (app.protectedcentral.com) from the
 owner's Windows PC and home network, following
@@ -48,7 +48,26 @@ owner's Windows PC and home network, following
 - Team & Permissions: the "Create this team member" button was hidden behind the "Welcome — your 7-day trial has started" pop-up until it was closed.
 - Branding: the saved name is cached per tab (`sessionStorage.crm_resolved_host`), so an open tab never picks up a rename.
 
-## Part B — not started (blocked)
+## Part B — attempted, blocked at check 13, rolled back
+
+Owner confirmed the zone is in **our own Cloudflare account** (the same
+account as protectedcentral.com). Owner approved each record before it was added.
+
+| # | Result | What I saw |
+|---|---|---|
+| B0 | DONE | Zone has 11 records (A root → 160.153.0.98 DNS only; CNAME go → cdrapplication.secureserver.net; CNAME mta-sts / smtp → trekmail; CNAME www → wildwestcorp.com; MX mail.trekmail.net; TXT DKIM, DMARC, MTA-STS, TLS-RPT, SPF). Full answers saved locally as `wildwestcorp-dns-before.txt` (not committed — only this report is). The domain **does have a full TrekMail mail setup**, contrary to the brief. |
+| 12 | PASS | `sales.wildwestcorp.com` → Add it → "Waiting for DNS" (not Live), Check button, CNAME `sales.wildwestcorp.com → whitelabel.protectedcentral.com` and TXT `_cf-custom-hostname.sales.wildwestcorp.com`, each with a copy button. |
+| 13 | **BLOCKED** | CNAME `sales` → `whitelabel.protectedcentral.com` (DNS only) saved fine. The TXT `_cf-custom-hostname.sales` **would not save in the Cloudflare dashboard**: three attempts by me and one by the owner all showed **"Connection blocked"** in the Add record dialog, and no request left the page. On protectedcentral.com → SSL/TLS → Custom Hostnames: fallback origin `whitelabel.protectedcentral.com` **Active**; `sales.wildwestcorp.com` hostname status **Active**, certificate **"Pending Validation (TXT)"**. The app stayed "Waiting for DNS" after Check. Meanwhile `https://sales.wildwestcorp.com` already answered 200 with the zone's own Let's Encrypt cert (`*.wildwestcorp.com`) and the generic Protected Central page (`resolve` → `match: null`). |
+| 14–16 | NOT RUN | Blocked by 13. Check 15's wording was captured read-only (see Part A table). |
+| 17 | DONE | Removed `sales.wildwestcorp.com` in the app (dialog "Stop serving sales.wildwestcorp.com?") → Cloudflare Custom Hostnames shows "No custom hostnames." |
+| 18 | PASS | Deleted the `sales` CNAME (the only record added; the TXT never saved). Zone back to 11 of 200 records. Re-ran every lookup against `micah.ns.cloudflare.com`: **before and after files are identical** line for line. Public 8.8.8.8: root A 160.153.0.98, MX mail.trekmail.net, www CNAME wildwestcorp.com — same as before. `http://wildwestcorp.com` still 301 → `https://wildwestcorp.com/`. No forwarding or redirect was ever turned on. Nameservers untouched. |
+
+**For the cloud session:**
+- The "Connection blocked" refusal may come from the Cloudflare account itself: every dashboard page shows **"Your account has an overdue balance … $5.76"**. Confirm whether that, or a rule against `_cf-` record names, blocks the save. Adding the TXT through the API is worth trying.
+- When the customer's zone is on Cloudflare (and even in the **same** account), the app's instructions are still the generic two records. Check whether same-account hostnames need the TXT at all, or whether the app should say what to do on Cloudflare.
+- After Check, "Waiting for DNS" doesn't say *which* record is missing. Cloudflare knew it was the certificate TXT.
+
+### Original read-only findings
 
 Read-only lookups before touching anything (saved in
 `docs/audit/wildwestcorp-dig-before.txt`, resolver 8.8.8.8, cross-checked on
@@ -63,17 +82,13 @@ Read-only lookups before touching anything (saved in
 | TXT | `v=spf1 include:spf.trekmail.net -all` |
 | `http://wildwestcorp.com` | 301 → `https://wildwestcorp.com/` |
 
-This contradicts the brief: **DNS is served by Cloudflare, not GoDaddy**
-(records added in GoDaddy's DNS screen would do nothing; GoDaddy forwarding
-would not apply), and the domain **has live mail records** (TrekMail MX + SPF)
-although the brief says "no email". Nothing was changed on the domain. Part B
-waits for the owner to say which Cloudflare account holds the zone (and
-whether it is the same account as protectedcentral.com, which changes how
-Cloudflare for SaaS behaves) and to confirm the TrekMail records are unused.
+This contradicts the brief: **DNS is served by Cloudflare, not GoDaddy**,
+and the domain **has live mail records** although the brief says "no email".
 
-## Left in place (to remove after Part B)
+## Left in place (owner to decide)
 
 - Accounts `aiautomationapp+wl1@gmail.com` (Testco Two branding, trial) and
   `aiautomationapp+wl2@gmail.com` (client).
 - Sub-account "Testco Client QA" under wl1.
-- The free address `testco-k7q4` is already removed.
+- Removed: free address `testco-k7q4`, custom hostname
+  `sales.wildwestcorp.com`, and its CNAME. wildwestcorp.com is exactly as it was.
