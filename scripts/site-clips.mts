@@ -162,10 +162,13 @@ class Hand {
     await sleep(350);
   }
   /** A long film's chapter card over the whole frame, held `ms`, then the app again. */
-  async card(kicker: string, title: string, sub = '', ms = 3400) {
+  async card(kicker: string, title: string, sub = '', ms = 3400, keep = false) {
     const set = (a: string[]) => this.page.evaluate(([k, t, s]) => (window as unknown as { __clipCard: (k: string, t: string, s: string) => void }).__clipCard(k, t, s), a).catch(() => {});
+    await this.say('');
     await set([kicker, title, sub]);
     await sleep(ms);
+    /* The film's last card stays up through the fade at the end. */
+    if (keep) return;
     await set(['', '', '']);
     await sleep(600);
   }
@@ -1647,6 +1650,7 @@ const FILM: Record<string, Recipe> = {
       await h.click(btn(p, /^Funnels$/));
       await h.say('…and its own funnels', 'Summit’s quote funnel was built by AI Autopilot a minute ago');
       await h.pause(3800);
+      await h.say('');
       await p.goto(`${BASE}/autopilot`, { waitUntil: 'networkidle' });
       await h.pause(1500);
       await h.click(btn(p, /^Templates$/));
@@ -1654,11 +1658,265 @@ const FILM: Record<string, Recipe> = {
       await h.pause(3000);
       await h.scroll(500, 1200);
       await h.pause(2600);
-      await h.card('AI Autopilot', 'Many businesses. One board. Real AI.', 'You decide what it may do by itself — everything else waits for your yes');
+      await h.card('AI Autopilot', 'Many businesses. One board. Real AI.', 'You decide what it may do by itself — everything else waits for your yes', 4200, true);
     },
   },
 };
 Object.assign(RECIPES, FILM);
+
+/* ── The platform film: every module, its AI first ─────────────────────────
+ *
+ * The same brief: each module's AI features shown first, recorded with real
+ * AI, then the rest of the module — which is its site clip above, already
+ * feature-led, joined after it by demo-film.mts. Only buttons that really
+ * call a model are captioned as AI (2026-11-20 audit: Pipelines' "Brain"
+ * answers from rules, AI Prospecting's sentence reading is rule-based, and
+ * the sequence editor's "Write with AI" button does nothing — none is shown
+ * as AI here). A module with no AI of its own gets a title card only.
+ */
+const visibleButtons = (p: Page) => p.locator('button:visible').count();
+const titleCard = (kicker: string, title: string, sub: string): Recipe => ({
+  route: '/', film: true,
+  async act(h) { await h.card(kicker, title, sub, 3600, true); },
+});
+
+const PLATFORM: Record<string, Recipe> = {
+  'film-card-intro': titleCard('Protected Central', 'Every module, AI first', 'The real app, recorded live with real AI on a sample agency — then everything else each module does'),
+  'film-card-autopilot': titleCard('Module · AI Autopilot', 'Businesses that run themselves', 'The short version — the full deep dive is its own film'),
+  'film-card-prospecting': titleCard('Module · AI Prospecting', 'New leads from one sentence', 'Searched live, each website read, every address checked'),
+  'film-card-engagement': titleCard('Module · Customer Engagement', 'Tickets, forms and AI chat agents', 'An AI agent that answers on the client’s website, set up in a minute'),
+  'film-card-booking': titleCard('Module · Booking pages', 'A booking page for every client', 'Edited beside the live page, shown in each visitor’s time zone'),
+  'film-card-agency': titleCard('Module · Agency & white-label', 'Your product, your name on it', 'Client workspaces, prices and a sign-in address of your own'),
+  'film-card-reports': titleCard('Module · Reports', 'Every figure, read live', 'From the module that owns it, over the period you choose'),
+
+  'film-ai-contacts': {
+    route: '/contacts', film: true,
+    async act(h, p) {
+      await h.card('Module · Contacts', 'Contacts — AI first', 'Subject lines written for each person, then filters, lists and the rest');
+      await h.say('Open anybody: their whole story on one page', 'Health score, stage, deals, notes and email');
+      await h.click(p.locator('table tbody tr, [role=row]').nth(1));
+      await h.pause(2200);
+      await h.click(p.getByRole('tab', { name: /^Email/ }).or(p.getByRole('button', { name: /^Email$/ })).first());
+      await h.pause(1200);
+      await h.say('Subject lines written for this person', 'From their name and company, and whatever you have typed so far');
+      const before = await visibleButtons(p);
+      await h.click(p.getByRole('button', { name: /AI subjects/ }).first());
+      await h.waitAi(async () => (await visibleButtons(p)) >= before + 3, 5, 60_000);
+      await h.pause(2600);
+      await h.say('Pick one and it is in the Subject box', 'Then write, or start from a template');
+      const pick = p.locator('input[placeholder="Subject"]').locator('xpath=following::button[1]');
+      await h.click(pick);
+      await h.pause(2800);
+    },
+  },
+
+  'film-ai-pipelines': {
+    route: '/pipelines', film: true,
+    async act(h, p) {
+      await h.card('Module · Pipelines', 'Pipelines — AI first', 'Stages and tasks designed for the business, then the board and its automations');
+      await h.say('Describe the work — AI lays out the stages', 'Design stages, from what the business sells and to whom');
+      await h.click(p.getByRole('button', { name: /Design stages/ }).first());
+      await h.pause(1200);
+      const d = p.getByRole('dialog', { name: /Design this pipeline with AI/ });
+      await h.fast(3);
+      await h.click(d.getByPlaceholder(/A family dental practice/)); await h.type('A marketing studio for clinics, law firms and trades', 26);
+      await h.click(d.getByPlaceholder(/Implants and Invisalign/)); await h.type('Websites, booking pages and monthly retainers', 26);
+      await h.click(d.getByPlaceholder(/Adults within 20 minutes/)); await h.type('Owners of local service businesses in North Texas', 26);
+      await h.click(d.getByPlaceholder(/3,000/)); await h.type('$2,500', 40);
+      await h.fast(1);
+      await h.click(d.getByRole('button', { name: 'Design the stages' }));
+      await h.waitAi(async () => (await d.getByRole('button', { name: /^Apply to/ }).count()) > 0, 5, 120_000);
+      await h.say('Every stage with its first tasks', 'And exactly what applying would change — no deal is ever deleted');
+      await h.pause(3400);
+      await h.scroll(420, 1200);
+      await h.pause(2400);
+      await h.scroll(420, 1200);
+      await h.say('Rename, reorder, rewrite — it is a draft', 'Nothing changes until you press Apply');
+      await h.pause(3000);
+      await h.click(d.getByRole('button', { name: /Back to the brief/ }));
+      await h.pause(600);
+      await p.keyboard.press('Escape');
+      await h.pause(800);
+    },
+  },
+
+  'film-ai-campaigns': {
+    route: '/marketing', film: true,
+    async act(h, p) {
+      await h.card('Module · Email campaigns', 'Email campaigns — AI first', 'Campaigns written from a brief, rewritten on request, automations from a sentence');
+      await h.say('A whole campaign, written from a brief', 'For the client you pick, from their business profile');
+      await h.click(p.getByRole('button', { name: /Create Campaign/ }).first());
+      await h.pause(1000);
+      await h.click(p.getByText('Write it with AI').first());
+      await h.pause(1200);
+      await h.click(p.getByText('Vine Street Kitchen', { exact: true }).first());
+      await h.click(p.getByRole('button', { name: '3', exact: true }).first());
+      await h.click(p.getByRole('button', { name: 'Continue' }));
+      await h.pause(1000);
+      await h.fast(3);
+      await h.click(p.getByPlaceholder(/Summer Product Launch/)); await h.type('Spring catering offer', 30);
+      await h.click(p.getByPlaceholder(/launching TaskFlow/)); await h.type('Spring catering: office lunches and events for 20 to 200 people, with a free tasting for first-time clients', 18);
+      await h.click(p.getByPlaceholder(/Start free trial/)); await h.type('Book a free tasting', 30);
+      await h.click(p.getByRole('button', { name: /Email Sequence/ }));
+      await h.click(p.getByRole('button', { name: /Promote Offer/ }));
+      await h.click(p.getByRole('button', { name: /Friendly/ }));
+      await h.fast(1);
+      await h.click(p.getByRole('button', { name: 'Next' }));
+      await h.waitAi(async () => (await p.getByRole('button', { name: 'Regenerate' }).count()) > 0, 5, 120_000);
+      await h.say('Three emails, timed and conditioned', 'Day 0, then if not opened, then if not replied — it stops when they answer');
+      await h.pause(3000);
+      await h.say('It says when it has too little to go on', 'A thin business profile is named, not papered over');
+      await h.to(p.getByText(/almost nothing on file/).first());
+      await h.pause(2600);
+      await h.click(p.getByText('Day 0').first());
+      await h.pause(1200);
+      await h.say('Ask the AI to change any email', 'Shorter, warmer, more direct, or a different subject line');
+      await h.click(p.getByRole('button', { name: /make it shorter/i }).first());
+      await h.waitAi(async () => !(await p.getByRole('button', { name: /make it shorter/i }).first().isDisabled()), 5, 90_000);
+      await h.pause(2600);
+      await h.click(p.locator('button[aria-label="Close"], button:has(svg.lucide-x)').first()).catch(async () => { await p.keyboard.press('Escape'); });
+      await h.pause(1000);
+      await h.say('An automation from one sentence', 'Describe it — it builds the trigger, waits, emails and tags');
+      await h.click(btn(p, /^Automations$/));
+      await h.pause(1000);
+      await h.click(p.getByRole('button', { name: /New Automation/ }).first());
+      await h.pause(900);
+      await h.click(p.getByPlaceholder(/New Lead Nurture/)); await h.type('Missed tasting follow-up', 34);
+      await h.click(p.getByPlaceholder(/downloads a pricing guide/));
+      await h.fast(2);
+      await h.type('When somebody books a tasting and does not turn up, wait one day, email them to rebook, and tag them no-show', 20);
+      await h.fast(1);
+      await h.click(p.getByRole('button', { name: /Build it/ }));
+      const made = p.getByText('Missed tasting follow-up').first();
+      await h.waitAi(async () => (await made.count()) > 0 && !(await p.getByRole('button', { name: /Build it/ }).count()), 5, 120_000);
+      await h.click(made);
+      await h.say('Built as a draft, step by step', 'Read it on the canvas, then switch it on');
+      await h.pause(4200);
+    },
+  },
+
+  'film-ai-blog': {
+    route: '/blog-automation', film: true,
+    async act(h, p) {
+      await h.card('Module · Blog & SEO', 'A blog that ranks your own pages', 'Strategy, month plan and every post written by AI — each checked against nine SEO rules');
+      const tab = (t: string) => p.getByRole('button', { name: t, exact: true }).first();
+      await h.say('Give it the writing you already have', 'An about page, a service page, an old post — a few hundred words');
+      await h.click(p.getByRole('button', { name: /^Portfolio/ }).first());
+      await h.pause(1200);
+      await h.click(p.getByPlaceholder(/What is this\?/)); await h.type('About page', 40);
+      await h.click(p.getByPlaceholder(/Paste the text here/));
+      await p.getByPlaceholder(/Paste the text here/).fill('Rivera Studio is a small marketing studio in Dallas, Texas. We build websites, booking pages and email campaigns for clinics, law firms and trades across North Texas. Most clients come to us because their phone goes quiet between referrals: we set up a site that answers the questions people really ask, a booking page that fills the calendar, and follow-up emails that bring past customers back. Every project starts with a free audit of the current site and ends with a monthly report in plain English.');
+      await h.pause(1400);
+      await h.click(p.getByRole('button', { name: 'Add to portfolio' }));
+      await h.pause(900);
+      await h.say('It reads the business and builds a ranking strategy', 'What you sell, who to, the terms worth chasing — grouped into clusters');
+      await h.click(p.getByRole('button', { name: /Rebuild strategy|Build strategy/ }).first());
+      await h.waitAi(async () => /Read by the AI/.test(await p.locator('main').innerText()), 5, 150_000);
+      await h.say('Even how the business writes', 'Its tone, the phrases it really uses, words it never would');
+      await h.pause(2600);
+      await h.scroll(420, 1100);
+      await h.pause(2600);
+      await h.scroll(700, 1400);
+      await h.say('Keywords in clusters, each aimed at a page', 'Intent and an honest difficulty estimate — not a made-up search volume');
+      await h.pause(3200);
+      await p.evaluate(() => window.scrollTo({ top: 0 }));
+      await h.click(tab('Month plan'));
+      await h.pause(1000);
+      await h.say('A month of posts, planned', 'Cheapest to rank first, each pillar before the posts that link to it');
+      await h.click(p.getByRole('button', { name: /Plan the month/ }).first());
+      await h.waitAi(async () => (await p.getByRole('button', { name: 'Approve the month' }).count()) > 0, 5, 150_000);
+      await h.pause(2600);
+      await h.click(p.getByRole('button', { name: 'Approve the month' }));
+      await h.pause(1200);
+      await h.click(tab('Write'));
+      await h.pause(1000);
+      await h.say('Each post written in the business’s voice', 'Over a thousand words, headings and internal links');
+      await h.click(p.getByRole('button', { name: /^Write$/ }).nth(1));
+      await h.waitAi(async () => (await p.getByRole('button', { name: /^Rewrite$/ }).count()) > 0, 5, 240_000);
+      await h.say('Measured against nine on-page SEO checks', 'Words, density, headings, links — a failing check is shown, not hidden');
+      await h.pause(3200);
+      await h.click(p.getByRole('button', { name: /^Read$/ }).first());
+      await h.pause(1800);
+      await h.scroll(500, 1300);
+      await h.pause(2600);
+      await h.scroll(600, 1300);
+      await h.say('Then published to WordPress, or as files', 'On the planned dates — nothing goes out until you approve it');
+      await h.pause(3200);
+    },
+  },
+
+  'film-ai-websites': {
+    route: '/websites', film: true,
+    async act(h, p) {
+      await h.card('Module · Websites & funnels', 'Websites — AI first', 'Any section rewritten by AI from a sentence, then templates, pages and publishing');
+      await h.say('Every client’s site, edited on the page', 'Click a section, and its words are in the panel beside it');
+      await h.click(p.getByRole('button', { name: /Open Builder/ }).first());
+      await h.pause(2200);
+      await h.click(p.getByText('We build brands people').first());
+      await h.pause(1000);
+      await h.say('Say what the section should say', 'Generate with AI writes the headline, the line under it and the buttons');
+      await h.click(p.getByRole('button', { name: /Generate with AI/ }).first());
+      await h.pause(600);
+      await h.click(p.getByPlaceholder(/Describe what you want for this/).first());
+      await h.type('A warm, confident hero for a studio that fills calendars for clinics, law firms and trades in North Texas', 22);
+      await h.click(p.getByRole('button', { name: /^✨ Generate$/ }).first());
+      await h.waitAi(async () => !(await p.getByText('We build brands people').count()), 5, 90_000);
+      await h.say('Rewritten in seconds — in the site’s own design', 'Change any word by hand afterwards');
+      await h.pause(4200);
+    },
+  },
+
+  'film-ai-graphics': {
+    route: '/social-creator', film: true,
+    async act(h, p) {
+      await h.card('Module · Graphics Designer', 'Graphics — AI first', 'Post designs written by AI in your client’s name and colours, then every format and brand');
+      await h.say('Say what the post is about — AI writes the design', 'Headline, label, points and button, fitted to the template');
+      await h.scroll(330, 900);
+      await h.to(text(p, 'Bauhaus News'));
+      await h.click(btn(p, /^Use template$/));
+      await h.pause(600);
+      await h.click(p.getByPlaceholder('e.g. our new spring range'));
+      await h.type('Spring office catering — free tasting for new clients', 30);
+      await h.click(btn(p, /Create design/));
+      await h.waitAi(async () => (await p.getByRole('button', { name: /Rewrite the words/ }).count()) > 0, 5, 90_000);
+      await h.pause(2600);
+      await h.say('Not right? Rewrite the words', 'Prices and dates are never invented — only ever what you typed');
+      await h.click(p.getByRole('button', { name: /Rewrite the words/ }).first());
+      await h.waitAi(async () => !(await p.getByRole('button', { name: /Rewrite the words/ }).first().isDisabled()), 5, 90_000);
+      await h.pause(3000);
+      await h.say('Or describe a whole design from scratch', 'AI Generate lays it out and opens it in the editor');
+      await h.say('');
+      await p.goto(`${BASE}/social-creator?compose=ai`, { waitUntil: 'networkidle' });
+      await h.pause(1400);
+      await h.say('Or describe a whole design from scratch', 'AI Generate lays it out and opens it in the editor');
+      await h.click(p.getByLabel('AI Prompt'));
+      await h.type('Spring catering for offices: lunches for 20 to 200 people, book a free tasting', 24);
+      await h.click(p.getByRole('button', { name: /Generate & Edit/ }));
+      await h.waitAi(async () => /\/social-creator\/editor\//.test(p.url()), 5, 90_000);
+      await h.pause(1500);
+      await h.say('Every piece editable in the editor', 'Text, shapes, pictures and stickers — then export');
+      await h.pause(3600);
+    },
+  },
+
+  'film-ai-inbox': {
+    route: '/conversations', film: true,
+    async act(h, p) {
+      await h.card('Module · Unified Inbox', 'Unified Inbox — AI first', 'A reply drafted from the conversation, then every mailbox in one list');
+      await h.say('A pricing question comes in', 'Every mailbox in one list, the urgent and unhappy marked');
+      await h.click(p.getByText('Question about your pricing').first());
+      await h.pause(2200);
+      await h.say('AI drafts the reply from the conversation', 'In the business’s voice — and it says when it is not sure');
+      await h.click(p.getByRole('button', { name: /AI draft reply/ }).first());
+      await h.waitAi(async () => await p.locator('textarea').evaluateAll(els => els.some(e => (e as HTMLTextAreaElement).value.length > 60)), 5, 90_000);
+      await h.pause(1500);
+      await h.reach(p.locator('textarea').last(), 300);
+      await h.say('Read it, change it, send it', 'From the business’s own address — nothing goes without you');
+      await h.pause(4200);
+    },
+  },
+};
+Object.assign(RECIPES, PLATFORM);
 
 const missing = CLIP_IDS.filter(id => !RECIPES[id]);
 const only = process.argv.slice(2);
