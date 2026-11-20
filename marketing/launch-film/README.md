@@ -1,5 +1,17 @@
 # Launch film — 16:9, about five and a half minutes (v4, 5:31)
 
+**v5 (2026-11-20), back for the site's second section.** The owner asked for
+an animated film of *everything*, the incubator included. Added: Protron
+(what is live — the wizard's conversation, typed or a voice note; "on every
+screen" and live talk are a Coming soon line), the trade growth service and
+medical billing (both Coming soon, their screens drawn from
+`routes/leadRevenue.ts` and `docs/claude/rcm.md`); the shop, Shorts and
+reviews windows carry a **COMING SOON** pill (`topbar(crumb, soon)`) and their
+words say so; "over two hundred updates a month" (213 commits to testing,
+20 Oct–20 Nov). The voice is Protron's — Google TTS, Umbriel — made with
+`npx tsx scripts/voiceover.mts --lines marketing/launch-film/lines.json <kit>/vo`
+in place of Piper; everything after `node timing.mjs vo` is unchanged.
+
 **Off the site since 2026-11-18.** It showed the light app and modules the live
 app now holds back (the shop, reputation, revenue, AI Shorts); the home page's
 film is now cut from the real app's recordings (`scripts/site-film.mts`,

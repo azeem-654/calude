@@ -21,6 +21,12 @@
  *
  * Writes marketing/demos/<film>.mp4 with sound (git-ignored, like the silent
  * films) and prints how much each chapter was held.
+ *
+ *   npx tsx scripts/voiceover.mts --lines marketing/launch-film/lines.json /tmp/lf/vo
+ *
+ * The drawn launch film instead: each `[id, scene, text]` line spoken in the
+ * same voice and written as <dir>/<id>.wav, which its timing.mjs measures
+ * (marketing/launch-film/README.md). Style from marketing/voice/scripts/style.txt.
  */
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -120,7 +126,25 @@ async function speakBatch(voice: string, style: string, texts: string[]): Promis
   return done;
 }
 
+async function linesMode(file: string, dir: string) {
+  const style = fs.readFileSync('marketing/voice/scripts/style.txt', 'utf8').trim();
+  const voice = process.env.VO_VOICE || 'Umbriel';
+  const lines: [string, string, string][] = JSON.parse(fs.readFileSync(file, 'utf8'));
+  fs.mkdirSync(CACHE, { recursive: true });
+  fs.mkdirSync(WORK, { recursive: true });
+  fs.mkdirSync(dir, { recursive: true });
+  const todo = [...new Set(lines.map(l => l[2]))].filter(t => !fs.existsSync(cacheFile(voice, style, t)));
+  const BATCH = Number(process.env.VO_BATCH || 10);
+  for (let i = 0; i < todo.length;) {
+    i += await speakBatch(voice, style, todo.slice(i, i + BATCH));
+    console.log(`voice ${i}/${todo.length} new lines`);
+  }
+  for (const [id, , text] of lines) fs.copyFileSync(cacheFile(voice, style, text), `${dir}/${id}.wav`);
+  console.log(`${lines.length} lines in ${dir}`);
+}
+
 async function main() {
+  if (process.argv[2] === '--lines') return linesMode(process.argv[3], process.argv[4]);
   const file = process.argv[2];
   if (!file) { console.log('usage: voiceover.mts <script.json>'); process.exit(2); }
   const s: Script = JSON.parse(fs.readFileSync(file, 'utf8'));

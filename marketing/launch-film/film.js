@@ -67,7 +67,9 @@ function appear(node, t, a, dur = 0.45, dy = 22, sc = 0.97) {
   node.style.transform = `translateY(${(1 - p) * dy}px) scale(${mix(sc, 1, p)})`;
   return p;
 }
-const topbar = (crumb) => `<div class="topbar"><div class="brand">${LOGO(32)}Protected Central</div><div class="crumb">${crumb}</div><span class="pill demo">DEMO WORKSPACE</span></div>`;
+/* `soon`: a module in the incubator (docs/INCUBATOR.md) — built, on the testing
+   site only. The film shows it, and says so on the window and in the words. */
+const topbar = (crumb, soon = false) => `<div class="topbar"><div class="brand">${LOGO(32)}Protected Central</div><div class="crumb">${crumb}</div>${soon ? '<span class="pill soon">COMING SOON</span>' : ''}<span class="pill demo">DEMO WORKSPACE</span></div>`;
 
 /* ── Sound cues, read by the audio mixer ─────────────────────────────── */
 /* Each cue remembers the scene being defined, so a scene moved to a new
@@ -163,7 +165,7 @@ const mount = (html) => { const r = el(`<div class="scene">${html}</div>`); docu
 /* A product window on the right-hand side; the left column carries the words. */
 const winScene = (a, b, id, crumb, body, o = {}) => {
   const sc = scene({ a, b, tin: 0.55, inScale: 0.86, tout: 0.45, origin: '72% 50%', outScale: 1.2, ...o });
-  sc.root = mount(`<div class="win" id="${id}">${topbar(crumb)}<div class="wbody${o.grid ? ' gridbg' : ''}">${body}</div></div>`);
+  sc.root = mount(`<div class="win" id="${id}">${topbar(crumb, o.soon)}<div class="wbody${o.grid ? ' gridbg' : ''}">${body}</div></div>`);
   return sc;
 };
 /* Type `text` into `node` between a and b. */
@@ -812,6 +814,7 @@ const T = {
   money: [300, 320.4], streams: [330, 348.9], blog: [360, 374.6], shorts: [380, 395.2],
   gallery: [400, 411.6], reviews: [420, 433.9], resell: [440, 452.5], affiliate: [460, 471.7],
   prospect: [480, 499], daily: [510, 527.5],
+  protron: [540, 553], trade: [560, 572], rcm: [580, 592],
 };
 /* Every scene is drawn against T, then moved to the slot its voice lines
    occupy (NT, from timing.mjs) once all of them exist — see the bottom. */
@@ -896,10 +899,10 @@ cp('canvas', { kick: 'AI agents', lines: ['AI agents inside', '~every ~workflow.
   bullets: [['git-branch', 'Triggers, conditions, delays, branches'], ['database', 'AI steps with real data sources'], ['pencil', 'Edit any step in place']] });
 cp('s3', { kick: 'Runs on its own', lines: ['Working', '~while ~you ~sleep.'], sub: 'The server runs every workflow every five minutes — tabs closed or not.',
   bullets: [['activity', 'Live status on every step'], ['scroll-text', 'A delivery log for every send'], ['mail', 'A daily digest of what happened']] });
-cp('money', { kick: 'Autopilot · Your shop', lines: ['Sales that keep', '^coming ^in.'], sub: 'Paid straight into your own Stripe account — never ours.',
+cp('money', { kick: 'Coming soon · Your shop', lines: ['Sales that keep', '^coming ^in.'], sub: 'Paid straight into your own Stripe account — never ours.',
   bullets: [['camera', 'Posts your products on schedule'], ['link', 'A fresh payment link when an order stalls'], ['heart-handshake', 'Thanks every buyer the moment they pay']] });
 cp('streams', { kick: 'Multiple projects', lines: ['Set up once.', '~Many ~streams.'], sub: 'Each project starts from a sentence or your voice — then keeps working.',
-  bullets: [['camera', 'Social Media Growth'], ['shopping-bag', 'E-commerce Store'], ['target', 'Lead Generation'], ['newspaper', 'Blog & SEO']] });
+  bullets: [['camera', 'Social Media Growth'], ['target', 'Lead Generation'], ['newspaper', 'Blog & SEO'], ['shopping-bag', 'E-commerce Store — coming soon']] });
 cp('prospect', { kick: 'AI Prospecting', lines: ['Say who you', '~sell ~to.'], sub: 'Any trade, any town — found live, websites read, every address checked.',
   bullets: [['search', 'Business directories and Google Maps'], ['globe', 'The email each business publishes'], ['shield-check', 'Checked before you send']] });
 cp('daily', { kick: 'Autopilot · Every day', lines: ['New prospects,', '^every ^morning.'], sub: 'Town by town, checked and added to your project. Outreach waits for your yes.',
@@ -917,13 +920,13 @@ cp('s6', { kick: 'Content Studio', lines: ['From idea', 'to ~finished ~asset.'],
   bullets: [['image', 'Posts sized for every platform'], ['file-text', 'Articles from your topics'], ['user-check', 'Reviewed before anything goes out']] });
 cp('blog', { kick: 'Blog & SEO', lines: ['Articles that', '~rank ~on ~Google.'], sub: 'A month of posts around your keywords, published to WordPress.',
   bullets: [['calendar-days', 'A whole month planned at once'], ['list-checks', 'Nine SEO checks on every post'], ['send', 'Published on schedule']] });
-cp('shorts', { kick: 'AI Shorts', lines: ['One long video.', '^A ^week ^of ^shorts.'], sub: 'AI finds the best moments and cuts them to 9:16.',
+cp('shorts', { kick: 'Coming soon · AI Shorts', lines: ['One long video.', '^A ^week ^of ^shorts.'], sub: 'AI finds the best moments and cuts them to 9:16.',
   bullets: [['scissors', 'Best moments, found and cut'], ['captions', 'Captions and hashtags written'], ['flame', 'A viral score on every clip']] });
 cp('gallery', { kick: 'Websites & funnels', lines: ['^65 ^ready-built', 'templates.'], sub: '17 websites and 48 funnels, ready to make yours.',
   bullets: [['layout-template', 'Websites, stores and restaurants'], ['clipboard-list', 'Quote requests, quizzes, webinars'], ['play-circle', 'Video sales letters']] });
 cp('web', { kick: 'Websites & funnels', lines: ['Live on', '~your ~domain.'], sub: 'In your brand, with forms that start the follow-up.',
   bullets: [['palette', 'Your colours, one click'], ['clipboard-list', 'Forms that start the follow-up'], ['globe', 'Published on your domain']] });
-cp('reviews', { kick: 'Reputation', lines: ['Five stars,', '~on ~repeat.'], sub: 'Review requests by email, and AI replies in your tone.',
+cp('reviews', { kick: 'Coming soon · Reputation', lines: ['Five stars,', '~on ~repeat.'], sub: 'Review requests by email, and AI replies in your tone.',
   bullets: [['mail', 'Ask happy customers in one click'], ['star', 'Google, Facebook, Yelp or Trustpilot'], ['sparkles', 'AI drafts every reply']] });
 cp('s7', { kick: 'Appointments & support', lines: ['Sales. Support.', '^Connected.'], sub: 'Bookings, tickets and conversations in one timeline.',
   bullets: [['calendar', 'Booking pages with Google Meet'], ['ticket', 'Tickets with a reference'], ['message-square', 'AI chat on your website']] });
@@ -936,8 +939,14 @@ cp('resell', { kick: 'Resell it · white label', lines: ['Your price.', '^Your ^
   bullets: [['tag', 'Any price, set per client'], ['palette', 'Your brand, logo and domain'], ['wallet', 'Paid to you — we never hold it']] });
 cp('affiliate', { kick: 'Affiliate program', lines: ['Earn ^40%,', '~for ~life.'], sub: 'Of every payment from every customer you refer — for as long as they keep paying.',
   bullets: [['link', 'One link to share'], ['bar-chart-3', 'Visits, sign-ups and commissions'], ['badge-dollar-sign', 'Every month they pay, you earn']] });
-cp('dev', { kick: 'Always improving', lines: ['Always building', "^what's ^next."], sub: 'Around 130–150 updates a month — new AI tools, modules and fixes, landing in your workspace automatically.',
+cp('dev', { kick: 'Always improving', lines: ['Always building', "^what's ^next."], sub: 'Over 200 updates a month — new AI tools, modules and fixes, landing in your workspace automatically.',
   bullets: [['sparkles', 'New AI tools and modules, all the time'], ['refresh-cw', 'No installs, no upgrades to run'], ['rocket', 'The latest, the day it ships']] });
+cp('protron', { kick: 'Protron · AI business manager', lines: ['Talk it through', '~with ~Protron.'], sub: 'Typed or a voice note — it reads your business and asks only what it still needs.',
+  bullets: [['message-circle', 'Sets each business up in a conversation'], ['mic', 'Voice notes, transcribed'], ['sparkles', 'Coming soon: on every screen, and live talk']] });
+cp('trade', { kick: 'Coming soon · Trade growth service', lines: ['Every lead,', '^all ^the ^way', '^to ^revenue.'], sub: 'For plumbers, electricians, roofers and HVAC.',
+  bullets: [['phone-call', 'Every enquiry logged from first touch'], ['wrench', 'Booked, completed, paid'], ['scale', 'Each payment says why it counts']] });
+cp('rcm', { kick: 'Coming soon · Medical billing', lines: ['Claims that', '~get ~paid.'], sub: 'Claims, remittances, denials and A/R for medical practices.',
+  bullets: [['file-check', 'Two statuses per claim, never merged'], ['upload', 'Remittance files posted, never twice'], ['search', 'A leakage audit of lost and recoverable money']] });
 cp('s10', { kick: 'One workspace', lines: ['One', '~intelligent', '~workspace.'] });
 
 /* ── Blueprint ──────────────────────────────────────────────────────── */
@@ -1430,7 +1439,7 @@ const sStreams = winScene(...T.streams, 'wStreams', '<b>AI Autopilot</b><span>�
     ${PROJ.map(p => `<div class="pj card" style="padding:14px 16px;opacity:0;position:relative;overflow:hidden">
       <div style="display:flex;align-items:center;gap:10px"><span style="width:40px;height:40px;border-radius:12px;background:${p[5]}1a;color:${p[5]};display:flex;align-items:center;justify-content:center">${ico(p[0], 20)}</span>
         <div style="flex:1;min-width:0"><div style="font-size:16.5px;font-weight:800;color:#17191c">${p[1]}</div><div class="muted" style="font-size:12.5px;font-weight:620;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p[2]}</div></div>
-        <span class="pill" style="background:#ecfdf5;color:#16a34a;border:1px solid #bbf7d0;font-size:12px"><span class="dot" style="background:#16a34a;width:7px;height:7px"></span>Running</span></div>
+        ${p[1] === 'E-commerce Store' ? '<span class="pill soon" style="margin-left:0;font-size:12px">Coming soon</span>' : '<span class="pill" style="background:#ecfdf5;color:#16a34a;border:1px solid #bbf7d0;font-size:12px"><span class="dot" style="background:#16a34a;width:7px;height:7px"></span>Running</span>'}</div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:10px"><span class="once pill" style="background:#f6f7fb;color:#475569;border:1px solid #e6e9f0;font-size:12px">${ico(p[3], 13)}${p[4]} · once</span></div>
     </div>`).join('')}
   </div>
@@ -1989,9 +1998,14 @@ sAff.render = (t) => {
 
 /* ── Always improving: what actually shipped ────────────────────────── */
 /* Real releases, newest first, from the repository's history. The pace
-   (130–150 a month) is September's: 142 commits reached testing in the
-   twenty days the history covers — re-check it before re-rendering. */
+   ("over two hundred a month") is 213 commits to testing from 20 October to
+   20 November 2026 — re-check it before re-rendering. */
 const SHIPPED = [
+  ['Nov 20', 'Every module fast-forwarded on the home page', 'New'],
+  ['Nov 19', 'White label on your own domain, your name and logo', 'Agency'],
+  ['Nov 16', 'Blog posts: search-first structure and free stock photos', 'AI'],
+  ['Nov 15', 'Each business workspace gets its own booking pages', 'New'],
+  ['Nov 14', 'A new dark look across the whole app', 'New'],
   ['Oct 3', 'AI Autopilot finds new prospects every day', 'New'],
   ['Oct 3', 'AI Prospecting: live leads, every address checked', 'New module'],
   ['Oct 3', 'Texts to prospects only after they say yes', 'New'],
@@ -2117,14 +2131,136 @@ s11.render = (t) => {
   q(r, '#ctaGlow').style.transform = `scale(${(1 + Math.sin(t * 1.5) * 0.05).toFixed(3)})`;
 };
 
+/* ── Incubated modules: the window says so (topbar `soon`) ──────────── */
+[sMoney, sShorts, sReviews].forEach(sc => {
+  const bar = sc.root.querySelector('.topbar .demo');
+  bar.insertAdjacentHTML('beforebegin', '<span class="pill soon">COMING SOON</span>');
+});
+
+/* ── Protron ─────────────────────────────────────────────────────────── */
+/* What is live (docs/claude/protron.md): Protron sets a business workspace up
+   with the customer in the AI Autopilot wizard — typed, or a voice note,
+   transcribed — and answers in the help widget's Live chat. The floating
+   Protron on every screen and live spoken talk are in the incubator, so they
+   are a "Coming soon" line here, not a picture of them working. */
+const BPR = T.protron[0];
+const sProtron = winScene(...T.protron, 'wProtron', '<b>AI Autopilot</b><span>›</span>New business workspace<span>›</span>Protron', `
+  <div class="abs" style="left:0;top:0;bottom:0;width:250px;background:#fff;border-right:1px solid #e6e9f0;display:flex;flex-direction:column;align-items:center;padding-top:40px">
+    <div id="prBot" style="width:120px;height:120px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle,#f4f1ff,#e9e4ff);box-shadow:0 0 0 8px rgba(124,58,237,.08)">${BOT(92)}</div>
+    <div style="font-size:22px;font-weight:820;margin-top:16px;color:#17191c">Protron</div>
+    <div id="prState" class="pill" style="margin-top:8px;background:#f4f5ff;color:#5b46e5;border:1px solid #e0e3ff;font-size:12.5px">Listening</div>
+    <div class="muted" style="font-size:13px;font-weight:620;margin-top:18px;text-align:center;padding:0 18px;line-height:1.5">For <b style="color:#17191c">CleanPro Austin</b></div>
+  </div>
+  <div class="abs" style="left:274px;right:24px;top:22px;bottom:110px;display:flex;flex-direction:column;gap:12px">
+    <div class="pb" style="align-self:flex-end;max-width:440px;background:#5b46e5;color:#fff;border-radius:18px 18px 4px 18px;padding:12px 16px;opacity:0">
+      <div style="display:flex;align-items:center;gap:10px">${ico('mic', 18, '#fff')}<div id="prWave" style="display:flex;align-items:center;gap:3px;height:22px">${Array.from({ length: 26 }, () => '<i style="display:block;width:4px;border-radius:2px;background:rgba(255,255,255,.85);height:6px"></i>').join('')}</div><span style="font-size:13px;font-weight:700;opacity:.85">0:07</span></div>
+      <div style="font-size:14.5px;font-weight:600;margin-top:8px;line-height:1.45;opacity:.95">“I run a cleaning company in Austin. I want more clients who book every week.”</div></div>
+    <div class="pb card" style="align-self:flex-start;max-width:500px;padding:12px 16px;border-radius:18px 18px 18px 4px;font-size:15px;font-weight:600;line-height:1.5;color:#17191c;opacity:0">I read cleanproaustin.example — homes and offices, weekly and fortnightly. Who books more often: homeowners or offices?</div>
+    <div class="pb" style="align-self:flex-start;display:flex;gap:8px;opacity:0">${['Homeowners', 'Offices', 'Both'].map((x, i) => `<span class="pill prChip" data-i="${i}" style="padding:8px 14px;font-size:14px;background:#fff;color:#475569;border:1.5px solid #e6e9f0">${x}</span>`).join('')}</div>
+    <div class="pb card" style="align-self:flex-start;max-width:520px;padding:12px 16px;border-radius:18px 18px 18px 4px;font-size:15px;font-weight:600;line-height:1.5;color:#17191c;opacity:0">Then I’ll build three workflows: a reply within five minutes for every enquiry, a weekly-clean offer, and review requests after each visit. Shall I show you the blueprint?</div>
+  </div>
+  <div class="abs card" style="left:274px;right:24px;bottom:56px;height:46px;display:flex;align-items:center;gap:10px;padding:0 8px 0 16px;border-radius:14px">
+    <span class="muted" style="font-size:14px;font-weight:600;flex:1">Type, or send a voice note</span>
+    <span style="width:34px;height:34px;border-radius:50%;background:#5b46e5;display:flex;align-items:center;justify-content:center">${ico('mic', 17, '#fff')}</span></div>
+  <div id="prSoon" class="abs" style="left:274px;right:24px;bottom:14px;display:flex;align-items:center;gap:10px;opacity:0">
+    <span class="pill soon" style="margin-left:0">COMING SOON</span>
+    <span style="font-size:14px;font-weight:700;color:#475569">${ico('layout-dashboard', 15, '#475569')} Protron on every screen</span>
+    <span style="font-size:14px;font-weight:700;color:#475569">${ico('audio-lines', 15, '#475569')} Talk live, out loud</span></div>`);
+sfx(BPR + 0.6, 'pop', 0.4); sfx(BPR + 3.2, 'notify', 0.4); sfx(BPR + 5.4, 'click', 0.7); sfx(BPR + 6.6, 'notify', 0.4); sfx(BPR + 10.2, 'pop', 0.4);
+sProtron.render = (t) => {
+  const r = sProtron.root, L = t - BPR;
+  const at_ = [0.5, 3.0, 4.6, 6.4];
+  r.querySelectorAll('.pb').forEach((c, i) => appear(c, L, at_[i], 0.45, 14, 0.97));
+  r.querySelectorAll('#prWave i').forEach((b, i) => { const live = L > 0.5 && L < 2.6; b.style.height = `${live ? 5 + Math.abs(Math.sin(L * 9 + i * 0.7)) * 16 : 6 + (i * 7 % 11)}px`; });
+  r.querySelectorAll('.prChip').forEach(c => { const on = c.dataset.i === '0' && L > 5.4; c.style.background = on ? '#f4f5ff' : '#fff'; c.style.borderColor = on ? '#5b46e5' : '#e6e9f0'; c.style.color = on ? '#5b46e5' : '#475569'; });
+  setText(q(r, '#prState'), L < 2.8 ? 'Listening' : L < 3.0 || (L > 5.4 && L < 6.4) ? 'Thinking' : 'Speaking');
+  q(r, '#prSoon').style.opacity = String(seg(L, 10.0, 10.6));
+  animBot(q(r, '#prBot'), t, L > 2.8 && L < 3.0);
+};
+
+/* ── Coming soon: the growth service for trades ─────────────────────── */
+/* Sales → Jobs & revenue (routes/leadRevenue.ts, lib/leadRevenue.ts): each
+   payment is counted, held or left out, with the reason — the verdicts here
+   are the ledger's own kinds. Incubated (`jobs-revenue`, `trade-services`). */
+const BTR = T.trade[0];
+const TRADE_JOBS = [
+  ['Hernandez residence', 'AC replacement', 'Google call', 4, '$8,400', ['#ecfdf5', '#16a34a', '#bbf7d0', 'Counts — first touch by the service']],
+  ['Patel family', 'Roof repair', 'Web form', 3, '$3,150', ['#fff7ed', '#c2410c', '#fed7aa', 'Held — completion not confirmed']],
+  ['Brooks home', 'Furnace install', 'Quote call', 2, '$6,900', ['#fff7ed', '#c2410c', '#fed7aa', 'Held — job not finished']],
+  ['Oakline Dental', 'Service plan', 'Your own referral', 4, '$1,200', ['#f1f5f9', '#475569', '#e2e8f0', 'Left out — your own source']],
+];
+const TRADE_STAGES = ['Enquiry', 'Booked', 'Completed', 'Paid'];
+const sTrade = winScene(...T.trade, 'wTrade', '<b>Sales</b><span>›</span>Jobs &amp; revenue', `
+  <div class="abs" style="left:24px;top:18px;right:24px;display:flex;align-items:center"><div class="h2" style="font-size:26px">Jobs &amp; revenue</div>
+    <span class="pill" style="margin-left:12px;background:#f6f7fb;color:#64748b;border:1px solid #e6e9f0;font-size:12.5px">Example figures</span></div>
+  <div class="abs" style="left:24px;right:24px;top:70px;display:grid;gap:10px">
+    ${TRADE_JOBS.map(j => `<div class="tjob card" style="padding:12px 16px;opacity:0">
+      <div style="display:flex;align-items:center;gap:12px"><div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:800;color:#17191c">${j[0]}</div><div class="muted" style="font-size:12.5px;font-weight:650">${j[1]} · from ${j[2]}</div></div>
+        <div style="font-size:19px;font-weight:820;color:#0b0b0b;font-variant-numeric:tabular-nums">${j[4]}</div></div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:10px">${TRADE_STAGES.map((st, i) => `<span class="stg" data-n="${i}" data-of="${j[3]}" style="flex:1;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#94a3b8"><i style="display:block;flex:1;height:5px;border-radius:3px;background:#e6e9f0"></i>${st}</span>`).join('')}</div>
+      <div class="vd pill" style="margin-top:10px;background:${j[5][0]};color:${j[5][1]};border:1px solid ${j[5][2]};font-size:12.5px;opacity:0">${j[5][3]}</div></div>`).join('')}
+  </div>
+  <div class="abs card" style="left:24px;right:24px;bottom:24px;height:70px;display:flex;align-items:center;gap:30px;padding:0 20px">
+    ${[['Counted this month', '$8,400', '#16a34a'], ['Held', '$10,050', '#c2410c'], ['Left out', '$1,200', '#475569']].map(x => `<div><div class="muted" style="font-size:12px;font-weight:650">${x[0]}</div><div style="font-size:22px;font-weight:820;color:${x[2]}">${x[1]}</div></div>`).join('')}
+    <div class="muted" style="margin-left:auto;font-size:12.5px;font-weight:620;max-width:260px;line-height:1.4">Every change is written to the ledger, with who made it.</div></div>`, { soon: true });
+sfx(BTR + 0.8, 'pop', 0.4); sfx(BTR + 6.5, 'notify', 0.4);
+sTrade.render = (t) => {
+  const r = sTrade.root, L = t - BTR;
+  r.querySelectorAll('.tjob').forEach((c, i) => {
+    appear(c, L, 0.5 + i * 0.6, 0.45, 14, 0.97);
+    c.querySelectorAll('.stg').forEach(sg => { const n = +sg.dataset.n, of = +sg.dataset.of; const on = n < of && L > 1.4 + i * 0.6 + n * 0.5;
+      sg.querySelector('i').style.background = on ? '#16a34a' : '#e6e9f0'; sg.style.color = on ? '#16a34a' : '#94a3b8'; });
+    appear(q(c, '.vd'), L, 4.0 + i * 0.6, 0.35, 6, 0.95);
+  });
+};
+
+/* ── Coming soon: medical billing ───────────────────────────────────── */
+/* docs/claude/rcm.md: two statuses per claim, remittance files posted once
+   (a duplicate row is recorded, never posted twice), a leakage audit in
+   disjoint parts, A/R aged by date of service. No clearinghouse — the film
+   claims none. Synthetic patients only. Incubated (`medical-billing`). */
+const BRC = T.rcm[0];
+const AGING = [['0–30 days', 58, '#16a34a'], ['31–60', 24, '#0ea5e9'], ['61–90', 11, '#f59e0b'], ['90+', 7, '#ef4444']];
+const sRcm = winScene(...T.rcm, 'wRcm', '<b>Medical billing</b><span>›</span>Claims', `
+  <div class="abs" style="left:24px;top:18px;right:24px;display:flex;align-items:center"><div class="h2" style="font-size:26px">Claims</div>
+    <span class="pill" style="margin-left:12px;background:#f6f7fb;color:#64748b;border:1px solid #e6e9f0;font-size:12.5px">Example data · synthetic patients</span></div>
+  <div class="abs" style="left:24px;right:24px;top:70px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+    ${[['Claims submitted', '128'], ['Paid', '$41,260'], ['Denied', '9'], ['Over 90 days', '$6,480']].map(k => `<div class="kp card" style="padding:12px 14px;opacity:0"><div class="muted" style="font-size:12px;font-weight:650">${k[0]}</div><div style="font-size:24px;font-weight:820;color:#0b0b0b;margin-top:2px">${k[1]}</div></div>`).join('')}
+  </div>
+  <div class="abs card" id="rcRemit" style="left:24px;right:24px;top:170px;padding:14px 16px;opacity:0">
+    <div style="display:flex;align-items:center;gap:10px">${ico('file-spreadsheet', 20, '#5b46e5')}<div style="font-size:15.5px;font-weight:800">remittance_october.csv</div><span class="muted" style="font-size:13px;font-weight:650">46 rows</span>
+      <span class="pill" id="rcPosted" style="margin-left:auto;background:#ecfdf5;color:#16a34a;border:1px solid #bbf7d0;font-size:12.5px">0 posted</span>
+      <span class="pill" id="rcDup" style="background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;font-size:12.5px;opacity:0">2 duplicates — not posted twice</span></div>
+    <div style="height:6px;border-radius:3px;background:#eef0f4;margin-top:12px;overflow:hidden"><i id="rcBar" style="display:block;height:100%;width:0;background:#16a34a"></i></div></div>
+  <div class="abs card" style="left:24px;width:440px;top:282px;bottom:24px;padding:16px">
+    <div style="font-size:16px;font-weight:800">Accounts receivable, by date of service</div>
+    <div style="display:grid;gap:12px;margin-top:16px">${AGING.map(a => `<div><div style="display:flex;font-size:13px;font-weight:700;color:#475569"><span>${a[0]}</span><span style="margin-left:auto">${a[1]}%</span></div>
+      <div style="height:12px;border-radius:6px;background:#f1f5f9;margin-top:6px;overflow:hidden"><i class="ag" data-w="${a[1]}" style="display:block;height:100%;width:0;border-radius:6px;background:${a[2]}"></i></div></div>`).join('')}</div></div>
+  <div class="abs card" style="left:484px;right:24px;top:282px;bottom:24px;padding:16px">
+    <div style="font-size:16px;font-weight:800">Leakage audit</div>
+    <div class="muted" style="font-size:12.5px;font-weight:620;margin-top:4px">Each claim line counted once</div>
+    <div style="display:grid;gap:10px;margin-top:14px">${[['Lost', '$1,120', '#ef4444'], ['At risk', '$2,340', '#f59e0b'], ['Recoverable', '$3,010', '#16a34a']].map(x => `<div class="lk" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:#f8fafc;border:1px solid #eef0f4;opacity:0"><span class="dot" style="background:${x[2]}"></span><span style="font-size:15px;font-weight:750">${x[0]}</span><span style="margin-left:auto;font-size:18px;font-weight:820">${x[1]}</span></div>`).join('')}</div></div>`, { soon: true });
+sfx(BRC + 2.0, 'whoosh_in', 0.4); sfx(BRC + 4.0, 'notify', 0.4);
+sRcm.render = (t) => {
+  const r = sRcm.root, L = t - BRC;
+  r.querySelectorAll('.kp').forEach((c, i) => appear(c, L, 0.4 + i * 0.25, 0.4, 12, 0.97));
+  appear(q(r, '#rcRemit'), L, 1.6, 0.4, 12, 0.97);
+  const pp = seg(L, 2.2, 4.0, eo);
+  q(r, '#rcBar').style.width = `${(pp * 100).toFixed(1)}%`;
+  setText(q(r, '#rcPosted'), `${Math.round(pp * 44)} posted`);
+  q(r, '#rcDup').style.opacity = String(seg(L, 4.0, 4.4));
+  r.querySelectorAll('.ag').forEach((b, i) => { b.style.width = `${(seg(L, 3.0 + i * 0.25, 4.2 + i * 0.25, eo) * +b.dataset.w).toFixed(1)}%`; });
+  r.querySelectorAll('.lk').forEach((c, i) => appear(c, L, 5.2 + i * 0.5, 0.4, 10, 0.97));
+};
+
 /* ── Every scene into the slot its voice occupies ─────────────────────── */
 /* Must run after every scene and its sounds exist: `place` moves the cues
    registered so far, and the toasts and cursor below are timed with `at`. */
 CUR_SCENE = null;
-[[s2, 's2'], [sPlan, 'plan'], [sCanvas, 'canvas'], [s3, 's3'], [sMoney, 'money'], [sStreams, 'streams'], [sProspect, 'prospect'], [sDaily, 'daily'],
+[[s2, 's2'], [sPlan, 'plan'], [sCanvas, 'canvas'], [s3, 's3'], [sProtron, 'protron'], [sMoney, 'money'], [sStreams, 'streams'], [sProspect, 'prospect'], [sDaily, 'daily'],
  [sLib, 'lib'], [sGuard, 'guard'], [sReply, 'reply'], [s4, 's4'], [s5, 's5'], [s6, 's6'], [sBlog, 'blog'],
  [sShorts, 'shorts'], [sGallery, 'gallery'], [sWeb, 'web'], [sReviews, 'reviews'], [s7, 's7'], [sLive, 'live'],
- [s8, 's8'], [sAgency, 'agency'], [sResell, 'resell'], [sAff, 'affiliate'], [sDev, 'dev'], [s9, 'trust'],
+ [s8, 's8'], [sAgency, 'agency'], [sResell, 'resell'], [sAff, 'affiliate'], [sTrade, 'trade'], [sRcm, 'rcm'], [sDev, 'dev'], [s9, 'trust'],
  [s10, 's10'], [s10b, 'lock'], [s11, 'cta']].forEach(([sc, k]) => place(sc, ...NT[k]));
 
 /* ── Toasts and cursor ───────────────────────────────────────────────── */
