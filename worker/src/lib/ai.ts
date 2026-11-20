@@ -280,6 +280,24 @@ export function thinkingFor(model: string): Record<string, unknown> {
   return /^gemini-2\./.test(model) ? { thinkingBudget: 0 } : { thinkingLevel: 'low' };
 }
 
+/**
+ * A page's `maxOutputTokens` is meant for the answer, but Google counts the
+ * model's thinking against it too. Found 2026-11-20: Protron's interview
+ * asked for 900, gemini-3.5-flash-lite spent 564 of them thinking even at
+ * the `low` level, and the reply reached the customer cut off mid-sentence
+ * ("…right here in Websites. What"). So a model that thinks gets the room for
+ * it on top of the cap the page asked for; nothing is charged for room it
+ * does not use. `turnedDown`: `thinkingFor` was applied — none on 2.x (a
+ * budget of 0), a little on newer ones; otherwise the model thinks as much
+ * as it likes. Gemma does not think.
+ */
+export function withThinkingRoom(gen: Record<string, unknown>, model: string, turnedDown: boolean): Record<string, unknown> {
+  const cap = Number(gen.maxOutputTokens);
+  if (!Number.isFinite(cap) || cap <= 0 || isGemma(model)) return gen;
+  if (turnedDown && /^gemini-2\./.test(model)) return gen;
+  return { ...gen, maxOutputTokens: cap + (turnedDown ? 2048 : 8192) };
+}
+
 export async function askGeminiParts(
   apiKey: string, parts: AiPart[], temperature = 0.5, opts: AskOpts = {},
 ): Promise<AiResult> {

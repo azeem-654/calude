@@ -258,5 +258,19 @@ console.log('The owner\'s route');
   ok('"Check now" runs the check for the owner', run.status === 200 && (await run.json() as { run?: { ran: boolean } }).run?.ran === true);
 }
 
+/* ── 4 · Room to think ───────────────────────────────────────────────── */
+/* Google counts a model's thinking against the page's maxOutputTokens; a
+   900-token Protron reply came back cut off mid-sentence (2026-11-20). */
+console.log('\nA thinking model keeps the whole cap for its answer');
+{
+  const { withThinkingRoom } = await import('../worker/src/lib/ai');
+  const cap = (g: Record<string, unknown>) => g.maxOutputTokens as number;
+  ok('a newer Gemini, thinking turned down, gets room on top', cap(withThinkingRoom({ maxOutputTokens: 900 }, 'gemini-3.5-flash-lite', true)) === 900 + 2048);
+  ok('…and more when it thinks as much as it likes', cap(withThinkingRoom({ maxOutputTokens: 900 }, 'gemini-flash-latest', false)) === 900 + 8192);
+  ok('2.x with thinking off (budget 0) is left alone', cap(withThinkingRoom({ maxOutputTokens: 900 }, 'gemini-2.5-flash', true)) === 900);
+  ok('Gemma, which does not think, is left alone', cap(withThinkingRoom({ maxOutputTokens: 900 }, 'gemma-3-27b-it', false)) === 900);
+  ok('no cap asked for stays no cap', withThinkingRoom({ temperature: 0.4 }, 'gemini-flash-latest', false).maxOutputTokens === undefined);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

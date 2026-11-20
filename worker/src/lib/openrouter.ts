@@ -137,7 +137,10 @@ export async function askOpenRouter(apiKey: string, q: OrRequest): Promise<Attem
           model,
           messages: [...(q.system ? [{ role: 'system', content: q.system }] : []), { role: 'user', content: chat.content }],
           temperature: q.temperature ?? 0.5,
-          ...(q.maxTokens ? { max_tokens: q.maxTokens } : {}),
+          /* Room for a reasoning model's thinking on top of the answer's cap:
+             it counts against max_tokens, and a page's small cap otherwise
+             came back cut off mid-sentence (lib/ai.ts withThinkingRoom). */
+          ...(q.maxTokens ? { max_tokens: q.maxTokens + 4096 } : {}),
           ...(q.json && !q.web ? { response_format: { type: 'json_object' } } : {}),
           ...(q.web ? { plugins: [{ id: 'web', max_results: 5 }] } : {}),
         }),

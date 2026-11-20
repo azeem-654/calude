@@ -33,12 +33,20 @@ export const CLIP_FRAME = () => {
       #clip-frame .cf-tag{position:absolute;right:16px;bottom:16px;text-align:right;padding:7px 11px;border-radius:10px;background:rgba(16,13,12,.78);border:1px solid rgba(255,255,255,.12);color:#cfc6bf;font-size:13px;line-height:1.3;font-weight:600}
       #clip-frame .cf-tag em{display:block;font-style:normal;color:#ff9a5c;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
       #clip-frame .cf-fast{position:absolute;right:20px;top:84px;padding:8px 14px;border-radius:999px;background:rgba(255,106,43,.92);color:#fff;font-size:17px;font-weight:800;letter-spacing:.02em;opacity:0;transform:scale(.85);transition:opacity .2s,transform .2s;box-shadow:0 8px 24px rgba(255,106,43,.45)}
-      #clip-frame .cf-fast.on{opacity:1;transform:none}`;
+      #clip-frame .cf-fast.on{opacity:1;transform:none}
+      #clip-frame .cf-card{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:0 80px;
+        background:radial-gradient(120% 90% at 50% 40%,rgba(40,22,14,.97),rgba(10,8,8,.985));opacity:0;transition:opacity .45s ease}
+      #clip-frame .cf-card.on{opacity:1}
+      html.cf-carding #clip-cursor{opacity:0!important}
+      #clip-frame .cf-card em{font-style:normal;color:#ff9a5c;font-size:18px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+      #clip-frame .cf-card b{color:#fff;font-size:54px;line-height:1.08;font-weight:800;letter-spacing:-.02em;max-width:1000px}
+      #clip-frame .cf-card span{color:#d8cfc8;font-size:22px;line-height:1.4;font-weight:500;max-width:880px}
+      #clip-frame .cf-card i{width:120px;height:4px;border-radius:4px;background:linear-gradient(90deg,#ffb37a,#ff6a2b);box-shadow:0 0 18px rgba(255,122,61,.7)}`;
     document.documentElement.appendChild(st);
     const f = document.createElement('div');
     f.id = 'clip-frame';
     f.setAttribute('data-noinvert', '');
-    f.innerHTML = '<div class="cf-tag"><em>Sample workspace</em>Real app · demonstration data</div><div class="cf-say"><i></i><div><b></b><span></span></div></div><div class="cf-fast"></div>';
+    f.innerHTML = '<div class="cf-tag"><em>Sample workspace</em>Real app · demonstration data</div><div class="cf-say"><i></i><div><b></b><span></span></div></div><div class="cf-fast"></div><div class="cf-card"><em></em><b></b><i></i><span></span></div>';
     document.documentElement.appendChild(f);
     const say = f.querySelector<HTMLElement>('.cf-say')!;
     const fast = f.querySelector<HTMLElement>('.cf-fast')!;
@@ -57,7 +65,14 @@ export const CLIP_FRAME = () => {
       say.classList.remove('on');
       swap = window.setTimeout(fill, 260);
     };
-    const w = window as unknown as { __clipSay: (t: string, s?: string) => void; __clipFast: (label: string) => void };
+    const card = f.querySelector<HTMLElement>('.cf-card')!;
+    const w = window as unknown as { __clipSay: (t: string, s?: string) => void; __clipFast: (label: string) => void; __clipCard: (k: string, t: string, s: string) => void };
+    /* A long film's chapter card: the whole frame, over the app ('' takes it away). */
+    w.__clipCard = (k, t, sub) => {
+      if (t) { card.querySelector('em')!.textContent = k; card.querySelector('b')!.textContent = t; card.querySelector('span')!.textContent = sub; }
+      card.classList.toggle('on', !!t);
+      document.documentElement.classList.toggle('cf-carding', !!t);
+    };
     w.__clipSay = (title, sub = '') => { store('clip-say', title ? JSON.stringify([title, sub]) : ''); show(title, sub, false); };
     w.__clipFast = label => { store('clip-fast', label); fast.textContent = label; fast.classList.toggle('on', !!label); };
     const was = read('clip-say');

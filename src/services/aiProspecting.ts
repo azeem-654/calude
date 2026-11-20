@@ -379,20 +379,26 @@ export function relatedTrades(trade: string): string[] {
 const REGIONS = 'alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming|england|scotland|wales|northern ireland|ontario|quebec|british columbia|alberta|new south wales|victoria|queensland|western australia|south australia';
 const REGION_RE = new RegExp(`\\b(?:in|across|around|near|throughout)\\s+(${REGIONS})\\b`, 'i');
 
+/* Capitalised words after "in" that are the product or one of its modules,
+   not a town. Found 2026-11-20: the wizard's instruction said "…in Protected
+   Central" and Protron "…a template in Websites", and the daily finder was
+   set to look for leads in "Protected Central". */
+const NOT_A_PLACE = /^(?:Protected Central|AI Autopilot|AI Prospecting|Protron|Websites?|Funnels?|Contacts?|Deals?|Pipelines?|Unified Inbox|Inbox|Customer Engagement|Engagement|Email campaigns?|Graphics Designer|Blog|Booking|Reports|Agency|Media Library|Settings|Google|Gmail|Outlook|Facebook|Instagram|LinkedIn|WordPress)\b/;
+
 export function placeIn(text: string): string | null {
-  const m = /\b(?:in|across|around|near|throughout)\s+((?:[A-Z][\p{L}.'-]+)(?:(?:,\s*|\s+)(?:[A-Z][\p{L}.'-]+)){0,3})/u.exec(text);
-  if (!m) {
-    const r = REGION_RE.exec(text);
-    return r ? r[1].replace(/\b\p{Ll}/gu, c => c.toUpperCase()) : null;
+  const re = /\b(?:in|across|around|near|throughout)\s+((?:[A-Z][\p{L}.'-]+)(?:(?:,\s*|\s+)(?:[A-Z][\p{L}.'-]+)){0,3})/gu;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    /* The sentence's own full stop is not part of the place ("in Dallas."),
+       an abbreviation's is ("Washington D.C."). */
+    /* A full stop after a lower-case letter ends the sentence, so whatever
+       follows is the next sentence, not more of the place: "in Miami, Florida.
+       The clinic…" was read as "Miami, Florida. The". */
+    const p = m[1].split(/(?<=\p{Ll})\.\s/u)[0]
+      .replace(/(?:,\s*|\s+)(?:And|With|To|For|The|We|Our|My|I|It|They|This|That)$/, '').trim().replace(/(?<=\p{Ll})\.+$/u, '');
+    if (p.length >= 2 && !NOT_A_PLACE.test(p)) return p;
   }
-  /* The sentence's own full stop is not part of the place ("in Dallas."),
-     an abbreviation's is ("Washington D.C."). */
-  /* A full stop after a lower-case letter ends the sentence, so whatever
-     follows is the next sentence, not more of the place: "in Miami, Florida.
-     The clinic…" was read as "Miami, Florida. The". */
-  const p = m[1].split(/(?<=\p{Ll})\.\s/u)[0]
-    .replace(/(?:,\s*|\s+)(?:And|With|To|For|The|We|Our|My|I|It|They|This|That)$/, '').trim().replace(/(?<=\p{Ll})\.+$/u, '');
-  return p.length >= 2 ? p : null;
+  const r = REGION_RE.exec(text);
+  return r ? r[1].replace(/\b\p{Ll}/gu, c => c.toUpperCase()) : null;
 }
 
 /**

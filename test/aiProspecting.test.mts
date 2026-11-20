@@ -8,7 +8,7 @@
  * decides what is imported — an address a check already said would bounce
  * must never be the one used.
  */
-import { addressesOf, askProblem, askSentence, bestAddress, chooseSource, leadScore, parseAsk, splitTradePlace, toCsv } from '../src/services/aiProspecting.ts';
+import { addressesOf, askProblem, askSentence, bestAddress, chooseSource, leadScore, parseAsk, placeIn, splitTradePlace, toCsv } from '../src/services/aiProspecting.ts';
 import { extractKnown } from '../src/services/projectIntake.ts';
 import type { Prospect, Verdict } from '../src/services/prospects.ts';
 import { emailTag } from '../src/services/prospectImport.ts';
@@ -137,6 +137,12 @@ eq('never checked → no tag at all', emailTag(undefined), '');
   ok('the request\'s audience keeps its place out of the trade', String(k.prospectTrades?.value ?? '') === 'commercial properties' && String(k.prospectPlaces?.value ?? '') === 'Virginia',
     JSON.stringify({ t: k.prospectTrades?.value, p: k.prospectPlaces?.value }));
 }
+
+/* The product's own name is not a town (2026-11-20: the wizard's instruction
+   "…in Protected Central" set the daily finder to look there). */
+ok('"in Protected Central" is passed over for the real place', placeIn('Use the contact list in Protected Central. Office managers in Denver.') === 'Denver', String(placeIn('Use the contact list in Protected Central. Office managers in Denver.')));
+ok('"a template in Websites" is not a place', placeIn('You can build one from a template in Websites.') === null, String(placeIn('You can build one from a template in Websites.')));
+ok('a real place still reads', placeIn('Find dentists in Richmond, Virginia') === 'Richmond, Virginia', String(placeIn('Find dentists in Richmond, Virginia')));
 
 console.log(out.join('\n'));
 const failed = out.filter(l => l.startsWith('FAIL')).length;

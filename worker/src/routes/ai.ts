@@ -30,7 +30,7 @@ import { findPhi, phiRefusal } from '../lib/phiGuard';
 import { fail, json } from '../lib/http';
 import { canAccess, userFromToken, type Env } from '../lib/db';
 import { cleanJob, jobMayFinish, jobTouch } from '../lib/aiJobs';
-import { AI_BUSY, aiBase, askWorkersAi, forGemma, googleHeaders, isGemma, jsonOnly, loadAiKey, modelsFor, thinkingFor, trialRefusal } from '../lib/ai';
+import { AI_BUSY, aiBase, askWorkersAi, forGemma, googleHeaders, isGemma, jsonOnly, loadAiKey, modelsFor, thinkingFor, trialRefusal, withThinkingRoom } from '../lib/ai';
 import { capRefusal, recordAiUse } from '../lib/aiUsage';
 import { moduleOf, taskOf } from '../lib/aiTasks';
 import { hasInstallKeys, withFailover } from '../lib/aiPool';
@@ -156,9 +156,13 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
      is answered by the next key rather than shown the first one's error. */
   const fast = FAST_MODULES.has(module);
   const answerBy = fast ? FAST_ANSWER_BY_MS : ANSWER_BY_MS;
-  const fastPayload = (model: string) => {
+  /* `turnDown`: thinking switched down (FAST_MODULES). Either way the cap
+     the page asked for is kept for the answer itself (lib/ai.ts
+     `withThinkingRoom`). */
+  const payloadFor = (model: string, turnDown: boolean) => {
     const p = JSON.parse(payload) as { generationConfig?: Record<string, unknown> };
-    return JSON.stringify({ ...p, generationConfig: { ...(p.generationConfig ?? {}), thinkingConfig: thinkingFor(model) } });
+    const gen = { ...(p.generationConfig ?? {}), ...(turnDown ? { thinkingConfig: thinkingFor(model) } : {}) };
+    return JSON.stringify({ ...p, generationConfig: withThinkingRoom(gen, model, turnDown) });
   };
 
   let allKeysDown = false;
@@ -197,10 +201,10 @@ export async function handleAi(req: Request, env: Env): Promise<Response> {
       try {
         if (gemma) res = await ask(JSON.stringify(forGemma(JSON.parse(payload))));
         else if (fast) {
-          res = await ask(fastPayload(model));
+          res = await ask(payloadFor(model, true));
           /* The setting refused (an older or unusual model): the same request without it. */
-          if (res.status === 400 && /thinking/i.test(await res.clone().text().catch(() => ''))) res = await ask(payload);
-        } else res = await ask(payload);
+          if (res.status === 400 && /thinking/i.test(await res.clone().text().catch(() => ''))) res = await ask(payloadFor(model, false));
+        } else res = await ask(payloadFor(model, false));
       } catch (e) {
         lastStatus = 0;
         lastError = e instanceof Error ? e.message : String(e);
