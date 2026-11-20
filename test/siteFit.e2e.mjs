@@ -94,7 +94,7 @@ for (const sz of sizes) {
     const offscreen = chips.some(c => c.left < 0 || c.right > innerWidth);
     /* On a phone on its side the promise is the picture itself, not the
        caption under it. */
-    const pic = document.querySelector('.dc-hero-shot .dc-reel-stage').getBoundingClientRect();
+    const pic = document.querySelector('.dc-hero-shot .dc-reel-stage, .dc-hero-shot .dc-mclip-frame').getBoundingClientRect();
     const fits = innerHeight < 420 && innerWidth > innerHeight ? pic.bottom <= innerHeight + 1 && pic.top >= 0 : st.bottom <= innerHeight + 1;
     return { stageH: Math.round(st.height), shotW: Math.round(shot.width), fits, chips: chips.length, maxCover: Math.round(Math.max(0, ...cover)), offscreen };
   });

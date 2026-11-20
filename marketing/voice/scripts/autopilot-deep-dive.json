@@ -1,0 +1,236 @@
+{
+ "film": "autopilot-deep-dive",
+ "voice": "Umbriel",
+ "style": "Read this aloud as Protron, a warm, friendly, genuinely human guide showing one business owner around their software, like a helpful friend who is a little excited to show them something. Relaxed but lively pace, natural, a smile in the voice, gentle emphasis. Not salesy, not robotic. Say only the words below.",
+ "chapters": [
+  {
+   "id": "film-ap-board",
+   "lines": [
+    [
+     0.8,
+     "Hi, I am Protron. Let me show you AI Autopilot: the part of Protected Central that runs your businesses for you."
+    ],
+    [
+     4.6,
+     "This is the board. Every business you look after gets its own business workspace, with its own goal, workflows, prospects and website."
+    ],
+    [
+     9.2,
+     "Allowances are counted live, so you always see this month’s posts and prospects against your plan."
+    ],
+    [
+     11.2,
+     "If you are an agency, each client stays in its own account. Switch between them here, or open the agency dashboard to see them all."
+    ],
+    [
+     18.6,
+     "And all of this works on the server every five minutes, whether this page is open or not."
+    ],
+    [
+     21.8,
+     "Here are five businesses: a caterer, a gym, a law firm, a dentist and a real estate team. Each one runs its own plan, completely independent of the others."
+    ],
+    [
+     36.2,
+     "Put the business that matters most on top, or pause a whole business in one click."
+    ],
+    [
+     42,
+     "And share progress with each client on a read-only page. They never see your other clients, contacts or prices."
+    ]
+   ]
+  },
+  {
+   "id": "film-ap-new",
+   "lines": [
+    [
+     8,
+     "Now let us build a new one together. Just chat with me: type, or send a voice note. If the business has a website, I will read it for you."
+    ],
+    [
+     16.8,
+     "These are real AI answers, in seconds. I only ask what I still need, with answers you can tap."
+    ],
+    [
+     20.4,
+     "Then I suggest solutions that fit the business. Include one in a click, or say no thanks. Each one is something Autopilot can really run."
+    ],
+    [
+     43,
+     "Then I write the plan for AI Autopilot: one smart instruction, built from everything I have learned."
+    ],
+    [
+     45.2,
+     "Read it and change anything. Company, customers, objectives, constraints: it is all in plain words."
+    ],
+    [
+     52.6,
+     "Add a sentence, and I rewrite the whole plan. Or press Write it again for a fresh version."
+    ],
+    [
+     60.2,
+     "I tell you what I understood. If I got something wrong, just say so in your own words."
+    ],
+    [
+     64.2,
+     "Add more work in a click: branded social posts every day, or an SEO article every week."
+    ],
+    [
+     72.6,
+     "Now I ask only the questions I could not answer myself. Each one comes with suggestions, or you can let me decide, and I will tell you why."
+    ],
+    [
+     86.2,
+     "Its own website or funnel is already in its name. Every design shows the business’s name, colour and photo."
+    ],
+    [
+     94.4,
+     "A couple more quick answers, and we are ready."
+    ],
+    [
+     102.2,
+     "Now read exactly what I am going to build: the workflows, the AI agents and the schedules, before anything exists."
+    ],
+    [
+     109.4,
+     "Want something different? Change the blueprint just by saying it. No going back through the questions."
+    ],
+    [
+     121.2,
+     "I only build what this business actually uses. Anything not connected yet simply waits, and the rest starts now."
+    ],
+    [
+     129.6,
+     "And nothing that contacts a person switches on without you. Emails and texts arrive as drafts for you to read first."
+    ],
+    [
+     140.8,
+     "Built. And every record is real: its emails are written, the prospect search has started, and drafts are waiting for you."
+    ],
+    [
+     150.4,
+     "There it is. The new business, live on the board."
+    ]
+   ]
+  },
+  {
+   "id": "film-ap-inside",
+   "lines": [
+    [
+     0.8,
+     "Let us look inside one business."
+    ],
+    [
+     6.8,
+     "Vine Street Kitchen. Its goal, its money and its work, at a glance."
+    ],
+    [
+     10.4,
+     "Workflows are drawn the way they run. Every fork is labelled yes or no, and every path joins back up."
+    ],
+    [
+     22.8,
+     "Open any step to see the real message and condition, built on your own forms, tags and stages. Nothing generic."
+    ],
+    [
+     31.4,
+     "You can dry-run a step against a real contact. Nothing is sent. It shows you exactly which way they would go, and why."
+    ],
+    [
+     47.6,
+     "Change the whole workflow in place. Add a step anywhere, reorder them, or change what starts it."
+    ],
+    [
+     57.6,
+     "Or just describe a workflow in plain words. Edit with AI writes it for this business, in its own voice."
+    ],
+    [
+     67.2,
+     "It is written in seconds, and it arrives switched off. Nothing reaches anybody until you have read it."
+    ],
+    [
+     75,
+     "Read it, then switch it on. From then on it runs on the server, every five minutes."
+    ]
+   ]
+  },
+  {
+   "id": "film-ap-follow",
+   "lines": [
+    [
+     1,
+     "Now, how I keep each business moving."
+    ],
+    [
+     8,
+     "AI agents work on a schedule. They read the business and write for it, and every piece is a draft."
+    ],
+    [
+     15.4,
+     "Here is every step I am on the hook for: emails, conditions, texts and agents, across the live workflows."
+    ],
+    [
+     19.6,
+     "Ideas I find wait for your yes. Here, I spotted twenty-two past clients nobody had asked about spring."
+    ],
+    [
+     26,
+     "You decide what I may do by myself: off, ask first, or on my own, for each business separately."
+    ],
+    [
+     36,
+     "This is my plan for today, item by item."
+    ],
+    [
+     39.6,
+     "One approval, and it goes ahead. It is sent from the business’s own mailbox, and logged as it happens."
+    ],
+    [
+     46.6,
+     "Everything I did is out in the open: what is going on now, and what is coming up."
+    ],
+    [
+     51.8,
+     "And you can see when each workflow runs next."
+    ],
+    [
+     56.2,
+     "Every day I re-plan every business. I read it, write, build and send, then plan again."
+    ],
+    [
+     60.8,
+     "I spot problems before you ask: deals gone quiet, follow-ups missing, a list that vanished. Named, never hidden."
+    ],
+    [
+     70,
+     "Every business finds its own new leads. Brightline’s daily search reads each website and checks each address."
+    ],
+    [
+     77.4,
+     "And everything I made is in one place, with a shortcut to the module that owns it."
+    ]
+   ]
+  },
+  {
+   "id": "film-ap-sites",
+   "lines": [
+    [
+     5.2,
+     "Each client has its own website, built from whole-site templates and published on its own address."
+    ],
+    [
+     11,
+     "And its own funnels. Summit’s quote funnel was built by AI Autopilot a minute ago."
+    ],
+    [
+     22.8,
+     "Or start from a ready-made workflow. Preview it, then use it."
+    ],
+    [
+     29.9,
+     "That is AI Autopilot. Describe it once, and I will build it and run it."
+    ]
+   ]
+  }
+ ]
+}

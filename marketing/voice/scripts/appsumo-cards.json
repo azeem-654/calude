@@ -1,0 +1,9 @@
+[
+ { "id": "as-intro", "seconds": 6, "eyebrow": "Protected Central · AppSumo lifetime deal", "title": "What your deal includes, working", "sub": "The real app, recorded live with real AI on a sample agency. Every module shown here is in your deal." },
+ { "id": "as-autopilot", "eyebrow": "Included · AI Autopilot", "title": "Describe it once. AI builds it and runs it.", "sub": "A business workspace per business, its workflows running on the server every five minutes" },
+ { "id": "as-prospecting", "eyebrow": "Included · AI Prospecting", "title": "New leads from one sentence", "sub": "Searched live, each website read, every address checked, new leads added every day" },
+ { "id": "as-sell", "eyebrow": "Included · Sell and convert", "title": "Pipelines, websites, funnels and booking pages", "sub": "And email sequences that stop the moment a lead replies" },
+ { "id": "as-content", "eyebrow": "Included · Create content", "title": "Graphics and SEO blog posts", "sub": "Each piece lands in the module it belongs to" },
+ { "id": "as-agency", "eyebrow": "Included · Run an agency", "title": "A sub-account for every client", "sub": "White-label branding, your own sign-in addresses, per-client pricing and live reports" },
+ { "id": "as-tiers", "seconds": 14, "tiers": true, "eyebrow": "AppSumo lifetime deal", "title": "Stack up to three codes", "note": "Not part of this deal: AI Shorts and video editing, and the online shop." }
+]

@@ -38,10 +38,11 @@ import { TEMPLATES } from '../Autopilot/workflowTemplates';
 import { useReveal, useRevealGroup } from './useReveal';
 import Starfield from './Starfield';
 import ShotReel from './ShotReel';
+import ClipPlayer from './ClipPlayer';
 import WorksWith from '../shared/WorksWith';
 import { AiOrb, EventChips, TypedPrompt } from '../shared/AutopilotScene';
 import { REELS } from './reels';
-import { CLIPS, type ClipKey } from './clips';
+import { CLIPS, HERO_REEL, type ClipKey } from './clips';
 import { serviceShown, anyServiceShown } from './siteFeatures';
 import HelpLauncher from '../shared/HelpLauncher';
 import LaunchFilm from './LaunchFilm';
@@ -520,9 +521,10 @@ export default function SiteHome() {
             <TypedPrompt className="dc-hero-prompt" />
             {/* The hero's reel is the one that loads eagerly — it is the first
                 thing anybody sees, and waiting for it to be scrolled to would
-                mean it never starts. */}
-            <div className="dc-hero-shot dc-hero-strip">
-              <ShotReel shots={REELS.hero} label="The platform" eager strip chrome={false} holdMs={6200} />
+                mean it never starts. Since 2026-11-20 it is every module
+                working, fast-forwarded (HERO_REEL), not a reel of stills. */}
+            <div className="dc-hero-shot dc-hero-strip dc-hero-clip">
+              <ClipPlayer clips={[HERO_REEL]} label="Every module of Protected Central, fast-forwarded" eager />
               <span className="dc-hero-scan" aria-hidden="true" />
             </div>
             <EventChips className="dc-hero-chips" />

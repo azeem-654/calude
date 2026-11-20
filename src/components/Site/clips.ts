@@ -82,6 +82,17 @@ export const CLIPS = {
 
 export type ClipKey = keyof typeof CLIPS;
 
+/**
+ * The hero's reel (owner, 2026-11-20: the first section shows "a quick
+ * preview and working in fast forwarding of each of our module"): a stretch
+ * of every clip above at 5×, labelled with its module and a speed badge, cut
+ * by scripts/hero-reel.mts from the same recordings. Not in CLIPS, because
+ * it has no recipe of its own: re-cut it after re-recording a clip.
+ */
+export const HERO_REEL: ModuleClip = C('hero-reel', 'Every module',
+  'Every module working, fast-forwarded: AI Autopilot, AI Prospecting, Contacts, Pipelines, campaigns, blog, websites, graphics, forms and chat, Inbox, booking, agency and reports.',
+  'The real app in dark mode, each module in turn at five times speed with its name on screen: AI Autopilot’s workflow canvas, a prospect search, contacts filtered, a quote form becoming a deal, campaign results, a blog strategy, a website edited, a social graphic, a form changed, the inbox, a booking page, a client workspace and the reports');
+
 /** Every recording the site uses, for the capture script. */
 export const CLIP_IDS: string[] = Object.values(CLIPS).map(c => c.id);
 

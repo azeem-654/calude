@@ -1838,6 +1838,8 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
   }
   .dc-hero-shot { max-width: none; width: 100%; }
   .dc-hero-shot .dc-reel-stage { aspect-ratio: auto; height: calc(var(--hero-screen) - var(--hero-fixed)); }
+  .dc-hero-clip .dc-mclip-frame { aspect-ratio: auto; height: calc(var(--hero-screen) - var(--hero-fixed)); }
+  .dc-hero-clip .dc-mclip-video { object-fit: cover; object-position: 50% 0; }
   .dc-hero-shot .dc-reel-shot { object-position: 50% 0; transform-origin: 50% 0; }
   .dc-hero-shot .dc-reel-caption { padding: 8px 16px 9px; min-height: 0; }
   .dc-hero-shot .dc-reel-text { font-size: 14px; line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2880,3 +2882,14 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 .pcp-error { margin: 0; color: #f0a36b; font-size: 13.5px; }
 .pcp-form .dc-btn { justify-self: start; }
 .pcp-sent { max-width: 760px; margin: 0 auto; }
+
+/* The hero's fast-forward reel (HERO_REEL, 2026-11-20) sits in the frame the
+   reel of stills used: edge to edge, dark behind it, no caption under it —
+   each module's name is in the picture. */
+.dc-hero-clip { background: #0a0605; }
+.dc-hero-clip .dc-mclip { width: 100%; min-width: 0; }
+.dc-hero-clip .dc-mclip-frame { border: 0; border-radius: 0; box-shadow: none; }
+.dc-hero-clip .dc-mclip-caption { display: none; }
+/* The reel's module label is top right in the picture; the player's own
+   buttons move to the bottom left, over the app's sidebar. */
+.dc-hero-clip .dc-mclip-tools { top: auto; right: auto; left: 10px; bottom: 10px; }

@@ -1,8 +1,9 @@
 /**
- * The site's slideshows read each screen (ShotReel). On a desktop: the whole
- * page fitted into the slide, then widened to the slide's full width (no
- * zoom past it), then travelled to the bottom — and on to the next slide
- * without scrolling back up. On a phone: the top of the page, travelled down.
+ * The site's slideshows read each screen (ShotReel) — tested on the ownership
+ * tabs' reel (full-page pictures) since the hero became a fast-forward clip
+ * (2026-11-20). On a desktop: the page widened to the slide's full width (no
+ * zoom past it), then travelled to the bottom. On a phone: the top of the
+ * page, travelled down.
  * The notes come up one at a time over both.
  *
  * The owner reported the zoom "not working". Their machine asks for reduced
@@ -24,13 +25,13 @@ const ok = (name, cond, detail = '') => { console.log(`  ${cond ? '✓' : '✗'}
 
 /** The transform on the hero's showing picture, as scale and vertical travel. */
 const read = p => p.evaluate(() => {
-  const img = document.querySelector('.dc-hero-shot .dc-reel-shot.on .dc-sr-img');
+  const img = document.querySelector('.dc-own-shot .dc-reel-shot.on .dc-sr-img');
   const m = new DOMMatrix(getComputedStyle(img).transform);
-  const shot = document.querySelector('.dc-hero-shot .dc-reel-shot.on').getBoundingClientRect();
-  const prev = document.querySelector('.dc-hero-shot .dc-reel-shot[data-pos="-1"] .dc-sr-img');
+  const shot = document.querySelector('.dc-own-shot .dc-reel-shot.on').getBoundingClientRect();
+  const prev = document.querySelector('.dc-own-shot .dc-reel-shot[data-pos="-1"] .dc-sr-img');
   const pm = prev ? new DOMMatrix(getComputedStyle(prev).transform) : null;
-  return { s: +m.a.toFixed(3), ty: Math.round(m.f), w: Math.round(shot.width), vw: innerWidth, note: document.querySelector('.dc-hero-shot .dc-sr-note')?.textContent ?? '', h: img.naturalHeight, nw: img.naturalWidth,
-    at: [...document.querySelectorAll('.dc-hero-shot .dc-reel-shot')].findIndex(e => e.classList.contains('on')), prevTy: pm ? Math.round(pm.f) : 0 };
+  return { s: +m.a.toFixed(3), ty: Math.round(m.f), w: Math.round(shot.width), vw: innerWidth, note: document.querySelector('.dc-own-shot .dc-sr-note')?.textContent ?? '', h: img.naturalHeight, nw: img.naturalWidth,
+    at: [...document.querySelectorAll('.dc-own-shot .dc-reel-shot')].findIndex(e => e.classList.contains('on')), prevTy: pm ? Math.round(pm.f) : 0 };
 });
 
 for (const [label, view, motion] of [
@@ -45,11 +46,10 @@ for (const [label, view, motion] of [
   const p = await ctx.newPage();
   const errs = []; p.on('pageerror', e => errs.push(String(e)));
   await p.goto(`${B}/`, { waitUntil: 'networkidle' });
-  await p.evaluate(() => document.querySelector('.dc-hero-shot').scrollIntoView({ block: 'center' }));
-  await p.waitForFunction(() => document.querySelector('.dc-hero-shot .dc-reel-shot.on .dc-sr-img')?.naturalWidth > 0, null, { timeout: 15_000 });
+  await p.evaluate(() => document.querySelector('.dc-own-shot').scrollIntoView({ block: 'center' }));
+  await p.waitForFunction(() => document.querySelector('.dc-own-shot .dc-reel-shot.on .dc-sr-img')?.naturalWidth > 0, null, { timeout: 15_000 });
   const start = await read(p);
   if (phone) ok('the screen opens at the top of the page', start.s === 1 && start.ty === 0, JSON.stringify(start));
-  else ok('the screen opens whole: the complete page fitted in', start.s < 0.9 && start.ty === 0, JSON.stringify(start));
   if (!phone) ok('the slide is the full width of the strip', start.w >= start.vw * 0.9, JSON.stringify(start));
   ok('the picture is the whole page, taller than the window', start.h / start.nw > (phone ? 720 / 390 : 1200 / 1920) + 0.05, JSON.stringify(start));
   if (phone) ok('the picture is the width of the column', start.w >= start.vw * 0.82, JSON.stringify(start));
@@ -71,32 +71,16 @@ for (const [label, view, motion] of [
   ok('it travels down the page', seen.down, JSON.stringify(seen));
   ok('the notes come up over the screen', seen.note.length > 10, JSON.stringify(seen));
 
-  /* A desktop moves on from the bottom: the next slide opens whole, and the one just read never scrolls back up. */
-  if (!phone) {
-    const was = (await read(p)).at;
-    let next = null, low = 0, back = false;
-    for (let i = 0; i < 80 && !next; i++) {
-      await p.waitForTimeout(500);
-      const r = await read(p);
-      if (r.at !== was) { next = r; break; }
-      low = Math.min(low, r.ty);
-      if (low < -40 && r.ty > low + 40) back = true;
-    }
-    ok('it does not scroll back up before moving on', !back, `lowest ${low}`);
-    ok('it moves on to the next slide', !!next, '');
-    if (next) {
-      ok('the slide just read stays at its bottom', next.prevTy < -40, JSON.stringify(next));
-      await p.waitForTimeout(1200);
-      const n2 = await read(p);
-      ok('the next slide opens whole', n2.s < 0.9, JSON.stringify(n2));
-    }
-  }
+  /* The hero's wide strip also opened each slide whole and moved on from its
+     bottom without scrolling back; the hero is a clip since 2026-11-20 and no
+     section reel is that shape (the ownership tab's is one slide, looping),
+     so those checks went with it. */
 
   /* Paused, it stays where it is. */
-  await p.locator('.dc-hero-shot').getByRole('button', { name: 'Pause the tour' }).click({ force: true });
+  await p.locator('.dc-own-shot').getByRole('button', { name: 'Pause the tour' }).click({ force: true });
   const a = await read(p); await p.waitForTimeout(2500); const c = await read(p);
   ok('pause stops it', a.ty === c.ty && a.s === c.s, `${JSON.stringify(a)} → ${JSON.stringify(c)}`);
-  await p.locator('.dc-hero-shot').getByRole('button', { name: 'Play the tour' }).click({ force: true });
+  await p.locator('.dc-own-shot').getByRole('button', { name: 'Play the tour' }).click({ force: true });
   ok('no page errors', !errs.length, errs.join('\n'));
   ok('no sideways scroll', await p.evaluate(() => document.documentElement.scrollWidth - innerWidth) === 0);
   await ctx.close();

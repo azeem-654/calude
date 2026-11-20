@@ -1,6 +1,7 @@
 # Generated voice samples and preview clips: sent to the owner, not committed
 # (same as marketing/demos). Voices come from Google text-to-speech
-# (gemini-3.8-flash-tts) and are re-made on request.
+# (gemini-3.8-flash-tts) and are re-made on request. The narration scripts
+# in scripts/ are committed: scripts/voiceover.mts re-voices a film from them.
 *.mp3
 *.mp4
 *.wav
