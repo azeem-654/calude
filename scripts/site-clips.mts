@@ -1733,10 +1733,20 @@ const PLATFORM: Record<string, Recipe> = {
       await h.scroll(420, 1200);
       await h.say('Rename, reorder, rewrite — it is a draft', 'Nothing changes until you press Apply');
       await h.pause(3000);
-      await h.click(d.getByRole('button', { name: /Back to the brief/ }));
-      await h.pause(600);
-      await p.keyboard.press('Escape');
-      await h.pause(800);
+      /* Its own close button (the header's ×): Escape does not close it. */
+      await h.click(d.locator('button').first());
+      await h.pause(900);
+      await h.say('Ask Brain about the board', 'AI answers from these deals — the suggestion chips are counted exactly');
+      await h.click(p.getByRole('button', { name: /Brain/ }).first());
+      await h.pause(1200);
+      const ask = p.getByPlaceholder(/Ask anything about your deals/);
+      await h.click(ask);
+      await h.type('Which two deals should I chase first this week, and why?', 30);
+      await p.keyboard.press('Enter');
+      await h.waitAi(async () => (await p.getByText('AI answer · read from the deals on this board').count()) > 0, 5, 90_000);
+      await h.pause(1000);
+      await h.reach(p.getByText('AI answer · read from the deals on this board').first(), 520);
+      await h.pause(4200);
     },
   },
 

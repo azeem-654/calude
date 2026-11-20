@@ -9,6 +9,19 @@
  * picture). The films are tens of megabytes, so they are not committed
  * (marketing/demos/.gitignore); the recipes are, and re-make them.
  *
+ * The two films (2026-11-20), after recording their chapters:
+ *
+ *   npx tsx scripts/demo-film.mts autopilot-deep-dive film-ap-board film-ap-new film-ap-inside film-ap-follow film-ap-sites
+ *   npx tsx scripts/demo-film.mts platform-ai-tour film-card-intro film-card-autopilot clip-autopilot \
+ *     film-card-prospecting clip-prospecting film-ai-contacts clip-contacts film-ai-pipelines clip-pipelines \
+ *     film-ai-campaigns clip-campaigns film-ai-blog film-ai-websites clip-websites film-ai-graphics clip-graphics \
+ *     film-card-engagement clip-engagement film-ai-inbox clip-inbox film-card-booking clip-booking \
+ *     film-card-agency clip-agency film-card-reports clip-reports
+ *
+ * Record the film-ap-* chapters in that order against one fresh workspace
+ * (the second builds the business the fifth shows); CLIPS_REUSE=1 with a
+ * HOLD=1 site-reels.mts lets a failed chapter be re-shot alone.
+ *
  * Each chapter already fades in and out on dark (site-clips.mts), so plain
  * concatenation gives a soft cut between chapters with nothing re-timed.
  */
