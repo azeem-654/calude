@@ -1,5 +1,6 @@
 # Generated voice samples and preview clips: sent to the owner, not committed
-# (same as marketing/demos). Rebuild from the scripts in the session notes.
+# (same as marketing/demos). Voices come from Google text-to-speech
+# (gemini-3.8-flash-tts) and are re-made on request.
 *.mp3
 *.mp4
 *.wav
