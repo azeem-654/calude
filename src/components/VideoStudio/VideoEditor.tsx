@@ -32,11 +32,8 @@ import LogoPanel from './LogoPanel';
 import { askConfirm } from '../shared/ConfirmDialog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  Home, Undo2, Redo2, Loader, Bot, ShieldCheck, Trash2, RefreshCw, Upload, AlertCircle, Check, X, Search, Plus, History, Music2, ChevronDown,
-  FolderOpen, Sparkles, SlidersHorizontal, Shapes, Captions as CaptionsIcon, Images, Clapperboard, Download, Keyboard, LayoutGrid, PaintBucket, Film, Activity, ArrowRight,
-  Wand2, AudioLines, Palette, ZoomIn, Type, Stamp, Subtitles, Pin, PinOff,
-} from 'lucide-react';
+import { Home, Undo2, Redo2, Loader, ShieldCheck, Trash2, RefreshCw, Upload, AlertCircle, Check, X, Search, Plus, History, Music2, ChevronDown, FolderOpen, Sparkles, SlidersHorizontal, Shapes, Captions as CaptionsIcon, Images, Clapperboard, Download, Keyboard, LayoutGrid, PaintBucket, Film, Activity, ArrowRight, Wand2, AudioLines, Palette, ZoomIn, Type, Stamp, Subtitles, Pin, PinOff } from 'lucide-react';
+import { ProtronMark } from '../Protron/ProtronAvatar';
 import {
   getVideoProject, videoStatus, editVideo, applyOps, gotoVersion, renameVideoProject, retryVideo, cancelVideo, deleteVideoProject, renderOutputs,
   loadTranscript, loadWave, loadTrack, loadScreen, lookOf, type ScreenMeta, uploadVideo, sentencesOf, clock, bytesLabel, keepRanges, clipKeeps, keptLength, STATUS_LABEL,
@@ -875,7 +872,7 @@ export default function VideoEditor({ id }: { id: string }) {
         <span className="vs-kbd vse-src">
           {view.source.probe ? `${clock(view.source.probe.duration)} · ${view.source.probe.width}×${view.source.probe.height}` : view.source.name || 'No video yet'}{view.project.language ? ` · ${view.project.language.toUpperCase()}` : ''}
         </span>
-        {view.project.autopilotProjectId && <Link className="vs-aplink vs-kbd" to={`/autopilot?project=${view.project.autopilotProjectId}&tab=assets`}><Bot size={12} /> {view.project.autopilotProjectName || 'AI Autopilot business workspace'}</Link>}
+        {view.project.autopilotProjectId && <Link className="vs-aplink vs-kbd" to={`/autopilot?project=${view.project.autopilotProjectId}&tab=assets`}><ProtronMark size={12} /> {view.project.autopilotProjectName || 'AI Autopilot business workspace'}</Link>}
         <span className="vs-spacer" />
         <button type="button" className="vs-btn ghost sm" onClick={() => setShowHistory(true)} aria-label="Version history"><History size={15} /></button>
         <button type="button" className="vs-btn ghost sm" onClick={() => setShowKeys(true)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" data-act="shortcuts"><Keyboard size={15} /></button>

@@ -22,7 +22,8 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bot, Loader, Send, User, Lock, CornerUpLeft, Paperclip, X } from 'lucide-react';
+import { Loader, Send, User, Lock, CornerUpLeft, Paperclip, X } from 'lucide-react';
+import { ProtronMark } from '../Protron/ProtronAvatar';
 import { useApp } from '../../context/AppContext';
 import {
   chatFileUrl, getConversation, inboxSync, rememberChatFile, replyToConversation, replyWithImage,
@@ -269,7 +270,7 @@ export default function EngageInbox({ conversations, onChange, onRows }: {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                   {waiting
                     ? <User size={13} color="#b42318" />
-                    : <Bot size={13} color={MUTED} />}
+                    : <ProtronMark size={13} color={MUTED} />}
                   <span style={{ fontSize: 13, fontWeight: unread ? 800 : 700, color: INK, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {c.personName || c.personEmail || 'Anonymous visitor'}
                   </span>

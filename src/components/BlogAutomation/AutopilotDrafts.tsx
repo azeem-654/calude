@@ -13,7 +13,8 @@
  */
 import { askConfirm } from '../shared/ConfirmDialog';
 import { useMemo, useState } from 'react';
-import { Bot, ChevronDown, ChevronRight, Copy, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, Trash2 } from 'lucide-react';
+import { ProtronMark } from '../Protron/ProtronAvatar';
 import { useApp } from '../../context/AppContext';
 import {
   loadAutopilotPosts, deleteAutopilotPost, draftAsMarkdown, draftBlocks,
@@ -60,7 +61,7 @@ export default function AutopilotDrafts({ onChanged }: { onChanged?: () => void 
         <span style={{
           width: 26, height: 26, borderRadius: 9, backgroundColor: INK, color: '#c7f441',
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        }}><Bot size={14} /></span>
+        }}><ProtronMark size={14} /></span>
         <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: INK, letterSpacing: '-0.02em' }}>
           Drafts from AI Autopilot
         </h2>

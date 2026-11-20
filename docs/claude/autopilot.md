@@ -163,6 +163,17 @@ elements, and the duplicate key "0" left stale boards on the page after a
 build (the owner's screenshot); keep keyed siblings in distinct namespaces.
 
 
+**The AI auto-optimisation strip (2026-11-20).** Above each workflow's canvas
+and above the Prospects tab's sources, `AutoOptimiseAgent.tsx` shows Protron
+watching, with only real numbers: per workflow, `workflows` returns `watch`
+(14-day sends/failures from `crm_delivery_log` by `source_id`, and the last
+`crm_protron_alerts` flag) beside `runCounts`; the Prospects strip reads the
+finder overview (today's searches/reads/additions against limits, rotation,
+last step). Its sentences restate `protronJudge.ts`'s `WATCH` thresholds —
+change both together. Off or paused, it says it is not watching. "Review it
+with Protron" opens the chat with the request written; nothing changes until
+approved.
+
 `Autopilot/WorkflowCanvas.tsx` draws each workflow as fixed-size boxes and an
 SVG layer of links, in the owner's reference video's look
 (`workflowGlass.css`): cards of stacked frosted glass (the sheets are stepped

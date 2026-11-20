@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch, ChevronRight, Shield, Settings, Bot } from 'lucide-react';
+import { Mail, MessageSquare, Zap, Plus, Play, Pause, BarChart2, Users, Upload, GitBranch, ChevronRight, Shield, Settings } from 'lucide-react';
+import { ProtronMark } from '../Protron/ProtronAvatar';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import { isEmailConfigured } from '../../services/emailService';
@@ -73,7 +74,7 @@ function AutopilotSequenceNote({ onOpen }: { onOpen: () => void }) {
       <span style={{
         width: 28, height: 28, borderRadius: 9, backgroundColor: '#17191c', color: '#c7f441',
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-      }}><Bot size={15} /></span>
+      }}><ProtronMark size={15} /></span>
       <div style={{ flex: '1 1 260px', fontSize: 13, color: '#3f4a1f', lineHeight: 1.55 }}>
         <strong>AI Autopilot has written {mine.length === 1 ? 'a follow-up sequence' : `${mine.length} follow-up sequences`}.</strong>{' '}
         They are under <em>Sequences</em>, not here — a sequence starts when somebody is put into it,

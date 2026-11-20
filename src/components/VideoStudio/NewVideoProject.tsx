@@ -18,7 +18,8 @@
  * without passing the next one (progress.ts says how).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { UploadCloud, Loader, AlertCircle, Bot, SquarePlay, ArrowLeft, Check, X, Link2, SlidersHorizontal, ChevronDown, ChevronUp, Film } from 'lucide-react';
+import { UploadCloud, Loader, AlertCircle, SquarePlay, ArrowLeft, Check, X, Link2, SlidersHorizontal, ChevronDown, ChevronUp, Film } from 'lucide-react';
+import { ProtronMark } from '../Protron/ProtronAvatar';
 import {
   createVideoProject, parseRequest, describeRequest, uploadVideo, abortUpload, importVideoLink, bytesLabel, SHORTS_MAX, parseYoutubeUrl, youtubeInfo, youtubeThumb, videoStatus,
   type Template, type VideoRequest, type UploadProgress, type Want, type Capability, type ProjectView,
@@ -166,7 +167,7 @@ export default function NewVideoProject({ template, want, autopilotProjectId, tr
       {showOptions && (
         <div className="vs-col" data-testid="vs-options">
           {options ?? <AdvancedSettings understood={understood} settings={settings} onSet={p => setSettings(s => ({ ...s, ...p }))} />}
-          <label className="vs-label" style={{ maxWidth: 520 }}><span style={{ display: 'flex', gap: 6, alignItems: 'center' }}><Bot size={13} /> Save into an AI Autopilot business workspace (optional)</span>
+          <label className="vs-label" style={{ maxWidth: 520 }}><span style={{ display: 'flex', gap: 6, alignItems: 'center' }}><ProtronMark size={13} /> Save into an AI Autopilot business workspace (optional)</span>
             <select className="vs-select" data-field="video.autopilot" value={ap} onChange={e => setAp(e.target.value)}>
               <option value="">No — keep it in Video Studio</option>
               {apProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}

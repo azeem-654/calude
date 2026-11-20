@@ -12,11 +12,8 @@
  * is no way to talk it into a workflow the engine cannot run.
  */
 import { useState } from 'react';
-import {
-  Palette,
-  Target, Inbox, PackageCheck, Bot, Workflow, Clock, Plug, UserCheck, Hand, MapPin, Info,
-  Sparkles, Send, Loader, Wand2, LayoutTemplate, Cpu,
-} from 'lucide-react';
+import { Palette, Target, Inbox, PackageCheck, Workflow, Clock, Plug, UserCheck, Hand, MapPin, Info, Sparkles, Send, Loader, Wand2, LayoutTemplate, Cpu } from 'lucide-react';
+import { ProtronMark } from '../../Protron/ProtronAvatar';
 import type { Blueprint } from '../../../services/projectIntake';
 import { REQUIREMENT_INFO } from '../../../services/projectSolutions';
 import VoiceControl from '../voice/VoiceControl';
@@ -116,7 +113,7 @@ export default function BlueprintView({ bp, onRename }: { bp: Blueprint; onRenam
 
       <div className="np-bp-grid">
         <div className="np-bp-box">
-          <h4><Bot size={13} /> AI agents</h4>
+          <h4><ProtronMark size={13} /> AI agents</h4>
           {bp.agents.length ? (
             <ul>{bp.agents.map(a => (
               <li key={`${a.name}-${a.workflow}`} style={{ display: 'grid', gap: 2 }}>

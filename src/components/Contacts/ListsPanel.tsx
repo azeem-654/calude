@@ -14,10 +14,8 @@
  * workspace's own contacts.
  */
 import { useMemo, useState } from 'react';
-import {
-  Bookmark, Bot, Check, ChevronDown, ChevronRight, Crosshair, Download, ExternalLink, Folder, Loader, Mail, Pencil,
-  Plus, Rocket, Search, Sparkles, Trash2, Users, X,
-} from 'lucide-react';
+import { Bookmark, Check, ChevronDown, ChevronRight, Crosshair, Download, ExternalLink, Folder, Loader, Mail, Pencil, Plus, Rocket, Search, Sparkles, Trash2, Users, X } from 'lucide-react';
+import { ProtronMark } from '../Protron/ProtronAvatar';
 import type { Appointment, Contact, Pipeline } from '../../types';
 import {
   LIST_FIELDS, OPS_FOR, fieldDef, describeList, listMembers,
@@ -199,7 +197,7 @@ export function ListHeader({
         <div className="cl-actions">
           <button type="button" className="cl-btn primary" onClick={onSend} disabled={!n} data-testid="cl-send"
             title="Hand these people to an AI Autopilot business workspace to write to">
-            <Bot size={14} /> Send to AI Autopilot
+            <ProtronMark size={14} /> Send to AI Autopilot
           </button>
           {view.real && <button type="button" className="cl-btn" onClick={onEmail} disabled={!n}><Mail size={14} /> Email this list</button>}
           <button type="button" className="cl-btn" onClick={onExport} disabled={!n || !canExport} data-testid="cl-export"

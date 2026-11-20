@@ -14,10 +14,8 @@
  * it can from the project itself rather than inventing a blueprint for it.
  */
 import { useNavigate } from 'react-router-dom';
-import {
-  Target, PackageCheck, MapPin, UserCheck, Hand, Bot, Workflow as WorkflowIcon, Plus, ArrowRight,
-  CheckCircle2, Circle, Info, Sparkles,
-} from 'lucide-react';
+import { Target, PackageCheck, MapPin, UserCheck, Hand, Workflow as WorkflowIcon, Plus, ArrowRight, CheckCircle2, Circle, Info, Sparkles } from 'lucide-react';
+import { ProtronMark, type IconLike } from '../Protron/ProtronAvatar';
 import type { Project } from '../../services/projects';
 import type { AgentRun, ProjectWorkflow } from '../../services/autopilot';
 import { T } from './theme';
@@ -34,7 +32,7 @@ const h: React.CSSProperties = {
   textTransform: 'uppercase', display: 'flex', gap: 6, alignItems: 'center',
 };
 
-function List({ title, icon: Icon, items }: { title: string; icon: typeof Target; items: string[] }) {
+function List({ title, icon: Icon, items }: { title: string; icon: IconLike; items: string[] }) {
   if (!items.length) return null;
   return (
     <div style={box}>
@@ -166,7 +164,7 @@ export default function ProjectOverview({ project, flows, runs, assets, onCreate
               </div>
             </div>
           )}
-          <List title="AI agents" icon={Bot} items={(brief.agents ?? []).map(a => `${a.name} — ${a.role}`)} />
+          <List title="AI agents" icon={ProtronMark} items={(brief.agents ?? []).map(a => `${a.name} — ${a.role}`)} />
           <List title="Waits for your approval" icon={UserCheck} items={brief.approvals ?? []} />
           <List title="Yours to do" icon={Hand} items={brief.manual ?? []} />
           <List title="Worth knowing" icon={Info} items={brief.limits ?? []} />

@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
-import { Bot, CalendarRange, Film, Mail, Sparkles, Video, Wand2, Rocket, Layers } from 'lucide-react';
+import { CalendarRange, Film, Mail, Sparkles, Video, Wand2, Rocket, Layers } from 'lucide-react';
+import { ProtronMark } from '../Protron/ProtronAvatar';
 import { ORIGIN_LABEL, type ContentSource } from '../../types/provenance';
 
 /**
@@ -19,7 +20,7 @@ const ICON = {
   'content-plan': CalendarRange,
   'video-campaign': Video,
   'ai-shorts': Film,
-  'ai-sales-agent': Bot,
+  'ai-sales-agent': ProtronMark,
   'business-flow': Wand2,
   'marketing-campaign': Mail,
   autopilot: Rocket,

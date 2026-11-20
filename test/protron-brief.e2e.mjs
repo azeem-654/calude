@@ -52,7 +52,7 @@ for (const width of [390, 1280]) {
 
   /* The new face. */
   const face = p.locator('.pt-launch svg.pt-av');
-  ok(`${W} the launcher shows the robot portrait`, (await face.count()) === 1 && /\/protron\/robot-(160|384)\.webp$/.test(await face.locator('image.pt-photo').getAttribute('href') ?? '') && (await face.locator('.pt-ring').count()) === 1 && (await face.locator('.pt-mouth .pt-bar').count()) === 7);
+  ok(`${W} the launcher shows the robot portrait`, (await face.count()) === 1 && /\/protron\/robot-head-(160|384)\.webp$/.test(await face.locator('.pt-head image.pt-head-img').getAttribute('href') ?? '') && /\/protron\/robot-body-(160|384)\.webp$/.test(await face.locator('image.pt-body').getAttribute('href') ?? '') && (await face.locator('.pt-ring').count()) === 1 && (await face.locator('.pt-mouth .pt-bar').count()) === 7);
 
   await p.getByRole('button', { name: /Open Protron/ }).click();
   const panel = p.getByRole('dialog', { name: /Protron, your AI Live Business Manager/ });

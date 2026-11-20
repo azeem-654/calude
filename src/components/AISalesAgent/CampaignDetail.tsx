@@ -12,7 +12,8 @@
 import { askConfirm } from '../shared/ConfirmDialog';
 import { useCallback, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Ban, Bot, Pause, Play, Trash2 } from 'lucide-react';
+import { ArrowLeft, Ban, Pause, Play, Trash2 } from 'lucide-react';
+import { ProtronMark } from '../Protron/ProtronAvatar';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
 import { deleteCampaign, getCampaign, setStatus, takeSaveError } from '../../services/aiCampaigns';
@@ -212,7 +213,7 @@ function Missing({ id, onBack }: { id: string; onBack: () => void }) {
       <Header title="AI Sales Agent" subtitle="Campaign not found" />
       <div style={{ padding: 'clamp(16px, 3vw, 28px)' }}>
         <div style={{ ...card, padding: 'clamp(24px, 5vw, 40px)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, textAlign: 'center' }}>
-          <Bot size={26} color="#94a3b8" />
+          <ProtronMark size={26} color="#94a3b8" />
           <div>
             <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#0f172a' }}>No campaign called {id}</h2>
             <p style={{ margin: '5px 0 0', fontSize: 13, color: '#64748b', lineHeight: 1.6, maxWidth: 420 }}>

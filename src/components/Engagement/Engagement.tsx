@@ -18,11 +18,8 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import {
-  MessageSquare, Ticket as TicketIcon, FileText, Bot, BookOpen, Code2,
-  Settings as SettingsIcon, LayoutDashboard, Loader, RefreshCw, Users, Mic,
-  Inbox, CalendarCheck, Send, Monitor,
-} from 'lucide-react';
+import { MessageSquare, Ticket as TicketIcon, FileText, BookOpen, Code2, Settings as SettingsIcon, LayoutDashboard, Loader, RefreshCw, Users, Mic, Inbox, CalendarCheck, Send, Monitor } from 'lucide-react';
+import { ProtronMark, type IconLike } from '../Protron/ProtronAvatar';
 import { useApp } from '../../context/AppContext';
 import {
   listConversations, listTickets, mergeCaptured, applyContactChanges, overview,
@@ -47,7 +44,7 @@ const ACCENT = '#5b46e5';
 type Tab = 'overview' | 'inbox' | 'live' | 'tickets' | 'forms' | 'submissions' | 'agents'
   | 'knowledge' | 'widgets' | 'meetings' | 'voice' | 'delivery' | 'settings';
 
-const TABS: { id: Tab; label: string; icon: typeof Bot }[] = [
+const TABS: { id: Tab; label: string; icon: IconLike }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'inbox', label: 'Conversations', icon: MessageSquare },
   /* Next to conversations: somebody waiting to share their screen is a chat
@@ -56,7 +53,7 @@ const TABS: { id: Tab; label: string; icon: typeof Bot }[] = [
   { id: 'tickets', label: 'Tickets', icon: TicketIcon },
   { id: 'forms', label: 'Forms', icon: FileText },
   { id: 'submissions', label: 'Submissions', icon: Inbox },
-  { id: 'agents', label: 'AI agents', icon: Bot },
+  { id: 'agents', label: 'AI agents', icon: ProtronMark },
   { id: 'knowledge', label: 'Knowledge', icon: BookOpen },
   { id: 'widgets', label: 'Widgets', icon: Code2 },
   { id: 'meetings', label: 'Meetings', icon: CalendarCheck },

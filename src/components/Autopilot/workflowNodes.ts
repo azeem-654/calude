@@ -7,14 +7,12 @@
  * is touched. A customer who has learned that purple means "the AI does this"
  * has learned it everywhere or nowhere.
  */
-import {
-  Zap, Clock, GitBranch, Mail, MessageSquare, Tag, Check, User, Edit2, X,
-  Bot, Workflow, type LucideIcon,
-} from 'lucide-react';
+import { Zap, Clock, GitBranch, Mail, MessageSquare, Tag, Check, User, Edit2, X, Workflow } from 'lucide-react';
+import { ProtronMark, type IconLike } from '../Protron/ProtronFace';
 import type { WorkflowNode } from '../../services/autopilot';
 
 export interface NodeLook {
-  icon: LucideIcon;
+  icon: IconLike;
   /** The type's colour: the icon, the label, and the connector leaving it. */
   fg: string;
   /** The tint behind the icon. Deliberately pale — a wall of saturated cards
@@ -29,7 +27,7 @@ export const NODE_LOOK: Record<string, NodeLook> = {
   /* The one that needed a name of its own. A step the model writes is not the
      same promise as a step the product performs, and somebody deciding whether
      to trust a workflow needs to see which is which at a glance. */
-  ai:           { icon: Bot,            fg: '#7c3aed', bg: '#f5f3ff', label: 'AI Agent' },
+  ai:           { icon: ProtronMark,            fg: '#7c3aed', bg: '#f5f3ff', label: 'AI Agent' },
   wait:         { icon: Clock,          fg: '#db2777', bg: '#fdf2f8', label: 'Delay' },
   condition:    { icon: GitBranch,      fg: '#c2410c', bg: '#fff7ed', label: 'Condition' },
   send_email:   { icon: Mail,           fg: '#2563eb', bg: '#eff6ff', label: 'Email' },

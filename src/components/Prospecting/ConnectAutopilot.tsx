@@ -23,8 +23,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, ArrowRight, Bot, CheckCircle2, ChevronDown, Info, Loader, Lock, Plus, ShieldCheck, Sparkles, X, Zap,
+  ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, Info, Loader, Lock, Plus, ShieldCheck, Sparkles, X, Zap,
 } from 'lucide-react';
+import { ProtronMark } from '../Protron/ProtronAvatar';
 import { useApp } from '../../context/AppContext';
 import { fetchBoard, guardrailsFor, saveProject, type Portfolio, type Project } from '../../services/projects';
 import { fetchWorkflows, type ProjectWorkflow } from '../../services/autopilot';
@@ -211,7 +212,7 @@ export default function ConnectAutopilot({ search, searchId, projectId, onClose,
       onMouseDown={e => { if (e.target === e.currentTarget && !busy) onClose(); }}>
       <div style={{ width: 'min(720px, 100%)', maxHeight: 'calc(100vh - 24px)', overflow: 'auto', background: '#fff', borderRadius: 18, boxShadow: '0 24px 60px rgba(15,23,42,.3)', color: INK, fontFamily: 'inherit' }}>
         <header style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 18px', borderBottom: `1px solid ${LINE}`, position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
-          <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg,#6366f1,#ec4899)', color: '#fff' }}><Bot size={18} /></span>
+          <span style={{ width: 34, height: 34, borderRadius: 10, display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg,#6366f1,#ec4899)', color: '#fff' }}><ProtronMark size={30} /></span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>Connect to AI Autopilot</div>
             <div style={{ fontSize: 12, color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{def ? `Search: ${def.name}` : 'A saved AI Prospecting search becomes a lead source for a business workspace'}</div>

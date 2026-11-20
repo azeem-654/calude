@@ -95,6 +95,7 @@ interface Reply {
   /* Who is standing where in each workflow, and how many runs each has had. */
   stepState?: unknown;
   runCounts?: unknown;
+  watch?: unknown;
   outcome?: string;
   detail?: string;
   link?: unknown;
@@ -276,6 +277,8 @@ export interface ProjectWorkflow {
 export type StepStates = Record<string, Record<string, { waiting: number; done: number }>>;
 /** How many runs a workflow has, in flight and finished. */
 export type RunCounts = Record<string, { active: number; done: number }>;
+/** Per workflow, what Protron's hourly watch sees: its emails over 14 days and the last thing it flagged. */
+export type WatchStats = Record<string, { sent: number; failed: number; flagged?: { kind: string; at: string } }>;
 
 export async function fetchWorkflows(projectId: string): Promise<{
   workflows: ProjectWorkflow[];
@@ -283,12 +286,13 @@ export async function fetchWorkflows(projectId: string): Promise<{
      header says nothing is running. */
   stepState: StepStates;
   runCounts: RunCounts;
+  watch: WatchStats;
   error: string;
 }> {
   const r = await call('workflows', { projectId });
   if (!r.success) {
     return {
-      workflows: [], stepState: {}, runCounts: {},
+      workflows: [], stepState: {}, runCounts: {}, watch: {},
       error: String(r.error ?? 'Could not read this business workspace\'s workflows.'),
     };
   }
@@ -296,6 +300,7 @@ export async function fetchWorkflows(projectId: string): Promise<{
     workflows: (r.workflows ?? []) as ProjectWorkflow[],
     stepState: (r.stepState ?? {}) as StepStates,
     runCounts: (r.runCounts ?? {}) as RunCounts,
+    watch: (r.watch ?? {}) as WatchStats,
     error: '',
   };
 }

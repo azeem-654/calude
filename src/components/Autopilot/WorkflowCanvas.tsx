@@ -39,6 +39,8 @@ import { edgesOf, layout, lookFor, nodeDetail, type Edge } from './workflowNodes
 import { branchLabels } from './templateMeta';
 import { T, nodeTone } from './theme';
 import './workflowGlass.css';
+/* The AI step's icon is Protron (workflowNodes.ts names it without its stylesheet). */
+import '../Protron/protron.css';
 
 const INK = T.ink;
 const MUTED = T.muted;

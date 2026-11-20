@@ -25,6 +25,7 @@ import {
 } from '../lib/publishTarget';
 import { runAgentOnce } from '../lib/projectAgents';
 import { check as allowance, refusalBody } from '../lib/allowanceStore';
+import { WINDOW_DAYS as WATCH_WINDOW_DAYS } from '../lib/protronJudge';
 
 /** Kept in step with AIGuardrails in src/types/aiSalesAgent.ts. */
 const DEFAULT_GUARDRAILS = {
@@ -519,7 +520,34 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
       }
     }
 
-    return json({ success: true, workflows, stepState, runCounts });
+    /*
+     * What Protron's watch sees of each workflow (lib/protronWatch.ts): its
+     * emails over the watch's window, and the last thing it flagged. The
+     * "AI auto-optimisation" strip above each workflow shows these numbers —
+     * it must never show a monitor with nothing behind it. Both reads are
+     * on indexes (idx_delivery_source; the alerts table's primary key).
+     */
+    const watch: Record<string, { sent: number; failed: number; flagged?: { kind: string; at: string } }> = {};
+    if (workflows.length) {
+      const ids = workflows.map(w => String(w.id));
+      const marks = ids.map(() => '?').join(',');
+      const since = new Date(Date.now() - WATCH_WINDOW_DAYS * 86400000).toISOString();
+      const [sends, flags] = await Promise.all([
+        env.DB.prepare(
+          `SELECT source_id AS wf, SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS sent, SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
+             FROM crm_delivery_log WHERE account_id = ? AND source_id IN (${marks}) AND created_at > ? GROUP BY source_id`,
+        ).bind(accountId, ...ids, since).all<{ wf: string; sent: number; failed: number }>().catch(() => ({ results: [] as { wf: string; sent: number; failed: number }[] })),
+        env.DB.prepare(`SELECT source_id AS wf, kind, told_at FROM crm_protron_alerts WHERE account_id = ? AND source_id IN (${marks})`)
+          .bind(accountId, ...ids).all<{ wf: string; kind: string; told_at: string }>().catch(() => ({ results: [] as { wf: string; kind: string; told_at: string }[] })),
+      ]);
+      for (const r of sends.results ?? []) watch[String(r.wf)] = { sent: Number(r.sent) || 0, failed: Number(r.failed) || 0 };
+      for (const r of flags.results ?? []) {
+        const w = watch[String(r.wf)] ?? (watch[String(r.wf)] = { sent: 0, failed: 0 });
+        if (!w.flagged || r.told_at > w.flagged.at) w.flagged = { kind: r.kind, at: r.told_at };
+      }
+    }
+
+    return json({ success: true, workflows, stepState, runCounts, watch });
   }
 
   /**

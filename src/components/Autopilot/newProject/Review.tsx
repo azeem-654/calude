@@ -6,16 +6,17 @@
  * way a paragraph is not. Every number here is the length of a list the build
  * is about to walk.
  */
-import { Workflow, Bot, Clock, PackageCheck, Hand, Plug, ArrowRightLeft, Search } from 'lucide-react';
+import { Workflow, Clock, PackageCheck, Hand, Plug, ArrowRightLeft, Search } from 'lucide-react';
+import { ProtronMark, type IconLike } from '../../Protron/ProtronAvatar';
 import { finderSpecOf } from './contactFacts';
 import type { Blueprint } from '../../../services/projectIntake';
 import { REQUIREMENT_INFO } from '../../../services/projectSolutions';
 
 export default function Review({ bp }: { bp: Blueprint }) {
   const connected = bp.requirements.filter(r => REQUIREMENT_INFO[r].kind !== 'optional').map(r => REQUIREMENT_INFO[r].label);
-  const rows: { icon: typeof Workflow; label: string; value: string; list?: string[] }[] = [
+  const rows: { icon: IconLike; label: string; value: string; list?: string[] }[] = [
     { icon: Workflow, label: 'Workflows', value: String(bp.workflows.length), list: bp.workflows.map(w => w.name) },
-    { icon: Bot, label: 'AI agents', value: String(bp.agents.length), list: bp.agents.map(a => a.name) },
+    { icon: ProtronMark, label: 'AI agents', value: String(bp.agents.length), list: bp.agents.map(a => a.name) },
     { icon: Clock, label: 'Schedules', value: bp.schedules.length ? String(bp.schedules.length) : 'None', list: bp.schedules },
     { icon: PackageCheck, label: 'What you will get', value: String(bp.outputs.length), list: bp.outputs },
     { icon: Hand, label: 'What is yours to do', value: String(bp.manual.length + bp.setup.filter(s => s.by === 'you').length), list: [...bp.setup.filter(s => s.by === 'you').map(s => s.label), ...bp.manual] },

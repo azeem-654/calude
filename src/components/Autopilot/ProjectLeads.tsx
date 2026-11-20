@@ -35,6 +35,7 @@ import ConnectAutopilot from '../Prospecting/ConnectAutopilot';
 import { DailyChart, FinderCard, FinderIntro, FinderSetup, RotationPanel, useFinderOverview } from './ProjectProspects';
 import { CommandBox, SourceCard, useSources } from './ProspectSources';
 import LeadsList from './LeadsList';
+import AutoOptimiseAgent from './AutoOptimiseAgent';
 import './projectLeads.css';
 
 const card: React.CSSProperties = { background: T.panel, border: `1px solid ${T.line}`, borderRadius: 14, padding: 14, display: 'grid', gap: 10, minWidth: 0 };
@@ -144,6 +145,35 @@ export default function ProjectLeads({ project, focus }: { project: Project; foc
   return (
     <div style={{ display: 'grid', gap: 14, minWidth: 0 }} aria-label="Prospects">
       {(fin.error || src.error) && <div role="alert" style={{ ...card, color: T.bad, fontSize: 13 }}>{fin.error || src.error}</div>}
+
+      {/* ── 0 · Protron watching the prospecting (AutoOptimiseAgent.tsx): every fact is the finder's own. ── */}
+      {any && (() => {
+        const facts: string[] = [];
+        if (f) {
+          facts.push(`${f.today.added} of ${f.perDay} added today`, `${f.today.searches}/${f.limits.searches} searches`, `${f.today.reads}/${f.limits.reads} websites read`);
+          const rot = f.rotation ?? [];
+          const next = rot.find(r => r.state === 'next');
+          if (rot.length) facts.push(`${rot.filter(r => r.state === 'done').length} of ${rot.length} kinds-and-places searched`);
+          if (next && f.status === 'active') facts.push(`Next: ${next.trade} in ${next.place}`);
+          if (f.lastRunAt) facts.push(`Last step ${when(f.lastRunAt)}`);
+        }
+        const active = conns.filter(c => c.status === 'active').length;
+        if (active) facts.push(`${active} connected ${active === 1 ? 'search' : 'searches'} running`);
+        if (n('all') > 0) facts.push(`${Math.round((n('added') / n('all')) * 100)}% of businesses examined made it in`);
+        const exhausted = f?.status === 'exhausted';
+        return (
+          <AutoOptimiseAgent
+            testId="prospect-agent"
+            title="AI auto-optimisation of prospecting"
+            state={exhausted ? 'attention' : working > 0 ? 'monitoring' : 'paused'}
+            status={exhausted ? 'Needs you' : working > 0 ? 'Monitoring live' : 'Not watching while stopped'}
+            facts={facts}
+            watches={['Searches', 'Websites read', 'Duplicates & opt-outs', 'Weak matches', 'Where to search next']}
+            note="Every few minutes it takes the next step on the server, signed in or not: one more search or a few more websites read. It keeps only businesses with an address that passed its check, turns away duplicates, opt-outs and weak matches so no business is examined twice, and works through each kind of business and place in turn."
+            flagged={exhausted ? <>{f?.statusReason || 'The daily search has run out of new businesses.'} Widen it under “Add another lead source”.</> : undefined}
+          />
+        );
+      })()}
 
       {/* ── 1 · Where the leads come from ── */}
       {any ? (

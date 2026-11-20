@@ -7,7 +7,8 @@
  * Autopilot business workspace", so the two cannot disagree.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Bot, Loader, Plus } from 'lucide-react';
+import { Loader, Plus } from 'lucide-react';
+import { ProtronMark } from '../Protron/ProtronAvatar';
 import { useNavigate } from 'react-router-dom';
 import type { Contact } from '../../types';
 import type { ContactList } from '../../services/contactLists';
@@ -65,7 +66,7 @@ export default function SendToWorkspace({ people, from, label, createdBy, onClos
   return (
     <div className="cl-modal-back" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget && !busy) onClose(); }}>
       <div className="cl-modal" role="dialog" aria-modal="true" aria-label="Send to AI Autopilot" data-testid="cl-send-dialog">
-        <h2><Bot size={18} color="#4f46e5" /> Send to AI Autopilot</h2>
+        <h2><ProtronMark size={18} color="#4f46e5" /> Send to AI Autopilot</h2>
         <p>
           {label}: {people.length} {people.length === 1 ? 'contact' : 'contacts'}, {reach} of whom can be emailed.
           The business workspace you choose writes to them as part of its plan{cold ? ' — people who never asked to hear from you are proposed 20 at a time, and each batch waits for your approval' : ''}.
@@ -90,7 +91,7 @@ export default function SendToWorkspace({ people, from, label, createdBy, onClos
           <span style={{ flex: 1 }} />
           <button type="button" className="cl-btn" onClick={onClose} disabled={busy}>Cancel</button>
           <button type="button" className="cl-btn primary" onClick={() => void run()} disabled={busy || !chosen} data-testid="cl-send-go">
-            {busy ? <Loader size={14} className="spin" /> : <Bot size={14} />} {chosen ? `Send to “${chosen.name}”` : 'Send'}
+            {busy ? <Loader size={14} className="spin" /> : <ProtronMark size={14} />} {chosen ? `Send to “${chosen.name}”` : 'Send'}
           </button>
         </div>
       </div>

@@ -1,10 +1,8 @@
 import { askConfirm } from '../shared/ConfirmDialog';
 import { useState, useMemo, useEffect } from 'react';
 import AICampaignBadge from '../shared/AICampaignBadge';
-import {
-  Users, Plus, Search, Mail, Phone, Trash2, Edit2,
-  Filter, Download, Upload, Tag, X, Eye, Merge, Activity, UserCircle2, ShieldCheck, Bot,
-} from 'lucide-react';
+import { Users, Plus, Search, Mail, Phone, Trash2, Edit2, Filter, Download, Upload, Tag, X, Eye, Merge, Activity, UserCircle2, ShieldCheck } from 'lucide-react';
+import { ProtronMark } from '../Protron/ProtronAvatar';
 import { useNavigate } from 'react-router-dom';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
@@ -725,7 +723,7 @@ export default function Contacts() {
             </select>
             <button onClick={() => setSendFor('selected')} data-testid="cl-send-selected" title="Hand the ticked contacts to an AI Autopilot business workspace"
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: 'none', borderRadius: 9, background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-              <Bot size={12} /> Send to AI Autopilot
+              <ProtronMark size={12} /> Send to AI Autopilot
             </button>
             <button onClick={exportCSV} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #d5d8dd', borderRadius: 9, backgroundColor: 'white', color: '#17191c', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Download size={12} /> Export</button>
             <button onClick={bulkDelete} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid #fecaca', borderRadius: 9, backgroundColor: '#fef2f2', color: '#dc2626', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}><Trash2 size={12} /> Delete</button>

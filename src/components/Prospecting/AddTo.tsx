@@ -24,7 +24,8 @@
  *   its recipients are a fact about the past.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Bot, GitBranch, Loader, Mail, Plus, X } from 'lucide-react';
+import { GitBranch, Loader, Mail, Plus, X } from 'lucide-react';
+import { ProtronMark } from '../Protron/ProtronAvatar';
 import { useApp } from '../../context/AppContext';
 import { fetchBoard, type Project } from '../../services/projects';
 import { mailable, sendToWorkspace, workspaceOptions } from '../../services/sendToWorkspace';
@@ -39,7 +40,7 @@ import type { ListChoice, ProspectSearch } from './useProspectSearch';
 export type AddMode = 'workflow' | 'project' | 'campaign';
 
 const TITLE: Record<AddMode, string> = { workflow: 'Add to a workflow', project: 'Add to an AI Autopilot business workspace', campaign: 'Add to an email campaign' };
-const ICON = { workflow: GitBranch, project: Bot, campaign: Mail };
+const ICON = { workflow: GitBranch, project: ProtronMark, campaign: Mail };
 
 
 interface Option { id: string; name: string; note: string; ok: boolean }

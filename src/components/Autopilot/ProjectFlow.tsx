@@ -21,7 +21,8 @@
  * cannot be reached by a media query, which this codebase has now been caught
  * by three times.
  */
-import { Bot, FileText, Image, Mail, MessageSquare, Globe, Users, Clock } from 'lucide-react';
+import { FileText, Image, Mail, MessageSquare, Globe, Users, Clock } from 'lucide-react';
+import { ProtronMark, type IconLike } from '../Protron/ProtronAvatar';
 import type { AutopilotAction, ProjectDay } from '../../services/autopilot';
 
 const INK = '#17191c';
@@ -36,9 +37,9 @@ const ACCENT = '#5b46e5';
  * summaries are written by a model and would change under us, and a chart that
  * quietly stopped matching would show an idle day on a busy project.
  */
-const ALL_STAGES: { key: string; label: string; icon: typeof Bot; match: (a: AutopilotAction) => boolean; idle: string; channels?: string[] }[] = [
+const ALL_STAGES: { key: string; label: string; icon: IconLike; match: (a: AutopilotAction) => boolean; idle: string; channels?: string[] }[] = [
   {
-    key: 'think', label: 'Reads the business', icon: Bot,
+    key: 'think', label: 'Reads the business', icon: ProtronMark,
     match: a => a.kind === 'plan' || a.kind === 'observe',
     idle: 'Plans once a day.',
   },

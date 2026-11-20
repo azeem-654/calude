@@ -36,11 +36,8 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  ArrowLeft, ArrowRight, Check, X, Loader, Sparkles, Mic, Square, Paperclip, Globe, Target, Repeat,
-  Image as ImageIcon, Calendar, Store, LifeBuoy, ClipboardList, Building2, FileText, RefreshCw, Bot,
-  Workflow, ShieldCheck, Wand2, PenLine, CircleDashed,
-} from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, X, Loader, Sparkles, Mic, Square, Paperclip, Globe, Target, Repeat, Image as ImageIcon, Calendar, Store, LifeBuoy, ClipboardList, Building2, FileText, RefreshCw, Workflow, ShieldCheck, Wand2, PenLine, CircleDashed } from 'lucide-react';
+import { ProtronMark } from '../Protron/ProtronAvatar';
 import { appHref } from '../../services/hosts';
 import { featureReady } from '../../services/features';
 import {
@@ -455,7 +452,7 @@ export default function SolutionWizard({ onClose, initialPick = '', inline = fal
 
                 <div className="sw-sol-grid">
                   <section>
-                    <h3><Bot size={15} /> AI agents</h3>
+                    <h3><ProtronMark size={15} /> AI agents</h3>
                     <ul className="sw-list">{(bp.agents.length ? bp.agents : [{ name: 'AI Autopilot', role: 'Plans and runs the business workspace', workflow: '' }]).slice(0, 5).map(a => <li key={`${a.name}-${a.workflow}`}><b>{a.name}</b> <span>{a.role}</span></li>)}</ul>
                   </section>
                   <section>

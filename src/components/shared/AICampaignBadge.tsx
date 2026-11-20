@@ -9,7 +9,7 @@
  * nobody can look up.
  */
 import { useNavigate } from 'react-router-dom';
-import { Bot } from 'lucide-react';
+import { ProtronMark } from '../Protron/ProtronAvatar';
 import { getCampaign } from '../../services/aiCampaigns';
 
 interface Props {
@@ -42,7 +42,7 @@ export default function AICampaignBadge({ campaignId, size = 'full' }: Props) {
         fontSize: 10.5, fontWeight: 600, fontFamily: 'inherit',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>
-      <Bot size={10} style={{ flexShrink: 0 }} />
+      <ProtronMark size={10} style={{ flexShrink: 0 }} />
       {label}
       {!campaign && ' · deleted'}
     </button>

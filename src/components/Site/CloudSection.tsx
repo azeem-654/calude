@@ -11,12 +11,13 @@
  * product breaks. The in-app cloud badge proves the same claim live, from the
  * cron's own last run.
  */
-import { Bell, Bot, Cloud, Inbox, Laptop, Mail, Search, Star, Workflow } from 'lucide-react';
+import { Bell, Cloud, Inbox, Laptop, Mail, Search, Star, Workflow } from 'lucide-react';
+import { ProtronMark } from '../Protron/ProtronAvatar';
 import { useReveal } from './useReveal';
 import { featureReady } from '../../services/features';
 
 const RUNS = [
-  { icon: Bot, label: 'AI Autopilot Business Workspaces', where: 'plan and act on their own' },
+  { icon: ProtronMark, label: 'AI Autopilot Business Workspaces', where: 'plan and act on their own' },
   { icon: Workflow, label: 'Workflows', where: 'every step, on time' },
   { icon: Mail, label: 'Follow-ups', where: 'emails and texts go out' },
   { icon: Inbox, label: 'Inbox replies', where: 'leads answered' },

@@ -5,7 +5,10 @@
  * improve it.
  *
  * ── What it measures, and why only that ──
- * Sends come from `crm_delivery_log`, per campaign or sequence (`source_id`),
+ * Sends come from `crm_delivery_log`, per campaign, sequence or AI Autopilot
+ * workflow (`source` automation — added 2026-11-20, when the owner asked for
+ * the watch to be shown above each workflow; it had been skipping them) by
+ * `source_id`,
  * over the last 14 days. Replies are only known per workspace: the inbox tick
  * (replyTick.ts) records each real reply in `crm_reply_seen` without saying
  * which campaign it answered. So:
@@ -53,7 +56,7 @@ export async function runProtronWatch(env: Env): Promise<WatchReport> {
               SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS sent,
               SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
          FROM crm_delivery_log
-        WHERE channel = 'email' AND source IN ('sequence', 'campaign') AND source_id != '' AND created_at > ?
+        WHERE channel = 'email' AND source IN ('sequence', 'campaign', 'automation') AND source_id != '' AND created_at > ?
         GROUP BY account_id, source_id`,
     ).bind(since).all<SourceRow>();
     const rows = results ?? [];

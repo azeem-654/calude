@@ -29,13 +29,8 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { FOUNDER, SUPPORT_EMAIL } from './company';
-import {
-  ArrowRight, ArrowUpRight, Check, Sparkles, Send, MousePointerClick, Users,
-  BarChart3, Building2, Lock, Palette, ShieldCheck, Mail, MessageSquare,
-  Image as ImageIcon, FileText, LayoutTemplate, Wand2, Globe, Search, Rss,
-  PlaySquare, Mic, GitBranch, PenLine, Bot, ClipboardList, Calendar, KeyRound, Eye,
-  Workflow, CalendarCheck, Thermometer, Home, Stethoscope, ShoppingBag, LayoutDashboard,
-} from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Check, Sparkles, Send, MousePointerClick, Users, BarChart3, Building2, Lock, Palette, ShieldCheck, Mail, MessageSquare, Image as ImageIcon, FileText, LayoutTemplate, Wand2, Globe, Search, Rss, PlaySquare, Mic, GitBranch, PenLine, ClipboardList, Calendar, KeyRound, Eye, Workflow, CalendarCheck, Thermometer, Home, Stethoscope, ShoppingBag, LayoutDashboard } from 'lucide-react';
+import { ProtronMark, type IconLike } from '../Protron/ProtronAvatar';
 import { LogoMark } from '../shared/Logo';
 import { appHref, isCrossOrigin } from '../../services/hosts';
 import { featureReady } from '../../services/features';
@@ -235,8 +230,8 @@ const CHAIN = [
 
 /* ── What it actually does, in place of testimonials ─────────────────────── */
 
-const CAPABILITIES: { group: string; icon: typeof Send; items: string[] }[] = [
-  { group: 'Automate', icon: Bot, items: ['AI Autopilot Business Workspaces', `${TEMPLATES.length} workflow templates`, 'Branching workflows', 'Scheduled AI agents', 'Voice messages, written out'] },
+const CAPABILITIES: { group: string; icon: IconLike; items: string[] }[] = [
+  { group: 'Automate', icon: ProtronMark, items: ['AI Autopilot Business Workspaces', `${TEMPLATES.length} workflow templates`, 'Branching workflows', 'Scheduled AI agents', 'Voice messages, written out'] },
   {
     group: 'Reach', icon: Send,
     /* Prospect search is held back on the live site (services/features.ts). A
@@ -678,7 +673,7 @@ export default function SiteHome() {
 
         <div className="dc-chain">
           <div className="dc-chain-node dc-chain-source reveal" ref={source}>
-            <span className="dc-tile-icon"><Bot size={16} /></span>
+            <span className="dc-tile-icon"><ProtronMark size={16} /></span>
             <b>An agent reads</b>
             <small className="dc-chain-sources">
               {SOURCES.map(x => <span key={x.label}><x.icon size={11} /> {x.label}</span>)}

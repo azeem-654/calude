@@ -1,0 +1,50 @@
+/* Protron's AI auto-optimisation strip (AutoOptimiseAgent.tsx).
+   Every animation sits inside `prefers-reduced-motion: no-preference`. */
+.aoa {
+  position: relative; overflow: hidden; display: flex; gap: 11px; align-items: flex-start; min-width: 0;
+  padding: 10px 12px; border-radius: 12px; border: 1px solid #dcd8ff;
+  background: linear-gradient(110deg, #f6f5ff 0%, #eef6ff 60%, #f3fbff 100%);
+}
+.aoa[data-state="paused"] { background: #f7f8fa; border-color: #e6e9f0; }
+.aoa[data-state="attention"] { background: linear-gradient(110deg, #fffbeb, #fff7ed); border-color: #fcd9a8; }
+.aoa-face { flex-shrink: 0; width: 38px; height: 38px; border-radius: 50%; box-shadow: 0 2px 10px rgba(91, 70, 229, .25); }
+.aoa[data-state="paused"] .aoa-face { filter: grayscale(1); opacity: .6; box-shadow: none; }
+.aoa-body { display: grid; gap: 5px; min-width: 0; flex: 1; }
+.aoa-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.aoa-title { font-size: 12.5px; font-weight: 800; color: #17191c; letter-spacing: .01em; }
+.aoa-pill {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 800; background: #e9f9ef; color: #15803d;
+}
+.aoa[data-state="paused"] .aoa-pill { background: #eef0f3; color: #6b7280; }
+.aoa[data-state="attention"] .aoa-pill { background: #fef3c7; color: #b45309; }
+.aoa-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.aoa-facts { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; font-weight: 650; color: #374151; }
+.aoa-facts span { white-space: nowrap; }
+.aoa-watch { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.aoa-watch-label { font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #6b7280; margin-right: 2px; }
+.aoa-chip {
+  font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+  background: rgba(255, 255, 255, .8); border: 1px solid #e0ddff; color: #4c3fd1;
+}
+.aoa[data-state="paused"] .aoa-chip { color: #6b7280; border-color: #e6e9f0; }
+.aoa-note { margin: 0; font-size: 11px; line-height: 1.5; color: #6b7280; }
+.aoa-flag { font-size: 11.5px; line-height: 1.5; color: #92400e; }
+.aoa-flag a, .aoa-flag button { color: #5b46e5; font-weight: 700; }
+.aoa-scan { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: linear-gradient(90deg, transparent, #7c6cf5, #36d9ff, transparent); background-size: 40% 100%; background-repeat: no-repeat; opacity: .7; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .aoa:not([data-state="paused"]) .aoa-dot { animation: aoa-pulse 1.6s ease-in-out infinite; }
+  .aoa-scan { animation: aoa-scan 3.2s linear infinite; }
+  /* The chips light one after another: each takes its turn of the cycle. */
+  .aoa:not([data-state="paused"]) .aoa-chip {
+    animation: aoa-chip calc(var(--n) * 1.4s) ease-in-out infinite;
+    animation-delay: calc(var(--i) * 1.4s);
+  }
+}
+@keyframes aoa-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, .5); } 60% { box-shadow: 0 0 0 5px rgba(22, 163, 74, 0); } }
+@keyframes aoa-scan { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+@keyframes aoa-chip {
+  0%, 30%, 100% { background: rgba(255, 255, 255, .8); border-color: #e0ddff; }
+  8%, 20% { background: #5b46e5; border-color: #5b46e5; color: #fff; }
+}

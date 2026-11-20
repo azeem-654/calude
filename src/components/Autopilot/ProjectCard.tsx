@@ -31,17 +31,15 @@ import ProjectVideos from './ProjectVideos';
 import { featureReady } from '../../services/features';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Workflow as WorkflowIcon, Bot, BarChart3, Settings as SettingsIcon,
-  Calendar, MoreHorizontal, Plus, Loader, Sparkles, Trash2, HelpCircle,
-  ChevronDown, ChevronRight, ExternalLink, AlertTriangle, CheckCircle2,
-  Image as ImageIcon, Activity, Clock, LayoutDashboard, Target,
-} from 'lucide-react';
+import { Workflow as WorkflowIcon, BarChart3, Settings as SettingsIcon, Calendar, MoreHorizontal, Plus, Loader, Sparkles, Trash2, HelpCircle, ChevronDown, ChevronRight, ExternalLink, AlertTriangle, CheckCircle2, Image as ImageIcon, Activity, Clock, LayoutDashboard, Target } from 'lucide-react';
+import { ProtronMark, type IconLike } from '../Protron/ProtronAvatar';
 import {
   fetchWorkflows, setWorkflowStatus, deleteWorkflow, buildWorkflow, saveWorkflow,
   fetchProjectDay, approveAction, rejectAction, fetchAgentRuns,
-  type ProjectWorkflow, type ProjectDay, type AgentRun, type StepStates, type RunCounts,
+  type ProjectWorkflow, type ProjectDay, type AgentRun, type StepStates, type RunCounts, type WatchStats,
 } from '../../services/autopilot';
+import AutoOptimiseAgent from './AutoOptimiseAgent';
+import { openProtron } from '../../services/protron/open';
 import { KIND_LABEL, type Portfolio, type Project } from '../../services/projects';
 import { useApp } from '../../context/AppContext';
 import WorkflowCanvas from './WorkflowCanvas';
@@ -105,11 +103,11 @@ type Tab = 'overview' | 'prospects' | 'agents' | 'activity' | 'assets' | 'schedu
  * it run next?" is asked often enough that hunting for the trigger on each
  * canvas was a chore.
  */
-const TABS: { id: Tab; label: string; icon: typeof Bot }[] = [
+const TABS: { id: Tab; label: string; icon: IconLike }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   /* Beside the workflows: the people the project is finding, day by day. */
   { id: 'prospects', label: 'Prospects', icon: Target },
-  { id: 'agents', label: 'AI Agents', icon: Bot },
+  { id: 'agents', label: 'AI Agents', icon: ProtronMark },
   { id: 'activity', label: 'Activity', icon: Activity },
   { id: 'assets', label: 'Assets', icon: ImageIcon },
   { id: 'schedule', label: 'Schedule', icon: Clock },
@@ -206,6 +204,8 @@ export default function ProjectCard({
      step as busy while the header says nothing is running. */
   const [stepState, setStepState] = useState<StepStates>({});
   const [runCounts, setRunCounts] = useState<RunCounts>({});
+  /* What Protron's hourly watch sees of each workflow (sends, failures, its last flag). */
+  const [watch, setWatch] = useState<WatchStats>({});
   const [day, setDay] = useState<ProjectDay | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [menu, setMenu] = useState(false);
@@ -242,6 +242,7 @@ export default function ProjectCard({
     setFlows(w.workflows);
     setStepState(w.stepState);
     setRunCounts(w.runCounts);
+    if (!w.error) setWatch(w.watch);
     if (d.day) setDay(d.day);
     /* A failed read leaves the last good list rather than emptying the tab:
        "nothing yet" and "could not ask" look identical in an empty list, and
@@ -536,6 +537,58 @@ export default function ProjectCard({
    * one-line rows that sent you to that tab, which was one click between a
    * customer and the thing their business workspace actually runs.
    */
+  /*
+   * The AI auto-optimisation strip above each workflow (AutoOptimiseAgent.tsx).
+   * Its rules are protronJudge.ts's WATCH — 30 attempts with 10 % failed;
+   * 40 sent with replies under 1 % (replies are only known per workspace) —
+   * and the daily re-plan. Change them there and here together.
+   */
+  const workflowAgent = (f: ProjectWorkflow, on: boolean) => {
+    const w = watch[f.id] ?? { sent: 0, failed: 0 };
+    const rc = runCounts[f.id] ?? { active: 0, done: 0 };
+    const nodes = f.nodes as { type?: string; config?: Record<string, unknown> }[];
+    const sends = nodes.some(n => n.type === 'send_email' || n.type === 'send_sms');
+    /* A lead source's workflow: what is watched is the finding, counted on the Prospects tab. */
+    const finds = nodes.some(n => n.config?.produces === 'prospects');
+    const attempts = w.sent + w.failed;
+    const recent = w.flagged && Date.now() - Date.parse(w.flagged.at) < 7 * 86400000 ? w.flagged : undefined;
+    const monitoring = on && live;
+    const facts: string[] = [];
+    if (attempts > 0) facts.push(`${w.sent} sent in 14 days`, w.failed ? `${w.failed} failed (${Math.round((w.failed / attempts) * 100)}%)` : 'none failed');
+    if (rc.active > 0) facts.push(`${rc.active} in it now`);
+    if (rc.done > 0) facts.push(`${rc.done} finished`);
+    if (sends && attempts < 30) facts.push(attempts ? `${attempts} of the 30 sends it needs to judge` : 'It judges sends from the 30th');
+    if (project.lastPlannedAt) facts.push(`Business re-read ${new Date(project.lastPlannedAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`);
+    const flagText = recent?.kind === 'failing_sends' ? 'too many of its sends are failing' : 'replies are under 1%';
+    return (
+      <div style={{ padding: '0 12px 10px' }}>
+        <AutoOptimiseAgent
+          testId={`wf-agent-${f.id}`}
+          title="AI auto-optimisation"
+          state={!monitoring ? 'paused' : recent ? 'attention' : 'monitoring'}
+          status={!monitoring ? (on ? 'Paused with the business workspace' : 'Not watching while it is off') : recent ? 'Needs you' : 'Monitoring live'}
+          facts={facts}
+          watches={finds ? ['Searches', 'Websites read', 'Duplicates & opt-outs', 'Weak matches']
+            : sends ? ['Sends', 'Failed sends', 'Replies', 'Who is stuck at a step'] : ['Who is in it', 'Who is stuck at a step', 'What the business needs next']}
+          note={finds
+            ? 'Every few minutes it takes the next step on the server: a search or a few websites read, keeping only businesses with an address that passed its check. Its numbers are on the Prospects tab.'
+            : sends
+            ? 'Protron checks it every hour. If 10% or more of its sends fail, or replies fall under 1%, it proposes a fix and waits for your approval — and Autopilot re-reads the whole business every day.'
+            : 'Autopilot re-reads the whole business every day and adds what is missing — a stalled deal, a follow-up nobody sent — each waiting for your approval.'}
+          flagged={recent && monitoring ? (
+            <>Flagged {new Date(recent.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}: {flagText}.{' '}
+              <button type="button" style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit' }}
+                onClick={() => openProtron(recent.kind === 'failing_sends'
+                  ? `Too many emails from my workflow “${f.name}” are failing to send. Find out why and show me the fix, and I'll approve it.`
+                  : `Replies on my workflow “${f.name}” are lower than expected. Show me what you would change to get more responses, and I'll approve it.`)}>
+                Review it with Protron
+              </button></>
+          ) : undefined}
+        />
+      </div>
+    );
+  };
+
   const workflowsPanel = (
     <div>
             <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 12 }}>
@@ -746,6 +799,8 @@ export default function ProjectCard({
                           <Trash2 size={11} />
                         </button>
                       </header>
+
+                      {workflowAgent(f, on)}
 
                       {isOpen && (f.nodes as { config?: Record<string, unknown> }[]).some(n => n.config?.produces === 'prospects' && n.config?.searchId) && (
                         /* A prospecting source is drawn as what it does — search, verify,
@@ -982,7 +1037,7 @@ export default function ProjectCard({
                               width: 24, height: 24, borderRadius: 8, flexShrink: 0,
                               background: nodeTone('ai').bg, color: nodeTone('ai').fg,
                               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                            }}><Bot size={12} /></span>
+                            }}><ProtronMark size={12} /></span>
                             <span style={{ minWidth: 0, flex: '1 1 140px' }}>
                               <span style={{ display: 'block', fontSize: 12.5, fontWeight: 700, color: INK }}>
                                 {node.label || 'AI agent'}
@@ -1324,7 +1379,7 @@ export default function ProjectCard({
               {runs.length > 0 && (
                 <div>
                   <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 800, color: INK, display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <Bot size={13} color={T.violet} /> What the agents made
+                    <ProtronMark size={13} color={T.violet} /> What the agents made
                   </h4>
                   <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: 7 }}>
                     {runs.slice(0, 12).map(r => (

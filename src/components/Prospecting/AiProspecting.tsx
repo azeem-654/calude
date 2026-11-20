@@ -39,11 +39,8 @@
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  AlertTriangle, Bookmark, Bot, CheckCircle2, Columns3, Copy, Download, Eye, EyeOff, Filter, Folder, GitBranch,
-  Globe, Lightbulb, Loader, Mail, MailCheck, MoreHorizontal, PanelLeft, Pin, PlayCircle, Plus, RotateCcw, Search, Send,
-  ShieldCheck, Sparkles, Target, Users, X, Workflow,
-} from 'lucide-react';
+import { AlertTriangle, Bookmark, CheckCircle2, Columns3, Copy, Download, Eye, EyeOff, Filter, Folder, GitBranch, Globe, Lightbulb, Loader, Mail, MailCheck, MoreHorizontal, PanelLeft, Pin, PlayCircle, Plus, RotateCcw, Search, Send, ShieldCheck, Sparkles, Target, Users, X, Workflow } from 'lucide-react';
+import { ProtronMark } from '../Protron/ProtronAvatar';
 import { useApp } from '../../context/AppContext';
 import { useProspectSearch, outcomeText, AUTO_READ, type ImportOutcome } from './useProspectSearch';
 import { Attribution, ImportPanel, Notice, SearchProblems } from './ProspectParts';
@@ -74,7 +71,7 @@ function ListShortcuts({ list, go }: { list: ContactList; go: (to: string) => vo
   return (
     <div className="aip-shortcuts">
       <button type="button" className="aip-chip" data-accent="true" onClick={() => go(`/contacts?list=${id}`)}><Users size={12} /> Open the list in Contacts</button>
-      <button type="button" className="aip-chip" onClick={() => go(`/contacts?list=${id}&send=1`)}><Bot size={12} /> Send it to AI Autopilot</button>
+      <button type="button" className="aip-chip" onClick={() => go(`/contacts?list=${id}&send=1`)}><ProtronMark size={12} /> Send it to AI Autopilot</button>
       <button type="button" className="aip-chip" onClick={() => go(`/marketing?new=campaign&list=${id}`)}><Send size={12} /> Send a campaign to this list</button>
     </div>
   );
@@ -812,7 +809,7 @@ export default function AiProspecting() {
             <b>{s.picked.size} ticked</b>
             <button type="button" className="aip-chip" onClick={openSave}><Bookmark size={12} /> Save to a contact list</button>
             <button type="button" className="aip-chip" onClick={() => openAdd('workflow')}><GitBranch size={12} /> Add to a workflow</button>
-            <button type="button" className="aip-chip" onClick={() => openAdd('project')}><Bot size={12} /> Add to AI Autopilot</button>
+            <button type="button" className="aip-chip" onClick={() => openAdd('project')}><ProtronMark size={12} /> Add to AI Autopilot</button>
             <button type="button" className="aip-chip" onClick={() => openAdd('campaign')}><Send size={12} /> Add to an email campaign</button>
             <button type="button" className="aip-chip" onClick={() => exportCsv(s.picked)}><Download size={12} /> Export ticked</button>
             <button type="button" className="aip-icon-btn" aria-label="Untick all" title="Untick all" onClick={() => { s.pickAll(false); setAddMode(null); }}><X size={13} /></button>

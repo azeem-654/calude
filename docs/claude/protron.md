@@ -544,3 +544,28 @@ Protron is unchanged.
   page scroll to the newest item, and the end of the interview replaces the
   composer (which left an empty box) with the **finish card** — an animated
   "Create my smart optimized prompt" button calling `write()`.
+
+### The 2026-11-20 brief — a head that moves, Protron for every bot
+
+- **The head moves, not the frame.** The portrait is two layers cut from the
+  same picture: `public/protron/robot-body-*.webp` (head painted out with the
+  backdrop's gradient, row by row — inpainting smeared the neck into the
+  dome) and `robot-head-*.webp` (cut along a hand-placed outline; the outline
+  is `OUTLINE` in ProtronFace.tsx, in viewBox units). The head turns on its
+  neck (`NECK`): yaw is a slide + narrowing + slight shear with the far side
+  shaded (SVG content gets no 3D transforms), plus nod and tilt. Poses are
+  per state (`POSES`/`HOLD`), on irregular timers; the ear light blinks
+  (`data-blink`); the picture breathes. Ear and voice bars sit on the head
+  layer. The old `robot-160/384.webp` stay for the site's `<img>` uses.
+- **ProtronFace.tsx vs ProtronAvatar.tsx.** The component lives in
+  ProtronFace (no CSS import) so `workflowNodes.ts` can name `ProtronMark`
+  and still load under node (`test:nodes`, templates test); screens import
+  ProtronAvatar, which adds protron.css. WorkflowCanvas imports the CSS too.
+- **Every AI bot is Protron.** `ProtronMark` takes lucide's props, so each
+  lucide `Bot` (icon maps, buttons, the workflow AI step, source tags, the
+  site's Protron section) became it; icon slots are typed `IconLike`.
+  `AutopilotBot` renders Protron (`awake={false}`: still and grey; `busy`:
+  working). Left alone on purpose: 🤖 in customer page/funnel templates
+  (their own sites, not Protron) and in a text-only toast.
+- **Campaign watch covers workflows.** `protronWatch` now reads `source`
+  `automation` too — AI Autopilot workflow emails were never judged.

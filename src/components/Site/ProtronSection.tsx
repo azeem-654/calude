@@ -23,15 +23,13 @@
  * the site must not pull the panel's code in.
  */
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import {
-  Activity, AudioLines, CalendarCheck, Check, ListChecks, MessageSquare, MonitorSmartphone,
-  MousePointer2, ShieldCheck, Sparkles, Bot, CalendarRange, ArrowRight,
-} from 'lucide-react';
+import { Activity, AudioLines, CalendarCheck, Check, ListChecks, MessageSquare, MonitorSmartphone, MousePointer2, ShieldCheck, Sparkles, CalendarRange, ArrowRight } from 'lucide-react';
+import { ProtronMark, type IconLike } from '../Protron/ProtronAvatar';
 import { useReveal, useRevealGroup } from './useReveal';
 import { motionReduced } from '../../services/motion';
 import './protronSection.css';
 
-type Point = { icon: typeof Bot; title: string; body: string };
+type Point = { icon: IconLike; title: string; body: string };
 
 function points(agent: boolean): Point[] {
   const watch: Point = {
@@ -89,7 +87,7 @@ function Stage({ agent }: { agent: boolean }) {
       <div className="ptn-portrait">
         <span className="ptn-ring" />
         <img src="/protron/robot-384.webp" alt="" width={384} height={384} loading="lazy" decoding="async" />
-        <span className="ptn-tag"><Bot size={13} /> AI Live Business Manager</span>
+        <span className="ptn-tag"><ProtronMark size={13} /> AI Live Business Manager</span>
       </div>
       <div className="ptn-window">
         <div className="ptn-win-h">
@@ -153,13 +151,13 @@ export function ProtronSection({ agent }: { agent: boolean }) {
   );
 }
 
-type News = { area: string; icon: typeof Bot; title: string; body: string; href?: string };
+type News = { area: string; icon: IconLike; title: string; body: string; href?: string };
 
 function news(agent: boolean): News[] {
   return [
     agent
-      ? { area: 'Protron', icon: Bot, title: 'Protron, your AI Live Business Manager', body: 'On every screen: talk to it live, approve the plan it proposes, and watch it build in AI Autopilot.', href: '#protron' }
-      : { area: 'Protron', icon: Bot, title: 'Chat with Protron', body: 'Start a business workspace in a chat with Protron — typed, or as a voice message. It asks a few questions and writes the plan.', href: '#protron' },
+      ? { area: 'Protron', icon: ProtronMark, title: 'Protron, your AI Live Business Manager', body: 'On every screen: talk to it live, approve the plan it proposes, and watch it build in AI Autopilot.', href: '#protron' }
+      : { area: 'Protron', icon: ProtronMark, title: 'Chat with Protron', body: 'Start a business workspace in a chat with Protron — typed, or as a voice message. It asks a few questions and writes the plan.', href: '#protron' },
     { area: 'AI Autopilot', icon: CalendarRange, title: '12-month marketing plans', body: 'AI Autopilot writes a 12-month plan for each business workspace, a theme for every month, and the dashboard lists each one.' },
     { area: 'Campaigns', icon: Activity, title: 'Campaign watch', body: agent
       ? 'Running campaigns are checked every hour. Failing sends or very low replies raise a notice and an email, and Protron offers to fix it.'
