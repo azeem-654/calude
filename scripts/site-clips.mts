@@ -1777,7 +1777,7 @@ const PLATFORM: Record<string, Recipe> = {
       await h.click(p.locator('button[aria-label="Close"], button:has(svg.lucide-x)').first()).catch(async () => { await p.keyboard.press('Escape'); });
       await h.pause(1000);
       await h.say('An automation from one sentence', 'Describe it — it builds the trigger, waits, emails and tags');
-      await h.click(btn(p, /^Automations$/));
+      await h.click(p.locator('button, [role=tab], a').filter({ hasText: /^\s*Automations\s*$/ }).locator('visible=true').first());
       await h.pause(1000);
       await h.click(p.getByRole('button', { name: /New Automation/ }).first());
       await h.pause(900);

@@ -12,7 +12,7 @@ import { normaliseSequences } from '../../services/marketingShape';
 import type { Contact } from '../../types';
 import SourceTag from '../shared/SourceTag';
 import { loadEnrollments } from '../../services/contactEmail';
-import { writeCampaign } from '../../services/aiWrite';
+import { rewriteEmail, writeCampaign } from '../../services/aiWrite';
 
 // ── Step type config ──────────────────────────────────────────────────────────
 const STEP_TYPES: { id: StepType; label: string; icon: React.ReactElement; color: string; bg: string }[] = [
@@ -266,6 +266,23 @@ function AIGeneratorForm({ onGenerate, onClose }: {
 
 // ── Email / Body editor for steps ─────────────────────────────────────────────
 function BodyEditor({ value, onChange, contacts, compact }: { value: string; onChange: (v: string) => void; contacts: Contact[]; compact?: boolean }) {
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const rewrite = async (instruction: string) => {
+    setAiBusy(true); setAiError('');
+    const r = await rewriteEmail('', value, instruction);
+    setAiBusy(false);
+    if (!r.ok || !r.body.trim()) { setAiError(r.error || 'The AI gave nothing back — the email is unchanged.'); return; }
+    /* The writer answers in HTML; this box holds plain text. */
+    const doc = new DOMParser().parseFromString(r.body.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n'), 'text/html');
+    const text = (doc.body.textContent ?? '').replace(/\n{3,}/g, '\n\n').trim();
+    /* An already-short email asked to be shorter comes back the same: say so, not a silent close. */
+    if (text.replace(/\s+/g, ' ') === value.trim().replace(/\s+/g, ' ')) { setAiError(`The AI left it as it was for “${instruction}” — try another.`); return; }
+    if (ref.current) ref.current.innerText = text;
+    onChange(text);
+    setAiOpen(false);
+  };
   const ref = useRef<HTMLDivElement>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(contacts[0] ?? null);
@@ -308,10 +325,26 @@ function BodyEditor({ value, onChange, contacts, compact }: { value: string; onC
       <div ref={ref} contentEditable suppressContentEditableWarning
         onInput={() => onChange(ref.current?.innerText ?? '')}
         style={{ minHeight: compact ? 120 : 180, padding: '10px 12px', outline: 'none', fontSize: 13, lineHeight: 1.7, color: '#374151', fontFamily: 'inherit', whiteSpace: 'pre-wrap' }} />
+      {aiOpen && (
+        <div style={{ borderTop: '1px solid #f1f5f9', padding: '6px 10px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, backgroundColor: '#f5f3ff' }}>
+          <span style={{ fontSize: 10.5, color: '#6d28d9', fontWeight: 700 }}>Ask the AI to</span>
+          {['make it shorter', 'make it warmer', 'make it more direct', 'fix the grammar and spelling'].map(ins => (
+            <button key={ins} onClick={() => void rewrite(ins)} disabled={aiBusy}
+              style={{ padding: '3px 9px', borderRadius: 999, border: '1px solid #c4b5fd', backgroundColor: 'white', color: '#5b21b6', fontSize: 11, fontWeight: 600, cursor: aiBusy ? 'wait' : 'pointer' }}>{ins}</button>
+          ))}
+        </div>
+      )}
+      {aiError && <div style={{ padding: '4px 10px', fontSize: 11, color: '#b42318', backgroundColor: '#fdf3f3' }}>{aiError}</div>}
       {/* Write with AI bar */}
       <div style={{ borderTop: '1px solid #f1f5f9', padding: '6px 10px', display: 'flex', alignItems: 'center', gap: 8, backgroundColor: '#fafafa' }}>
-        <button style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid #c4b5fd', borderRadius: 6, backgroundColor: '#ede9fe', color: '#6d28d9', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
-          <Wand2 size={11} /> Write with AI
+        {/* Until 2026-11-20 this button had no handler at all. It now rewrites
+            what is in the box through the campaign writer's own call
+            (aiWrite.ts rewriteEmail); with nothing written there is nothing
+            to rewrite, and it says so rather than inventing an email. */}
+        <button onClick={() => setAiOpen(o => !o)} disabled={!value.trim() || aiBusy}
+          title={value.trim() ? 'Ask the AI to rewrite this email' : 'Write a line first — the AI rewrites what is here'}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', border: '1px solid #c4b5fd', borderRadius: 6, backgroundColor: '#ede9fe', color: '#6d28d9', fontSize: 11, fontWeight: 700, cursor: value.trim() ? 'pointer' : 'not-allowed', opacity: value.trim() ? 1 : 0.55 }}>
+          <Wand2 size={11} /> {aiBusy ? 'Rewriting…' : 'Write with AI'}
         </button>
         <div style={{ width: 1, height: 14, backgroundColor: '#e2e8f0' }} />
         {contacts.length > 0 && (
