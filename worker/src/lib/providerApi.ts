@@ -25,11 +25,12 @@ export interface ProviderCreds { name: string; key: string; secret: string; doma
 export interface ProviderResult { ok: boolean; status: number; error: string; id: string }
 
 /** The providers this file can send through; Settings offers the same list. */
-export const PROVIDERS = ['brevo', 'sendinblue', 'resend', 'mailjet', 'smtp2go', 'sendgrid', 'postmark', 'mailgun', 'mailtrap', 'activecampaign'] as const;
+export const PROVIDERS = ['brevo', 'sendinblue', 'resend', 'mailjet', 'smtp2go', 'sendgrid', 'postmark', 'mailgun', 'mailtrap', 'activecampaign', 'cloudflare'] as const;
 
 export const providerLabel = (p: string): string => ({
   brevo: 'Brevo', sendinblue: 'Brevo', resend: 'Resend', mailjet: 'Mailjet', smtp2go: 'SMTP2GO',
   sendgrid: 'SendGrid', postmark: 'Postmark', mailgun: 'Mailgun', mailtrap: 'Mailtrap', activecampaign: 'ActiveCampaign',
+  cloudflare: 'Cloudflare',
 } as Record<string, string>)[p] ?? (p.charAt(0).toUpperCase() + p.slice(1));
 
 interface Posted { ok: boolean; status: number; text: string; error: string }
@@ -269,8 +270,38 @@ export async function sendViaProvider(p: ProviderCreds, m: MessageInput): Promis
       break;
     }
 
+    /* Cloudflare Email Service (owner, 2026-11-21: "inbox and outbox routed via
+       Cloudflare, as we are on the paid plan"). Its HTTP API, so no Worker
+       binding or deploy change: an API token with Email Sending: Edit (the
+       key) and the account ID (the secret slot, as Mailjet's). Before the
+       From domain is onboarded (Cloudflare → Email Service → Email Sending)
+       it delivers only to verified addresses; `to` must be a list. A 200 can
+       still carry a bounce or a suppression for the recipient — that is a
+       failed send, not a sent one. */
+    case 'cloudflare': {
+      if (!/^[a-f0-9]{32}$/i.test(apiSecret)) return bad('Cloudflare needs your account ID as well as the API token — the 32-character ID on the Cloudflare dashboard\'s overview page (Account ID).');
+      /* `from` as text: the API refuses the { email, name } shape its docs show (checked 2026-11-21). */
+      const cfBody: Record<string, unknown> = { from: fromHeader, to: [to], subject, html, reply_to: reply };
+      if (unsub) cfBody.headers = unsubHeaders;
+      if (has) cfBody.attachments = files.map(f => ({ content: f.base64, filename: f.filename, type: f.mime, disposition: 'attachment' }));
+      r = await call('POST', `https://api.cloudflare.com/client/v4/accounts/${apiSecret.toLowerCase()}/email/sending/send`,
+        { ...JSON_H, Authorization: `Bearer ${apiKey}` }, JSON.stringify(cfBody));
+      if (r.ok) {
+        try {
+          const res = (JSON.parse(r.text) as { result?: { message_id?: string; permanent_bounces?: string[]; suppressed_recipients?: string[] } }).result ?? {};
+          const lc = to.toLowerCase();
+          if ((res.suppressed_recipients ?? []).some(x => x.toLowerCase() === lc)) return { ok: false, status: r.status, error: `Cloudflare did not send to ${to}: the address is on its suppression list (an earlier bounce or complaint).`, id: '' };
+          if ((res.permanent_bounces ?? []).some(x => x.toLowerCase() === lc)) return { ok: false, status: r.status, error: `${to} bounced permanently — the address does not accept mail.`, id: '' };
+          return { ok: true, status: r.status, error: '', id: res.message_id ?? '' };
+        } catch { /* fall through to the generic reading */ }
+      } else if (/sending_disabled/.test(r.text)) {
+        return { ok: false, status: r.status, error: `Cloudflare will not send to ${to} yet: ${domainOf(fromEmail)} is not set up for sending, so only your verified addresses get mail. Cloudflare → Email Service → Email Sending → Onboard Domain.`, id: '' };
+      }
+      break;
+    }
+
     default:
-      return bad(`"${provider}" is not a sending provider this app knows. Choose one of: Brevo, Resend, Mailjet, SMTP2GO, SendGrid, Postmark, Mailgun, Mailtrap, ActiveCampaign.`);
+      return bad(`"${provider}" is not a sending provider this app knows. Choose one of: Brevo, Resend, Mailjet, SMTP2GO, SendGrid, Postmark, Mailgun, Mailtrap, ActiveCampaign, Cloudflare.`);
   }
 
   if (r.error) return { ok: false, status: 0, error: r.error, id: '' };
@@ -416,6 +447,28 @@ export async function verifyProvider(p: ProviderCreds, fromEmail: string): Promi
       const r = await call('GET', `${u}/api/3/users/me`, { 'Api-Token': key });
       if (!r.ok) return refused(r);
       return { ok: true, message: accepted };
+    }
+
+    case 'cloudflare': {
+      const acct = p.secret.trim().toLowerCase();
+      if (!/^[a-f0-9]{32}$/.test(acct)) return { ok: false, message: 'Add your Cloudflare account ID (32 characters, on the dashboard\'s overview page).', field: 'provider.secret' };
+      /* An empty send: Cloudflare checks the token's right to send before the
+         message, so "invalid request" proves the token and sends nothing. */
+      const r = await call('POST', `https://api.cloudflare.com/client/v4/accounts/${acct}/email/sending/send`, { ...JSON_H, Authorization: `Bearer ${key}` }, '{}');
+      if (r.status !== 400 || !/invalid_request_schema/.test(r.text)) {
+        return { ok: false, message: r.error || (r.status === 401 || r.status === 403
+          ? 'Cloudflare refused the token for sending. Create one with the permission Account → Email Sending → Edit for this account.'
+          : explain(provider, r.status, r.text, 'refused the token')), field: r.status === 401 || r.status === 403 ? 'provider.key' : undefined };
+      }
+      /* Sending to anyone needs the domain onboarded, which writes a DKIM key
+         at cf-bounce._domainkey — looked up in public DNS, not assumed. */
+      const dkim = await call('GET', `https://cloudflare-dns.com/dns-query?name=cf-bounce._domainkey.${encodeURIComponent(dom)}&type=TXT`, { Accept: 'application/dns-json' });
+      let onboarded: boolean | null = null;
+      try { onboarded = dkim.ok ? ((JSON.parse(dkim.text) as { Answer?: unknown[] }).Answer ?? []).length > 0 : null; } catch { onboarded = null; }
+      if (onboarded === false) {
+        return { ok: true, message: accepted, warning: `${dom} is not set up for sending yet, so Cloudflare will only deliver to your verified addresses. Cloudflare → Email Service → Email Sending → Onboard Domain → ${dom}.` };
+      }
+      return { ok: true, message: onboarded ? `${accepted} ${dom} is set up for sending.` : `${accepted} Whether ${dom} is set up for sending could not be looked up.` };
     }
 
     default:

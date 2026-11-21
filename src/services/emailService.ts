@@ -14,12 +14,12 @@ import { API_BASE } from './apiBase';
 export type EmailProvider =
   | 'smtp'
   | 'brevo' | 'resend' | 'mailjet' | 'smtp2go' | 'sendgrid' | 'postmark' | 'mailgun'
-  | 'mailtrap' | 'activecampaign'
+  | 'mailtrap' | 'activecampaign' | 'cloudflare'
   | 'none';
 
 /** The providers that go over HTTPS, i.e. everything that is not raw SMTP. */
 export const API_PROVIDERS: EmailProvider[] = [
-  'brevo', 'resend', 'mailjet', 'smtp2go', 'sendgrid', 'postmark', 'mailgun', 'mailtrap', 'activecampaign',
+  'brevo', 'resend', 'mailjet', 'smtp2go', 'sendgrid', 'postmark', 'mailgun', 'mailtrap', 'activecampaign', 'cloudflare',
 ];
 
 export interface EmailProviderConfig {
@@ -113,7 +113,7 @@ export function isEmailConfigured(): boolean {
   /* Two providers need more than a key, and saying so up front beats a
      rejected send that blames the key. */
   if (cfg.provider === 'activecampaign') return !!(cfg.apiKey && cfg.apiUrl);
-  if (cfg.provider === 'mailjet') return !!(cfg.apiKey && cfg.apiSecret);
+  if (cfg.provider === 'mailjet' || cfg.provider === 'cloudflare') return !!(cfg.apiKey && cfg.apiSecret);
   if (cfg.provider === 'mailgun') return !!(cfg.apiKey && cfg.domain);
   return cfg.provider !== 'none' && !!cfg.apiKey;
 }

@@ -328,6 +328,7 @@ function DirectionSection({ direction, draft, record, onChange, onSaved, initial
               <option value="mailgun">Mailgun</option>
               <option value="mailjet">Mailjet</option>
               <option value="postmark">Postmark</option>
+              <option value="cloudflare">Cloudflare Email Service</option>
             </select>
           </div>
         )}
@@ -335,17 +336,24 @@ function DirectionSection({ direction, draft, record, onChange, onSaved, initial
         {out && draft.provider.name !== 'smtp' && draft.provider.name !== '' ? (
           <div style={{ display: 'grid', gap: 10 }}>
             <Field
-              label="API key"
+              label={draft.provider.name === 'cloudflare' ? 'API token' : 'API key'}
               field="provider.key"
               type="password"
               value={draft.provider.key}
               placeholder={record?.provider.hasKey ? 'Stored — leave blank to keep it' : ''}
-              hint={`${draft.provider.name === 'brevo' ? 'Brevo → SMTP & API → API Keys tab; it starts "xkeysib-" (the SMTP key will not work here). ' : ''}${record?.provider.hasKey ? 'A key is saved. Leaving this empty keeps it.' : 'From your provider dashboard. It is stored encrypted and never sent back to this page.'}`}
+              hint={`${draft.provider.name === 'brevo' ? 'Brevo → SMTP & API → API Keys tab; it starts "xkeysib-" (the SMTP key will not work here). ' : ''}${draft.provider.name === 'cloudflare' ? 'Cloudflare → My Profile → API Tokens → Create token, with Account → Email Sending → Edit. ' : ''}${record?.provider.hasKey ? 'A key is saved. Leaving this empty keeps it.' : 'From your provider dashboard. It is stored encrypted and never sent back to this page.'}`}
               onChange={v => onChange({ ...draft, provider: { ...draft.provider, key: v } })}
             />
             {draft.provider.name === 'mailjet' && (
               <Field label="API secret" field="provider.secret" type="password" value={draft.provider.secret}
                 placeholder={record?.provider.hasSecret ? 'Stored — leave blank to keep it' : ''}
+                onChange={v => onChange({ ...draft, provider: { ...draft.provider, secret: v } })} />
+            )}
+            {draft.provider.name === 'cloudflare' && (
+              /* Stored in the secret slot (as Mailjet's), so it is kept encrypted with the token. */
+              <Field label="Account ID" field="provider.secret" type="password" value={draft.provider.secret}
+                placeholder={record?.provider.hasSecret ? 'Stored — leave blank to keep it' : '32 characters'}
+                hint="On the Cloudflare dashboard's overview page, right-hand side. Sending to anyone needs your domain onboarded: Email Service → Email Sending → Onboard Domain."
                 onChange={v => onChange({ ...draft, provider: { ...draft.provider, secret: v } })} />
             )}
             {draft.provider.name === 'mailgun' && (

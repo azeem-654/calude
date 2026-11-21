@@ -60,6 +60,28 @@ that workspace's auth token; the SID is `crm_delivery_log.provider_ref` and
 the callback moves the row to delivered, undelivered or failed (21610 records
 the opt-out). `test:security`.
 
+### Cloudflare Email Service as a sending provider (2026-11-21)
+
+Owner: inbox and outbox both through Cloudflare (Workers Paid). A mailbox can
+send with **Cloudflare Email Service** (`provider = 'cloudflare'`,
+`lib/providerApi.ts`): the HTTP API
+`POST /accounts/{account}/email/sending/send`, token (Account → Email Sending →
+Edit) in the key slot, **account ID in the secret slot** (as Mailjet's), both
+encrypted. Found by trying it, not from the docs: **`from` must be text**
+(`Name <address>` works; the `{ email, name }` object the docs show is refused
+as `invalid_request_schema`) and **`to` must be a list**. A 200 can still name
+the recipient in `suppressed_recipients` / `permanent_bounces` — that is a
+failed send. Until the From domain is **onboarded** (dashboard → Email Service
+→ Email Sending → Onboard Domain, which writes `cf-bounce` MX/SPF/DKIM) it
+delivers only to the account's verified addresses and answers
+`sending_disabled` for anyone else. Validate sends `{}` (a schema error proves
+the token may send, nothing goes out) and looks up
+`cf-bounce._domainkey.<domain>` over DNS-over-HTTPS to warn when the domain is
+not onboarded. Receiving stays "The owner's own address, received here"
+below (Email Routing → this Worker → the app's inbox). Tests:
+`test:provider-key`. Hosted customer domains still send through Resend or
+Brevo — Cloudflare there would need per-domain sending onboarding.
+
 ## Connecting mailboxes in bulk — paste, screenshot, connect and test all
 
 Settings → Email, under the mailbox list: **Paste your mail settings**
