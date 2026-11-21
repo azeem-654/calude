@@ -10,23 +10,16 @@
  * tablets both ways, small and large phones, phones on their side — and fails
  * any size where:
  *
- *   - the hero's picture does not fit on one screen under the nav (on a phone
- *     on its side: the picture itself, since the caption cannot also fit),
- *   - on a laptop or desktop window (landscape, at least 1180 wide and more
- *     than 420 tall): the hero's words and its picture are not *both* on the
- *     first screen as the page opens,
- *   - a decorative chip covers more than a sliver of it, or sits off screen,
  *   - the film is not entirely visible when scrolled to, is cropped by more
  *     than its 22% budget, or — on the owner's laptop sizes — covers less than
  *     90% of the window's width,
- *   - on a laptop or desktop (landscape, at least 1000×420): the words are not
- *     all on the first screen with the product picture starting under them
- *     (at least 80px of it showing, so the first screen is full from side to
- *     side), the product picture is not at least 90% of the window's width
- *     (the owner asked for it scaled by the width),
- *     or the wheel does not step top → picture → film, each centred under the
- *     nav within 12px, and back up the same way, then on past the film,
- *   - the page scrolls sideways, or throws.
+ *   - on a laptop or desktop (landscape, at least 1000×420): the hero's words
+ *     are not all on the first screen with the film starting under them (at
+ *     least 80px of it showing), or the wheel does not step top → film,
+ *     centred under the nav within 12px, and back up, then on past the film.
+ *     Since 2026-11-21 the film is the hero's only picture (the owner asked
+ *     for one video at the top), so there is no separate hero picture stop,
+ * *   - the page scrolls sideways, or throws.
  *
  *   VITE_BASE=/ npm run build && npx wrangler dev --local     (another terminal)
  *   npm run test:sitefit          SHOTS=/some/dir to keep screenshots
@@ -72,32 +65,11 @@ for (const sz of sizes) {
   /* As the page opens. */
   if (OUT) await p.screenshot({ path: `${OUT}/top-${sz}.png` });
   const first = await p.evaluate((navH) => {
-    const r = s => document.querySelector(s).getBoundingClientRect();
-    const copy = r('.dc-hero-copy'), stage = r('.dc-hero-stage'), shot = r('.dc-hero-shot');
-    const on = x => x.top >= navH - 1 && x.bottom <= innerHeight + 1;
-    return { words: on(copy), peek: innerHeight - shot.top >= 80, wide: shot.width >= Math.min(innerWidth * 0.9, 1700), copyB: Math.round(copy.bottom), picW: Math.round(shot.width), steps: document.documentElement.classList.contains('dc-snap') };
+    const copy = document.querySelector('.dc-hero-copy').getBoundingClientRect();
+    const film = document.querySelector('.dc-film-frame').getBoundingClientRect();
+    return { words: copy.top >= navH - 1 && copy.bottom <= innerHeight + 1, peek: innerHeight - film.top >= 80, copyB: Math.round(copy.bottom), steps: document.documentElement.classList.contains('dc-snap') };
   }, navH);
-  const firstOk = !desk || (first.words && first.peek && first.wide && first.steps);
-
-  await p.evaluate(() => {
-    const short = innerHeight < 420 && innerWidth > innerHeight;
-    const s = document.querySelector(short ? '.dc-hero-shot' : '.dc-hero-stage');
-    scrollTo(0, s.getBoundingClientRect().top + scrollY - document.querySelector('.dc-nav').getBoundingClientRect().height);
-  });
-  await p.waitForTimeout(600);
-  if (OUT) await p.screenshot({ path: `${OUT}/stage-${sz}.png` });
-  const hero = await p.evaluate(() => {
-    const st = document.querySelector('.dc-hero-stage').getBoundingClientRect();
-    const shot = document.querySelector('.dc-hero-shot').getBoundingClientRect();
-    const chips = [...document.querySelectorAll('.dc-hero-chips .aps-chip')].map(c => c.getBoundingClientRect()).filter(r => r.width);
-    const cover = chips.map(c => Math.max(0, Math.min(c.right, shot.right) - Math.max(c.left, shot.left)));
-    const offscreen = chips.some(c => c.left < 0 || c.right > innerWidth);
-    /* On a phone on its side the promise is the picture itself, not the
-       caption under it. */
-    const pic = document.querySelector('.dc-hero-shot .dc-reel-stage, .dc-hero-shot .dc-mclip-frame').getBoundingClientRect();
-    const fits = innerHeight < 420 && innerWidth > innerHeight ? pic.bottom <= innerHeight + 1 && pic.top >= 0 : st.bottom <= innerHeight + 1;
-    return { stageH: Math.round(st.height), shotW: Math.round(shot.width), fits, chips: chips.length, maxCover: Math.round(Math.max(0, ...cover)), offscreen };
-  });
+  const firstOk = !desk || (first.words && first.peek && first.steps);
 
   await p.evaluate(() => document.querySelector('#film').scrollIntoView());
   await p.waitForTimeout(600);
@@ -125,24 +97,19 @@ for (const sz of sizes) {
     }, [sel, navH]);
     const notch = async dy => { await p.waitForTimeout(900); await p.mouse.wheel(0, dy); return settle(p); };
     await p.mouse.wheel(0, 120);
-    const yPic = await settle(p);
-    const offPic = await off('.dc-hero-stage');
-    const yFilm = await notch(120);
+    const yFilm = await settle(p);
     const offFilm = await off('.dc-film-frame');
-    const yPicUp = await notch(-120);
     const yTop = await notch(-120);
-    await notch(120);
     const yFilm2 = await notch(120);
     const yPast = await notch(120);
-    stepOk = Math.abs(offPic) <= 12 && Math.abs(offFilm) <= 12 && Math.abs(yPicUp - yPic) <= 12 && yTop <= 2
-      && Math.abs(yFilm2 - yFilm) <= 12 && yPast > yFilm + 40;
-    step = `picture@${yPic} off ${offPic}px, film@${yFilm} off ${offFilm}px, up→${yPicUp}, up→${yTop}, down×2→${yFilm2}, on→${yPast}`;
+    stepOk = Math.abs(offFilm) <= 12 && yTop <= 2 && Math.abs(yFilm2 - yFilm) <= 12 && yPast > yFilm + 40;
+    step = `film@${yFilm} off ${offFilm}px, up→${yTop}, down→${yFilm2}, on→${yPast}`;
   }
 
   const overflow = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
-  const ok = hero.fits && firstOk && filmOk && stepOk && overflow === 0 && hero.maxCover <= 40 && !hero.offscreen && !errs.length;
+  const ok = firstOk && filmOk && stepOk && overflow === 0 && !errs.length;
   if (!ok) bad++;
-  console.log(`${ok ? 'OK ' : 'BAD'} ${sz.padEnd(10)} nav ${navH} | first screen ${desk ? `words=${first.words} peek=${first.peek} wide=${first.wide}` : '-'} picW=${first.picW} | hero stage ${hero.stageH}px fits=${hero.fits} chips=${hero.chips} cover=${hero.maxCover}px off=${hero.offscreen} | film ${film.w}×${film.h} (${Math.round(film.cover * 100)}% wide, crop ${Math.round(film.crop * 100)}%) ${film.top}-${film.bottom} visible=${film.visible} ${film.file} | step ${step} | overflow ${overflow} errs ${errs.length}`);
+  console.log(`${ok ? 'OK ' : 'BAD'} ${sz.padEnd(10)} nav ${navH} | first screen ${desk ? `words=${first.words} peek=${first.peek}` : '-'} | film ${film.w}×${film.h} (${Math.round(film.cover * 100)}% wide, crop ${Math.round(film.crop * 100)}%) ${film.top}-${film.bottom} visible=${film.visible} ${film.file} | step ${step} | overflow ${overflow} errs ${errs.length}`);
   await p.close();
 }
 console.log(bad ? `${bad} size(s) wrong` : 'all sizes fit');

@@ -314,7 +314,7 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
   color: rgba(255, 255, 255, 0.72);
 }
 
-.dc-links a { position: relative; padding: 4px 0; transition: color 0.2s ease; }
+.dc-links a { position: relative; padding: 4px 0; white-space: nowrap; transition: color 0.2s ease; }
 .dc-links a::after {
   content: '';
   position: absolute;
@@ -341,6 +341,53 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 .dc-nav[data-fit='tiny'] .dc-nav-cta .dc-btn { padding: 8px 12px; font-size: 13px; }
 .dc-nav[data-fit='tiny'] .dc-cta-long { display: none; }
 .dc-nav[data-fit='tiny'] .dc-cta-short { display: inline; }
+/* Too narrow for the links on one line: they fold into a menu button at the
+   right-hand end and open as a panel under the bar. */
+.dc-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  cursor: pointer;
+}
+.dc-menu-btn:hover { border-color: var(--lime); color: var(--lime); }
+.dc-menu-btn:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+.dc-nav[data-fit='menu'] .dc-links,
+.dc-nav[data-fit='tiny'] .dc-links { display: none; }
+.dc-nav[data-fit='menu'] .dc-menu-btn,
+.dc-nav[data-fit='tiny'] .dc-menu-btn { display: inline-flex; }
+.dc-nav[data-fit='menu'] .dc-links + .dc-nav-cta,
+.dc-nav[data-fit='tiny'] .dc-links + .dc-nav-cta { margin-left: auto; }
+.dc-nav[data-fit='tiny'] .dc-menu-btn { width: 36px; height: 36px; }
+.dc-menu-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 2px;
+  padding: 10px clamp(16px, 4vw, 44px) 16px;
+  background: #0b0d0b;
+  border-bottom: 1px solid var(--edge);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+  animation: dc-menu-in 0.2s ease both;
+}
+.dc .dc-menu-panel a {
+  padding: 12px 4px;
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.86);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.dc .dc-menu-panel a:last-child { border-bottom: 0; }
+.dc .dc-menu-panel a:hover { color: var(--lime); }
+@keyframes dc-menu-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 /* On a phone the page's words scroll right under the bar: it has to hide them,
    not show them through. */
 @media (max-width: 760px) {
@@ -1109,6 +1156,7 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 
 @media (max-width: 760px) {
   .dc-links { display: none; }
+  .dc-menu-btn { display: inline-flex; }
 
   .dc-bento { grid-template-columns: 1fr; }
   .dc-tile.dc-wide { grid-column: span 1; }
@@ -2893,3 +2941,8 @@ html.dc-root { scroll-padding-top: var(--dc-nav-h); }
 /* The reel's module label is top right in the picture; the player's own
    buttons move to the bottom left, over the app's sidebar. */
 .dc-hero-clip .dc-mclip-tools { top: auto; right: auto; left: 10px; bottom: 10px; }
+
+/* Since 2026-11-21 the film is the hero's picture: it sits straight under the
+   words, the one video at the top of the page, so it does not keep the gap a
+   separate section would. */
+.dc-hero + .dc-film { margin-top: clamp(14px, 3vh, 32px); }

@@ -29,7 +29,7 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { FOUNDER, SUPPORT_EMAIL } from './company';
-import { ArrowRight, ArrowUpRight, Check, Sparkles, Send, MousePointerClick, Users, BarChart3, Building2, Lock, Palette, ShieldCheck, Mail, MessageSquare, Image as ImageIcon, FileText, LayoutTemplate, Wand2, Globe, Search, Rss, PlaySquare, Mic, GitBranch, PenLine, ClipboardList, Calendar, KeyRound, Eye, Workflow, CalendarCheck, Thermometer, Home, Stethoscope, ShoppingBag, LayoutDashboard } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Check, Sparkles, Send, MousePointerClick, Users, BarChart3, Building2, Lock, Palette, ShieldCheck, Mail, MessageSquare, Image as ImageIcon, FileText, LayoutTemplate, Wand2, Globe, Search, Rss, PlaySquare, Mic, GitBranch, PenLine, ClipboardList, Calendar, KeyRound, Eye, Workflow, CalendarCheck, Thermometer, Home, Stethoscope, ShoppingBag, LayoutDashboard, Menu, X } from 'lucide-react';
 import { ProtronMark, type IconLike } from '../Protron/ProtronAvatar';
 import { LogoMark } from '../shared/Logo';
 import { appHref, isCrossOrigin } from '../../services/hosts';
@@ -38,11 +38,9 @@ import { TEMPLATES } from '../Autopilot/workflowTemplates';
 import { useReveal, useRevealGroup } from './useReveal';
 import Starfield from './Starfield';
 import ShotReel from './ShotReel';
-import ClipPlayer from './ClipPlayer';
 import WorksWith from '../shared/WorksWith';
-import { AiOrb, EventChips, TypedPrompt } from '../shared/AutopilotScene';
 import { REELS } from './reels';
-import { CLIPS, HERO_REEL, type ClipKey } from './clips';
+import { CLIPS, type ClipKey } from './clips';
 import { serviceShown, anyServiceShown } from './siteFeatures';
 import HelpLauncher from '../shared/HelpLauncher';
 import LaunchFilm from './LaunchFilm';
@@ -387,15 +385,41 @@ export default function SiteHome() {
    * edge and "Start free trial" was cut off. So it measures itself, the way
    * the app's top bar does — written straight onto the element, because each
    * step has to be laid out and measured in the same frame: `full`, then
-   * `tight` (the shield without the name), then `tiny` (smaller buttons, the
-   * trial button's short label).
+   * `tight` (the shield without the name), then `menu` (the links fold into
+   * a menu button), then `tiny` (smaller buttons, the trial button's short
+   * label). The links never wrap (site.css): when they did, a 760–1200px
+   * window showed them on two ragged lines instead of overflowing, so this
+   * measurement never saw a problem and never stepped down (owner,
+   * 2026-11-21, "the menu items scatter").
    */
   const navRef = useRef<HTMLElement | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  /* One list for the bar and the menu, so the two never disagree. */
+  const navLinks: { href: string; label: string; cls?: string }[] = [
+    { href: '#solutions', label: 'Solutions' },
+    { href: '#protron', label: 'Protron' },
+    { href: '#autopilot', label: 'How it works' },
+    ...(featureReady('prospects') ? [{ href: '#prospecting', label: 'AI Prospecting' }] : []),
+    { href: '#scale', label: 'Agencies' },
+    { href: '#pricing', label: 'Pricing' },
+    ...(services ? [{ href: '#services', label: 'Services', cls: 'ind-nav-link' }] : []),
+    { href: '#faq', label: 'FAQ' },
+    { href: '/security', label: 'Security' },
+  ];
+  /* The menu closes on Escape and on a click anywhere outside the bar. */
+  useEffect(() => {
+    if (!menuOpen) return;
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    const down = (e: MouseEvent) => { if (!navRef.current?.contains(e.target as Node)) setMenuOpen(false); };
+    window.addEventListener('keydown', key);
+    window.addEventListener('mousedown', down);
+    return () => { window.removeEventListener('keydown', key); window.removeEventListener('mousedown', down); };
+  }, [menuOpen]);
   useLayoutEffect(() => {
     const el = navRef.current;
     if (!el) return;
     const fit = () => {
-      for (const step of ['full', 'tight', 'tiny']) {
+      for (const step of ['full', 'tight', 'menu', 'tiny']) {
         el.dataset.fit = step;
         if (el.scrollWidth <= el.clientWidth + 1) return;
       }
@@ -417,31 +441,6 @@ export default function SiteHome() {
   const source = useReveal<HTMLDivElement>();
   const flow = useReveal<HTMLDivElement>();
 
-  /* Whether the chips beside the hero's picture have room to sit beside it.
-     Measured, not guessed from a breakpoint: the picture's width depends on
-     the window's height as well as its width (site.css), so no single media
-     query can say where its edges are. Both sides, because the chips come in
-     pairs: on a wide laptop the picture is the right-hand column, flush to
-     the gutter, and on a wider screen the room to its left is only the gap
-     before the words — a chip there would sit on the headline. */
-  const stage = useRef<HTMLDivElement | null>(null);
-  const copy = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const el = stage.current;
-    if (!el) return;
-    const fit = () => {
-      const r = el.getBoundingClientRect();
-      const c = copy.current?.getBoundingClientRect();
-      const beside = !!c && c.bottom > r.top && c.top < r.bottom;
-      const left = beside && c ? r.left - c.right : r.left;
-      el.dataset.chips = left >= 200 && window.innerWidth - r.right >= 200 ? 'out' : 'off';
-    };
-    fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(document.documentElement);
-    return () => ro.disconnect();
-  }, []);
-
   const heroInner = useRef<HTMLDivElement | null>(null);
   useFilmStep(heroInner);
 
@@ -460,22 +459,20 @@ export default function SiteHome() {
           <span>Protected Central</span>
         </a>
         <nav className="dc-links" aria-label="Sections">
-          <a href="#solutions">Solutions</a>
-          <a href="#protron">Protron</a>
-          <a href="#autopilot">How it works</a>
-          {featureReady('prospects') && <a href="#prospecting">AI Prospecting</a>}
-          <a href="#scale">Agencies</a>
-          <a href="#pricing">Pricing</a>
-          {services && <a href="#services" className="ind-nav-link">Services</a>}
-          <a href="#faq">FAQ</a>
-          <a href="/security">Security</a>
+          {navLinks.map(l => <a key={l.href} href={l.href} className={l.cls}>{l.label}</a>)}
         </nav>
         <div className="dc-nav-cta">
           <a className="dc-btn dc-btn-ghost" href={appHref('/login')} {...cross(appHref('/login'))}>Sign in</a>
           <a className="dc-btn dc-btn-primary" href={appHref('/signup')} aria-label="Start free" {...cross(appHref('/signup'))} onClick={() => track('trial_cta_clicked')}>
             <span className="dc-cta-long">Start free</span><span className="dc-cta-short" aria-hidden="true">Try free</span>
           </a>
+          <button type="button" className="dc-menu-btn" aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={menuOpen} aria-controls="dc-menu" onClick={() => setMenuOpen(o => !o)} data-testid="site-menu">
+            {menuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
         </div>
+        {menuOpen && <nav id="dc-menu" className="dc-menu-panel" aria-label="Sections">
+          {navLinks.map(l => <a key={l.href} href={l.href} className={l.cls} onClick={() => setMenuOpen(false)}>{l.label}</a>)}
+        </nav>}
       </header>
 
       {/* ── Hero ──
@@ -490,7 +487,7 @@ export default function SiteHome() {
           {/* The words, as one block: on a laptop or desktop they sit above the
               picture at their own height, the headline on one line, so the
               picture starts on the first screen (site.css, "Three stops"). */}
-          <div className="dc-hero-copy" ref={copy}>
+          <div className="dc-hero-copy">
             <a className="dc-eyebrow dc-ai-pill dc-lead-0" href="#autopilot">
               <Sparkles size={14} /> AI Autopilot<span className="dc-ai-pill-more"> — for businesses, and the agencies that serve them</span> <ArrowRight size={14} />
             </a>
@@ -515,30 +512,18 @@ export default function SiteHome() {
             </div>
             <TrialNote />
           </div>
-          <div className="dc-hero-stage dc-lead-3" ref={stage} data-chips="off">
-            <div className="dc-hero-sparks" aria-hidden="true">{Array.from({ length: 14 }, (_, i) => <i key={i} />)}</div>
-            <div className="dc-hero-orb" aria-hidden="true"><AiOrb size={120} /></div>
-            <TypedPrompt className="dc-hero-prompt" />
-            {/* The hero's reel is the one that loads eagerly — it is the first
-                thing anybody sees, and waiting for it to be scrolled to would
-                mean it never starts. Since 2026-11-20 it is every module
-                working, fast-forwarded (HERO_REEL), not a reel of stills. */}
-            <div className="dc-hero-shot dc-hero-strip dc-hero-clip">
-              <ClipPlayer clips={[HERO_REEL]} label="Every module of Protected Central, fast-forwarded" eager />
-              <span className="dc-hero-scan" aria-hidden="true" />
-            </div>
-            <EventChips className="dc-hero-chips" />
-          </div>
           {/* The figures in every screen on this page are example data. Said
               once, plainly, where the first of them appears. */}
           <p className="dc-sample-note">Screens and recordings show a sample workspace with example data.</p>
         </div>
       </section>
 
-      {/* ── The launch film, full length and full width: the second thing
-             anybody sees, one scroll from the top (useFilmStep), because five
-             minutes of the product working answers more than the rest of the
-             page can in text. ── */}
+      {/* ── The launch film, full length and full width, straight under the
+             hero's words: the one video at the top of the page (owner,
+             2026-11-21 — the hero's own fast-forward reel and the typed
+             prompt bar over it were removed, so the first screen shows one
+             film, not two competing players). One scroll from the top centres
+             it (useFilmStep). ── */}
       <LaunchFilm />
 
       {/* ── What it connects to, and what it writes for. Two rows, labelled,
