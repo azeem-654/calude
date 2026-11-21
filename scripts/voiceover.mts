@@ -208,8 +208,20 @@ async function main() {
   fs.mkdirSync(CACHE, { recursive: true });
   fs.mkdirSync(WORK, { recursive: true });
 
+  /* VO_READ=1: for a person to record the voice themselves (owner,
+     2026-11-21: the AI voice "still breaking"). No speech is bought; each
+     line gets the time a relaxed reader needs (READ_WPS words a second, plus
+     a breath), the picture holds where a line needs more room, the film is
+     silent, and a timed script is written beside it — <film>-for-voice.srt
+     and -script.md — read against that picture, second by second. */
+  const READ = !!process.env.VO_READ;
+  const READ_WPS = Number(process.env.VO_READ_WPS || 2.4);
+  const readLen = (t: string) => t.split(/\s+/).filter(Boolean).length / READ_WPS + 0.5;
+  const said: { start: number; end: number; text: string; chapter: string }[] = [];
+
   // Speak every new line first, in batches, so a failure stops before any encoding.
   const all = [...new Set(s.chapters.flatMap(c => c.lines.map(l => l[1])))];
+  if (!READ) {
   const BATCH = Number(process.env.VO_BATCH || 10);
   /* Rounds, because a piece that fails its check is dropped and asked for
      again — in a smaller batch, where the cuts are fewer. */
@@ -226,7 +238,9 @@ async function main() {
   if (unvoiced.length) throw new Error(`${unvoiced.length} lines never came out clean, first: "${unvoiced[0].slice(0, 60)}"`);
   // VO_SPEAK_ONLY=1 fills the cache and stops, before the film is cut.
   if (process.env.VO_SPEAK_ONLY) { console.log(`${all.length} lines voiced`); return; }
-  const wavs = new Map(all.map(t => [t, cacheFile(s.voice, s.style, t)] as const));
+  }
+  const wavs = new Map(all.map(t => [t, READ ? '' : cacheFile(s.voice, s.style, t)] as const));
+  const lineLen = (text: string) => (READ ? readLen(text) : dur(wavs.get(text)!));
 
   const parts: string[] = [];
   let total = 0;
@@ -249,7 +263,8 @@ async function main() {
         shift += need;
       }
       placed.push({ wav, out: at + shift });
-      busyUntil = at + shift + dur(wav);
+      said.push({ start: total + at + shift, end: total + at + shift + lineLen(text), text, chapter: ch.id });
+      busyUntil = at + shift + lineLen(text);
     });
     const end = len + shift;
     if (busyUntil + TAIL > end - 0.5) { // last line runs into the fade: hold before the fade
@@ -269,10 +284,13 @@ async function main() {
     }
     vf.push(`${segs.join('')}concat=n=${segs.length}:v=1:a=0[v]`);
     // Sound: every line delayed to its place, mixed without level changes.
-    const inputs = ['-i', src, ...placed.flatMap(p => ['-i', p.wav])];
-    const af = placed.map((p, i) => `[${i + 1}:a]adelay=${Math.round(p.out * 1000)}:all=1[a${i}]`);
+    const voiced = READ ? [] : placed;
+    const inputs = ['-i', src, ...voiced.flatMap(p => ['-i', p.wav])];
+    const af = voiced.map((p, i) => `[${i + 1}:a]adelay=${Math.round(p.out * 1000)}:all=1[a${i}]`);
     const outLen = len + shift;
-    af.push(`${placed.map((_, i) => `[a${i}]`).join('')}${placed.length ? `amix=inputs=${placed.length}:normalize=0:dropout_transition=0,` : `anullsrc=r=48000:cl=mono,`}apad,atrim=0:${outLen.toFixed(3)},loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[a]`);
+    af.push(voiced.length
+      ? `${voiced.map((_, i) => `[a${i}]`).join('')}amix=inputs=${voiced.length}:normalize=0:dropout_transition=0,apad,atrim=0:${outLen.toFixed(3)},loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[a]`
+      : `anullsrc=r=48000:cl=mono,atrim=0:${outLen.toFixed(3)}[a]`);
     const out = `${WORK}/${s.film}-${ch.id}.mp4`;
     execFileSync(FF, ['-y', '-v', 'error', ...inputs, '-filter_complex', [...vf, ...af].join(';'),
       '-map', '[v]', '-map', '[a]', '-r', '25', '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p',
@@ -285,7 +303,24 @@ async function main() {
   fs.mkdirSync('marketing/demos', { recursive: true });
   const list = `${WORK}/${s.film}.txt`;
   fs.writeFileSync(list, parts.map(p => `file '${p}'`).join('\n'));
-  const dest = s.out || `marketing/demos/${s.film}.mp4`;
+  const dest = s.out || `marketing/demos/${s.film}${READ ? '-for-voice' : ''}.mp4`;
+  if (READ) {
+    const tc = (x: number, sep = '.') => {
+      const h = Math.floor(x / 3600), m = Math.floor((x % 3600) / 60), sec = x % 60;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${sec.toFixed(sep === ',' ? 3 : 1).padStart(sep === ',' ? 6 : 4, '0').replace('.', sep)}`;
+    };
+    const base = dest.replace(/\.mp4$/, '');
+    fs.writeFileSync(`${base}.srt`, said.map((l, i) => `${i + 1}\n${tc(l.start, ',')} --> ${tc(l.end, ',')}\n${l.text}\n`).join('\n'));
+    let md = `# ${s.film} — script to record\n\nRead each line when its start time comes up in \`${dest.split('/').pop()}\` (silent, the same length as your recording). `
+      + `Each slot allows about ${READ_WPS} words a second; the picture already waits where a line needs it. Times are hours:minutes:seconds.\n`;
+    let last = '';
+    for (const l of said) {
+      if (l.chapter !== last) { md += `\n## ${l.chapter}\n\n| Start | End | Say |\n|---|---|---|\n`; last = l.chapter; }
+      md += `| ${tc(l.start)} | ${tc(l.end)} | ${l.text} |\n`;
+    }
+    fs.writeFileSync(`${base}-script.md`, md);
+    console.log(`${base}.srt and ${base}-script.md — ${said.length} lines`);
+  }
   execFileSync(FF, ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', '-movflags', '+faststart', dest]);
   const mb = (fs.statSync(dest).size / 1e6).toFixed(1);
   console.log(`${dest} — ${Math.floor(total / 60)} min ${Math.round(total % 60)} s, ${mb} MB`);

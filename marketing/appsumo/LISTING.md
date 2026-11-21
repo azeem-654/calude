@@ -6,19 +6,21 @@ plus prompts for new listing images. Every number comes from
 Shorts, video editing or the online shop / store connections: they are not
 part of this deal.
 
-> **Decide before pasting — Tier 1 business workspaces.** The live listing
-> says **5** business workspaces for one code; the app gives **3**
-> (`appsumo_1.autopilot_projects`). Either change the listing to 3 (below),
-> or tell Claude to raise the plan to 5 in `allowances.ts`. A buyer who reads
-> 5 and gets 3 asks for a refund.
+> **Tier 1 is 3 business workspaces** (owner, 2026-11-21) — the app's own
+> number. Change the live listing's "5" to 3 when pasting.
+
+**Gallery images (ready):** `marketing/appsumo/images/01-hero.png` … `09-tiers.png`,
+2560×1440 (16:9, AppSumo scales them). Made by `scripts/appsumo-images.mts`
+from frames of the real app; each says "Real app · sample workspace". Upload
+in that order; 01 is the cover.
 
 ---
 
 ## Headline (max ~60 characters)
 
-**Describe the outcome. Protron and AI Autopilot build and run it.**
+**Your AI Live Business Manager: describe it once — it builds, runs and improves your marketing**
 
-Short version: **Your AI Live Business Manager — builds and runs your CRM**
+Short version (60 characters): **An AI Live Business Manager that runs your CRM for you**
 
 ## One-line summary (the grey line under the name)
 
@@ -106,7 +108,7 @@ approve it.
 
 | | 1 code — $49 | 2 codes — $98 | 3 codes — $147 |
 |---|---|---|---|
-| Business workspaces | **3** _(listing says 5 — see the note at the top)_ | 10 | 25 |
+| Business workspaces | **3** | 10 | 25 |
 | Workflows per business workspace | 12 | 20 | 35 |
 | AI credits a month | 1,000 | 2,500 | 5,000 |
 | Social posts a month | 100 | 250 | 500 |
@@ -117,7 +119,7 @@ approve it.
 | Branded sign-in addresses | 1 | 5 | 15 |
 | Support | Chat and tickets | Chat and tickets | Chat, tickets and an onboarding call |
 
-## Image prompts (1280×720, the listing's 16:9 slots)
+## Image prompts (only if you want a designer's versions — the PNGs above are ready)
 
 Shared style for all of them: *dark UI on a deep navy-to-black background,
 lime (#C8F24D) accents with a soft violet glow, a real app screenshot in a

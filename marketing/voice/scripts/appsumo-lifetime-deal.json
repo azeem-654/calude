@@ -1,14 +1,14 @@
 {
  "film": "appsumo-lifetime-deal",
  "voice": "Umbriel",
- "style": "Read this aloud as Protron, a warm, friendly, genuinely human guide showing one business owner around their software, like a helpful friend who is a little excited to show them something. Relaxed but lively pace, natural, a smile in the voice, gentle emphasis. Not salesy, not robotic. Say only the words below.",
+ "style": "Read this aloud as a warm, friendly, genuinely human guide showing one business owner around their software, like a helpful friend who is a little excited to show them something. Relaxed but lively pace, natural, a smile in the voice, gentle emphasis. Not salesy, not robotic. Say only the words below.",
  "chapters": [
   {
    "id": "as-intro",
    "lines": [
     [
      0.6,
-     "Hi, I am Protron. This is Protected Central, recorded live in the real app, and everything you are about to see is included in your AppSumo lifetime deal."
+     "Everything you are about to see was recorded live in the real app, and all of it is included in your AppSumo lifetime deal."
     ]
    ]
   },
@@ -17,7 +17,7 @@
    "lines": [
     [
      0.6,
-     "First, AI Autopilot. Describe a business once, and I build it and run it."
+     "First, AI Autopilot. Describe a business once, and it builds it and runs it."
     ]
    ]
   },
@@ -26,7 +26,7 @@
    "lines": [
     [
      0.8,
-     "Let me show you around."
+     "Here is a quick look around."
     ],
     [
      5.0,
@@ -63,19 +63,19 @@
    "lines": [
     [
      8.1,
-     "Now let us build a new one together. Just chat with me: type, or send a voice note. If the business has a website, I will read it for you."
+     "Now let us build a new one. Just chat with your AI Live Business Manager: type, or send a voice note. If the business has a website, it reads it for you."
     ],
     [
      18.2,
-     "These are real AI answers, in seconds. I only ask what I still need, with answers you can tap."
+     "These are real AI answers, in seconds. It only asks what it still needs, with answers you can tap."
     ],
     [
      21.8,
-     "Then I suggest solutions that fit the business. Include one in a click, or say no thanks. Each one is something Autopilot can really run."
+     "Then it suggests solutions that fit the business. Include one in a click, or say no thanks. Each one is something Autopilot can really run."
     ],
     [
      45.1,
-     "Then I write the plan for AI Autopilot: one smart instruction, built from everything I have learned."
+     "Then it writes the plan for AI Autopilot: one smart instruction, built from everything it has learned."
     ],
     [
      47.9,
@@ -83,11 +83,11 @@
     ],
     [
      55.9,
-     "Add a sentence, and I rewrite the whole plan. Or press Write it again for a fresh version."
+     "Add a sentence, and the whole plan is rewritten. Or press Write it again for a fresh version."
     ],
     [
      70.6,
-     "I tell you what I understood. If I got something wrong, just say so in your own words."
+     "It tells you what it understood. If something is wrong, just say so in your own words."
     ],
     [
      74.5,
@@ -95,7 +95,7 @@
     ],
     [
      84.6,
-     "Now I ask only the questions I could not answer myself. Each one comes with suggestions, or you can let me decide, and I will tell you why."
+     "Now it asks only the questions it could not answer itself. Each one comes with suggestions, or you can let AI decide, and it tells you why."
     ],
     [
      101.2,
@@ -107,7 +107,7 @@
     ],
     [
      119.2,
-     "Now read exactly what I am going to build: the workflows, the AI agents and the schedules, before anything exists."
+     "Now read exactly what it is going to build: the workflows, the AI agents and the schedules, before anything exists."
     ],
     [
      126.3,
@@ -115,7 +115,7 @@
     ],
     [
      138.4,
-     "I only build what this business actually uses. Anything not connected yet simply waits, and the rest starts now."
+     "It only builds what this business actually uses. Anything not connected yet simply waits, and the rest starts now."
     ],
     [
      147.4,
@@ -177,7 +177,7 @@
    "lines": [
     [
      1,
-     "Now, how I keep each business moving."
+     "Now, how each business keeps moving."
     ],
     [
      7.3,
@@ -185,19 +185,19 @@
     ],
     [
      14.5,
-     "Here is every step I am on the hook for: emails, conditions, texts and agents, across the live workflows."
+     "Here is every step it is on the hook for: emails, conditions, texts and agents, across the live workflows."
     ],
     [
      18.4,
-     "Ideas I find wait for your yes. Here, I spotted twenty-two past clients nobody had asked about spring."
+     "Ideas it finds wait for your yes. Here, it spotted twenty-two past clients nobody had asked about spring."
     ],
     [
      24.9,
-     "You decide what I may do by myself: off, ask first, or on my own, for each business separately."
+     "You decide what it may do by itself: off, ask first, or on its own, for each business separately."
     ],
     [
      35.9,
-     "This is my plan for today, item by item."
+     "This is its plan for today, item by item."
     ],
     [
      39.6,
@@ -205,7 +205,7 @@
     ],
     [
      47.1,
-     "Everything I did is out in the open: what is going on now, and what is coming up."
+     "Everything it did is out in the open: what is going on now, and what is coming up."
     ],
     [
      52.8,
@@ -213,11 +213,11 @@
     ],
     [
      57.2,
-     "Every day I re-plan every business. I read it, write, build and send, then plan again."
+     "Every day it re-plans every business. It reads it, writes, builds and sends, then plans again."
     ],
     [
      61.9,
-     "I spot problems before you ask: deals gone quiet, follow-ups missing, a list that vanished. Named, never hidden."
+     "It spots problems before you ask: deals gone quiet, follow-ups missing, a list that vanished. Named, never hidden."
     ],
     [
      71.9,
@@ -225,7 +225,7 @@
     ],
     [
      79.7,
-     "And everything I made is in one place, with a shortcut to the module that owns it."
+     "And everything it made is in one place, with a shortcut to the module that owns it."
     ]
    ]
   },
@@ -234,7 +234,7 @@
    "lines": [
     [
      0.7,
-     "And I keep watch. I am your AI Live Business Manager, and I check every campaign, every day."
+     "And it keeps watch. Your AI Live Business Manager checks every campaign, every day."
     ],
     [
      6.8,
@@ -242,11 +242,11 @@
     ],
     [
      11.7,
-     "So I say so: this campaign isn’t getting replies. You hear it in the app and by email, with what I would change."
+     "So it tells you: this campaign isn’t getting replies. You hear it in the app and by email, with what it would change."
     ],
     [
      16.2,
-     "One click, and I re-optimise it: new emails, subject lines and timing, in the business’s own voice."
+     "One click, and AI re-optimises it: new emails, subject lines and timing, in the business’s own voice."
     ],
     [
      20.8,
@@ -254,7 +254,7 @@
     ],
     [
      27.6,
-     "Or talk it through with me in the live chat, on every screen. I will ask about your business, and suggest what to try."
+     "Or talk it through in the live chat, on every screen. It asks about your business, and suggests what to try."
     ]
    ]
   },
@@ -275,7 +275,7 @@
     ],
     [
      26.9,
-     "That is AI Autopilot. Describe it once, and I will build it and run it."
+     "That is AI Autopilot. Describe it once, and it builds it and runs it."
     ]
    ]
   },
@@ -734,7 +734,7 @@
     ],
     [
      8.5,
-     "Everything you saw in this film is part of the deal, with Protron, your AI Live Business Manager, watching over it every day."
+     "Everything you saw in this film is part of the deal, with your AI Live Business Manager watching over it every day."
     ]
    ]
   }

@@ -1,0 +1,599 @@
+1
+00:00:00,600 --> 00:00:11,100
+Everything you are about to see was recorded live in the real app, and all of it is included in your AppSumo lifetime deal.
+
+2
+00:00:12,800 --> 00:00:19,133
+First, AI Autopilot. Describe a business once, and it builds it and runs it.
+
+3
+00:00:21,033 --> 00:00:24,033
+Here is a quick look around.
+
+4
+00:00:25,233 --> 00:00:34,900
+This is the board. Every business you look after gets its own business workspace, with its own goal, workflows, prospects and website.
+
+5
+00:00:35,250 --> 00:00:42,417
+Allowances are counted live, so you always see this month’s posts and prospects against your plan.
+
+6
+00:00:42,767 --> 00:00:53,683
+If you are an agency, each client stays in its own account. Switch between them here, or open the agency dashboard to see them all.
+
+7
+00:00:54,033 --> 00:01:02,033
+And all of this works on the server every five minutes, whether this page is open or not.
+
+8
+00:01:02,383 --> 00:01:14,967
+Here are five businesses: a caterer, a gym, a law firm, a dentist and a real estate team. Each one runs its own plan, completely independent of the others.
+
+9
+00:01:16,883 --> 00:01:24,050
+Put the business that matters most on top, or pause a whole business in one click.
+
+10
+00:01:24,400 --> 00:01:32,817
+And share progress with each client on a read-only page. They never see your other clients, contacts or prices.
+
+11
+00:01:42,017 --> 00:01:55,850
+Now let us build a new one. Just chat with your AI Live Business Manager: type, or send a voice note. If the business has a website, it reads it for you.
+
+12
+00:01:56,200 --> 00:02:04,617
+These are real AI answers, in seconds. It only asks what it still needs, with answers you can tap.
+
+13
+00:02:04,967 --> 00:02:15,883
+Then it suggests solutions that fit the business. Include one in a click, or say no thanks. Each one is something Autopilot can really run.
+
+14
+00:02:28,267 --> 00:02:35,850
+Then it writes the plan for AI Autopilot: one smart instruction, built from everything it has learned.
+
+15
+00:02:36,200 --> 00:02:42,950
+Read it and change anything. Company, customers, objectives, constraints: it is all in plain words.
+
+16
+00:02:44,200 --> 00:02:52,200
+Add a sentence, and the whole plan is rewritten. Or press Write it again for a fresh version.
+
+17
+00:02:58,900 --> 00:03:06,483
+It tells you what it understood. If something is wrong, just say so in your own words.
+
+18
+00:03:06,833 --> 00:03:14,417
+Add more work in a click: branded social posts every day, or an SEO article every week.
+
+19
+00:03:16,933 --> 00:03:28,683
+Now it asks only the questions it could not answer itself. Each one comes with suggestions, or you can let AI decide, and it tells you why.
+
+20
+00:03:33,533 --> 00:03:41,950
+Its own website or funnel is already in its name. Every design shows the business’s name, colour and photo.
+
+21
+00:03:42,333 --> 00:03:46,583
+A couple more quick answers, and we are ready.
+
+22
+00:03:51,533 --> 00:04:00,367
+Now read exactly what it is going to build: the workflows, the AI agents and the schedules, before anything exists.
+
+23
+00:04:00,717 --> 00:04:07,883
+Want something different? Change the blueprint just by saying it. No going back through the questions.
+
+24
+00:04:12,817 --> 00:04:21,233
+It only builds what this business actually uses. Anything not connected yet simply waits, and the rest starts now.
+
+25
+00:04:21,817 --> 00:04:31,067
+And nothing that contacts a person switches on without you. Emails and texts arrive as drafts for you to read first.
+
+26
+00:04:31,417 --> 00:04:40,667
+Built. And every record is real: its emails are written, the prospect search has started, and drafts are waiting for you.
+
+27
+00:04:41,217 --> 00:04:45,883
+There it is. The new business, live on the board.
+
+28
+00:04:47,783 --> 00:04:50,783
+Let us look inside one business.
+
+29
+00:04:52,883 --> 00:04:58,800
+Vine Street Kitchen. Its goal, its money and its work, at a glance.
+
+30
+00:04:59,150 --> 00:05:07,983
+Workflows are drawn the way they run. Every fork is labelled yes or no, and every path joins back up.
+
+31
+00:05:13,150 --> 00:05:21,983
+Open any step to see the real message and condition, built on your own forms, tags and stages. Nothing generic.
+
+32
+00:05:22,333 --> 00:05:32,417
+You can dry-run a step against a real contact. Nothing is sent. It shows you exactly which way they would go, and why.
+
+33
+00:05:40,133 --> 00:05:47,717
+Change the whole workflow in place. Add a step anywhere, reorder them, or change what starts it.
+
+34
+00:05:51,133 --> 00:05:59,967
+Or just describe a workflow in plain words. Edit with AI writes it for this business, in its own voice.
+
+35
+00:06:01,133 --> 00:06:09,133
+It is written in seconds, and it arrives switched off. Nothing reaches anybody until you have read it.
+
+36
+00:06:09,483 --> 00:06:17,067
+Read it, then switch it on. From then on it runs on the server, every five minutes.
+
+37
+00:06:19,167 --> 00:06:22,167
+Now, how each business keeps moving.
+
+38
+00:06:25,467 --> 00:06:34,300
+AI agents work on a schedule. They read the business and write for it, and every piece is a draft.
+
+39
+00:06:34,650 --> 00:06:43,067
+Here is every step it is on the hook for: emails, conditions, texts and agents, across the live workflows.
+
+40
+00:06:43,417 --> 00:06:51,417
+Ideas it finds wait for your yes. Here, it spotted twenty-two past clients nobody had asked about spring.
+
+41
+00:06:51,767 --> 00:07:00,183
+You decide what it may do by itself: off, ask first, or on its own, for each business separately.
+
+42
+00:07:02,767 --> 00:07:07,017
+This is its plan for today, item by item.
+
+43
+00:07:07,367 --> 00:07:15,783
+One approval, and it goes ahead. It is sent from the business’s own mailbox, and logged as it happens.
+
+44
+00:07:16,133 --> 00:07:24,133
+Everything it did is out in the open: what is going on now, and what is coming up.
+
+45
+00:07:24,483 --> 00:07:28,733
+And you can see when each workflow runs next.
+
+46
+00:07:29,083 --> 00:07:36,250
+Every day it re-plans every business. It reads it, writes, builds and sends, then plans again.
+
+47
+00:07:36,600 --> 00:07:44,600
+It spots problems before you ask: deals gone quiet, follow-ups missing, a list that vanished. Named, never hidden.
+
+48
+00:07:46,600 --> 00:07:54,183
+Every business finds its own new leads. Brightline’s daily search reads each website and checks each address.
+
+49
+00:07:54,533 --> 00:08:02,117
+And everything it made is in one place, with a shortcut to the module that owns it.
+
+50
+00:08:03,917 --> 00:08:10,250
+And it keeps watch. Your AI Live Business Manager checks every campaign, every day.
+
+51
+00:08:10,600 --> 00:08:16,933
+Here, Brightline’s outreach sent forty-six emails in ten days. None failed, and nobody replied.
+
+52
+00:08:17,283 --> 00:08:27,367
+So it tells you: this campaign isn’t getting replies. You hear it in the app and by email, with what it would change.
+
+53
+00:08:27,717 --> 00:08:35,300
+One click, and AI re-optimises it: new emails, subject lines and timing, in the business’s own voice.
+
+54
+00:08:35,650 --> 00:08:43,233
+Nothing changes until you approve it. The new version arrives switched off, so you read it first.
+
+55
+00:08:43,583 --> 00:08:52,833
+Or talk it through in the live chat, on every screen. It asks about your business, and suggests what to try.
+
+56
+00:09:03,283 --> 00:09:10,450
+Each client has its own website, built from whole-site templates and published on its own address.
+
+57
+00:09:10,800 --> 00:09:17,550
+And its own funnels. Summit’s quote funnel was built by AI Autopilot a minute ago.
+
+58
+00:09:20,100 --> 00:09:25,183
+Or start from a ready-made workflow. Preview it, then use it.
+
+59
+00:09:27,900 --> 00:09:34,233
+That is AI Autopilot. Describe it once, and it builds it and runs it.
+
+60
+00:09:35,933 --> 00:09:40,600
+Next, AI Prospecting: new leads from one sentence, every day.
+
+61
+00:09:42,700 --> 00:09:49,450
+Just say who you sell to, in one sentence. There are no filters to learn.
+
+62
+00:09:50,600 --> 00:09:55,267
+It searches live, reads the websites and checks every address.
+
+63
+00:09:55,617 --> 00:09:59,450
+You see what it did, step by step.
+
+64
+00:09:59,917 --> 00:10:08,333
+Then keep only the addresses worth sending to: the ones that take mail, have a phone, or a website.
+
+65
+00:10:11,017 --> 00:10:19,850
+Now turn the search into a daily finder. An AI Autopilot business workspace runs it on a schedule, by itself.
+
+66
+00:10:20,717 --> 00:10:23,717
+Decide what counts as a lead.
+
+67
+00:10:24,917 --> 00:10:31,250
+Choose how often, and how many: every day, weekdays, or the days you pick.
+
+68
+00:10:31,600 --> 00:10:35,433
+Every prospect is checked before it is added.
+
+69
+00:10:35,900 --> 00:10:43,900
+And you choose where they go: a list, a tag, a pipeline, or straight into the next workflow.
+
+70
+00:10:44,250 --> 00:10:49,750
+Connected. New prospects every day, and nobody has to remember to search.
+
+71
+00:10:51,450 --> 00:10:58,617
+Then everything you need to sell and convert: pipelines, websites, funnels, booking pages and email sequences.
+
+72
+00:11:05,117 --> 00:11:13,533
+In Contacts, open anybody and see their whole story on one page: health score, stage, deals, notes and email.
+
+73
+00:11:13,883 --> 00:11:22,300
+Subject lines are written for this person, from their name, their company and whatever you have typed so far.
+
+74
+00:11:22,650 --> 00:11:26,900
+Pick one, and it is in the subject box.
+
+75
+00:11:33,200 --> 00:11:41,617
+In Pipelines, describe the work, and AI lays out the stages from what the business sells, and to whom.
+
+76
+00:11:42,600 --> 00:11:50,600
+Every stage comes with its first tasks, and exactly what applying would change. No deal is ever deleted.
+
+77
+00:11:51,600 --> 00:11:57,933
+Rename, reorder, rewrite. It is a draft, and nothing changes until you press Apply.
+
+78
+00:11:58,283 --> 00:12:06,700
+Then ask Brain about the board. The AI answers from these deals, and the suggestion chips are counted exactly.
+
+79
+00:12:13,123 --> 00:12:16,957
+Pipelines: every deal, from first enquiry to won.
+
+80
+00:12:17,307 --> 00:12:24,057
+Each business workspace gets its own pipeline, with its first tasks written for that business.
+
+81
+00:12:33,207 --> 00:12:40,373
+Website enquiries become deals by themselves. A visitor asks for a quote on the business’s website...
+
+82
+00:12:42,507 --> 00:12:51,757
+and it is on the board in seconds. A contact and a deal, in the first stage, with nobody typing anything.
+
+83
+00:12:52,107 --> 00:13:00,107
+Automations work the board for you. Here, any deal idle for fourteen days is flagged urgent and stale.
+
+84
+00:13:04,607 --> 00:13:10,107
+Drag a deal on, or open it for sub-tasks, deadlines and comments.
+
+85
+00:13:14,607 --> 00:13:19,690
+And see it your way: board, list, table, funnel or timeline.
+
+86
+00:13:36,267 --> 00:13:45,100
+In Email campaigns, a whole campaign is written from a brief, for the client you pick, from their business profile.
+
+87
+00:13:55,167 --> 00:13:59,833
+Three emails, timed and conditioned. It stops when they answer.
+
+88
+00:14:00,183 --> 00:14:09,433
+And it tells you when it has too little to go on. A thin business profile is named, not papered over.
+
+89
+00:14:09,783 --> 00:14:16,950
+Ask the AI to change any email: shorter, warmer, more direct, or a different subject line.
+
+90
+00:14:17,300 --> 00:14:26,550
+Or build an automation from one sentence. Describe it, and it builds the trigger, the waits, the emails and the tags.
+
+91
+00:14:35,900 --> 00:14:43,067
+Built as a draft, step by step. Read it on the canvas, then switch it on.
+
+92
+00:14:44,767 --> 00:14:48,600
+Email campaigns go out from your own mailbox.
+
+93
+00:14:48,950 --> 00:14:55,700
+Every figure is counted from real sends: opened, clicked, replied and bounced, campaign by campaign.
+
+94
+00:14:56,250 --> 00:15:01,333
+Sequences send several emails, days apart, each from your own address.
+
+95
+00:15:04,250 --> 00:15:07,667
+And they stop the moment somebody answers.
+
+96
+00:15:12,450 --> 00:15:17,117
+A/B test any step, with two versions side by side.
+
+97
+00:15:19,850 --> 00:15:26,183
+Read it as one real contact will get it, every merge field filled in.
+
+98
+00:15:30,850 --> 00:15:35,100
+Everything is logged: who was added, and what changed.
+
+99
+00:15:36,450 --> 00:15:42,367
+And bring your own list. Any spreadsheet becomes contacts you can use anywhere.
+
+100
+00:15:48,867 --> 00:15:53,950
+In Websites, every client’s site is edited right on the page.
+
+101
+00:15:56,067 --> 00:16:04,900
+Say what the section should say, and Generate with AI writes the headline, the line under it, and the buttons.
+
+102
+00:16:05,567 --> 00:16:11,900
+Rewritten in seconds, in the site’s own design. Change any word by hand afterwards.
+
+103
+00:16:13,800 --> 00:16:19,300
+Websites and funnels for every client, built and hosted in the app.
+
+104
+00:16:21,400 --> 00:16:28,983
+Start from a whole site, not a blank page. Hover over a template to scroll through it.
+
+105
+00:16:37,500 --> 00:16:43,833
+Click anything on the page to change it, right in the panel beside it.
+
+106
+00:16:49,200 --> 00:16:55,117
+Add a section in one click: content and forms, straight onto the page.
+
+107
+00:16:59,300 --> 00:17:06,050
+Add pages, and check them on a tablet and a phone before they go live.
+
+108
+00:17:11,200 --> 00:17:17,533
+Get it ready for search engines: its title, description, and the link people share.
+
+109
+00:17:18,800 --> 00:17:22,633
+Then publish. It is live in a click.
+
+110
+00:17:26,680 --> 00:17:32,180
+Booking pages that fill your calendar, with every booking in one list.
+
+111
+00:17:32,530 --> 00:17:39,280
+Edit it beside the real thing. The page your visitors see changes as you type.
+
+112
+00:17:45,730 --> 00:17:51,647
+Change the look in one click, with four themes for the same page.
+
+113
+00:17:59,130 --> 00:18:05,047
+Set how long, where, and which days: video call, phone, or in person.
+
+114
+00:18:07,330 --> 00:18:13,663
+Times are shown in each visitor’s own time zone, so there is no back-and-forth.
+
+115
+00:18:14,013 --> 00:18:18,263
+Check it on a phone before you share it.
+
+116
+00:18:22,713 --> 00:18:31,547
+Set your hours, and the emails go by themselves: confirmations, reschedule links, and a note to you for every booking.
+
+117
+00:18:33,247 --> 00:18:39,163
+Creating content: graphics for every post, and SEO blog articles on a schedule.
+
+118
+00:18:45,063 --> 00:18:55,563
+In the Graphics Designer, say what the post is about, and AI writes the design: headline, label, points and button, fitted to the template.
+
+119
+00:18:58,263 --> 00:19:03,347
+Not right? Rewrite the words. Prices and dates are never invented.
+
+120
+00:19:07,263 --> 00:19:15,263
+Or describe a whole design from scratch, and it lays it out and opens it in the editor.
+
+121
+00:19:18,023 --> 00:19:22,690
+Every template is drawn with your client’s name and colours.
+
+122
+00:19:23,040 --> 00:19:28,957
+There are templates for whatever you are posting: offers, launches, tips and announcements.
+
+123
+00:19:31,440 --> 00:19:39,440
+Pick one, and say what it is about. Offers and prices only ever come from what you type.
+
+124
+00:19:44,040 --> 00:19:48,290
+Change the words, and the design keeps its shape.
+
+125
+00:19:49,640 --> 00:19:54,723
+Every format is re-laid, never stretched: feed, square, story and landscape.
+
+126
+00:20:01,640 --> 00:20:04,640
+Your client’s brand, in a click.
+
+127
+00:20:10,340 --> 00:20:15,007
+Swap the picture, from the photo library or your own.
+
+128
+00:20:16,540 --> 00:20:20,373
+Or try the same words in another composition.
+
+129
+00:20:21,140 --> 00:20:26,640
+And it is ready to post: caption, hashtags, and a reminder date.
+
+130
+00:20:36,160 --> 00:20:44,993
+For the blog, give it the writing you already have: an about page, a service page, or an old post.
+
+131
+00:20:46,660 --> 00:20:55,077
+It reads the business and builds a ranking strategy: what you sell, to whom, and the terms worth chasing.
+
+132
+00:21:01,260 --> 00:21:07,593
+Keywords come in clusters, each aimed at a page, with an honest difficulty estimate.
+
+133
+00:21:07,943 --> 00:21:13,027
+Then a month of posts is planned, cheapest to rank first.
+
+134
+00:21:34,343 --> 00:21:41,927
+Each post is written in the business’s voice: over a thousand words, with headings and internal links.
+
+135
+00:21:48,543 --> 00:21:55,293
+It is measured against nine on-page SEO checks. A failing check is shown, not hidden.
+
+136
+00:22:00,343 --> 00:22:06,677
+Then it is published to WordPress, on the planned dates, only once you approve.
+
+137
+00:22:08,377 --> 00:22:14,293
+And running an agency: a sub-account for every client, under your own name.
+
+138
+00:22:15,993 --> 00:22:20,243
+A workspace for every client, under your own name.
+
+139
+00:22:20,593 --> 00:22:29,010
+A client workspace takes a minute, with its own contacts, pipelines and campaigns, and the price they pay you.
+
+140
+00:22:33,693 --> 00:22:40,860
+Each client can see the product name you sell it under, right on their sign-in page.
+
+141
+00:22:44,193 --> 00:22:52,193
+Your product name appears across the app: the top bar, the sign-in screen, and the emails’ sender name.
+
+142
+00:22:57,793 --> 00:23:02,043
+And your own sign-in address goes live at once.
+
+143
+00:23:13,433 --> 00:23:18,517
+Reports read live from every module, counted from your own records.
+
+144
+00:23:18,867 --> 00:23:23,950
+Pick any period you like, from seven days to twelve months.
+
+145
+00:23:25,067 --> 00:23:28,067
+See where every contact came from.
+
+146
+00:23:28,867 --> 00:23:32,700
+Deals by stage, and who is winning them.
+
+147
+00:23:33,067 --> 00:23:35,650
+Every campaign side by side.
+
+148
+00:23:38,067 --> 00:23:41,067
+And whether your mail is arriving.
+
+149
+00:23:46,787 --> 00:23:56,037
+Here is what each tier includes. Stack up to three codes for more business workspaces, workflows, AI requests and client sub-accounts.
+
+150
+00:23:56,387 --> 00:24:06,053
+Everything you saw in this film is part of the deal, with your AI Live Business Manager watching over it every day.

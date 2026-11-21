@@ -1,14 +1,14 @@
 {
  "film": "appsumo-short",
  "voice": "Umbriel",
- "style": "Read this aloud as Protron, a warm, friendly, genuinely human guide showing one business owner around their software, like a helpful friend who is a little excited to show them something. Relaxed but lively pace, natural, a smile in the voice, gentle emphasis. Not salesy, not robotic. Say only the words below.",
+ "style": "Read this aloud as a warm, friendly, genuinely human guide showing one business owner around their software, like a helpful friend who is a little excited to show them something. Relaxed but lively pace, natural, a smile in the voice, gentle emphasis. Not salesy, not robotic. Say only the words below.",
  "chapters": [
   {
    "id": "as-intro",
    "lines": [
     [
      0.6,
-     "Hi, I am Protron, your AI Live Business Manager. Here is Protected Central in under two minutes, recorded live in the real app."
+     "Here is the whole platform in under two minutes, recorded live in the real app."
     ]
    ]
   },
@@ -30,15 +30,15 @@
    "lines": [
     [
      1.0,
-     "I am your AI Live Business Manager, and I watch every campaign. Here, forty-six emails went out, and nobody replied."
+     "Your AI Live Business Manager watches every campaign. Here, forty-six emails went out, and nobody replied."
     ],
     [
      5.9,
-     "So I flag it: this campaign isn’t getting replies, and here is what I would change."
+     "So it flags it: this campaign isn’t getting replies, and here is what it would change."
     ],
     [
      10.4,
-     "One click, and I re-optimise it, in the business’s own voice."
+     "One click, and AI re-optimises it, in the business’s own voice."
     ],
     [
      15.0,
@@ -46,7 +46,7 @@
     ],
     [
      21.8,
-     "Or talk it through with me in the live chat. I ask about your business, and suggest what to try."
+     "Or talk it through in the live chat. It asks about your business, and suggests what to try."
     ]
    ]
   },
