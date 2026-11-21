@@ -26,6 +26,7 @@ import {
 import { runAgentOnce } from '../lib/projectAgents';
 import { check as allowance, refusalBody } from '../lib/allowanceStore';
 import { WINDOW_DAYS as WATCH_WINDOW_DAYS } from '../lib/protronJudge';
+import { decideAction } from '../lib/protronFeed';
 
 /** Kept in step with AIGuardrails in src/types/aiSalesAgent.ts. */
 const DEFAULT_GUARDRAILS = {
@@ -950,21 +951,9 @@ export async function handleAutopilot(req: Request, env: Env): Promise<Response>
   if (act === 'approve' || act === 'reject') {
     const id = String(d.actionId ?? '').trim();
     if (!id) return fail('Which action?');
-    const row = await env.DB.prepare(
-      'SELECT status FROM crm_autopilot_actions WHERE id = ? AND account_id = ?',
-    ).bind(id, accountId).first<{ status: string }>();
-    if (!row) return fail('That action is not in this workspace.');
-    if (row.status !== 'awaiting') {
-      return fail(`That action is already "${row.status}" — it is not waiting for anybody.`);
-    }
-    await env.DB.prepare(
-      `UPDATE crm_autopilot_actions SET status = ?, detail = ?, acted_at = ? WHERE id = ?`,
-    ).bind(
-      act === 'approve' ? 'pending' : 'skipped',
-      act === 'approve' ? '' : 'You decided not to do this.',
-      act === 'approve' ? null : nowIso(),
-      id,
-    ).run();
+    /* One rule, shared with Protron's chat buttons (lib/protronFeed.ts). */
+    const r = await decideAction(env, accountId, id, act === 'approve');
+    if (!r.ok) return fail(r.error);
     return json({ success: true, actions: await listActions(Number(d.limit) || 100) });
   }
 
@@ -999,7 +988,8 @@ async function brandFor(env: Env, accountId: string, portfolioId: string): Promi
   return {
     companyName: ob.companyName ?? ob.businessName ?? '',
     industry: ob.industry ?? '',
-    description: ob.description ?? ob.whatYouDo ?? '',
+    /* The owner's latest answers to Protron's "what is going on?" (routes/protronFeed.ts). */
+    description: [ob.description ?? ob.whatYouDo ?? '', ob.ownerNews ? `Latest from the owner: ${ob.ownerNews}` : ''].filter(Boolean).join('\n'),
     products: ob.products ?? ob.services ?? '',
     audience: ob.audience ?? ob.idealCustomer ?? '',
     tone: ob.tone ?? '',

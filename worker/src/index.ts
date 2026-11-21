@@ -105,6 +105,8 @@ import { runPendingSetups } from './lib/setupRun';
 import { runReplies } from './replyTick';
 import { runDigests } from './autopilotDigest';
 import { runProtronWatch } from './lib/protronWatch';
+import { runProtronFeed } from './lib/protronFeed';
+import { handleProtronFeed } from './routes/protronFeed';
 import { runEngageDispatch } from './engageDispatch';
 import { applyContactChangesInCloud, runAutomations } from './lib/automationEngine';
 import { runProjectAgents } from './lib/projectAgents';
@@ -195,6 +197,7 @@ const ROUTES: Record<string, Handler> = {
      decisions that belong to a person — approving a held-back action, and
      pausing the whole thing. */
   '/api/autopilot.php': handleAutopilot,
+  '/api/protron-feed.php': handleProtronFeed,
   /* The AI key Autopilot writes replies with, and the replies a guardrail held
      back for a person to read. */
   '/api/replies.php': handleReplies,
@@ -646,6 +649,13 @@ export default {
          asking to fix it (lib/protronWatch.ts). Never throws. */
       const watch = await runProtronWatch(env);
       for (const n of watch.notes.slice(0, 5)) report.notes.push({ accountId: '', text: n, kind: 'problem' });
+
+      /* Protron's messages in the live chat (lib/protronFeed.ts): after the
+         watch and the sends, so it reports what this tick did and what now
+         waits for a yes. It sends no mail, so it costs the tick only reads
+         and a few inserts. */
+      const feed = await runProtronFeed(env);
+      for (const n of feed.notes.slice(0, 3)) report.notes.push({ accountId: '', text: n, kind: 'problem' });
 
       /*
        * The install owner's own mail about their trial customers: the day 1, 3

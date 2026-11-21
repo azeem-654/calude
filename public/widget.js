@@ -139,6 +139,7 @@
     micOff: ['M2 2l20 20', 'M18.9 13.4A7 7 0 0 0 19 12v-2', 'M5 10v2a7 7 0 0 0 12 5', 'M15 9.3V5a3 3 0 0 0-5.7-1.3', 'M9 9v3a3 3 0 0 0 5.1 2.1', 'M12 19v3'],
     speaker: ['M11 5L6 9H2v6h4l5 4z', 'M15.5 8.5a5 5 0 0 1 0 7', 'M19 5a10 10 0 0 1 0 14'],
     help: ['M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z', 'M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3', 'M12 17h.01'],
+    spark: ['M12 3l1.9 5.8L20 10.7l-6.1 1.9L12 18.5l-1.9-5.9L4 10.7l6.1-1.9z', 'M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z'],
   };
 
   var root, panel, head, headTitle, backBtn, body, launcher;
@@ -173,9 +174,10 @@
       report: 'Report a problem',
       status: 'Check ticket status',
       article: 'Help article',
+      updates: 'AI Live Business Manager',
     };
     headTitle.textContent = titles[view] || 'Help';
-    ({ home: homeView, chat: chatView, screen: screenView, voice: voiceView, ticket: ticketView, report: reportView, status: statusView, article: articleView }[view] || homeView)();
+    ({ home: homeView, updates: updatesView, chat: chatView, screen: screenView, voice: voiceView, ticket: ticketView, report: reportView, status: statusView, article: articleView }[view] || homeView)();
   }
 
   function onlyChat() { return state.features.length === 1 && has('chat'); }
@@ -195,6 +197,14 @@
   function homeOptions() {
     var cfg = state.cfg || {};
     var o = [];
+    if (feed.on) {
+      o.push({
+        key: 'spark', view: 'updates', label: 'Your AI Live Business Manager',
+        hint: feed.unread ? feed.unread + ' new — progress and questions for you'
+          : feed.awaiting ? feed.awaiting + ' waiting for your yes'
+            : 'Progress on your business workspaces, and anything waiting for you',
+      });
+    }
     if (has('voice')) {
       o.push({
         key: 'phone', view: 'voice', label: 'Start an online call',
@@ -267,6 +277,136 @@
       wrap.appendChild(el('div', 'font-size:11.5px;color:#64748b;line-height:1.5;margin-top:4px;', state.cfg.consentText));
     }
     body.appendChild(wrap);
+  }
+
+  /* ── Your AI Live Business Manager (signed in only) ─────────────────────
+   * Protron's messages about the customer's business workspaces — what it
+   * did, what waits for their yes, what it noticed, its questions — written
+   * on the server while they were away (worker/src/lib/protronFeed.ts) and
+   * read here from /api/protron-feed.php with the session cookie, so only on
+   * the app's own origin and only signed in. Every word is set as text. An
+   * approve button sends only the message's id; the server decides which
+   * action that is, in the signed-in account. */
+  var FEED = ORIGIN + '/api/protron-feed.php';
+  var feed = { on: false, unread: 0, awaiting: 0, messages: [], error: '' };
+  var feedWanted = /[?&]pc=updates\b/.test(window.location.search);
+
+  function feedPost(b) {
+    if (!(APP && SAME_ORIGIN && KNOWN.workspace)) return Promise.resolve({ success: false });
+    b.token = 'cookie';
+    b.accountId = KNOWN.workspace;
+    return fetch(FEED, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) })
+      .then(function (r) { return r.json(); })
+      .catch(function () { return { success: false, error: 'Could not reach the server just now.' }; });
+  }
+
+  function feedApply(r, fromPoll) {
+    /* A background refresh never redraws over a reply being typed. */
+    var typing = document.activeElement && document.activeElement.getAttribute && document.activeElement.getAttribute('data-field') === 'protron-reply' && document.activeElement.value;
+    if (fromPoll && (typing || !r || !r.success)) { if (r && r.success && r.unread > feed.unread && !(state.open && state.view === 'updates')) markUnread(true); return; }
+    if (!r || !r.success) { feed.error = (r && (r.error || r.message)) || ''; if (state.view === 'updates' && state.open) show('updates'); return; }
+    feed.on = true; feed.error = '';
+    feed.messages = r.messages || [];
+    feed.unread = r.unread || 0;
+    feed.awaiting = r.awaiting || 0;
+    var reading = state.open && state.view === 'updates';
+    if (feed.unread && !reading) markUnread(true);
+    if (reading) show('updates');
+    if (feedWanted && panel) { feedWanted = false; if (!state.open) toggle(); show('updates'); feedRead(); }
+  }
+
+  function feedRefresh() {
+    feedPost({ action: 'list' }).then(function (r) { feedApply(r); });
+  }
+
+  function feedRead() {
+    markUnread(false);
+    if (feed.unread) feedPost({ action: 'read' }).then(feedApply);
+  }
+
+  var DONE_LABEL = { pending: 'Approved — going ahead on the next run', done: 'Done', skipped: 'You said not now', failed: 'Did not work — see AI Autopilot', running: 'Going ahead now' };
+
+  function updatesView() {
+    var wrap = el('div', 'display:flex;flex-direction:column;flex:1;min-height:0;');
+    var list = el('div', 'flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;');
+    list.setAttribute('data-pc-updates', '');
+    if (!feed.messages.length) {
+      list.appendChild(el('div', 'font-size:13.5px;color:#64748b;line-height:1.55;',
+        feed.error || 'Nothing yet. As I work on your business workspaces I post here — what I did, and anything that needs your yes.'));
+    }
+    feed.messages.forEach(function (m) {
+      if (m.role === 'you') {
+        list.appendChild(el('div', 'align-self:flex-end;max-width:82%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word;background:' + accent() + ';color:#fff;', m.body));
+        return;
+      }
+      var row = el('div', 'align-self:flex-start;display:flex;gap:8px;align-items:flex-start;max-width:92%;');
+      var pic = el('img', 'width:28px;height:28px;border-radius:50%;flex-shrink:0;object-fit:cover;background:#e2e8f0;');
+      pic.alt = ''; pic.src = ORIGIN + '/protron.svg';
+      var col = el('div', 'display:flex;flex-direction:column;gap:6px;min-width:0;');
+      if (m.project) col.appendChild(el('span', 'font-size:11.5px;font-weight:700;color:#64748b;', m.project));
+      col.appendChild(el('div', 'padding:10px 12px;border-radius:14px;background:#f1f3f7;color:#0f172a;font-size:14px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word;'
+        + (m.read ? '' : 'box-shadow:inset 3px 0 0 ' + accent() + ';'), m.body));
+      (m.actions || []).forEach(function (a) {
+        if (a.type === 'approve') {
+          if (a.state === 'awaiting') {
+            var bar = el('div', 'display:flex;gap:6px;flex-wrap:wrap;');
+            var yes = el('button', 'padding:8px 14px;border:0;border-radius:9px;background:' + accent() + ';color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;', 'Approve');
+            var no = el('button', 'padding:8px 14px;border:1px solid #e6e9f0;border-radius:9px;background:#fff;color:#334155;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;', 'Not now');
+            yes.type = 'button'; no.type = 'button';
+            yes.setAttribute('data-pc-approve', m.id);
+            yes.onclick = function () { yes.disabled = true; no.disabled = true; feedPost({ action: 'act', messageId: m.id, choice: 'approve' }).then(feedApply); };
+            no.onclick = function () { yes.disabled = true; no.disabled = true; feedPost({ action: 'act', messageId: m.id, choice: 'reject' }).then(feedApply); };
+            bar.appendChild(yes); bar.appendChild(no);
+            col.appendChild(bar);
+          } else if (DONE_LABEL[a.state]) {
+            col.appendChild(el('span', 'font-size:12px;font-weight:700;color:#16a34a;', '✓ ' + DONE_LABEL[a.state]));
+          }
+        } else if (a.type === 'open' && /^\/[A-Za-z0-9/_\-?=&.]*$/.test(a.path || '')) {
+          var go = el('button', 'align-self:flex-start;padding:7px 12px;border:1px solid #e6e9f0;border-radius:9px;background:#fff;color:' + accent() + ';font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;', a.label || 'Open');
+          go.type = 'button';
+          go.onclick = function () { window.location.assign(ORIGIN + a.path); };
+          col.appendChild(go);
+        }
+      });
+      row.appendChild(pic); row.appendChild(col);
+      list.appendChild(row);
+    });
+    wrap.appendChild(list);
+
+    /* Quick buttons: the summary on demand, and every yes at once. */
+    var quick = el('div', 'display:flex;gap:6px;flex-wrap:wrap;padding:8px 14px 0;border-top:1px solid #eef0f4;');
+    function chip(label, fn) {
+      var c = el('button', 'padding:6px 11px;border:1px solid #e6e9f0;border-radius:999px;background:#fff;color:#334155;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;', label);
+      c.type = 'button'; c.onclick = fn; quick.appendChild(c);
+    }
+    chip('Where do things stand?', function () { feedPost({ action: 'summary' }).then(feedApply); });
+    if (feed.awaiting > 1) {
+      chip('Approve all ' + feed.awaiting, function () {
+        if (window.confirm('Approve all ' + feed.awaiting + ' waiting items? Anything that sends goes out from your own mailbox on the next run.')) feedPost({ action: 'approve_all' }).then(feedApply);
+      });
+    }
+    wrap.appendChild(quick);
+
+    var form = el('div', 'display:flex;gap:8px;padding:10px 14px 14px;');
+    var box = el('input', FIELD + 'flex:1;min-width:0;');
+    box.placeholder = 'Reply — what is going on in the business?';
+    box.setAttribute('aria-label', 'Reply to your AI Live Business Manager');
+    box.setAttribute('data-field', 'protron-reply');
+    box.maxLength = 1000;
+    var send = el('button', 'padding:0 14px;border:0;border-radius:10px;background:' + accent() + ';color:#fff;font-weight:700;cursor:pointer;font-family:inherit;', 'Send');
+    send.type = 'button';
+    function go() {
+      var t = box.value.trim();
+      if (t.length < 2) return;
+      send.disabled = true;
+      feedPost({ action: 'reply', text: t }).then(function (r) { send.disabled = false; if (r && r.success) box.value = ''; feedApply(r); });
+    }
+    send.onclick = go;
+    box.onkeydown = function (e) { if (e.key === 'Enter') go(); };
+    form.appendChild(box); form.appendChild(send);
+    wrap.appendChild(form);
+    body.appendChild(wrap);
+    list.scrollTop = list.scrollHeight;
   }
 
   /* ── Chat ──────────────────────────────────────────────────────────────────
@@ -2381,6 +2521,12 @@
     /* The widget arrives after the page; a page waiting to offer its options
        is told rather than left polling. */
     try { window.dispatchEvent(new Event('pc-widget-ready')); } catch (e) { /* very old browser */ }
+    /* Signed in: the AI Live Business Manager's messages, now and every two
+       minutes while the tab is in front. */
+    if (APP && SAME_ORIGIN && KNOWN.workspace) {
+      feedRefresh();
+      window.setInterval(function () { if (document.visibilityState !== 'hidden') feedPost({ action: 'list' }).then(function (r) { feedApply(r, true); }); }, 120000);
+    }
   }
 
   function toggle() {
@@ -2392,6 +2538,8 @@
       dropTeaser(false);
       /* A session in progress is what they came back for. */
       if (live) show(liveViewName(live));
+      /* Something new from the AI Live Business Manager is what they came for. */
+      else if (feed.unread) { show('updates'); feedRead(); }
       else if (!body.firstChild) show(onlyChat() ? 'chat' : 'home');
       chatOpened();
     }

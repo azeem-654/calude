@@ -576,3 +576,47 @@ Protron is unchanged.
   (their own sites, not Protron) and in a text-only toast.
 - **Campaign watch covers workflows.** `protronWatch` now reads `source`
   `automation` too — AI Autopilot workflow emails were never judged.
+
+### Protron in the live chat, and the end-of-day email (2026-11-21)
+
+Owner: Protron keeps working on its own and keeps **sending messages in the
+live chat** even when the customer is away — progress, what waits for their
+yes (with buttons), what it noticed, questions about the business — and **by
+the end of each day** emails them from support@ so they come back.
+
+- **Messages** — `crm_protron_messages` (migration 0106), written by
+  `runProtronFeed` (`lib/protronFeed.ts`) on the 5-minute cron right after the
+  campaign watch: one message per `awaiting` Autopilot action (an Approve / Not
+  now button), one progress message per business workspace for what was done
+  or failed since the last pass (notices are not counted as work), and at most
+  one "what is going on this week?" question per business a week, in the
+  owner's working hours (`crm_schedule` timezone). `protronWatch` also posts its
+  flags there. `ref` (unique per account) stops duplicates. No AI is called:
+  every message is built from records (`waitingText`, `progressText`,
+  `askText`, `summaryText`, pure, `test/protronFeed.test.mts`).
+- **API** — `/api/protron-feed.php`: list, read, act (the action is read from
+  the stored message, never the request), approve_all, summary ("Where do things
+  stand?", from `projectStates`), reply. Approving uses `decideAction`, the
+  same awaiting → pending rule the Autopilot screen now calls; the tick does
+  the work. A reply is saved as `ownerNews` on the business's portfolio profile
+  (or `crm_onboarding`), and both `brandFor` copies (autopilotTick.ts,
+  routes/autopilot.ts) append it to the description the AI writers read.
+- **Where customers see it** — the help button's widget (`public/widget.js`),
+  signed in on the app's own origin only (it sends the HttpOnly cookie): a
+  "Your AI Live Business Manager" entry first on its home panel, a red dot on
+  the launcher when something is unread, the panel opening straight onto the
+  thread, and `?pc=updates` in a URL opening it (the email's button). Polled
+  every two minutes while the tab is in front; a poll never redraws over a
+  reply being typed. Needs the house widget (houseWidgetKey), as the help
+  button does.
+- **The email** — `runDigests` (autopilotDigest.ts) now goes at **17:00–20:00**
+  local (was 07:00–10:00), **from the platform's system mailbox** (support@,
+  `installMailbox`; the customer's own mailbox only if the platform has none),
+  as "Your AI Live Business Manager", and lists the unread chat messages with a
+  "Read and reply" button. Still once a day and silent on a quiet day — but
+  unread messages now count as something to say.
+- Tests: `test:protron` (pure), `test:security` (another workspace can neither
+  read nor approve), `test/protronFeed.e2e.mjs` (390 and 1280, over a fresh
+  database — it makes an install owner). The widget's reply box carries
+  `data-field="protron-reply"`; `test:forms` drives React forms through the
+  field guard and does not cover the widget.

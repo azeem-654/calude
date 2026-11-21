@@ -19,6 +19,8 @@
 import { dataGet, dataPut, nowIso, type Env } from './lib/db';
 import { loadMailbox } from './routes/mailbox';
 import { canSend, deliver, fromAddressOf } from './lib/deliver';
+import { installMailbox } from './routes/auth';
+import { localHour } from './lib/localHour';
 
 export interface DigestReport { sent: number; skipped: number; failed: number; notes: string[] }
 
@@ -26,11 +28,11 @@ export interface DigestReport { sent: number; skipped: number; failed: number; n
  *  hours wide, which is thirty-six ticks. */
 const MIN_GAP_MS = 20 * 60 * 60 * 1000;
 
-/* Aimed at the start of the working day rather than at midnight: a list of
-   things to approve is useful when somebody is about to work, and ignored when
-   it arrives while they are asleep. */
-const FROM_HOUR = 7;
-const TO_HOUR = 10;
+/* The end of the customer's working day (owner, 2026-11-21: "by the end of
+   each day … you have some pending messages"; it went out at 7–10 am until
+   then). Late enough to report the day's work, early enough to be read. */
+const FROM_HOUR = 17;
+const TO_HOUR = 20;
 
 /** When this workspace was last written to. Its own key, see runDigests. */
 const DIGEST_KEY = 'crm_autopilot_digest_at';
@@ -49,27 +51,6 @@ interface ActionRow {
   created_at: string;
   /** Which project it was for. Empty for history written before projects. */
   project: string;
-}
-
-/**
- * The customer's own local hour.
- *
- * The timezone comes from their booking page, which is the one place in this
- * app a real IANA zone is already stored — taken from their browser when they
- * set their availability. No timezone means UTC, and the digest still goes;
- * arriving at the wrong hour is a much smaller failure than not arriving.
- */
-function localHour(tz: string): number {
-  try {
-    const h = new Intl.DateTimeFormat('en-GB', { timeZone: tz || 'UTC', hour: 'numeric', hour12: false })
-      .format(new Date());
-    const n = Number(h);
-    return Number.isFinite(n) ? n : new Date().getUTCHours();
-  } catch {
-    /* An unknown zone throws rather than falling back, and a workspace whose
-       stored zone is nonsense should still get its digest. */
-    return new Date().getUTCHours();
-  }
 }
 
 const esc = (v: string) =>
@@ -181,29 +162,40 @@ export async function runDigests(env: Env): Promise<DigestReport> {
     /* Nothing to say. Say nothing, and leave the clock alone. A digest whose
        only content is "here is what is queued" would arrive every morning of a
        quiet week saying the same thing. */
-    if (!awaiting.length && !done.length && !failed.length && !noticed.length) { report.skipped++; continue; }
+    /* Protron's unread messages in the live chat (lib/protronFeed.ts) — the
+       reason to sign in that the owner wanted the email to carry. */
+    const unread = (await env.DB.prepare(
+      `SELECT m.kind, m.body, m.created_at, COALESCE(j.name, '') AS project FROM crm_protron_messages m
+         LEFT JOIN crm_projects j ON j.id = m.project_id
+        WHERE m.account_id = ? AND m.role = 'protron' AND m.read_at IS NULL ORDER BY m.created_at DESC LIMIT 6`,
+    ).bind(accountId).all<{ kind: string; body: string; created_at: string; project: string }>().catch(() => ({ results: [] }))).results ?? [];
+    const unreadCount = Number((await env.DB.prepare(`SELECT COUNT(*) AS n FROM crm_protron_messages WHERE account_id = ? AND role = 'protron' AND read_at IS NULL`)
+      .bind(accountId).first<{ n: number }>().catch(() => null))?.n ?? 0);
+
+    if (!awaiting.length && !done.length && !failed.length && !noticed.length && !unreadCount) { report.skipped++; continue; }
 
     const owner = await env.DB.prepare('SELECT owner_email FROM crm_workspaces WHERE account_id = ?')
       .bind(accountId).first<{ owner_email: string }>();
     if (!owner?.owner_email) { report.skipped++; continue; }
 
-    const mb = await loadMailbox(env, accountId);
-    if (!canSend(mb)) {
-      /* Not a failure worth a note every five minutes: a workspace with no
-         mailbox already has a louder problem, and Autopilot has already said
-         so in the ledger. */
-      report.skipped++;
-      continue;
-    }
+    /* From the platform's own mailbox (support@, routes/auth.ts
+       installMailbox) — the owner's ask, and it reaches a customer who has not
+       connected a mailbox yet, who is exactly the one who needs nudging. The
+       customer's own mailbox only when the platform has none. */
+    const own = await loadMailbox(env, accountId);
+    const mb = (await installMailbox(env).catch(() => null)) ?? (canSend(own) ? own : null);
+    if (!mb || !canSend(mb)) { report.skipped++; continue; }
 
     const profile = JSON.parse(await dataGet(env.DB, accountId, 'crm_onboarding') ?? '{}') as { companyName?: string };
-    const company = profile.companyName || mb.from.name || 'your business';
+    const company = profile.companyName || own?.from.name || 'your business';
     const appUrl = `${env.APP_ORIGIN ?? ''}/autopilot`;
 
     /* The subject carries the one number that decides whether this gets opened
        now or later. "Autopilot digest" tells them nothing. */
     const subject = awaiting.length
-      ? `${awaiting.length} thing${awaiting.length === 1 ? '' : 's'} waiting for you — Autopilot`
+      ? `${awaiting.length} thing${awaiting.length === 1 ? '' : 's'} waiting for your yes — your AI Live Business Manager`
+      : unreadCount && !done.length && !failed.length
+        ? `${unreadCount} new message${unreadCount === 1 ? '' : 's'} about ${company} — your AI Live Business Manager`
       : failed.length
         ? `Autopilot ran into ${failed.length} problem${failed.length === 1 ? '' : 's'}`
         : done.length
@@ -215,7 +207,12 @@ export async function runDigests(env: Env): Promise<DigestReport> {
 
     const html = [
       `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:14px;line-height:1.6;color:#17191c;max-width:620px">`,
-      `<p style="margin:0 0 4px">Here is what Autopilot has been doing for ${esc(company)}.</p>`,
+      `<p style="margin:0 0 4px">Here is today's round-up for ${esc(company)} from your AI Live Business Manager.</p>`,
+      unreadCount
+        ? `<h3 style="margin:22px 0 8px;font-size:15px">${unreadCount} unread message${unreadCount === 1 ? '' : 's'} in your live chat</h3>`
+          + `<ul style="margin:0;padding-left:18px">${unread.map(m => `<li style="margin:0 0 8px">${m.project ? `<span style="color:#8b95a5;font-size:12px">${esc(m.project)}</span><br>` : ''}${esc(m.body.split('\n')[0].slice(0, 240))}</li>`).join('')}</ul>`
+          + (env.APP_ORIGIN ? `<p style="margin:10px 0 0"><a href="${esc(`${env.APP_ORIGIN}/autopilot?pc=updates`)}" style="display:inline-block;padding:10px 18px;background:#17191c;color:#fff;border-radius:8px;text-decoration:none;font-weight:700">Read and reply</a></p>` : '')
+        : '',
       list('Waiting for you', awaiting,
         'These are held until you say yes — nothing has been sent or bought.'),
       list('Done', done),
@@ -235,7 +232,7 @@ export async function runDigests(env: Env): Promise<DigestReport> {
     ].filter(Boolean).join('');
 
     const sent = await deliver(mb, {
-      fromName: mb.from.name || 'Autopilot', fromEmail: fromAddressOf(mb),
+      fromName: 'Your AI Live Business Manager', fromEmail: fromAddressOf(mb),
       to: owner.owner_email, subject, html,
       replyTo: mb.from.replyTo || undefined,
     });

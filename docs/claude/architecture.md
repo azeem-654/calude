@@ -28,6 +28,10 @@ A cron fires every 5 minutes, and the order in `worker/src/index.ts`
 2. `runReplies` — answering a lead is the most time-sensitive thing on a tick.
 3. `runScheduledSends` — the campaign batch.
 4. `runDigests` — reports on the three above, so it goes last.
+5. `runProtronWatch` then `runProtronFeed` — the campaign watch, then
+   Protron's messages in the live chat (what this tick did, what waits for a
+   yes); the digest (now at 17–20 local) lists the unread ones. See
+   `docs/claude/protron.md`, "Protron in the live chat".
 
 Then `recordTick` writes what happened into `crm_ticks`.
 

@@ -894,6 +894,28 @@ console.log('\nThe retired Stripe callback (M-6)');
 const oldHook = await fetch(`${BASE}/api/stripe-webhook.php`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': 't=1,v1=00', Connection: 'close' }, body: JSON.stringify({ type: 'checkout.session.completed', data: { object: { metadata: { accountId: C2.acct } } } }) });
 check('/api/stripe-webhook.php answers 410 and changes nothing', oldHook.status === 410, String(oldHook.status));
 
+console.log('\nProtron\'s chat messages (protron-feed.php) stay in their own workspace');
+{
+  /* A waiting action and Protron's message about it, in B's workspace. */
+  const act = `pf-act-${run}`, msg = `pf-msg-${run}`;
+  d1rows(`INSERT INTO crm_autopilot_actions (id, account_id, kind, status, summary, because, counts, effect, detail, due_at, created_at) VALUES ('${act}', '${B.acct}', 'send_email', 'awaiting', 'Email 12 past clients', 'probe', '{}', '{"type":"none"}', '', NULL, '2026-01-01T00:00:00Z')`);
+  d1rows(`INSERT INTO crm_protron_messages (id, account_id, kind, body, actions, created_at) VALUES ('${msg}', '${B.acct}', 'waiting', 'probe', '[{"type":"approve","actionId":"${act}"}]', '2026-01-01T00:00:00Z')`);
+  const cList = await api('protron-feed.php', { action: 'list', token: C.token, accountId: B.acct });
+  check('C cannot read B\'s messages', !cList.ok && cList.status === 403, `${cList.status} ${JSON.stringify(cList.data).slice(0, 120)}`);
+  const cAct = await api('protron-feed.php', { action: 'act', token: C.token, accountId: C.acct, messageId: msg, choice: 'approve' });
+  check('C cannot approve B\'s action through its own workspace', !cAct.ok || cAct.data.success === false, JSON.stringify(cAct.data).slice(0, 120));
+  const cAll = await api('protron-feed.php', { action: 'approve_all', token: C.token, accountId: B.acct });
+  check('C cannot approve everything in B\'s workspace', !cAll.ok && cAll.status === 403, `${cAll.status}`);
+  check('B\'s action is still waiting', d1rows(`SELECT status FROM crm_autopilot_actions WHERE id = '${act}'`)[0]?.status === 'awaiting');
+  const bList = await api('protron-feed.php', { action: 'list', token: B.token, accountId: B.acct });
+  const mine = (bList.data.messages ?? []).find(m => m.id === msg);
+  check('B sees its message with a live Approve button', mine?.actions?.[0]?.state === 'awaiting', JSON.stringify(mine ?? bList.data).slice(0, 160));
+  const bAct = await api('protron-feed.php', { action: 'act', token: B.token, accountId: B.acct, messageId: msg, choice: 'approve' });
+  check('B approves its own from the chat (awaiting → pending)', bAct.ok && d1rows(`SELECT status FROM crm_autopilot_actions WHERE id = '${act}'`)[0]?.status === 'pending', JSON.stringify(bAct.data).slice(0, 120));
+  const bad = await api('protron-feed.php', { action: 'reply', token: B.token, accountId: B.acct, text: 'x' });
+  check('a too-short reply names its box', bad.data.field === 'protron-reply', JSON.stringify(bad.data).slice(0, 120));
+}
+
 console.log(`\n${passes} passed, ${failures} failed.`);
 process.exit(failures ? 1 : 0);
 

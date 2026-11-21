@@ -28,6 +28,7 @@
  * mailbox to its owner, the way the morning digest does. Each finding is
  * raised at most once a week (`crm_protron_alerts`). Hourly; never throws.
  */
+import { postFeed } from './protronFeed';
 import { metaGet, metaPut, nowIso, type Env } from './db';
 import { loadMailbox } from '../routes/mailbox';
 import { canSend, deliver, fromAddressOf } from './deliver';
@@ -94,6 +95,9 @@ export async function runProtronWatch(env: Env): Promise<WatchReport> {
         .bind(crypto.randomUUID(), to, `Protron: ${f.title}`.slice(0, 200), f.body.slice(0, 2000), link, 'Review it with Protron', emailed, nowIso()).run();
       await env.DB.prepare('INSERT INTO crm_protron_alerts (account_id, source_id, kind, told_at) VALUES (?,?,?,?) ON CONFLICT (account_id, source_id, kind) DO UPDATE SET told_at = excluded.told_at')
         .bind(f.accountId, f.sourceId, f.kind, nowIso()).run();
+      /* And in the live chat, where the customer sees it next time they sign in (lib/protronFeed.ts). */
+      await postFeed(env, { accountId: f.accountId, kind: 'watch', body: `${f.title}. ${f.body} Open its business workspace on AI Autopilot and use the button on the flagged workflow — nothing changes until you approve it.`,
+        actions: [{ type: 'open', path: '/autopilot', label: 'Open AI Autopilot' }], ref: `watch:${f.sourceId}:${f.kind}:${nowIso().slice(0, 10)}` });
       report.raised++;
     }
   } catch (e) {

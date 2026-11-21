@@ -416,7 +416,9 @@ async function brandFor(env: Env, accountId: string, run: RunRow): Promise<Brand
   return {
     companyName: ob.companyName ?? ob.businessName ?? '',
     industry: ob.industry ?? '',
-    description: ob.description ?? ob.whatYouDo ?? '',
+    /* The owner's latest answers to Protron's "what is going on?" in the live
+       chat (routes/protronFeed.ts keeps them as `ownerNews`). */
+    description: [ob.description ?? ob.whatYouDo ?? '', ob.ownerNews ? `Latest from the owner: ${ob.ownerNews}` : ''].filter(Boolean).join('\n'),
     products: ob.products ?? ob.services ?? '',
     audience: ob.audience ?? ob.idealCustomer ?? '',
     tone: ob.brandVoice ?? ob.tone ?? '',
