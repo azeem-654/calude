@@ -106,6 +106,10 @@ const signIn = ([token, acct, subs]: string[]) => {
      cannot quietly turn the clips light. */
   localStorage.setItem('crm_theme', 'dark');
   localStorage.removeItem('crm_motion');
+  /* The corner's "Need a hand with …?" offer (CornerHelp) comes up after 75 s
+     on one screen during a trial once a help widget exists — over the film,
+     and as the page's last dialog, where wizard() looks. Its own off switch. */
+  localStorage.setItem('pc_help_offer_off', '1');
 };
 
 /* ── The hand ──────────────────────────────────────────────────────────── */
@@ -535,14 +539,29 @@ const RECIPES: Record<string, Recipe> = {
       await h.click(btn(p, /^Next$/));
       /* The questions: each screen answered the quickest honest way, by
          letting AI Autopilot choose. */
-      for (let i = 0; i < 8; i++) {
+      /* Up to 20 screens: the AI now asks up to fifteen questions, and the
+         button reads "Answer what kinds of business…" as well as "Answer:". */
+      for (let i = 0; i < 20; i++) {
         await h.pause(500);
         if (await p.getByRole('button', { name: /Looks good/ }).count()) break;
         const all = p.getByRole('button', { name: /Let AI decide all/ }).locator('visible=true').first();
-        const nx = p.locator('button').filter({ hasText: /^(Next|Answer:|See the blueprint)/ }).locator('visible=true').last();
+        const nx = p.locator('button').filter({ hasText: /^(Next|Answer|See the blueprint)/ }).locator('visible=true').last();
         if (await nx.isDisabled().catch(() => false)) {
           if (await all.count()) await h.click(all);
-          else await h.click(p.getByRole('button', { name: /Let AI decide/ }).locator('visible=true').first());
+          else {
+            /* The unanswered question is usually the lowest on the screen
+               ("What kinds of business should it find?" under "Where are the
+               contacts?"), so its button first, then the others. */
+            /* Its suggestions (and their Let AI decide) come from the AI a
+               moment later; and a pressed one is left alone — pressing it
+               again un-decides that question. */
+            await h.waitAi(async () => !(await p.locator('.np-suggest-busy').locator('visible=true').count()), 4, 60_000);
+            const one = p.locator('button[aria-pressed="false"], button:not([aria-pressed])').filter({ hasText: /Let AI decide/ }).locator('visible=true');
+            for (let k = (await one.count()) - 1; k >= 0 && await nx.isDisabled().catch(() => false); k--) {
+              await h.click(one.nth(k));
+              await h.pause(500);
+            }
+          }
         }
         await h.click(nx);
       }
@@ -1362,7 +1381,7 @@ const RECIPES: Record<string, Recipe> = {
       await h.say('One workspace per client, isolated on the server', 'Naming somebody else’s workspace is refused, not hidden');
       await h.pause(3400);
       await h.reach(text(p, 'Signed-in devices'), 160);
-      await h.say('Every device signed in, listed', 'Sign one out in a click — and 2-step sign-in for everyone');
+      await h.say('Every device signed in, listed', 'Sign one out in a click — and optional 2-step sign-in');
       await h.pause(3400);
     },
   },
@@ -1382,7 +1401,9 @@ const RECIPES: Record<string, Recipe> = {
  * re-reads every business each day and adds what it finds — not as learning
  * from results, which it does not do.
  */
-const wizard = (p: Page) => p.locator('[role=dialog]').last();
+/* Visible dialogs only: the help widget's panel (public/widget.js) is a
+   dialog that stays in the page, hidden, after the app's own. */
+const wizard = (p: Page) => p.locator('[role=dialog]:not([aria-label="Help with this screen"])').locator('visible=true').last();
 /** Text that has stopped changing for `still` ms — a streamed AI reply finished. */
 const settled = (loc: Loc, still = 2400) => {
   let prev = '', since = Date.now();
@@ -1469,8 +1490,11 @@ const FILM: Record<string, Recipe> = {
         'We have no list yet, start from scratch.',
       ];
       let first = true;
+      /* The box comes after Protron's greeting has streamed in; checked too
+         early, every answer was skipped and the chapter refused. */
+      await box.waitFor({ state: 'visible', timeout: 30_000 });
       for (const a of answers) {
-        if (!(await box.isVisible().catch(() => false))) break;
+        if (!(await box.waitFor({ state: 'visible', timeout: 15_000 }).then(() => true, () => false))) break;
         await h.click(box);
         await h.fast(3);
         await h.type(a, 24);
@@ -1750,10 +1774,17 @@ const FILM: Record<string, Recipe> = {
       await h.pause(3600);
       /* The live support chat: Protron asks about the business and suggests what to try. */
       await h.say('');
-      await h.click(p.getByRole('button', { name: /^Open the chat/ }).first());
-      await h.pause(1200);
-      const live = p.getByText('Live chat', { exact: true }).first();
-      if (await live.count()) await h.click(live);
+      /* The help button sits under the film's sample tag, so a click there
+         lands on the tag: the pointer goes to it and the widget's own
+         open('chat') — what a page's "Contact support" calls — opens it. */
+      await h.to(p.getByRole('button', { name: /^Open the chat/ }).first());
+      /* The help panel is hidden in every other recording (clip-cursor.mts,
+         `data-clip-help`); this chapter is about it. */
+      await p.evaluate(() => {
+        document.documentElement.setAttribute('data-clip-help', '');
+        (window as unknown as { ProtectedCentralChat?: { open: (v: string) => void } }).ProtectedCentralChat?.open('chat');
+      });
+      await h.pause(1400);
       await h.say('Or talk it through with Protron', 'In the live chat on every screen — it asks, then suggests what to try');
       const box = p.getByRole('textbox', { name: 'Message' }).first();
       await h.click(box);
@@ -2111,10 +2142,14 @@ async function record(id: string) {
   try {
     await Promise.race([
       r.act(hand, page),
-      new Promise((_, no) => setTimeout(() => no(new Error(`the recipe took over ${r.film ? 25 : 6} minutes`)), r.film ? 1_500_000 : 360_000)),
+      new Promise((_, no) => setTimeout(() => no(new Error(`the recipe took over ${r.film ? 25 : 9} minutes`)), r.film ? 1_500_000 : 540_000)),
     ]);
   } catch (e) {
     await page.screenshot({ path: `${RAW}/${id}-fail.png` }).catch(() => {});
+    /* Closed here too: a refused clip's page left open kept animating, and
+       every clip after it ran slower until all of them hit the ceiling. */
+    await cdp.send('Page.stopScreencast').catch(() => {});
+    await ctx.close().catch(() => {});
     throw e;
   } finally {
     await sleep(300);

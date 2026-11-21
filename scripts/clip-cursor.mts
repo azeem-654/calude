@@ -52,7 +52,7 @@ export const CLIP_CURSOR = () => {
       #clip-cursor .cc-rp b:nth-child(3){border:1.5px solid rgba(255,255,255,.85);box-shadow:0 0 0 1.5px rgba(255,122,61,.7);animation:ccring .62s .09s cubic-bezier(.2,.7,.3,1) both}
       @keyframes ccflash{0%{opacity:1;transform:scale(.25)}100%{opacity:0;transform:scale(1)}}
       @keyframes ccring{0%{opacity:.95;transform:scale(.18)}100%{opacity:0;transform:scale(1.25)}}
-      html:not([data-clip-toasts]) .toast-stack,[data-trialbar],.trial-bar,[aria-label="Help"],[data-corner-help]{display:none!important}`;
+      html:not([data-clip-toasts]) .toast-stack,[data-trialbar],.trial-bar,html:not([data-clip-help]) [aria-label="Help"],[data-corner-help]{display:none!important}`;
     document.documentElement.appendChild(st);
 
     /* The arrow's outline, tip at (2,2) of its 26×32 box; the I-beam's, centre

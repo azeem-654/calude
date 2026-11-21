@@ -611,7 +611,10 @@ d1(posts.flatMap((p, i) => {
    houseWidgetKey() finds and the built-in Protron (houseKnowledge.ts) answers.
    Without it the app draws no help button and the film cannot show Protron in
    the support chat. Key: hex, as engage.ts requires. */
-d1(`INSERT INTO crm_widgets (id, account_id, name, public_key, title, launcher, features, status, in_app, created_at, updated_at)
+/* The install owner has no workspace until they first sign in, and
+   houseWidgetKey() finds the widget through it — so it is made here. */
+d1(`INSERT OR IGNORE INTO crm_workspaces (account_id, owner_email, created_at) VALUES ('acct-reel-owner', 'owner@reels.test', ${q(ago(60))});
+    INSERT INTO crm_widgets (id, account_id, name, public_key, title, launcher, features, status, in_app, created_at, updated_at)
     SELECT 'w-reel-house', ws.account_id, 'Help', 'a1b2c3d4e5f60718293a4b5c6d7e8f90', 'Help & support', 'Help', '["chat","ticket"]', 'live', 1, ${q(ago(30))}, ${q(ago(1))}
       FROM crm_workspaces ws WHERE ws.owner_email = 'owner@reels.test' LIMIT 1;`);
 

@@ -1,0 +1,93 @@
+{
+ "film": "appsumo-short",
+ "voice": "Umbriel",
+ "style": "Read this aloud as Protron, a warm, friendly, genuinely human guide showing one business owner around their software, like a helpful friend who is a little excited to show them something. Relaxed but lively pace, natural, a smile in the voice, gentle emphasis. Not salesy, not robotic. Say only the words below.",
+ "chapters": [
+  {
+   "id": "as-intro",
+   "lines": [
+    [
+     0.6,
+     "Hi, I am Protron, your AI Live Business Manager. Here is Protected Central in under two minutes, recorded live in the real app."
+    ]
+   ]
+  },
+  {
+   "id": "s-board",
+   "lines": [
+    [
+     0.4,
+     "Every business you run gets its own business workspace: its own goal, workflows, prospects and website."
+    ],
+    [
+     14.4,
+     "And it all runs on the server every five minutes, even with this page closed."
+    ]
+   ]
+  },
+  {
+   "id": "s-watch",
+   "lines": [
+    [
+     1.0,
+     "I am your AI Live Business Manager, and I watch every campaign. Here, forty-six emails went out, and nobody replied."
+    ],
+    [
+     5.9,
+     "So I flag it: this campaign isn’t getting replies, and here is what I would change."
+    ],
+    [
+     10.4,
+     "One click, and I re-optimise it, in the business’s own voice."
+    ],
+    [
+     15.0,
+     "Nothing changes until you approve it."
+    ],
+    [
+     21.8,
+     "Or talk it through with me in the live chat. I ask about your business, and suggest what to try."
+    ]
+   ]
+  },
+  {
+   "id": "s-prospect",
+   "lines": [
+    [
+     0.5,
+     "AI Prospecting: say who you sell to, in one sentence."
+    ],
+    [
+     8.4,
+     "It searches live, reads each website, and checks every address before you send."
+    ]
+   ]
+  },
+  {
+   "id": "s-sites",
+   "lines": [
+    [
+     0.5,
+     "Websites and funnels for every client, built and hosted in the app."
+    ],
+    [
+     8.1,
+     "Start from a whole site, not a blank page, and make it yours."
+    ]
+   ]
+  },
+  {
+   "id": "as-tiers",
+   "lines": [
+    [
+     0.8,
+     "Stack up to three codes for more business workspaces, workflows, AI requests and client accounts."
+    ],
+    [
+     8.5,
+     "The full demonstration is linked below. Grab your lifetime deal on AppSumo."
+    ]
+   ]
+  }
+ ]
+}

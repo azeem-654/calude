@@ -42,9 +42,13 @@ export interface ModuleClip {
 const C = (id: string, module: string, caption: string, alt: string): ModuleClip => ({ id, module, caption, alt });
 
 export const CLIPS = {
+  /* Since 2026-11-21 cut from the demo film's "Inside a business workspace"
+     chapter (film-ap-inside, its card trimmed): the clip's own recipe kept
+     failing on the wizard's varying questions, and the old take showed the
+     bot drawn before Protron. Re-cut it after re-recording that chapter. */
   autopilot: C('clip-autopilot', 'AI Autopilot',
-    'Business workspaces that run by themselves: workflows walked node by node, guardrails you set, agents, a daily finder — and a new one built from a sentence.',
-    'AI Autopilot: the board of business workspaces; a branching workflow on its canvas, scrolled; each step opened in turn, one dry-run against a sample contact; the whole workflow opened for editing with the step menu; the guardrails of what it may do by itself; its AI agents and activity; Brightline Realty’s daily search and the leads it found; then a new business workspace described, its blueprint read and built'),
+    'Inside a business workspace: its workflows drawn as they run, each step tried with a dry run, and a new workflow written from a sentence, then switched on.',
+    'AI Autopilot, Vine Street Kitchen’s business workspace: its goal, revenue and work at a glance; a workflow’s canvas with every fork labelled Yes or No; steps opened one by one and tried against a sample contact; the workflow opened for editing; then Edit with AI writes a catering-quote workflow from one sentence, it arrives switched off, and is switched on'),
   prospecting: C('clip-prospecting', 'AI Prospecting',
     'One sentence: it searches live, reads the websites, checks every address — then runs the search every day for a business workspace.',
     'AI Prospecting: dentists in Richmond, Virginia typed and searched, the stages running, the step-by-step log and totals, the results filtered to addresses that take mail, then the search connected to the Parkway Dental business workspace in five steps — every day, what counts as a lead, the checks, where prospects go — and shown connected'),

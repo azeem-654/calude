@@ -37,7 +37,12 @@ const MASTER = '/tmp/site-clips-master';
 const CACHE = '/tmp/vo-cache';
 const WORK = '/tmp/vo-work';
 const FF = process.env.FFMPEG || '/usr/bin/ffmpeg';
-const MODEL = process.env.TTS_MODEL || 'gemini-3.8-flash-tts';
+/* The speech models, in order of preference. When every key has spent its
+   day on one (ten requests a day each on the free tier), the next is asked —
+   the same voice and style, so a film is not stopped half-voiced. A line
+   already voiced by any of them is used as it is. */
+const MODELS = (process.env.TTS_MODEL || 'gemini-3.8-flash-tts,gemini-3.8-flash-lite-tts').split(',').map(m => m.trim()).filter(Boolean);
+let modelAt = 0;
 const GAP = 0.35;      // breath between one line and the next
 const TAIL = 0.6;      // room left after the last line before the chapter's fade
 
@@ -70,8 +75,11 @@ let keyAt = 0;
 
 const dur = (f: string) => Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]).toString());
 
+const fileFor = (model: string, voice: string, style: string, text: string) =>
+  `${CACHE}/${crypto.createHash('sha1').update([model, voice, style, text].join('\n')).digest('hex').slice(0, 16)}.wav`;
+/** The line as already voiced by any model, else where the model in use writes it. */
 const cacheFile = (voice: string, style: string, text: string) =>
-  `${CACHE}/${crypto.createHash('sha1').update([MODEL, voice, style, text].join('\n')).digest('hex').slice(0, 16)}.wav`;
+  MODELS.map(m => fileFor(m, voice, style, text)).find(f => fs.existsSync(f)) ?? fileFor(MODELS[modelAt], voice, style, text);
 
 /**
  * Speaks several lines in ONE request and cuts the audio back into lines.
@@ -94,7 +102,7 @@ async function speakBatch(voice: string, style: string, texts: string[]): Promis
   if (process.env.VO_REUSE && fs.existsSync(raw)) part = { mimeType: fs.readFileSync(`${raw}.type`, 'utf8') };
   else for (let attempt = 1; ; attempt++) {
     const all = keys();
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELS[modelAt]}:generateContent`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': all[keyAt] }, body: JSON.stringify(body),
     });
     const j: any = await r.json().catch(() => ({}));
@@ -104,9 +112,10 @@ async function speakBatch(voice: string, style: string, texts: string[]): Promis
     // A spent or refused key: the next key, at once, without spending a retry.
     if ((r.status === 429 && /per day|quota|exhaust/i.test(msg)) || r.status === 401 || r.status === 403 || /API key not valid|billing/i.test(msg)) {
       if (keyAt + 1 < all.length) { console.log(`  key ${keyAt + 1} of ${all.length} refused (${r.status}) — trying key ${keyAt + 2}`); keyAt++; attempt--; continue; }
-      throw new Error(`TTS refused on all ${all.length} keys (${MODEL}): ${r.status} ${msg}`);
+      if (modelAt + 1 < MODELS.length) { console.log(`  every key spent on ${MODELS[modelAt]} — moving to ${MODELS[modelAt + 1]}`); modelAt++; keyAt = 0; attempt--; continue; }
+      throw new Error(`TTS refused on all ${all.length} keys and ${MODELS.length} models: ${r.status} ${msg}`);
     }
-    if (attempt >= 4) throw new Error(`TTS refused (${MODEL}): ${r.status} ${msg}`);
+    if (attempt >= 4) throw new Error(`TTS refused (${MODELS[modelAt]}): ${r.status} ${msg}`);
     await new Promise(res => setTimeout(res, 20000 * attempt));
   }
   if (part.data) { fs.writeFileSync(raw, Buffer.from(part.data, 'base64')); fs.writeFileSync(`${raw}.type`, part.mimeType); }
@@ -138,16 +147,37 @@ async function speakBatch(voice: string, style: string, texts: string[]): Promis
     const p = sil.filter(x => x.a < t + 0.15 && x.b > t - 0.9).sort((x, y) => (y.b - y.a) - (x.b - x.a))[0];
     return p ? Math.min(p.b - 0.06, t) : Math.max(0, t - 0.08);
   };
+  /* Between two lines, the longest silence after this line's last word and
+     before the next one's first: cutting at the pause before the next line's
+     first word alone put that word on the wrong side whenever the recogniser
+     timed it late or mis-heard it ("…landscape. Your cl-"). */
+  const between = (i: number) => {
+    const endA = found[i]!.end, startB = found[i + 1]!.start;
+    const p = sil.filter(x => x.b > endA - 0.12 && x.a < startB + 0.12).sort((x, y) => (y.b - y.a) - (x.b - x.a))[0];
+    return p ? (p.a + p.b) / 2 : pauseBefore(startB);
+  };
   for (let i = 0; i < done; i++) {
     const f = found[i]!;
-    const from = pauseBefore(f.start);
-    const to = i + 1 < done ? pauseBefore(found[i + 1]!.start) : Math.min(total, f.end + 0.35);
+    const from = i ? between(i - 1) : pauseBefore(f.start);
+    const to = i + 1 < done ? between(i) : Math.min(total, f.end + 0.35);
     const len = to - from, words = texts[i].split(/\s+/).length;
     if (len < words * 0.18 || len > words * 0.75 + 1.5) throw new Error(`line "${texts[i].slice(0, 50)}" came out ${len.toFixed(1)} s for ${words} words — a cut is misplaced`);
     execFileSync(FF, ['-y', '-v', 'error', '-i', whole, '-ss', from.toFixed(3), '-to', to.toFixed(3),
       '-af', 'silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse',
       cacheFile(voice, style, texts[i])]);
   }
+  /* Every piece heard again on its own: one that is not its line, word for
+     word near enough (a word lost at either end, the next line's first word
+     on its tail), is not kept, so the next round asks for it again. */
+  const pieces = texts.slice(0, done).map(t => cacheFile(voice, style, t));
+  fs.writeFileSync(`${WORK}/check.json`, JSON.stringify(texts.slice(0, done).map((t, i) => [t, pieces[i]])));
+  const scores: number[] = JSON.parse(execFileSync(process.env.VO_PYTHON || '/tmp/vo-venv/bin/python',
+    ['-I', 'scripts/vo-check.py', `${WORK}/check.json`], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().split('\n').pop()!);
+  scores.forEach((r, i) => {
+    if (r) return;
+    console.log(`  re-voicing, its cut was off: "${texts[i].slice(0, 60)}"`);
+    fs.rmSync(pieces[i], { force: true });
+  });
   return done;
 }
 
@@ -180,12 +210,22 @@ async function main() {
 
   // Speak every new line first, in batches, so a failure stops before any encoding.
   const all = [...new Set(s.chapters.flatMap(c => c.lines.map(l => l[1])))];
-  const todo = all.filter(t => !fs.existsSync(cacheFile(s.voice, s.style, t)));
   const BATCH = Number(process.env.VO_BATCH || 10);
-  for (let i = 0; i < todo.length;) {
-    i += await speakBatch(s.voice, s.style, todo.slice(i, i + BATCH));
-    console.log(`voice ${i}/${todo.length} new lines (${all.length - todo.length} cached)`);
+  /* Rounds, because a piece that fails its check is dropped and asked for
+     again — in a smaller batch, where the cuts are fewer. */
+  for (let round = 0; round < 4; round++) {
+    const todo = all.filter(t => !fs.existsSync(cacheFile(s.voice, s.style, t)));
+    if (!todo.length) break;
+    const size = round ? Math.max(2, Math.ceil(BATCH / (2 * round))) : BATCH;
+    for (let i = 0; i < todo.length;) {
+      i += await speakBatch(s.voice, s.style, todo.slice(i, i + size));
+      console.log(`voice ${i}/${todo.length} new lines (${all.length - todo.length} cached)${round ? `, round ${round + 1}` : ''}`);
+    }
   }
+  const unvoiced = all.filter(t => !fs.existsSync(cacheFile(s.voice, s.style, t)));
+  if (unvoiced.length) throw new Error(`${unvoiced.length} lines never came out clean, first: "${unvoiced[0].slice(0, 60)}"`);
+  // VO_SPEAK_ONLY=1 fills the cache and stops, before the film is cut.
+  if (process.env.VO_SPEAK_ONLY) { console.log(`${all.length} lines voiced`); return; }
   const wavs = new Map(all.map(t => [t, cacheFile(s.voice, s.style, t)] as const));
 
   const parts: string[] = [];
