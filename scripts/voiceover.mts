@@ -9,7 +9,8 @@
  * — `at` is the second in that chapter's master where the line starts (where
  * its caption appears). Each line is spoken by Google's text-to-speech
  * (gemini-3.8-flash-tts, the owner's chosen voice — Umbriel on 2026-11-20)
- * with the AI_API_KEY from the environment or the git-ignored .dev.vars, and
+ * with every Google AI key on hand, one after another as each runs out
+ * (keys() below), and
  * cached by its words in /tmp/vo-cache, so changing one line re-buys one line.
  *
  * Why the voice sets the clock: a line read against a caption that is on
@@ -42,12 +43,30 @@ const TAIL = 0.6;      // room left after the last line before the chapter's fad
 
 type Script = { film: string; out?: string; voice: string; style: string; chapters: { id: string; lines: [number, string][] }[] };
 
-function key(): string {
-  if (process.env.AI_API_KEY) return process.env.AI_API_KEY;
+/**
+ * Every Google AI key on hand, in order. The owner added a second and third
+ * key on 2026-11-21 because the first ran out mid-film; the free tier's daily
+ * speech allowance is per Google project, so keys from separate projects each
+ * bring their own. Names accepted: AI_API_KEY, AI_API_KEY_2…, API_KEY_2…, and
+ * the cloud environment's `aistudio_Google_api_key[_NN]_…` variables, plus
+ * AI_API_KEY in the git-ignored .dev.vars. Duplicates are dropped.
+ */
+function keys(): string[] {
+  const env = process.env;
+  const named = Object.keys(env)
+    .filter(n => /^(AI_)?API_KEY(_\d+)?$/.test(n) || /^aistudio_google_api_key/i.test(n))
+    .sort((a, b) => (Number(/\d+/.exec(a)?.[0] ?? 1) - Number(/\d+/.exec(b)?.[0] ?? 1)) || a.localeCompare(b))
+    .map(n => env[n]!.trim());
   const m = fs.existsSync('.dev.vars') ? /^AI_API_KEY=(.*)$/m.exec(fs.readFileSync('.dev.vars', 'utf8')) : null;
-  if (!m) throw new Error('No AI_API_KEY in the environment or .dev.vars');
-  return m[1].trim().replace(/^"|"$/g, '');
+  if (m) named.push(m[1].trim().replace(/^"|"$/g, ''));
+  const all = [...new Set(named.filter(Boolean))];
+  if (!all.length) throw new Error('No Google AI key: set AI_API_KEY (or API_KEY_2, API_KEY_3…) or put AI_API_KEY in .dev.vars');
+  return all;
 }
+/* The key in use. Moves on when Google says that key's quota is spent, and
+   stays there for the rest of the run, so later batches do not re-ask a key
+   that has already said no. */
+let keyAt = 0;
 
 const dur = (f: string) => Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', f]).toString());
 
@@ -74,14 +93,20 @@ async function speakBatch(voice: string, style: string, texts: string[]): Promis
   // VO_REUSE=1 re-cuts the last batch already bought instead of asking again.
   if (process.env.VO_REUSE && fs.existsSync(raw)) part = { mimeType: fs.readFileSync(`${raw}.type`, 'utf8') };
   else for (let attempt = 1; ; attempt++) {
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${key()}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    const all = keys();
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': all[keyAt] }, body: JSON.stringify(body),
     });
     const j: any = await r.json().catch(() => ({}));
     part = j?.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData)?.inlineData;
     if (part) break;
     const msg = JSON.stringify(j).slice(0, 400);
-    if (/per day/.test(msg) || attempt >= 4) throw new Error(`TTS refused (${MODEL}): ${r.status} ${msg}`);
+    // A spent or refused key: the next key, at once, without spending a retry.
+    if ((r.status === 429 && /per day|quota|exhaust/i.test(msg)) || r.status === 401 || r.status === 403 || /API key not valid|billing/i.test(msg)) {
+      if (keyAt + 1 < all.length) { console.log(`  key ${keyAt + 1} of ${all.length} refused (${r.status}) — trying key ${keyAt + 2}`); keyAt++; attempt--; continue; }
+      throw new Error(`TTS refused on all ${all.length} keys (${MODEL}): ${r.status} ${msg}`);
+    }
+    if (attempt >= 4) throw new Error(`TTS refused (${MODEL}): ${r.status} ${msg}`);
     await new Promise(res => setTimeout(res, 20000 * attempt));
   }
   if (part.data) { fs.writeFileSync(raw, Buffer.from(part.data, 'base64')); fs.writeFileSync(`${raw}.type`, part.mimeType); }

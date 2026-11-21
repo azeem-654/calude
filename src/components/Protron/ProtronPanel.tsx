@@ -1003,7 +1003,7 @@ ${facts}` : '',
           <div className="pt-hero">
             {HANDS && <PointerDock />}
             <div className="pt-hero-copy">
-              <b>{support ? 'Help & support' : LIVE_TALK ? 'AI Live Business Manager' : 'AI Business Manager'}</b>
+              <b>{support ? 'Help & support' : 'AI Live Business Manager'}</b>
               <span>{support
                 ? 'Ask how anything works, or press Report a problem to send us a screenshot of what went wrong.'
                 : HANDS

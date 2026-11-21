@@ -281,7 +281,10 @@ export default function Protron() {
           )}
           <span className="pt-name">Protron</span>
           {/* The owner's words for what it is, always on show under the tile. */}
-          {!aside && <span className="pt-caption" aria-hidden>{LIVE_TALK ? 'AI Live Business Manager' : 'AI Business Manager'}</span>}
+          {/* Protron's title, the same everywhere (owner, 2026-11-21): it is the
+              product's name for Protron, not a claim that live talk is on —
+              on a host without it Protron still answers in the chat, live. */}
+          {!aside && <span className="pt-caption" aria-hidden>AI Live Business Manager</span>}
         </div>
       )}
 

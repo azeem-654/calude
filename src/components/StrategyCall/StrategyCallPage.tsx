@@ -113,7 +113,8 @@ function Picker({ settings, duration, tz, onPick, picked, testid }: {
               <button key={dt} type="button" role="gridcell" className={`sc-day${open ? ' open' : ''}${dt === day ? ' on' : ''}`} disabled={!open}
                 aria-label={`${dayWords(Date.parse(`${dt}T12:00:00Z`), 'UTC')}${open ? '' : ', no times'}`} aria-pressed={dt === day}
                 onClick={() => { setDay(dt); onPick(null); }}>
-                {Number(dt.slice(8))}
+                <span>{Number(dt.slice(8))}</span>
+                {open && dt !== day && <i className="sc-day-dot" aria-hidden="true" />}
               </button>
             );
           })}
@@ -123,7 +124,7 @@ function Picker({ settings, duration, tz, onPick, picked, testid }: {
         {err && <p className="sc-error" role="alert">{err}</p>}
       </div>
       <div className="sc-times" aria-label="Times">
-        {day ? <b>{dayWords(Date.parse(`${day}T12:00:00Z`), 'UTC')}</b> : <b>Pick a day</b>}
+        {day ? <b>{dayWords(Date.parse(`${day}T12:00:00Z`), 'UTC')}{times.length ? <small> · {times.length} time{times.length > 1 ? 's' : ''} free</small> : null}</b> : <b>Pick a day</b>}
         <div className="sc-time-list">
           {times.map(s => (
             <button key={s.utc} type="button" className={`sc-time${picked?.utc === s.utc ? ' on' : ''}`} aria-pressed={picked?.utc === s.utc} onClick={() => onPick(s)} data-testid="slot">
@@ -211,6 +212,13 @@ function Book({ settings, confirms, src }: { settings: PublicSettings; confirms:
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF(x => ({ ...x, [k]: e.target.value }));
 
   const pick = useCallback((s: Slot | null) => { setSlot(s); requestId.current = newRequestId(); setError(null); }, []);
+  /* On a phone the details open under a long list of times, out of sight:
+     bring them up once a time is picked, so the visitor sees what comes next. */
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const pickedAt = slot?.utc;
+  useEffect(() => {
+    if (pickedAt && window.matchMedia?.('(max-width: 900px)').matches) formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [pickedAt]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -249,14 +257,23 @@ function Book({ settings, confirms, src }: { settings: PublicSettings; confirms:
   }
 
   const field = (name: string) => (error?.field === name ? ' sc-bad' : '');
+  const stage = slot ? 2 : 1;
   return (
+    <>
+    <ol className="sc-steps" aria-label="Booking steps">
+      {['Pick a time', 'Your details', 'Booked'].map((t, i) => (
+        <li key={t} className={i + 1 < stage ? 'done' : i + 1 === stage ? 'now' : ''} aria-current={i + 1 === stage ? 'step' : undefined}>
+          <span>{i + 1 < stage ? <Check size={12} /> : i + 1}</span>{t}
+        </li>
+      ))}
+    </ol>
     <div className="sc-layout">
       <aside className="sc-card sc-about">
         <span className="dc-eyebrow">{SOURCE_LABEL[src] === SOURCE_LABEL.main ? 'Protected Central' : SOURCE_LABEL[src]}</span>
         <h1>{settings.title}</h1>
         {settings.description && <p>{settings.description}</p>}
         <ul className="sc-facts">
-          {settings.hostName && <li><span className="sc-ico">{settings.hostName.slice(0, 1)}</span> With {settings.hostName}{settings.hostRole ? `, ${settings.hostRole}` : ''}</li>}
+          {settings.hostName && <li className="sc-host"><span className="sc-ico">{settings.hostName.slice(0, 1)}</span> <span>With <b>{settings.hostName}</b>{settings.hostRole ? <small>{settings.hostRole}</small> : null}</span></li>}
           <li><Clock size={15} /> {settings.durations.length > 1 ? `${settings.durations.join(', ')} minutes` : `${duration} minutes`}</li>
           <li><MeetingIcon type={settings.meetingType} /> {settings.meetingType === 'phone' ? 'Phone call' : settings.meetingType === 'in_person' ? 'In person' : 'Video call'}</li>
           <li><Globe size={15} /> Times shown in {tz}</li>
@@ -280,7 +297,7 @@ function Book({ settings, confirms, src }: { settings: PublicSettings; confirms:
         <Picker key={pickerKey} settings={settings} duration={duration} tz={tz} picked={slot} onPick={pick} testid="sc-picker" />
 
         {slot && (
-          <form className="sc-form" onSubmit={submit} noValidate>
+          <form className="sc-form" onSubmit={submit} noValidate ref={formRef}>
             <h2>Your details</h2>
             {/* A practice booking an assessment: the call needs practice-level facts only, never a patient's. */}
             {src === 'medical-billing' && <p className="sc-note" role="note" data-testid="sc-no-phi">Please do not include any patient information — names, dates of birth, member IDs or claim details. The call needs only your practice’s details.</p>}
@@ -319,6 +336,7 @@ function Book({ settings, confirms, src }: { settings: PublicSettings; confirms:
         {!slot && error && <p className="sc-error" role="alert">{error.text}</p>}
       </section>
     </div>
+    </>
   );
 }
 
