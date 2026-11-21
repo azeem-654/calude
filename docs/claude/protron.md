@@ -287,6 +287,13 @@ chats" on the message turns it off. It offers; it never acts on its own.
   migration 0096). The button opens `?protron=optimise&campaign=` signed in;
   Protron.tsx writes the request (name stripped to letters/digits) and
   proposes the change there — the link itself approves nothing.
+  **Where `protron-acts` is off (live)** Protron.tsx is not mounted, so the
+  workflow strip's flag button (ProjectCard `workflowAgent`) reads **Fix it
+  with AI** and fills the card's own Edit with AI box with the request — its
+  result arrives switched off. Before 2026-11-21 it called `openProtron`
+  there and did nothing. The help chat was not used: it cannot see the
+  account (`houseKnowledge.ts`). The email link lands on /autopilot, where
+  the flag and that button are.
 
 ### The 2026-11-13 follow-up — one voice, a live session that survives, a coral pointer
 

@@ -560,6 +560,7 @@ export default function ProjectCard({
     if (sends && attempts < 30) facts.push(attempts ? `${attempts} of the 30 sends it needs to judge` : 'It judges sends from the 30th');
     if (project.lastPlannedAt) facts.push(`Business re-read ${new Date(project.lastPlannedAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`);
     const flagText = recent?.kind === 'failing_sends' ? 'too many of its sends are failing' : 'replies are under 1%';
+    const protronHere = featureReady('protron') && featureReady('protron-acts');
     return (
       <div style={{ padding: '0 12px 10px' }}>
         <AutoOptimiseAgent
@@ -577,11 +578,30 @@ export default function ProjectCard({
             : 'Autopilot re-reads the whole business every day and adds what is missing — a stalled deal, a follow-up nobody sent — each waiting for your approval.'}
           flagged={recent && monitoring ? (
             <>Flagged {new Date(recent.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}: {flagText}.{' '}
+              {/* The floating Protron is mounted only with `protron-acts` on
+                  (App.tsx); on live nothing listens for openProtron and this
+                  button did nothing. There it hands the same request to this
+                  card's own Edit with AI box, which can rewrite the workflow
+                  and whose result arrives switched off. The help button's
+                  chat was rejected: it cannot see the account. */}
               <button type="button" style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit' }}
-                onClick={() => openProtron(recent.kind === 'failing_sends'
-                  ? `Too many emails from my workflow “${f.name}” are failing to send. Find out why and show me the fix, and I'll approve it.`
-                  : `Replies on my workflow “${f.name}” are lower than expected. Show me what you would change to get more responses, and I'll approve it.`)}>
-                Review it with Protron
+                data-testid={`wf-review-${f.id}`}
+                onClick={() => {
+                  if (protronHere) {
+                    openProtron(recent.kind === 'failing_sends'
+                      ? `Too many emails from my workflow “${f.name}” are failing to send. Find out why and show me the fix, and I'll approve it.`
+                      : `Replies on my workflow “${f.name}” are lower than expected. Show me what you would change to get more responses, and I'll approve it.`);
+                    return;
+                  }
+                  setPrompt((recent.kind === 'failing_sends'
+                    ? `Too many emails from the workflow “${f.name}” are failing to send. Rebuild it so its emails go out from a sender that works, and tell me what changed.`
+                    : `Replies on the workflow “${f.name}” are under 1%. Rewrite its emails, subject lines and timing to get more responses, and tell me what changed.`).slice(0, 1000));
+                  setAnswer('');
+                  const box = document.getElementById(`ap-prompt-${project.id}`);
+                  box?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                  (box as HTMLTextAreaElement | null)?.focus({ preventScroll: true });
+                }}>
+                {protronHere ? 'Review it with Protron' : 'Fix it with AI'}
               </button></>
           ) : undefined}
         />

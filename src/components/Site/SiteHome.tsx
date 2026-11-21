@@ -37,9 +37,8 @@ import { featureReady } from '../../services/features';
 import { TEMPLATES } from '../Autopilot/workflowTemplates';
 import { useReveal, useRevealGroup } from './useReveal';
 import Starfield from './Starfield';
-import ShotReel from './ShotReel';
+import ClipPlayer from './ClipPlayer';
 import WorksWith from '../shared/WorksWith';
-import { REELS } from './reels';
 import { CLIPS, type ClipKey } from './clips';
 import { serviceShown, anyServiceShown } from './siteFeatures';
 import HelpLauncher from '../shared/HelpLauncher';
@@ -62,8 +61,6 @@ import { motionReduced } from '../../services/motion';
 import { INDUSTRY_PAGES } from '../../../worker/src/lib/industryPages';
 import './site.css';
 import './industry.css';
-
-type Reel = keyof typeof REELS;
 
 /* ── The tiles ───────────────────────────────────────────────────────────── */
 
@@ -251,11 +248,11 @@ const CAPABILITIES: { group: string; icon: IconLike; items: string[] }[] = [
   { group: 'Run it as an agency', icon: Building2, items: ['Sub-accounts', 'White-label branding', 'Per-client billing', 'Role-based access', 'Isolated data'] },
 ];
 
-const OWNERSHIP: { icon: typeof Send; title: string; body: string; reel: Reel }[] = [
-  { icon: Send, title: 'Your mailbox', reel: 'mailbox', body: 'Gmail, Microsoft 365, Brevo or anything that speaks SMTP. Stored encrypted on the server, used only to send your mail, never handed back to a browser.' },
-  { icon: ShieldCheck, title: 'Your domain', reel: 'domain', body: 'SPF, DKIM and DMARC checked against your own domain — and written for you when Cloudflare is connected.' },
-  { icon: Palette, title: 'Your name', reel: 'brand', body: 'White-label the product name, logo and colour per client, so what they log into looks like yours.' },
-  { icon: Lock, title: 'Your data', reel: 'data', body: 'One workspace per client, isolated on the server. Naming somebody else’s workspace is refused, not hidden.' },
+const OWNERSHIP: { icon: typeof Send; title: string; body: string; clip: ClipKey }[] = [
+  { icon: Send, title: 'Your mailbox', clip: 'mailbox', body: 'Gmail, Microsoft 365, Brevo or anything that speaks SMTP. Stored encrypted on the server, used only to send your mail, never handed back to a browser.' },
+  { icon: ShieldCheck, title: 'Your domain', clip: 'domain', body: 'SPF, DKIM and DMARC checked against your own domain — and written for you when Cloudflare is connected.' },
+  { icon: Palette, title: 'Your name', clip: 'agency', body: 'White-label the product name, logo and colour per client, so what they log into looks like yours.' },
+  { icon: Lock, title: 'Your data', clip: 'data', body: 'One workspace per client, isolated on the server. Naming somebody else’s workspace is refused, not hidden.' },
 ];
 
 /* ── Security, on the home page ──────────────────────────────────────────
@@ -681,7 +678,7 @@ export default function SiteHome() {
         <div className="dc-flow-shot reveal" ref={flow}>
           {/* The agents themselves — not the outreach workflows, which are
               not what this section is about. */}
-          <ShotReel shots={REELS.agents} label="A business workspace's agents" />
+          <ClipPlayer clips={[CLIPS.agents]} label="A business workspace's agents" />
         </div>
       </section>
 
@@ -722,7 +719,7 @@ export default function SiteHome() {
             <p>{OWNERSHIP[tab].body}</p>
           </div>
           <div className="dc-own-shot">
-            <ShotReel key={OWNERSHIP[tab].reel} shots={REELS[OWNERSHIP[tab].reel]} label={OWNERSHIP[tab].title} />
+            <ClipPlayer key={OWNERSHIP[tab].clip} clips={[CLIPS[OWNERSHIP[tab].clip]]} label={OWNERSHIP[tab].title} />
           </div>
         </div>
       </section>

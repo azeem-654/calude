@@ -593,6 +593,28 @@ d1(posts.flatMap((p, i) => {
      ${q(ago(i % 3, i))});`;
 }).join('\n'));
 
+/* Protron's campaign watch with something to say (the film's re-optimisation
+   chapter, owner 2026-11-21): Brightline's outreach has sent 46 emails in ten
+   days and nobody replied, so the strip above it reads "Needs you" with the
+   flag protronWatch.ts writes. Real rows in the tables the strip reads —
+   crm_delivery_log and crm_protron_alerts — not a mocked screen. */
+{
+  const wf = REALTY.wf[0];
+  d1(Array.from({ length: 46 }, (_, i) =>
+    `INSERT INTO crm_delivery_log (id, account_id, channel, source, source_id, source_name, recipient, subject, status, created_at)
+     VALUES (${q(`dl-reel-${i}`)}, ${q(ACCT)}, 'email', 'workflow', ${q(wf)}, 'Prospect outreach — email, follow up, hand over',
+       ${q(`agent${i}@realty-${i % 9}.example`)}, 'More listings this spring?', 'sent', ${q(ago(i % 10, i % 7))});`).join('\n'));
+  d1(`INSERT INTO crm_protron_alerts (account_id, source_id, kind, told_at) VALUES (${q(ACCT)}, ${q(wf)}, 'low_replies', ${q(ago(0, 2))});`);
+}
+
+/* The help button as live has it: the install owner's in-app widget, which
+   houseWidgetKey() finds and the built-in Protron (houseKnowledge.ts) answers.
+   Without it the app draws no help button and the film cannot show Protron in
+   the support chat. Key: hex, as engage.ts requires. */
+d1(`INSERT INTO crm_widgets (id, account_id, name, public_key, title, launcher, features, status, in_app, created_at, updated_at)
+    SELECT 'w-reel-house', ws.account_id, 'Help', 'a1b2c3d4e5f60718293a4b5c6d7e8f90', 'Help & support', 'Help', '["chat","ticket"]', 'live', 1, ${q(ago(30))}, ${q(ago(1))}
+      FROM crm_workspaces ws WHERE ws.owner_email = 'owner@reels.test' LIMIT 1;`);
+
 /* What Autopilot has done for each project, and what waits for a person —
    the board's log and the dashboard's panel read these. Each one is the kind
    of thing the planner writes (autopilotPlan.ts), in its words. */

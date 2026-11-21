@@ -78,20 +78,23 @@ export const CLIPS = {
   reports: C('clip-reports', 'Reports',
     'Every figure read live from the module that owns it, over the period you choose — down to whether your mail is arriving.',
     'Reports: the overview over 90 days and 12 months; where contacts came from; deals by stage and by owner; campaigns side by side; then deliverability — sender reputation, eight weeks of sending and list health'),
+  /* The home page's agents section and its "Yours, not ours" tabs, recorded
+     rather than shown as stills (owner, 2026-11-21). */
+  agents: C('clip-agents', 'AI agents',
+    'Each business workspace’s AI agents: what they write on a schedule, every piece a draft, what they made, and the daily search.',
+    'AI Autopilot, Brightline Realty’s business workspace: its AI Agents tab with the agents on a schedule and the steps they own, its Activity tab listing what was made and what is coming up, then its Prospects tab with the daily search'),
+  mailbox: C('clip-mailbox', 'Your mailbox',
+    'Your own mailboxes, each checked by connecting before anything sends; passwords kept on the server and never shown again.',
+    'Settings: the workspace’s connected mailboxes, Campaigns and Support, each with its sending and receiving checks'),
+  domain: C('clip-domain', 'Your domain',
+    'A sender reputation from your own sending, and the SPF, DKIM and DMARC records for your domain, written for you.',
+    'Settings, deliverability: the sender reputation, the SPF, DKIM and DMARC checks for the domain, and the records to publish'),
+  data: C('clip-data', 'Your data',
+    'One workspace per client, isolated on the server, and every device signed in listed with a sign-out.',
+    'Settings, security: the Protected Workspace panel and the list of signed-in devices'),
 } satisfies Record<string, ModuleClip>;
 
 export type ClipKey = keyof typeof CLIPS;
-
-/**
- * The hero's reel (owner, 2026-11-20: the first section shows "a quick
- * preview and working in fast forwarding of each of our module"): a stretch
- * of every clip above at 5×, labelled with its module and a speed badge, cut
- * by scripts/hero-reel.mts from the same recordings. Not in CLIPS, because
- * it has no recipe of its own: re-cut it after re-recording a clip.
- */
-export const HERO_REEL: ModuleClip = C('hero-reel', 'Every module',
-  'Every module working, fast-forwarded: AI Autopilot, AI Prospecting, Contacts, Pipelines, campaigns, blog, websites, graphics, forms and chat, Inbox, booking, agency and reports.',
-  'The real app in dark mode, each module in turn at five times speed with its name on screen: AI Autopilot’s workflow canvas, a prospect search, contacts filtered, a quote form becoming a deal, campaign results, a blog strategy, a website edited, a social graphic, a form changed, the inbox, a booking page, a client workspace and the reports');
 
 /** Every recording the site uses, for the capture script. */
 export const CLIP_IDS: string[] = Object.values(CLIPS).map(c => c.id);

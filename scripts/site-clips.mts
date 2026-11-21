@@ -127,6 +127,8 @@ class Hand {
   x = 640; y = 420;
   marks: { t: number; f: number }[] = [];
   segs: { a: number; b: number; f: number }[] = [];
+  /** When each caption and card went up (wall clock), for <id>.captions.json. */
+  said: { t: number; text: string }[] = [];
   constructor(public page: Page) {}
   private async timed(planned: number, fn: () => Promise<void>) {
     const a = Date.now() / 1000;
@@ -158,6 +160,7 @@ class Hand {
   }
   /** A caption over the frame naming what is on screen; '' clears it. Read by a viewer at 1×, so not inside a fast stretch. */
   async say(title: string, sub = '') {
+    if (title) this.said.push({ t: Date.now() / 1000, text: sub ? `${title} — ${sub}` : title });
     await this.page.evaluate(([t, s]) => (window as unknown as { __clipSay: (t: string, s: string) => void }).__clipSay(t, s), [title, sub]).catch(() => {});
     await sleep(350);
   }
@@ -165,6 +168,7 @@ class Hand {
   async card(kicker: string, title: string, sub = '', ms = 3400, keep = false) {
     const set = (a: string[]) => this.page.evaluate(([k, t, s]) => (window as unknown as { __clipCard: (k: string, t: string, s: string) => void }).__clipCard(k, t, s), a).catch(() => {});
     await this.say('');
+    this.said.push({ t: Date.now() / 1000, text: `[card] ${title}` });
     await set([kicker, title, sub]);
     await sleep(ms);
     /* The film's last card stays up through the fade at the end. */
@@ -1294,6 +1298,74 @@ const RECIPES: Record<string, Recipe> = {
       await h.pause(2400);
     },
   },
+
+  /* ── The home page's last stills, as recordings (owner 2026-11-21: "no
+     static screenshots"): the agents section and the "Yours, not ours" tabs.
+     "Your name" plays clip-agency. ── */
+  'clip-agents': {
+    route: '/autopilot',
+    async act(h, p) {
+      const bright = projectCard(p, 'Brightline Realty');
+      await h.fast(3);
+      await h.reach(bright, 90);
+      await h.fast(1);
+      await h.click(cardTab(bright, 'AI Agents'));
+      await h.say('AI agents for each business workspace', 'They read the business and write for it, on a schedule');
+      await h.pause(3200);
+      await h.to(text(p, 'Edit this agent'));
+      await h.say('Every piece arrives as a draft', 'Posts, articles and emails — nothing goes out until you approve');
+      await h.pause(2400);
+      await h.scroll(420, 1000);
+      await h.pause(2200);
+      await h.click(cardTab(bright, 'Activity'));
+      await h.say('What they made, in the open', 'Going on now, what the agents made, what is coming up');
+      await h.pause(3200);
+      await h.click(cardTab(bright, 'Prospects'));
+      await h.say('A search that runs every day', 'Each website read, each address checked, new leads added');
+      await h.pause(3000);
+    },
+  },
+  'clip-mailbox': {
+    route: '/settings',
+    async act(h, p) {
+      await h.reach(text(p, /^Mailboxes$/), 120);
+      await h.say('Your own mailboxes, as many as you need', 'Gmail, Microsoft 365 or any SMTP server');
+      await h.pause(3000);
+      await h.to(text(p, /^Campaigns$/));
+      await h.pause(1400);
+      await h.to(text(p, /^Support$/));
+      await h.say('Each one checked by connecting', 'Sending and receiving proved before anything goes out');
+      await h.pause(3000);
+      await h.scroll(300, 900);
+      await h.say('Passwords stay on the server', 'Encrypted, used only to send your mail, never shown again');
+      await h.pause(3200);
+    },
+  },
+  'clip-domain': {
+    route: '/settings?tab=deliverability',
+    async act(h, p) {
+      await h.reach(text(p, 'Reputation & authentication'), 120);
+      await h.say('A sender reputation from your own sending', 'Bounces, complaints and delivery, counted from real mail');
+      await h.pause(3200);
+      await h.reach(text(p, 'Authentication (SPF, DKIM, DMARC)'), 160);
+      await h.say('SPF, DKIM and DMARC for your own domain', 'Checked against the records published right now');
+      await h.pause(3200);
+      await h.reach(text(p, 'Records to publish'), 160);
+      await h.say('The records, written for you', 'Copy each one — or they are published when Cloudflare is connected');
+      await h.pause(3400);
+    },
+  },
+  'clip-data': {
+    route: '/settings?tab=security',
+    async act(h, p) {
+      await h.reach(text(p, 'Protected Workspace'), 120);
+      await h.say('One workspace per client, isolated on the server', 'Naming somebody else’s workspace is refused, not hidden');
+      await h.pause(3400);
+      await h.reach(text(p, 'Signed-in devices'), 160);
+      await h.say('Every device signed in, listed', 'Sign one out in a click — and 2-step sign-in for everyone');
+      await h.pause(3400);
+    },
+  },
 };
 
 /* ── The AI Autopilot deep-dive film ───────────────────────────────────────
@@ -1455,13 +1527,14 @@ const FILM: Record<string, Recipe> = {
           await h.say('It picks who to find, and tells you why', 'Kinds of business searched live every day — widen it in a click');
           await h.to(w.getByText(/Suggested for your business/).first());
           await h.pause(3400);
-        } else if (!shownSite && /website or funnel/i.test(head)) {
+        } else if (!shownSite && (/website or funnel/i.test(head) || await w.getByText(/Pick a design to start from/).locator('visible=true').count())) {
           shownSite = true;
           await h.fast(1);
           await h.say('Its own website or funnel, already in its name', 'Every design shows the business’s name, colour and photo — or let AI design it');
           await h.pause(2600);
-          const quote = w.getByText('Free Quote Request', { exact: true }).first();
+          const quote = w.getByText('Free Quote Request', { exact: true }).locator('visible=true').first();
           if (await quote.count()) { await h.click(quote); await h.pause(1600); }
+          else { await h.click(w.getByRole('button', { name: /Let AI design it/ }).first()); await h.pause(1600); }
         } else if (i > 0) {
           /* Back to the general caption once a highlighted screen has gone by. */
           if (shownKinds || shownSite) await h.say('Only the questions it could not answer itself', 'Each with suggestions — or let AI decide, and it says why');
@@ -1640,6 +1713,57 @@ const FILM: Record<string, Recipe> = {
       await h.click(cardTab(bright, 'Assets'));
       await h.say('Everything it made, in one place', 'Posts, pages and articles — each a shortcut to the module that owns it');
       await h.pause(3400);
+    },
+  },
+
+  /* 4b · Protron keeps watch (owner 2026-11-21: "This campaign isn't getting
+     replies… re-optimising"). As the app really behaves: the watch flags it,
+     the fix is written by AI and arrives switched off for approval — never a
+     campaign changed behind the customer's back. Needs the seeded flag on
+     Brightline's outreach and the house help widget (site-reels.mts). */
+  'film-ap-watch': {
+    route: '/autopilot', film: true,
+    async act(h, p) {
+      await h.card('Protron', 'Your AI Live Business Manager keeps watch', 'It checks every campaign, says what is not working, and proposes the fix');
+      const bright = projectCard(p, 'Brightline Realty');
+      await h.fast(3);
+      await h.reach(bright, 90);
+      await h.fast(1);
+      const strip = bright.locator('[data-testid^="wf-agent-"]').filter({ hasText: 'Needs you' }).first();
+      await h.reach(strip, 240);
+      await h.say('It watches every send', 'Brightline’s outreach: 46 emails in ten days, none failed — and nobody replied');
+      await h.pause(3600);
+      const fix = bright.locator('[data-testid^="wf-review-"]').first();
+      await h.to(fix);
+      await h.say('“This campaign isn’t getting replies”', 'Flagged in the app and by email — with what it would change');
+      await h.pause(3000);
+      await h.click(fix);
+      await h.say('One click, and AI re-optimises it', 'New emails, subject lines and timing, in the business’s own voice');
+      await h.pause(2400);
+      const pj = S.projects.find(x => x.name.startsWith('Brightline Realty'));
+      const ask = p.locator(`#ap-prompt-${pj?.id}`);
+      const panel = ask.locator('xpath=ancestor::*[.//button[contains(., "Update business workspace")]][1]');
+      await h.click(panel.getByRole('button', { name: /Update business workspace/ }).first());
+      const drafted = panel.getByText(/built as a draft/);
+      await h.waitAi(async () => (await drafted.count()) > 0, 6, 150_000);
+      await h.say('Nothing changes until you approve it', 'The new version arrives switched off — read it, then switch it on');
+      await h.pause(3600);
+      /* The live support chat: Protron asks about the business and suggests what to try. */
+      await h.say('');
+      await h.click(p.getByRole('button', { name: /^Open the chat/ }).first());
+      await h.pause(1200);
+      const live = p.getByText('Live chat', { exact: true }).first();
+      if (await live.count()) await h.click(live);
+      await h.say('Or talk it through with Protron', 'In the live chat on every screen — it asks, then suggests what to try');
+      const box = p.getByRole('textbox', { name: 'Message' }).first();
+      await h.click(box);
+      await h.type('My outreach to realtors gets no replies. What should I offer them instead?', 34);
+      /* Its greeting already carries the face, so wait for one more. */
+      const faces = p.locator('img[src$="/protron.svg"]');
+      const before = await faces.count();
+      await p.keyboard.press('Enter');
+      await h.waitAi(async () => (await faces.count()) > before, 6, 120_000);
+      await h.pause(7000);
     },
   },
 
@@ -2017,6 +2141,18 @@ async function record(id: string) {
   }
   list.push(`file '${frames[frames.length - 1].f}'`);
   fs.writeFileSync(`${dir}/list.txt`, list.join('\n'));
+  /* Where each caption lands in the master, after the fast stretches are
+     shortened: a narration script's `at` (voiceover.mts) is read from here
+     rather than guessed from a recording that has since been re-made. */
+  const at = (t: number) => {
+    let s = 0;
+    for (let i = 0; i < frames.length && frames[i].t < t; i++) {
+      const next = i + 1 < frames.length ? frames[i + 1].t : frames[i].t + 0.8;
+      s += (Math.min(next, t) - frames[i].t) / factor(frames[i].t);
+    }
+    return Math.round(s * 10) / 10;
+  };
+  fs.writeFileSync(`${MASTER}/${id}.captions.json`, JSON.stringify(hand.said.map(x => [at(x.t), x.text]), null, 1));
   const fade = `fps=${FPS},format=yuv420p,fade=t=in:st=0:d=0.35,fade=t=out:st=${Math.max(0, total - 0.5).toFixed(2)}:d=0.5`;
   const input = ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', `${dir}/list.txt`, '-vf', fade, '-an'];
   if (r.film) {

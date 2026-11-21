@@ -29,31 +29,31 @@
      "Let me show you around."
     ],
     [
-     4.6,
+     5.0,
      "This is the board. Every business you look after gets its own business workspace, with its own goal, workflows, prospects and website."
     ],
     [
-     9.2,
+     9.4,
      "Allowances are counted live, so you always see this month’s posts and prospects against your plan."
     ],
     [
-     11.2,
+     11.5,
      "If you are an agency, each client stays in its own account. Switch between them here, or open the agency dashboard to see them all."
     ],
     [
-     18.6,
+     19.0,
      "And all of this works on the server every five minutes, whether this page is open or not."
     ],
     [
-     21.8,
+     22.1,
      "Here are five businesses: a caterer, a gym, a law firm, a dentist and a real estate team. Each one runs its own plan, completely independent of the others."
     ],
     [
-     36.2,
+     36.6,
      "Put the business that matters most on top, or pause a whole business in one click."
     ],
     [
-     42,
+     42.6,
      "And share progress with each client on a read-only page. They never see your other clients, contacts or prices."
     ]
    ]
@@ -139,35 +139,35 @@
      "Let us look inside one business."
     ],
     [
-     6.8,
+     5.9,
      "Vine Street Kitchen. Its goal, its money and its work, at a glance."
     ],
     [
-     10.4,
+     9.4,
      "Workflows are drawn the way they run. Every fork is labelled yes or no, and every path joins back up."
     ],
     [
-     22.8,
+     23.4,
      "Open any step to see the real message and condition, built on your own forms, tags and stages. Nothing generic."
     ],
     [
-     31.4,
+     32.4,
      "You can dry-run a step against a real contact. Nothing is sent. It shows you exactly which way they would go, and why."
     ],
     [
-     47.6,
+     50.2,
      "Change the whole workflow in place. Add a step anywhere, reorder them, or change what starts it."
     ],
     [
-     57.6,
+     61.2,
      "Or just describe a workflow in plain words. Edit with AI writes it for this business, in its own voice."
     ],
     [
-     67.2,
+     71.2,
      "It is written in seconds, and it arrives switched off. Nothing reaches anybody until you have read it."
     ],
     [
-     75,
+     79.0,
      "Read it, then switch it on. From then on it runs on the server, every five minutes."
     ]
    ]
@@ -180,23 +180,23 @@
      "Now, how I keep each business moving."
     ],
     [
-     8,
+     7.3,
      "AI agents work on a schedule. They read the business and write for it, and every piece is a draft."
     ],
     [
-     15.4,
+     14.5,
      "Here is every step I am on the hook for: emails, conditions, texts and agents, across the live workflows."
     ],
     [
-     19.6,
+     18.4,
      "Ideas I find wait for your yes. Here, I spotted twenty-two past clients nobody had asked about spring."
     ],
     [
-     26,
+     24.9,
      "You decide what I may do by myself: off, ask first, or on my own, for each business separately."
     ],
     [
-     36,
+     35.9,
      "This is my plan for today, item by item."
     ],
     [
@@ -204,28 +204,57 @@
      "One approval, and it goes ahead. It is sent from the business’s own mailbox, and logged as it happens."
     ],
     [
-     46.6,
+     47.1,
      "Everything I did is out in the open: what is going on now, and what is coming up."
     ],
     [
-     51.8,
+     52.8,
      "And you can see when each workflow runs next."
     ],
     [
-     56.2,
+     57.2,
      "Every day I re-plan every business. I read it, write, build and send, then plan again."
     ],
     [
-     60.8,
+     61.9,
      "I spot problems before you ask: deals gone quiet, follow-ups missing, a list that vanished. Named, never hidden."
     ],
     [
-     70,
+     71.9,
      "Every business finds its own new leads. Brightline’s daily search reads each website and checks each address."
     ],
     [
-     77.4,
+     79.7,
      "And everything I made is in one place, with a shortcut to the module that owns it."
+    ]
+   ]
+  },
+  {
+   "id": "film-ap-watch",
+   "lines": [
+    [
+     0.8,
+     "And I keep watch. I am your AI Live Business Manager, and I check every campaign, every day."
+    ],
+    [
+     6,
+     "Here, Brightline’s outreach sent forty-six emails in ten days. None failed, and nobody replied."
+    ],
+    [
+     12,
+     "So I say so: this campaign isn’t getting replies. You hear it in the app and by email, with what I would change."
+    ],
+    [
+     18,
+     "One click, and I re-optimise it: new emails, subject lines and timing, in the business’s own voice."
+    ],
+    [
+     26,
+     "Nothing changes until you approve it. The new version arrives switched off, so you read it first."
+    ],
+    [
+     34,
+     "Or talk it through with me in the live chat, on every screen. I will ask about your business, and suggest what to try."
     ]
    ]
   },
@@ -233,19 +262,19 @@
    "id": "film-ap-sites",
    "lines": [
     [
-     5.2,
+     5.3,
      "Each client has its own website, built from whole-site templates and published on its own address."
     ],
     [
-     11,
+     10.4,
      "And its own funnels. Summit’s quote funnel was built by AI Autopilot a minute ago."
     ],
     [
-     22.8,
+     19.9,
      "Or start from a ready-made workflow. Preview it, then use it."
     ],
     [
-     29.9,
+     27.3,
      "That is AI Autopilot. Describe it once, and I will build it and run it."
     ]
    ]
@@ -263,43 +292,43 @@
    "id": "clip-prospecting",
    "lines": [
     [
-     0.8,
+     1.0,
      "Just say who you sell to, in one sentence. There are no filters to learn."
     ],
     [
-     8.6,
+     8.9,
      "It searches live, reads the websites and checks every address."
     ],
     [
-     12.4,
+     13.0,
      "You see what it did, step by step."
     ],
     [
-     16.8,
+     17.3,
      "Then keep only the addresses worth sending to: the ones that take mail, have a phone, or a website."
     ],
     [
-     27.4,
+     28.4,
      "Now turn the search into a daily finder. An AI Autopilot business workspace runs it on a schedule, by itself."
     ],
     [
-     36.2,
+     38.1,
      "Decide what counts as a lead."
     ],
     [
-     40,
+     42.3,
      "Choose how often, and how many: every day, weekdays, or the days you pick."
     ],
     [
-     45.8,
+     48.9,
      "Every prospect is checked before it is added."
     ],
     [
-     49.8,
+     53.2,
      "And you choose where they go: a list, a tag, a pipeline, or straight into the next workflow."
     ],
     [
-     53.8,
+     57.0,
      "Connected. New prospects every day, and nobody has to remember to search."
     ]
    ]
@@ -317,15 +346,15 @@
    "id": "film-ai-contacts",
    "lines": [
     [
-     5.2,
+     5.4,
      "In Contacts, open anybody and see their whole story on one page: health score, stage, deals, notes and email."
     ],
     [
-     12.8,
+     12.7,
      "Subject lines are written for this person, from their name, their company and whatever you have typed so far."
     ],
     [
-     17.8,
+     17.6,
      "Pick one, and it is in the subject box."
     ]
    ]
@@ -338,15 +367,15 @@
      "In Pipelines, describe the work, and AI lays out the stages from what the business sells, and to whom."
     ],
     [
-     13.8,
+     14.6,
      "Every stage comes with its first tasks, and exactly what applying would change. No deal is ever deleted."
     ],
     [
-     22.4,
+     23.6,
      "Rename, reorder, rewrite. It is a draft, and nothing changes until you press Apply."
     ],
     [
-     28.4,
+     29.4,
      "Then ask Brain about the board. The AI answers from these deals, and the suggestion chips are counted exactly."
     ]
    ]
@@ -359,27 +388,27 @@
      "Pipelines: every deal, from first enquiry to won."
     ],
     [
-     3.8,
+     3.6,
      "Each business workspace gets its own pipeline, with its first tasks written for that business."
     ],
     [
-     18.4,
+     19.5,
      "Website enquiries become deals by themselves. A visitor asks for a quote on the business’s website..."
     ],
     [
-     27.2,
+     28.8,
      "and it is on the board in seconds. A contact and a deal, in the first stage, with nobody typing anything."
     ],
     [
-     33.2,
+     35.1,
      "Automations work the board for you. Here, any deal idle for fourteen days is flagged urgent and stale."
     ],
     [
-     45,
+     47.6,
      "Drag a deal on, or open it for sub-tasks, deadlines and comments."
     ],
     [
-     54.6,
+     57.6,
      "And see it your way: board, list, table, funnel or timeline."
     ]
    ]
@@ -388,27 +417,27 @@
    "id": "film-ai-campaigns",
    "lines": [
     [
-     5,
+     5.3,
      "In Email campaigns, a whole campaign is written from a brief, for the client you pick, from their business profile."
     ],
     [
-     22,
+     24.2,
      "Three emails, timed and conditioned. It stops when they answer."
     ],
     [
-     25.2,
+     27.7,
      "And it tells you when it has too little to go on. A thin business profile is named, not papered over."
     ],
     [
-     31.4,
+     34.8,
      "Ask the AI to change any email: shorter, warmer, more direct, or a different subject line."
     ],
     [
-     38.6,
+     41.9,
      "Or build an automation from one sentence. Describe it, and it builds the trigger, the waits, the emails and the tags."
     ],
     [
-     56,
+     60.5,
      "Built as a draft, step by step. Read it on the canvas, then switch it on."
     ]
    ]
@@ -421,31 +450,31 @@
      "Email campaigns go out from your own mailbox."
     ],
     [
-     3.8,
+     3.9,
      "Every figure is counted from real sends: opened, clicked, replied and bounced, campaign by campaign."
     ],
     [
-     10.6,
+     11.2,
      "Sequences send several emails, days apart, each from your own address."
     ],
     [
-     17.8,
+     19.2,
      "And they stop the moment somebody answers."
     ],
     [
-     25.4,
+     27.4,
      "A/B test any step, with two versions side by side."
     ],
     [
-     32,
+     34.8,
      "Read it as one real contact will get it, every merge field filled in."
     ],
     [
-     42.2,
+     45.8,
      "Everything is logged: who was added, and what changed."
     ],
     [
-     47.4,
+     51.4,
      "And bring your own list. Any spreadsheet becomes contacts you can use anywhere."
     ]
    ]
@@ -454,15 +483,15 @@
    "id": "film-ai-websites",
    "lines": [
     [
-     5,
+     5.4,
      "In Websites, every client’s site is edited right on the page."
     ],
     [
-     11.6,
+     12.6,
      "Say what the section should say, and Generate with AI writes the headline, the line under it, and the buttons."
     ],
     [
-     21,
+     22.1,
      "Rewritten in seconds, in the site’s own design. Change any word by hand afterwards."
     ]
    ]
@@ -475,27 +504,27 @@
      "Websites and funnels for every client, built and hosted in the app."
     ],
     [
-     8,
+     8.4,
      "Start from a whole site, not a blank page. Hover over a template to scroll through it."
     ],
     [
-     22.6,
+     24.5,
      "Click anything on the page to change it, right in the panel beside it."
     ],
     [
-     33.8,
+     36.2,
      "Add a section in one click: content and forms, straight onto the page."
     ],
     [
-     43.6,
+     46.3,
      "Add pages, and check them on a tablet and a phone before they go live."
     ],
     [
-     54.2,
+     58.2,
      "Get it ready for search engines: its title, description, and the link people share."
     ],
     [
-     61.2,
+     65.8,
      "Then publish. It is live in a click."
     ]
    ]
@@ -508,27 +537,27 @@
      "Booking pages that fill your calendar, with every booking in one list."
     ],
     [
-     5.2,
+     3.8,
      "Edit it beside the real thing. The page your visitors see changes as you type."
     ],
     [
-     16.4,
+     17.0,
      "Change the look in one click, with four themes for the same page."
     ],
     [
-     28.6,
+     30.4,
      "Set how long, where, and which days: video call, phone, or in person."
     ],
     [
-     35.6,
+     38.6,
      "Times are shown in each visitor’s own time zone, so there is no back-and-forth."
     ],
     [
-     41.6,
+     45.1,
      "Check it on a phone before you share it."
     ],
     [
-     49,
+     53.8,
      "Set your hours, and the emails go by themselves: confirmations, reschedule links, and a note to you for every booking."
     ]
    ]
@@ -546,15 +575,15 @@
    "id": "film-ai-graphics",
    "lines": [
     [
-     5,
+     4.8,
      "In the Graphics Designer, say what the post is about, and AI writes the design: headline, label, points and button, fitted to the template."
     ],
     [
-     17.8,
+     18.0,
      "Not right? Rewrite the words. Prices and dates are never invented."
     ],
     [
-     26.6,
+     27.0,
      "Or describe a whole design from scratch, and it lays it out and opens it in the editor."
     ]
    ]
@@ -567,35 +596,35 @@
      "Every template is drawn with your client’s name and colours."
     ],
     [
-     3.8,
+     3.4,
      "There are templates for whatever you are posting: offers, launches, tips and announcements."
     ],
     [
-     11.4,
+     11.8,
      "Pick one, and say what it is about. Offers and prices only ever come from what you type."
     ],
     [
-     23.4,
+     24.4,
      "Change the words, and the design keeps its shape."
     ],
     [
-     28.4,
+     30.0,
      "Every format is re-laid, never stretched: feed, square, story and landscape."
     ],
     [
-     39,
+     42.0,
      "Your client’s brand, in a click."
     ],
     [
-     46.6,
+     50.7,
      "Swap the picture, from the photo library or your own."
     ],
     [
-     52.4,
+     56.9,
      "Or try the same words in another composition."
     ],
     [
-     56.6,
+     61.5,
      "And it is ready to post: caption, hashtags, and a reminder date."
     ]
    ]
@@ -604,31 +633,31 @@
    "id": "film-ai-blog",
    "lines": [
     [
-     5,
+     4.8,
      "For the blog, give it the writing you already have: an about page, a service page, or an old post."
     ],
     [
-     14.6,
+     15.3,
      "It reads the business and builds a ranking strategy: what you sell, to whom, and the terms worth chasing."
     ],
     [
-     25.2,
+     29.9,
      "Keywords come in clusters, each aimed at a page, with an honest difficulty estimate."
     ],
     [
-     31,
+     36.2,
      "Then a month of posts is planned, cheapest to rank first."
     ],
     [
-     40.8,
+     62.6,
      "Each post is written in the business’s voice: over a thousand words, with headings and internal links."
     ],
     [
-     43.8,
+     76.8,
      "It is measured against nine on-page SEO checks. A failing check is shown, not hidden."
     ],
     [
-     56,
+     88.6,
      "Then it is published to WordPress, on the planned dates, only once you approve."
     ]
    ]
@@ -650,19 +679,19 @@
      "A workspace for every client, under your own name."
     ],
     [
-     3.8,
+     3.4,
      "A client workspace takes a minute, with its own contacts, pipelines and campaigns, and the price they pay you."
     ],
     [
-     14.8,
+     16.5,
      "Each client can see the product name you sell it under, right on their sign-in page."
     ],
     [
-     26,
+     27.0,
      "Your product name appears across the app: the top bar, the sign-in screen, and the emails’ sender name."
     ],
     [
-     37.8,
+     40.6,
      "And your own sign-in address goes live at once."
     ]
    ]
@@ -671,11 +700,11 @@
    "id": "clip-reports",
    "lines": [
     [
-     0.6,
+     1.0,
      "Reports read live from every module, counted from your own records."
     ],
     [
-     4,
+     3.6,
      "Pick any period you like, from seven days to twelve months."
     ],
     [
@@ -683,7 +712,7 @@
      "See where every contact came from."
     ],
     [
-     13.8,
+     13.6,
      "Deals by stage, and who is winning them."
     ],
     [
@@ -691,7 +720,7 @@
      "Every campaign side by side."
     ],
     [
-     23.4,
+     22.8,
      "And whether your mail is arriving."
     ]
    ]

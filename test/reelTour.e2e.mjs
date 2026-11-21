@@ -1,7 +1,8 @@
 /**
- * The site's slideshows read each screen (ShotReel) — tested on the ownership
- * tabs' reel (full-page pictures) since the hero became a fast-forward clip
- * (2026-11-20). On a desktop: the page widened to the slide's full width (no
+ * The site's slideshows read each screen (ShotReel) — tested on an industry
+ * page's hero reel, the slideshows' last home: the main page has none since
+ * 2026-11-21 (every still there became a recording; the ownership tabs were
+ * this test's subject until then). On a desktop: the page widened to the slide's full width (no
  * zoom past it), then travelled to the bottom. On a phone: the top of the
  * page, travelled down.
  * The notes come up one at a time over both.
@@ -18,21 +19,23 @@
  */
 import pw from '/opt/node22/lib/node_modules/playwright/index.js';
 const B = process.env.BASE ?? 'http://localhost:8787';
+const PAGE = process.env.REEL_PAGE ?? '/hvac';
+const SEL = '.ind-hero-shot';
 const OUT = process.env.SHOTS ?? '';
 const b = await pw.chromium.launch();
 let bad = 0;
 const ok = (name, cond, detail = '') => { console.log(`  ${cond ? '✓' : '✗'} ${name}${cond || !detail ? '' : `\n      ${detail}`}`); if (!cond) bad++; };
 
 /** The transform on the hero's showing picture, as scale and vertical travel. */
-const read = p => p.evaluate(() => {
-  const img = document.querySelector('.dc-own-shot .dc-reel-shot.on .dc-sr-img');
+const read = p => p.evaluate(SEL => {
+  const img = document.querySelector(SEL + ' .dc-reel-shot.on .dc-sr-img');
   const m = new DOMMatrix(getComputedStyle(img).transform);
-  const shot = document.querySelector('.dc-own-shot .dc-reel-shot.on').getBoundingClientRect();
-  const prev = document.querySelector('.dc-own-shot .dc-reel-shot[data-pos="-1"] .dc-sr-img');
+  const shot = document.querySelector(SEL + ' .dc-reel-shot.on').getBoundingClientRect();
+  const prev = document.querySelector(SEL + ' .dc-reel-shot[data-pos="-1"] .dc-sr-img');
   const pm = prev ? new DOMMatrix(getComputedStyle(prev).transform) : null;
-  return { s: +m.a.toFixed(3), ty: Math.round(m.f), w: Math.round(shot.width), vw: innerWidth, note: document.querySelector('.dc-own-shot .dc-sr-note')?.textContent ?? '', h: img.naturalHeight, nw: img.naturalWidth,
-    at: [...document.querySelectorAll('.dc-own-shot .dc-reel-shot')].findIndex(e => e.classList.contains('on')), prevTy: pm ? Math.round(pm.f) : 0 };
-});
+  return { s: +m.a.toFixed(3), ty: Math.round(m.f), w: Math.round(shot.width), vw: innerWidth, note: document.querySelector(SEL + ' .dc-sr-note')?.textContent ?? '', h: img.naturalHeight, nw: img.naturalWidth,
+    at: [...document.querySelectorAll(SEL + ' .dc-reel-shot')].findIndex(e => e.classList.contains('on')), prevTy: pm ? Math.round(pm.f) : 0 };
+}, SEL);
 
 for (const [label, view, motion] of [
   ['desktop', { width: 1440, height: 900 }, 'no-preference'],
@@ -45,9 +48,9 @@ for (const [label, view, motion] of [
   const ctx = await b.newContext({ viewport: view, reducedMotion: motion, isMobile: phone, hasTouch: phone, deviceScaleFactor: phone ? 2 : 1 });
   const p = await ctx.newPage();
   const errs = []; p.on('pageerror', e => errs.push(String(e)));
-  await p.goto(`${B}/`, { waitUntil: 'networkidle' });
-  await p.evaluate(() => document.querySelector('.dc-own-shot').scrollIntoView({ block: 'center' }));
-  await p.waitForFunction(() => document.querySelector('.dc-own-shot .dc-reel-shot.on .dc-sr-img')?.naturalWidth > 0, null, { timeout: 15_000 });
+  await p.goto(`${B}${PAGE}`, { waitUntil: 'networkidle' });
+  await p.evaluate(sel => document.querySelector(sel).scrollIntoView({ block: 'center' }), SEL);
+  await p.waitForFunction(sel => document.querySelector(sel + ' .dc-reel-shot.on .dc-sr-img')?.naturalWidth > 0, SEL, { timeout: 15_000 });
   const start = await read(p);
   if (phone) ok('the screen opens at the top of the page', start.s === 1 && start.ty === 0, JSON.stringify(start));
   if (!phone) ok('the slide is the full width of the strip', start.w >= start.vw * 0.9, JSON.stringify(start));
@@ -77,10 +80,10 @@ for (const [label, view, motion] of [
      so those checks went with it. */
 
   /* Paused, it stays where it is. */
-  await p.locator('.dc-own-shot').getByRole('button', { name: 'Pause the tour' }).click({ force: true });
+  await p.locator(SEL).getByRole('button', { name: 'Pause the tour' }).click({ force: true });
   const a = await read(p); await p.waitForTimeout(2500); const c = await read(p);
   ok('pause stops it', a.ty === c.ty && a.s === c.s, `${JSON.stringify(a)} → ${JSON.stringify(c)}`);
-  await p.locator('.dc-own-shot').getByRole('button', { name: 'Play the tour' }).click({ force: true });
+  await p.locator(SEL).getByRole('button', { name: 'Play the tour' }).click({ force: true });
   ok('no page errors', !errs.length, errs.join('\n'));
   ok('no sideways scroll', await p.evaluate(() => document.documentElement.scrollWidth - innerWidth) === 0);
   await ctx.close();
