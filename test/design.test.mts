@@ -162,6 +162,7 @@ const set = (s: IntakeState, v: Record<string, string | string[]>) => {
   ok('the hero wears the theme', String(lead[1].settings.bgGradient).includes('#0f5132'));
   const before = pageBlocks(v, null, { ...o, logoSrc: '' });
   ok('no design: the page every project had before', before.map(b => b.type).join(',') === 'navbar,hero,features,columns,form,footer' && String(before[1].settings.bgGradient).includes('#2563eb'));
+  ok('every block in the modern look, like the gallery templates', [...lead, ...before].every(b => b.settings.look === 'modern'));
 }
 
 /* ── Finding the logo on a page ── */

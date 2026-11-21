@@ -332,8 +332,13 @@ export function pageBlocks(
   v: PageCopy, design: PageDesign | null,
   o: { company: string; formSlug: string; logoSrc: string; fields: { label: string; type: string; required: boolean }[] },
 ): { id: string; type: string; content: string; settings: Record<string, unknown> }[] {
+  /* Every block in the renderer's modern look (BlockRender `modernBlock`),
+     the same as every gallery template (pageTemplates.ts `blk`). Without it a
+     page Autopilot built on the server drew in the old flat style while the
+     Websites and Funnels galleries showed the new one — the owner saw new
+     business workspaces "picking up the old designs" (2026-11-21). */
   const block = (type: string, content: string, settings: Record<string, unknown>) =>
-    ({ id: `bl-${crypto.randomUUID()}`, type, content, settings });
+    ({ id: `bl-${crypto.randomUUID()}`, type, content, settings: { look: 'modern', ...settings } });
   const p = design?.palette;
   const accent = p?.accent;
   const btn = accent ? { buttonColor: accent, buttonTextColor: inkOn(accent) } : {};

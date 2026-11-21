@@ -18,12 +18,13 @@
  */
 import { useMemo, useState } from 'react';
 import { Check, Sparkles, ChevronDown, Filter, LayoutTemplate, Ban, Maximize2 } from 'lucide-react';
-import { TEMPLATE_CATALOG, buildTemplatePages, type BrandContext, type TemplateMeta } from '../../shared/pageTemplates';
+import { LONG_TEMPLATES, TEMPLATE_CATALOG, buildTemplatePages, type BrandContext, type TemplateMeta } from '../../shared/pageTemplates';
 import { PagesStrip, ScaledPage } from '../../shared/BlockRender';
 import TemplatePagePreview from './TemplatePagePreview';
 import './templatePreview.css';
 
 const ACCENT = '#5b46e5';
+const LONG_IDS = new Set(LONG_TEMPLATES.map(t => t.id));
 const FIRST = 6;
 
 export default function TemplatePicker({ value, onPick, brand, prefer, hasSite = false, website = '' }: {
@@ -51,7 +52,11 @@ export default function TemplatePicker({ value, onPick, brand, prefer, hasSite =
   const [previewing, setPreviewing] = useState<TemplateMeta | null>(null);
   const list = useMemo(() => TEMPLATE_CATALOG
     .filter(t => t.kind === tab && t.category !== 'Thank You Pages')
-    .sort((a, b) => b.popularity - a.popularity), [tab]);
+    /* The newest, long-form designs first, then by popularity: sorted by
+       popularity alone the older short templates (listed first in the
+       catalogue at the same score) filled the first screen (owner,
+       2026-11-21). */
+    .sort((a, b) => Number(LONG_IDS.has(b.id)) - Number(LONG_IDS.has(a.id)) || b.popularity - a.popularity), [tab]);
   const shown = all ? list : list.slice(0, FIRST);
   /* Built once per template and brand, not on every render. */
   const pages = useMemo(() => {

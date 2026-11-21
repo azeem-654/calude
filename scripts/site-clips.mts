@@ -1446,7 +1446,10 @@ const FILM: Record<string, Recipe> = {
         if (await w.getByRole('button', { name: /Looks good/ }).count()) break;
         const head = (await w.locator('h1,h2').first().innerText().catch(() => '')).trim();
         const nx = w.locator('button:visible').last();
-        if (!shownKinds && /people it works with/i.test(head)) {
+        /* The AI orders its questions differently each take: "The people it
+           works with" can open on the prospects-a-day question, without the
+           suggested kinds. Highlight only the screen that shows them. */
+        if (!shownKinds && /people it works with/i.test(head) && await w.getByText(/Suggested for your business/).count()) {
           shownKinds = true;
           await h.fast(1);
           await h.say('It picks who to find, and tells you why', 'Kinds of business searched live every day — widen it in a click');
