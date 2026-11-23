@@ -135,3 +135,29 @@ motion; `test:sitefit` and `test:reeltour` must stay green.
 
 | Voiceovers (2026-11-20) | Owner chose **Umbriel**, Protron narrating. `scripts/voiceover.mts` (Google TTS `gemini-3.8-flash-tts` / `-lite-tts`; lines batched — the free key allows 10 speech requests a day per model — cut back into lines by local Whisper, `scripts/vo-align.py`, venv `/tmp/vo-venv`; the picture holds a frame where a line outruns its caption; cache `/tmp/vo-cache` keyed by model+voice+style+words). Scripts in `marketing/voice/scripts/`. **Done:** `autopilot-deep-dive` voiced (7 min 17 s, lite model). **Left, in this order** (each command resumes where it stopped and says when the day's quota is out): (1) `TTS_MODEL=gemini-3.8-flash-lite-tts VO_BATCH=14 npx tsx scripts/voiceover.mts marketing/voice/scripts/platform-ai-tour.json` (42 of 128 lines done); (2) the same with `appsumo-lifetime-deal.json` (9 new lines; run `npx tsx scripts/film-cards.mts marketing/voice/scripts/appsumo-cards.json` first if `/tmp/site-clips-master/as-*.mp4` are gone); (3) the drawn film, full model: `TTS_MODEL=gemini-3.8-flash-tts npx tsx scripts/voiceover.mts --lines marketing/launch-film/lines.json /tmp/lf/vo`, then its README's render steps. Use the same model for every line of one film. The masters in `/tmp/site-clips-master` are not in git — a fresh container must re-record them first (`docs/claude/site.md`) |
 | AppSumo film (2026-11-20) | `appsumo-lifetime-deal`: only what the deal includes on the live app — AI Autopilot (the five deep-dive chapters), AI Prospecting, Contacts, Pipelines, campaigns, websites, booking, graphics, blog, agency, reports — between title cards (`film-cards.mts`), ending on a tier card read from `lib/allowances.ts` and "Not part of this deal: AI Shorts and video editing, and the online shop". A silent cut (19 min 14 s) is in `marketing/demos/`; voiced after step (2) above |
+
+## Resume here (2026-11-23) — voicing one line per request
+
+Owner chose **plan B**: the AI voice, **one line per request** (`VO_BATCH=1`),
+so nothing is cut from a longer recording. `voiceover.mts` now also checks the
+**finished film**: each line is cut back out where it sits and heard against
+the script (`scripts/vo-check.py`); it prints `QA: all N lines heard clean` or
+the lines to re-take, and writes `<film>.timeline.json`. The first test, the
+2-minute `appsumo-short`, passed (14/14) after one fix: the first line of a
+take is kept from the start of the audio, and trimming keeps a breath of
+silence (a late-timed first word turned "One click" into "click").
+
+Where things are (this cloud container only — not in git; a new session or a
+reclaimed container loses them, the recipes re-make them):
+- recorded chapters: `/tmp/site-clips-master/*.mp4` (39 files, incl. the
+  short's excerpts `s-*` and cards `as-*`)
+- voice cache: `/tmp/vo-cache/`; films: `marketing/demos/*.mp4`
+- narration scripts (in git): `marketing/voice/scripts/appsumo-short.json`,
+  `appsumo-lifetime-deal.json` (no "Protron"/"I" in the narration)
+
+Next: the long film the same way —
+`VO_BATCH=1 npx tsx scripts/voiceover.mts marketing/voice/scripts/appsumo-lifetime-deal.json`
+(150 lines ≈ 150 requests: more than three free keys allow in a day — the
+script moves to the lite model, then stops; run it again the next day and it
+continues from the cache, or switch billing on for the key's Google project).
+Delete the long film's cached lines first if they were voiced in batches.

@@ -158,12 +158,17 @@ async function speakBatch(voice: string, style: string, texts: string[]): Promis
   };
   for (let i = 0; i < done; i++) {
     const f = found[i]!;
-    const from = i ? between(i - 1) : pauseBefore(f.start);
+    /* The first line from the very start of the audio unless the model said
+       something before it (its directions read aloud): a recogniser that
+       times the first word late shaved "One click" to "click" (2026-11-23). */
+    const from = i ? between(i - 1) : (f.start < 1.5 ? 0 : pauseBefore(f.start));
     const to = i + 1 < done ? between(i) : Math.min(total, f.end + 0.35);
     const len = to - from, words = texts[i].split(/\s+/).length;
     if (len < words * 0.18 || len > words * 0.75 + 1.5) throw new Error(`line "${texts[i].slice(0, 50)}" came out ${len.toFixed(1)} s for ${words} words — a cut is misplaced`);
     execFileSync(FF, ['-y', '-v', 'error', '-i', whole, '-ss', from.toFixed(3), '-to', to.toFixed(3),
-      '-af', 'silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse',
+      /* Trim the silence but keep a breath of it (start_silence): a soft first
+         sound under -45 dB was being trimmed with the silence. */
+      '-af', 'silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.08,areverse,silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.12,areverse',
       cacheFile(voice, style, texts[i])]);
   }
   /* Every piece heard again on its own: one that is not its line, word for
@@ -324,6 +329,28 @@ async function main() {
   execFileSync(FF, ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', '-movflags', '+faststart', dest]);
   const mb = (fs.statSync(dest).size / 1e6).toFixed(1);
   console.log(`${dest} — ${Math.floor(total / 60)} min ${Math.round(total % 60)} s, ${mb} MB`);
+
+  /* The last gate (owner, 2026-11-23: "seamlessly error-free"): every line is
+     cut back out of the finished film — where it really sits, after the
+     holds — and heard again against the script (vo-check.py). A film with a
+     line lost, clipped or run into the next is reported here, before anybody
+     watches it, with the timeline beside it. */
+  if (!READ && said.length) {
+    const pairs: [string, string][] = said.map((l, i) => {
+      const f = `${WORK}/qa-${i}.wav`;
+      execFileSync(FF, ['-y', '-v', 'error', '-ss', Math.max(0, l.start - 0.05).toFixed(3), '-to', (l.end + 0.15).toFixed(3), '-i', dest, '-vn', '-ac', '1', '-ar', '16000', f]);
+      return [l.text, f];
+    });
+    fs.writeFileSync(`${WORK}/qa.json`, JSON.stringify(pairs));
+    const scores: number[] = JSON.parse(execFileSync(process.env.VO_PYTHON || '/tmp/vo-venv/bin/python',
+      ['-I', 'scripts/vo-check.py', `${WORK}/qa.json`], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim().split('\n').pop()!);
+    const bad = said.filter((_, i) => !scores[i]);
+    fs.writeFileSync(dest.replace(/\.mp4$/, '.timeline.json'), JSON.stringify(said.map((l, i) => ({ ...l, clean: !!scores[i] })), null, 1));
+    console.log(bad.length
+      ? `QA: ${bad.length} of ${said.length} lines need another take:\n${bad.map(l => `  ${l.start.toFixed(1)}s ${l.chapter}: "${l.text.slice(0, 70)}"`).join('\n')}`
+      : `QA: all ${said.length} lines heard clean in the finished film.`);
+    if (bad.length) process.exitCode = 3;
+  }
 }
 
 main().catch(e => { console.error(e.message || e); process.exit(1); });
