@@ -46,7 +46,12 @@ let modelAt = 0;
 const GAP = 0.35;      // breath between one line and the next
 const TAIL = 0.6;      // room left after the last line before the chapter's fade
 
-type Script = { film: string; out?: string; voice: string; style: string; chapters: { id: string; lines: [number, string][] }[] };
+type Script = {
+  film: string; out?: string; voice: string; style: string; chapters: { id: string; lines: [number, string][] }[];
+  /* A music bed under the whole film (see mixMusic): the file, and its level
+     in dB while a line is spoken and in the pauses between lines. */
+  music?: { file: string; under?: number; gap?: number };
+};
 
 /**
  * Every Google AI key on hand, in order. The owner added a second and third
@@ -326,7 +331,11 @@ async function main() {
     fs.writeFileSync(`${base}-script.md`, md);
     console.log(`${base}.srt and ${base}-script.md — ${said.length} lines`);
   }
-  execFileSync(FF, ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', '-movflags', '+faststart', dest]);
+  if (s.music && !READ) {
+    const voiceOnly = `${WORK}/${s.film}-voice.mp4`;
+    execFileSync(FF, ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', voiceOnly]);
+    mixMusic(voiceOnly, dest, s.music, said, total);
+  } else execFileSync(FF, ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', '-movflags', '+faststart', dest]);
   const mb = (fs.statSync(dest).size / 1e6).toFixed(1);
   console.log(`${dest} — ${Math.floor(total / 60)} min ${Math.round(total % 60)} s, ${mb} MB`);
 
@@ -351,6 +360,40 @@ async function main() {
       : `QA: all ${said.length} lines heard clean in the finished film.`);
     if (bad.length) process.exitCode = 3;
   }
+}
+
+/**
+ * Lays a music bed under the finished film, ducked under the voice (owner,
+ * 2026-11-23: music all the way through, "very, very low" while the voice
+ * talks and up in the pauses while the screen does its work).
+ *
+ * Why an envelope from the timeline and not a sidechain compressor: the line
+ * times are already known exactly, so the music can start dipping a moment
+ * BEFORE the first word (a compressor only reacts after it, and the first
+ * syllable lands on loud music), and lines a breath apart stay under one dip
+ * instead of the music pumping up between them. The bed is expected at about
+ * -16 LUFS, the voice's own level (marketing/voice/music/README.md), and
+ * loops if the film is longer.
+ */
+function mixMusic(src: string, dest: string, m: NonNullable<Script['music']>, said: { start: number; end: number }[], total: number) {
+  const db = (x: number) => Math.pow(10, x / 20);
+  const under = db(m.under ?? -24), gap = db(m.gap ?? -9);
+  const DOWN = 0.35, UP = 0.7;  // ramp lengths: dip just before a line, rise slowly after it
+  // Each line a trapezoid: 0 → 1 ending 0.1 s before the first word, back to 0 starting 0.25 s after the last.
+  const dips = said.map(l => {
+    const a = (l.start - 0.1 - DOWN).toFixed(2), b = (l.end + 0.25 + UP).toFixed(2);
+    return `clip((t-${a})/${DOWN},0,1)*clip((${b}-t)/${UP},0,1)`;
+  });
+  const duck = dips.length ? `min(1,${dips.join('+')})` : '0';
+  const vol = `${gap.toFixed(4)}-(${(gap - under).toFixed(4)})*${duck}`;
+  const fade = Math.max(0, total - 3).toFixed(2);
+  const fc = `[1:a]atrim=0:${total.toFixed(3)},asetpts=PTS-STARTPTS,aformat=sample_rates=48000:channel_layouts=stereo,`
+    + `volume='${vol}':eval=frame,afade=t=in:d=1.2,afade=t=out:st=${fade}:d=3[m];`
+    + `[0:a][m]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.95[a]`;
+  fs.writeFileSync(`${WORK}/music.fc`, fc);
+  execFileSync(FF, ['-y', '-v', 'error', '-i', src, '-stream_loop', '-1', '-i', m.file, '-filter_complex_script', `${WORK}/music.fc`,
+    '-map', '0:v', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', '-movflags', '+faststart', dest]);
+  console.log(`music: ${m.file} at ${m.gap ?? -9} dB in the pauses, ${m.under ?? -24} dB under the voice`);
 }
 
 main().catch(e => { console.error(e.message || e); process.exit(1); });

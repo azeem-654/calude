@@ -1,0 +1,206 @@
+{
+ "film": "platform-showcase",
+ "voice": "Umbriel",
+ "style": "Read this aloud as an excited, genuinely enthusiastic presenter showing a friend a product they truly love: upbeat and energetic, a big smile in the voice, natural human rhythm with real emphasis, little lifts of delight and varied pitch, like a great product demo by a real person. Lively, quick pace. Never flat, monotone or robotic, never shouting, never salesy. Say only the words below.",
+ "music": {
+  "file": "marketing/voice/music/bed-uplifting.mp3",
+  "under": -24,
+  "gap": -9
+ },
+ "chapters": [
+  {
+   "id": "pc-intro",
+   "lines": [
+    [
+     0.4,
+     "Okay, here's the whole platform, recorded live in the real app. Let's go!"
+    ]
+   ]
+  },
+  {
+   "id": "s-board",
+   "lines": [
+    [
+     0.4,
+     "This is AI Autopilot, and it runs all of your businesses at once! Every project gets its own business workspace, with its own goal, workflows, prospects and website."
+    ],
+    [
+     11.0,
+     "And each one handles its own social media, email marketing, text messages, blog posts and bookings. It all runs on the server, every five minutes, even with this page closed."
+    ]
+   ]
+  },
+  {
+   "id": "s-watch",
+   "lines": [
+    [
+     1.0,
+     "Your AI Live Business Manager watches every campaign. Look, forty-six emails went out, and nobody replied."
+    ],
+    [
+     5.9,
+     "So it flags it: this campaign isn’t getting replies, and here’s exactly what it would change."
+    ],
+    [
+     10.4,
+     "One click, and AI re-optimises it, in the business’s own voice!"
+    ],
+    [
+     15.0,
+     "And nothing changes until you approve it."
+    ],
+    [
+     21.8,
+     "Or just talk it through in the live chat. It asks about your business, and suggests what to try."
+    ]
+   ]
+  },
+  {
+   "id": "s-prospect",
+   "lines": [
+    [
+     0.5,
+     "AI Prospecting! Just say who you sell to, in one sentence."
+    ],
+    [
+     8.4,
+     "It searches live, reads every website, and checks each address before you send a thing."
+    ]
+   ]
+  },
+  {
+   "id": "s-sites",
+   "lines": [
+    [
+     0.5,
+     "Websites and funnels for every client, built and hosted right inside the app."
+    ],
+    [
+     8.1,
+     "Start from a whole site, not a blank page, and make it totally yours."
+    ]
+   ]
+  },
+  {
+   "id": "pc-tour",
+   "lines": [
+    [
+     0.3,
+     "And now, everything else, at full speed!"
+    ]
+   ]
+  },
+  {
+   "id": "t-inbox",
+   "lines": [
+    [
+     0.2,
+     "The Unified Inbox! Connect all your mailboxes, your text messages and your website chat, and every conversation lands in one place."
+    ],
+    [
+     8.4,
+     "The urgent ones come first, and a ready reply is one click away."
+    ]
+   ]
+  },
+  {
+   "id": "t-contacts",
+   "lines": [
+    [
+     0.2,
+     "Contacts, scored and segmented, with a list for every business workspace that AI keeps filling with new leads."
+    ]
+   ]
+  },
+  {
+   "id": "t-pipelines",
+   "lines": [
+    [
+     0.3,
+     "Pipelines! Someone asks for a quote on the website, and seconds later it’s a deal on the board. Nobody typed a thing."
+    ]
+   ]
+  },
+  {
+   "id": "t-campaigns",
+   "lines": [
+    [
+     0.2,
+     "Email campaigns and sequences from your own mailbox, with real open and reply numbers, and they stop the moment someone answers."
+    ]
+   ]
+  },
+  {
+   "id": "t-agents",
+   "lines": [
+    [
+     0.2,
+     "And here’s your social media on autopilot: AI agents write posts, articles and emails for each business, on a schedule, and every piece waits for your yes."
+    ]
+   ]
+  },
+  {
+   "id": "t-graphics",
+   "lines": [
+    [
+     0.2,
+     "Need graphics for those posts? Pick a template, say what it’s about, and it’s designed in your client’s brand, in every format."
+    ]
+   ]
+  },
+  {
+   "id": "t-blog",
+   "lines": [
+    [
+     0.2,
+     "SEO blogging, too. It learns how the business writes, builds a keyword strategy, and plans a whole month of posts."
+    ]
+   ]
+  },
+  {
+   "id": "t-booking",
+   "lines": [
+    [
+     0.2,
+     "Booking pages that fill your calendar, in your own look, with times shown in each visitor’s time zone."
+    ]
+   ]
+  },
+  {
+   "id": "t-engagement",
+   "lines": [
+    [
+     0.5,
+     "Put an AI chat agent on any website with one line of code. It answers from what you publish, and hands over to a person."
+    ]
+   ]
+  },
+  {
+   "id": "t-agency",
+   "lines": [
+    [
+     0.2,
+     "Running an agency? White-label the whole app: your product name everywhere, and your own sign-in address for your clients, live at once."
+    ]
+   ]
+  },
+  {
+   "id": "t-reports",
+   "lines": [
+    [
+     0.2,
+     "And reports, read live from every module: where your contacts came from, deals by stage, and whether your mail is arriving."
+    ]
+   ]
+  },
+  {
+   "id": "pc-end",
+   "lines": [
+    [
+     0.4,
+     "That’s Protected Central. One platform, every business, run by AI. Come and see it for yourself!"
+    ]
+   ]
+  }
+ ]
+}

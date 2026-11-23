@@ -1,0 +1,5 @@
+[
+ { "id": "pc-intro", "seconds": 5.5, "eyebrow": "Protected Central", "title": "Your whole business, run by AI", "sub": "The real app, recorded live with real AI on a sample agency" },
+ { "id": "pc-tour", "seconds": 3.2, "eyebrow": "And there is more", "title": "Every other module, at full speed" },
+ { "id": "pc-end", "seconds": 6.5, "eyebrow": "Protected Central", "title": "One platform. Every business.<br>Run by AI.", "sub": "protectedcentral.com" }
+]
