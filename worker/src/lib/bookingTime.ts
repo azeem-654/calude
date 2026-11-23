@@ -49,8 +49,36 @@ export interface SlotRules {
   windowDays?: number;
 }
 
-/** Something already in the owner's day: a booking, a meeting, blocked time. */
-export interface Busy { date: string; time: string; duration: number }
+/**
+ * Something already in the owner's day: a booking, a meeting, blocked time.
+ * `external` marks time busy in the owner's connected calendar — it blocks the
+ * slots it overlaps but is not a booking, so it never counts toward the
+ * daily limit (a dentist's lunch is not one of today's five appointments).
+ */
+export interface Busy { date: string; time: string; duration: number; external?: boolean }
+
+/**
+ * Busy instants (a calendar's free/busy answer) as the owner's wall clock,
+ * split at the owner's midnights so each piece sits on the date
+ * `ownerDaySlots` reads. Instants that do not parse are dropped.
+ */
+export function busyFromInstants(periods: { start: string; end: string }[], tz: string): Busy[] {
+  const out: Busy[] = [];
+  for (const p of periods) {
+    let s = Date.parse(p.start);
+    const e = Date.parse(p.end);
+    if (!Number.isFinite(s) || !Number.isFinite(e) || e <= s) continue;
+    /* A guard, not a limit anyone meets: a 60-day "out of office" is 60 pieces. */
+    for (let i = 0; s < e && i < 400; i++) {
+      const w = utcToWall(s, tz);
+      const next = wallToUtc(addDays(w.date, 1), '00:00', tz) ?? wallToUtc(addDays(w.date, 1), '01:00', tz) ?? e;
+      const end = Math.min(e, next > s ? next : e);
+      out.push({ date: w.date, time: w.time, duration: Math.max(1, Math.ceil((end - s) / 60000)), external: true });
+      s = end;
+    }
+  }
+  return out;
+}
 
 /** One bookable time, said both ways. */
 export interface Slot {
@@ -168,7 +196,7 @@ export function ownerDaySlots(ownerDate: string, rules: SlotRules, busy: Busy[])
   const before = Math.max(0, rules.bufferBefore ?? 0);
   const after = Math.max(0, rules.bufferAfter ?? 0);
   const onDay = busy.filter(b => b.date === ownerDate);
-  if (rules.dailyLimit && rules.dailyLimit > 0 && onDay.length >= rules.dailyLimit) return [];
+  if (rules.dailyLimit && rules.dailyLimit > 0 && onDay.filter(b => !b.external).length >= rules.dailyLimit) return [];
   const blocks = onDay
     .map(b => { const s = toMin(b.time); return s === null ? null : [s, s + Math.max(1, b.duration || dur)] as const; })
     .filter((x): x is readonly [number, number] => !!x);

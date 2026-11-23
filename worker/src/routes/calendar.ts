@@ -17,7 +17,7 @@
  */
 import { body, fail, json } from '../lib/http';
 import { nowIso, userFromToken, workspaceAccess, type Env } from '../lib/db';
-import { authUrl, cancelEvent, connect, createEvent, CALENDAR_SCOPE } from '../lib/googleCalendar';
+import { authUrl, busy, cancelEvent, connect, createEvent, moveEvent, CALENDAR_SCOPE } from '../lib/googleCalendar';
 import { googleCreds } from '../lib/googleAuth';
 import { recordEvent, rid } from '../lib/engagement';
 import { newToken, timingSafeEqual } from '../lib/crypto';
@@ -201,11 +201,7 @@ export async function meetingForBooking(
      Google is given the zone alongside it rather than an offset — so a booking
      made before a daylight-saving change still happens at the time the customer
      picked, which an offset computed today would not. */
-  const startIso = `${booking.slotDate}T${booking.slotTime}:00`;
-  const endMinutes = Number(data.durationMinutes) || Number(data.duration) || 30;
-  const [h, m] = booking.slotTime.split(':').map(Number);
-  const end = new Date(Date.UTC(2000, 0, 1, h, m + endMinutes));
-  const endIso = `${booking.slotDate}T${String(end.getUTCHours()).padStart(2, '0')}:${String(end.getUTCMinutes()).padStart(2, '0')}:00`;
+  const { startIso, endIso } = wallRange(booking.slotDate, booking.slotTime, Number(data.durationMinutes) || Number(data.duration) || 30);
 
   const res = await createEvent(env, accountId, {
     ownerEmail: conn.ownerEmail,
@@ -236,4 +232,109 @@ export async function meetingForBooking(
   return res.ok
     ? { ok: true, url: res.data?.meetingUrl ?? '' }
     : { ok: false, error: res.error };
+}
+
+/**
+ * A wall-clock start and end for Google, both labelled with the owner's zone.
+ * The end is counted on the real date, so a 23:30 hour-long meeting ends at
+ * 00:30 the next day — the arithmetic this replaced wrapped it to 00:30 on
+ * the same day, which Google refuses as an end before the start.
+ */
+function wallRange(slotDate: string, slotTime: string, minutes: number): { startIso: string; endIso: string } {
+  const [y, mo, d] = slotDate.split('-').map(Number);
+  const [h, m] = slotTime.split(':').map(Number);
+  const end = new Date(Date.UTC(y, mo - 1, d, h, m + minutes));
+  const p = (n: number) => String(n).padStart(2, '0');
+  return {
+    startIso: `${slotDate}T${slotTime}:00`,
+    endIso: `${end.getUTCFullYear()}-${p(end.getUTCMonth() + 1)}-${p(end.getUTCDate())}T${p(end.getUTCHours())}:${p(end.getUTCMinutes())}:00`,
+  };
+}
+
+/**
+ * Times busy in the workspace's connected Google Calendar, so the booking
+ * page never offers a time the owner has already given away elsewhere.
+ *
+ * `ok: false` with no calendar connected is the normal case, and the booking
+ * page then offers what its own bookings leave free, as it always has. A
+ * connected calendar Google will not answer for is stamped on the connection
+ * (`last_error`, shown on Customer Engagement → Meetings) rather than
+ * closing the page: a page that offers nothing because Google was slow loses
+ * every booking, and the owner could not tell why.
+ */
+export async function calendarBusy(
+  env: Env, accountId: string, fromMs: number, toMs: number,
+): Promise<{ ok: boolean; periods: { start: string; end: string }[] }> {
+  const conn = await env.DB.prepare(
+    "SELECT owner_email AS ownerEmail FROM crm_calendar_connections WHERE account_id = ? AND status = 'connected' LIMIT 1",
+  ).bind(accountId).first<{ ownerEmail: string }>().catch(() => null);
+  if (!conn) return { ok: false, periods: [] };
+  /* Google refuses a free/busy range much over two months, and a month view
+     asks for up to 62 days — so it is asked in 31-day pieces. */
+  const periods: { start: string; end: string }[] = [];
+  const STEP = 31 * 86_400_000;
+  for (let s = fromMs; s < toMs; s += STEP) {
+    const r = await busy(env, accountId, conn.ownerEmail, new Date(s).toISOString(), new Date(Math.min(toMs, s + STEP)).toISOString());
+    if (!r.ok) {
+      await env.DB.prepare('UPDATE crm_calendar_connections SET last_error = ?, updated_at = ? WHERE account_id = ? AND owner_email = ?')
+        .bind(`Busy times could not be read: ${r.error ?? 'Google did not answer'}`.slice(0, 300), nowIso(), accountId, conn.ownerEmail).run().catch(() => null);
+      return { ok: false, periods };
+    }
+    periods.push(...(r.data ?? []));
+  }
+  /* Read again: a note left by an earlier failure is no longer true. */
+  await env.DB.prepare("UPDATE crm_calendar_connections SET last_error = '' WHERE account_id = ? AND owner_email = ? AND last_error LIKE 'Busy times could not be read%'")
+    .bind(accountId, conn.ownerEmail).run().catch(() => null);
+  return { ok: true, periods };
+}
+
+/** The live Google event behind a booking, if one was made. */
+async function liveMeeting(env: Env, accountId: string, bookingId: string) {
+  return env.DB.prepare(
+    "SELECT id, event_id AS eventId, host_email AS hostEmail, meeting_url AS meetingUrl FROM crm_meeting_links WHERE booking_id = ? AND account_id = ? AND status = 'created' AND event_id != '' ORDER BY created_at DESC LIMIT 1",
+  ).bind(bookingId, accountId).first<{ id: string; eventId: string; hostEmail: string; meetingUrl: string }>();
+}
+
+/**
+ * Take a cancelled booking's event out of Google. Never throws: the booking
+ * is cancelled either way, and a failure is kept on the meeting row.
+ * Without this a cancelled booking stayed in the owner's calendar — and, now
+ * that busy times close the page, kept its slot closed too.
+ */
+export async function cancelMeetingFor(env: Env, accountId: string, bookingId: string): Promise<void> {
+  try {
+    const link = await liveMeeting(env, accountId, bookingId);
+    if (!link) return;
+    const res = await cancelEvent(env, accountId, link.hostEmail, link.eventId);
+    await env.DB.prepare('UPDATE crm_meeting_links SET status = ?, last_error = ? WHERE id = ?')
+      .bind(res.ok ? 'cancelled' : 'error', res.ok ? '' : (res.error ?? '').slice(0, 300), link.id).run();
+  } catch { /* see above */ }
+}
+
+/**
+ * Move a rescheduled booking's event, keeping its Meet link; with no event
+ * yet (the calendar was connected after it was booked), make one. Answers
+ * the Meet link the guest should be sent, or '' when there is none.
+ */
+export async function moveMeetingFor(
+  env: Env, accountId: string,
+  booking: { id: string; slotDate: string; slotTime: string; data: string },
+): Promise<string> {
+  try {
+    const link = await liveMeeting(env, accountId, booking.id);
+    if (!link) {
+      const made = await meetingForBooking(env, accountId, booking);
+      return made.ok ? made.url ?? '' : '';
+    }
+    let data: Record<string, string> = {};
+    try { data = JSON.parse(booking.data || '{}') as Record<string, string>; } catch { data = {}; }
+    const timezone = data.ownerTimezone || data.timezone || 'UTC';
+    const { startIso, endIso } = wallRange(booking.slotDate, booking.slotTime, Number(data.durationMinutes) || Number(data.duration) || 30);
+    const res = await moveEvent(env, accountId, link.hostEmail, link.eventId, { startIso, endIso, timezone });
+    await env.DB.prepare('UPDATE crm_meeting_links SET starts_at = ?, timezone = ?, last_error = ? WHERE id = ?')
+      .bind(startIso, timezone, res.ok ? '' : (res.error ?? '').slice(0, 300), link.id).run();
+    return link.meetingUrl || '';
+  } catch {
+    return '';
+  }
 }

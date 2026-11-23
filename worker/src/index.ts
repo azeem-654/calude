@@ -86,7 +86,7 @@ import { handleValidateKey } from './routes/validateKey';
 import { handlePlacement } from './routes/placement';
 import { handleTrack } from './routes/track';
 import { handleUnsubscribe } from './routes/unsubscribe';
-import { handleBooking } from './routes/booking';
+import { bookingReminders, handleBooking } from './routes/booking';
 import { handleBookingMedia } from './routes/bookingMedia';
 import { findBrandPage, handlePublished, hostPage } from './routes/published';
 import { handleStrategyCall, strategyReminders, strategyReviewAsks } from './routes/strategyCall';
@@ -672,6 +672,9 @@ export default {
       await strategyReminders(env).catch(() => 0);
       /* And the "how did it go?" an hour after each call — the same mailbox, the same never-throws. */
       await strategyReviewAsks(env).catch(() => 0);
+      /* Customers' booking pages: the reminder each guest gets before their
+         meeting (the Automations tab's switch), from the workspace's own mailbox. */
+      await bookingReminders(env).catch(() => 0);
 
       /*
        * Telling somebody an engagement event happened.

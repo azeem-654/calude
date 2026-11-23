@@ -452,7 +452,7 @@ export default function Scheduling() {
                   <Clock size={18} color="#f59e0b" style={{ flexShrink: 0 }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>Reminder before the meeting</div>
-                    <div style={{ fontSize: 12.5, color: '#64748b' }}>Not sent yet — this setting is saved, but no reminder email or SMS goes out today. Ask guests to add the meeting to their calendar from the confirmation.</div>
+                    <div style={{ fontSize: 12.5, color: '#64748b' }}>An email to the guest before the meeting, from your mailbox, with reschedule & cancel links. Not sent for a booking made inside that window — its confirmation has just gone.</div>
                   </div>
                   <button onClick={() => setAuto({ reminderEmail: !auto.reminderEmail })}
                     style={{ width: 40, height: 22, borderRadius: 999, backgroundColor: auto.reminderEmail ? '#17191c' : '#e2e8f0', border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, padding: 0 }}>
@@ -464,7 +464,7 @@ export default function Scheduling() {
                     <div>
                       <label style={LABEL}>Send reminder</label>
                       <select value={auto.reminderMinutes} onChange={e => setAuto({ reminderMinutes: Number(e.target.value) })} style={{ ...INPUT, width: 200, cursor: 'pointer' }}>
-                        {[15, 30, 60, 120, 240, 1440].map(m => <option key={m} value={m}>{m < 60 ? `${m} minutes` : m === 1440 ? '24 hours' : `${m / 60} hours`} before</option>)}
+                        {[15, 30, 60, 120, 240, 1440, 2880].map(m => <option key={m} value={m}>{m < 60 ? `${m} minutes` : m === 1440 ? '24 hours' : m === 2880 ? '2 days' : `${m / 60} hours`} before</option>)}
                       </select>
                     </div>
                   </div>

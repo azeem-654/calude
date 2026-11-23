@@ -299,3 +299,35 @@ export async function cancelEvent(
   if (res && (res.ok || res.status === 410)) return { ok: true, data: true };
   return { ok: false, error: 'Google would not cancel that event.' };
 }
+
+/**
+ * Move an event to a new time, keeping its Meet link and its guest.
+ *
+ * A PATCH rather than cancel-and-create: a new event would hand the guest a
+ * second invitation, a cancellation notice and a different Meet room for what
+ * is, to them, the same meeting moved.
+ */
+export async function moveEvent(
+  env: Env, accountId: string, ownerEmail: string, eventId: string,
+  input: { startIso: string; endIso: string; timezone: string },
+): Promise<CalResult<true>> {
+  const t = await accessToken(env, accountId, ownerEmail);
+  if (!t.ok || !t.data) return { ok: false, error: t.error };
+  const cal = await env.DB.prepare(
+    'SELECT calendar_id AS calendarId FROM crm_calendar_connections WHERE account_id = ? AND owner_email = ?',
+  ).bind(accountId, ownerEmail).first<{ calendarId: string }>();
+
+  const res = await fetch(
+    `${CAL_API}/calendars/${encodeURIComponent(cal?.calendarId || 'primary')}/events/${encodeURIComponent(eventId)}?sendUpdates=all`,
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${t.data}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        start: { dateTime: input.startIso, timeZone: input.timezone },
+        end: { dateTime: input.endIso, timeZone: input.timezone },
+      }),
+    },
+  ).catch(() => null);
+  if (res?.ok) return { ok: true, data: true };
+  return { ok: false, error: 'Google would not move that event.' };
+}

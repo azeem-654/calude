@@ -6,7 +6,7 @@
  *   npm run test:bookingtz
  */
 import {
-  addDays, clockLabel, isZone, offsetLabel, offsetMinutes, ownerDaySlots, slotProblem, slotsForVisitorDay,
+  addDays, busyFromInstants, clockLabel, isZone, offsetLabel, offsetMinutes, ownerDaySlots, slotProblem, slotsForVisitorDay,
   slugProblem, slugify, utcToWall, videoEmbedOf, wallToUtc, type SlotRules,
 } from '../worker/src/lib/bookingTime';
 
@@ -114,6 +114,23 @@ ok('a youtu.be and a Shorts link', videoEmbedOf('youtu.be/dQw4w9WgXcQ')?.id === 
 ok('a Vimeo link', videoEmbedOf('https://vimeo.com/76979871')?.src === 'https://player.vimeo.com/video/76979871?dnt=1');
 ok('a Loom link', videoEmbedOf('https://www.loom.com/share/0281766fa2d04bb788eaf19e65135184')?.provider === 'loom');
 ok('anything else is not framed', videoEmbedOf('https://evil.example/watch?v=dQw4w9WgXcQ') === null && videoEmbedOf('javascript:alert(1)') === null && videoEmbedOf('') === null);
+
+/* ── Google Calendar busy time (2026-11-23) ── */
+{
+  /* 2026-10-05 is a Monday; New York is UTC−4 then. 14:00–15:00 UTC = 10:00–11:00 there. */
+  const g = busyFromInstants([{ start: '2026-10-05T14:00:00Z', end: '2026-10-05T15:00:00Z' }], NY);
+  ok('a busy hour becomes the owner\'s wall clock', g.length === 1 && g[0].date === '2026-10-05' && g[0].time === '10:00' && g[0].duration === 60 && g[0].external === true, g);
+  const slots = ownerDaySlots('2026-10-05', rules, g);
+  ok('it closes the slots it covers, and only those', !slots.includes('10:00') && !slots.includes('10:30') && slots.includes('09:30') && slots.includes('11:00'), slots);
+  ok('a booking inside it is refused', slotProblem('2026-10-05', '10:30', rules, g, NOW) !== null);
+  /* 03:00–07:00 UTC on the 6th = 23:00 on the 5th to 03:00 on the 6th in New York. */
+  const night = busyFromInstants([{ start: '2026-10-06T03:00:00Z', end: '2026-10-06T07:00:00Z' }], NY);
+  ok('busy time across the owner\'s midnight is split per date', night.length === 2 && night[0].date === '2026-10-05' && night[0].duration === 60 && night[1].date === '2026-10-06' && night[1].time === '00:00' && night[1].duration === 180, night);
+  ok('nonsense instants are dropped', busyFromInstants([{ start: 'x', end: 'y' }, { start: '2026-10-05T15:00:00Z', end: '2026-10-05T14:00:00Z' }], NY).length === 0);
+  const limited: SlotRules = { ...rules, dailyLimit: 1 };
+  ok('calendar busy time does not count toward the daily limit', ownerDaySlots('2026-10-05', limited, g).length > 0);
+  ok('a real booking still does', ownerDaySlots('2026-10-05', limited, [{ date: '2026-10-05', time: '13:00', duration: 30 }]).length === 0);
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

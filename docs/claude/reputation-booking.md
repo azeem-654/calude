@@ -256,3 +256,44 @@ listing and deleting across accounts.
 - The booking page's auto-publish is keyed on the schedule's content, so a
   sync handing over an equal schedule no longer leaves "Publishing booking
   page…" on screen.
+
+## 2026-11-23 — Reminders sent, Google busy times close slots, cancels reach the guest
+
+Found while answering an AppSumo buyer's questions about scheduling: three
+things the screens promised were not done.
+
+- **Reminder before the meeting** (Scheduling → Automations) was saved and
+  never sent. `bookingReminders` (routes/booking.ts), a cron pass after the
+  strategy-call mail, now emails the guest `reminderMinutes` before (default
+  60, on unless switched off — what the switch shows) from the workspace's
+  mailbox through `deliver`, with the Meet link and the reschedule/cancel
+  link. The row is claimed (`reminded_at`) before the send, which also keeps
+  Autopilot's evening-before reminder from doubling it; a reschedule clears
+  it; a booking made inside the window is claimed and not reminded. The
+  outcome is kept as `data.reminder` (`sent`/`failed`). The link uses the
+  address the booking was made on (`data.origin`, https only — a reseller's
+  domain), else `APP_ORIGIN`.
+- **Google Calendar busy time** now closes the slots it overlaps:
+  `calendarBusy` (routes/calendar.ts, freeBusy in 31-day pieces with the
+  existing `calendar.events` scope) feeds `slots` (public — times only, never
+  what the events are), `create` and `reschedule`, as `Busy` with
+  `external: true` (`busyFromInstants` in lib/bookingTime.ts splits at the
+  owner's midnights). External time never counts toward the daily limit. A
+  booking's own Google event is dropped when that booking is the one being
+  moved. Google not answering offers the page's own free times and stamps
+  `last_error` on the connection (shown amber on Customer Engagement →
+  Meetings), cleared on the next good read. No local Google mock: the
+  conversion is in `test:bookingtz`.
+- **Cancel and reschedule follow into Google**: `cancelMeetingFor` deletes the
+  event (guest cancel, owner cancel); `moveMeetingFor` PATCHes it to the new
+  time (same Meet room; `moveEvent` in lib/googleCalendar.ts), or makes one if
+  the calendar was connected after the booking. The rescheduled email carries
+  the Meet link. `wallRange` fixes an end time that wrapped past midnight.
+- **The owner's cancel tells the guest**: `set_status` → `cancelled` on an
+  upcoming booking now sends the cancellation email (answering `emailed`) —
+  the trash on Bookings said "the guest is told" and only flipped the column.
+- `npm run test:bookingreminders` (self-contained: SMTP sink :8843, wrangler
+  :8841 `--test-scheduled`, fresh D1, no build): due reminder sent once with
+  the link and the guest's time, not-yet-due and booked-inside-window left
+  alone, switched off sends nothing, reschedule clears it, owner cancel
+  emails once, another account cannot cancel.

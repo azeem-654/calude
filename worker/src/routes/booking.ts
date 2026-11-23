@@ -19,13 +19,13 @@ import { rateLimit } from '../lib/rateLimit';
 import { addr, body, fail, headerSafe, json, ok } from '../lib/http';
 import { canAccess, nowIso, userFromToken, type Env } from '../lib/db';
 import { newToken, timingSafeEqual } from '../lib/crypto';
-import { meetingForBooking } from './calendar';
+import { calendarBusy, cancelMeetingFor, meetingForBooking, moveMeetingFor } from './calendar';
 import { recordEvent, upsertPerson } from '../lib/engagement';
 import { canSend, deliver, fromAddressOf } from '../lib/deliver';
 import { ownerEmailOf } from '../lib/allowanceStore';
 import { loadMailbox } from './mailbox';
 import { adoptLegacyTwilio, takeLegacyTwilio } from '../lib/legacyTwilio';
-import { clockLabel, isZone, slotProblem, slugProblem, utcToWall, videoEmbedOf, wallToUtc, type Busy, type SlotRules } from '../lib/bookingTime';
+import { addDays, busyFromInstants, clockLabel, isZone, slotProblem, slugProblem, utcToWall, videoEmbedOf, wallToUtc, type Busy, type SlotRules } from '../lib/bookingTime';
 import { ownMediaUrl, PAGE_ID_RE } from './bookingMedia';
 import {
   autofillPrompt, cleanAutofill, cleanHex, cleanLines, cleanLogoTone, cleanRatio, cleanTestimonial, cleanTheme, clipText, helpLink,
@@ -148,17 +148,48 @@ function rulesOf(pub: Record<string, unknown>, eventTypeId?: string): SlotRules 
   };
 }
 
-/** Everything already booked on an owner date, as intervals. */
-async function busyOn(env: Env, accountId: string, date: string, defaultDuration: number, exceptId = ''): Promise<Busy[]> {
+/**
+ * Everything already booked on an owner date, as intervals — this page's
+ * bookings and, with a Google Calendar connected, the time busy there.
+ * `exceptId` is a booking being moved: neither it nor its own Google event
+ * may stand in its way.
+ */
+async function busyOn(env: Env, accountId: string, date: string, defaultDuration: number, exceptId = '', tz = 'UTC'): Promise<Busy[]> {
   const { results } = await env.DB.prepare(
     `SELECT id, slot_time AS time, data FROM crm_bookings
       WHERE account_id = ? AND slot_date = ? AND status != 'cancelled' AND id != ?`,
   ).bind(accountId, date, exceptId).all<{ id: string; time: string; data: string }>();
-  return (results ?? []).map(r => {
+  const own: Busy[] = (results ?? []).map(r => {
     let duration = defaultDuration;
     try { duration = Number((JSON.parse(r.data) as { duration?: number }).duration) || defaultDuration; } catch { /* default */ }
     return { date, time: r.time, duration };
   });
+  return [...own, ...(await googleBusy(env, accountId, date, date, tz, exceptId))];
+}
+
+/**
+ * Time busy in the workspace's connected Google Calendar across owner dates
+ * `from`..`to`, as the owner's wall clock. Each booking made here is itself
+ * an event there, so a booking's own event is told apart (same start and
+ * length) and dropped when that booking is the one being moved; otherwise
+ * it only repeats a block the booking already makes. Nothing connected, or
+ * Google not answering, is no extra busy time (calendarBusy says why).
+ */
+async function googleBusy(env: Env, accountId: string, from: string, to: string, tz: string, exceptId = ''): Promise<Busy[]> {
+  const start = wallToUtc(from, '00:00', tz) ?? wallToUtc(from, '01:00', tz);
+  const end = wallToUtc(addDays(to, 1), '00:00', tz) ?? wallToUtc(addDays(to, 1), '01:00', tz);
+  if (start === null || end === null) return [];
+  const r = await calendarBusy(env, accountId, start, end).catch(() => ({ ok: false, periods: [] as { start: string; end: string }[] }));
+  let periods = r.periods;
+  if (exceptId && periods.length) {
+    const row = await env.DB.prepare('SELECT data FROM crm_bookings WHERE id = ? AND account_id = ?').bind(exceptId, accountId).first<{ data: string }>();
+    let mine: { startsAt?: string; duration?: number } = {};
+    try { mine = JSON.parse(row?.data || '{}'); } catch { /* none */ }
+    const s = Date.parse(String(mine.startsAt ?? ''));
+    const e = s + (Number(mine.duration) || 30) * 60000;
+    if (Number.isFinite(s)) periods = periods.filter(p => !(Date.parse(p.start) === s && Date.parse(p.end) === e));
+  }
+  return busyFromInstants(periods, tz).filter(b => b.date >= from && b.date <= to);
 }
 
 const clip = (v: unknown, n: number) => String(v ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim().slice(0, n);
@@ -188,7 +219,7 @@ function pictureUrl(v: unknown): string {
  */
 async function bookingMail(
   env: Env, accountId: string, origin: string,
-  what: 'booked' | 'rescheduled' | 'cancelled',
+  what: 'booked' | 'rescheduled' | 'cancelled' | 'reminder',
   b: { id: string; key: string; slotDate: string; slotTime: string; guestName: string; guestEmail: string; notes?: string; meetingUrl?: string; guestTz?: string; pageId?: string },
 ): Promise<{ guest: boolean }> {
   try {
@@ -217,6 +248,18 @@ async function bookingMail(
       `<p><a href="${esc(href)}" style="display:inline-block;padding:11px 22px;background:#17191c;color:#fff;border-radius:8px;text-decoration:none;font-weight:700">${esc(label)}</a></p>`;
 
     let guest = false;
+    /* A reminder has its own switch and goes to the guest only. */
+    if (what === 'reminder') {
+      if (auto.reminderEmail === false) return { guest: false };
+      const html = `<p>Hi ${esc(first)},</p><p>A reminder of your <strong>${esc(title)}</strong> on <strong>${esc(when)}</strong>${tz ? ` (${esc(tz)})` : ''}.</p>`
+        + (theirs ? `<p>That is <strong>${esc(theirs)}</strong>, your time.</p>` : '')
+        + (location ? `<p>Where: ${esc(location)}</p>` : '')
+        + (b.meetingUrl ? `<p>Join: <a href="${esc(b.meetingUrl)}">${esc(b.meetingUrl)}</a></p>` : '')
+        + `<p>If that no longer suits, you can move or cancel it here:</p>`
+        + button(manageUrl, 'Reschedule or cancel');
+      const r = await deliver(mb, { fromName: mb.from.name || title, fromEmail, to: b.guestEmail, subject: `Reminder: ${title}, ${when}`, html, replyTo: mb.from.replyTo || undefined });
+      return { guest: r.ok };
+    }
     /* On unless the owner switched it off — the default the switch shows. */
     if (auto.confirmEmail !== false) {
       const lead = what === 'cancelled' ? `Your ${esc(title)} on ${esc(when)} is cancelled.`
@@ -625,11 +668,16 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
       `SELECT slot_date AS date, slot_time AS time, data FROM crm_bookings
         WHERE account_id = ? AND slot_date >= ? AND slot_date <= ? AND status != 'cancelled'`,
     ).bind(accountId, from, to).all<{ date: string; time: string; data: string }>();
-    const booked = (results ?? []).map(r => {
+    const booked: Busy[] = (results ?? []).map(r => {
       let duration = 30;
       try { duration = Number((JSON.parse(r.data) as { duration?: number }).duration ?? 30) || 30; } catch { /* default */ }
       return { date: r.date, time: r.time, duration };
     });
+    /* With a Google Calendar connected, its busy time closes the slots it
+       covers — times only, never what the events are: this answer is public. */
+    const slotsPage = PAGE_ID_RE.test(String(d.pageId ?? '')) ? String(d.pageId) : '';
+    const pubTz = (await publicOf(env, accountId, slotsPage))?.timezone;
+    booked.push(...await googleBusy(env, accountId, from, to, isZone(pubTz) ? pubTz : 'UTC'));
     return json({ success: true, booked });
   }
 
@@ -672,7 +720,7 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
      */
     const eventTypeId = headerSafe(d.eventTypeId, 64);
     const rules = rulesOf(pub, eventTypeId);
-    const problem = slotProblem(slotDate, slotTime, rules, await busyOn(env, accountId, slotDate, rules.duration), Date.now());
+    const problem = slotProblem(slotDate, slotTime, rules, await busyOn(env, accountId, slotDate, rules.duration, '', rules.timezone), Date.now());
     if (problem) return fail(problem);
 
     const id = `bk-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -690,6 +738,9 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
       startsAt: new Date(wallToUtc(slotDate, slotTime, rules.timezone) ?? 0).toISOString(),
       duration: rules.duration,
       eventTypeId,
+      /* Where it was booked — a reseller's own domain, say — so a reminder the
+         cron sends later links back to the same address, not to ours. */
+      origin: new URL(req.url).origin,
       /* Which page it was booked on: its title, zone and place word the emails and a later move. */
       ...(pageId ? { pageId } : {}),
     };
@@ -771,6 +822,7 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
 
     if (action === 'cancel') {
       await env.DB.prepare("UPDATE crm_bookings SET status = 'cancelled' WHERE id = ?").bind(id).run();
+      if (row.status !== 'cancelled') await cancelMeetingFor(env, row.account_id, id);
       const mail = guestData.guestEmail && row.status !== 'cancelled'
         ? await bookingMail(env, row.account_id, new URL(req.url).origin, 'cancelled', mailFor(row.slot_date, row.slot_time))
         : { guest: false };
@@ -786,14 +838,19 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
     const pubCfg = (await publicOf(env, row.account_id, guestData.pageId ?? '')) ?? {};
     const rules = rulesOf(pubCfg, guestData.eventTypeId);
     if (Number(guestData.duration) > 0) rules.duration = Number(guestData.duration);
-    const problem = slotProblem(newDate, newTime, rules, await busyOn(env, row.account_id, newDate, rules.duration, id), Date.now());
+    const problem = slotProblem(newDate, newTime, rules, await busyOn(env, row.account_id, newDate, rules.duration, id, rules.timezone), Date.now());
     if (problem) return fail(problem);
     const moved = { ...guestData, ownerTimezone: rules.timezone, startsAt: new Date(wallToUtc(newDate, newTime, rules.timezone) ?? 0).toISOString() };
     await env.DB.prepare('UPDATE crm_bookings SET data = ? WHERE id = ?').bind(JSON.stringify(moved), id).run();
-    await env.DB.prepare("UPDATE crm_bookings SET slot_date = ?, slot_time = ?, status = 'confirmed' WHERE id = ?")
+    /* `reminded_at` cleared: a reminder sent for the old time says nothing
+       about the new one. */
+    await env.DB.prepare("UPDATE crm_bookings SET slot_date = ?, slot_time = ?, status = 'confirmed', reminded_at = NULL WHERE id = ?")
       .bind(newDate, newTime, id).run();
+    /* The Google event follows (same Meet room); one is made if the calendar
+       was connected after the booking. */
+    const meetingUrl = await moveMeetingFor(env, row.account_id, { id, slotDate: newDate, slotTime: newTime, data: JSON.stringify(moved) });
     const mail = guestData.guestEmail
-      ? await bookingMail(env, row.account_id, new URL(req.url).origin, 'rescheduled', mailFor(newDate, newTime))
+      ? await bookingMail(env, row.account_id, new URL(req.url).origin, 'rescheduled', { ...mailFor(newDate, newTime), meetingUrl })
       : { guest: false };
     return ok({ emailed: mail.guest });
   }
@@ -836,10 +893,110 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
 
     const status = String(d.status ?? '');
     if (!['confirmed', 'cancelled', 'completed', 'no-show'].includes(status)) return fail('That is not a booking status.');
-    const res = await env.DB.prepare('UPDATE crm_bookings SET status = ? WHERE id = ? AND account_id = ?')
-      .bind(status, String(d.id ?? ''), accountId).run();
-    return res.meta.changes ? ok() : fail('Booking not found.');
+    const id = String(d.id ?? '');
+    const before = await env.DB.prepare('SELECT manage_key, slot_date, slot_time, status, data FROM crm_bookings WHERE id = ? AND account_id = ?')
+      .bind(id, accountId).first<{ manage_key: string; slot_date: string; slot_time: string; status: string; data: string }>();
+    if (!before) return fail('Booking not found.');
+    await env.DB.prepare('UPDATE crm_bookings SET status = ? WHERE id = ? AND account_id = ?').bind(status, id, accountId).run();
+    /*
+     * The owner cancelling an upcoming booking tells the guest and takes the
+     * event out of Google — the trash on Bookings promised "the guest is
+     * told" and only flipped this column, so a guest whose appointment was
+     * cancelled still turned up for it.
+     */
+    let emailed = false;
+    const upcoming = before.slot_date >= new Date().toISOString().slice(0, 10);
+    if (status === 'cancelled' && before.status !== 'cancelled' && upcoming) {
+      await cancelMeetingFor(env, accountId, id);
+      let g: { guestName?: string; guestEmail?: string; notes?: string; timezone?: string; pageId?: string } = {};
+      try { g = JSON.parse(before.data || '{}'); } catch { /* nobody to tell */ }
+      if (g.guestEmail) {
+        const mail = await bookingMail(env, accountId, new URL(req.url).origin, 'cancelled', {
+          id, key: before.manage_key, slotDate: before.slot_date, slotTime: before.slot_time,
+          guestName: String(g.guestName ?? ''), guestEmail: String(g.guestEmail), notes: g.notes, guestTz: g.timezone ?? '', pageId: g.pageId ?? '',
+        });
+        emailed = mail.guest;
+      }
+    }
+    return ok({ emailed });
   }
 
   return fail(`"${action}" is not something this endpoint does.`);
+}
+
+/**
+ * The reminder before each meeting — the Automations tab's "Reminder before
+ * the meeting", which until now was saved and never sent.
+ *
+ * A cron pass (every five minutes, so at most five minutes late): each
+ * confirmed booking whose reminder time has come and that has not been
+ * reminded. On unless the owner switched it off, `reminderMinutes` before
+ * (60 by default, what the switch shows). The row is claimed before the send
+ * (`reminded_at`), so an overlapping run, or Autopilot's own evening-before
+ * reminder, cannot send it twice; a reschedule clears it. A booking made
+ * inside the window is not reminded — its confirmation is minutes old.
+ * What happened is kept on the booking (`reminder`: sent | failed) for the
+ * owner. Never throws into the passes after it.
+ */
+export async function bookingReminders(env: Env): Promise<number> {
+  const now = Date.now();
+  /* Owner dates are never more than a day either side of UTC's. The widest
+     reminder offered is a week. */
+  const lo = new Date(now - 2 * 86_400_000).toISOString().slice(0, 10);
+  const hi = new Date(now + 9 * 86_400_000).toISOString().slice(0, 10);
+  const { results } = await env.DB.prepare(
+    `SELECT id, account_id, manage_key, slot_date, slot_time, data, created_at FROM crm_bookings
+      WHERE status = 'confirmed' AND reminded_at IS NULL AND slot_date >= ? AND slot_date <= ?
+      ORDER BY slot_date, slot_time LIMIT 300`,
+  ).bind(lo, hi).all<{ id: string; account_id: string; manage_key: string; slot_date: string; slot_time: string; data: string; created_at: string }>();
+
+  const switches = new Map<string, { on: boolean; minutes: number; tz: string }>();
+  let sent = 0;
+  for (const r of results ?? []) {
+    try {
+      let sw = switches.get(r.account_id);
+      if (!sw) {
+        const cfg = await env.DB.prepare('SELECT public, private FROM crm_booking_config WHERE account_id = ?')
+          .bind(r.account_id).first<{ public: string; private: string }>();
+        let auto: Record<string, unknown> = {};
+        let pub: Record<string, unknown> = {};
+        try { auto = (JSON.parse(cfg?.private || '{}') as { automations?: Record<string, unknown> }).automations ?? {}; } catch { /* defaults */ }
+        try { pub = JSON.parse(cfg?.public || '{}'); } catch { /* defaults */ }
+        const m = Number(auto.reminderMinutes);
+        sw = {
+          on: auto.reminderEmail !== false,
+          minutes: Number.isFinite(m) && m > 0 ? Math.min(10_080, Math.max(5, Math.round(m))) : 60,
+          tz: isZone(pub.timezone) ? pub.timezone : 'UTC',
+        };
+        switches.set(r.account_id, sw);
+      }
+      if (!sw.on) continue;
+
+      let g: { guestName?: string; guestEmail?: string; notes?: string; timezone?: string; ownerTimezone?: string; startsAt?: string; pageId?: string; origin?: string } = {};
+      try { g = JSON.parse(r.data || '{}'); } catch { continue; }
+      if (!g.guestEmail) continue;
+      const startMs = Date.parse(String(g.startsAt ?? '')) || (wallToUtc(r.slot_date, r.slot_time, isZone(g.ownerTimezone) ? g.ownerTimezone : sw.tz) ?? NaN);
+      if (!Number.isFinite(startMs) || startMs <= now) continue;
+      const due = startMs - sw.minutes * 60_000;
+      if (now < due) continue;
+
+      const claim = await env.DB.prepare('UPDATE crm_bookings SET reminded_at = ? WHERE id = ? AND reminded_at IS NULL').bind(nowIso(), r.id).run();
+      if (!claim.meta.changes) continue;
+      if (Date.parse(r.created_at) > due) continue;
+
+      const link = await env.DB.prepare(
+        "SELECT meeting_url AS url FROM crm_meeting_links WHERE booking_id = ? AND account_id = ? AND status = 'created' ORDER BY created_at DESC LIMIT 1",
+      ).bind(r.id, r.account_id).first<{ url: string }>().catch(() => null);
+      const origin = /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(String(g.origin ?? '')) ? String(g.origin) : (env.APP_ORIGIN || 'https://app.protectedcentral.com');
+      const mail = await bookingMail(env, r.account_id, origin, 'reminder', {
+        id: r.id, key: r.manage_key, slotDate: r.slot_date, slotTime: r.slot_time,
+        guestName: String(g.guestName ?? ''), guestEmail: String(g.guestEmail), notes: g.notes,
+        meetingUrl: link?.url ?? '', guestTz: g.timezone ?? '', pageId: g.pageId ?? '',
+      });
+      await env.DB.prepare('UPDATE crm_bookings SET data = ? WHERE id = ?')
+        .bind(JSON.stringify({ ...g, reminder: mail.guest ? 'sent' : 'failed' }), r.id).run();
+      if (mail.guest) sent++;
+    } catch { /* one booking never stops the rest */ }
+  }
+  return sent;
 }

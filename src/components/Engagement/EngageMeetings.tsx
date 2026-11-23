@@ -46,9 +46,10 @@ export default function EngageMeetings() {
           <h3 style={{ fontSize: 16, fontWeight: 800, color: INK, margin: 0 }}>Google Calendar and Meet</h3>
         </div>
         <p style={{ fontSize: 13, color: MUTED, margin: '0 0 14px', lineHeight: 1.6, maxWidth: '74ch' }}>
-          Connect a calendar and every booking creates a real event with a Google Meet link on it, and the
-          assistant can offer times that are genuinely free. Without one, booking still works — there is just
-          no video link and no conflict checking.
+          Connect a calendar and every booking creates a real event with a Google Meet link on it, a time
+          already busy in that calendar is not offered on your booking pages, and a guest who moves or cancels
+          moves or removes the event too. Without one, booking still works — there is just no video link and
+          only your own bookings close a time.
         </p>
 
         {!configured && (
@@ -74,6 +75,11 @@ export default function EngageMeetings() {
                 <Check size={14} color={c.status === 'connected' ? '#0f7b3d' : '#b42318'} />
                 <span style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>{c.ownerEmail}</span>
                 <span style={{ fontSize: 12, color: MUTED }}>{c.calendarId}</span>
+                {c.status === 'connected' && c.lastError && (
+                  /* Connected, but the last read of busy times failed: the
+                     booking page is offering times without checking them. */
+                  <span style={{ fontSize: 11.5, color: '#b45309' }}>{c.lastError}</span>
+                )}
                 {c.status !== 'connected' && (
                   /* Named rather than left as a silent failure: a refresh token
                      that stops working looks exactly like the feature being

@@ -224,10 +224,11 @@ export async function fetchBookedSlots(accountId: string, date: string): Promise
 }
 
 /** Visitor: everything booked across a range of the owner's dates (at most two months). */
-export async function fetchBookedRange(accountId: string, from: string, to: string): Promise<{ date: string; time: string; duration: number }[] | null> {
-  const res = await call({ action: 'slots', accountId, from, to });
+export async function fetchBookedRange(accountId: string, from: string, to: string, pageId = ''): Promise<{ date: string; time: string; duration: number; external?: boolean }[] | null> {
+  /* The page names the zone its owner's Google busy times are read in. */
+  const res = await call({ action: 'slots', accountId, from, to, ...(pageId ? { pageId } : {}) });
   if (!res || !res.success) return null;
-  return (res.booked as { date: string; time: string; duration: number }[]) ?? [];
+  return (res.booked as { date: string; time: string; duration: number; external?: boolean }[]) ?? [];
 }
 
 export async function createRemoteBooking(payload: {

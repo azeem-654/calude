@@ -125,8 +125,8 @@ export default function BookingPage() {
      draws on — one request a month, not one a click. */
   const onRange = useCallback((from: string, to: string) => {
     if (!pageAccount) return;
-    void fetchBookedRange(pageAccount, from, to).then(list => { if (list) setBooked(list); });
-  }, [pageAccount]);
+    void fetchBookedRange(pageAccount, from, to, pageId).then(list => { if (list) setBooked(list); });
+  }, [pageAccount, pageId]);
   const busy = useMemo<Busy[]>(() => [...booked, ...localBusy], [booked, localBusy]);
 
   if (unknownLink) {
