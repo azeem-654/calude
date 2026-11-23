@@ -129,3 +129,45 @@ users can connect (Google's cap for unverified sensitive scopes).
 2. Verify `protectedcentral.com` in Search Console under the Google account that owns the project.
 3. Optionally upload a 120×120 logo and rename the app "Protected Central" on Branding.
 4. After 1–3: record the demo video on testing, approve the justification, and submit.
+
+---
+
+## Follow-up the same day: the owner asked for a full fix
+
+The owner gave full authority to fix what was left. What was done, and what is still open:
+
+### Code: on `staging` (0a68949), **not yet on live**
+
+| Change | Where |
+|---|---|
+| Busy times come from `events.list` (same `calendar.events` scope) instead of `freeBusy`. An event counts as busy unless it is Free (`transparent`), cancelled, or declined by the owner. All-day events run midnight to midnight in the calendar's own zone. Only start/end leave the function. | `worker/src/lib/googleCalendar.ts` `busy()` |
+| The booking stores `eventTypeName`, and the Google event is titled "Guest — Meeting name", not with the internal `et-…` id. | `worker/src/routes/booking.ts`, `worker/src/routes/calendar.ts` |
+| The booking page no longer writes a local booking or appointment copy into a signed-in owner's browser data. That copy caused the stale "Confirmed" row at the old time after a move or cancel; the server's booking is already listed and drawn in the diary. | `src/components/Scheduling/BookingPage.tsx` |
+
+Checks: the Worker typecheck passes; `npm run test:bookingtz` passes 60/60. `npm run typecheck` on this Windows computer fails only on
+the existing `Changelog.tsx`/`changelog.ts` casing clash (Windows filesystem,
+not this change). `test:bookingreminders` can't start on Windows (it spawns
+`npx` without a shell). The "Deploy to testing" run #278 **succeeded**.
+
+**Not re-tested on testing:** the testing app's sign-in needed the stored
+staging password or a one-time code, which this session does not enter.
+
+**Not promoted to live:** Chrome is not signed in to GitHub, so the Promote
+button was not available, and a direct fast-forward push of `main` was
+blocked by this session's permission guard. `main` is only behind `staging`
+(three docs commits plus this fix), so Promote is a clean fast-forward.
+
+### Google Cloud and Search Console: done
+
+| Step | Result |
+|---|---|
+| Search Console | **Passed.** Added the Domain property `protectedcentral.com` under the project owner's Google account; Google showed "Ownership auto verified" (method: domain name provider, so a verification record was already in DNS). No DNS record was added or changed. |
+| Branding | **Passed.** App name `protectedcentral.com` → **Protected Central**; logo uploaded (120×120 PNG of the app's shield icon, from `public/favicon.svg`); `support@protectedcentral.com` added as a developer contact. **Verify branding** → "Your branding has been verified", then **Publish branding** → "Your branding has been verified and is being shown to users." |
+| User support email | **Not changed to support@protectedcentral.com, as the owner asked:** Google only offers the signed-in account's own address or Google Groups it manages, and the dropdown listed only the owner's Gmail with "No groups". To use support@, either sign in to Cloud as a Google account whose address is support@protectedcentral.com (added as project Owner) and choose it there, or manage a Google Group with that address. |
+| Scope justification | **Saved** on Data Access (909 characters, reworded for the events.list read: only start, end, free/busy, status and the owner's own response are read; titles, descriptions and attendees are never read in, stored or shown). |
+| Demo video, data-access verification | **Waiting on the live deploy.** The video must show a busy time not being offered, which only works once the fix is live. Plan: record the consent screen, connect, "Busy test" not offered, book, reschedule and cancel on live with the Chrome extension's recorder, convert it to WebM in Chrome, upload it unlisted to YouTube, paste the link on Data Access, then **Prepare for verification → submit**. |
+
+### To finish
+
+1. Run **Actions → Promote testing to live** (type `PROMOTE`), or sign Chrome in to GitHub so the session can.
+2. Then the session repeats steps 8–11 on live, records the demo, uploads it and submits verification.
