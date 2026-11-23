@@ -115,7 +115,17 @@ users can connect (Google's cap for unverified sensitive scopes).
 
 ## What the owner needs to do / decide
 
-1. Pick the step 8 fix (events.list with the same scope, or add a free/busy scope). This is cloud session work.
+1. ~~Pick the step 8 fix.~~ **Decided by the owner on 2026-11-24: code fix,
+   same scope.** Keep `calendar.events` as the only Calendar scope. Replace
+   the `freeBusy` call in `busy()` (`worker/src/lib/googleCalendar.ts`) with
+   `events.list` on the connected calendar (`singleEvents=true`,
+   `orderBy=startTime`, `timeMin`/`timeMax`, following `nextPageToken`).
+   Count an event as busy unless it is `transparency: "transparent"`,
+   `status: "cancelled"`, or the owner's own attendee entry is
+   `responseStatus: "declined"`. All-day events follow the same rule (Google
+   marks them Free/transparent by default, matching what freeBusy would do).
+   Keep the 31-day chunking in `calendarBusy` and the amber note on failure.
+   Then re-run steps 8–10 on testing. This is cloud session work.
 2. Verify `protectedcentral.com` in Search Console under the Google account that owns the project.
 3. Optionally upload a 120×120 logo and rename the app "Protected Central" on Branding.
 4. After 1–3: record the demo video on testing, approve the justification, and submit.
