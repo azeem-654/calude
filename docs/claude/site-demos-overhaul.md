@@ -161,3 +161,31 @@ Next: the long film the same way —
 script moves to the lite model, then stops; run it again the next day and it
 continues from the cache, or switch billing on for the key's Google project).
 Delete the long film's cached lines first if they were voiced in batches.
+
+## Platform showcase film (2026-11-23)
+
+Owner brief: the 2-minute film without AppSumo, plans or prices, about 3.5
+minutes, every other module shown fast, an excited human voice, AI Autopilot
+running many businesses (each with its own social media, email marketing,
+texts…) and the Unified Inbox (mailboxes, SMS and website chat — not
+WhatsApp/Facebook, which it does not have), and **music all the way through,
+very low under the voice and up in the pauses**.
+
+- `marketing/voice/scripts/platform-showcase.json` (26 lines, `music` field) →
+  `marketing/demos/platform-showcase.mp4`, 3 min 48 s, QA 26/26 clean.
+- Cards: `showcase-cards.json` (`pc-intro`, `pc-tour`, `pc-end`) via film-cards.
+- Fast tour excerpts `t-*` via `film-cut.mts … <speed>`: inbox 0–26 ×2.1,
+  contacts 0–18 ×2, pipelines 17–34 ×1.9, campaigns 0–26 ×2.6, agents 2–23
+  ×2.1, graphics 0–36 ×3.4, film-ai-blog 4–40 ×3.8, booking 0–42 ×4.4,
+  engagement 44–68 ×2.6, **agency 29–54 ×2.7** (before 29 s the screen shows
+  client prices and the $497 revenue tile), reports 0–24 ×2.6.
+- Music: `marketing/voice/music/README.md` (CC0, rebuild recipe); ducked by
+  `mixMusic` in voiceover.mts (-9 dB pauses, -24 dB under a line).
+- Fixed on the way: chapters were joined as AAC, each a frame of sound longer
+  than its picture — the voice drifted 0.8 s late by the end. Chapters now
+  carry PCM cut to whole frames and the film is compressed once.
+- Voice: every line is on `gemini-3.8-flash-lite-tts` (the full model's free
+  quota ran out mid-film; re-make with `TTS_MODEL=gemini-3.8-flash-lite-tts`
+  so the 12 full-model takes in the cache are not mixed back in). For the
+  full model throughout, run with `TTS_MODEL=gemini-3.8-flash-tts VO_BATCH=1`
+  on a fresh day (26 requests).

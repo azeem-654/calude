@@ -301,12 +301,18 @@ async function main() {
     af.push(voiced.length
       ? `${voiced.map((_, i) => `[a${i}]`).join('')}amix=inputs=${voiced.length}:normalize=0:dropout_transition=0,apad,atrim=0:${outLen.toFixed(3)},loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[a]`
       : `anullsrc=r=48000:cl=mono,atrim=0:${outLen.toFixed(3)}[a]`);
-    const out = `${WORK}/${s.film}-${ch.id}.mp4`;
+    /* Each chapter keeps uncompressed sound, cut to its picture's exact
+       length (whole frames), and the film is compressed once at the end. An
+       AAC chapter runs a frame of sound longer than its picture, and joined
+       end to end those added up: the voice was 0.8 s late by the last card of
+       an 18-chapter film (2026-11-23), and the check mis-heard its last words. */
+    const frames = Math.round(outLen * 25) / 25;
+    const out = `${WORK}/${s.film}-${ch.id}.mkv`;
     execFileSync(FF, ['-y', '-v', 'error', ...inputs, '-filter_complex', [...vf, ...af].join(';'),
       '-map', '[v]', '-map', '[a]', '-r', '25', '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-ac', '2', out]);
+      '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2', '-t', frames.toFixed(3), out]);
     parts.push(out);
-    total += outLen;
+    total += frames;
     console.log(`${ch.id.padEnd(22)} ${len.toFixed(1)}s → ${outLen.toFixed(1)}s (held ${shift.toFixed(1)}s, ${lines.length} lines)`);
   }
 
@@ -332,10 +338,11 @@ async function main() {
     console.log(`${base}.srt and ${base}-script.md — ${said.length} lines`);
   }
   if (s.music && !READ) {
-    const voiceOnly = `${WORK}/${s.film}-voice.mp4`;
+    const voiceOnly = `${WORK}/${s.film}-voice.mkv`;
     execFileSync(FF, ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', voiceOnly]);
     mixMusic(voiceOnly, dest, s.music, said, total);
-  } else execFileSync(FF, ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', '-movflags', '+faststart', dest]);
+  } else execFileSync(FF, ['-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c:v', 'copy',
+    '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', dest]);
   const mb = (fs.statSync(dest).size / 1e6).toFixed(1);
   console.log(`${dest} — ${Math.floor(total / 60)} min ${Math.round(total % 60)} s, ${mb} MB`);
 
