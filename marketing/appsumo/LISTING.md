@@ -22,9 +22,10 @@ part of this deal.
 5. **Tier 2 support says "In-app priority"**. The app gives chat and
    tickets (`allowances.ts`). Set it to "Chat & tickets".
 6. **The video** is the old one (YouTube dN8AFYEN6HI). Replace it with the
-   platform-showcase film (section "YouTube" below).
-7. **The gallery** shows one image, the old light-theme screenshot. Upload the
-   11 images below in order.
+   platform-showcase film: **https://www.youtube.com/watch?v=YQb35-vU8wg**
+   (uploaded by the owner 2026-11-23).
+7. **The gallery** shows one image, the old light-theme screenshot. AppSumo
+   takes **four**: upload the four marked below.
 
 ---
 
@@ -115,7 +116,18 @@ Your own mailbox to send email (Gmail, Microsoft 365, Brevo or any SMTP), so
 mail goes out from your domain, not ours. Texts need a Twilio number.
 Everything else works out of the box.
 
-## Gallery (upload in this order; 01 is the cover)
+## Gallery
+
+**AppSumo allows four images.** Upload these, in this order (01 is the cover):
+
+1. `01-hero.png` — Your AI Live Business Manager (what it is, with Protron)
+2. `03-autopilot.png` — Describe it. Approve the blueprint. (the core promise)
+3. `02-keeps-watch.png` — It notices what isn't working (nobody else does this)
+4. `04-prospecting.png` — New, checked leads every day (where the money comes from)
+
+Left out on purpose: the tiers card (AppSumo already shows the plans table)
+and inbox, social, sites, campaigns and agency (all shown in the video).
+The full set, for the website or a later listing:
 
 `marketing/appsumo/images/`, 2560×1440, made by `scripts/appsumo-images.mts`
 from frames of the real app, each marked "Real app · sample workspace":
