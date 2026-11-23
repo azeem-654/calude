@@ -25,6 +25,7 @@ import { decryptSecret, encryptSecret } from './crypto';
 import { googleCreds } from './googleAuth';
 import { installSecret, nowIso, type Env } from './db';
 import { rid } from './engagement';
+import { wallToUtc } from './bookingTime';
 
 /**
  * The scope. Read-write on events only — not `calendar`, which would let this
@@ -180,7 +181,27 @@ async function accessToken(env: Env, accountId: string, ownerEmail: string): Pro
   return { ok: true, data: access };
 }
 
-/** Busy periods, so a slot that is already taken is never offered. */
+interface GEvent {
+  status?: string;
+  transparency?: string;
+  start?: { dateTime?: string; date?: string };
+  end?: { dateTime?: string; date?: string };
+  attendees?: { self?: boolean; responseStatus?: string }[];
+}
+
+/**
+ * Busy periods, so a slot that is already taken is never offered.
+ *
+ * Read from `events.list`, not `freeBusy`. freeBusy refuses a `calendar.events`
+ * token (it takes only calendar, calendar.readonly or a *.freebusy scope), and
+ * asking customers for a second scope means every connected calendar
+ * reconnecting — so the owner chose to stay on the one scope (2026-11-24, found
+ * on live: busy time was never read and every slot stayed open). Counted busy
+ * the way Google's own free/busy counts it: not an event marked Free
+ * (`transparent`, which an all-day event is by default), not a cancelled one,
+ * not one the owner declined. Only start and end leave this function — the
+ * slots answer is public, and what the events are must never reach it.
+ */
 export async function busy(
   env: Env, accountId: string, ownerEmail: string, fromIso: string, toIso: string,
 ): Promise<CalResult<{ start: string; end: string }[]>> {
@@ -190,21 +211,56 @@ export async function busy(
   const cal = await env.DB.prepare(
     'SELECT calendar_id AS calendarId FROM crm_calendar_connections WHERE account_id = ? AND owner_email = ?',
   ).bind(accountId, ownerEmail).first<{ calendarId: string }>();
+  const calendarId = cal?.calendarId || 'primary';
 
-  const res = await fetch(`${CAL_API}/freeBusy`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${t.data}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const out: { start: string; end: string }[] = [];
+  let pageToken = '';
+  /* A page holds up to 2500 events; ten pages is more than any month of a real
+     calendar, and the cap keeps a runaway pageToken from looping a request. */
+  for (let page = 0; page < 10; page++) {
+    const q = new URLSearchParams({
       timeMin: fromIso, timeMax: toIso,
-      items: [{ id: cal?.calendarId || 'primary' }],
-    }),
-  }).catch(() => null);
+      singleEvents: 'true', orderBy: 'startTime', maxResults: '2500',
+      fields: 'nextPageToken,timeZone,items(status,transparency,start,end,attendees(self,responseStatus))',
+    });
+    if (pageToken) q.set('pageToken', pageToken);
+    const res = await fetch(
+      `${CAL_API}/calendars/${encodeURIComponent(calendarId)}/events?${q}`,
+      { headers: { Authorization: `Bearer ${t.data}` } },
+    ).catch(() => null);
+    if (!res?.ok) {
+      const why = res ? await res.json().catch(() => ({})) as { error?: { message?: string } } : {};
+      return { ok: false, error: why.error?.message ? `Google would not list that calendar: ${why.error.message}` : 'Google would not answer for that calendar.' };
+    }
+    const data = await res.json().catch(() => ({})) as { nextPageToken?: string; timeZone?: string; items?: GEvent[] };
+    const tz = data.timeZone || 'UTC';
+    for (const e of data.items ?? []) {
+      if (e.status === 'cancelled' || e.transparency === 'transparent') continue;
+      if (e.attendees?.some(a => a.self && a.responseStatus === 'declined')) continue;
+      const span = eventSpan(e, tz);
+      if (span) out.push(span);
+    }
+    if (!data.nextPageToken) break;
+    pageToken = data.nextPageToken;
+  }
+  return { ok: true, data: out };
+}
 
-  if (!res?.ok) return { ok: false, error: 'Google would not answer for that calendar.' };
-  const data = await res.json().catch(() => ({})) as Record<string, unknown>;
-  const cals = (data.calendars ?? {}) as Record<string, { busy?: { start: string; end: string }[] }>;
-  const first = Object.values(cals)[0];
-  return { ok: true, data: first?.busy ?? [] };
+/** An event's start and end as instants. An all-day event (`date`, end
+    exclusive) runs midnight to midnight in the calendar's own zone. */
+function eventSpan(e: GEvent, tz: string): { start: string; end: string } | null {
+  if (e.start?.dateTime && e.end?.dateTime) {
+    const s = Date.parse(e.start.dateTime), en = Date.parse(e.end.dateTime);
+    return Number.isFinite(s) && Number.isFinite(en) && en > s
+      ? { start: new Date(s).toISOString(), end: new Date(en).toISOString() } : null;
+  }
+  if (e.start?.date && e.end?.date) {
+    const s = wallToUtc(e.start.date, '00:00', tz) ?? wallToUtc(e.start.date, '01:00', tz);
+    const en = wallToUtc(e.end.date, '00:00', tz) ?? wallToUtc(e.end.date, '01:00', tz);
+    return s !== null && en !== null && en > s
+      ? { start: new Date(s).toISOString(), end: new Date(en).toISOString() } : null;
+  }
+  return null;
 }
 
 /**

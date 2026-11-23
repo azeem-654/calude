@@ -205,7 +205,9 @@ export async function meetingForBooking(
 
   const res = await createEvent(env, accountId, {
     ownerEmail: conn.ownerEmail,
-    summary: `${data.guestName || 'Booking'} — ${data.eventTypeId || 'appointment'}`,
+    /* The meeting's name, never the type's internal id (bookings from before
+       `eventTypeName` was stored read "appointment"). */
+    summary: `${data.guestName || 'Booking'} — ${data.eventTypeName || 'appointment'}`,
     description: data.notes || '',
     startIso, endIso, timezone,
     guestEmail: data.guestEmail, guestName: data.guestName,

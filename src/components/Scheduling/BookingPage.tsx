@@ -40,7 +40,7 @@ type Booked = { date: string; time: string; duration: number };
 
 export default function BookingPage() {
   const {
-    schedule, bookings, addBooking, addAppointment, contacts, addContact, addContactActivity,
+    schedule, bookings, contacts, addContact, addContactActivity,
     appointments, calendarEvents,
   } = useApp();
 
@@ -147,23 +147,14 @@ export default function BookingPage() {
     return <div className="bkp" {...rootAttrs} {...themeRoot(cfg)} aria-busy="true"><p className="bkp-foot">Loading…</p></div>;
   }
 
-  const finalizeLocalRecords = (s: Slot, guest: { name: string; email: string; phone: string; notes: string }, zone: string) => {
-    /* Also recorded in this browser — the owner trying their own page sees it
-       at once. Harmless for a real visitor, whose browser holds no CRM. */
-    addBooking({
-      slotDate: s.ownerDate, slotTime: s.ownerTime,
-      guestName: guest.name.trim(), guestEmail: guest.email.trim(),
-      guestPhone: guest.phone.trim(), notes: guest.notes.trim(),
-      status: 'confirmed', timezone: zone, createdAt: new Date().toISOString(),
-      eventTypeId: eventType?.id, eventTypeName: activeTitle, duration: activeDuration, location: activeLocation,
-    });
-    addAppointment({
-      title: `${activeTitle} — ${guest.name}`,
-      contactId: '', contactName: guest.name.trim(),
-      date: s.ownerDate, time: clockLabel(s.ownerTime).toUpperCase(), duration: activeDuration,
-      status: 'scheduled', type: 'Video Call',
-      notes: `Booked via scheduling page. ${guest.notes}`.trim(),
-    });
+  const finalizeLocalRecords = (s: Slot, guest: { name: string; email: string; phone: string; notes: string }) => {
+    /* No local booking or appointment: the booking lives on the server, and
+       Scheduling and the diary read it from there (useRemoteBookings). A copy
+       this browser kept — when the owner tried their own page signed in —
+       never followed a reschedule or a cancel, so the owner's list showed the
+       old time still "Confirmed" beside the real one (found on live,
+       2026-11-24). The contact is still noted for an owner's own browser;
+       a visitor's browser holds no CRM. */
     const existing = contacts.find(c => c.email.toLowerCase() === guest.email.toLowerCase());
     if (!existing) {
       addContact({
@@ -199,7 +190,7 @@ export default function BookingPage() {
         : res.error || 'Booking failed — please pick another time.';
     }
     setEmailed(!!res.emailed);
-    finalizeLocalRecords(s, guest, zone);
+    finalizeLocalRecords(s, guest);
     const utc = res.startsAt ? Date.parse(res.startsAt) : s.utc;
     setConfirmed({
       utc: Number.isFinite(utc) && utc > 0 ? utc : s.utc, ownerDate: s.ownerDate, ownerTime: s.ownerTime, zone,

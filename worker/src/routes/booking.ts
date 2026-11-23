@@ -131,6 +131,13 @@ function guestWords(date: string, time: string, ownerTz: string, guestTz: string
   return `${clockLabel(w.time)} ${day} in ${guestTz.replace(/_/g, ' ')}`;
 }
 
+/** The booked meeting type's name, as the page titles it; else the page's own title. */
+function eventTypeNameOf(pub: Record<string, unknown>, eventTypeId?: string): string {
+  const types = Array.isArray(pub.eventTypes) ? pub.eventTypes as { id?: string; name?: unknown }[] : [];
+  const et = eventTypeId ? types.find(t => t && t.id === eventTypeId) : types.length === 1 ? types[0] : undefined;
+  return headerSafe(typeof et?.name === 'string' && et.name.trim() ? et.name : pub.title || 'Meeting', 120);
+}
+
 /** The published page's availability rules, for the meeting type booked. */
 function rulesOf(pub: Record<string, unknown>, eventTypeId?: string): SlotRules {
   const types = Array.isArray(pub.eventTypes) ? pub.eventTypes as { id?: string; duration?: number }[] : [];
@@ -738,6 +745,12 @@ export async function handleBooking(req: Request, env: Env): Promise<Response> {
       startsAt: new Date(wallToUtc(slotDate, slotTime, rules.timezone) ?? 0).toISOString(),
       duration: rules.duration,
       eventTypeId,
+      /* The meeting's name as the page showed it — the Google event, the
+         owner's list and the diary are titled with it. Without it the event
+         was titled with the type's internal id ("et-1793…"), and the owner's
+         list leaned on a copy the owner's own browser kept, which never
+         followed a move or a cancel. */
+      eventTypeName: eventTypeNameOf(pub, eventTypeId),
       /* Where it was booked — a reseller's own domain, say — so a reminder the
          cron sends later links back to the same address, not to ours. */
       origin: new URL(req.url).origin,
