@@ -1,157 +1,188 @@
-# AppSumo listing — rewrite (2026-11-21)
+# AppSumo listing — paste-ready (updated 2026-11-23)
 
-Paste-ready copy for the AppSumo Partner Portal, in the listing's own order,
-plus prompts for new listing images. Every number comes from
+Live listing: appsumo.com/products/protected-central (partner link
+appsumo.com/pl/c8dnYQQafU/). Every number comes from
 `worker/src/lib/allowances.ts` (AppSumo Tier 1–3). Nothing here mentions AI
 Shorts, video editing or the online shop / store connections: they are not
 part of this deal.
 
-> **Tier 1 is 3 business workspaces** (owner, 2026-11-21) — the app's own
-> number. Change the live listing's "5" to 3 when pasting.
+## What is wrong on the live listing today (checked 2026-11-23)
 
-**Gallery images (ready):** `marketing/appsumo/images/01-hero.png` … `09-tiers.png`,
-2560×1440 (16:9, AppSumo scales them). Made by `scripts/appsumo-images.mts`
-from frames of the real app; each says "Real app · sample workspace". Upload
-in that order; 01 is the cover.
+1. **"Sell and convert" says "Online shop and checkout with Stripe or Creem"**
+   and **"Create content" says "AI Shorts turns recordings into captioned
+   vertical video"**. Neither is in the deal. A buyer who redeems for them
+   asks for a refund. Replace both (sections below).
+2. **The FAQ "Will it email or text anybody without me?"** shows the answer
+   to "What do I need to connect?" (a copy-paste slip). Correct answer below.
+3. **"What do I need to connect?"** mentions a shop. Remove it.
+4. **"Verifies format, domain, mail server and mailbox"** claims more than
+   the app does. It checks format, domain and mail server; the mailbox only
+   when a paid verifier (Hunter, ZeroBounce, MillionVerifier) is connected.
+   Say "checks".
+5. **Tier 2 support says "In-app priority"**. The app gives chat and
+   tickets (`allowances.ts`). Set it to "Chat & tickets".
+6. **The video** is the old one (YouTube dN8AFYEN6HI). Replace it with the
+   platform-showcase film (section "YouTube" below).
+7. **The gallery** shows one image, the old light-theme screenshot. Upload the
+   11 images below in order.
 
 ---
 
-## Headline (max ~60 characters)
+## Product name and short description (keep)
 
-**Your AI Live Business Manager: describe it once — it builds, runs and improves your marketing**
+- Tagline: **Describe it once. AI builds and runs it**
+- Short description: **Describe the outcome — AI builds and runs your CRM,
+  follow-up and marketing**
 
-Short version (60 characters): **An AI Live Business Manager that runs your CRM for you**
+## Quick bite (the ✓ lines under the price box)
 
-## One-line summary (the grey line under the name)
+- ✓ Describe a goal in one sentence: AI builds the workflows, you approve
+  every step, and it runs them for you
+- ✓ An AI Live Business Manager checks every campaign each hour and proposes
+  the fix when replies are low; nothing changes until you approve
+- ✓ Finds the businesses you sell to, reads the email each one publishes, and
+  checks it before you send
 
-Describe what your business needs in one sentence. AI Autopilot builds the
-workflows, Protron watches them every day, and nothing reaches a customer
-until you approve it.
+## "What Protected Central runs for you" (replace all five sections)
 
-## TL;DR bullets
+### AI Autopilot
+- Runs many businesses at once: each gets its own business workspace with its
+  own goal, workflows, prospects and website
+- Each business workspace handles its own social posts, email marketing,
+  texts, blog and bookings
+- Describe an outcome and it builds the full workflow with branching logic;
+  33 ready-made templates
+- Runs on the server every five minutes, even with the app closed; nothing
+  sends until you approve the draft
 
-- Describe a goal in one sentence: AI Autopilot builds the workflows, the
-  website or funnel, the emails and the daily prospect search
-- **Protron, your AI Live Business Manager**, checks your campaigns, texts
-  and bookings every day, tells you what is not working, and proposes the fix
-- AI Prospecting finds businesses from a plain-English description, checks
-  each address before you send, and adds new ones to a business workspace
-  every day
-- Email campaigns and sequences from **your own mailbox and domain**, a
-  booking page, pipelines and a unified inbox in one login
-- Run it as an agency: client sub-accounts with isolated data, your branding
-  and your sign-in address
-- Nothing that contacts a person switches on without you: emails and texts
-  arrive as drafts first
-
-**Watch the full, detailed demonstration here:** _<YouTube link of the long
-voiced film — paste when uploaded>_
-
-## Overview (the "What Protected Central runs for you" intro)
-
-Most CRMs hand you a blank canvas and a 40-hour course. Protected Central
-starts from the result you want.
-
-Type "find office managers in Denver every day, email them, and answer every
-enquiry within 15 minutes" and AI Autopilot asks only what it still needs,
-shows you the blueprint, and builds it: the workflows, the emails in your
-voice, a website or funnel in your name and colours, and a prospect search
-that runs every morning on the server — whether or not you are logged in.
-
-Then Protron, your AI Live Business Manager, keeps watch. When a campaign
-sends but nobody replies, or a send keeps failing, it tells you in the app
-and by email, says what it would change, and makes the change when you
-approve it.
-
-## Feature sections (one image each)
-
-### Protron — your AI Live Business Manager
-- On every screen of the app: ask it anything, or tell it what to do
-- Starts a business workspace with you in a conversation, then hands the
-  plan to AI Autopilot
-- Watches every campaign: flags low replies and failing sends, says why, and
-  proposes the change for you to approve
-- Suggests what to add next — "this business would benefit from a weekly
-  article; shall we set it up together?"
-
-### AI Autopilot — continuous, not one-off
-- Describe an outcome and it builds the full workflow, step by step
-- 33 ready-made workflow templates, filled in by the problem they solve
-- Every step is editable in plain words; try any step with a dry run
-- Runs on the server every five minutes; re-plans each business workspace
-  daily
-- Nothing sends until you approve the draft
+### AI Live Business Manager
+- Watches every campaign hourly and flags low replies and failing sends
+- One click, and AI rewrites the campaign in the business's own voice
+- The new version arrives switched off: read it, then switch it on
+- Ask it anything in the live chat on every screen
 
 ### AI Prospecting
-- Finds businesses from a plain-English description
-- Reads each business's own site for the email address it publishes
-- Checks domain, mail server and mailbox before you send
-- Connect a search to a business workspace: new, checked leads every day
+- Finds businesses matching a plain-English description
+- Pulls the email address each business publishes on its own site
+- Checks format, domain and mail server before you send
+- Adds new checked leads to a business workspace every day automatically
 
-### Sell and convert
-- Pipelines per business workspace, with automations on each stage
+### Sell, convert and talk to customers
+- Unified Inbox: every mailbox, SMS and website chat in one thread, urgent
+  first, a ready reply in a click
+- Pipelines, email campaigns and sequences that stop the moment a lead replies
 - Websites, funnels, forms and booking pages on your own domain
-- Email campaigns and sequences from your own mailbox, with A/B tests
-- Sequences stop the moment a lead replies; replies land in one inbox
+- An AI chat agent for any website, from one line of code
 
 ### Create content
+- AI agents draft social posts and SEO articles for each business workspace
+  on a schedule
 - Graphics Designer & Editor for on-brand social posts in every format
-- The blog writer drafts SEO-researched articles on a schedule
-- Daily social posts planned and drafted for each business workspace
+- Blog strategy, keyword clusters and a month of posts planned for you
+- Every piece waits for your approval and lands in the module it belongs to
 
 ### Run as an agency
-- A sub-account per client, with isolated data and per-client plans
-- White-label branding and your own sign-in address
-- Client report links show progress without exposing other clients
+- A sub-account per client with isolated data
+- White-label branding, your product name across the app and your own
+  sign-in address
+- Live reports read from every module
+- Client report links hide your prices and other clients
 
-## Plans (as the app gives them today)
+## Plans (the AppSumo plan editor — only support on Tier 2 changes)
 
-| | 1 code — $49 | 2 codes — $98 | 3 codes — $147 |
+| | 1 code | 2 codes | 3 codes |
 |---|---|---|---|
-| Business workspaces | **3** | 10 | 25 |
+| Business workspaces | 3 | 10 | 25 |
 | Workflows per business workspace | 12 | 20 | 35 |
-| AI credits a month | 1,000 | 2,500 | 5,000 |
+| AI requests a month | 1,000 | 2,500 | 5,000 |
 | Social posts a month | 100 | 250 | 500 |
 | Blog articles a month | 10 | 25 | 50 |
-| AI-written emails a month | 300 | 750 | 1,500 |
 | Prospects found a month | 300 | 750 | 1,500 |
 | Client sub-accounts | 1 | 5 | 15 |
 | Branded sign-in addresses | 1 | 5 | 15 |
-| Support | Chat and tickets | Chat and tickets | Chat, tickets and an onboarding call |
+| Support | Chat & tickets | **Chat & tickets** | Chat, tickets & onboarding call |
 
-## Image prompts (only if you want a designer's versions — the PNGs above are ready)
+## FAQ fixes
 
-Shared style for all of them: *dark UI on a deep navy-to-black background,
-lime (#C8F24D) accents with a soft violet glow, a real app screenshot in a
-floating window with a soft shadow, one short headline in bold Inter at the
-top left, generous margins, no fake numbers, no stock people.* Use the
-recorded app screens from the demo films as the window content — a generator
-should only make the frame, the light and the headline, never invent UI.
+**Will it email or text anybody without me?**
+No. Anything that contacts a person — emails and texts — arrives as a draft
+for you to read first. For each business workspace you choose what AI
+Autopilot may do by itself: off, ask first, or on its own. "Ask first" is the
+default for anything that sends.
 
-1. **Hero / thumbnail.** "Describe it. AI builds it. It runs." in three
-   stacked lines on the left; on the right Protron (the round silver robot
-   head with a violet ring) beside the AI Autopilot "What would you like AI
-   Autopilot to do?" screen; caption chip "AI CRM + marketing on autopilot".
-2. **Protron, AI Live Business Manager.** Headline "Protron watches every
-   campaign". The app with Protron's chat open, its notice "This campaign is
-   sending but getting no replies — here is what I would change" and an
-   Approve button highlighted.
-3. **AI Autopilot workflow canvas.** Headline "Approve the blueprint before
-   anything exists". The glass workflow canvas (trigger → email → condition →
-   SMS) with the Yes/No branches glowing blue and pink.
-4. **AI Prospecting.** Headline "Say who to sell to". The search step log
-   with checked addresses ticked in lime.
-5. **Campaigns from your own mailbox.** Headline "Email from your own domain".
-   The campaign results table and a sequence step "wait for no reply".
-6. **Agency.** Headline "Run client workspaces under your own name". The
-   client list with a sign-in page reading "Welcome back to <agency name>".
-7. **Plans card.** Headline "Stack up to three codes"; the three tiers from
-   the table above, lime for the middle one, "Refundable up to 60 days on
-   AppSumo" underneath.
+**What do I need to connect?**
+Your own mailbox to send email (Gmail, Microsoft 365, Brevo or any SMTP), so
+mail goes out from your domain, not ours. Texts need a Twilio number.
+Everything else works out of the box.
 
-## Reply template for Q&A (until an auto-reply is decided)
+## Gallery (upload in this order; 01 is the cover)
+
+`marketing/appsumo/images/`, 2560×1440, made by `scripts/appsumo-images.mts`
+from frames of the real app, each marked "Real app · sample workspace":
+
+1. `01-hero.png` — Your AI Live Business Manager
+2. `02-keeps-watch.png` — It notices what isn't working
+3. `03-autopilot.png` — Describe it. Approve the blueprint.
+4. `04-prospecting.png` — New, checked leads every day
+5. `05-workflows.png` — Automations you can actually read
+6. `06-inbox.png` — Every conversation, one inbox
+7. `07-social.png` — Posts written and designed for you
+8. `08-websites.png` — Modern sites, in each client's name
+9. `09-campaigns.png` — Email from your own mailbox
+10. `10-agency.png` — Every client, under your brand
+11. `11-tiers.png` — Pay once. Stack up to three codes.
+
+## YouTube (the platform-showcase film)
+
+File: `marketing/demos/platform-showcase.mp4` (3 min 48 s, git-ignored).
+Thumbnail: `marketing/appsumo/images/youtube-platform-showcase.jpg`.
+
+**Title** (66 characters):
+Protected Central: AI Runs Your CRM, Marketing & Leads (3-Min Tour)
+
+**Description:**
+
+```
+Your whole business, run by AI. This is Protected Central, recorded live in the real app with real AI on a sample agency: AI Autopilot running several businesses at once, an AI Live Business Manager that watches every campaign, AI Prospecting, websites and funnels, and a fast tour of every other module.
+
+🔥 Lifetime deal on AppSumo: pay once, no subscription.
+👉 https://appsumo.com/pl/c8dnYQQafU/
+
+What you'll see:
+• AI Autopilot: every business gets its own business workspace, with its own goal, workflows, prospects, website, social posts, email marketing, texts, blog and bookings. It runs on the server every five minutes, even with the app closed.
+• AI Live Business Manager: watches every campaign, flags the ones nobody replies to, rewrites them in one click, and changes nothing until you approve.
+• AI Prospecting: say who you sell to in one sentence; it searches live, reads each website and checks every address before you send.
+• Unified Inbox: all your mailboxes, text messages and website chat in one place.
+• Pipelines, email campaigns and sequences, booking pages, Graphics Designer, SEO blog, AI website chat, white-label for agencies and live reports.
+
+Chapters
+0:00 Intro
+0:05 AI Autopilot: every business, its own workspace
+0:29 AI Live Business Manager watches every campaign
+1:07 AI Prospecting
+1:24 Websites and funnels
+1:46 Unified Inbox: email, SMS and chat
+2:04 Contacts and pipelines
+2:22 Email campaigns and sequences
+2:32 Social media on autopilot
+2:43 Graphics Designer and SEO blog
+3:03 Booking pages and website AI chat
+3:22 White-label and reports
+
+Real app, sample workspace with example data: the figures on screen are the sample's, not results.
+
+Get the lifetime deal: https://appsumo.com/pl/c8dnYQQafU/
+Website: https://protectedcentral.com
+
+#AICRM #MarketingAutomation #AppSumo #LifetimeDeal #GoHighLevelAlternative
+```
+
+Optional, only until Dec 1 (then delete it): `Black Friday on AppSumo: an
+extra 10% off until Dec 1, noon CT.`
+
+## Reply template for Q&A
 
 > Thanks for asking! Short answer: … Longer answer: … You can see it working
-> in the full demonstration (link above, timestamp …). If anything is
-> unclear, write to support@protectedcentral.com and I will answer the same
-> day. — Azeem, founder
+> in the demonstration (link above, timestamp …). If anything is unclear,
+> write to support@protectedcentral.com and I will answer the same day.
+> — Azeem, founder

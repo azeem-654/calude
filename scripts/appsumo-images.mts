@@ -37,7 +37,7 @@ const face = `data:image/webp;base64,${fs.readFileSync('public/protron/robot-384
 const mark = fs.readFileSync('public/favicon.svg', 'utf8');
 const n = (v: number) => v.toLocaleString('en-US');
 
-type Slide = { name: string; eyebrow: string; title: string; sub: string; chips?: string[]; shots: string[]; layout?: 'one' | 'two' | 'face' };
+type Slide = { name: string; eyebrow: string; title: string; sub: string; chips?: string[]; shots: string[]; layout?: 'one' | 'two' | 'face'; thumb?: boolean };
 
 const S: Slide[] = [
   { name: '01-hero', layout: 'face', eyebrow: 'Lifetime deal', title: 'Your <em>AI Live Business Manager</em>',
@@ -55,13 +55,21 @@ const S: Slide[] = [
   { name: '05-workflows', eyebrow: 'Workflows', title: 'Automations you can <em>actually read</em>',
     sub: 'Every fork labelled Yes or No. Try any step on a sample contact before it runs — or describe a new one in a sentence.',
     chips: ['Visual canvas', 'Dry-run any step', 'Written by AI'], shots: [frame('film-ap-inside', 14, 'canvas')] },
-  { name: '06-websites', layout: 'two', eyebrow: 'Websites & funnels', title: 'Modern sites, <em>in each client’s name</em>',
+  /* Added 2026-11-23 (owner: the most convincing pictures): the Unified
+     Inbox and the social side were in the listing's words but in no image. */
+  { name: '06-inbox', layout: 'two', eyebrow: 'Unified Inbox', title: 'Every conversation, <em>one inbox</em>',
+    sub: 'Every mailbox, your text messages and your website chat in one thread. The urgent and the unhappy first, a ready reply one click away.',
+    chips: ['Email, SMS & chat', 'Urgent first', 'Reply in a click'], shots: [frame('clip-inbox', 4, 'inbox'), frame('clip-inbox', 22, 'reply')] },
+  { name: '07-social', layout: 'two', eyebrow: 'Social media & content', title: 'Posts written and <em>designed for you</em>',
+    sub: 'AI agents draft social posts and articles for each business workspace on a schedule, in its own brand. Nothing posts until you approve it.',
+    chips: ['Daily social posts', 'On-brand graphics', 'SEO articles'], shots: [frame('clip-agents', 9, 'agents'), frame('clip-graphics', 28, 'graphic')] },
+  { name: '08-websites', layout: 'two', eyebrow: 'Websites & funnels', title: 'Modern sites, <em>in each client’s name</em>',
     sub: 'Whole-site templates and funnels in the business’s name and colours, edited on the page itself, published in a click.',
     chips: ['Modern templates', 'Edit on the page', 'Your own domain'], shots: [frame('film-ap-sites', 13, 'funnels'), frame('clip-websites', 30, 'editor')] },
-  { name: '07-campaigns', eyebrow: 'Email & sequences', title: 'Email from <em>your own mailbox</em>',
+  { name: '09-campaigns', eyebrow: 'Email & sequences', title: 'Email from <em>your own mailbox</em>',
     sub: 'Campaigns and sequences from your own address and domain, stopped the moment someone replies — every figure counted from real sends.',
     chips: ['Your domain', 'Stops on reply', 'A/B tests'], shots: [frame('clip-campaigns', 12, 'campaigns')] },
-  { name: '08-agency', eyebrow: 'Agencies', title: 'Every client, <em>under your brand</em>',
+  { name: '10-agency', eyebrow: 'Agencies', title: 'Every client, <em>under your brand</em>',
     sub: 'A sub-account per client with isolated data, your product name across the app, and your own sign-in address.',
     chips: ['White-label', 'Isolated client data', 'Client report links'], shots: [frame('clip-agency', 48, 'agency')] },
 ];
@@ -76,6 +84,7 @@ body{width:1280px;height:720px;overflow:hidden;font-family:Inter,system-ui,sans-
 .brand svg{width:26px;height:26px}
 .eyebrow{display:inline-flex;align-self:flex-start;gap:8px;align-items:center;padding:6px 12px;border-radius:999px;border:1px solid rgba(200,242,77,.45);color:#c8f24d;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;background:rgba(200,242,77,.07)}
 h1{font-size:50px;line-height:1.04;letter-spacing:-.025em;font-weight:800}
+body.thumb h1{font-size:74px;line-height:1.0}body.thumb p.sub{font-size:23px}body.thumb .copy{width:500px}
 h1 em{font-style:normal;background:linear-gradient(90deg,#c8f24d,#7ee0a1);-webkit-background-clip:text;background-clip:text;color:transparent}
 p.sub{font-size:19px;line-height:1.5;color:#b9c0b4}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
@@ -102,7 +111,7 @@ function page(s: Slide): string {
   const shots = s.layout === 'two'
     ? `<div class="win a"><div class="bar"><i></i><i></i><i></i></div><img src="${s.shots[0]}"></div><div class="win b"><div class="bar"><i></i><i></i><i></i></div><img src="${s.shots[1]}"></div>`
     : `<div class="win one"><div class="bar"><i></i><i></i><i></i></div><img src="${s.shots[0]}"></div>`;
-  return `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><div class="grid"></div>
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body class="${s.thumb ? 'thumb' : ''}"><div class="grid"></div>
 <div class="brand">${mark}<span>Protected Central</span></div>
 <div class="copy"><span class="eyebrow">${s.eyebrow}</span><h1>${s.title}</h1><p class="sub">${s.sub}</p>
 ${s.chips ? `<div class="chips">${s.chips.map(c => `<span>${c}</span>`).join('')}</div>` : ''}</div>
@@ -115,7 +124,7 @@ function tiers(): string {
   const rows: [string, (l: any) => string][] = [
     ['Business workspaces', l => n(l.autopilot_projects)],
     ['Workflows per workspace', l => n(l.workflows_per_project)],
-    ['AI credits a month', l => n(l.ai_requests)],
+    ['AI requests a month', l => n(l.ai_requests)],
     ['Prospects found a month', l => n(l.prospects_found)],
     ['AI-written emails a month', l => n(l.ai_emails)],
     ['Social posts a month', l => n(l.social_posts)],
@@ -130,13 +139,24 @@ function tiers(): string {
 <div class="tag">Refundable up to 60 days on AppSumo · numbers as the app gives them</div></body></html>`;
 }
 
+/* The platform-showcase film's YouTube thumbnail: fewer, bigger words (read
+   at phone size in a feed), 1280×720 JPEG under YouTube's 2 MB limit. */
+const THUMB: Slide = { name: 'youtube-platform-showcase', layout: 'face', thumb: true, eyebrow: 'Real app · 3-minute tour',
+  title: 'Your whole business,<br><em>run by AI</em>', sub: 'AI Autopilot, prospecting, inbox, campaigns, sites — all in one.', shots: [frame('film-ap-board', 38, 'board')] };
+
 const b = await pw.chromium.launch();
 const ctx = await b.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 2 });
 const p = await ctx.newPage();
-for (const [name, html] of [...S.map(s => [s.name, page(s)] as const), ['09-tiers', tiers()] as const]) {
+for (const [name, html] of [...S.map(s => [s.name, page(s)] as const), ['11-tiers', tiers()] as const]) {
   await p.setContent(html, { waitUntil: 'load' });
   await p.waitForTimeout(150);
   await p.screenshot({ path: path.join(OUT, `${name}.png`) });
   console.log(`${OUT}/${name}.png`);
 }
+const tctx = await b.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+const tp = await tctx.newPage();
+await tp.setContent(page(THUMB), { waitUntil: 'load' });
+await tp.waitForTimeout(150);
+await tp.screenshot({ path: path.join(OUT, `${THUMB.name}.jpg`), type: 'jpeg', quality: 90 });
+console.log(`${OUT}/${THUMB.name}.jpg`);
 await b.close();
