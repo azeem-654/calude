@@ -1,2 +1,4 @@
 # Rendered films (tens of MB) — re-made by scripts/demo-film.mts from the site-clips.mts film recipes.
 *.mp4
+# The voiceover QA timeline beside each film — re-made with the film.
+*.timeline.json
