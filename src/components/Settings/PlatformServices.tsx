@@ -55,7 +55,7 @@ interface Service {
   detail: string;
   checkedAt: string | null;
   lastError: string;
-  where: { label: string; tab?: string };
+  where: { label: string; tab?: string; path?: string };
   optional?: boolean;
 }
 
@@ -144,6 +144,10 @@ export default function PlatformServices({ openTab }: { openTab: (id: string) =>
                       <button onClick={() => document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} style={go}>
                         Set it below <ChevronRight size={12} />
                       </button>
+                    ) : s.where.path ? (
+                      <a href={s.where.path} style={{ ...go, textDecoration: 'none' }}>
+                        Open {s.where.label} <ChevronRight size={12} />
+                      </a>
                     ) : s.where.tab ? (
                       <button onClick={() => openTab(s.where.tab!)} style={go}>
                         Open {s.where.label.split(',')[0]} <ChevronRight size={12} />

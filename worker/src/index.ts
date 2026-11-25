@@ -84,6 +84,8 @@ import { handleCustomers } from './routes/customers';
 import { handleTrialOptout, runTrialMail } from './lib/trialMail';
 import { handleSupportConsent, handleSupportDesk, handleSupportUnsub } from './routes/supportDesk';
 import { runBroadcasts, runSupportAccess } from './lib/supportDesk';
+import { runFixDigest } from './lib/problemFix';
+import { handleProblemFix } from './routes/problemFix';
 import { runUnreadNudges } from './lib/unreadNudge';
 import { handleValidateKey } from './routes/validateKey';
 import { handlePlacement } from './routes/placement';
@@ -179,6 +181,7 @@ const ROUTES: Record<string, Handler> = {
   '/api/ai.php': handleAi,
   '/api/protron.php': handleProtron,
   '/api/support-report.php': handleSupportReport,
+  '/api/problem-fix.php': handleProblemFix,
   '/api/live.php': handleLive,
   /* Content held for review, and what became of the accounts that produced it.
      Owner-only but for one action, which tells a customer why they cannot
@@ -686,6 +689,10 @@ export default {
       if (bcast.note) report.notes.push({ accountId: '', text: bcast.note, kind: 'problem' });
       const unread = await runUnreadNudges(env).catch(() => ({ sent: 0, failed: 0, notes: [] as string[] }));
       if (unread.sent || unread.failed) console.log(`[cron] unread reminders: ${unread.sent} sent, ${unread.failed} failed`);
+      /* Reported problems nobody answered, listed for the owner again at their
+         two hours of the day (lib/problemFix.ts; gated to once per hour slot). */
+      const fixes = await runFixDigest(env).catch(() => ({ listed: 0, diagnosing: false, note: '' }));
+      if (fixes.note) report.notes.push({ accountId: '', text: fixes.note, kind: 'problem' });
 
       /* Reminders for the owner's own strategy calls — a person is waiting on
          this one, so it goes with the owner's other mail; it never throws into

@@ -18,7 +18,7 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { UserRound, MessageSquare, Ticket as TicketIcon, FileText, BookOpen, Code2, Settings as SettingsIcon, LayoutDashboard, Loader, RefreshCw, Users, Mic, Inbox, CalendarCheck, Send, Monitor } from 'lucide-react';
+import { Bug, UserRound, MessageSquare, Ticket as TicketIcon, FileText, BookOpen, Code2, Settings as SettingsIcon, LayoutDashboard, Loader, RefreshCw, Users, Mic, Inbox, CalendarCheck, Send, Monitor } from 'lucide-react';
 import { ProtronMark, type IconLike } from '../Protron/ProtronAvatar';
 import { useApp } from '../../context/AppContext';
 import {
@@ -36,6 +36,7 @@ import EngageMeetings from './EngageMeetings';
 import EngageDelivery from './EngageDelivery';
 import EngageLive from './EngageLive';
 import EngageCustomers from './EngageCustomers';
+import EngageFixes from './EngageFixes';
 import { getSession } from '../../services/auth';
 
 const INK = '#0f172a';
@@ -44,7 +45,7 @@ const LINE = '#e6e9f0';
 const ACCENT = '#5b46e5';
 
 type Tab = 'overview' | 'inbox' | 'live' | 'tickets' | 'forms' | 'submissions' | 'agents'
-  | 'knowledge' | 'widgets' | 'meetings' | 'voice' | 'delivery' | 'settings' | 'customers';
+  | 'knowledge' | 'widgets' | 'meetings' | 'voice' | 'delivery' | 'settings' | 'customers' | 'fixes';
 
 const TABS: { id: Tab; label: string; icon: IconLike }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -69,6 +70,8 @@ const TABS: { id: Tab; label: string; icon: IconLike }[] = [
 /* The install owner's own customers (EngageCustomers.tsx). Shown to the owner
    alone; the server refuses every one of its actions to anybody else. */
 const OWNER_TAB: { id: Tab; label: string; icon: IconLike } = { id: 'customers', label: 'Customers', icon: UserRound };
+/* Problems customers reported and their fixes by Claude Code (EngageFixes.tsx), owner only too. */
+const FIXES_TAB: { id: Tab; label: string; icon: IconLike } = { id: 'fixes', label: 'Problem fixes', icon: Bug };
 
 export default function Engagement() {
   const { addNotification } = useApp();
@@ -85,7 +88,7 @@ export default function Engagement() {
   const asked = params.get('tab');
   const session = getSession();
   const isOwner = !!session && session.user.accountId == null && session.user.role === 'agency';
-  const tabs = isOwner ? [TABS[0], OWNER_TAB, ...TABS.slice(1)] : TABS;
+  const tabs = isOwner ? [TABS[0], OWNER_TAB, FIXES_TAB, ...TABS.slice(1)] : TABS;
   const tab: Tab = tabs.some(t => t.id === asked) ? (asked as Tab) : 'overview';
   const setTab = (id: Tab) => setParams(id === 'overview' ? {} : { tab: id }, { replace: true });
   const [counts, setCounts] = useState<EngageCounts | null>(null);
@@ -321,6 +324,7 @@ export default function Engagement() {
       )}
 
       {tab === 'customers' && isOwner && <EngageCustomers />}
+      {tab === 'fixes' && isOwner && <EngageFixes />}
       {tab === 'inbox' && <EngageInbox conversations={conversations} onChange={() => void refresh()} onRows={mergeRows} />}
       {tab === 'live' && <EngageLive onChange={() => void refresh()} />}
       {tab === 'tickets' && <EngageTickets tickets={tickets} onChange={() => void refresh()} />}

@@ -275,6 +275,43 @@ azeem654@gmail.com, pictures as attachments through `deliver`; no mailbox no
 longer fails a report — the ticket is saved and the answer says so.
 `CornerHelp` offers it too.
 
+**The Report a problem button and fixes by Claude Code** (2026-11-25,
+`lib/problemFix.ts`, `routes/problemFix.ts` → `/api/problem-fix.php`,
+migration 0108, `shared/ReportProblemHost.tsx`, `Engagement/EngageFixes.tsx`).
+Signed in, a **Report a problem** pill sits just left of the help launcher —
+placed by measuring `.pc-launch-app` (or the owner's placeholder,
+`data-pc-help-placeholder`), hidden while an `aria-modal` dialog is open, not
+on white-label hosts. The sheet gained a **voice note** (MediaRecorder, ≤ 2 min,
+≤ 1.5 MB; transcribed into the box through `intake.php transcribe`; the
+recording kept in `crm_problem_audio`). Every app report is also a
+`crm_problem_fixes` row (`waiting`): the owner gets `ownerAlert`
+`problem.reported` (push to the support workspace's phones, route
+`/engagement?tab=fixes&id=…`) and an email with buttons
+(`/api/problem-fix.php?id=&s=` — HMAC of the id, **GET shows a page, only the
+POST acts**) and a `[Fix XXXX-XXXX]` reply code; a YES/NO reply is acted on by
+`fixReplyFromMail`, called from `hostedMail.receive` for the owner's own
+address only (`domain_id` `own:`), from the owner's addresses, quoting the
+code. A yes (claimed in one UPDATE, so two presses start one session) POSTs
+the report to the owner's Claude Code **scheduled task's API trigger**
+(`crm_install_providers` kind `claude_code`, encrypted; URL must match
+`api.anthropic.com/v1/claude_code/routines/trig_…/fire`; never retried — the
+trigger has no idempotency key). Only after that call succeeded is the
+customer told (notice + email) "working on it, 10–15 minutes"; a refused call
+marks the row `failed`, tells the owner why and tells the customer nothing.
+The session gets a per-report key (hashed, replaced per fire, cleared when
+closed) for `agent_report` / `agent_picture` / `agent_audio` / `agent_update`
+(`working`, `ready` = on testing, `fixed` = live → customer email + notice
+with the strategy-call link when it is enabled, `failed` → "a person will
+reply", `diagnosed` = note only, while waiting). The customer's words travel
+inside the trigger's untrusted-payload block and the saved prompt
+(`savedPrompt`) says they are not instructions. `runFixDigest` (cron, the
+owner's two UTC hours, once per slot via `crm_meta.problem_fix_digest`) emails
+the unanswered ones and, with `diagnose` on, starts one read-only DIAGNOSE
+session. Customer status: `mine` (the button reads Report received / Fix in
+progress / Fixed — check it). `npm run test:problemfix` (SMTP sink, a
+stand-in for the trigger on `ROUTINE_API_BASE`, fresh D1); `test:security`
+covers the route.
+
 **Help articles and "How did we do?"** (2026-11-16). The widget config carries
 `articles` (count of the workspace's published `crm_kb_articles`); only when it is
 above 0 does the home panel show **Search help articles** (`data-field

@@ -34,6 +34,7 @@ import { installPlacesKey, placesUsage } from '../lib/googlePlaces';
 import { PROVIDERS as VOICE_PROVIDERS } from '../lib/voice';
 import { systemMailStatus } from './systemMail';
 import { loadSettings as loadStrategySettings } from './strategyCall';
+import { fixConfig } from '../lib/problemFix';
 import { liveAiUsage, usageReport } from '../lib/usageReport';
 import { hostedConfigView } from '../lib/hostedMail';
 import { saveCaps, saveFreeLimits } from '../lib/aiUsage';
@@ -385,6 +386,21 @@ export async function platformStatus(env: Env): Promise<{ services: Service[] }>
         : 'Switched off: visitors who press a booking button are told bookings are not open and offered the written enquiry form.',
       checkedAt: null, lastError: '',
       where: { label: 'below' },
+    });
+    const claude = await fixConfig(env).catch(() => null);
+    const cState: State = !claude || !claude.url || !claude.token ? 'off' : claude.status === 'ok' ? 'ok' : claude.status === 'error' ? 'error' : 'unchecked';
+    services.push({
+      id: 'claude_code', name: 'Claude Code (fixing reported problems)', optional: true,
+      powers: 'Report a problem → a Claude Code cloud session starts fixing it when you say yes, and the customer is kept told',
+      state: cState,
+      detail: cState === 'off'
+        ? 'Not connected. Reports still reach you (alert, push, email) and your yes is recorded, but no session starts.'
+        : cState === 'ok' ? 'Connected — the last session it was asked to start, started.'
+          : cState === 'error' ? 'The last attempt to start a session was refused — see the reason below.'
+            : 'Saved, not yet used. It is proved the first time you say yes to a report.',
+      checkedAt: claude && claude.status !== 'unknown' && cState !== 'off' ? claude.updatedAt : null,
+      lastError: claude?.lastError ?? '',
+      where: { label: 'Customer Support → Problem fixes', path: '/engagement?tab=fixes' },
     });
     const hosted = await hostedConfigView(env).catch(() => null);
     services.push({

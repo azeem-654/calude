@@ -524,6 +524,13 @@
 .pt-report-thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; }
 .pt-report-thumb button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; border: 0; display: grid; place-items: center; background: #111827; color: #fff; cursor: pointer; padding: 0; }
 .pt-report-note { font-size: 11px; color: #6b7280; }
+/* The voice note (2026-11-25): one row — record, the timer while it runs, or the recording to play back. */
+.pt-report-voice { display: grid; gap: 6px; padding: 8px; border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; }
+.pt-report-voice .pt-btn { font-size: 12px; padding: 6px 10px; justify-self: start; }
+.pt-report-voice .pt-report-wait { min-height: 30px; }
+.pt-report-voice-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.pt-report-voice-row audio { height: 34px; flex: 1 1 180px; min-width: 0; max-width: 100%; }
+.pt-btn.pt-btn-rec { background: #dc2626; border-color: #dc2626; color: #fff; }
 .pt-report-error { margin: 0; font-size: 12px; color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 10px; }
 .pt-report-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: auto; padding-top: 4px; }
 @media (max-width: 420px) { .pt-btn.pt-report-cta { padding: 6px 8px; font-size: 11.5px; } }
@@ -613,3 +620,18 @@
 @keyframes pth-line { from { opacity: 0; transform: translateY(6px); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
 @keyframes pth-dot { 0%, 100% { opacity: .3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
 @keyframes pth-pop { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+
+/* The Report a problem button beside the help launcher (shared/ReportProblemHost.tsx).
+   Plain and still, like the in-app launcher: it is on screen all day. `right`
+   and `bottom` are set from the launcher's measured place. */
+.pc-report-btn { position: fixed; z-index: 2147482990; display: inline-flex; align-items: center; gap: 6px; height: 34px; box-sizing: border-box;
+  padding: 0 12px 0 10px; border-radius: 999px; border: 1px solid #e5e7eb; background: #fff; color: #1f2937;
+  font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap; box-shadow: 0 6px 16px -6px rgba(15, 23, 42, .4); }
+.pc-report-btn:hover { border-color: #c7c2f5; color: #3b2a8f; }
+.pc-report-btn:focus-visible { outline: 2px solid #5b46e5; outline-offset: 2px; }
+.pc-report-btn svg { flex-shrink: 0; color: #5b46e5; }
+.pc-report-btn[data-state="waiting"] { border-color: #c7c2f5; }
+.pc-report-btn[data-state="working"] { background: #eef2ff; border-color: #a5b4fc; color: #312e81; }
+.pc-report-btn[data-state="fixed"] { background: #ecfdf5; border-color: #86efac; color: #14532d; }
+.pc-report-btn[data-state="fixed"] svg { color: #16a34a; }
+@media (max-width: 359px) { .pc-report-btn { padding: 0 9px; } .pc-report-btn-label { display: none; } }

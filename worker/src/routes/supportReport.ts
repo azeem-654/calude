@@ -33,6 +33,7 @@ import { redactPhi } from '../lib/phiGuard';
 import { rateLimit } from '../lib/rateLimit';
 import { fileProblemTicket, mailProblem, MAX_REPORT_TEXT, readPictures, REPORT_COPY, REPORT_TO } from '../lib/problemReport';
 import { houseWidgetAccount } from './engage';
+import { openFix, readAudio } from '../lib/problemFix';
 
 export { REPORT_TO, REPORT_COPY };
 
@@ -51,6 +52,11 @@ export async function handleSupportReport(req: Request, env: Env): Promise<Respo
   const read = readPictures(d.screenshot, d.pictures);
   if (!read.ok) return fail(read.message, 200, read.field ? { field: read.field } : {});
   const { pics, shot } = read;
+  /* The voice note: its words are already in the description (the sheet
+     transcribes it into the box, where they can correct it); the recording
+     itself goes to whoever fixes it. */
+  const voice = readAudio(d.audio, d.audioMime);
+  if (voice && !voice.ok) return fail(voice.message, 200, { field: 'report.voice' });
 
   const gate = await rateLimit(env, { what: 'support-report', who: user.email.toLowerCase(), max: 5, windowSeconds: 3600 });
   if (!gate.allowed) return fail(`That is five reports this hour — please wait ${Math.ceil(gate.retryAfter / 60)} minutes, or use the Help button's ticket.`, 429);
@@ -71,6 +77,14 @@ export async function handleSupportReport(req: Request, env: Env): Promise<Respo
     }).catch(() => null)
     : null;
 
+  /* The fix: the owner is asked whether to start (push, alert, email), and a
+     yes hands it to a Claude Code session (lib/problemFix.ts). A report
+     outside the house widget has no ticket to follow, so it still opens. */
+  const fix = await openFix(env, {
+    ticketId: filed?.id ?? '', reference: filed?.reference ?? '', email: user.email, name: user.name || '',
+    accountId, page: screen, description: described, pictures: pics.length, audio: voice && voice.ok ? voice : null,
+  }).catch(() => null);
+
   const mail = await mailProblem(env, {
     described, name: user.name || '', email: user.email, pics, shot, reference: filed?.reference, signedIn: true,
     rows: [
@@ -78,11 +92,12 @@ export async function handleSupportReport(req: Request, env: Env): Promise<Respo
       ['Login', user.accountId == null && user.role === 'agency' ? 'install owner' : user.role === 'client' ? 'client login' : 'customer'],
       ['Screen', screen],
       ['Window', String(d.viewport ?? '').slice(0, 40)],
+      ['Voice note', voice && voice.ok ? 'yes — its words are in the description; the recording is with the fix' : ''],
       ['Browser', (req.headers.get('user-agent') ?? '').slice(0, 300)],
     ],
   });
 
-  if (!filed && mail.sent === 'none') {
+  if (!filed && !fix && mail.sent === 'none') {
     return mail.error === 'no_mailbox'
       ? fail(`Support email is not connected yet, so this could not be sent. Please use the Help button → Submit a ticket, or write to ${REPORT_TO}.`, 503, { code: 'no_mailbox' })
       : fail(`Your report could not be sent: ${mail.error}. Please use the Help button → Submit a ticket, or write to ${REPORT_TO}.`, 502);
@@ -93,7 +108,9 @@ export async function handleSupportReport(req: Request, env: Env): Promise<Respo
     sent: mail.sent === 'all' ? 'all' : 'partial',
     pictures: pics.length,
     reference: filed?.reference ?? '',
-    message: mail.sent === 'all' ? `Sent to our support team — they reply by email.${ref}`
+    fixId: fix?.id ?? '',
+    message: fix ? `Our technical team has been alerted. You will see updates on the Report a problem button and by email.${ref}`
+      : mail.sent === 'all' ? `Sent to our support team — they reply by email.${ref}`
       : mail.sent === 'partial' ? `Sent, but only one of the two support addresses received it.${ref}`
         : `Saved as a ticket for our support team — they reply by email.${ref}`,
   });

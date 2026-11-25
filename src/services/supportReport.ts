@@ -52,9 +52,9 @@ export async function preparePicture(file: File): Promise<{ ok: true; dataUrl: s
   try { return { ok: true, dataUrl: (await shrinkImage(file)).data }; } catch (e) { return { ok: false, error: e instanceof Error ? e.message : 'That picture could not be read.' }; }
 }
 
-export interface ReportResult { ok: boolean; message: string; field?: string; partial?: boolean }
+export interface ReportResult { ok: boolean; message: string; field?: string; partial?: boolean; fixId?: string; reference?: string }
 
-export async function sendReport(r: { description: string; screenshot: string; pictures: string[] }): Promise<ReportResult> {
+export async function sendReport(r: { description: string; screenshot: string; pictures: string[]; audio?: string; audioMime?: string }): Promise<ReportResult> {
   let token = 'cookie';
   try { token = (JSON.parse(localStorage.getItem('crm_session') || 'null') as { token?: string } | null)?.token || 'cookie'; } catch { /* signed out */ }
   let accountId = '';
@@ -66,13 +66,14 @@ export async function sendReport(r: { description: string; screenshot: string; p
       body: JSON.stringify({
         token, accountId,
         description: r.description, screenshot: r.screenshot || undefined, pictures: r.pictures,
+        audio: r.audio || undefined, audioMime: r.audio ? r.audioMime : undefined,
         path: `${location.pathname}${location.search}`, pageTitle: document.title, viewport: `${window.innerWidth}×${window.innerHeight}`,
       }),
     });
-    const j = await res.json().catch(() => null) as { success?: boolean; error?: string; field?: string; message?: string; sent?: string } | null;
+    const j = await res.json().catch(() => null) as { success?: boolean; error?: string; field?: string; message?: string; sent?: string; fixId?: string; reference?: string } | null;
     if (!j) return { ok: false, message: `The report could not be sent (the server answered ${res.status}).` };
     if (!j.success) return { ok: false, message: j.error || 'The report could not be sent.', field: j.field };
-    return { ok: true, message: j.message || 'Sent to our support team.', partial: j.sent === 'partial' };
+    return { ok: true, message: j.message || 'Sent to our support team.', partial: j.sent === 'partial', fixId: j.fixId || '', reference: j.reference || '' };
   } catch {
     return { ok: false, message: 'The report could not be sent — check your connection and try again.' };
   }

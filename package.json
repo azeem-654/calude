@@ -78,6 +78,7 @@
     "test:bookingpage": "node test/bookingPage.e2e.mjs",
     "test:bookingreminders": "node test/bookingReminders.e2e.mjs",
     "test:supportdesk": "node test/supportDesk.e2e.mjs",
+    "test:problemfix": "node test/problemFix.e2e.mjs",
     "test:bookingfill": "npx --yes tsx test/bookingFill.test.mts",
     "test:sourcese2e": "node test/prospectSources.e2e.mjs",
     "test:isolation": "node test/isolation.e2e.mjs",

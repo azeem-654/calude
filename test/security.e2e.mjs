@@ -795,6 +795,28 @@ console.log('\nReport a problem — /api/support-report.php sends as the session
   check('More than four pictures are refused', !many.ok && many.data?.field === 'report.pictures', JSON.stringify(many.data).slice(0, 160));
 }
 
+console.log('\nProblem fixes — /api/problem-fix.php: the owner decides, a session key reaches one report');
+{
+  d1rows('DELETE FROM crm_signup_attempts');
+  const A = await signUp('pfa');
+  const B = await signUp('pfb');
+  const sent = await api('support-report.php', { token: A.token, accountId: A.acct, description: 'The export button does nothing at all' });
+  const id = sent.data?.fixId ?? '';
+  check("A customer's report opens a fix", sent.ok && /^fx_/.test(id), JSON.stringify(sent.data).slice(0, 160));
+  for (const action of ['list', 'decide', 'mark_fixed', 'config', 'config_save']) {
+    const r = await api('problem-fix.php', { token: A.token, action, id, answer: 'live', url: 'https://api.anthropic.com/v1/claude_code/routines/trig_aaaaaaa/fire', tokenValue: 'sk-ant-oat01-xxxxxxxxxxxx' });
+    check(`A customer cannot ${action} a fix`, !r.ok && r.data?.code === 'not_owner', JSON.stringify(r.data).slice(0, 160));
+  }
+  const theirs = await api('problem-fix.php', { token: B.token, action: 'mine' });
+  check("B's list holds none of A's reports", theirs.ok && !(theirs.data?.reports ?? []).some(x => x.id === id), JSON.stringify(theirs.data).slice(0, 160));
+  for (const action of ['agent_report', 'agent_picture', 'agent_audio', 'agent_update']) {
+    const r = await api('problem-fix.php', { action, id, key: '0'.repeat(48), status: 'fixed' });
+    check(`A guessed session key cannot ${action}`, !r.ok && r.status === 403, JSON.stringify(r.data).slice(0, 160));
+  }
+  const none = await api('problem-fix.php', { action: 'mine' });
+  check('No session, no reports', !none.ok && none.status === 401);
+}
+
 console.log('\nLive voice — /api/live.php is a same-site WebSocket for the session\'s own workspace');
 {
   const { request } = await import('node:http');

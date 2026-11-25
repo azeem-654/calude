@@ -443,6 +443,12 @@ export async function receive(message: ForwardableEmailMessage, env: Env): Promi
     String(parsed?.from?.address ?? message.from ?? '').slice(0, 300), String(parsed?.from?.name ?? '').slice(0, 200), to,
     String(parsed?.subject ?? '').slice(0, 500), String(parsed?.date ?? '').slice(0, 100), plain.slice(0, 200), body,
     html ? 'HTML' : 'TEXT', JSON.stringify(attachments), rawKey, raw.byteLength, nowIso()).run();
+  /* The owner's own address: a YES/NO reply to "Should I start fixing this?"
+     (lib/problemFix.ts). Kept as mail either way; never refuses the message. */
+  if (a.domain_id.startsWith('own:')) {
+    const { fixReplyFromMail } = await import('./problemFix');
+    await fixReplyFromMail(env, { from: String(parsed?.from?.address ?? message.from ?? ''), subject: String(parsed?.subject ?? ''), text }).catch(() => false);
+  }
 }
 
 /** The latest messages of a hosted mailbox, in the shape the inbox reads from IMAP. */

@@ -80,6 +80,8 @@ export interface Env {
   OPENROUTER_BASE?: string;
   /** Tests only: an OpenAI stand-in (lib/openai.ts). */
   OPENAI_BASE?: string;
+  /** Tests only: a stand-in for the Claude Code scheduled-task API (lib/problemFix.ts). */
+  ROUTINE_API_BASE?: string;
   /**
    * Read-only Cloudflare API token (Account Analytics: Read) and the account id,
    * for the owner's usage dashboard (lib/cloudUsage.ts). Optional: without them

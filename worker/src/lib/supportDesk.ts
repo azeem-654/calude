@@ -110,6 +110,10 @@ export async function ownerAlert(env: Env, a: { kind: string; email: string; sum
     'customer.reply': 'A customer replied',
     'call.accepted': 'A customer is joining your call',
     'access.approved': 'Access approved',
+    'problem.reported': 'A customer reported a problem',
+    'problem.fixed': 'A reported problem is fixed',
+    'problem.ready': 'A fix is ready on testing',
+    'problem.failed': 'A fix needs you',
   }[a.kind] ?? 'Support';
   await Promise.race([
     pushToWorkspace(env, acct, { kind: a.push ?? 'message', title, body: a.summary.slice(0, 160), route: a.route, tag: `${a.kind}:${a.email}` }).catch(() => null),
@@ -132,10 +136,10 @@ export function mailHtml(o: { heading: string; paragraphs: string[]; button?: { 
 }
 
 /** Send from the install mailbox. `ok:false` with a reason when there is none. */
-export async function installSend(env: Env, to: string, subject: string, html: string, unsubscribeUrl?: string): Promise<{ ok: boolean; error: string }> {
+export async function installSend(env: Env, to: string, subject: string, html: string, unsubscribeUrl?: string, replyTo?: string): Promise<{ ok: boolean; error: string }> {
   const mb = await installMailbox(env);
   if (!mb) return { ok: false, error: 'No mailbox in your own workspace can send yet — connect and validate one in Settings → Email & SMS.' };
-  const r = await deliver(mb, { fromName: mb.from.name || 'Protected Central', fromEmail: fromAddressOf(mb), to, subject, html, unsubscribeUrl });
+  const r = await deliver(mb, { fromName: mb.from.name || 'Protected Central', fromEmail: fromAddressOf(mb), to, subject, html, unsubscribeUrl, ...(replyTo ? { replyTo } : {}) });
   return { ok: r.ok, error: r.ok ? '' : r.error };
 }
 
