@@ -42,6 +42,10 @@
  * links, which are HMAC-signed and short-lived and checked by the route
  * before anything else (routes/videoFile.ts) — behind the lock every video
  * on the testing site stopped at "ffprobe exited 1: 401 Unauthorized".
+ * And `/api/problem-fix.php` (2026-11-25): the Claude Code cloud session that
+ * fixes a reported problem fetches the report and reports back there, and
+ * cannot type a password. Every action on it still needs a session, the
+ * email button's HMAC or that one report's key (routes/problemFix.ts).
  */
 import type { Env } from './db';
 
@@ -85,7 +89,7 @@ export async function stagingGate(req: Request, env: Env, url: URL): Promise<{ s
     return { stop: new Response('User-agent: *\nDisallow: /\n', { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Robots-Tag': NOINDEX } }) };
   }
   if (url.pathname.startsWith('/api/') && /webhook|sms-inbound/.test(url.pathname)) return { setCookie: null };
-  if (url.pathname === '/api/video-file.php') return { setCookie: null };
+  if (url.pathname === '/api/video-file.php' || url.pathname === '/api/problem-fix.php') return { setCookie: null };
 
   const want = await expected(env);
   /* A lock with an unreadable setting stays shut: open by mistake is the failure that matters. */

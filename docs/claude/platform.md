@@ -310,7 +310,9 @@ the unanswered ones and, with `diagnose` on, starts one read-only DIAGNOSE
 session. Customer status: `mine` (the button reads Report received / Fix in
 progress / Fixed — check it). `npm run test:problemfix` (SMTP sink, a
 stand-in for the trigger on `ROUTINE_API_BASE`, fresh D1); `test:security`
-covers the route.
+covers the route. On testing, `/api/problem-fix.php` passes the password lock
+(`stagingGate.ts`, `test:gate`) so the session can reach its report there.
+Real-world checks still to run: `docs/audit/LOCAL-SESSION-PROBLEM-FIX-BRIEF.md`.
 
 **Help articles and "How did we do?"** (2026-11-16). The widget config carries
 `articles` (count of the workspace's published `crm_kb_articles`); only when it is
