@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Search, Send, Mail, Inbox, Plus, RefreshCw, Sparkles, Zap, Settings2,
   AlertTriangle, Smile, Meh, Frown, Wifi, WifiOff, Reply,
-  Tag, CheckCircle2, Clock, Activity, MessageSquare, Edit2, Trash2,
+  Tag, CheckCircle2, Clock, Activity, MessageSquare, Edit2, Trash2, PenSquare, X,
 } from 'lucide-react';
 import Header from '../Layout/Header';
 import { useApp } from '../../context/AppContext';
@@ -49,6 +49,14 @@ function relTime(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+/** Typed text as mail HTML: escaped, so a "<" someone types is shown rather
+    than read as markup, and with its line breaks kept. */
+function textToHtml(t: string): string {
+  return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+}
+
+const EMAIL_RE = /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/;
+
 function initials(name: string) { return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(); }
 
 /** Rail id for the chat/SMS threads, which are not an IMAP mailbox. */
@@ -82,6 +90,13 @@ export default function Conversations() {
   const [drafting, setDrafting] = useState(false);
   const [sending, setSending] = useState(false);
   const [note, setNote] = useState('');
+  // new-email composer
+  const [composing, setComposing] = useState(false);
+  const [cFrom, setCFrom] = useState('');
+  const [cTo, setCTo] = useState('');
+  const [cSubject, setCSubject] = useState('');
+  const [cBody, setCBody] = useState('');
+  const [cError, setCError] = useState<{ field: 'from' | 'to' | 'subject' | 'body' | ''; text: string }>({ field: '', text: '' });
   const autoFailRef = useRef(false);
   const autoRunRef = useRef<Set<string>>(new Set());
 
@@ -181,14 +196,18 @@ export default function Conversations() {
     }
   };
 
-  const sendReplyRaw = async (mb: Mailbox, msg: InboxMessage, subject: string, body: string) => {
+  /* Sent through the mailbox it is from (`mailboxId`), not the workspace's
+     primary one: a second mailbox's address sent over the primary's server is
+     refused as an address that server does not own. */
+  const sendFrom = async (mb: Mailbox, to: string, toName: string, subject: string, body: string) => {
     const cfg = loadEmailConfig();
-    // Prefer the mailbox's own SMTP identity
     return sendEmail(
       { ...cfg, provider: cfg.provider === 'none' ? 'smtp' : cfg.provider, fromName: mb.fromName || mb.profile.companyName || mb.label, fromEmail: mb.address || mb.smtpUser },
-      { to: msg.from, toName: msg.fromName, subject, html: body.replace(/\n/g, '<br>') },
+      { mailboxId: mb.id, to, toName, subject, html: textToHtml(body) },
     );
   };
+  const sendReplyRaw = (mb: Mailbox, msg: InboxMessage, subject: string, body: string) =>
+    sendFrom(mb, msg.from, msg.fromName, subject, body);
 
   /* ── Derived ── */
   const activeMb = mailboxes.find(m => m.id === activeMbId);
@@ -236,6 +255,39 @@ export default function Conversations() {
         setReply('');
       } else {
         addNotification(res.error || 'Send failed — check the mailbox SMTP settings.', 'error');
+      }
+    } finally { setSending(false); }
+  };
+
+  /* A new email, not a reply. Opens from the mailbox being looked at, else the
+     first; with none connected it says where to connect one rather than
+     opening a form that cannot send. */
+  const openCompose = () => {
+    if (mailboxes.length === 0) {
+      addNotification('Connect a mailbox in Settings → Email & SMS to send email from here.', 'info');
+      return;
+    }
+    setCFrom((activeMb ?? selectedMb ?? mailboxes[0]).id);
+    setCTo(''); setCSubject(''); setCBody(''); setCError({ field: '', text: '' });
+    setComposing(true);
+  };
+  const sendNew = async () => {
+    const mb = mailboxes.find(m => m.id === cFrom) ?? mailboxes[0];
+    const to = cTo.trim();
+    if (!to) { setCError({ field: 'to', text: 'Enter who this email is to.' }); return; }
+    if (!EMAIL_RE.test(to)) { setCError({ field: 'to', text: `"${to}" is not an email address.` }); return; }
+    if (!cSubject.trim()) { setCError({ field: 'subject', text: 'Add a subject.' }); return; }
+    if (!cBody.trim()) { setCError({ field: 'body', text: 'Write the message.' }); return; }
+    setCError({ field: '', text: '' });
+    setSending(true);
+    try {
+      const res = await sendFrom(mb, to, '', cSubject.trim(), cBody);
+      if (res.success) {
+        addNotification(`Email sent to ${to}`, 'success');
+        setComposing(false);
+      } else {
+        /* Kept open with the server's own reason, so nothing typed is lost. */
+        setCError({ field: '', text: res.error || 'Send failed — check the mailbox settings.' });
       }
     } finally { setSending(false); }
   };
@@ -304,6 +356,9 @@ export default function Conversations() {
       <Header title="Unified Inbox" subtitle={`${mailboxes.length} mailbox${mailboxes.length === 1 ? '' : 'es'} · ${messages.filter(m => !m.seen).length} unread`} />
 
       <div style={{ padding: '10px 28px 0', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <button onClick={openCompose} data-testid="inbox-new-email" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: INK, color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+          <PenSquare size={14} /> New email
+        </button>
         {/* connection status */}
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 700, padding: '5px 12px', borderRadius: 999, background: demoMode ? '#fdf5e7' : '#e9f4e6', color: demoMode ? '#c77414' : '#3f9142' }}>
           {demoMode ? <WifiOff size={12} /> : <Wifi size={12} />}
@@ -333,7 +388,7 @@ export default function Conversations() {
           {/* Settings, not a dialog here. A mailbox is a server-side encrypted
               record that sending and the scheduler use too; connecting one in
               two places is how a workspace ends up with two of them. */}
-          <a href="/settings?tab=email-sms" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: INK, color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', textDecoration: 'none' }}>
+          <a href="/settings?tab=email-sms" style={{ ...btn(false), textDecoration: 'none' }}>
             <Plus size={14} /> Connect a mailbox
           </a>
         </div>
@@ -621,6 +676,49 @@ export default function Conversations() {
         </>
         )}
       </div>
+
+      {/* ── New email ── a sheet over the page rather than a fourth pane: on a
+           phone the three panes already share 390px, and a composer squeezed
+           into the last of them had no room to type in. */}
+      {composing && (() => {
+        const mb = mailboxes.find(m => m.id === cFrom) ?? mailboxes[0];
+        const label = (m: Mailbox) => `${m.fromName || m.label} <${m.address || m.smtpUser}>`;
+        return (
+          <div role="dialog" aria-modal="true" aria-label="New email" onClick={e => { if (e.target === e.currentTarget && !sending) setComposing(false); }}
+            style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(23,25,28,0.5)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'clamp(0px, 3vw, 24px)' }}>
+            <div style={{ width: '100%', maxWidth: 640, maxHeight: '100%', background: '#fff', borderRadius: 'clamp(0px, 2vw, 18px)', boxShadow: '0 20px 60px rgba(23,25,28,0.25)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid #f2f3f5' }}>
+                <h3 style={{ fontSize: 15, fontWeight: 800, color: INK, margin: 0 }}>New email</h3>
+                <button onClick={() => setComposing(false)} disabled={sending} aria-label="Close" style={iconBtn(false)}><X size={15} /></button>
+              </div>
+              <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', flex: 1 }}>
+                <label style={{ fontSize: 11.5, fontWeight: 700, color: MUTED }}>From
+                  <select value={mb.id} onChange={e => setCFrom(e.target.value)} data-field="from" style={{ ...{ width: '100%', padding: '10px 12px', border: `1px solid ${cError.field === 'from' ? '#e5484d' : '#e6e9f0'}`, borderRadius: 10, fontSize: 13.5, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }, marginTop: 4, background: '#fff' }}>
+                    {mailboxes.map(m => <option key={m.id} value={m.id}>{label(m)}</option>)}
+                  </select>
+                </label>
+                <label style={{ fontSize: 11.5, fontWeight: 700, color: MUTED }}>To
+                  <input value={cTo} onChange={e => setCTo(e.target.value)} type="email" inputMode="email" autoComplete="email" placeholder="name@example.com" data-field="to" style={{ ...{ width: '100%', padding: '10px 12px', border: `1px solid ${cError.field === 'to' ? '#e5484d' : '#e6e9f0'}`, borderRadius: 10, fontSize: 13.5, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }, marginTop: 4 }} />
+                </label>
+                <label style={{ fontSize: 11.5, fontWeight: 700, color: MUTED }}>Subject
+                  <input value={cSubject} onChange={e => setCSubject(e.target.value)} maxLength={300} data-field="subject" style={{ ...{ width: '100%', padding: '10px 12px', border: `1px solid ${cError.field === 'subject' ? '#e5484d' : '#e6e9f0'}`, borderRadius: 10, fontSize: 13.5, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }, marginTop: 4 }} />
+                </label>
+                <textarea value={cBody} onChange={e => setCBody(e.target.value)} rows={10} placeholder="Write your message…" data-field="body"
+                  style={{ ...{ width: '100%', padding: '10px 12px', border: `1px solid ${cError.field === 'body' ? '#e5484d' : '#e6e9f0'}`, borderRadius: 10, fontSize: 13.5, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }, resize: 'vertical', lineHeight: 1.5, minHeight: 160 }} />
+                {cError.text && (
+                  <div role="alert" style={{ padding: '9px 12px', background: '#fceaea', color: '#b42318', borderRadius: 10, fontSize: 12.5, fontWeight: 600 }}>{cError.text}</div>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, padding: '12px 18px', borderTop: '1px solid #f2f3f5' }}>
+                <button onClick={() => setComposing(false)} disabled={sending} style={btn(false)}>Cancel</button>
+                <button onClick={sendNew} disabled={sending} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 20px', background: INK, color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: sending ? 'wait' : 'pointer' }}>
+                  <Send size={14} /> {sending ? 'Sending…' : 'Send'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );

@@ -1321,6 +1321,13 @@ even when the app is closed). Everything is ready to publish; what is left is
 yours because it needs your store accounts. The click-by-click is
 **docs/MOBILE-APPS.md**:
 
+**2026-11-25 — recommended: one app.** Protected Central already has Customer
+Engagement, the inbox, campaigns and the same push alerts, so you can answer
+support and run your own campaigns from it; PC Support stays unpublished for
+now. To get it on your phone from Play with no warnings, paste
+**`docs/audit/LOCAL-SESSION-PLAY-BRIEF.md`** into a local session (internal
+testing, each save waits for your yes).
+
 - [ ] Part 0 — install the two Android `.apk` files on your phone and try them.
 - [ ] Part 1 — Google Play developer account ($25 once) and Apple Developer Program ($99/yr).
 - [ ] Part 2.1 — the four `ANDROID_*` GitHub secrets (the upload key was sent to you — keep it safe).

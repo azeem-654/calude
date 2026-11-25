@@ -154,6 +154,8 @@ const hmCfg = await api('hosted-mail.php', { token: B.token, action: 'save_confi
 check('a customer cannot set the platform\'s hosted-mail keys', hmCfg.data.code === 'not_owner', JSON.stringify(hmCfg.data).slice(0, 120));
 const bTest = await api('mailbox.php', { token: B.token, accountId: B.acct, action: 'test_outgoing', id: aBox.data.id });
 check("B cannot test A's mailbox by id from its own workspace", !bTest.ok && /not in this workspace|Save your mail server/.test(bTest.data.error ?? ''), JSON.stringify(bTest.data).slice(0, 160));
+const bSendA = await api('smtp-send.php', { token: B.token, accountId: B.acct, mailboxId: aBox.data.id, to: 'x@example.test', subject: 'hi', html: 'hi' });
+check("B cannot send through A's mailbox by naming its id from its own workspace", !bSendA.ok && /not in this workspace/.test(bSendA.data.message ?? bSendA.data.error ?? ''), JSON.stringify(bSendA.data).slice(0, 160));
 const bAct = await api('mailbox.php', { token: B.token, accountId: B.acct, action: 'activate_all', ids: [aBox.data.id] });
 const aAfterAct = await api('mailbox.php', { token: A.token, accountId: A.acct, action: 'list' });
 check("B cannot check-and-turn-on A's mailbox by id from its own workspace",

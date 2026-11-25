@@ -17,7 +17,7 @@ import { diagnose } from '../lib/mailDiagnosis';
 import { requireSessionForSocket, denyForeignWorkspace, type Env } from '../lib/db';
 import { smtpSend, smtpVerify, type Encryption } from '../lib/smtp';
 import { buildMime } from '../lib/mime';
-import { loadMailbox } from './mailbox';
+import { loadMailbox, loadMailboxById } from './mailbox';
 import { gate as contentGate } from '../lib/contentGate';
 
 interface SendBody {
@@ -26,6 +26,8 @@ interface SendBody {
    *  instead of the request — which is how a browser sends without ever
    *  holding the password. */
   accountId?: string;
+  /** Which of the workspace's mailboxes sends. Without it, the primary one. */
+  mailboxId?: string;
   host?: string; port?: number; username?: string; password?: string; encryption?: string;
   fromName?: string; fromEmail?: string;
   to?: string; subject?: string; html?: string;
@@ -108,7 +110,15 @@ export async function handleSmtpSend(
 
 
   if (!host && d.accountId) {
-    const mb = await loadMailbox(env, String(d.accountId));
+    /* A named mailbox is looked up inside this workspace only, so another
+       workspace's id finds nothing. Before this, every send went out through
+       the primary mailbox's server even when the inbox showed a second one as
+       the sender — which the server then refused as an address it does not own. */
+    const mailboxId = typeof d.mailboxId === 'string' ? d.mailboxId.trim() : '';
+    const mb = mailboxId
+      ? await loadMailboxById(env, String(d.accountId), mailboxId)
+      : await loadMailbox(env, String(d.accountId));
+    if (mailboxId && !mb) return fail('That mailbox is not in this workspace. Choose another, or reconnect it in Settings → Email & SMS.');
     /* A mailbox that sends through a provider has no SMTP server to sign in
        to. Whichever route the page chose, the mailbox's own setting decides
        (lib/deliver) — a page that guessed SMTP from a stale cache must not be

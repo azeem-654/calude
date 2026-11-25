@@ -38,6 +38,8 @@ export interface EmailProviderConfig {
 
 export interface EmailPayload {
   to: string;
+  /** Send through this one of the workspace's mailboxes (SMTP route only); else the primary. */
+  mailboxId?: string;
   toName?: string;
   subject: string;
   html: string;
@@ -162,6 +164,7 @@ export async function sendEmail(config: EmailProviderConfig, raw: EmailPayload):
           accountId: getActiveAccountId(),
           fromName: config.fromName || (primary?.fromName ?? ''),
           fromEmail: config.fromEmail || (primary?.fromEmail ?? ''),
+          ...(payload.mailboxId ? { mailboxId: payload.mailboxId } : {}),
           to: payload.to, toName: payload.toName,
           replyTo: payload.replyTo || '',
           unsubscribeUrl: payload.unsubscribeUrl || '',
