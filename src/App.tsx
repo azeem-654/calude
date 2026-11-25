@@ -31,6 +31,7 @@ import ReportProblemHost from './components/shared/ReportProblemHost';
 import HelpLauncher from './components/shared/HelpLauncher';
 import TrialBar from './components/shared/TrialBar';
 import CornerHelp from './components/shared/CornerHelp';
+import SupportDesk from './components/shared/SupportDesk';
 import AiPatienceBar from './components/shared/AiPatienceBar';
 import Protron from './components/Protron/Protron';
 import { claimIndustryIfPending } from './services/industrySetup';
@@ -304,6 +305,7 @@ function AppLayout({ isClient }: { isClient: boolean }) {
       <HelpLauncher />
       <ReportProblemHost />
       <CornerHelp />
+      <SupportDesk />
       <AiPatienceBar />
       {/* The AI business manager, on every signed-in screen; its panel is a
           separate download fetched on first open (Protron.tsx). Only where it

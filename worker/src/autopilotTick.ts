@@ -1309,7 +1309,7 @@ async function carryOutWrite(
       ok: true,
       detail: formSlug
         ? `Built "${label}" with an enquiry form that collects into your contacts. It is a draft until you publish it.`
-        : `Built "${label}". The enquiry form could not be connected, so it says so on the page — make one in Customer Engagement → Forms and pick it in the builder.`,
+        : `Built "${label}". The enquiry form could not be connected, so it says so on the page — make one in Customer Support → Forms and pick it in the builder.`,
       link: funnel
         ? { kind: 'funnel', id, label: v.headline.slice(0, 60), route: '/funnels' }
         : { kind: 'website', id, label: label.slice(0, 60), route: '/websites' },

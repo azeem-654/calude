@@ -25,6 +25,12 @@ export interface Notice {
   link: string;
   linkLabel: string;
   createdAt: string;
+  /** 'notice' (plain), 'direct' (a message from support, answerable), 'call'
+      (an offer of a call; `link` is the meeting), 'access' (a request to open
+      the account; `ref` is the request). Absent on an older server. */
+  kind?: 'notice' | 'direct' | 'call' | 'access';
+  ref?: string;
+  conversationId?: string;
 }
 
 export interface MyAccount {

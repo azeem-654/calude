@@ -383,7 +383,7 @@ const REGION_RE = new RegExp(`\\b(?:in|across|around|near|throughout)\\s+(${REGI
    not a town. Found 2026-11-20: the wizard's instruction said "…in Protected
    Central" and Protron "…a template in Websites", and the daily finder was
    set to look for leads in "Protected Central". */
-const NOT_A_PLACE = /^(?:Protected Central|AI Autopilot|AI Prospecting|Protron|Websites?|Funnels?|Contacts?|Deals?|Pipelines?|Unified Inbox|Inbox|Customer Engagement|Engagement|Email campaigns?|Graphics Designer|Blog|Booking|Reports|Agency|Media Library|Settings|Google|Gmail|Outlook|Facebook|Instagram|LinkedIn|WordPress)\b/;
+const NOT_A_PLACE = /^(?:Protected Central|AI Autopilot|AI Prospecting|Protron|Websites?|Funnels?|Contacts?|Deals?|Pipelines?|Unified Inbox|Inbox|Customer Engagement|Customer Support|Engagement|Email campaigns?|Graphics Designer|Blog|Booking|Reports|Agency|Media Library|Settings|Google|Gmail|Outlook|Facebook|Instagram|LinkedIn|WordPress)\b/;
 
 export function placeIn(text: string): string | null {
   const re = /\b(?:in|across|around|near|throughout)\s+((?:[A-Z][\p{L}.'-]+)(?:(?:,\s*|\s+)(?:[A-Z][\p{L}.'-]+)){0,3})/gu;

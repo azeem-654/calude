@@ -255,11 +255,19 @@ export async function handleCustomers(req: Request, env: Env): Promise<Response>
     let notices: unknown[] = [];
     try {
       const r = await env.DB.prepare(
-        `SELECT id, title, body, link, link_label AS linkLabel, created_at AS createdAt
+        `SELECT id, title, body, link, link_label AS linkLabel, created_at AS createdAt, kind, ref, conversation_id AS conversationId
          FROM crm_notices WHERE to_email = ? AND read_at IS NULL ORDER BY created_at DESC LIMIT 5`,
       ).bind(user.email).all();
       notices = r.results ?? [];
-    } catch { notices = []; }
+    } catch {
+      /* Before 0107: the columns the message kinds added are not there yet. */
+      try {
+        notices = (await env.DB.prepare(
+          `SELECT id, title, body, link, link_label AS linkLabel, created_at AS createdAt
+           FROM crm_notices WHERE to_email = ? AND read_at IS NULL ORDER BY created_at DESC LIMIT 5`,
+        ).bind(user.email).all()).results ?? [];
+      } catch { notices = []; }
+    }
     const s = await loadSettings(env);
     return json({ success: true, trial, notices, kickoffUrl: safeLink(s.kickoffUrl) });
   }
@@ -269,6 +277,12 @@ export async function handleCustomers(req: Request, env: Env): Promise<Response>
     /* Scoped to the reader: an id is not permission to close somebody else's. */
     await env.DB.prepare('UPDATE crm_notices SET read_at = ? WHERE id = ? AND to_email = ?')
       .bind(nowIso(), id, user.email).run();
+    /* A message from support, read: its thread's replies are seen, so the
+       unread-reply reminder (lib/unreadNudge.ts) does not email about it. */
+    try {
+      const n = await env.DB.prepare('SELECT conversation_id AS c FROM crm_notices WHERE id = ? AND to_email = ?').bind(id, user.email).first<{ c: string }>();
+      if (n?.c) await env.DB.prepare('UPDATE crm_conversations SET visitor_seen_at = ? WHERE id = ?').bind(nowIso(), n.c).run();
+    } catch { /* before 0107 */ }
     return json({ success: true });
   }
 

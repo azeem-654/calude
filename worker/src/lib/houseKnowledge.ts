@@ -128,7 +128,7 @@ MAIN FEATURES
 - Content: social posts with images in your brand colours (Facebook, Instagram, LinkedIn, X, TikTok, Pinterest, YouTube) and SEO blog articles published to WordPress on a schedule, each waiting for approval.${video ? ' AI Video Studio for short videos and editing recordings by their transcript.' : ''}
 - Booking pages with reminders and rebooking for no-shows; a calendar.
 - Websites and funnels whose forms put leads straight into the CRM${held ? '' : '; an online shop'}.
-${held ? '' : '- Reviews: keep track of what people say about you on Google.\n'}- Customer Engagement: an AI chat widget, forms and tickets for your own website.
+${held ? '' : '- Reviews: keep track of what people say about you on Google.\n'}- Customer Support: an AI chat widget, forms and tickets for your own website.
 - Agencies: a workspace per client (sub-accounts) under your own brand and login address (white-label), and reports clients open without a login.
 - Works in a phone browser.
 
@@ -150,7 +150,7 @@ MANAGED SERVICES (our team does the work, separate from the software plans, each
 ` : ''}
 WHERE THINGS ARE IN THE APP (menu name — address; say the name, give the address)
 - Dashboard — ${APP}/ · AI Autopilot (business workspaces) — ${APP}/autopilot · Contacts — ${APP}/contacts · AI Prospecting — ${APP}/prospecting · Lead library — ${APP}/lead-directory
-- Unified Inbox — ${APP}/conversations · Customer Engagement (chat widget, forms, tickets) — ${APP}/engagement${held ? '' : ` · Reviews — ${APP}/reputation`}
+- Unified Inbox — ${APP}/conversations · Customer Support (chat widget, forms, tickets) — ${APP}/engagement${held ? '' : ` · Reviews — ${APP}/reputation`}
 - Deals (pipelines) — ${APP}/pipelines${held ? '' : ` · Jobs & revenue — ${APP}/jobs`} · Calendar — ${APP}/calendar · Booking pages — ${APP}/scheduling${held ? '' : ` · Online shop — ${APP}/sell`}
 - Email campaigns — ${APP}/marketing · Funnels — ${APP}/funnels · Websites — ${APP}/websites · Blog & SEO — ${APP}/blog-automation · Graphics Designer & Editor — ${APP}/social-creator · Media Library — ${APP}/video-studio · Reports — ${APP}/analytics
 - Settings — ${APP}/settings · Email & SMS setup (connect a mailbox or domain) — ${APP}/settings?tab=email-sms · Plan & billing — ${APP}/billing · Agency & clients — ${APP}/agency${held ? '' : ` · Industry snapshots — ${APP}/snapshots`} · Affiliate program — ${APP}/affiliate

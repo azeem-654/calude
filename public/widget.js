@@ -874,7 +874,9 @@
     polling = true;
     var baseline = !cursor;
     var conv = state.conv;
-    post({ action: 'poll', conversationId: conv, visitorKey: state.vkey, since: cursor || undefined }).then(function (r) {
+    /* `seen`: the chat is open in front of them, so what comes back is read —
+       the server's unread-reply reminder waits on exactly this. */
+    post({ action: 'poll', conversationId: conv, visitorKey: state.vkey, since: cursor || undefined, seen: chatOnScreen() }).then(function (r) {
       polling = false;
       if (conv !== state.conv) return;
       if (!r.success) { schedulePoll(15000); return; }
@@ -897,6 +899,11 @@
     if (booted) return;
     booted = true;
     if (state.conv) schedulePoll(0);
+    /* The "you have an unread reply" email links back here with #pc-chat or
+       #pc-tickets: open straight onto the conversation, or the ticket list. */
+    var want = (location.hash || '').toLowerCase();
+    if (want === '#pc-chat' && state.conv && has('chat')) { if (!state.open) toggle(); show('chat'); }
+    else if (want === '#pc-tickets' && has('ticket')) { if (!state.open) toggle(); show('status'); }
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'visible') {
         if (chatOnScreen()) markUnread(false);

@@ -994,7 +994,7 @@ export const REQUIREMENT_INFO: Record<RequirementId, RequirementInfo> = {
   store: { label: 'Shop page', why: 'One address a stranger can buy from.', kind: 'included', route: '/sell' },
   payments: { label: 'A way to take payment', why: 'The shop will not publish until somebody can pay.', kind: 'check', route: '/settings?tab=billing' },
   shipping: { label: 'Shipping rates', why: 'Needed before a physical order can be charged correctly.', kind: 'optional', route: '/sell' },
-  engagement: { label: 'Customer Engagement', why: 'The chat assistant, knowledge articles and forms.', kind: 'included', route: '/engagement' },
+  engagement: { label: 'Customer Support', why: 'The chat assistant, knowledge articles and forms.', kind: 'included', route: '/engagement' },
   wordpress: { label: 'Your WordPress site', why: 'Only to publish articles to your own website.', kind: 'optional', route: '/blog-automation' },
 };
 
@@ -1469,7 +1469,7 @@ const CATALOGUE: Solution[] = [
           ...(many(a.supportChannels).includes('chat') ? [{ key: 'widget', label: 'Paste the chat widget onto your website', by: 'you' as const, route: '/engagement' }] : []),
         ],
         outputs: ['Answers to common questions', 'Tasks for the requests that need a person'],
-        destinations: [{ label: 'Customer Engagement', route: '/engagement' }, { label: 'Conversations', route: '/conversations' }],
+        destinations: [{ label: 'Customer Support', route: '/engagement' }, { label: 'Conversations', route: '/conversations' }],
         approvals: ['The assistant only uses articles you have published'],
         manual: [one(a.escalation) ? `Escalations go to ${one(a.escalation)}` : 'Handle the requests it passes to a person'],
         requirements: ['engagement', 'contacts'],

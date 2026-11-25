@@ -179,7 +179,13 @@ True today, and said on `/security`, the home page and Settings:
 - Security activity log, 180 days.
 - HTTPS everywhere with HSTS; connected credentials encrypted with AES-256-GCM
   and never returned to a browser.
-- No staff login that can open a workspace as the customer.
+- No staff login that opens a workspace on its own. Support can open a
+  customer's workspaces only after the customer approves a request (email
+  link or in-app card), for 1–8 hours they choose; they are emailed when it
+  starts and when it ends and can end it any time (`crm_support_access`,
+  checked in `workspaceAccess` → `supportGrantActive`). Protected Central may
+  review an account read-only for misuse; it cannot change anything and every
+  review is recorded with its reason (Terms → Using the service properly).
 - Export your data; delete your account and workspaces.
 - AI receives what the task needs, not the workspace; which provider; that
   AI calls are made from the server except AI Shorts' video upload.

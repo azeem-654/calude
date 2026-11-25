@@ -192,12 +192,12 @@ export async function runEngageDispatch(env: Env): Promise<DispatchReport> {
       try {
         const res = await deliver(box, {
           fromEmail,
-          fromName: settings.business || box.from.name || 'Customer Engagement',
+          fromName: settings.business || box.from.name || 'Customer Support',
           to: address,
           subject: rule.subject(ev.summary || '').slice(0, 180),
           html: `<p>${escapeHtml(ev.summary || ev.kind)}</p>`
             + (extra ? `<p style="color:#334155">${escapeHtml(extra)}</p>` : '')
-            + '<p style="color:#64748b;font-size:13px">Open Customer Engagement to pick it up.</p>',
+            + '<p style="color:#64748b;font-size:13px">Open Customer Support to pick it up.</p>',
           replyTo: box.from.replyTo || undefined,
         });
         if (res.ok) sentAny = true;

@@ -54,6 +54,8 @@ interface Req {
   /* A conversation, proven by the key handed back when it was created. */
   conversationId?: string;
   visitorKey?: string;
+  /** The poll's: the chat is open and visible, so what it returns is read. */
+  seen?: boolean;
   ticketRef?: string;
   guestKey?: string;
   /* Report a problem: what went wrong, a screenshot and their own pictures
@@ -414,8 +416,11 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     ).bind(String(d.conversationId ?? '')).first<Record<string, unknown>>();
 
     /* One message for "no such conversation" and "wrong key". Telling them apart
-       would turn an id into a way of asking whether somebody else's chat exists. */
-    if (!conv || String(conv.visitorKey) !== String(d.visitorKey ?? '')) {
+       would turn an id into a way of asking whether somebody else's chat exists.
+       A conversation with no key is never the widget's — a direct thread with
+       one of the owner's customers (routes/supportDesk.ts) has none — so an
+       empty key matching an empty key is a refusal, here and below. */
+    if (!conv || !conv.visitorKey || String(conv.visitorKey) !== String(d.visitorKey ?? '')) {
       return withCors(fail('That conversation could not be found.', 404));
     }
     if (conv.status === 'closed') return withCors(fail('This conversation has been closed.', 409));
@@ -570,10 +575,18 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
       `SELECT id, visitor_key AS visitorKey, handled_by AS handledBy, status, updated_at AS updatedAt
        FROM crm_conversations WHERE id = ?`,
     ).bind(String(d.conversationId ?? '')).first<Record<string, unknown>>();
-    if (!conv || String(conv.visitorKey) !== String(d.visitorKey ?? '')) {
+    if (!conv || !conv.visitorKey || String(conv.visitorKey) !== String(d.visitorKey ?? '')) {
       return withCors(fail('That conversation could not be found.', 404));
     }
     const head = { success: true, cursor: nowIso(), handedOver: conv.handledBy !== 'ai', status: conv.status };
+    /* The chat is open and in front of them: what has arrived is read. Only
+       written when something is newer than the last mark, so a poll every
+       three seconds is not a write every three seconds. The unread-reply
+       reminder (lib/unreadNudge.ts) reads it. */
+    if (d.seen === true) {
+      await env.DB.prepare('UPDATE crm_conversations SET visitor_seen_at = ?1 WHERE id = ?2 AND visitor_seen_at < updated_at')
+        .bind(head.cursor, String(conv.id)).run().catch(() => null);
+    }
     const sinceMs = Date.parse(String(d.since ?? ''));
     if (Number.isFinite(sinceMs)) {
       const from = new Date(sinceMs - OVERLAP_MS).toISOString();
@@ -603,7 +616,7 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     const conv = await env.DB.prepare(
       'SELECT id, account_id AS accountId, visitor_key AS visitorKey, status FROM crm_conversations WHERE id = ?',
     ).bind(String(d.conversationId ?? '')).first<Record<string, unknown>>();
-    if (!conv || String(conv.visitorKey) !== String(d.visitorKey ?? '')) {
+    if (!conv || !conv.visitorKey || String(conv.visitorKey) !== String(d.visitorKey ?? '')) {
       return withCors(fail('That conversation could not be found.', 404));
     }
     if (conv.status === 'closed') return withCors(fail('This conversation has been closed.', 409));
@@ -660,7 +673,7 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
     const conv = await env.DB.prepare(
       'SELECT id, account_id AS accountId, visitor_key AS visitorKey FROM crm_conversations WHERE id = ?',
     ).bind(String(d.conversationId ?? '')).first<Record<string, unknown>>();
-    if (!conv || String(conv.visitorKey) !== String(d.visitorKey ?? '')) {
+    if (!conv || !conv.visitorKey || String(conv.visitorKey) !== String(d.visitorKey ?? '')) {
       return withCors(fail('That conversation could not be found.', 404));
     }
     const accountId = String(conv.accountId);
@@ -874,6 +887,8 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
       `SELECT role, body, created_at AS createdAt FROM crm_ticket_messages
        WHERE ticket_id = ? AND internal = 0 ORDER BY created_at ASC LIMIT 100`,
     ).bind(String(t.id)).all();
+    /* Opened, so every reply in it has been seen (lib/unreadNudge.ts). */
+    await env.DB.prepare('UPDATE crm_tickets SET customer_seen_at = ? WHERE id = ?').bind(nowIso(), String(t.id)).run().catch(() => null);
 
     return withCors(json({ success: true, ticket: t, messages: results ?? [] }));
   }
@@ -978,7 +993,13 @@ export async function handleEngage(req: Request, env: Env): Promise<Response> {
       if (verdict === 'wrong') return withCors(fail('That code is not right — check the email we sent and try again.', 200, { field: 'status.code', code: 'wrong' }));
       if (verdict === 'dead') return withCors(fail('That code has expired or had too many tries — ask for a new one.', 200, { field: 'status.code', code: 'dead' }));
     }
-    return withCors(json({ success: true, email, signedIn: !!me, tickets: await ticketsFor(env, accountId, email) }));
+    const mine = await ticketsFor(env, accountId, email);
+    /* Listed with their messages, so every reply in them has been seen. */
+    if (mine.length) {
+      await env.DB.prepare(`UPDATE crm_tickets SET customer_seen_at = ? WHERE account_id = ? AND id IN (${mine.map(() => '?').join(',')})`)
+        .bind(nowIso(), accountId, ...mine.map(t => t.id)).run().catch(() => null);
+    }
+    return withCors(json({ success: true, email, signedIn: !!me, tickets: mine }));
   }
 
   /* ══ Live help: sharing a screen with the business ══════════════════════

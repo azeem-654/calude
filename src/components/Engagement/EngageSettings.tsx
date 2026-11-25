@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { Check, Loader } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { getSession } from '../../services/auth';
 import { getSettings, saveSettings } from '../../services/engagement';
 
 const INK = '#0f172a';
@@ -19,6 +20,8 @@ export default function EngageSettings() {
   const { addNotification } = useApp();
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [busy, setBusy] = useState(false);
+  const session = getSession();
+  const ownerHere = !!session && session.user.accountId == null && session.user.role === 'agency';
 
   useEffect(() => {
     void (async () => {
@@ -30,6 +33,9 @@ export default function EngageSettings() {
         notifyNewConversation: s.notify_new_conversation !== 0,
         notifyNewTicket: s.notify_new_ticket !== 0,
         notifyNewSubmission: s.notify_new_submission !== 0,
+        /* Unset means the default: on for the install owner's own support,
+           off for everybody else's (worker/src/lib/unreadNudge.ts). */
+        nudgeUnread: s.nudge_unread === 1 ? true : s.nudge_unread === 0 ? false : ownerHere,
       });
     })();
   }, []);
@@ -75,6 +81,12 @@ export default function EngageSettings() {
         {toggle('notifyNewConversation', 'A chat starts or needs a person', 'The second one is the one that matters — somebody is waiting.')}
         {toggle('notifyNewTicket', 'A ticket is raised', 'Including ones the assistant opens on a customer’s behalf.')}
         {toggle('notifyNewSubmission', 'A form is submitted', 'Every submission is stored either way; this is only about being told.')}
+      </div>
+
+      <div style={{ display: 'grid', gap: 11, borderTop: `1px solid ${LINE}`, paddingTop: 14 }}>
+        <span style={lbl}>Bring people back to unread replies</span>
+        {toggle('nudgeUnread', 'Email a customer about a reply they have not read',
+          'When a person here answers a chat or ticket and the customer has left without reading it, they get one email two hours later with a short preview and a link back. One per reply, from your connected mailbox; replies older than a week are left alone.')}
       </div>
 
       <button onClick={() => void (async () => {

@@ -51,7 +51,7 @@ export default function FormPicker({
         <p style={{ margin: '6px 0 0', fontSize: 11, color: '#b45309', lineHeight: 1.5 }}>
           You have no live forms yet. Make one in{' '}
           <Link to="/engagement?tab=forms" style={{ color: '#4f46e5', fontWeight: 700 }}>
-            Customer Engagement → Forms <ExternalLink size={9} style={{ display: 'inline' }} />
+            Customer Support → Forms <ExternalLink size={9} style={{ display: 'inline' }} />
           </Link>
           {' '}and it will appear here.
         </p>

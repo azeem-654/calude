@@ -117,7 +117,7 @@ function FormTrigger({ node, set }: { node: WorkflowNode; set: Set }) {
       )}
       {chosen && chosen.status !== 'live' && (
         <span style={{ ...hint, color: T.warn }}>
-          "{chosen.name}" is a draft. It takes nothing until it is switched on in Customer Engagement → Forms.
+          "{chosen.name}" is a draft. It takes nothing until it is switched on in Customer Support → Forms.
         </span>
       )}
       {chosen && chosen.status === 'live' && (

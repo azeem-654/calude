@@ -315,7 +315,7 @@ export default function SecurityCenter() {
       {/* ── Workspace ── */}
       {ov.workspace && (
         <div style={CARD}>
-          <Head icon={Users} title="Who can open this workspace" sub={`You are the ${ov.workspace.yourRole.toLowerCase()}. No other customer can open it, and there is no staff login that can open it as you.`} />
+          <Head icon={Users} title="Who can open this workspace" sub={`You are the ${ov.workspace.yourRole.toLowerCase()}. No other customer can open it. Protected Central support can open it only after you approve a request, for the hours you choose, and you can end that at any time.`} />
           <div style={{ display: 'grid', gap: 6 }}>
             {ov.workspace.members.map(m => (
               <div key={m.email} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, padding: '6px 0', flexWrap: 'wrap' }}>

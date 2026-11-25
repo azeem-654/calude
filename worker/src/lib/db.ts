@@ -508,6 +508,29 @@ export interface AccessResult {
   /** Why not, when not. `plan_limit` is a different problem from `not_yours`. */
   code?: 'not_yours' | 'plan_limit';
   message?: string;
+  /** The install owner, inside a customer's workspace on that customer's
+      permission (crm_support_access) — not their own. */
+  support?: boolean;
+}
+
+/**
+ * Has this customer given the install owner access to their workspaces, and
+ * is it still running?
+ *
+ * The only way the owner reaches a workspace that is not theirs. It is asked
+ * here, at the one gate every route goes through, rather than in a route of
+ * its own, so "the owner can help" and "the owner can read anything" can never
+ * drift apart: no permission row, no access, whatever the route. Expiry is
+ * read from the clock, not from the cron that later marks the row expired —
+ * a cron running late must not stretch somebody's permission.
+ */
+export async function supportGrantActive(db: D1Database, customerEmail: string): Promise<boolean> {
+  try {
+    const row = await db.prepare(
+      "SELECT 1 AS x FROM crm_support_access WHERE customer_email = ? AND mode = 'assist' AND status = 'active' AND expires_at > ? LIMIT 1",
+    ).bind(customerEmail, nowIso()).first();
+    return !!row;
+  } catch { return false; /* before migration 0107: nobody has given permission */ }
 }
 
 /**
@@ -546,9 +569,11 @@ export async function workspaceAccess(
   const row = await db.prepare('SELECT owner_email FROM crm_workspaces WHERE account_id = ?')
     .bind(accountId).first<{ owner_email: string }>();
   if (row) {
-    return row.owner_email === user.email
-      ? { ok: true }
-      : { ok: false, code: 'not_yours', message: 'That workspace is not yours.' };
+    if (row.owner_email === user.email) return { ok: true };
+    if (user.accountId == null && user.role === 'agency' && await supportGrantActive(db, row.owner_email)) {
+      return { ok: true, support: true };
+    }
+    return { ok: false, code: 'not_yours', message: 'That workspace is not yours.' };
   }
 
   /*

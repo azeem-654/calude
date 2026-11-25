@@ -238,8 +238,8 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
   }
 
   if (act === 'reply') {
-    const conv = await env.DB.prepare('SELECT id FROM crm_conversations WHERE id = ? AND account_id = ?')
-      .bind(s(d.conversationId, 80), accountId).first();
+    const conv = await env.DB.prepare('SELECT id, channel, person_id AS personId FROM crm_conversations WHERE id = ? AND account_id = ?')
+      .bind(s(d.conversationId, 80), accountId).first<{ id: string; channel: string; personId: string }>();
     if (!conv) return fail('That conversation could not be found.', 404);
     const text = s(d.message, 4000);
     const hasImage = typeof d.image === 'string' && d.image.length > 0;
@@ -278,6 +278,19 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
                 needs_human_since = ''
          WHERE id = ? AND account_id = ?`,
       ).bind(now, now, now, s(d.conversationId, 80), accountId).run();
+      /* A direct thread with one of the owner's customers (routes/supportDesk.ts)
+         has no widget on their side to poll it: the reply reaches them as the
+         corner card in their app, where they can answer it again. */
+      if (conv.channel === 'direct' && text) {
+        const p = await env.DB.prepare('SELECT email FROM crm_engage_people WHERE id = ? AND account_id = ?')
+          .bind(conv.personId, accountId).first<{ email: string }>();
+        if (p?.email) {
+          await env.DB.prepare(
+            `INSERT INTO crm_notices (id, to_email, title, body, link, link_label, emailed, created_at, kind, conversation_id)
+             VALUES (?,?,?,?, '', '', 'skipped', ?, 'direct', ?)`,
+          ).bind(crypto.randomUUID(), p.email, `A reply from ${user?.name || 'support'}`, text.slice(0, 2000), now, conv.id).run().catch(() => null);
+        }
+      }
     } else {
       await env.DB.prepare('UPDATE crm_conversations SET updated_at = ? WHERE id = ? AND account_id = ?')
         .bind(now, s(d.conversationId, 80), accountId).run();
@@ -1071,8 +1084,8 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
     await env.DB.prepare(
       `INSERT INTO crm_engage_settings
        (account_id, business_name, support_email, logo_url, accent,
-        notify_new_conversation, notify_new_ticket, notify_new_submission, notify_emails, retain_days, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        notify_new_conversation, notify_new_ticket, notify_new_submission, notify_emails, retain_days, nudge_unread, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(account_id) DO UPDATE SET
          business_name=excluded.business_name, support_email=excluded.support_email,
          logo_url=excluded.logo_url, accent=excluded.accent,
@@ -1080,13 +1093,15 @@ export async function handleEngagement(req: Request, env: Env): Promise<Response
          notify_new_ticket=excluded.notify_new_ticket,
          notify_new_submission=excluded.notify_new_submission,
          notify_emails=excluded.notify_emails, retain_days=excluded.retain_days,
-         updated_at=excluded.updated_at`,
+         nudge_unread=excluded.nudge_unread, updated_at=excluded.updated_at`,
     ).bind(
       accountId, s(r.businessName, 160), s(r.supportEmail, 190), s(r.logoUrl, 400), s(r.accent, 20) || '#5b46e5',
       r.notifyNewConversation === false ? 0 : 1,
       r.notifyNewTicket === false ? 0 : 1,
       r.notifyNewSubmission === false ? 0 : 1,
-      s(r.notifyEmails, 600), int(r.retainDays, 0, 3650), now,
+      s(r.notifyEmails, 600), int(r.retainDays, 0, 3650),
+      /* Unset stays unset (the default: on for the owner's own support only). */
+      r.nudgeUnread === true ? 1 : r.nudgeUnread === false ? 0 : null, now,
     ).run();
     return json({ success: true });
   }

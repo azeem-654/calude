@@ -156,6 +156,15 @@ const bTest = await api('mailbox.php', { token: B.token, accountId: B.acct, acti
 check("B cannot test A's mailbox by id from its own workspace", !bTest.ok && /not in this workspace|Save your mail server/.test(bTest.data.error ?? ''), JSON.stringify(bTest.data).slice(0, 160));
 const bSendA = await api('smtp-send.php', { token: B.token, accountId: B.acct, mailboxId: aBox.data.id, to: 'x@example.test', subject: 'hi', html: 'hi' });
 check("B cannot send through A's mailbox by naming its id from its own workspace", !bSendA.ok && /not in this workspace/.test(bSendA.data.message ?? bSendA.data.error ?? ''), JSON.stringify(bSendA.data).slice(0, 160));
+/* The owner's support desk (routes/supportDesk.ts): a customer gets none of the owner's actions, and cannot answer a request by somebody else's id. */
+for (const action of ['customers', 'review', 'access_request', 'access_open', 'broadcast_send', 'direct']) {
+  const r = await api('support-desk.php', { token: B.token, action, email: A.email, reason: 'x', id: 'x', message: 'x', subject: 'x', body: 'x', audience: ['trial'], hours: 1 });
+  check(`B cannot use the support desk's ${action}`, !r.ok && r.status === 403, JSON.stringify(r.data).slice(0, 120));
+}
+for (const action of ['access_decide', 'access_revoke', 'notice_reply', 'notice_answer']) {
+  const r = await api('support-desk.php', { token: B.token, action, id: 'not-theirs', approve: true, message: 'x', answer: 'join' });
+  check(`B cannot ${action} by an id that is not theirs`, !r.ok, JSON.stringify(r.data).slice(0, 120));
+}
 const bAct = await api('mailbox.php', { token: B.token, accountId: B.acct, action: 'activate_all', ids: [aBox.data.id] });
 const aAfterAct = await api('mailbox.php', { token: A.token, accountId: A.acct, action: 'list' });
 check("B cannot check-and-turn-on A's mailbox by id from its own workspace",

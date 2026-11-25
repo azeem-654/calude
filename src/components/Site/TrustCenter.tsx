@@ -34,7 +34,8 @@ const SECTIONS: { id: string; icon: typeof Lock; title: string; lead: string; po
       'Every request that reads or changes workspace data is checked on the server against the signed-in account.',
       'Records are saved against their workspace; a request naming another workspace’s record is refused, not quietly applied.',
       'Workspace isolation is tested by signing up two accounts and having one attempt to read, send as, and overwrite the other.',
-      'There is no staff login that can open your workspace as you.',
+      'There is no staff login that opens your workspace on its own. Support can open it only after you approve a request — by email or in the app — for the hours you choose; you are emailed when it starts and when it ends, and you can end it at any time.',
+      'To keep the service safe for everybody, Protected Central may look at an account read-only to check it is not being misused. Nothing can be changed that way, and every look is recorded with its reason.',
     ],
   },
   {

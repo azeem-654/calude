@@ -97,7 +97,7 @@ export const NAV_GROUPS: NavGroup[] = [
       /* Beside the inbox on purpose: this is where the conversations in that
          inbox come from, and somebody looking for "chat widget" or "support"
          is looking for the same thing from the other end. */
-      { path: '/engagement', label: 'Customer Engagement', desc: 'AI chat, forms, tickets and a widget for any website', icon: MessageSquare, aka: ['chat', 'chatbot', 'widget', 'support', 'helpdesk', 'tickets', 'forms', 'knowledge base', 'live chat', 'ai agent'] },
+      { path: '/engagement', label: 'Customer Support', desc: 'AI chat, forms, tickets and a widget for any website', icon: MessageSquare, aka: ['customer engagement', 'chat', 'chatbot', 'widget', 'support', 'helpdesk', 'tickets', 'forms', 'knowledge base', 'live chat', 'ai agent'] },
     ],
   },
   {

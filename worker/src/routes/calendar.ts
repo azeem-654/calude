@@ -61,7 +61,7 @@ export async function handleCalendar(req: Request, env: Env): Promise<Response> 
       + '<body style="font-family:system-ui;padding:48px;max-width:32rem;margin:0 auto;color:#0f172a">'
       + `<h1 style="font-size:20px">${esc(title)}</h1>`
       + `<p style="color:#64748b;line-height:1.6">${esc(detail)}</p>`
-      + `<p><a href="${esc(origin)}/engagement" style="color:#5b46e5">Back to Customer Engagement</a></p>`
+      + `<p><a href="${esc(origin)}/engagement" style="color:#5b46e5">Back to Customer Support</a></p>`
       + '</body>',
       { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'", 'X-Content-Type-Options': 'nosniff' } },
     );

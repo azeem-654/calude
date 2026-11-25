@@ -704,7 +704,7 @@ export default function Funnels() {
                   )}
                   <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '0 0 16px', lineHeight: 1.55 }}>
                     {live
-                      ? 'Each time somebody opens the public link counts as one view; your own previews are not counted. Enquiries from its forms arrive in Contacts and Customer Engagement.'
+                      ? 'Each time somebody opens the public link counts as one view; your own previews are not counted. Enquiries from its forms arrive in Contacts and Customer Support.'
                       : 'This funnel is not published, so there is nothing to count yet. Open the builder and press Publish to put it on a public link.'}
                   </p>
                 </>

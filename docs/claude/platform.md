@@ -422,6 +422,75 @@ SB 1001 for sales chats), and the first thing a marketplace reviewer who
 tests the help button would hold against the product. `test:chatlive` checks
 the pacing in a browser.
 
+## The owner's support desk — Customer Support → Customers (2026-11-25)
+
+**Customer Engagement is called Customer Support** in the app (nav, header,
+help texts, house knowledge); code, routes and `/engagement` keep the old
+names. The marketing site and its recorded clips still say Customer
+Engagement — change them with the site, not here.
+
+`routes/supportDesk.ts` (`/api/support-desk.php`), `lib/supportDesk.ts`,
+migration 0107, UI `Engagement/EngageCustomers.tsx` (tab shown to the install
+owner only), `shared/SupportDesk.tsx` (mounted for everybody signed in),
+`shared/CornerHelp.tsx` `NoticeItem`. `npm run test:supportdesk` (self-
+contained: SMTP sink, fresh D1, wrangler `--test-scheduled`).
+
+- **Online** = a heartbeat (`heartbeat`, every 60 s while a page is visible,
+  customers only) in `crm_user_presence`; online if < 150 s old. A new visit
+  (30 min gap) raises `customer.online` for the owner, at most every 6 h per
+  person. Owner alerts are rows in `crm_owner_alerts` read by the owner's open
+  app (`pulse`, every 30 s → toast + desktop Notification) and pushed to the
+  phones registered on the owner's support workspace (`ownerAlert`).
+- **Direct messages / call offers** are a conversation with **channel
+  `direct`** in the owner's support workspace (`supportAccount`: the house
+  widget's workspace, else the owner's oldest), so they are answered in the
+  ordinary inbox. The customer sees them as `crm_notices` of kind `direct` /
+  `call` (columns from 0107: `kind`, `conversation_id`, `ref`, `answer`) and
+  answers from the corner card (`notice_reply` → visitor message, waiting for a
+  person, `chat.message` push). `engagement.php reply` on a `direct`
+  conversation writes the next card. A call offer is a Google Meet made now on
+  the owner's connected calendar; "Join" tells the owner (`call.accepted`,
+  rung as a call). **A conversation with an empty `visitor_key` is never the
+  widget's**: engage.ts refuses an empty key matching an empty key.
+- **Access to a customer's account — only with permission.** `crm_support_access`
+  mode `assist`: the owner asks (1/2/4/8 h + reason) → email with a link
+  (`/api/support-consent.php?t=<token>`, token stored hashed; **GET shows a
+  page, only the button's POST acts** — mail scanners) and an in-app card
+  (kind `access`) → approved → `active` until `expires_at`. **The gate is
+  `workspaceAccess` → `supportGrantActive` (lib/db.ts)**: the install owner on
+  a workspace owned by that customer, while an active row's `expires_at` is in
+  the future — read from the clock, not the cron. Every route is covered by
+  that one check; there is no other way in. Customer can end it (banner, the
+  approval email's "End access now", `access_revoke`); owner can end it; the
+  cron marks `expired`, lapses requests unanswered for 48 h, and emails
+  "access has ended" once (`end_mailed`). The owner switches into the
+  workspace through the switcher (`access_open`, `pc_support_visit`); the
+  banner counts down and leaving/expiry removes that workspace and its keys
+  from the browser (`leaveVisit`).
+- **Read-only review** (`review`, reason required): `reviewSnapshot` reads
+  the customer's workspaces directly (crm_data lists with samples, projects,
+  mailboxes, sends, widgets, conversations, tickets, pages, domains), drops
+  any column that looks like a secret (`SECRETISH`), writes nothing, never
+  passes the gate, and is logged as a `review` row. Covered by Terms → Using
+  the service properly and the Privacy/Trust wording (docs/SECURITY.md §7);
+  the customer is not emailed (owner's choice, 2026-11-25).
+- **Emails to customers by plan** (`broadcast_*`): segments from `segmentOf`
+  — `appsumo` (crm_plans source) before `paid`/`trial`/`ended`/`other`
+  (lib/trial.ts). Queued in `crm_support_broadcast_recipients`, sent 40 a
+  tick by the cron from the install mailbox, three tries then `failed`.
+  `marketing` carries the unsubscribe (`/api/support-unsub.php`, HMAC-signed,
+  RFC 8058 header) and skips `crm_customer_optouts` at send time; `update`
+  goes to everybody chosen. Optional in-app copy.
+- **Unread-reply reminder** (`lib/unreadNudge.ts`, cron, gated 10 min): a
+  person's reply (role `agent`, not internal) 2 h old, newer than
+  `visitor_seen_at` (widget poll with `seen`), `last_visitor_at` and the last
+  reminder — or for tickets `customer_seen_at` (ticket_status / my_tickets)
+  and the customer's last message — gets one email from the workspace's
+  mailbox with a 180-character preview and a link back (`#pc-chat` /
+  `#pc-tickets` open the widget there). Nothing older than a week. On by
+  default for the install owner's workspaces only (`crm_engage_settings
+  .nudge_unread` NULL), a switch in Customer Support → Settings for others.
+
 ## Phone apps — two Capacitor shells around the live site
 
 `mobile/` holds **Protected Central** (`customer/`, `com.protectedcentral.app`)

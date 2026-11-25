@@ -24,7 +24,7 @@
  * their substance should go back to the lawyer.
  */
 
-export const LEGAL_UPDATED = '11 November 2026';
+export const LEGAL_UPDATED = '25 November 2026';
 /*
  * The operator's legal identity, as the owner gave it on 2026-11-11
  * (OWNER-CHECKLIST #46, PUB-2): the name, a Delaware address and United States
@@ -106,7 +106,7 @@ export const PRIVACY: LegalSection[] = [
   {
     id: 'security', title: 'How it is protected',
     body: [
-      'Every connection uses HTTPS. Workspace information is separated between workspaces and every request is checked on our servers against who is signed in. Credentials you connect — mailbox passwords, API keys, payment keys, calendar tokens — are encrypted before they are stored and are never returned to a browser. There is no staff login that can open your workspace as you. No system is perfectly secure; our Security page (protectedcentral.com/security) describes exactly what we do, and what we do not claim.',
+      'Every connection uses HTTPS. Workspace information is separated between workspaces and every request is checked on our servers against who is signed in. Credentials you connect — mailbox passwords, API keys, payment keys, calendar tokens — are encrypted before they are stored and are never returned to a browser. There is no staff login that opens your workspace on its own: our support can open it only after you approve a request, for the hours you choose, and you are emailed when that access starts and ends. To keep the service safe we may look at an account read-only to check it is not being misused; every such look is recorded with its reason. No system is perfectly secure; our Security page (protectedcentral.com/security) describes exactly what we do, and what we do not claim.',
     ],
   },
   {
@@ -155,6 +155,8 @@ export const TERMS: LegalSection[] = [
     id: 'use', title: 'Using the service properly',
     body: [
       'You may use the service only for lawful purposes and in line with the Acceptable Use policy. In particular, you are responsible for having the right to contact the people you email or text, for honouring opt-outs, and for the accuracy of what you publish. We may review, hold or refuse content that appears to break these rules, and suspend accounts that do, as that policy describes.',
+      'To protect the service, its other customers and the law, Protected Central may review your account read-only at any time to check it is being used within these terms — for example what is being sent, to whom, and what is published. A review cannot change anything in your account, and every review is recorded with its reason. We do not tell you each time, because telling somebody who is misusing the service would defeat the purpose.',
+      'If you ask for help setting things up, our support may ask your permission to open your account. Nothing happens unless you approve, by email or in the app, for the number of hours you choose. You are emailed when that access starts and again when it ends, and you can end it at any time.',
     ],
   },
   {

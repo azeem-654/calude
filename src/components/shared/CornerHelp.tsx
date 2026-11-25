@@ -41,9 +41,10 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { AlertTriangle, CalendarCheck, LifeBuoy, MessageSquare, Monitor, Phone, X } from 'lucide-react';
+import { AlertTriangle, CalendarCheck, LifeBuoy, MessageSquare, Monitor, Phone, Send, ShieldCheck, Video, X } from 'lucide-react';
 import { getSession } from '../../services/auth';
-import { myAccount, onMyAccount, readNotice, type MyAccount } from '../../services/customers';
+import { myAccount, onMyAccount, readNotice, type MyAccount, type Notice } from '../../services/customers';
+import { desk } from '../../services/supportDesk';
 import { TROUBLE_EVENT } from '../../services/fieldGuard';
 import { NAV_GROUPS } from '../Layout/navModel';
 
@@ -154,20 +155,7 @@ export default function CornerHelp() {
       display: 'grid', gap: 10,
     }}>
       {notices.slice(0, 2).map(n => (
-        <div key={n.id} role="status" style={CARD}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <b style={{ fontSize: 14, lineHeight: 1.35, flex: 1 }}>{n.title}</b>
-            <button type="button" aria-label="Close this message" style={CLOSE} onClick={() => void readNotice(n.id).then(() => setAcct(a => (a ? { ...a, notices: a.notices.filter(x => x.id !== n.id) } : a)))}>
-              <X size={14} />
-            </button>
-          </div>
-          {n.body && <p style={{ margin: '6px 0 0', fontSize: 13, lineHeight: 1.55, color: '#4b5563', whiteSpace: 'pre-line' }}>{n.body}</p>}
-          {n.link && (
-            <a href={n.link} target="_blank" rel="noopener noreferrer" style={{ ...PRIMARY, marginTop: 10 }}>
-              <CalendarCheck size={14} /> {n.linkLabel || 'Open'}
-            </a>
-          )}
-        </div>
+        <NoticeItem key={n.id} n={n} onDone={() => setAcct(a => (a ? { ...a, notices: a.notices.filter(x => x.id !== n.id) } : a))} />
       ))}
 
       {showOffer && (
@@ -208,6 +196,93 @@ export default function CornerHelp() {
               Don&rsquo;t offer this again
             </button>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/**
+ * One message in the corner. A plain notice has its link; a message from
+ * support can be answered here (it goes back to the owner's support inbox);
+ * a call offer is joined or turned down — the owner hears either way; a
+ * request to open the account is approved or declined, and approving says
+ * for how long in the button itself.
+ */
+function NoticeItem({ n, onDone }: { n: Notice; onDone: () => void }) {
+  const [reply, setReply] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [said, setSaid] = useState('');
+  const [err, setErr] = useState('');
+  const close = () => void readNotice(n.id).then(onDone);
+  const kind = n.kind ?? 'notice';
+
+  const answerCall = async (answer: 'join' | 'decline') => {
+    setBusy(true); setErr('');
+    /* Opened before the request, inside the click: a window opened after an
+       await is a popup the browser blocks. */
+    const w = answer === 'join' && n.link ? window.open(n.link, '_blank') : null;
+    if (w) w.opener = null;
+    const r = await desk('notice_answer', { id: n.id, answer });
+    setBusy(false);
+    if (!r.success) { setErr(String(r.error ?? 'Could not send that.')); return; }
+    if (answer === 'join' && !w && n.link) window.location.href = n.link;
+    void myAccount(true); onDone();
+  };
+  const sendReply = async () => {
+    if (!reply.trim()) { setErr('Write something first.'); return; }
+    setBusy(true); setErr('');
+    const r = await desk('notice_reply', { id: n.id, message: reply.trim() });
+    setBusy(false);
+    if (!r.success) { setErr(String(r.error ?? 'Could not send that.')); return; }
+    setReply(''); setSaid('Sent — we will answer here and by email.');
+  };
+  const decide = async (approve: boolean) => {
+    setBusy(true); setErr('');
+    const r = await desk('access_decide', { id: n.ref, approve });
+    setBusy(false);
+    if (!r.success) { setErr(String(r.error ?? 'Could not send that.')); return; }
+    setSaid(approve ? 'Approved. Support can open your account for the time you gave; we have emailed you a way to end it sooner.' : 'Declined — nothing has changed.');
+    window.setTimeout(() => { void myAccount(true); onDone(); }, 2500);
+  };
+
+  return (
+    <div role="status" data-testid={`notice-${kind}`} style={CARD}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+        {kind === 'call' && <Video size={17} color="#5b46e5" style={{ flexShrink: 0, marginTop: 1 }} />}
+        {kind === 'access' && <ShieldCheck size={17} color="#b45309" style={{ flexShrink: 0, marginTop: 1 }} />}
+        {kind === 'direct' && <MessageSquare size={17} color="#5b46e5" style={{ flexShrink: 0, marginTop: 1 }} />}
+        <b style={{ fontSize: 14, lineHeight: 1.35, flex: 1 }}>{n.title}</b>
+        <button type="button" aria-label="Close this message" style={CLOSE} onClick={close}><X size={14} /></button>
+      </div>
+      {n.body && <p style={{ margin: '6px 0 0', fontSize: 13, lineHeight: 1.55, color: '#4b5563', whiteSpace: 'pre-line' }}>{kind === 'access' ? `What for: ${n.body}` : n.body}</p>}
+      {said && <p style={{ margin: '8px 0 0', fontSize: 12.5, color: '#15803d', fontWeight: 600 }}>{said}</p>}
+      {err && <p role="alert" style={{ margin: '8px 0 0', fontSize: 12.5, color: '#b42318', fontWeight: 600 }}>{err}</p>}
+
+      {kind === 'notice' && n.link && (
+        <a href={n.link} target="_blank" rel="noopener noreferrer" style={{ ...PRIMARY, marginTop: 10 }}>
+          <CalendarCheck size={14} /> {n.linkLabel || 'Open'}
+        </a>
+      )}
+      {kind === 'call' && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+          <button type="button" disabled={busy} style={PRIMARY} onClick={() => void answerCall('join')}><Video size={14} /> {n.linkLabel || 'Join the call'}</button>
+          <button type="button" disabled={busy} style={SECONDARY} onClick={() => void answerCall('decline')}>Not now</button>
+        </div>
+      )}
+      {(kind === 'direct' || kind === 'call') && !said && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+          <input value={reply} onChange={e => setReply(e.target.value)} data-field="notice.reply" placeholder="Write a reply…" aria-label="Reply"
+            onKeyDown={e => { if (e.key === 'Enter') void sendReply(); }}
+            style={{ flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 13, fontFamily: 'inherit' }} />
+          <button type="button" disabled={busy} aria-label="Send reply" style={{ ...PRIMARY, padding: '8px 11px' }} onClick={() => void sendReply()}><Send size={14} /></button>
+        </div>
+      )}
+      {kind === 'access' && !said && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+          <button type="button" disabled={busy} style={PRIMARY} onClick={() => void decide(true)}><ShieldCheck size={14} /> Approve</button>
+          <button type="button" disabled={busy} style={SECONDARY} onClick={() => void decide(false)}>Decline</button>
         </div>
       )}
     </div>

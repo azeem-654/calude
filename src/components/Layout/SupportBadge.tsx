@@ -37,8 +37,8 @@ export default function SupportBadge({ style }: { style: React.CSSProperties }) 
   return (
     <button
       type="button"
-      title={`Customer Engagement: ${label}`}
-      aria-label={`Customer Engagement: ${label}`}
+      title={`Customer Support: ${label}`}
+      aria-label={`Customer Support: ${label}`}
       data-testid="support-badge"
       onClick={() => navigate(to)}
       className="icon-btn"

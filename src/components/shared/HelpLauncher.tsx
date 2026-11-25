@@ -119,7 +119,7 @@ export default function HelpLauncher({ signedIn = true }: { signedIn?: boolean }
         <button
           type="button"
           onClick={() => navigate('/engagement?tab=widgets')}
-          title="Your help button is not set up. Make a widget in Customer Engagement → Widgets, tick “Use as the help button inside Protected Central”, and make it live. Only you see this."
+          title="Your help button is not set up. Make a widget in Customer Support → Widgets, tick “Use as the help button inside Protected Central”, and make it live. Only you see this."
           aria-label="Set up the help button your customers see"
           style={{
             position: 'fixed', right: 20, bottom: 20, zIndex: 900, width: 52, height: 52, borderRadius: '50%',

@@ -118,7 +118,7 @@ ${row('Signed in', r.signedIn ? 'yes — the address is from their session' : 'n
 ${r.rows.map(([k, v]) => row(k, v)).join('\n')}
 ${row('When', new Date().toUTCString())}
 </table>
-<p style="color:#64748b">Attached: ${r.shot ? 'a screenshot of their screen' : 'no screenshot of the screen'}${extra > 0 ? ` and ${extra} picture${extra === 1 ? '' : 's'} they added` : ''}.${r.reference ? ` It is also ticket ${esc(r.reference)} in Customer Engagement → Tickets.` : ''} Reply to this email to answer ${esc(r.email)} directly.${box.from.toLowerCase() === REPORT_TO ? '' : ` Sent from ${esc(box.from)} because ${REPORT_TO} is not a connected, validated mailbox.`}</p>
+<p style="color:#64748b">Attached: ${r.shot ? 'a screenshot of their screen' : 'no screenshot of the screen'}${extra > 0 ? ` and ${extra} picture${extra === 1 ? '' : 's'} they added` : ''}.${r.reference ? ` It is also ticket ${esc(r.reference)} in Customer Support → Tickets.` : ''} Reply to this email to answer ${esc(r.email)} directly.${box.from.toLowerCase() === REPORT_TO ? '' : ` Sent from ${esc(box.from)} because ${REPORT_TO} is not a connected, validated mailbox.`}</p>
 </div>`;
   const subject = `${r.reference ? `[${r.reference}] ` : ''}Problem report: ${r.described.replace(/\s+/g, ' ').slice(0, 70)}${r.described.length > 70 ? '…' : ''}`;
   const attachments: MailAttachment[] = r.pics.map(p => ({ filename: p.filename, mime: p.mime, base64: p.base64 }));

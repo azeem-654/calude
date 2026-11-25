@@ -82,6 +82,9 @@ import { handleResell, handleResellWebhook } from './routes/resell';
 import { handleRevenue } from './routes/revenue';
 import { handleCustomers } from './routes/customers';
 import { handleTrialOptout, runTrialMail } from './lib/trialMail';
+import { handleSupportConsent, handleSupportDesk, handleSupportUnsub } from './routes/supportDesk';
+import { runBroadcasts, runSupportAccess } from './lib/supportDesk';
+import { runUnreadNudges } from './lib/unreadNudge';
 import { handleValidateKey } from './routes/validateKey';
 import { handlePlacement } from './routes/placement';
 import { handleTrack } from './routes/track';
@@ -167,6 +170,12 @@ const ROUTES: Record<string, Handler> = {
   /* "Stop these emails" under a trial email. Signed, and a GET only shows a
      button — see lib/trialMail.ts. */
   '/api/trial-optout.php': handleTrialOptout,
+  /* The owner's support desk (routes/supportDesk.ts): their customers, emails
+     by plan, direct messages and call offers, access with permission. The two
+     after it are the links in its emails — GET shows a button, POST acts. */
+  '/api/support-desk.php': handleSupportDesk,
+  '/api/support-consent.php': handleSupportConsent,
+  '/api/support-unsub.php': handleSupportUnsub,
   '/api/ai.php': handleAi,
   '/api/protron.php': handleProtron,
   '/api/support-report.php': handleSupportReport,
@@ -665,6 +674,18 @@ export default {
        * Autopilot queue is. Both gate themselves (every half hour, once a day).
        */
       const trialMail = await runTrialMail(env);
+
+      /* The owner's support desk (lib/supportDesk.ts): permissions to open a
+         customer's account that ran out — ended by the clock at the gate
+         already, this marks them and sends "access has ended" — then the next
+         batch of the owner's emails to customers, then reminders about support
+         replies nobody has read (lib/unreadNudge.ts, gated to every 10 min).
+         None of them throws into the passes after. */
+      await runSupportAccess(env).catch(() => null);
+      const bcast = await runBroadcasts(env).catch(() => ({ sent: 0, failed: 0, note: '' }));
+      if (bcast.note) report.notes.push({ accountId: '', text: bcast.note, kind: 'problem' });
+      const unread = await runUnreadNudges(env).catch(() => ({ sent: 0, failed: 0, notes: [] as string[] }));
+      if (unread.sent || unread.failed) console.log(`[cron] unread reminders: ${unread.sent} sent, ${unread.failed} failed`);
 
       /* Reminders for the owner's own strategy calls — a person is waiting on
          this one, so it goes with the owner's other mail; it never throws into

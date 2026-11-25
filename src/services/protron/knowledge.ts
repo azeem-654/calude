@@ -33,7 +33,7 @@ export const MODULE_NOTES: Record<string, string> = {
   '/pipelines': 'Deals moves opportunities through stages to won. Create a pipeline, name its stages, drag deals between them; a stage can carry a checklist (playbook).',
   '/marketing': 'Email campaigns and sequences. Sending needs a connected mailbox or provider (Settings → Email & SMS). Every email carries an unsubscribe link; bounced addresses are skipped.',
   '/conversations': 'Unified Inbox: every connected mailbox plus SMS and chat in one thread list. Nothing arrives until a mailbox is connected in Settings → Email & SMS.',
-  '/engagement': 'Customer Engagement: an AI chat assistant, forms, tickets and a widget you paste on any website. Voice calls need a voice provider chosen by the install owner.',
+  '/engagement': 'Customer Support: an AI chat assistant, forms, tickets and a widget you paste on any website. Voice calls need a voice provider chosen by the install owner.',
   /* The incubator (`video-studio`): on live the page is the Media Library alone. */
   '/video-studio': featureReady('video-studio')
     ? 'Upload or record a video; edit, clean the sound, cut Shorts with captions, music and thumbnails, and repurpose it into posts and articles.'
