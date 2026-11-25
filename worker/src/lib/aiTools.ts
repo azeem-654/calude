@@ -203,6 +203,14 @@ export const AI_CALLERS: Record<string, AiCaller> = {
     tools: [], gate: 'exempt',
     why: 'Checks a key the customer pasted for their own account by listing models; nothing of the operator\'s is spent.',
   },
+  'lib/problemFix.ts': {
+    tools: [], gate: 'exempt',
+    why: 'Fires the owner\'s own Claude Code scheduled task through its trigger address after the owner says yes to a report: it runs on the owner\'s Claude plan, loads no AI key of the install and spends nothing of a customer\'s allowance.',
+  },
+  'routes/problemFix.ts': {
+    tools: [], gate: 'exempt',
+    why: 'Only names the Claude Code trigger address to check what the owner pastes; it calls no AI provider itself, and the firing in lib/problemFix.ts is on the owner\'s own plan.',
+  },
   'lib/googlePlaces.ts': {
     tools: ['places'], gate: 'exempt',
     why: 'Maps searches are budgeted per workspace by placesBudget and metered in crm_places_usage, not counted as AI requests.',

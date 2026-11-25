@@ -19,6 +19,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { register } from 'node:module';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { AI_CALLERS, AI_CALL_PATTERNS, AI_TOOLS, toolForModule } from '../worker/src/lib/aiTools';
 import { MODULES } from '../worker/src/lib/aiTasks';
 
@@ -27,7 +28,8 @@ const ok = (n: string, c: boolean, d: unknown = '') => { if (c) pass++; else fai
 
 /* ── 1 · The scan ─────────────────────────────────────────────────────── */
 console.log('Every AI caller is listed and gated');
-const SRC = new URL('../worker/src/', import.meta.url).pathname;
+/* fileURLToPath, not .pathname: on Windows .pathname is /E:/… with %20 for spaces and the scan finds nothing. */
+const SRC = fileURLToPath(new URL('../worker/src/', import.meta.url));
 const walk = (d: string): string[] => readdirSync(d).flatMap(f => { const p = join(d, f); return statSync(p).isDirectory() ? walk(p) : p.endsWith('.ts') ? [p] : []; });
 const files = walk(SRC).map(p => relative(SRC, p).split('\\').join('/'));
 const text = new Map(files.map(f => [f, readFileSync(join(SRC, f), 'utf8')]));
