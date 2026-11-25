@@ -167,7 +167,51 @@ blocked by this session's permission guard. `main` is only behind `staging`
 | Scope justification | **Saved** on Data Access (909 characters, reworded for the events.list read: only start, end, free/busy, status and the owner's own response are read; titles, descriptions and attendees are never read in, stored or shown). |
 | Demo video, data-access verification | **Waiting on the live deploy.** The video must show a busy time not being offered, which only works once the fix is live. Plan: record the consent screen, connect, "Busy test" not offered, book, reschedule and cancel on live with the Chrome extension's recorder, convert it to WebM in Chrome, upload it unlisted to YouTube, paste the link on Data Access, then **Prepare for verification → submit**. |
 
-### To finish
+### Finished (2026-11-24 evening, live)
 
-1. Run **Actions → Promote testing to live** (type `PROMOTE`), or sign Chrome in to GitHub so the session can.
-2. Then the session repeats steps 8–11 on live, records the demo, uploads it and submits verification.
+**Live deploy.** Chrome was then signed in to GitHub. **Promote testing to live**
+run #68 (workflow file from `main`, typed `PROMOTE`) fast-forwarded `main` to
+`0a68949` (the fix plus three docs commits, no migrations), and **Deploy to
+Cloudflare #413 succeeded**.
+
+**Re-test on live: all passed.**
+
+| Step | Result |
+|---|---|
+| 6. Connect | **Passed.** Removed the morning grant in the Google account (Linked apps → Protected Central → Delete all) so the full consent screen would show for the video, then reconnected. The warning and consent screens now name the app **"Protected Central"** (the branding is live) and list only "View and edit events on all your calendars". Then "Calendar connected". |
+| 7. Connected, no note | **Passed.** `azeem@protectedcentral.com · primary`, no red/amber note (the morning amber note cleared). |
+| 8. Busy time not offered | **Passed.** "Busy test" Wed 25 Nov 12:00–13:00 PKT → the booking page no longer offered **12:00 pm or 12:30 pm**; 11:30 am and 1:00 pm, either side, were still offered. (10:00 am was also missing: that was the stale local diary appointment from the morning test, removed in cleanup, not Google.) |
+| 9. Book with +test | **Passed.** Wed 25 Nov 11:00 → "You are booked". Google event **"Calendar Test — New meeting"** (the internal-id title is fixed) with a Meet link and the +test guest; the confirmation email came from support@protectedcentral.com with the Meet link and "Reschedule or cancel". |
+| 10. Reschedule, then cancel | **Passed.** Moved to Thu 26 Nov 11:00: the same event moved, with the same Meet link and nothing left on Wednesday. Cancelled: "Booking cancelled", and the event was removed from Google. |
+| 11. Clean up | **Passed.** Deleted "Busy test"; deleted the cancelled booking (Bookings showed **2** rows, the October booking and this test, so the stale-row fix holds); deleted the stale morning appointment "New meeting — Calendar Test" Wed 25 Nov 10:00 from Calendar. Only the pre-existing Oct 28 booking remains. The calendar stays connected. A "Calendar Test" CRM contact created by the test bookings was left in Contacts. |
+
+**Demo video.** Recorded in Chrome with the extension's recorder (two parts,
+51 frames) and turned into WebM inside Chrome (canvas + MediaRecorder, no new
+software installed), with a title card naming the scope and the five steps.
+Uploaded to the **Protected Central** YouTube channel (managed by the project
+owner's Google account) as **Unlisted**: https://youtu.be/zHsoDSaYK5I
+(title "Protected Central - Google Calendar (calendar.events) OAuth demo", not
+made for kids).
+
+**Verification: SUBMITTED.** On Data Access, the justification (909 characters)
+and the video link are saved. Verification Center → Prepare for verification
+showed the branding, the four scopes, the justification and the video.
+Additional info was added (where the calendar is connected, the booking page in
+the video, one OAuth client also used for sign-in, support@). Questionnaire:
+personal use No, internal only No, development/testing only No, WordPress
+Gmail SMTP plugin No; both acknowledgements ticked (no restricted scopes, so
+no CASA). Status now: **"Your app's data access is under review."** Google:
+*"The Trust and Safety team has received your form. They will reach out to you
+via your contact email if needed. The review process can take up to 4-6
+weeks. Expect the first email from our Trust and Safety team within 3-5
+days."* The first check listed is homepage requirements (under review), then
+privacy policy, app functionality, branding guidelines, appropriate data
+access, minimum scopes and additional requirements. Branding: "verified and is
+being shown to users". Until approval, customers still see the unverified-app
+warning and the 100-user cap applies.
+
+### Still open for the owner
+
+1. Watch the contact inboxes (the owner's Gmail and support@protectedcentral.com) for Google's Trust and Safety email in 3–5 days, and answer it.
+2. Optional: make support@protectedcentral.com the user support email (see the Branding row above for how).
+3. The cloud session should pull `staging`/`main` (now `0a68949`) before its next push, and may want `docs/OWNER-CHECKLIST.md` item 5 updated from this report.
