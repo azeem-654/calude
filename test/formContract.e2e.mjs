@@ -304,6 +304,72 @@ await findDialog.getByRole('button', { name: 'Close' }).click();
   ok('Prospects tab: a place that is not one is refused at its box', (await deadEnds()).length === 0 && /Say where/.test(await p.innerText('body')), JSON.stringify(await deadEnds()));
 }
 
+/* ── 2f · Customer Support → Problem fixes: the Claude Code connection ──
+   The owner pastes a trigger address and a token. Each refusal from
+   routes/problemFix.ts config_save names fix.url or fix.token; both boxes must
+   be on screen when it does, and marked. */
+await resetDeadEnds();
+await p.goto(`${B}/engagement?tab=fixes`, { waitUntil: 'networkidle' });
+await settle();
+{
+  const url = p.locator('[data-field="fix.url"]');
+  const token = p.locator('[data-field="fix.token"]');
+  const save = p.getByRole('button', { name: 'Save', exact: true });
+  ok('Problem fixes: the connection form shows fix.url, fix.token and fix.hours',
+    await url.isVisible() && await token.isVisible() && await p.locator('[data-field="fix.hours"]').isVisible());
+  await url.fill('https://example.test/not-a-trigger');
+  await save.click();
+  await settle();
+  ok('Problem fixes: a wrong trigger address is refused at fix.url, on screen',
+    (await deadEnds()).length === 0 && (await url.getAttribute('aria-invalid')) === 'true', JSON.stringify(await deadEnds()));
+  ok('Problem fixes: …and the refusal is shown', /Paste the trigger address exactly/.test(await p.innerText('body')));
+  await url.fill('https://api.anthropic.com/v1/claude_code/routines/trig_formsTest123/fire');
+  await token.fill('not-a-token');
+  await save.click();
+  await settle();
+  ok('Problem fixes: a malformed token is refused at fix.token, on screen',
+    (await deadEnds()).length === 0 && (await token.getAttribute('aria-invalid')) === 'true', JSON.stringify(await deadEnds()));
+  await token.fill('');
+  await save.click();
+  await settle();
+  ok('Problem fixes: an address with no token is refused at fix.token',
+    (await deadEnds()).length === 0 && /Paste the token Claude Code showed/.test(await p.innerText('body')), JSON.stringify(await deadEnds()));
+}
+
+/* ── 2g · The Report a problem sheet ──
+   The sheet refuses an empty report itself; the server (routes/supportReport.ts)
+   can still refuse at report.description, report.voice or report.pictures. Each
+   of those, answered for real by a stand-in, must land on a box the sheet shows. */
+await resetDeadEnds();
+await p.goto(`${B}/dashboard`, { waitUntil: 'networkidle' });
+await settle();
+await p.getByTestId('report-problem-button').click();
+const sheet = p.getByTestId('protron-report');
+await sheet.waitFor({ timeout: 15_000 });
+for (const f of ['report.description', 'report.voice', 'report.pictures']) {
+  ok(`Report a problem: the sheet shows ${f}`, await sheet.locator(`[data-field="${f}"]`).isVisible());
+}
+/* The screenshot is taken first; Send waits for it. */
+await p.waitForFunction(() => !document.querySelector('[data-testid="protron-report-send"]')?.hasAttribute('disabled'), null, { timeout: 30_000 }).catch(() => {});
+await sheet.getByTestId('protron-report-send').click();
+await settle();
+ok('Report a problem: an empty report is refused at the description, on screen',
+  (await deadEnds()).length === 0 && /Say what went wrong/.test(await sheet.innerText()), JSON.stringify(await deadEnds()));
+await sheet.locator('[data-field="report.description"]').fill('Forms test: pressing Save on a contact does nothing.');
+for (const [field, error] of [['report.description', 'Say what went wrong, in a sentence or two.'], ['report.voice', 'That recording could not be read.'], ['report.pictures', 'Up to 6 pictures in one report.']]) {
+  await resetDeadEnds();
+  await p.route('**/api/support-report.php', route => route.fulfill({
+    status: 200, contentType: 'application/json', headers: { 'X-Refused-Field': field },
+    body: JSON.stringify({ success: false, error, field }),
+  }));
+  await sheet.getByTestId('protron-report-send').click();
+  await settle();
+  await p.unroute('**/api/support-report.php');
+  ok(`Report a problem: a refusal at ${field} lands on a box on screen`,
+    (await deadEnds()).length === 0 && (await sheet.innerText()).includes(error), JSON.stringify(await deadEnds()));
+}
+await sheet.getByRole('button', { name: 'Cancel', exact: true }).click();
+
 /* ── 3 · The guard catches what it is for ──
    A refusal naming a box that does not exist anywhere must be recorded and
    reported — otherwise every pass above proves nothing. */
