@@ -54,7 +54,7 @@ export async function preparePicture(file: File): Promise<{ ok: true; dataUrl: s
 
 export interface ReportResult { ok: boolean; message: string; field?: string; partial?: boolean; fixId?: string; reference?: string }
 
-export async function sendReport(r: { description: string; screenshot: string; pictures: string[]; audio?: string; audioMime?: string }): Promise<ReportResult> {
+export async function sendReport(r: { description: string; screenshot: string; pictures: string[]; audio?: string; audioMime?: string; kind?: 'bug' | 'improvement' | 'feature' }): Promise<ReportResult> {
   let token = 'cookie';
   try { token = (JSON.parse(localStorage.getItem('crm_session') || 'null') as { token?: string } | null)?.token || 'cookie'; } catch { /* signed out */ }
   let accountId = '';
@@ -64,7 +64,7 @@ export async function sendReport(r: { description: string; screenshot: string; p
     const res = await fetch(`${base()}/api/support-report.php`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({
-        token, accountId,
+        token, accountId, kind: r.kind || 'bug',
         description: r.description, screenshot: r.screenshot || undefined, pictures: r.pictures,
         audio: r.audio || undefined, audioMime: r.audio ? r.audioMime : undefined,
         path: `${location.pathname}${location.search}`, pageTitle: document.title, viewport: `${window.innerWidth}×${window.innerHeight}`,

@@ -33,7 +33,7 @@ import { redactPhi } from '../lib/phiGuard';
 import { rateLimit } from '../lib/rateLimit';
 import { fileProblemTicket, mailProblem, MAX_REPORT_TEXT, readPictures, REPORT_COPY, REPORT_TO } from '../lib/problemReport';
 import { houseWidgetAccount } from './engage';
-import { openFix, readAudio } from '../lib/problemFix';
+import { cleanKind, KIND_INFO, openFix, readAudio } from '../lib/problemFix';
 
 export { REPORT_TO, REPORT_COPY };
 
@@ -46,8 +46,11 @@ export async function handleSupportReport(req: Request, env: Env): Promise<Respo
   const accountId = String(d.accountId ?? '').trim();
   if (!accountId || !(await canAccess(env.DB, user, accountId))) return fail('That workspace is not yours.', 403);
 
+  /* A bug, an improvement or a new feature (2026-11-28): one path, the kind
+     sets the words and the time the customer is told. Anything else is a bug. */
+  const kind = cleanKind(d.kind);
   const described = redactPhi(String(d.description ?? '').trim().slice(0, MAX_REPORT_TEXT)).text;
-  if (described.length < 5) return fail('Say what went wrong, in a sentence or two.', 200, { field: 'report.description' });
+  if (described.length < 5) return fail(kind === 'bug' ? 'Say what went wrong, in a sentence or two.' : 'Say what you would like, in a sentence or two.', 200, { field: 'report.description' });
 
   const read = readPictures(d.screenshot, d.pictures);
   if (!read.ok) return fail(read.message, 200, read.field ? { field: read.field } : {});
@@ -72,7 +75,7 @@ export async function handleSupportReport(req: Request, env: Env): Promise<Respo
   const house = await houseWidgetAccount(env);
   const filed = house
     ? await fileProblemTicket(env, house, {
-      email: user.email, name: user.name || '', described, page: screen, pics,
+      email: user.email, name: user.name || '', described, page: screen, pics, kind,
       context: { page: screen, workspace: accountId, signedIn: true },
     }).catch(() => null)
     : null;
@@ -82,12 +85,13 @@ export async function handleSupportReport(req: Request, env: Env): Promise<Respo
      outside the house widget has no ticket to follow, so it still opens. */
   const fix = await openFix(env, {
     ticketId: filed?.id ?? '', reference: filed?.reference ?? '', email: user.email, name: user.name || '',
-    accountId, page: screen, description: described, pictures: pics.length, audio: voice && voice.ok ? voice : null,
+    accountId, page: screen, description: described, pictures: pics.length, audio: voice && voice.ok ? voice : null, kind,
   }).catch(() => null);
 
   const mail = await mailProblem(env, {
     described, name: user.name || '', email: user.email, pics, shot, reference: filed?.reference, signedIn: true,
     rows: [
+      ['Type', KIND_INFO[kind].label],
       ['Workspace', accountId],
       ['Login', user.accountId == null && user.role === 'agency' ? 'install owner' : user.role === 'client' ? 'client login' : 'customer'],
       ['Screen', screen],
@@ -109,7 +113,8 @@ export async function handleSupportReport(req: Request, env: Env): Promise<Respo
     pictures: pics.length,
     reference: filed?.reference ?? '',
     fixId: fix?.id ?? '',
-    message: fix ? `Our technical team has been alerted. You will see updates on the Report a problem button and by email.${ref}`
+    kind,
+    message: fix ? `${kind === 'bug' ? 'Our technical team has been alerted' : 'Our team has your request'}. You will see updates on the Report button, on your ticket and by email.${ref}`
       : mail.sent === 'all' ? `Sent to our support team — they reply by email.${ref}`
       : mail.sent === 'partial' ? `Sent, but only one of the two support addresses received it.${ref}`
         : `Saved as a ticket for our support team — they reply by email.${ref}`,

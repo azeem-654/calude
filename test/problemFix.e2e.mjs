@@ -17,6 +17,12 @@
  *    the app) and shuts the key;
  *  - a refused token: the owner is told why and the customer is NOT told
  *    anybody is working on it;
+ *  - testing first (2026-11-28): a feature request goes to the testing site;
+ *    "ready" needs the write-up and test steps, which reach the owner by
+ *    email with a Push it live button (its own signature); the customer is
+ *    told it is being tested; Push it live starts ONE promoting session, a
+ *    failed promotion goes back to testing without telling the customer, and
+ *    "fixed" tells them by email, in the app and on a resolved ticket;
  *  - twice a day: the reports nobody answered are emailed to the owner, and
  *    with "look into them" on, one read-only DIAGNOSE session is started;
  *  - everything the owner does is refused to a customer.
@@ -127,7 +133,7 @@ const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
 const VOICE = Buffer.alloc(4000, 7).toString('base64');
 
 console.log('\nOwner only');
-for (const a of ['list', 'decide', 'mark_fixed', 'config', 'config_save']) {
+for (const a of ['list', 'decide', 'promote', 'mark_fixed', 'config', 'config_save']) {
   r = await fix(C.token, a, { id: 'fx_x', answer: 'live' });
   ok(`a customer cannot ${a}`, !r.success && r.code === 'not_owner', JSON.stringify(r));
 }
@@ -167,7 +173,7 @@ ok('a blank token keeps the stored one', r.success && (await fix(T, 'config')).t
 console.log('\nThe owner says yes from the email');
 let res = await fetch(`${link}&a=live`, { headers: { Connection: 'close' } });
 let page = await res.text();
-ok('the link\'s GET shows the report and changes nothing', /Start fixing this problem/.test(page) && sql(`SELECT status FROM crm_problem_fixes WHERE id = '${F1}'`)[0].status === 'waiting' && fires.length === 0, page.slice(0, 200));
+ok('the link\'s GET shows the report and changes nothing', /Start on this\?/.test(page) && sql(`SELECT status FROM crm_problem_fixes WHERE id = '${F1}'`)[0].status === 'waiting' && fires.length === 0, page.slice(0, 200));
 res = await fetch(link.replace(/s=[0-9a-f]+/, 's=00000000000000000000000000000000'), { headers: { Connection: 'close' } });
 ok('a forged link is not valid', /not valid/.test(await res.text()));
 res = await fetch(link, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Connection: 'close' }, body: 'go=live' });
@@ -183,10 +189,12 @@ ok('pressing it again starts nothing', /Already answered/.test(await res.text())
 row = sql(`SELECT status, ship, session_url AS u FROM crm_problem_fixes WHERE id = '${F1}'`)[0];
 ok('the report is being fixed, with its session', row.status === 'fixing' && row.ship === 'live' && row.u === 'https://claude.ai/code/session_t1', JSON.stringify(row));
 r = await fix(C.token, 'mine');
-ok('the customer is told the team is working on it — 10–15 minutes', /working on your problem/.test(r.reports?.[0]?.title ?? '') && /10–15 minutes/.test(r.reports[0].body), JSON.stringify(r.reports?.[0]));
+ok('the customer is told the team is working on it — about 30 minutes for a bug', /working on your problem/.test(r.reports?.[0]?.title ?? '') && /about 30 minutes/.test(r.reports[0].body), JSON.stringify(r.reports?.[0]));
 let notices = await api('customers.php', { token: C.token, action: 'mine' });
 ok('in the app\'s corner card', (notices.notices ?? []).some(n => /working on your problem/.test(n.title)), JSON.stringify(notices.notices));
-ok('and by email', !!(await waitMail(m => /To: .*cara@cust\.test/i.test(m) && /working on it right now/.test(m))));
+ok('and by email', !!(await waitMail(m => /To: .*cara@cust\.test/i.test(m) && /fixing it right now/.test(m))));
+let tk = sql(`SELECT t.status, (SELECT count(*) FROM crm_ticket_messages m WHERE m.ticket_id = t.id AND m.internal = 0) AS n FROM crm_tickets t WHERE t.id = (SELECT ticket_id FROM crm_problem_fixes WHERE id = '${F1}')`)[0];
+ok('and on their ticket, which is now in progress', tk?.status === 'in_progress' && tk.n === 1, JSON.stringify(tk));
 
 console.log('\nThe session');
 let a = await raw({ action: 'agent_report', id: F1, key: '0'.repeat(48) });
@@ -210,6 +218,8 @@ ok('their button reads fixed', r.reports?.[0]?.status === 'fixed', JSON.stringif
 a = await raw({ action: 'agent_report', id: F1, key: KEY });
 ok('the key stops working once it is fixed', a.status === 403);
 ok('the owner hears it is fixed', sql("SELECT count(*) AS n FROM crm_owner_alerts WHERE kind = 'problem.fixed'")[0].n === 1);
+tk = sql(`SELECT status FROM crm_tickets WHERE id = (SELECT ticket_id FROM crm_problem_fixes WHERE id = '${F1}')`)[0];
+ok('and their ticket is resolved', tk?.status === 'resolved', JSON.stringify(tk));
 
 console.log('\nA refused token');
 r = await api('support-report.php', { token: C.token, accountId: C.acct, description: 'The calendar page is blank for me.' });
@@ -243,11 +253,77 @@ const again = fires.length;
 await tick();
 ok('once per hour slot', fires.length === again);
 
+console.log('\nTesting first, then Push it live (a feature request)');
+const post = (u, body) => fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Connection: 'close' }, body });
+r = await api('support-report.php', { token: C.token, accountId: C.acct, kind: 'feature', description: 'Please add a button to export my contacts as a spreadsheet.', path: '/contacts', pageTitle: 'Contacts' });
+const F4 = r.fixId;
+ok('the customer sends a feature request', r.success && r.kind === 'feature' && /has your request/.test(r.message), JSON.stringify(r));
+const row4 = sql(`SELECT kind, reply_code AS code, ticket_id AS t FROM crm_problem_fixes WHERE id = '${F4}'`)[0];
+ok('it is kept as a feature request, with a ticket', row4?.kind === 'feature' && !!row4.t && sql(`SELECT category FROM crm_tickets WHERE id = '${row4.t}'`)[0]?.category === 'feature', JSON.stringify(row4));
+const ask4 = await waitMail(m => /To: .*owner@fix\.test/i.test(m) && m.includes(`[Fix ${row4.code}]`) && /Should I start building this feature/.test(m));
+ok('the owner is asked, with "Fix it and put it on the testing site" first', !!ask4 && ask4.indexOf('Fix it and put it on the testing site') >= 0 && ask4.indexOf('Fix it and put it on the testing site') < ask4.indexOf('Fix it and put it live'), ask4?.slice(0, 400));
+const link4 = (ask4 ?? '').match(/https?:\/\/localhost:8871\/api\/problem-fix\.php\?id=[^"&\s]+&(?:amp;)?s=[0-9a-f]+/)?.[0]?.replace(/&amp;/g, '&');
+let n = fires.length;
+page = await (await post(link4, 'go=testing')).text();
+ok('the testing-site button starts fixing', /Fixing has started/.test(page) && fires.length === n + 1, page.slice(0, 300));
+const t4 = fires[n]?.body?.text ?? '';
+ok('the session is told: testing site first, a new feature, and the write-up to send', /ship: TESTING SITE FIRST/.test(t4) && /Type: New feature/.test(t4) && /"status":"ready"/.test(t4) && /testSteps/.test(t4) && /testing\.protectedcentral\.com\/contacts/.test(t4), t4.slice(0, 600));
+const K4 = t4.match(new RegExp(`"id":"${F4}","key":"([0-9a-f]{48})"`))?.[1];
+r = await fix(C.token, 'mine');
+let m4 = r.reports?.find(x => x.id === F4);
+ok('the customer is told it is being built, in 1–2 days', /building your feature request/.test(m4?.title ?? '') && /1–2 days/.test(m4.body), JSON.stringify(m4));
+ok('by email', !!(await waitMail(m => /To: .*cara@cust\.test/i.test(m) && /building your feature request/.test(m) && /1–2 days/.test(m))));
+tk = sql(`SELECT status FROM crm_tickets WHERE id = '${row4.t}'`)[0];
+ok('and on their ticket', tk?.status === 'in_progress', JSON.stringify(tk));
+aj = await (await raw({ action: 'agent_update', id: F4, key: K4, status: 'ready', changed: 'Added an Export button.' })).json();
+ok('"ready" without steps for the owner is refused', !aj.success && /testSteps/.test(aj.error ?? ''), JSON.stringify(aj));
+aj = await (await raw({ action: 'agent_update', id: F4, key: K4, status: 'ready', changed: 'Added an Export button to Contacts that downloads a CSV.', customerSees: 'An Export button above the contacts list.', improved: 'The list loads a little faster.', testSteps: '1. Open https://testing.protectedcentral.com/contacts\n2. Press Export\n3. A spreadsheet of your contacts downloads.', commit: 'abc1234' })).json();
+ok('the session says it is on the testing site', aj.success && sql(`SELECT status FROM crm_problem_fixes WHERE id = '${F4}'`)[0].status === 'ready', JSON.stringify(aj));
+const ready = await waitMail(m => /To: .*owner@fix\.test/i.test(m) && /Ready to test on the testing site/.test(m));
+ok('the owner is emailed what changed, what the customer sees and how to test it', !!ready && /downloads a CSV/.test(ready) && /An Export button above/.test(ready) && /Press Export/.test(ready) && /loads a little faster/.test(ready), ready?.slice(0, 600));
+const plink = (ready ?? '').match(/https?:\/\/localhost:8871\/api\/problem-fix\.php\?id=[^"&\s]+&(?:amp;)?p=[0-9a-f]+/)?.[0]?.replace(/&amp;/g, '&');
+ok('with a Push it live button', !!plink && /Push it live/.test(ready ?? ''), ready?.slice(0, 600));
+r = await fix(C.token, 'mine');
+m4 = r.reports?.find(x => x.id === F4);
+ok('the customer is told it is built and being tested', /our developers are testing it/.test(m4?.title ?? '') && m4.status === 'ready', JSON.stringify(m4));
+ok('by email', !!(await waitMail(m => /To: .*cara@cust\.test/i.test(m) && /Being tested now/.test(m))));
+ok('and on their ticket', sql(`SELECT count(*) AS n FROM crm_ticket_messages WHERE ticket_id = '${row4.t}' AND body LIKE '%developers are testing%'`)[0].n === 1);
+n = fires.length;
+page = await (await fetch(plink, { headers: { Connection: 'close' } })).text();
+ok('the Push it live link\'s GET changes nothing', /Push it live\?/.test(page) && fires.length === n && sql(`SELECT status FROM crm_problem_fixes WHERE id = '${F4}'`)[0].status === 'ready', page.slice(0, 200));
+page = await (await fetch(plink.replace(/p=[0-9a-f]+/, 'p=00000000000000000000000000000000'), { headers: { Connection: 'close' } })).text();
+ok('a forged Push it live link is not valid', /not valid/.test(page));
+page = await (await post(link4.replace(/s=/, 'p='), 'go=promote')).text();
+ok('the start-fixing signature cannot push it live', /not valid/.test(page) && fires.length === n, page.slice(0, 200));
+page = await (await post(plink, 'go=promote')).text();
+ok('its button starts a session to put it live', /Going live/.test(page) && fires.length === n + 1, page.slice(0, 300));
+const p4 = fires[n]?.body?.text ?? '';
+ok('the session is told to promote, with the fix commit', /^PROMOTE/.test(p4) && p4.includes(F4) && /abc1234/.test(p4) && /Promote testing to live/.test(p4) && /INCUBATOR/.test(p4), p4.slice(0, 400));
+page = await (await post(plink, 'go=promote')).text();
+ok('pressing it again starts nothing', fires.length === n + 1, page.slice(0, 200));
+const PK = p4.match(/"key":"([0-9a-f]{48})"/)?.[1];
+ok('the fixing session\'s key no longer works', (await raw({ action: 'agent_report', id: F4, key: K4 })).status === 403);
+aj = await (await raw({ action: 'agent_update', id: F4, key: PK, status: 'failed', note: 'The Promote workflow could not be started.' })).json();
+row = sql(`SELECT status, error FROM crm_problem_fixes WHERE id = '${F4}'`)[0];
+ok('a promotion that fails puts it back on the testing site, with why', aj.success && row.status === 'ready' && /could not be started/.test(row.error), JSON.stringify(row));
+r = await fix(C.token, 'mine');
+ok('and the customer is told nothing new', /our developers are testing it/.test(r.reports?.find(x => x.id === F4)?.title ?? ''), JSON.stringify(r.reports?.[0]));
+n = fires.length;
+r = await fix(T, 'promote', { id: F4 });
+ok('the owner pushes it live again from the tab', r.success && r.status === 'promoting' && fires.length === n + 1, JSON.stringify(r));
+const PK2 = fires[n]?.body?.text?.match(/"key":"([0-9a-f]{48})"/)?.[1];
+aj = await (await raw({ action: 'agent_update', id: F4, key: PK2, status: 'fixed', note: 'You can now export your contacts from the Contacts page.' })).json();
+ok('the session says it is live', aj.success && sql(`SELECT status FROM crm_problem_fixes WHERE id = '${F4}'`)[0].status === 'fixed', JSON.stringify(aj));
+ok('the customer is emailed that it is live', !!(await waitMail(m => /To: .*cara@cust\.test/i.test(m) && /Live now: your feature request/.test(m))));
+notices = await api('customers.php', { token: C.token, action: 'mine' });
+ok('told in the app', (notices.notices ?? []).some(n => /new feature is live/.test(n.title)), JSON.stringify(notices.notices));
+ok('and their ticket is resolved', sql(`SELECT status FROM crm_tickets WHERE id = '${row4.t}'`)[0]?.status === 'resolved');
+
 console.log('\nNo');
 r = await fix(T, 'decide', { id: F3, answer: 'decline' });
 ok('the owner leaves one for a person', r.success && r.status === 'declined', JSON.stringify(r));
 r = await fix(T, 'list');
-ok('the owner\'s list shows all three, never a key', r.reports?.length === 3 && !JSON.stringify(r).includes('agent_hash') && !JSON.stringify(r).includes(KEY ?? 'nokey'), JSON.stringify(r).slice(0, 200));
+ok('the owner\'s list shows all four, never a key', r.reports?.length === 4 && !JSON.stringify(r).includes('agent_hash') && !JSON.stringify(r).includes(KEY ?? 'nokey'), JSON.stringify(r).slice(0, 200));
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');
 stop();

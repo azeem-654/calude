@@ -346,7 +346,7 @@ await settle();
 await p.getByTestId('report-problem-button').click();
 const sheet = p.getByTestId('protron-report');
 await sheet.waitFor({ timeout: 15_000 });
-for (const f of ['report.description', 'report.voice', 'report.pictures']) {
+for (const f of ['report.kind', 'report.description', 'report.voice', 'report.pictures']) {
   ok(`Report a problem: the sheet shows ${f}`, await sheet.locator(`[data-field="${f}"]`).isVisible());
 }
 /* The screenshot is taken first; Send waits for it. */

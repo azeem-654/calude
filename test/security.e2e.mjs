@@ -803,7 +803,7 @@ console.log('\nProblem fixes — /api/problem-fix.php: the owner decides, a sess
   const sent = await api('support-report.php', { token: A.token, accountId: A.acct, description: 'The export button does nothing at all' });
   const id = sent.data?.fixId ?? '';
   check("A customer's report opens a fix", sent.ok && /^fx_/.test(id), JSON.stringify(sent.data).slice(0, 160));
-  for (const action of ['list', 'decide', 'mark_fixed', 'config', 'config_save']) {
+  for (const action of ['list', 'decide', 'promote', 'mark_fixed', 'config', 'config_save']) {
     const r = await api('problem-fix.php', { token: A.token, action, id, answer: 'live', url: 'https://api.anthropic.com/v1/claude_code/routines/trig_aaaaaaa/fire', tokenValue: 'sk-ant-oat01-xxxxxxxxxxxx' });
     check(`A customer cannot ${action} a fix`, !r.ok && r.data?.code === 'not_owner', JSON.stringify(r.data).slice(0, 160));
   }

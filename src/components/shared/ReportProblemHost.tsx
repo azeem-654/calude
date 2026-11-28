@@ -16,20 +16,22 @@
  * ── After sending ──
  *
  * The report is a ticket and, now, a fix the owner is asked to start
- * (worker/src/lib/problemFix.ts). While it is open the button says so —
- * "Fix in progress" once a session is really working on it, never before —
- * and pressing it shows what the customer was told: wait 10–15 minutes and
- * refresh, then "fixed — check it" with the strategy-call link. The same
- * words reach them in the corner card and by email, from the server.
+ * (worker/src/lib/problemFix.ts) — a bug, an improvement or a new feature
+ * (2026-11-28: the button says "Report a bug or request a feature"). While it
+ * is open the button says so — "In progress" once a session is really working
+ * on it, never before; "Being tested" while it is on the testing site — and
+ * pressing it shows what the customer was told, with the time for its kind,
+ * then "Fixed — check it" with the strategy-call link. The same words reach
+ * them in the corner card, on their ticket and by email, from the server.
  *
  * Signed out (the marketing site) nothing is drawn or registered and the
  * widget shows its own form. Not on a reseller's own address either, where
  * the product is somebody else's brand (as HelpLauncher).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bug, CalendarCheck, CheckCircle2, Loader, RefreshCw, Wrench, X } from 'lucide-react';
+import { Bug, CalendarCheck, CheckCircle2, FlaskConical, Loader, RefreshCw, Wrench, X } from 'lucide-react';
 import ReportProblem from '../Protron/ReportProblem';
-import { FIX_EVENT, isOpen, myReports, type MyReport } from '../../services/problemFix';
+import { FIX_EVENT, isOpen, isTesting, myReports, type MyReport } from '../../services/problemFix';
 import { isWhiteLabelHost } from '../../services/hosts';
 import '../Protron/protron.css';
 
@@ -131,7 +133,8 @@ export default function ReportProblemHost() {
 
   const fixedNew = reports.find(r => r.status === 'fixed' && !seen.includes(r.id) && Date.now() - Date.parse(r.updatedAt) < FRESH_MS);
   const shown = live ?? fixedNew;
-  const working = !!live && (live.status === 'fixing' || live.status === 'ready');
+  const working = !!live && live.status === 'fixing';
+  const testing = !!live && isTesting(live.status);
 
   const press = () => {
     setSent('');
@@ -147,12 +150,14 @@ export default function ReportProblemHost() {
     <>
       {!open && !modal && (
         <button type="button" onClick={press} data-no-shot="" data-testid="report-problem-button"
-          className="pc-report-btn" data-state={fixedNew && !live ? 'fixed' : working ? 'working' : live ? 'waiting' : ''}
-          title={shown ? `${shown.title}${shown.reference ? ` (${shown.reference})` : ''}` : 'Stuck, or found a bug? Report it with a screenshot or a voice note'}
-          aria-label={shown ? `Your report: ${shown.title}` : 'Report a problem'}
+          className="pc-report-btn" data-state={fixedNew && !live ? 'fixed' : testing ? 'testing' : working ? 'working' : live ? 'waiting' : ''}
+          title={shown ? `${shown.title}${shown.reference ? ` (${shown.reference})` : ''}` : 'Found a bug, or want something new or better? Tell us with a screenshot or a voice note'}
+          aria-label={shown ? `Your report: ${shown.title}` : 'Report a bug or request a feature'}
           style={{ right: at.right, bottom: at.bottom }}>
-          {fixedNew && !live ? <CheckCircle2 size={15} /> : working ? <Wrench size={15} /> : <Bug size={15} />}
-          <span className="pc-report-btn-label">{fixedNew && !live ? 'Fixed — check it' : working ? 'Fix in progress' : live ? 'Report received' : 'Report a problem'}</span>
+          {fixedNew && !live ? <CheckCircle2 size={15} /> : testing ? <FlaskConical size={15} /> : working ? <Wrench size={15} /> : <Bug size={15} />}
+          <span className="pc-report-btn-label">{fixedNew && !live ? (fixedNew.kind === 'bug' ? 'Fixed — check it' : 'Live — check it') : testing ? 'Being tested' : working ? 'In progress' : live ? (live.kind === 'bug' ? 'Report received' : 'Request received') : (
+            <><span className="pc-report-btn-long">Report a bug or request a feature</span><span className="pc-report-btn-short">Bug or feature</span></>
+          )}</span>
         </button>
       )}
       {open && (
@@ -195,7 +200,7 @@ export default function ReportProblemHost() {
 
 /** What the customer was told about their report, and what they can do now. */
 function Status({ r, call, onClose, onAnother }: { r: MyReport; call: string; onClose: () => void; onAnother: () => void }) {
-  const working = r.status === 'fixing' || r.status === 'ready';
+  const working = r.status === 'fixing' || isTesting(r.status);
   const fixed = r.status === 'fixed';
   return (
     <div role="status" data-testid="report-status" data-status={r.status} style={PANEL}>
@@ -222,7 +227,7 @@ function Status({ r, call, onClose, onAnother }: { r: MyReport; call: string; on
         {call && (fixed || working) && (
           <a className="pt-btn" href={call} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}><CalendarCheck size={14} /> Book a strategy call</a>
         )}
-        <button type="button" className="pt-btn" onClick={onAnother}><Bug size={14} /> Report another problem</button>
+        <button type="button" className="pt-btn" onClick={onAnother}><Bug size={14} /> Send another</button>
       </div>
     </div>
   );

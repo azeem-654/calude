@@ -75,6 +75,8 @@ export interface FiledReport { id: string; reference: string; guestKey: string }
 /** The report as a ticket in `accountId`, its pictures kept beside it. */
 export async function fileProblemTicket(env: Env, accountId: string, r: {
   email: string; name: string; described: string; page: string; pics: ReportPicture[]; context?: Record<string, unknown>;
+  /** From the app's sheet: a bug (the default, and all the help widget sends), an improvement or a new feature. */
+  kind?: 'bug' | 'improvement' | 'feature';
 }): Promise<FiledReport> {
   const person = await upsertPerson(env, accountId, { email: r.email, name: r.name, source: 'report', context: r.context });
   const reference = await nextTicketRef(env, accountId);
@@ -82,13 +84,15 @@ export async function fileProblemTicket(env: Env, accountId: string, r: {
   const id = rid('tkt');
   const now = nowIso();
   const first = r.described.split(/\n/)[0].replace(/\s+/g, ' ').trim();
-  const subject = `Problem: ${first.slice(0, 120)}${first.length > 120 ? '…' : ''}`;
+  const prefix = r.kind === 'feature' ? 'Feature request' : r.kind === 'improvement' ? 'Improvement' : 'Problem';
+  const subject = `${prefix}: ${first.slice(0, 120)}${first.length > 120 ? '…' : ''}`;
   const body = `${r.described}${r.page ? `\n\nScreen: ${r.page}` : ''}${r.pics.length ? `\n\n${r.pics.length} picture${r.pics.length === 1 ? '' : 's'} attached.` : ''}`;
   await env.DB.prepare(
     `INSERT INTO crm_tickets
      (id, account_id, reference, person_id, subject, body, category, priority, source, guest_key, created_at, updated_at)
-     VALUES (?,?,?,?,?,?, 'problem', 'high', 'report', ?,?,?)`,
-  ).bind(id, accountId, reference, person.id, subject, body, key, now, now).run();
+     VALUES (?,?,?,?,?,?,?,?, 'report', ?,?,?)`,
+  ).bind(id, accountId, reference, person.id, subject, body,
+    r.kind && r.kind !== 'bug' ? 'feature' : 'problem', r.kind && r.kind !== 'bug' ? 'normal' : 'high', key, now, now).run();
   for (const p of r.pics) {
     await storeChatFile(env, { accountId, conversationId: id, messageId: '', uploadedBy: 'visitor', bytes: p.bytes, mime: p.mime, now })
       .catch(() => null); // a picture that cannot be stored never loses the ticket; it is also in the email

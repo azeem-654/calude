@@ -314,6 +314,37 @@ covers the route. On testing, `/api/problem-fix.php` passes the password lock
 (`stagingGate.ts`, `test:gate`) so the session can reach its report there.
 Real-world checks still to run: `docs/audit/LOCAL-SESSION-PROBLEM-FIX-BRIEF.md`.
 
+**Testing first, then Push it live; bugs, improvements and features**
+(owner, 2026-11-28; migration 0109). The pill reads **Report a bug or request
+a feature** ("Bug or feature" under 700 px) and the sheet asks which:
+`kind` = `bug` | `improvement` | `feature` (`data-field report.kind`; anything
+else is a bug). `KIND_INFO` in `lib/problemFix.ts` is the one table of each
+kind's words and the time the customer is told (about 30 minutes / a few
+hours / 1–2 days); the ticket's subject prefix and category follow it
+(`problem` / `feature`). The owner's email (login **and** the Gmail copy)
+leads with **Fix it and put it on the testing site** (`a=testing`), then *Fix
+it and put it live*; a reply **YES** now means testing, **YES LIVE** live. The
+FIX payload says `ship: TESTING SITE FIRST` and the session must report
+`ready` with a write-up — `changed`, `customerSees`, `improved`, `testSteps`
+(baby steps on testing.protectedcentral.com), `commit` — or it is refused.
+`ready` → the owner's **"Ready to test on the testing site"** email with those
+sections and a **Push it live** button (`?id=&p=`, an HMAC of `promote\n<id>`
+— the start-fixing signature cannot promote; GET shows a page, the POST acts),
+the same button on Problem fixes (`promote`), and the customer told it is
+built and being tested. Push it live (`promoteFix`, claimed `ready` →
+`promoting` in one UPDATE) fires the same scheduled task with a **PROMOTE**
+payload and a fresh key: read `docs/INCUBATOR.md`, run Actions → Promote
+testing to live, wait for Deploy to Cloudflare, report `fixed`. `failed` from
+a promoting run puts it back to `ready` with the reason in `error` and tells
+the customer nothing new; *It's live — tell the customer* stays for a promotion
+done by hand. Every customer moment — in progress (with the time), on testing,
+live, a person will reply — is an email, a `crm_notices` card and a
+non-internal `crm_ticket_messages` line, and moves the ticket (`in_progress`,
+`resolved` with the resolution, `waiting`). `savedPrompt()` no longer names a
+site: the payload's commands (written by the server) name the one site the
+session may reach, so **one scheduled task serves live and testing** — its
+environment allows both hosts, and its trigger is pasted on each site.
+
 **Help articles and "How did we do?"** (2026-11-16). The widget config carries
 `articles` (count of the workspace's published `crm_kb_articles`); only when it is
 above 0 does the home panel show **Search help articles** (`data-field

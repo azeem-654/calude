@@ -1,13 +1,14 @@
 /**
  * /api/problem-fix.php — "Report a problem" → a fix (lib/problemFix.ts).
  *
- *  owner     list, decide, mark_fixed, retry, config, config_save
+ *  owner     list, decide, promote (Push it live), mark_fixed, retry, config, config_save
  *  customer  mine — their own reports and what to tell them, for the
  *            Report a problem button's status
  *  session   agent_report, agent_picture, agent_audio, agent_update — the
  *            Claude Code session, proved by the key made for one report
- *  email     GET ?id=&s= shows the owner a page; only its button's POST acts
- *            (mail scanners follow links)
+ *  email     GET ?id=&s= (start fixing) or ?id=&p= (Push it live) shows the
+ *            owner a page; only its button's POST acts (mail scanners follow
+ *            links)
  *
  * Owner-only means the install owner (role agency, no workspace of its own),
  * as in routes/supportDesk.ts. A session key reaches exactly one report and
@@ -20,8 +21,9 @@ import { rateLimit } from '../lib/rateLimit';
 import { fileResponse } from '../lib/chatFiles';
 import { houseWidgetAccount } from './engage';
 import {
-  agentUpdate, approveValid, cleanHours, cleanRoutineUrl, customerLine, decideFix, fixByAgentKey, fixConfig, getFix,
-  isAgentStatus, markFixed, saveFixConfig, savedPrompt, strategyCallUrl, type FixRow,
+  agentUpdate, approveValid, cleanHours, cleanKind, cleanRoutineUrl, cleanWriteUp, customerLine, decideFix, fixByAgentKey,
+  fixConfig, getFix, isAgentStatus, KIND_INFO, markFixed, promoteFix, promoteValid, saveFixConfig, savedPrompt,
+  strategyCallUrl, testingLink, TESTING_SITE, type FixRow,
 } from '../lib/problemFix';
 import { origin } from '../lib/supportDesk';
 
@@ -34,14 +36,17 @@ function ownerView(r: FixRow) {
   return {
     id: r.id, ticketId: r.ticket_id, reference: r.reference, email: r.email, name: r.name, accountId: r.account_id,
     page: r.page, description: r.description, pictures: r.pictures, hasAudio: !!r.has_audio, status: r.status,
-    ship: r.ship, sessionUrl: r.session_url, note: r.note, error: r.error, createdAt: r.created_at,
-    decidedAt: r.decided_at, sentAt: r.sent_at, fixedAt: r.fixed_at, toldAt: r.told_at, updatedAt: r.updated_at,
+    ship: r.ship, kind: cleanKind(r.kind), sessionUrl: r.session_url, note: r.note, error: r.error,
+    changed: r.changed, customerSees: r.customer_sees, improved: r.improved, testSteps: r.test_steps, commitSha: r.commit_sha,
+    testingUrl: testingLink(r.page), createdAt: r.created_at, decidedAt: r.decided_at, sentAt: r.sent_at, readyAt: r.ready_at,
+    promotedAt: r.promoted_at, fixedAt: r.fixed_at, toldAt: r.told_at, updatedAt: r.updated_at,
   };
 }
 
 export async function handleProblemFix(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
   if (url.searchParams.get('id') && url.searchParams.get('s')) return emailPage(req, env, url);
+  if (url.searchParams.get('id') && url.searchParams.get('p')) return promotePage(req, env, url);
   if (req.method !== 'POST') return fail('Send this as a POST.', 405);
   let d: Record<string, unknown>;
   try { d = await req.json() as Record<string, unknown>; } catch { return fail('That was not a valid request.'); }
@@ -53,7 +58,7 @@ export async function handleProblemFix(req: Request, env: Env): Promise<Response
     if (!gate.allowed) return fail('Too many calls for this report — wait a few minutes.', 429);
     const row = await fixByAgentKey(env, s(d.id, 40), s(d.key, 80));
     if (!row) return fail('That report id and key do not match, or the key has been replaced.', 403, { code: 'bad_key' });
-    const live = ['fixing', 'ready'].includes(row.status) || (row.status === 'waiting');
+    const live = ['fixing', 'ready', 'promoting'].includes(row.status) || (row.status === 'waiting');
     if (!live) return fail(`This report is ${row.status}; its key no longer works.`, 403, { code: 'closed' });
     const house = await houseWidgetAccount(env);
 
@@ -65,7 +70,8 @@ export async function handleProblemFix(req: Request, env: Env): Promise<Response
       return json({
         success: true,
         report: {
-          id: row.id, reference: row.reference, status: row.status, ship: row.ship || 'live',
+          id: row.id, reference: row.reference, status: row.status, ship: row.ship || 'live', kind: cleanKind(row.kind),
+          testingSite: testingLink(row.page),
           page: row.page, description: row.description, createdAt: row.created_at, workspace: row.account_id,
           pictures: pics.map((p, n) => ({ n, mime: p.mime, size: p.size })), hasAudio: !!row.has_audio,
         },
@@ -90,7 +96,7 @@ export async function handleProblemFix(req: Request, env: Env): Promise<Response
     if (act === 'agent_update') {
       const status = s(d.status, 20);
       if (!isAgentStatus(status)) return fail('status must be working, diagnosed, ready, fixed or failed.');
-      const r = await agentUpdate(env, row, status, s(d.note, 2000), s(d.sessionUrl, 300));
+      const r = await agentUpdate(env, row, status, s(d.note, 2000), s(d.sessionUrl, 300), cleanWriteUp(d));
       return r.ok ? json({ success: true }) : fail(r.error ?? 'Not updated.', 409);
     }
     return fail('Unknown action.');
@@ -105,13 +111,13 @@ export async function handleProblemFix(req: Request, env: Env): Promise<Response
   if (act === 'mine') {
     const since = new Date(Date.now() - 14 * 86_400_000).toISOString();
     const { results } = await env.DB.prepare(
-      'SELECT id, reference, status, description, created_at AS createdAt, updated_at AS updatedAt FROM crm_problem_fixes WHERE email = ? AND created_at > ? ORDER BY created_at DESC LIMIT 5',
-    ).bind(user.email, since).all<{ id: string; reference: string; status: FixRow['status']; description: string; createdAt: string; updatedAt: string }>()
+      'SELECT id, reference, status, kind, description, created_at AS createdAt, updated_at AS updatedAt FROM crm_problem_fixes WHERE email = ? AND created_at > ? ORDER BY created_at DESC LIMIT 5',
+    ).bind(user.email, since).all<{ id: string; reference: string; status: FixRow['status']; kind: string; description: string; createdAt: string; updatedAt: string }>()
       .catch(() => ({ results: [] }));
     return json({
       success: true,
       strategyCall: await strategyCallUrl(env),
-      reports: (results ?? []).map(r => ({ ...r, description: r.description.slice(0, 160), ...customerLine(r.status) })),
+      reports: (results ?? []).map(r => ({ ...r, kind: cleanKind(r.kind), description: r.description.slice(0, 160), ...customerLine(r.status, r.kind) })),
     });
   }
 
@@ -132,11 +138,19 @@ export async function handleProblemFix(req: Request, env: Env): Promise<Response
     return r.ok ? json({ success: true, status: r.status, message: r.message }) : fail(r.message, 200, { status: r.status });
   }
 
-  /* The owner promoted a fix that was on testing: now tell the customer. */
+  /* Push it live, from the tab (the email's button does the same). */
+  if (act === 'promote') {
+    const row = await getFix(env, s(d.id, 40));
+    if (!row) return fail('That report could not be found.', 404);
+    const r = await promoteFix(env, row);
+    return r.ok ? json({ success: true, status: r.status, message: r.message }) : fail(r.message, 200, { status: r.status });
+  }
+
+  /* The owner promoted a fix by hand: now tell the customer. */
   if (act === 'mark_fixed') {
     const row = await getFix(env, s(d.id, 40));
     if (!row) return fail('That report could not be found.', 404);
-    if (!['fixing', 'ready'].includes(row.status)) return fail(`This report is ${row.status}.`);
+    if (!['fixing', 'ready', 'promoting'].includes(row.status)) return fail(`This report is ${row.status}.`);
     await markFixed(env, row, s(d.note, 1500));
     return json({ success: true });
   }
@@ -148,7 +162,7 @@ export async function handleProblemFix(req: Request, env: Env): Promise<Response
       connected: !!(c.url && c.token), url: c.url, tokenSet: !!c.token, status: c.status, lastError: c.lastError,
       checkedAt: c.status === 'ok' || c.status === 'error' ? c.updatedAt : null,
       digestHours: c.digestHours, diagnose: c.diagnose,
-      prompt: savedPrompt(origin(env, url.origin)), host: new URL(origin(env, url.origin)).host,
+      prompt: savedPrompt(), host: new URL(origin(env, url.origin)).host, testingHost: new URL(TESTING_SITE).host,
     });
   }
 
@@ -186,21 +200,19 @@ async function emailPage(req: Request, env: Env, url: URL): Promise<Response> {
   if (!(await approveValid(env, id, url.searchParams.get('s') ?? ''))) return page('Not found', 'That link is not valid.');
   const row = await getFix(env, id);
   if (!row) return page('Not found', 'That report no longer exists.');
-  if (!['waiting', 'failed'].includes(row.status)) {
-    const said = { fixing: 'A session is working on it now.', ready: 'The fix is on testing.', fixed: 'It is fixed and the customer has been told.', declined: 'You chose to leave it for a person.' }[row.status as string] ?? '';
-    return page('Already answered', `This report has already been answered. ${said}${row.session_url ? ` <a href="${escH(row.session_url)}">Open the session</a>.` : ''}`);
-  }
+  if (!['waiting', 'failed'].includes(row.status)) return page('Already answered', `This report has already been answered. ${statusSaid(row)}`);
   if (req.method !== 'POST') {
     const pick = url.searchParams.get('a');
-    const order = pick === 'testing'
-      ? [button('Fix it on testing first', 'testing'), button('Fix it and put it live', 'live', false)]
-      : [button('Yes — fix it and put it live', 'live'), button('Fix it on testing first', 'testing', false)];
-    return page('Start fixing this problem?',
-      `<p><b>${escH(row.name || row.email)}</b> reported${row.reference ? ` (${escH(row.reference)})` : ''}:</p>
+    const order = pick === 'live'
+      ? [button('Fix it and put it live', 'live'), button('Fix it and put it on the testing site', 'testing', false)]
+      : [button('Fix it and put it on the testing site', 'testing'), button('Fix it and put it live', 'live', false)];
+    const info = KIND_INFO[cleanKind(row.kind)];
+    return page('Start on this?',
+      `<p><b>${escH(row.name || row.email)}</b> sent ${escH(info.label.toLowerCase())}${row.reference ? ` (${escH(row.reference)})` : ''}:</p>
 <p style="white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px">${escH(row.description.slice(0, 2000))}</p>
 ${row.page ? `<p style="color:#64748b;font-size:13px">Screen: ${escH(row.page)}</p>` : ''}
 ${row.status === 'failed' ? `<p style="color:#b42318">The last attempt did not finish: ${escH(row.error || row.note || 'no reason given')}</p>` : ''}
-<p style="font-size:13px;color:#475569">A Claude Code cloud session starts on it at once and the customer is told to check back in 10–15 minutes. "Put it live" lets the session promote testing to live once the tests pass — that also puts live anything else already waiting on testing.</p>`,
+<p style="font-size:13px;color:#475569">A Claude Code cloud session starts on it at once and the customer is told to expect it in ${escH(info.eta)}. On the testing site first, you get an email with what changed, how to test it and a Push it live button. "Put it live" skips that: the session promotes testing to live once the tests pass — which also puts live anything else already waiting on testing.</p>`,
       `<form method="post" style="margin-top:18px">${order.join('')}${button('No — leave it for a person', 'decline', false)}</form>`);
   }
   const form = await req.formData().catch(() => null);
@@ -210,4 +222,38 @@ ${row.status === 'failed' ? `<p style="color:#b42318">The last attempt did not f
   const fresh = await getFix(env, id);
   return page(r.ok ? (go === 'decline' ? 'Left for a person' : 'Fixing has started') : 'Not started',
     `${escH(r.message)}${fresh?.session_url ? ` <a href="${escH(fresh.session_url)}">Watch the session</a>.` : ''}`);
+}
+
+/** Where a report stands, for a button pressed after the moment it was for. */
+function statusSaid(row: FixRow): string {
+  const said: Record<string, string> = {
+    fixing: 'A session is working on it now.', ready: 'The fix is on the testing site, waiting for you to push it live.',
+    promoting: 'It is going live now.', fixed: 'It is live and the customer has been told.', declined: 'You chose to leave it for a person.',
+    failed: 'The last attempt did not finish.',
+  };
+  return `${said[row.status] ?? ''}${row.session_url ? ` <a href="${escH(row.session_url)}">Open the session</a>.` : ''}`;
+}
+
+/** The "Push it live" button in the ready-to-test email: a page first, its POST acts. */
+async function promotePage(req: Request, env: Env, url: URL): Promise<Response> {
+  const id = url.searchParams.get('id') ?? '';
+  if (!(await promoteValid(env, id, url.searchParams.get('p') ?? ''))) return page('Not found', 'That link is not valid.');
+  const row = await getFix(env, id);
+  if (!row) return page('Not found', 'That report no longer exists.');
+  if (row.status !== 'ready') return page(row.status === 'promoting' ? 'Going live' : 'Nothing to push', statusSaid(row));
+  if (req.method !== 'POST') {
+    const test = testingLink(row.page);
+    return page('Push it live?',
+      `<p>${escH(KIND_INFO[cleanKind(row.kind)].label)} from <b>${escH(row.name || row.email)}</b>${row.reference ? ` (${escH(row.reference)})` : ''}:</p>
+<p style="white-space:pre-wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px">${escH(row.changed || row.note || row.description.slice(0, 600))}</p>
+${row.error ? `<p style="color:#b42318">The last try to put it live did not finish: ${escH(row.error)}</p>` : ''}
+<p style="font-size:13px;color:#475569">Checked it on <a href="${escH(test)}">the testing site</a>? Claude Code promotes testing to live and waits for the live deploy; then the customer is told by email, in the app and on their ticket. This also puts live anything else already waiting on testing.</p>`,
+      `<form method="post" style="margin-top:18px">${button('Push it live', 'promote')}</form>`);
+  }
+  const form = await req.formData().catch(() => null);
+  if (String(form?.get('go') ?? '') !== 'promote') return page('Nothing changed', 'Press Push it live to go ahead.');
+  const r = await promoteFix(env, row);
+  const fresh = await getFix(env, id);
+  return page(r.ok ? 'Going live' : 'Not started',
+    `${escH(r.message)}${r.ok && fresh?.session_url ? ` <a href="${escH(fresh.session_url)}">Watch the session</a>.` : ''}`);
 }

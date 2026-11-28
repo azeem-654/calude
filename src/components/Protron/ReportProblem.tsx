@@ -12,6 +12,10 @@
  * `transcribe`), where they can correct it, and the recording itself goes with
  * the report for whoever fixes it. Two minutes at most — the size the server
  * keeps — and it stops by itself there.
+ *
+ * Three kinds (owner, 2026-11-28): a bug, an improvement to a feature they
+ * use, or a new feature. Same sheet, same path to a fix; the kind changes the
+ * words here and the time the customer is told it will take (server side).
  */
 import { useEffect, useRef, useState } from 'react';
 import { Camera, ImagePlus, Loader, Mic, RotateCcw, Send, Square, Trash2, X } from 'lucide-react';
@@ -21,6 +25,13 @@ import { transcribe } from '../../services/intake';
 const MAX_OWN = 3;
 const MAX_VOICE_S = 120;
 const MAX_VOICE_BYTES = 1_450_000;
+
+type Kind = 'bug' | 'improvement' | 'feature';
+const KINDS: { id: Kind; label: string; ask: string; placeholder: string }[] = [
+  { id: 'bug', label: 'Report a bug', ask: 'What happened, and what did you expect?', placeholder: 'e.g. I pressed Save on a contact and nothing happened.' },
+  { id: 'improvement', label: 'Improve a feature', ask: 'Which feature, and what would make it better?', placeholder: 'e.g. Let me sort the contacts list by the last time I spoke to them.' },
+  { id: 'feature', label: 'Request a new feature', ask: 'What would you like it to do, and how would it help you?', placeholder: 'e.g. A button that sends a review request by text after a job is marked done.' },
+];
 
 /** What this browser records in: Opus in WebM, or AAC in MP4 on Safari. */
 function voiceType(): string {
@@ -50,6 +61,8 @@ export default function ReportProblem({ initial, onClose, onSent }: {
   const [shotState, setShotState] = useState<'taking' | 'ready' | 'failed' | 'removed'>('taking');
   const [shotError, setShotError] = useState('');
   const [text, setText] = useState(initial);
+  const [kind, setKind] = useState<Kind>('bug');
+  const k = KINDS.find(x => x.id === kind) ?? KINDS[0];
   const [own, setOwn] = useState<string[]>([]);
   const [error, setError] = useState<{ message: string; field?: string } | null>(null);
   const [sending, setSending] = useState(false);
@@ -156,23 +169,31 @@ export default function ReportProblem({ initial, onClose, onSent }: {
     /* A voice note alone is enough to send; its words, when they could be
        written out, are already in the box. */
     const words = text.trim() || (voiceNote ? 'Voice note — please listen to the recording.' : '');
-    if (words.length < 5) { setError({ message: 'Say what went wrong, in a sentence or two — or record a voice note.', field: 'report.description' }); area.current?.focus(); return; }
+    if (words.length < 5) { setError({ message: `${kind === 'bug' ? 'Say what went wrong' : 'Say what you would like'}, in a sentence or two — or record a voice note.`, field: 'report.description' }); area.current?.focus(); return; }
     setSending(true);
     setError(null);
     const withShot = shotState === 'ready' && !!shot;
-    const r = await sendReport({ description: words, screenshot: withShot ? shot : '', pictures: own, audio: voiceNote?.b64, audioMime: voiceNote?.mime });
+    const r = await sendReport({ description: words, screenshot: withShot ? shot : '', pictures: own, audio: voiceNote?.b64, audioMime: voiceNote?.mime, kind });
     setSending(false);
     if (!r.ok) { setError({ message: r.message, field: r.field }); return; }
     onSent(r.message, withShot, r);
   };
 
   return (
-    <div className="pt-report" role="dialog" aria-label="Report a problem" data-testid="protron-report">
+    <div className="pt-report" role="dialog" aria-label="Report a bug or request a feature" data-testid="protron-report">
       <div className="pt-report-head">
-        <b><Camera size={16} /> Report a problem</b>
+        <b><Camera size={16} /> Report a bug or request a feature</b>
         <button type="button" className="pt-icon" aria-label="Close the report" title="Close" onClick={onClose}><X size={16} /></button>
       </div>
-      <p className="pt-report-sub">Stuck, or found a bug? Tell us what went wrong — type it or record a voice note. Your report, with a screenshot of this screen, goes straight to our technical team, and you can follow it from the Report a problem button.</p>
+      <div className="pt-report-kinds" role="radiogroup" aria-label="What are you sending?" data-field="report.kind">
+        {KINDS.map(x => (
+          <button key={x.id} type="button" role="radio" aria-checked={kind === x.id} className="pt-report-kind" data-on={kind === x.id || undefined}
+            data-testid={`report-kind-${x.id}`} onClick={() => setKind(x.id)}>{x.label}</button>
+        ))}
+      </div>
+      <p className="pt-report-sub">{kind === 'bug'
+        ? 'Stuck, or found a bug? Tell us what went wrong — type it or record a voice note.'
+        : 'Tell us what you would like — type it or record a voice note.'} It goes straight to our team with a screenshot of this screen and becomes a ticket; you can follow it from the Report button and by email.</p>
 
       <div className="pt-report-shot" data-state={shotState}>
         {shotState === 'taking' && <span className="pt-report-wait"><Loader size={15} className="spin" /> Taking a screenshot of your screen…</span>}
@@ -207,10 +228,10 @@ export default function ReportProblem({ initial, onClose, onSent }: {
         {voiceMsg && <small className="pt-report-note" role="status">{voiceMsg}</small>}
       </div>
 
-      <label className="pt-report-label" htmlFor="pt-report-text">What happened, and what did you expect?</label>
+      <label className="pt-report-label" htmlFor="pt-report-text">{k.ask}</label>
       <textarea id="pt-report-text" ref={area} data-field="report.description" className="pt-input pt-report-text" rows={4} maxLength={4000}
         value={text} onChange={e => setText(e.target.value)}
-        placeholder="e.g. I pressed Save on a contact and nothing happened."
+        placeholder={k.placeholder}
         aria-invalid={error?.field === 'report.description' || undefined}
         onPaste={e => {
           const pics = [...e.clipboardData.files].filter(f => /^image\//.test(f.type));
@@ -237,7 +258,7 @@ export default function ReportProblem({ initial, onClose, onSent }: {
       <div className="pt-report-foot">
         <button type="button" className="pt-btn" onClick={onClose} disabled={sending}>Cancel</button>
         <button type="button" className="pt-btn pt-btn-primary" onClick={() => void send()} disabled={sending || shotState === 'taking' || voice === 'writing' || voice === 'asking'} data-testid="protron-report-send">
-          {sending ? <><Loader size={14} className="spin" /> Sending…</> : <><Send size={14} /> Send report</>}
+          {sending ? <><Loader size={14} className="spin" /> Sending…</> : <><Send size={14} /> {kind === 'bug' ? 'Send report' : 'Send request'}</>}
         </button>
       </div>
     </div>

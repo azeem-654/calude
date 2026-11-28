@@ -511,6 +511,12 @@
 .pt-report-head b { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
 .pt-report-head .pt-icon { color: #374151; }
 .pt-report-sub { margin: 0; font-size: 12px; line-height: 1.45; color: #4b5563; }
+/* Bug / improvement / new feature: three plain choices that wrap on a phone. */
+.pt-report-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.pt-report-kind { flex: 1 1 auto; padding: 7px 10px; border-radius: 999px; border: 1px solid #e5e7eb; background: #fff; color: #374151;
+  font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.pt-report-kind[data-on] { background: #eef2ff; border-color: #a5b4fc; color: #312e81; }
+.pt-report-kind:focus-visible { outline: 2px solid #5b46e5; outline-offset: 2px; }
 .pt-report-shot { display: grid; gap: 8px; padding: 8px; border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; }
 .pt-report-shot img { width: 100%; max-height: 190px; object-fit: contain; object-position: top; border-radius: 8px; background: #eef0f4; }
 .pt-report-wait { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #4b5563; min-height: 40px; }
@@ -634,4 +640,8 @@
 .pc-report-btn[data-state="working"] { background: #eef2ff; border-color: #a5b4fc; color: #312e81; }
 .pc-report-btn[data-state="fixed"] { background: #ecfdf5; border-color: #86efac; color: #14532d; }
 .pc-report-btn[data-state="fixed"] svg { color: #16a34a; }
+.pc-report-btn[data-state="testing"] { background: #fefce8; border-color: #fde047; color: #713f12; }
+/* The full words where there is room; beside the help launcher on a phone the short ones. */
+.pc-report-btn-short { display: none; }
+@media (max-width: 699px) { .pc-report-btn-long { display: none; } .pc-report-btn-short { display: inline; } }
 @media (max-width: 359px) { .pc-report-btn { padding: 0 9px; } .pc-report-btn-label { display: none; } }

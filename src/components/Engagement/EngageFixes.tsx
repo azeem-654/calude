@@ -7,12 +7,17 @@
  * so "should I start fixing it?" is answered from wherever the owner is.
  * Below the list is the one setting it needs: the API trigger of the owner's
  * Claude Code scheduled task, and the prompt to save on that task once.
+ *
+ * Testing first (2026-11-28): the usual yes puts the fix on the testing site;
+ * the session's write-up (what changed, what the customer sees, the owner's
+ * test steps) shows on the report with **Push it live**, the same button as
+ * in the ready-to-test email.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Bug, CheckCircle2, Copy, ExternalLink, Loader, Mic, Image as ImageIcon, RefreshCw, Rocket, FlaskConical, X } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { fixApi, type FixConfigView, type FixStatus, type OwnerReport } from '../../services/problemFix';
+import { fixApi, KIND_LABEL, type FixConfigView, type FixStatus, type OwnerReport } from '../../services/problemFix';
 
 const INK = '#0f172a';
 const MUTED = '#64748b';
@@ -21,8 +26,9 @@ const ACCENT = '#5b46e5';
 
 const STATUS: Record<FixStatus, { label: string; bg: string; fg: string }> = {
   waiting: { label: 'Waiting for you', bg: '#fff7e6', fg: '#9a5b00' },
-  fixing: { label: 'Claude is fixing it', bg: '#eef2ff', fg: '#3e3aa8' },
-  ready: { label: 'Fixed on testing', bg: '#eef2ff', fg: '#3e3aa8' },
+  fixing: { label: 'Claude is on it', bg: '#eef2ff', fg: '#3e3aa8' },
+  ready: { label: 'On testing — test it', bg: '#fefce8', fg: '#854d0e' },
+  promoting: { label: 'Going live…', bg: '#eef2ff', fg: '#3e3aa8' },
   fixed: { label: 'Fixed · customer told', bg: '#e9f7ef', fg: '#0f7b3d' },
   declined: { label: 'Left for a person', bg: '#f1f5f9', fg: '#475569' },
   failed: { label: 'Needs you', bg: '#fdf2f2', fg: '#b42318' },
@@ -64,7 +70,7 @@ export default function EngageFixes() {
     document.getElementById(`fix-${focus}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, [focus, busy]);
 
-  const act = async (r: OwnerReport, action: 'decide' | 'mark_fixed', answer?: 'live' | 'testing' | 'decline') => {
+  const act = async (r: OwnerReport, action: 'decide' | 'mark_fixed' | 'promote', answer?: 'live' | 'testing' | 'decline') => {
     setActing(`${r.id}:${answer ?? action}`);
     const res = await fixApi(action, { id: r.id, answer });
     setActing('');
@@ -80,7 +86,7 @@ export default function EngageFixes() {
         <div style={{ minWidth: 0 }}>
           <h3 style={{ margin: 0, fontSize: 16, color: INK, display: 'flex', alignItems: 'center', gap: 8 }}><Bug size={17} /> Problem fixes</h3>
           <p style={{ margin: '4px 0 0', fontSize: 12.5, color: MUTED, lineHeight: 1.5 }}>
-            Problems customers report from the app. Say yes and a Claude Code cloud session starts fixing it, and the customer is told to check back in 10–15 minutes.
+            Bugs, improvements and feature requests customers send from the app. Say yes and a Claude Code cloud session puts the fix on the testing site; you test it with the steps it writes, then press Push it live. The customer is kept told at each step.
             {waiting ? <b style={{ color: '#9a5b00' }}> {waiting} waiting for your answer.</b> : null}
           </p>
         </div>
@@ -111,6 +117,7 @@ export default function EngageFixes() {
                 style={{ ...card, borderColor: r.id === focus ? ACCENT : LINE, boxShadow: r.id === focus ? `0 0 0 3px ${ACCENT}22` : undefined }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ padding: '3px 9px', borderRadius: 999, background: st.bg, color: st.fg, fontSize: 11.5, fontWeight: 700 }}>{st.label}</span>
+                  <span data-testid="fix-kind" style={{ padding: '3px 9px', borderRadius: 999, border: `1px solid ${LINE}`, color: MUTED, fontSize: 11.5, fontWeight: 700 }}>{KIND_LABEL[r.kind] ?? 'Bug'}</span>
                   <b style={{ fontSize: 13.5, color: INK }}>{r.name || r.email}</b>
                   <span style={{ fontSize: 12, color: MUTED }}>{r.reference ? `${r.reference} · ` : ''}{ago(r.createdAt)}</span>
                 </div>
@@ -121,25 +128,40 @@ export default function EngageFixes() {
                   {r.hasAudio && <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}><Mic size={12} /> voice note</span>}
                   <span>{r.email}</span>
                 </div>
-                {r.note && (
+                {r.changed ? (
+                  <div data-testid="fix-writeup" style={{ marginTop: 8, padding: '10px 12px', borderRadius: 10, background: '#f8fafc', border: `1px solid ${LINE}`, fontSize: 12.5, lineHeight: 1.55, color: INK, display: 'grid', gap: 8, overflowWrap: 'anywhere' }}>
+                    <WriteUp title={r.kind === 'bug' ? 'What was fixed' : 'What was built'} text={r.changed} />
+                    {r.customerSees && <WriteUp title="What the customer will see" text={r.customerSees} />}
+                    {r.improved && <WriteUp title="Also better" text={r.improved} />}
+                    {r.testSteps && <WriteUp title="How to test it on the testing site" text={r.testSteps} />}
+                    {r.note && r.status === 'fixed' && <WriteUp title="Told the customer" text={r.note} />}
+                  </div>
+                ) : r.note ? (
                   <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 10, background: '#f8fafc', border: `1px solid ${LINE}`, fontSize: 12.5, lineHeight: 1.55, color: INK, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                     <b>Claude:</b> {r.note}
                   </div>
-                )}
+                ) : null}
                 {r.error && <div style={{ marginTop: 8, fontSize: 12.5, color: '#b42318', overflowWrap: 'anywhere' }}>{r.error}</div>}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
                   {can && <>
-                    <button type="button" style={primarySm} disabled={!!acting} onClick={() => void act(r, 'decide', 'live')}>
-                      {acting === `${r.id}:live` ? <Loader size={13} className="spin" /> : <Rocket size={13} />} {r.status === 'failed' ? 'Try again — put it live' : 'Yes — fix it and put it live'}
+                    <button type="button" style={primarySm} disabled={!!acting} onClick={() => void act(r, 'decide', 'testing')}>
+                      {acting === `${r.id}:testing` ? <Loader size={13} className="spin" /> : <FlaskConical size={13} />} {r.status === 'failed' ? 'Try again on the testing site' : 'Fix it and put it on the testing site'}
                     </button>
-                    <button type="button" style={ghost} disabled={!!acting} onClick={() => void act(r, 'decide', 'testing')}>
-                      {acting === `${r.id}:testing` ? <Loader size={13} className="spin" /> : <FlaskConical size={13} />} Fix on testing first
+                    <button type="button" style={ghost} disabled={!!acting} onClick={() => void act(r, 'decide', 'live')}>
+                      {acting === `${r.id}:live` ? <Loader size={13} className="spin" /> : <Rocket size={13} />} Fix it and put it live
                     </button>
                     <button type="button" style={ghost} disabled={!!acting} onClick={() => void act(r, 'decide', 'decline')}><X size={13} /> No — leave it for a person</button>
                   </>}
-                  {(r.status === 'ready' || r.status === 'fixing') && (
-                    <button type="button" style={r.status === 'ready' ? primarySm : ghost} disabled={!!acting} onClick={() => void act(r, 'mark_fixed')}
-                      title="Once the fix is live: the customer gets the email and the in-app message to refresh and check.">
+                  {r.status === 'ready' && <>
+                    <button type="button" style={primarySm} disabled={!!acting} onClick={() => void act(r, 'promote')} data-testid="fix-promote"
+                      title="Claude Code promotes testing to live and waits for the live deploy; then the customer is told. Also puts live anything else waiting on testing.">
+                      {acting === `${r.id}:promote` ? <Loader size={13} className="spin" /> : <Rocket size={13} />} Push it live
+                    </button>
+                    <a href={r.testingUrl} target="_blank" rel="noreferrer" style={{ ...ghost, textDecoration: 'none' }}><FlaskConical size={13} /> Open the testing site</a>
+                  </>}
+                  {(r.status === 'ready' || r.status === 'fixing' || r.status === 'promoting') && (
+                    <button type="button" style={ghost} disabled={!!acting} onClick={() => void act(r, 'mark_fixed')}
+                      title="Only once you have put it live by hand (Actions → Promote testing to live): the customer gets the email, the in-app message and a resolved ticket.">
                       <CheckCircle2 size={13} /> It&rsquo;s live — tell the customer
                     </button>
                   )}
@@ -195,7 +217,7 @@ function Connection({ cfg, onSaved }: { cfg: FixConfigView; onSaved: () => void 
       </div>
       <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: INK, lineHeight: 1.65 }}>
         <li>At claude.ai/code → Scheduled tasks, make a task on this repository and paste the prompt below as its instructions.</li>
-        <li>Give its cloud environment network access to <b>{cfg.host}</b> (Limited, Allowed domains) so the session can fetch the report and say how it went.</li>
+        <li>Give its cloud environment network access to <b>{cfg.host}</b>{cfg.testingHost && cfg.testingHost !== cfg.host ? <> and <b>{cfg.testingHost}</b></> : null} (Limited, Allowed domains) so the session can fetch the report and say how it went. One task serves both sites; paste its trigger on each.</li>
         <li>Add an <b>API</b> trigger, press Generate token, and paste the trigger address and the token here. The token is shown once; it is kept encrypted and never shown again.</li>
       </ol>
       <label style={lbl} htmlFor="fix-url">Trigger address</label>
@@ -219,6 +241,15 @@ function Connection({ cfg, onSaved }: { cfg: FixConfigView; onSaved: () => void 
         </div>
         <pre style={{ margin: '6px 0 0', padding: 10, borderRadius: 10, background: '#f8fafc', border: `1px solid ${LINE}`, fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', color: INK }}>{cfg.prompt}</pre>
       </div>
+    </div>
+  );
+}
+
+function WriteUp({ title, text }: { title: string; text: string }) {
+  return (
+    <div>
+      <b style={{ display: 'block', fontSize: 12, color: MUTED }}>{title}</b>
+      <span style={{ whiteSpace: 'pre-wrap' }}>{text}</span>
     </div>
   );
 }
