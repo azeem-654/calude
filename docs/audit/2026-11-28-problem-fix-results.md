@@ -38,6 +38,7 @@ The owner described the flow they want. It is built on staging:
 - **Ready to test:** when a fix is on testing, the owner gets an email with what changed, what the customer will see, step-by-step test steps and a **Push it live** button. That button starts a promoting session.
 - **The customer is told at each step:** by email, in the app and on their ticket.
 - **One task for both sites:** the saved prompt no longer names a site.
+- **Starts by itself (owner's choice, later the same day):** once Claude Code is connected, each report starts on the testing site without waiting for a yes, and the owner is emailed "Started on the testing site". It is capped at 3 a day per customer workspace and 20 a day in all; past that, switched off, or refused, the report waits for the owner's yes as before. A checkbox on Problem fixes turns it off. Live still needs the owner's Push it live (migration 0110).
 
 Details are in `docs/claude/platform.md`; tests are `test:problemfix` and `test:security`.
 

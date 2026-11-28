@@ -95,7 +95,7 @@ export default function EngageFixes() {
 
       {cfg && !cfg.connected && (
         <div role="note" style={{ ...card, background: '#fff7e6', borderColor: '#f3d38b', color: '#7a4b00', fontSize: 13, lineHeight: 1.55 }}>
-          Claude Code is not connected yet, so a yes is recorded but no session starts. Connect it below — it takes two minutes.
+          Claude Code is not connected yet, so reports wait here and a yes is recorded but no session starts. Connect it below — it takes two minutes.
         </div>
       )}
 
@@ -105,7 +105,7 @@ export default function EngageFixes() {
         <div role="alert" style={{ ...card, color: '#b42318', fontSize: 13 }}>{err}</div>
       ) : !rows.length ? (
         <div style={{ ...card, color: MUTED, fontSize: 13, lineHeight: 1.55 }}>
-          No problems reported yet. Customers report them from the <b>Report a problem</b> button beside the help button, with a screenshot and, if they like, a voice note.
+          No reports yet. Customers send them from the <b>Report a bug or request a feature</b> button beside the help button, with a screenshot and, if they like, a voice note.
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 10 }}>
@@ -118,6 +118,7 @@ export default function EngageFixes() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ padding: '3px 9px', borderRadius: 999, background: st.bg, color: st.fg, fontSize: 11.5, fontWeight: 700 }}>{st.label}</span>
                   <span data-testid="fix-kind" style={{ padding: '3px 9px', borderRadius: 999, border: `1px solid ${LINE}`, color: MUTED, fontSize: 11.5, fontWeight: 700 }}>{KIND_LABEL[r.kind] ?? 'Bug'}</span>
+                  {r.autoStarted && <span data-testid="fix-auto" title="Started on the testing site without waiting for your yes" style={{ padding: '3px 9px', borderRadius: 999, background: '#eef4ff', color: '#3538cd', fontSize: 11.5, fontWeight: 700 }}>Started by itself</span>}
                   <b style={{ fontSize: 13.5, color: INK }}>{r.name || r.email}</b>
                   <span style={{ fontSize: 12, color: MUTED }}>{r.reference ? `${r.reference} · ` : ''}{ago(r.createdAt)}</span>
                 </div>
@@ -185,6 +186,7 @@ function Connection({ cfg, onSaved }: { cfg: FixConfigView; onSaved: () => void 
   const [token, setToken] = useState('');
   const [hours, setHours] = useState<string>(cfg.digestHours.join(', '));
   const [diagnose, setDiagnose] = useState(cfg.diagnose);
+  const [autoStart, setAutoStart] = useState(cfg.autoStart);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<{ message: string; field?: string } | null>(null);
 
@@ -192,7 +194,7 @@ function Connection({ cfg, onSaved }: { cfg: FixConfigView; onSaved: () => void 
     setSaving(true);
     setError(null);
     const digestHours = hours.split(/[,\s]+/).filter(Boolean).map(Number);
-    const r = await fixApi('config_save', { url: url.trim(), tokenValue: token.trim(), digestHours, diagnose });
+    const r = await fixApi('config_save', { url: url.trim(), tokenValue: token.trim(), digestHours, diagnose, autoStart });
     setSaving(false);
     if (!r.success) { setError({ message: String(r.error ?? 'Not saved.'), field: r.field }); return; }
     setToken('');
@@ -211,7 +213,7 @@ function Connection({ cfg, onSaved }: { cfg: FixConfigView; onSaved: () => void 
           {cfg.connected
             ? cfg.status === 'ok' ? 'Connected — the last session it was asked to start, started.'
               : cfg.status === 'error' ? `The last start was refused: ${cfg.lastError}`
-                : 'Saved. It is proved the first time you say yes to a report.'
+                : 'Saved. It is proved the first time a report starts.'
             : 'Not connected.'}
         </p>
       </div>
@@ -226,6 +228,10 @@ function Connection({ cfg, onSaved }: { cfg: FixConfigView; onSaved: () => void 
       <label style={lbl} htmlFor="fix-token">Token</label>
       <input id="fix-token" data-field="fix.token" style={inp} type="password" autoComplete="off" value={token} onChange={e => setToken(e.target.value)}
         placeholder={cfg.tokenSet ? 'Saved — leave blank to keep it' : 'sk-ant-…'} aria-invalid={error?.field === 'fix.token' || undefined} />
+      <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: INK, lineHeight: 1.5 }}>
+        <input type="checkbox" data-testid="fix-auto-start" checked={autoStart} onChange={e => setAutoStart(e.target.checked)} style={{ marginTop: 3 }} />
+        <span><b>Start each report on the testing site by itself</b> — no waiting for your yes, so the customer hears back in about half an hour. Nothing goes live until you press Push it live. At most 3 a day per customer workspace and 20 a day in all; past that a report waits for you.</span>
+      </label>
       <label style={lbl} htmlFor="fix-hours">Twice a day, list reports nobody answered, at (hours, UTC)</label>
       <input id="fix-hours" data-field="fix.hours" style={{ ...inp, maxWidth: 200 }} value={hours} onChange={e => setHours(e.target.value)} placeholder="9, 17" />
       <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, color: INK, lineHeight: 1.5 }}>

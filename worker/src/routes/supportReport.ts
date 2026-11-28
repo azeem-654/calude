@@ -80,7 +80,8 @@ export async function handleSupportReport(req: Request, env: Env): Promise<Respo
     }).catch(() => null)
     : null;
 
-  /* The fix: the owner is asked whether to start (push, alert, email), and a
+  /* The fix: with Claude Code connected it starts on the testing site by
+     itself (capped), otherwise the owner is asked (push, alert, email) and a
      yes hands it to a Claude Code session (lib/problemFix.ts). A report
      outside the house widget has no ticket to follow, so it still opens. */
   const fix = await openFix(env, {

@@ -17,6 +17,9 @@
  *    the app) and shuts the key;
  *  - a refused token: the owner is told why and the customer is NOT told
  *    anybody is working on it;
+ *  - starts by itself (2026-11-28): once connected, a report starts on the
+ *    testing site without a yes, the owner is told; switched off, refused or
+ *    past the per-workspace cap, it waits for the owner as before.
  *  - testing first (2026-11-28): a feature request goes to the testing site;
  *    "ready" needs the write-up and test steps, which reach the owner by
  *    email with a Push it live button (its own signature); the customer is
@@ -169,6 +172,7 @@ ok('the token is never returned', r.success && r.connected && r.tokenSet && !JSO
 ok('the prompt to save on the task is offered', /routine-fire-payload/.test(r.prompt ?? ''), r.prompt);
 r = await fix(T, 'config_save', { url: TRIG, tokenValue: '', digestHours: [9, 17] });
 ok('a blank token keeps the stored one', r.success && (await fix(T, 'config')).tokenSet, JSON.stringify(r));
+ok('reports start by themselves unless the owner switches it off', (await fix(T, 'config')).autoStart === true);
 
 console.log('\nThe owner says yes from the email');
 let res = await fetch(`${link}&a=live`, { headers: { Connection: 'close' } });
@@ -222,9 +226,13 @@ tk = sql(`SELECT status FROM crm_tickets WHERE id = (SELECT ticket_id FROM crm_p
 ok('and their ticket is resolved', tk?.status === 'resolved', JSON.stringify(tk));
 
 console.log('\nA refused token');
+refuse = true;
+let nf = fires.length;
 r = await api('support-report.php', { token: C.token, accountId: C.acct, description: 'The calendar page is blank for me.' });
 const F2 = r.fixId;
-refuse = true;
+let row2 = sql(`SELECT status, auto_started AS a, reply_code AS code, error FROM crm_problem_fixes WHERE id = '${F2}'`)[0];
+ok('a new report tries to start by itself, and the refusal is kept', fires.length === nf + 1 && row2?.a === 1 && row2.status === 'failed' && /refused the token/.test(row2.error), JSON.stringify(row2));
+ok('so the owner is asked instead, with why', !!(await waitMail(m => /To: .*owner@fix\.test/i.test(m) && m.includes(`[Fix ${row2.code}]`) && /Should I start fixing this/.test(m) && /could not start on it by itself/.test(m))));
 r = await fix(T, 'decide', { id: F2, answer: 'testing' });
 ok('the owner is told no session started, and why', !r.success && r.status === 'failed' && /refused the token/.test(r.error ?? ''), JSON.stringify(r));
 r = await fix(C.token, 'mine');
@@ -235,10 +243,16 @@ ok('the connection shows the refusal', r.status === 'error' && /refused the toke
 
 console.log('\nTwice a day');
 refuse = false;
+const hour = new Date().getUTCHours();
+await fix(T, 'config_save', { url: TRIG, tokenValue: '', digestHours: [hour], diagnose: true, autoStart: false });
+nf = fires.length;
 r = await api('support-report.php', { token: C.token, accountId: C.acct, description: 'Exports download an empty file.' });
 const F3 = r.fixId;
-const hour = new Date().getUTCHours();
-await fix(T, 'config_save', { url: TRIG, tokenValue: '', digestHours: [hour], diagnose: true });
+const row3 = sql(`SELECT status, reply_code AS code FROM crm_problem_fixes WHERE id = '${F3}'`)[0];
+ok('with "start by itself" switched off, a report waits for the owner', fires.length === nf && row3?.status === 'waiting', JSON.stringify(row3));
+const ask3 = await waitMail(m => /To: .*owner@fix\.test/i.test(m) && m.includes(`[Fix ${row3.code}]`) && /Should I start fixing this/.test(m));
+const link3 = (ask3 ?? '').match(/https?:\/\/localhost:8871\/api\/problem-fix\.php\?id=[^"&\s]+&(?:amp;)?s=[0-9a-f]+/)?.[0]?.replace(/&amp;/g, '&');
+ok('and the owner is asked', !!link3, ask3?.slice(0, 300));
 const before = fires.length;
 await tick();
 ok('the reports nobody answered are emailed to the owner', !!(await waitMail(m => /To: .*owner@fix\.test/i.test(m) && /waiting for your answer/.test(m) && /empty file/.test(m))));
@@ -255,17 +269,16 @@ ok('once per hour slot', fires.length === again);
 
 console.log('\nTesting first, then Push it live (a feature request)');
 const post = (u, body) => fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Connection: 'close' }, body });
+await fix(T, 'config_save', { url: TRIG, tokenValue: '', digestHours: [hour], diagnose: false, autoStart: true });
+let n = fires.length;
 r = await api('support-report.php', { token: C.token, accountId: C.acct, kind: 'feature', description: 'Please add a button to export my contacts as a spreadsheet.', path: '/contacts', pageTitle: 'Contacts' });
 const F4 = r.fixId;
 ok('the customer sends a feature request', r.success && r.kind === 'feature' && /has your request/.test(r.message) && /about half an hour/.test(r.message), JSON.stringify(r));
-const row4 = sql(`SELECT kind, reply_code AS code, ticket_id AS t FROM crm_problem_fixes WHERE id = '${F4}'`)[0];
+const row4 = sql(`SELECT kind, status, auto_started AS a, reply_code AS code, ticket_id AS t FROM crm_problem_fixes WHERE id = '${F4}'`)[0];
 ok('it is kept as a feature request, with a ticket', row4?.kind === 'feature' && !!row4.t && sql(`SELECT category FROM crm_tickets WHERE id = '${row4.t}'`)[0]?.category === 'feature', JSON.stringify(row4));
-const ask4 = await waitMail(m => /To: .*owner@fix\.test/i.test(m) && m.includes(`[Fix ${row4.code}]`) && /Should I start building this feature/.test(m));
-ok('the owner is asked, with "Fix it and put it on the testing site" first', !!ask4 && ask4.indexOf('Fix it and put it on the testing site') >= 0 && ask4.indexOf('Fix it and put it on the testing site') < ask4.indexOf('Fix it and put it live'), ask4?.slice(0, 400));
-const link4 = (ask4 ?? '').match(/https?:\/\/localhost:8871\/api\/problem-fix\.php\?id=[^"&\s]+&(?:amp;)?s=[0-9a-f]+/)?.[0]?.replace(/&amp;/g, '&');
-let n = fires.length;
-page = await (await post(link4, 'go=testing')).text();
-ok('the testing-site button starts fixing', /Fixing has started/.test(page) && fires.length === n + 1, page.slice(0, 300));
+ok('it starts on the testing site by itself — no yes needed', fires.length === n + 1 && row4.status === 'fixing' && row4.a === 1, JSON.stringify(row4));
+const started4 = await waitMail(m => /To: .*owner@fix\.test/i.test(m) && m.includes(`[Fix ${row4.code}]`) && /Started on the testing site/.test(m));
+ok('the owner is told it started, and that nothing goes live without Push it live', !!started4 && /nothing goes live until you press Push it live/.test(started4) && /Open it in Problem fixes/.test(started4) && !/Should I start/.test(started4), started4?.slice(0, 400));
 const t4 = fires[n]?.body?.text ?? '';
 ok('the session is told: testing site first, a new feature, and the write-up to send', /ship: TESTING SITE FIRST/.test(t4) && /Type: New feature/.test(t4) && /"status":"ready"/.test(t4) && /testSteps/.test(t4) && /testing\.protectedcentral\.com\/contacts/.test(t4), t4.slice(0, 600));
 const K4 = t4.match(new RegExp(`"id":"${F4}","key":"([0-9a-f]{48})"`))?.[1];
@@ -293,7 +306,7 @@ page = await (await fetch(plink, { headers: { Connection: 'close' } })).text();
 ok('the Push it live link\'s GET changes nothing', /Push it live\?/.test(page) && fires.length === n && sql(`SELECT status FROM crm_problem_fixes WHERE id = '${F4}'`)[0].status === 'ready', page.slice(0, 200));
 page = await (await fetch(plink.replace(/p=[0-9a-f]+/, 'p=00000000000000000000000000000000'), { headers: { Connection: 'close' } })).text();
 ok('a forged Push it live link is not valid', /not valid/.test(page));
-page = await (await post(link4.replace(/s=/, 'p='), 'go=promote')).text();
+page = await (await post(link3.replace(/s=/, 'p='), 'go=promote')).text();
 ok('the start-fixing signature cannot push it live', /not valid/.test(page) && fires.length === n, page.slice(0, 200));
 page = await (await post(plink, 'go=promote')).text();
 ok('its button starts a session to put it live', /Going live/.test(page) && fires.length === n + 1, page.slice(0, 300));
@@ -319,11 +332,24 @@ notices = await api('customers.php', { token: C.token, action: 'mine' });
 ok('told in the app', (notices.notices ?? []).some(n => /new feature is live/.test(n.title)), JSON.stringify(notices.notices));
 ok('and their ticket is resolved', sql(`SELECT status FROM crm_tickets WHERE id = '${row4.t}'`)[0]?.status === 'resolved');
 
+console.log('\nA cap on reports that start by themselves');
+/* The form's own limit (five an hour per person) would refuse these first; the cap under test is per workspace per day. */
+sql("DELETE FROM crm_rate_limits WHERE bucket LIKE '%support-report%'");
+n = fires.length;
+r = await api('support-report.php', { token: C.token, accountId: C.acct, description: 'The invoice page shows the wrong total.' });
+const F5 = r.fixId;
+ok('a third report from one workspace in a day still starts by itself', fires.length === n + 1 && sql(`SELECT status FROM crm_problem_fixes WHERE id = '${F5}'`)[0]?.status === 'fixing');
+r = await api('support-report.php', { token: C.token, accountId: C.acct, description: 'The reports page is slow to open.' });
+const row6 = sql(`SELECT status, auto_started AS a, reply_code AS code FROM crm_problem_fixes WHERE id = '${r.fixId}'`)[0];
+ok('a fourth waits for the owner', fires.length === n + 1 && row6?.status === 'waiting' && row6.a === 0, JSON.stringify(row6));
+const ask6 = await waitMail(m => /To: .*owner@fix\.test/i.test(m) && m.includes(`[Fix ${row6.code}]`) && /Should I start fixing this/.test(m));
+ok('who is asked, told why, with "Fix it and put it on the testing site" first', !!ask6 && /3 reports start by themselves/.test(ask6) && ask6.indexOf('Fix it and put it on the testing site') >= 0 && ask6.indexOf('Fix it and put it on the testing site') < ask6.indexOf('Fix it and put it live'), ask6?.slice(0, 400));
+
 console.log('\nNo');
 r = await fix(T, 'decide', { id: F3, answer: 'decline' });
 ok('the owner leaves one for a person', r.success && r.status === 'declined', JSON.stringify(r));
 r = await fix(T, 'list');
-ok('the owner\'s list shows all four, never a key', r.reports?.length === 4 && !JSON.stringify(r).includes('agent_hash') && !JSON.stringify(r).includes(KEY ?? 'nokey'), JSON.stringify(r).slice(0, 200));
+ok('the owner\'s list shows all six, never a key', r.reports?.length === 6 && !JSON.stringify(r).includes('agent_hash') && !JSON.stringify(r).includes(KEY ?? 'nokey'), JSON.stringify(r).slice(0, 200));
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');
 stop();

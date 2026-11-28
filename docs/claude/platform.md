@@ -347,6 +347,22 @@ site: the payload's commands (written by the server) name the one site the
 session may reach, so **one scheduled task serves live and testing** — its
 environment allows both hosts, and its trigger is pasted on each site.
 
+**Starts by itself on the testing site** (owner, 2026-11-28; migration 0110).
+With Claude Code connected and `autoStart` on (the default, stored in the
+connection, the "Start each report on the testing site by itself" box),
+`openFix` → `startOrAsk` hands a new report straight to `decideFix(…,
+'testing')` with no yes: `auto_started = 1`, the customer told as for a yes,
+the owner sent **"Started on the testing site"** (alert, push, email with Open
+it in Problem fixes / Watch the session) instead of "Should I start?". It never
+ships live: Push it live is still the owner's. Capped over the last 24 h at
+`AUTO_PER_ACCOUNT_DAY` (3) per customer workspace and `AUTO_PER_DAY` (20) in
+all, because each start is a session on the owner's Claude plan and the
+customer's words reach it unread. Past a cap, switched off, not connected, or
+refused (`failed`, with the reason), the owner gets the usual "Should I
+start?" email with a line saying why. Problem fixes shows a **Started by
+itself** badge (`autoStarted`). `config_save` without `autoStart` keeps the
+stored choice.
+
 **Help articles and "How did we do?"** (2026-11-16). The widget config carries
 `articles` (count of the workspace's published `crm_kb_articles`); only when it is
 above 0 does the home panel show **Search help articles** (`data-field

@@ -9,7 +9,12 @@
  *     screenshot, their words, a voice note) — a bug, an improvement to a
  *     feature, or a new feature (`kind`). It is a ticket as before, and also a
  *     row in `crm_problem_fixes`, status `waiting`.
- *  2. The owner is asked: an alert on the open app, a push to the PC Support
+ *  2. With Claude Code connected and "start by itself" on (the default; owner,
+ *     2026-11-28), the report goes straight to step 3 on the testing site —
+ *     nothing reaches live without the owner's Push it live — and the owner
+ *     is told it started (`startOrAsk`). Capped per customer workspace and in
+ *     all over a day (`AUTO_PER_ACCOUNT_DAY`, `AUTO_PER_DAY`); past the cap,
+ *     switched off, not connected or refused, the owner is asked instead: an alert on the open app, a push to the PC Support
  *     phone app, and an email to their login and the Gmail copy, with "Fix it
  *     and put it on the testing site" (the usual path), "Fix it and put it
  *     live" and a reply code. A reply of YES / YES LIVE / NO works too, once
@@ -94,7 +99,7 @@ const kindOf = (r: { kind?: string }) => cleanKind(r.kind);
 export interface FixRow {
   id: string; ticket_id: string; reference: string; email: string; name: string; account_id: string;
   page: string; description: string; pictures: number; has_audio: number; status: FixStatus; ship: string;
-  kind: string; reply_code: string; agent_hash: string; session_url: string; note: string; error: string;
+  kind: string; auto_started: number; reply_code: string; agent_hash: string; session_url: string; note: string; error: string;
   changed: string; customer_sees: string; improved: string; test_steps: string; commit_sha: string;
   digested_at: string | null; decided_at: string | null; sent_at: string | null; ready_at: string | null;
   promoted_at: string | null; fixed_at: string | null; told_at: string | null; created_at: string; updated_at: string;
@@ -118,8 +123,17 @@ export interface FixConfig {
   digestHours: number[];
   /** …and handed to the session to look into, read-only. */
   diagnose: boolean;
+  /** A new report starts on the testing site without waiting for the owner's yes. */
+  autoStart: boolean;
 }
-const DEFAULTS: FixConfig = { url: '', token: '', digestHours: [9, 17], diagnose: false };
+const DEFAULTS: FixConfig = { url: '', token: '', digestHours: [9, 17], diagnose: false, autoStart: true };
+
+/* Started-by-itself caps over the last 24 hours. Each start is a cloud session
+   on the owner's Claude plan, and the customer's words reach it unread by
+   anyone, so one workspace filing report after report must not be able to
+   spend it; past either cap a report waits for the owner's yes as before. */
+export const AUTO_PER_ACCOUNT_DAY = 3;
+export const AUTO_PER_DAY = 20;
 
 const ROUTINE_URL = /^https:\/\/api\.anthropic\.com\/v1\/claude_code\/routines\/(trig_[A-Za-z0-9_-]{6,80})\/fire$/;
 
@@ -138,6 +152,7 @@ export async function fixConfig(env: Env): Promise<FixConfig & { status: string;
     return {
       url: String(c.url ?? ''), token: String(c.token ?? ''),
       digestHours: cleanHours(c.digestHours ?? DEFAULTS.digestHours), diagnose: !!c.diagnose,
+      autoStart: c.autoStart !== false,
       status: row.status, lastError: row.lastError, updatedAt: row.updatedAt,
     };
   } catch {
@@ -151,11 +166,12 @@ export function cleanHours(v: unknown): number[] {
 }
 
 /** Save; a blank token keeps the stored one, a changed one clears the proved stamp. */
-export async function saveFixConfig(env: Env, next: { url: string; token: string; digestHours: number[]; diagnose: boolean }): Promise<void> {
+export async function saveFixConfig(env: Env, next: { url: string; token: string; digestHours: number[]; diagnose: boolean; autoStart?: boolean }): Promise<void> {
   const cur = await fixConfig(env);
   const token = next.token || cur.token;
   const changed = token !== cur.token || next.url !== cur.url;
-  const blob = await encryptSecret(await installSecret(env.DB, SECRET_KEY), JSON.stringify({ url: next.url, token, digestHours: next.digestHours, diagnose: next.diagnose }));
+  const autoStart = next.autoStart ?? cur.autoStart; // an older screen that does not send it keeps the stored choice
+  const blob = await encryptSecret(await installSecret(env.DB, SECRET_KEY), JSON.stringify({ url: next.url, token, digestHours: next.digestHours, diagnose: next.diagnose, autoStart }));
   await env.DB.prepare(
     `INSERT INTO crm_install_providers (kind, provider, credentials, status, last_error, updated_at)
      VALUES (?, 'claude_code', ?, 'unknown', '', ?)
@@ -318,8 +334,60 @@ export async function openFix(env: Env, r: {
       .run().catch(() => null); // the words are in the description already; a lost recording never loses the report
   }
   const row = await getFix(env, id);
-  if (row) await askOwner(env, row);
-  return row;
+  if (row) await startOrAsk(env, row);
+  return (await getFix(env, id)) ?? row;
+}
+
+/** Room under the started-by-itself caps, or the reason there is none. */
+async function autoRoom(env: Env, row: FixRow): Promise<true | string> {
+  const since = new Date(Date.now() - 86_400_000).toISOString();
+  const c = await env.DB.prepare(
+    'SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN account_id = ? THEN 1 ELSE 0 END), 0) AS mine FROM crm_problem_fixes WHERE auto_started = 1 AND created_at > ?',
+  ).bind(row.account_id, since).first<{ n: number; mine: number }>();
+  if ((c?.mine ?? 0) >= AUTO_PER_ACCOUNT_DAY) return `This customer's workspace already had ${AUTO_PER_ACCOUNT_DAY} reports start by themselves in the last day, so this one waits for you.`;
+  if ((c?.n ?? 0) >= AUTO_PER_DAY) return `${AUTO_PER_DAY} reports already started by themselves in the last day, so this one waits for you.`;
+  return true;
+}
+
+/**
+ * Start on the testing site by itself, or ask the owner. Testing only: a
+ * report never goes live without the owner's Push it live. Never throws.
+ */
+async function startOrAsk(env: Env, row: FixRow): Promise<void> {
+  const cfg = await fixConfig(env).catch(() => null);
+  if (!cfg?.url || !cfg.token || !cfg.autoStart) { await askOwner(env, row); return; }
+  const room = await autoRoom(env, row).catch(() => 'The started-by-itself count could not be read, so this one waits for you.');
+  if (room !== true) { await askOwner(env, row, room); return; }
+  await env.DB.prepare('UPDATE crm_problem_fixes SET auto_started = 1 WHERE id = ?').bind(row.id).run();
+  const d = await decideFix(env, row, 'testing').catch(e => ({ ok: false, status: 'unchanged' as const, message: String(e) }));
+  const fresh = (await getFix(env, row.id)) ?? row;
+  if (d.ok) { await tellOwnerStarted(env, fresh); return; }
+  await askOwner(env, fresh, `Claude Code could not start on it by itself: ${fresh.error || d.message}`);
+}
+
+/** Alert, push and email: a report started on the testing site without a yes. */
+async function tellOwnerStarted(env: Env, row: FixRow): Promise<void> {
+  const k = kindOf(row);
+  const info = KIND_INFO[k];
+  await ownerAlert(env, {
+    kind: 'problem.reported', email: row.email,
+    summary: `${who(row)} ${k === 'bug' ? 'reported a problem' : `sent ${k === 'feature' ? 'a feature request' : 'an improvement request'}`}${row.reference ? ` (${row.reference})` : ''}: ${firstLine(row.description, 120)} — started on the testing site`,
+    route: fixRoute(row), push: 'message',
+  }).catch(() => null);
+  const html = mailHtml({
+    heading: `Started on the testing site: ${k === 'bug' ? 'a reported problem' : k === 'feature' ? 'a feature request' : 'an improvement request'}`,
+    paragraphs: [
+      `${info.label} — ${who(row)} (${row.email})${row.reference ? `, ticket ${row.reference}` : ''}:`,
+      `“${row.description.slice(0, 1500)}”`,
+      row.page ? `Screen: ${row.page}` : '',
+      `A Claude Code cloud session started ${info.verb} it by itself, on the testing site only — nothing goes live until you press Push it live. The customer has been told we are ${info.verb} it and to expect an update in ${info.eta}.`,
+      'When the fix is on the testing site you get a second email to check it: what changed, what the customer will see, step-by-step test steps and a Push it live button.',
+    ],
+    button: { href: `${origin(env)}${fixRoute(row)}`, label: 'Open it in Problem fixes' },
+    second: row.session_url ? { href: row.session_url, label: 'Watch the session' } : undefined,
+    footer: `To have each report wait for your yes instead: Customer Support → Problem fixes → Claude Code connection → untick "Start each report on the testing site by itself". Reference ${escH(row.id)}.`,
+  });
+  await mailOwner(env, `[Fix ${row.reply_code}] Started on testing ${row.reference || 'a report'}: ${firstLine(row.description, 60)}`, html);
 }
 
 const who = (r: FixRow) => r.name || r.email;
@@ -338,8 +406,8 @@ async function mailOwner(env: Env, subject: string, html: string): Promise<void>
   }
 }
 
-/** Alert, push, and the "should I start fixing it?" email. Never throws. */
-async function askOwner(env: Env, row: FixRow): Promise<void> {
+/** Alert, push, and the "should I start fixing it?" email; `why` says why it did not start by itself. Never throws. */
+async function askOwner(env: Env, row: FixRow, why = ''): Promise<void> {
   const k = kindOf(row);
   const info = KIND_INFO[k];
   await ownerAlert(env, {
@@ -357,6 +425,7 @@ async function askOwner(env: Env, row: FixRow): Promise<void> {
       `“${row.description.slice(0, 1500)}”`,
       row.page ? `Screen: ${row.page}` : '',
       `${row.pictures ? `${row.pictures} screenshot${row.pictures === 1 ? '' : 's'}` : 'No screenshot'}${row.has_audio ? ' and a voice note' : ''} — they are with the ticket and in the report email.`,
+      why,
       connected
         ? `Say yes and a Claude Code cloud session starts on it straight away, and the customer is told we are ${info.verb} it and to expect it in ${info.eta}. When it is on the testing site you get an email with what changed, how to test it step by step, and a Push it live button.`
         : 'Claude Code is not connected yet (Customer Support → Problem fixes), so a yes now only records your answer — connect it to have fixes start by themselves.',

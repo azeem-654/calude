@@ -17,7 +17,7 @@ export interface MyReport { id: string; reference: string; status: FixStatus; ki
 
 export interface OwnerReport {
   id: string; ticketId: string; reference: string; email: string; name: string; accountId: string; page: string;
-  description: string; pictures: number; hasAudio: boolean; status: FixStatus; ship: string; kind: FixKind; sessionUrl: string;
+  description: string; pictures: number; hasAudio: boolean; status: FixStatus; ship: string; kind: FixKind; autoStarted: boolean; sessionUrl: string;
   note: string; error: string; changed: string; customerSees: string; improved: string; testSteps: string; commitSha: string;
   testingUrl: string; createdAt: string; decidedAt: string | null; sentAt: string | null; readyAt: string | null;
   promotedAt: string | null; fixedAt: string | null; toldAt: string | null; updatedAt: string;
@@ -25,7 +25,7 @@ export interface OwnerReport {
 
 export interface FixConfigView {
   connected: boolean; url: string; tokenSet: boolean; status: string; lastError: string; checkedAt: string | null;
-  digestHours: number[]; diagnose: boolean; prompt: string; host: string; testingHost: string;
+  digestHours: number[]; diagnose: boolean; autoStart: boolean; prompt: string; host: string; testingHost: string;
 }
 
 export type FixAnswer = Record<string, unknown> & { success?: boolean; error?: string; message?: string; field?: string };

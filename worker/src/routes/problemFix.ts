@@ -36,7 +36,7 @@ function ownerView(r: FixRow) {
   return {
     id: r.id, ticketId: r.ticket_id, reference: r.reference, email: r.email, name: r.name, accountId: r.account_id,
     page: r.page, description: r.description, pictures: r.pictures, hasAudio: !!r.has_audio, status: r.status,
-    ship: r.ship, kind: cleanKind(r.kind), sessionUrl: r.session_url, note: r.note, error: r.error,
+    ship: r.ship, kind: cleanKind(r.kind), autoStarted: !!r.auto_started, sessionUrl: r.session_url, note: r.note, error: r.error,
     changed: r.changed, customerSees: r.customer_sees, improved: r.improved, testSteps: r.test_steps, commitSha: r.commit_sha,
     testingUrl: testingLink(r.page), createdAt: r.created_at, decidedAt: r.decided_at, sentAt: r.sent_at, readyAt: r.ready_at,
     promotedAt: r.promoted_at, fixedAt: r.fixed_at, toldAt: r.told_at, updatedAt: r.updated_at,
@@ -161,7 +161,7 @@ export async function handleProblemFix(req: Request, env: Env): Promise<Response
       success: true,
       connected: !!(c.url && c.token), url: c.url, tokenSet: !!c.token, status: c.status, lastError: c.lastError,
       checkedAt: c.status === 'ok' || c.status === 'error' ? c.updatedAt : null,
-      digestHours: c.digestHours, diagnose: c.diagnose,
+      digestHours: c.digestHours, diagnose: c.diagnose, autoStart: c.autoStart,
       prompt: savedPrompt(), host: new URL(origin(env, url.origin)).host, testingHost: new URL(TESTING_SITE).host,
     });
   }
@@ -174,7 +174,8 @@ export async function handleProblemFix(req: Request, env: Env): Promise<Response
     if (token && !/^sk-ant-[A-Za-z0-9_-]{10,}$/.test(token)) return fail('That does not look like a Claude Code trigger token — it starts with sk-ant-.', 200, { field: 'fix.token' });
     const cur = await fixConfig(env);
     if (cleaned && !token && !cur.token) return fail('Paste the token Claude Code showed when you generated it.', 200, { field: 'fix.token' });
-    await saveFixConfig(env, { url: cleaned || '', token: cleaned ? token : '', digestHours: cleanHours(d.digestHours), diagnose: !!d.diagnose });
+    await saveFixConfig(env, { url: cleaned || '', token: cleaned ? token : '', digestHours: cleanHours(d.digestHours), diagnose: !!d.diagnose,
+      autoStart: typeof d.autoStart === 'boolean' ? d.autoStart : undefined });
     return json({ success: true });
   }
 
