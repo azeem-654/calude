@@ -189,7 +189,7 @@ ok('pressing it again starts nothing', /Already answered/.test(await res.text())
 row = sql(`SELECT status, ship, session_url AS u FROM crm_problem_fixes WHERE id = '${F1}'`)[0];
 ok('the report is being fixed, with its session', row.status === 'fixing' && row.ship === 'live' && row.u === 'https://claude.ai/code/session_t1', JSON.stringify(row));
 r = await fix(C.token, 'mine');
-ok('the customer is told the team is working on it — about 30 minutes for a bug', /working on your problem/.test(r.reports?.[0]?.title ?? '') && /about 30 minutes/.test(r.reports[0].body), JSON.stringify(r.reports?.[0]));
+ok('the customer is told the team is working on it — about half an hour', /working on your problem/.test(r.reports?.[0]?.title ?? '') && /about half an hour \(an hour or two at most\)/.test(r.reports[0].body), JSON.stringify(r.reports?.[0]));
 let notices = await api('customers.php', { token: C.token, action: 'mine' });
 ok('in the app\'s corner card', (notices.notices ?? []).some(n => /working on your problem/.test(n.title)), JSON.stringify(notices.notices));
 ok('and by email', !!(await waitMail(m => /To: .*cara@cust\.test/i.test(m) && /fixing it right now/.test(m))));
@@ -257,7 +257,7 @@ console.log('\nTesting first, then Push it live (a feature request)');
 const post = (u, body) => fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Connection: 'close' }, body });
 r = await api('support-report.php', { token: C.token, accountId: C.acct, kind: 'feature', description: 'Please add a button to export my contacts as a spreadsheet.', path: '/contacts', pageTitle: 'Contacts' });
 const F4 = r.fixId;
-ok('the customer sends a feature request', r.success && r.kind === 'feature' && /has your request/.test(r.message), JSON.stringify(r));
+ok('the customer sends a feature request', r.success && r.kind === 'feature' && /has your request/.test(r.message) && /about half an hour/.test(r.message), JSON.stringify(r));
 const row4 = sql(`SELECT kind, reply_code AS code, ticket_id AS t FROM crm_problem_fixes WHERE id = '${F4}'`)[0];
 ok('it is kept as a feature request, with a ticket', row4?.kind === 'feature' && !!row4.t && sql(`SELECT category FROM crm_tickets WHERE id = '${row4.t}'`)[0]?.category === 'feature', JSON.stringify(row4));
 const ask4 = await waitMail(m => /To: .*owner@fix\.test/i.test(m) && m.includes(`[Fix ${row4.code}]`) && /Should I start building this feature/.test(m));
@@ -271,8 +271,8 @@ ok('the session is told: testing site first, a new feature, and the write-up to 
 const K4 = t4.match(new RegExp(`"id":"${F4}","key":"([0-9a-f]{48})"`))?.[1];
 r = await fix(C.token, 'mine');
 let m4 = r.reports?.find(x => x.id === F4);
-ok('the customer is told it is being built, in 1–2 days', /building your feature request/.test(m4?.title ?? '') && /1–2 days/.test(m4.body), JSON.stringify(m4));
-ok('by email', !!(await waitMail(m => /To: .*cara@cust\.test/i.test(m) && /building your feature request/.test(m) && /1–2 days/.test(m))));
+ok('the customer is told it is being built — the same half hour as a bug', /building your feature request/.test(m4?.title ?? '') && /about half an hour/.test(m4.body) && !/days/.test(m4.body), JSON.stringify(m4));
+ok('by email', !!(await waitMail(m => /To: .*cara@cust\.test/i.test(m) && /building your feature request/.test(m) && /about half an hour/.test(m))));
 tk = sql(`SELECT status FROM crm_tickets WHERE id = '${row4.t}'`)[0];
 ok('and on their ticket', tk?.status === 'in_progress', JSON.stringify(tk));
 aj = await (await raw({ action: 'agent_update', id: F4, key: K4, status: 'ready', changed: 'Added an Export button.' })).json();

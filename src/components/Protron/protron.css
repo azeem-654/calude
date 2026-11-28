@@ -511,6 +511,9 @@
 .pt-report-head b { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
 .pt-report-head .pt-icon { color: #374151; }
 .pt-report-sub { margin: 0; font-size: 12px; line-height: 1.45; color: #4b5563; }
+.pt-report-promise { margin: 0; display: flex; gap: 7px; align-items: flex-start; padding: 8px 10px; border-radius: 10px;
+  background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; font-size: 12px; line-height: 1.45; font-weight: 600; }
+.pt-report-promise svg { flex: none; margin-top: 2px; }
 /* Bug / improvement / new feature: three plain choices that wrap on a phone. */
 .pt-report-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
 .pt-report-kind { flex: 1 1 auto; padding: 7px 10px; border-radius: 999px; border: 1px solid #e5e7eb; background: #fff; color: #374151;

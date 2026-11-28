@@ -32,7 +32,8 @@ promoted to live, and "put it live" was not chosen on any report.
 ## Changed on the owner's request (2026-11-28)
 
 The owner described the flow they want. It is built on staging:
-- **Kinds:** a bug, an improvement or a new feature, each with its own time estimate.
+- **Kinds:** a bug, an improvement or a new feature. All three are told the same time: about half an hour, an hour or two at most (`FIX_ETA`). The owner changed this later the same day; the first version said 30 minutes, a few hours and 1–2 days.
+- **The sheet's promise:** a green line on the report sheet says the team starts right away and is always live, and that this is not a wait of days or months. It promises an update in about half an hour, an hour or two at most. Checked at 390 and 1280 wide for all three kinds: 14/14, no overflow, no page errors.
 - **Testing first:** the email leads with "Fix it and put it on the testing site".
 - **Ready to test:** when a fix is on testing, the owner gets an email with what changed, what the customer will see, step-by-step test steps and a **Push it live** button. That button starts a promoting session.
 - **The customer is told at each step:** by email, in the app and on their ticket.

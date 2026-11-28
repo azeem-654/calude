@@ -114,7 +114,7 @@ export async function handleSupportReport(req: Request, env: Env): Promise<Respo
     reference: filed?.reference ?? '',
     fixId: fix?.id ?? '',
     kind,
-    message: fix ? `${kind === 'bug' ? 'Our technical team has been alerted' : 'Our team has your request'}. You will see updates on the Report button, on your ticket and by email.${ref}`
+    message: fix ? `${kind === 'bug' ? 'Our technical team has been alerted' : 'Our team has your request'}. Expect an update in about half an hour (an hour or two at most) — on the Report button, on your ticket and by email.${ref}`
       : mail.sent === 'all' ? `Sent to our support team — they reply by email.${ref}`
       : mail.sent === 'partial' ? `Sent, but only one of the two support addresses received it.${ref}`
         : `Saved as a ticket for our support team — they reply by email.${ref}`,

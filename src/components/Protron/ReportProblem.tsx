@@ -18,7 +18,7 @@
  * words here and the time the customer is told it will take (server side).
  */
 import { useEffect, useRef, useState } from 'react';
-import { Camera, ImagePlus, Loader, Mic, RotateCcw, Send, Square, Trash2, X } from 'lucide-react';
+import { Camera, Clock, ImagePlus, Loader, Mic, RotateCcw, Send, Square, Trash2, X } from 'lucide-react';
 import { captureScreen, preparePicture, sendReport, type ReportResult } from '../../services/supportReport';
 import { transcribe } from '../../services/intake';
 
@@ -194,6 +194,9 @@ export default function ReportProblem({ initial, onClose, onSent }: {
       <p className="pt-report-sub">{kind === 'bug'
         ? 'Stuck, or found a bug? Tell us what went wrong — type it or record a voice note.'
         : 'Tell us what you would like — type it or record a voice note.'} It goes straight to our team with a screenshot of this screen and becomes a ticket; you can follow it from the Report button and by email.</p>
+      {/* The owner's promise (2026-11-28); the worker's FIX_ETA says the same time. */}
+      <p className="pt-report-promise" data-testid="report-promise"><Clock size={14} aria-hidden="true" />
+        <span>We start on it right away. Our technical team is always live, fixing problems and building new features for you — this is not a wait of days or months. Expect an update in about half an hour; at most it takes an hour or two.</span></p>
 
       <div className="pt-report-shot" data-state={shotState}>
         {shotState === 'taking' && <span className="pt-report-wait"><Loader size={15} className="spin" /> Taking a screenshot of your screen…</span>}

@@ -319,8 +319,10 @@ Real-world checks still to run: `docs/audit/LOCAL-SESSION-PROBLEM-FIX-BRIEF.md`.
 a feature** ("Bug or feature" under 700 px) and the sheet asks which:
 `kind` = `bug` | `improvement` | `feature` (`data-field report.kind`; anything
 else is a bug). `KIND_INFO` in `lib/problemFix.ts` is the one table of each
-kind's words and the time the customer is told (about 30 minutes / a few
-hours / 1–2 days); the ticket's subject prefix and category follow it
+kind's words. Every kind is told the same time, `FIX_ETA` ("about half an
+hour (an hour or two at most)", the owner's choice), and the sheet's green
+promise line says it too, so the two change together. The ticket's subject
+prefix and category follow the kind
 (`problem` / `feature`). The owner's email (login **and** the Gmail copy)
 leads with **Fix it and put it on the testing site** (`a=testing`), then *Fix
 it and put it live*; a reply **YES** now means testing, **YES LIVE** live. The

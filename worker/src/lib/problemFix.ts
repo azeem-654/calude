@@ -80,10 +80,14 @@ export const cleanKind = (v: unknown): FixKind => ((FIX_KINDS as readonly string
  * plus the testing deploy is usually inside half an hour for a bug, and a new
  * feature waits for the owner to test it as well.
  */
+/* One time for every kind, by the owner's choice (2026-11-28): the team is
+ * always on, so a feature is not a wait of days. The report sheet says the
+ * same (`ReportProblem.tsx`); change both together. */
+export const FIX_ETA = 'about half an hour (an hour or two at most)';
 export const KIND_INFO: Record<FixKind, { label: string; what: string; verb: string; eta: string }> = {
-  bug: { label: 'Bug', what: 'the problem you reported', verb: 'fixing', eta: 'about 30 minutes' },
-  improvement: { label: 'Improvement', what: 'your improvement request', verb: 'working on', eta: 'a few hours' },
-  feature: { label: 'New feature', what: 'your feature request', verb: 'building', eta: '1–2 days' },
+  bug: { label: 'Bug', what: 'the problem you reported', verb: 'fixing', eta: FIX_ETA },
+  improvement: { label: 'Improvement', what: 'your improvement request', verb: 'working on', eta: FIX_ETA },
+  feature: { label: 'New feature', what: 'your feature request', verb: 'building', eta: FIX_ETA },
 };
 const kindOf = (r: { kind?: string }) => cleanKind(r.kind);
 
